@@ -1,7 +1,15 @@
 // CORE D1 ONLY — booking availability must follow the operational HR truth.
 
-import { cleanText, dbAll, dbFirst } from '../d1.js';
-import { resolveEmployeeShift } from './shift-control.js';
+import {
+  cleanText,
+  dbAll,
+  dbFirst,
+  placeholders,
+} from '../d1.js';
+import {
+  resolveEmployeeShift,
+  resolveEmployeeShiftsBatch,
+} from './shift-control.js';
 
 const INACTIVE_EMPLOYMENT_STATUSES = new Set([
   'inactive',
@@ -113,83 +121,195 @@ function partialLeaveRanges(leaves) {
     }));
 }
 
-export async function resolveStaffBookingDay(db, salonId, staff, dateValue, startTime = '', endTime = '') {
-  const employeeId = cleanText(staff?.id);
-  const date = cleanText(dateValue);
-  if (!employeeId || !date || !staffIsActiveForBooking(staff)) {
-    return { available: false, reason: 'inactive', source: 'staff', blockedRanges: [] };
-  }
+function resolveStaffBookingDayFromFacts(
+  staff,
+  date,
+  leaves,
+  absence,
+  shift,
+  startTime = "",
+  endTime = ""
+) {
+  const employeeId =
+    cleanText(
+      staff?.id
+    );
 
-  // Approved employee_leaves is the only leave authority for booking runtime.
-  // Legacy mirrored leave_start_date / leave_end_date fields are intentionally ignored.
-  const leaves = await approvedLeavesForDate(db, salonId, employeeId, date);
-  const fullLeave = leaves.find((row) => !isPartialLeave(row));
-  if (fullLeave) {
+  if (
+    !employeeId ||
+    !date ||
+    !staffIsActiveForBooking(
+      staff
+    )
+  ) {
     return {
       available: false,
-      reason: 'approved_leave',
-      source: 'employee_leaves',
-      leaveType: cleanText(fullLeave.leave_type),
-      leaveId: cleanText(fullLeave.id),
+      reason: "inactive",
+      source: "staff",
       blockedRanges: [],
     };
   }
 
-  const blockedRanges = partialLeaveRanges(leaves);
+  const fullLeave =
+    leaves.find(
+      (row) =>
+        !isPartialLeave(row)
+    );
+
+  if (fullLeave) {
+    return {
+      available: false,
+      reason:
+        "approved_leave",
+      source:
+        "employee_leaves",
+      leaveType:
+        cleanText(
+          fullLeave.leave_type
+        ),
+      leaveId:
+        cleanText(
+          fullLeave.id
+        ),
+      leaveNote:
+        cleanText(
+          fullLeave.hr_note ||
+            fullLeave.employee_note
+        ),
+      blockedRanges: [],
+    };
+  }
+
+  const blockedRanges =
+    partialLeaveRanges(
+      leaves
+    );
+
   if (
     startTime &&
     endTime &&
-    blockedRanges.some((range) => rangesOverlap(startTime, endTime, range.startTime, range.endTime))
+    blockedRanges.some(
+      (range) =>
+        rangesOverlap(
+          startTime,
+          endTime,
+          range.startTime,
+          range.endTime
+        )
+    )
   ) {
     return {
       available: false,
-      reason: 'partial_leave',
-      source: 'employee_leaves',
+      reason:
+        "partial_leave",
+      source:
+        "employee_leaves",
       blockedRanges,
     };
   }
 
-  const absence = await absenceForDate(db, salonId, employeeId, date);
   if (absence) {
     return {
       available: false,
-      reason: 'absence',
-      source: 'employee_absences',
-      absenceType: cleanText(absence.absence_type),
-      absenceId: cleanText(absence.id),
+      reason: "absence",
+      source:
+        "employee_absences",
+      absenceType:
+        cleanText(
+          absence.absence_type
+        ),
+      absenceId:
+        cleanText(
+          absence.id
+        ),
       blockedRanges,
     };
   }
 
-  const shift = await resolveEmployeeShift(db, salonId, employeeId, date).catch(() => null);
-  if (shift && cleanText(shift.source) !== 'none') {
-    const exceptionType = cleanText(shift.exception_type || shift.exceptionType).toLowerCase();
-    if (exceptionType === 'off' || exceptionType === 'rest' || Number(shift.active) === 0) {
+  if (
+    shift &&
+    cleanText(
+      shift.source
+    ) !== "none"
+  ) {
+    const exceptionType =
+      cleanText(
+        shift.exception_type ||
+        shift.exceptionType
+      ).toLowerCase();
+
+    if (
+      exceptionType === "off" ||
+      exceptionType === "rest" ||
+      Number(
+        shift.active
+      ) === 0
+    ) {
       return {
         available: false,
-        reason: exceptionType === 'rest' ? 'rest' : 'weekly_or_schedule_off',
-        source: cleanText(shift.source) || 'hr_schedule',
+        reason:
+          exceptionType ===
+          "rest"
+            ? "rest"
+            : "weekly_or_schedule_off",
+        source:
+          cleanText(
+            shift.source
+          ) ||
+          "hr_schedule",
         shift,
         blockedRanges,
       };
     }
 
-    const { start, end } = resolvedShiftWindow(shift);
+    const {
+      start,
+      end,
+    } =
+      resolvedShiftWindow(
+        shift
+      );
+
     if (!start || !end) {
       return {
         available: false,
-        reason: 'no_working_window',
-        source: cleanText(shift.source),
+        reason:
+          "no_working_window",
+        source:
+          cleanText(
+            shift.source
+          ),
         shift,
         blockedRanges,
       };
     }
-    if (startTime || endTime) {
-      if (!startTime || !endTime || !timeInsideRange(startTime, start, end) || !timeInsideRange(endTime, start, end)) {
+
+    if (
+      startTime ||
+      endTime
+    ) {
+      if (
+        !startTime ||
+        !endTime ||
+        !timeInsideRange(
+          startTime,
+          start,
+          end
+        ) ||
+        !timeInsideRange(
+          endTime,
+          start,
+          end
+        )
+      ) {
         return {
           available: false,
-          reason: 'outside_shift',
-          source: cleanText(shift.source),
+          reason:
+            "outside_shift",
+          source:
+            cleanText(
+              shift.source
+            ),
           startTime: start,
           endTime: end,
           shift,
@@ -197,10 +317,14 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
         };
       }
     }
+
     return {
       available: true,
-      reason: '',
-      source: cleanText(shift.source),
+      reason: "",
+      source:
+        cleanText(
+          shift.source
+        ),
       startTime: start,
       endTime: end,
       shift,
@@ -210,10 +334,358 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
 
   return {
     available: false,
-    reason: 'no_hr_schedule',
-    source: 'hr_schedule',
+    reason:
+      "no_hr_schedule",
+    source:
+      "hr_schedule",
     blockedRanges,
   };
+}
+
+export async function resolveStaffBookingDay(
+  db,
+  salonId,
+  staff,
+  dateValue,
+  startTime = "",
+  endTime = ""
+) {
+  const employeeId =
+    cleanText(
+      staff?.id
+    );
+
+  const date =
+    cleanText(
+      dateValue
+    );
+
+  if (
+    !employeeId ||
+    !date ||
+    !staffIsActiveForBooking(
+      staff
+    )
+  ) {
+    return resolveStaffBookingDayFromFacts(
+      staff,
+      date,
+      [],
+      null,
+      null,
+      startTime,
+      endTime
+    );
+  }
+
+  // Approved employee_leaves is the only leave authority.
+  // Legacy mirrored leave fields are intentionally ignored.
+  const leaves =
+    await approvedLeavesForDate(
+      db,
+      salonId,
+      employeeId,
+      date
+    );
+
+  if (
+    leaves.some(
+      (row) =>
+        !isPartialLeave(row)
+    )
+  ) {
+    return resolveStaffBookingDayFromFacts(
+      staff,
+      date,
+      leaves,
+      null,
+      null,
+      startTime,
+      endTime
+    );
+  }
+
+  const absence =
+    await absenceForDate(
+      db,
+      salonId,
+      employeeId,
+      date
+    );
+
+  if (absence) {
+    return resolveStaffBookingDayFromFacts(
+      staff,
+      date,
+      leaves,
+      absence,
+      null,
+      startTime,
+      endTime
+    );
+  }
+
+  const shift =
+    await resolveEmployeeShift(
+      db,
+      salonId,
+      employeeId,
+      date
+    ).catch(
+      () => null
+    );
+
+  return resolveStaffBookingDayFromFacts(
+    staff,
+    date,
+    leaves,
+    absence,
+    shift,
+    startTime,
+    endTime
+  );
+}
+
+export async function resolveStaffBookingDaysBatch(
+  db,
+  salonId,
+  staffRows,
+  dateValue
+) {
+  const date =
+    cleanText(
+      dateValue
+    );
+
+  const staff =
+    (Array.isArray(staffRows)
+      ? staffRows
+      : []
+    ).filter(
+      (row) =>
+        cleanText(row?.id)
+    );
+
+  if (!staff.length) {
+    return [];
+  }
+
+  const employeeIds =
+    Array.from(
+      new Set(
+        staff.map(
+          (row) =>
+            cleanText(row.id)
+        )
+      )
+    );
+
+  let leaves;
+  let absences;
+
+  if (db?.__fakeD1) {
+    const wanted =
+      new Set(
+        employeeIds
+      );
+
+    leaves =
+      safeFakeRows(
+        db,
+        "employee_leaves"
+      ).filter(
+        (row) =>
+          row.salon_id ===
+            salonId &&
+          wanted.has(
+            cleanText(
+              row.employee_id
+            )
+          ) &&
+          cleanText(
+            row.status
+          ).toLowerCase() ===
+            "approved" &&
+          cleanText(
+            row.start_date
+          ) <= date &&
+          cleanText(
+            row.end_date
+          ) >= date
+      );
+
+    absences =
+      safeFakeRows(
+        db,
+        "employee_absences"
+      ).filter(
+        (row) =>
+          row.salon_id ===
+            salonId &&
+          wanted.has(
+            cleanText(
+              row.employee_id
+            )
+          ) &&
+          cleanText(
+            row.date_key
+          ) === date
+      );
+  } else {
+    const marks =
+      placeholders(
+        employeeIds.length
+      );
+
+    [
+      leaves,
+      absences,
+    ] =
+      await Promise.all([
+        dbAll(
+          db,
+          `SELECT * FROM employee_leaves
+            WHERE salon_id = ?
+              AND employee_id IN (${marks})
+              AND LOWER(status) = 'approved'
+              AND start_date <= ?
+              AND end_date >= ?
+            ORDER BY
+              employee_id,
+              start_date DESC`,
+          [
+            salonId,
+            ...employeeIds,
+            date,
+            date,
+          ]
+        ),
+
+        dbAll(
+          db,
+          `SELECT * FROM employee_absences
+            WHERE salon_id = ?
+              AND employee_id IN (${marks})
+              AND date_key = ?
+            ORDER BY
+              employee_id,
+              created_at DESC`,
+          [
+            salonId,
+            ...employeeIds,
+            date,
+          ]
+        ),
+      ]);
+  }
+
+  const shiftBatch =
+    await resolveEmployeeShiftsBatch(
+      db,
+      salonId,
+      {
+        employeeIds,
+        dateFrom: date,
+        dateTo: date,
+      }
+    );
+
+  const leavesByEmployee =
+    new Map();
+
+  for (const row of leaves) {
+    const employeeId =
+      cleanText(
+        row.employee_id
+      );
+
+    const current =
+      leavesByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    current.push(row);
+
+    leavesByEmployee.set(
+      employeeId,
+      current
+    );
+  }
+
+  const absenceByEmployee =
+    new Map();
+
+  for (const row of absences) {
+    const employeeId =
+      cleanText(
+        row.employee_id
+      );
+
+    if (
+      employeeId &&
+      !absenceByEmployee.has(
+        employeeId
+      )
+    ) {
+      absenceByEmployee.set(
+        employeeId,
+        row
+      );
+    }
+  }
+
+  const shiftByEmployee =
+    new Map(
+      (Array.isArray(
+        shiftBatch?.rows
+      )
+        ? shiftBatch.rows
+        : []
+      )
+        .map(
+          (row) => [
+            cleanText(
+              row?.employee_id
+            ),
+            row,
+          ]
+        )
+        .filter(
+          ([employeeId]) =>
+            employeeId
+        )
+    );
+
+  return staff.map(
+    (row) => {
+      const employeeId =
+        cleanText(
+          row.id
+        );
+
+      return {
+        employeeId,
+        day:
+          resolveStaffBookingDayFromFacts(
+            row,
+            date,
+            leavesByEmployee.get(
+              employeeId
+            ) ||
+              [],
+            absenceByEmployee.get(
+              employeeId
+            ) ||
+              null,
+            shiftByEmployee.get(
+              employeeId
+            ) ||
+              null
+          ),
+      };
+    }
+  );
 }
 
 export async function staffCanPerformService(db, salonId, staffIdValue, serviceIdValue) {

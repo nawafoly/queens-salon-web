@@ -12,6 +12,7 @@ import {
   validateLocalImportReport,
 } from "../scripts/migrate-core-firestore-to-d1.mjs";
 import worker from "./core/index.js";
+import { resolveStaffBookingDay } from "./core/repositories/booking-staff-policy.js";
 
 class FakeD1 {
   constructor() {
@@ -54,6 +55,11 @@ class FakeD1 {
       "employee_absences",
       "payroll_periods",
       "payroll_entries",
+      "salary_advances",
+      "salary_advance_installments",
+      "employee_recurring_deductions",
+      "employee_payroll_obligations",
+      "employee_payroll_obligation_installments",
       "employee_target_plans",
       "employee_target_tiers",
       "employee_target_assignments",
@@ -179,6 +185,42 @@ class FakeD1 {
     return this.rows(table).find((row) => row.salon_id === salonId && row.id === id) || null;
   }
 
+  activeRecurringDeductions(salonId, employeeId, payrollMonth) {
+    return this.rows("employee_recurring_deductions")
+      .filter((row) =>
+        row.salon_id === salonId &&
+        (!employeeId || row.employee_id === employeeId) &&
+        row.status === "active" &&
+        row.start_payroll_month <= payrollMonth &&
+        (!row.end_payroll_month || row.end_payroll_month >= payrollMonth)
+      );
+  }
+
+  joinedPayrollObligationInstallments(salonId) {
+    return this.rows("employee_payroll_obligation_installments")
+      .map((installment) => {
+        const obligation = this.find("employee_payroll_obligations", salonId, installment.obligation_id);
+        if (!obligation || installment.salon_id !== salonId) return null;
+        const recurring = obligation.recurring_deduction_id
+          ? this.find("employee_recurring_deductions", salonId, obligation.recurring_deduction_id)
+          : null;
+        return {
+          ...installment,
+          employee_id: obligation.employee_id,
+          recurring_deduction_id: obligation.recurring_deduction_id || null,
+          obligation_kind: obligation.obligation_kind,
+          obligation_source_type: obligation.source_type,
+          obligation_source_ref: obligation.source_ref,
+          original_payroll_month: obligation.original_payroll_month,
+          obligation_reason: obligation.reason,
+          obligation_note: obligation.note,
+          obligation_status: obligation.status,
+          recurring_title: recurring?.title || null,
+        };
+      })
+      .filter(Boolean);
+  }
+
   async first(sql, params = []) {
     const rows = await this.all(sql, params);
     return rows[0] || null;
@@ -290,6 +332,81 @@ class FakeD1 {
         });
     }
 
+    if (normalized.startsWith("SELECT e.*, p.name AS employee_name, p.status AS profile_status FROM employee_employment e")) {
+      const [salonId, employeeId] = params;
+      const employment = this.rows("employee_employment").find(
+        (row) => row.salon_id === salonId && row.employee_id === employeeId
+      );
+      if (!employment) return [];
+      const profile = this.rows("employee_profiles").find(
+        (row) => row.salon_id === salonId && row.id === employeeId
+      );
+      if (!profile) return [];
+      return [{
+        ...employment,
+        employee_name: profile.name,
+        profile_status: profile.status,
+      }];
+    }
+    if (normalized.startsWith("SELECT employee_id, MAX(has_profile) AS has_profile")) {
+      const profileSalonId = params[0];
+      const half = (params.length - 2) / 2;
+      const profileIds = params.slice(1, 1 + half);
+      const employmentSalonId = params[1 + half];
+      const employmentIds = params.slice(2 + half);
+      const wanted = new Set([...profileIds, ...employmentIds]);
+      return Array.from(wanted)
+        .map((employeeId) => {
+          const profile = this.rows("employee_profiles").find(
+            (row) => row.salon_id === profileSalonId && row.id === employeeId
+          );
+          const employment = this.rows("employee_employment").find(
+            (row) => row.salon_id === employmentSalonId && row.employee_id === employeeId
+          );
+          if (!profile && !employment) return null;
+          return {
+            employee_id: employeeId,
+            has_profile: profile ? 1 : 0,
+            has_employment: employment ? 1 : 0,
+            profile_status: profile?.status ?? null,
+            employment_status: employment?.employment_status ?? null,
+            end_date: employment?.end_date ?? null,
+          };
+        })
+        .filter(Boolean);
+    }
+    if (normalized.startsWith("SELECT p.status AS profile_status, e.employment_status, e.end_date FROM employee_profiles p")) {
+      const [salonId, employeeId] = params;
+      const profile = this.rows("employee_profiles").find(
+        (row) => row.salon_id === salonId && row.id === employeeId
+      );
+      if (!profile) return [];
+      const employment = this.rows("employee_employment").find(
+        (row) => row.salon_id === salonId && row.employee_id === employeeId
+      );
+      return [{
+        profile_status: profile.status,
+        employment_status: employment?.employment_status ?? null,
+        end_date: employment?.end_date ?? null,
+      }];
+    }
+    if (normalized.startsWith("SELECT p.id AS employee_id, p.status AS profile_status, e.employment_status, e.end_date FROM employee_profiles p")) {
+      const salonId = params[0];
+      const wanted = new Set(params.slice(1));
+      return this.rows("employee_profiles")
+        .filter((row) => row.salon_id === salonId && wanted.has(row.id))
+        .map((profile) => {
+          const employment = this.rows("employee_employment").find(
+            (row) => row.salon_id === salonId && row.employee_id === profile.id
+          );
+          return {
+            employee_id: profile.id,
+            profile_status: profile.status,
+            employment_status: employment?.employment_status ?? null,
+            end_date: employment?.end_date ?? null,
+          };
+        });
+    }
     if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ? AND firebase_uid = ?")) {
       const [salonId, uid] = params;
       return this.rows("app_users").filter((row) => row.salon_id === salonId && row.firebase_uid === uid).slice(0, 1);
@@ -432,6 +549,13 @@ class FakeD1 {
         .filter((row) => row.result === "allowed" && ["check_in", "check_out"].includes(row.type))
         .sort((a, b) => String(b.server_time || "").localeCompare(String(a.server_time || "")))
         .slice(0, 5000);
+    }
+    if (normalized.startsWith("SELECT * FROM employee_leaves WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("employee_leaves")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => String(b.start_date || "").localeCompare(String(a.start_date || "")))
+        .slice(0, 1000);
     }
     if (normalized.startsWith("SELECT * FROM employee_absences WHERE salon_id = ? AND employee_id = ? AND date_key = ?")) {
       const [salonId, employeeId, dateKey] = params;
@@ -607,6 +731,197 @@ class FakeD1 {
           row.performed_date >= start &&
           row.performed_date <= end
         );
+    }
+    // FAKE_D1_CANONICAL_ADVANCE_DEDUCTIONS
+    if (normalized.startsWith("SELECT sa.employee_id, sai.payroll_month,") && normalized.includes("FROM salary_advance_installments sai") && normalized.includes("JOIN salary_advances sa")) {
+      const [salonId]=params; const grouped=new Map();
+      for (const installment of this.rows("salary_advance_installments")) {
+        if(installment.salon_id!==salonId || !["scheduled","deducted"].includes(String(installment.status||""))) continue;
+        const advance=this.rows("salary_advances").find((row)=>row.salon_id===salonId && row.id===installment.advance_id);
+        if(!advance) continue;
+        const key=`${advance.employee_id}\u0000${installment.payroll_month}`;
+        const current=grouped.get(key)||{employee_id:advance.employee_id,payroll_month:installment.payroll_month,amount_halalas:0};
+        current.amount_halalas+=Number(installment.amount_halalas||0); grouped.set(key,current);
+      }
+      return [...grouped.values()].sort((x,y)=>`${x.payroll_month}\u0000${x.employee_id}`.localeCompare(`${y.payroll_month}\u0000${y.employee_id}`));
+    }
+    if (normalized.startsWith("SELECT sai.advance_id, COALESCE(SUM(sai.amount_halalas), 0) AS amount_halalas") && normalized.includes("FROM salary_advance_installments sai") && normalized.includes("JOIN salary_advances sa")) {
+      const [salonId,employeeId,payrollMonth]=params; const grouped=new Map();
+      for(const installment of this.rows("salary_advance_installments")){
+        if(installment.salon_id!==salonId || installment.payroll_month!==payrollMonth || String(installment.status||"")!=="scheduled") continue;
+        const advance=this.rows("salary_advances").find((row)=>row.salon_id===salonId && row.id===installment.advance_id && row.employee_id===employeeId);
+        if(!advance) continue;
+        grouped.set(installment.advance_id,Number(grouped.get(installment.advance_id)||0)+Number(installment.amount_halalas||0));
+      }
+      return [...grouped.entries()].map(([advance_id,amount_halalas])=>({advance_id,amount_halalas}));
+    }
+
+    if (normalized.startsWith("SELECT payroll_month FROM payroll_entries WHERE salon_id = ?") && normalized.includes("status IN ('approved', 'paid')")) {
+      const [salonId, employeeId, startPayrollMonth, endPayrollMonth] = params;
+      return this.rows("payroll_entries")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          ["approved", "paid"].includes(String(row.status || "")) &&
+          row.payroll_month >= startPayrollMonth &&
+          (!endPayrollMonth || row.payroll_month <= endPayrollMonth)
+        )
+        .sort((a, b) => String(a.payroll_month || "").localeCompare(String(b.payroll_month || "")))
+        .slice(0, 1)
+        .map((row) => ({ payroll_month: row.payroll_month }));
+    }
+    if (normalized.startsWith("SELECT * FROM employee_recurring_deductions WHERE salon_id = ? AND employee_id = ?") && normalized.includes("status = 'active'")) {
+      const [salonId, employeeId, payrollMonth] = params;
+      return this.activeRecurringDeductions(salonId, employeeId, payrollMonth)
+        .sort((a, b) => `${a.created_at || ""}\u0000${a.id || ""}`.localeCompare(`${b.created_at || ""}\u0000${b.id || ""}`));
+    }
+    if (normalized.startsWith("SELECT * FROM employee_recurring_deductions WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      const row = this.find("employee_recurring_deductions", salonId, id);
+      return row ? [row] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM employee_recurring_deductions WHERE salon_id = ?") && normalized.includes("status = 'active'")) {
+      const [salonId, payrollMonth] = params;
+      return this.activeRecurringDeductions(salonId, "", payrollMonth)
+        .sort((a, b) => `${a.employee_id || ""}\u0000${a.created_at || ""}\u0000${a.id || ""}`.localeCompare(`${b.employee_id || ""}\u0000${b.created_at || ""}\u0000${b.id || ""}`));
+    }
+    if (normalized.startsWith("SELECT * FROM employee_recurring_deductions WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("employee_recurring_deductions")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => {
+          const byEmployee = String(a.employee_id || "").localeCompare(String(b.employee_id || ""));
+          if (byEmployee !== 0) return byEmployee;
+          const byStart = String(b.start_payroll_month || "").localeCompare(String(a.start_payroll_month || ""));
+          if (byStart !== 0) return byStart;
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+        });
+    }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND employee_id = ? AND source_type = 'attendance' AND source_ref = ? AND status <> 'cancelled' ORDER BY created_at, id")) {
+      const [salonId, employeeId, sourceRef] = params;
+      return this.rows("employee_payroll_obligations")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.source_type === "attendance" &&
+          row.source_ref === sourceRef &&
+          row.status !== "cancelled"
+        )
+        .sort((a, b) => {
+          const byCreatedAt = String(a.created_at || "").localeCompare(String(b.created_at || ""));
+          if (byCreatedAt !== 0) return byCreatedAt;
+          return String(a.id || "").localeCompare(String(b.id || ""));
+        });
+    }
+
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND employee_id = ? AND source_type = ? AND source_ref = ?")) {
+      const [salonId, employeeId, sourceType, sourceRef] = params;
+      return this.rows("employee_payroll_obligations")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.source_type === sourceType &&
+          row.source_ref === sourceRef
+        )
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT id FROM employee_payroll_obligations WHERE salon_id = ? AND employee_id = ? AND recurring_deduction_id = ? AND original_payroll_month = ?")) {
+      const [salonId, employeeId, recurringDeductionId, payrollMonth] = params;
+      return this.rows("employee_payroll_obligations")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.recurring_deduction_id === recurringDeductionId &&
+          row.original_payroll_month === payrollMonth
+        )
+        .slice(0, 1)
+        .map((row) => ({ id: row.id }));
+    }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      const row = this.find("employee_payroll_obligations", salonId, id);
+      return row ? [row] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("employee_payroll_obligations")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => {
+          const byMonth = String(b.original_payroll_month || "").localeCompare(String(a.original_payroll_month || ""));
+          if (byMonth !== 0) return byMonth;
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+        });
+    }
+    if (normalized.startsWith("SELECT i.*, o.employee_id, o.recurring_deduction_id")) {
+      const hasEmployeeFilter = normalized.includes("AND o.employee_id = ?");
+      const [salonId, second, third] = params;
+      const employeeId = hasEmployeeFilter ? second : "";
+      const payrollMonth = hasEmployeeFilter ? third : second;
+      const openStatuses = new Set(["open", "scheduled", "partially_settled"]);
+      return this.joinedPayrollObligationInstallments(salonId)
+        .filter((row) =>
+          (!employeeId || row.employee_id === employeeId) &&
+          row.target_payroll_month === payrollMonth &&
+          row.status === "scheduled" &&
+          openStatuses.has(String(row.obligation_status || ""))
+        )
+        .sort((a, b) => `${a.employee_id || ""}\u0000${a.created_at || ""}\u0000${a.id || ""}`.localeCompare(`${b.employee_id || ""}\u0000${b.created_at || ""}\u0000${b.id || ""}`));
+    }
+    if (normalized.startsWith("SELECT i.*, o.employee_id, o.obligation_kind, o.status AS obligation_status")) {
+      const [salonId, installmentId] = params;
+      return this.joinedPayrollObligationInstallments(salonId)
+        .filter((row) => row.id === installmentId)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT i.*, o.employee_id FROM employee_payroll_obligation_installments i")) {
+      const [salonId, ...installmentIds] = params;
+      const wanted = new Set(installmentIds);
+      return this.joinedPayrollObligationInstallments(salonId)
+        .filter((row) => wanted.has(row.id));
+    }
+    if (normalized.startsWith("SELECT id FROM employee_payroll_obligation_installments WHERE salon_id = ? AND obligation_id = ? AND target_payroll_month = ?")) {
+      const [salonId, obligationId, targetPayrollMonth] = params;
+      return this.rows("employee_payroll_obligation_installments")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.obligation_id === obligationId &&
+          row.target_payroll_month === targetPayrollMonth &&
+          row.status === "scheduled"
+        )
+        .slice(0, 1)
+        .map((row) => ({ id: row.id }));
+    }
+    if (normalized.startsWith("SELECT COALESCE(MAX(sequence_no), 0) AS max_sequence FROM employee_payroll_obligation_installments")) {
+      const [salonId, obligationId] = params;
+      const maxSequence = this.rows("employee_payroll_obligation_installments")
+        .filter((row) => row.salon_id === salonId && row.obligation_id === obligationId)
+        .reduce((max, row) => Math.max(max, Number(row.sequence_no || 0)), 0);
+      return [{ max_sequence: maxSequence }];
+    }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligation_installments WHERE salon_id = ? AND obligation_id IN")) {
+      const [salonId, ...obligationIds] = params;
+      const wanted = new Set(obligationIds);
+      return this.rows("employee_payroll_obligation_installments")
+        .filter((row) => row.salon_id === salonId && wanted.has(row.obligation_id))
+        .sort((a, b) => {
+          const byObligation = String(a.obligation_id || "").localeCompare(String(b.obligation_id || ""));
+          if (byObligation !== 0) return byObligation;
+          return Number(a.sequence_no || 0) - Number(b.sequence_no || 0);
+        });
+    }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligation_installments WHERE salon_id = ? AND obligation_id = ? AND status = 'scheduled'")) {
+      const [salonId, obligationId] = params;
+      return this.rows("employee_payroll_obligation_installments")
+        .filter((row) => row.salon_id === salonId && row.obligation_id === obligationId && row.status === "scheduled");
+    }
+
+    if (normalized.startsWith("SELECT id, status FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ?")) {
+      const [salonId, employeeId, payrollMonth] = params;
+      return this.rows("payroll_entries")
+        .filter((row) => row.salon_id === salonId && row.employee_id === employeeId && row.payroll_month === payrollMonth)
+        .slice(0, 1)
+        .map((row) => ({ id: row.id, status: row.status }));
     }
     if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
@@ -804,6 +1119,281 @@ class FakeD1 {
 
   async run(sql, params = []) {
     const normalized = sql.replace(/\s+/g, " ").trim();
+
+    // FAKE_D1_LINK_SALARY_ADVANCE_INSTALLMENTS
+    if (normalized.startsWith("UPDATE salary_advance_installments SET payroll_entry_id = ?, updated_at = ?")) {
+      const [payrollEntryId,updatedAt,salonId,payrollMonth,advanceSalonId,employeeId]=params;
+      const advanceIds=new Set(this.rows("salary_advances").filter((row)=>row.salon_id===advanceSalonId && row.employee_id===employeeId).map((row)=>row.id));
+      let count=0;
+      for(const row of this.rows("salary_advance_installments")){
+        if(row.salon_id===salonId && row.payroll_month===payrollMonth && String(row.status||"")==="scheduled" && advanceIds.has(row.advance_id)){
+          this.seed("salary_advance_installments",{...row,payroll_entry_id:payrollEntryId,updated_at:updatedAt}); count+=1;
+        }
+      }
+      return {meta:{changes:count}};
+    }
+    if (normalized.startsWith("INSERT INTO employee_recurring_deductions")) {
+      const [
+        id,
+        salon_id,
+        employee_id,
+        title,
+        deduction_kind,
+        amount_halalas,
+        start_payroll_month,
+        end_payroll_month,
+        status,
+        reason,
+        note,
+        source_type,
+        source_ref,
+        created_by_uid,
+        created_by_email,
+        updated_by_uid,
+        updated_by_email,
+        created_at,
+        updated_at,
+      ] = params;
+      const existing = this.find("employee_recurring_deductions", salon_id, id);
+      return this.insert("employee_recurring_deductions", {
+        ...(existing || {}),
+        id,
+        salon_id,
+        employee_id,
+        title,
+        deduction_kind,
+        amount_halalas,
+        cadence: "monthly",
+        start_payroll_month,
+        end_payroll_month,
+        status,
+        reason,
+        note,
+        source_type,
+        source_ref,
+        created_by_uid: existing?.created_by_uid || created_by_uid,
+        created_by_email: existing?.created_by_email || created_by_email,
+        updated_by_uid,
+        updated_by_email,
+        created_at: existing?.created_at || created_at,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("INSERT OR IGNORE INTO employee_payroll_obligations")) {
+      const [
+        id,
+        salon_id,
+        employee_id,
+        recurring_deduction_id,
+        obligation_kind,
+        source_ref,
+        original_payroll_month,
+        original_amount_halalas,
+        remaining_amount_halalas,
+        reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        created_at,
+        updated_at,
+      ] = params;
+      if (this.find("employee_payroll_obligations", salon_id, id)) return { meta: { changes: 0 } };
+      return this.insert("employee_payroll_obligations", {
+        id,
+        salon_id,
+        employee_id,
+        recurring_deduction_id,
+        obligation_kind,
+        source_type: "recurring_deduction",
+        source_ref,
+        original_payroll_month,
+        original_amount_halalas,
+        remaining_amount_halalas,
+        status: "scheduled",
+        reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        cancelled_by_uid: null,
+        cancelled_by_email: null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        created_at,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("INSERT INTO employee_payroll_obligations")) {
+      const [
+        id,
+        salon_id,
+        employee_id,
+        obligation_kind,
+        source_type,
+        source_ref,
+        original_payroll_month,
+        original_amount_halalas,
+        remaining_amount_halalas,
+        reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        created_at,
+        updated_at,
+      ] = params;
+      return this.insert("employee_payroll_obligations", {
+        id,
+        salon_id,
+        employee_id,
+        recurring_deduction_id: null,
+        obligation_kind,
+        source_type,
+        source_ref,
+        original_payroll_month,
+        original_amount_halalas,
+        remaining_amount_halalas,
+        status: "scheduled",
+        reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        cancelled_by_uid: null,
+        cancelled_by_email: null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        created_at,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("INSERT OR IGNORE INTO employee_payroll_obligation_installments")) {
+      const [
+        id,
+        salon_id,
+        obligation_id,
+        target_payroll_month,
+        amount_halalas,
+        decision_reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        created_at,
+        updated_at,
+      ] = params;
+      if (this.find("employee_payroll_obligation_installments", salon_id, id)) return { meta: { changes: 0 } };
+      return this.insert("employee_payroll_obligation_installments", {
+        id,
+        salon_id,
+        obligation_id,
+        sequence_no: 1,
+        target_payroll_month,
+        amount_halalas,
+        status: "scheduled",
+        applied_payroll_entry_id: null,
+        applied_at: null,
+        deferred_from_installment_id: null,
+        superseded_by_installment_id: null,
+        decision_reason,
+        note,
+        created_by_uid,
+        created_by_email,
+        created_at,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("INSERT INTO employee_payroll_obligation_installments")) {
+      const [
+        id,
+        salon_id,
+        obligation_id,
+        sequence_no,
+        target_payroll_month,
+        amount_halalas,
+        maybeDeferredFrom,
+        maybeReason,
+        maybeNote,
+        maybeCreatedByUid,
+        maybeCreatedByEmail,
+        maybeCreatedAt,
+        maybeUpdatedAt,
+      ] = params;
+      const hasDeferredSource = normalized.includes("deferred_from_installment_id");
+      return this.insert("employee_payroll_obligation_installments", {
+        id,
+        salon_id,
+        obligation_id,
+        sequence_no,
+        target_payroll_month,
+        amount_halalas,
+        status: "scheduled",
+        applied_payroll_entry_id: null,
+        applied_at: null,
+        deferred_from_installment_id: hasDeferredSource ? maybeDeferredFrom : null,
+        superseded_by_installment_id: null,
+        decision_reason: hasDeferredSource ? maybeReason : maybeDeferredFrom,
+        note: hasDeferredSource ? maybeNote : maybeReason,
+        created_by_uid: hasDeferredSource ? maybeCreatedByUid : maybeNote,
+        created_by_email: hasDeferredSource ? maybeCreatedByEmail : maybeCreatedByUid,
+        created_at: hasDeferredSource ? maybeCreatedAt : maybeCreatedByEmail,
+        updated_at: hasDeferredSource ? maybeUpdatedAt : maybeCreatedAt,
+      });
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligation_installments SET status = 'cancelled'")) {
+      const [updatedAt, salonId, obligationId] = params;
+      let changes = 0;
+      for (const row of this.rows("employee_payroll_obligation_installments")) {
+        if (row.salon_id !== salonId || row.obligation_id !== obligationId || row.status !== "scheduled") continue;
+        this.seed("employee_payroll_obligation_installments", { ...row, status: "cancelled", updated_at: updatedAt });
+        changes += 1;
+      }
+      return { meta: { changes } };
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligation_installments SET status = 'deferred'")) {
+      const [supersededByInstallmentId, updatedAt, salonId, id] = params;
+      const row = this.find("employee_payroll_obligation_installments", salonId, id);
+      if (!row || row.status !== "scheduled") return { meta: { changes: 0 } };
+      return this.update("employee_payroll_obligation_installments", salonId, id, {
+        status: "deferred",
+        superseded_by_installment_id: supersededByInstallmentId,
+        updated_at: updatedAt,
+      });
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligation_installments SET status = 'applied'")) {
+      const [payrollEntryId, appliedAt, updatedAt, salonId, id] = params;
+      const row = this.find("employee_payroll_obligation_installments", salonId, id);
+      if (!row || row.status !== "scheduled") return { meta: { changes: 0 } };
+      return this.update("employee_payroll_obligation_installments", salonId, id, {
+        status: "applied",
+        applied_payroll_entry_id: payrollEntryId,
+        applied_at: appliedAt,
+        updated_at: updatedAt,
+      });
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligations SET status = 'cancelled'")) {
+      const [cancelledByUid, cancelledByEmail, cancelledAt, cancellationReason, updatedAt, salonId, id] = params;
+      return this.update("employee_payroll_obligations", salonId, id, {
+        status: "cancelled",
+        cancelled_by_uid: cancelledByUid,
+        cancelled_by_email: cancelledByEmail,
+        cancelled_at: cancelledAt,
+        cancellation_reason: cancellationReason,
+        updated_at: updatedAt,
+      });
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligations SET remaining_amount_halalas = MAX")) {
+      const [amountHalalas, settleThreshold, updatedAt, salonId, id] = params;
+      const row = this.find("employee_payroll_obligations", salonId, id);
+      if (!row) return { meta: { changes: 0 } };
+      const previousRemaining = Number(row.remaining_amount_halalas || 0);
+      const remaining = Math.max(0, previousRemaining - Number(amountHalalas || 0));
+      return this.update("employee_payroll_obligations", salonId, id, {
+        remaining_amount_halalas: remaining,
+        status: previousRemaining <= Number(settleThreshold || 0) ? "settled" : "partially_settled",
+        updated_at: updatedAt,
+      });
+    }
+    if (normalized.startsWith("UPDATE employee_payroll_obligations SET updated_at = ?")) {
+      const [updatedAt, salonId, id] = params;
+      return this.update("employee_payroll_obligations", salonId, id, { updated_at: updatedAt });
+    }
     if (normalized.startsWith("INSERT INTO user_employee_links")) {
       const [
         id,
@@ -1159,6 +1749,15 @@ class FakeD1 {
       } else if (sql.startsWith("INSERT INTO app_users") || sql.startsWith("INSERT INTO user_permissions") || sql.startsWith("INSERT INTO user_employee_links")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("DELETE FROM user_permissions") || sql.startsWith("UPDATE user_employee_links SET")) {
+        results.push(await this.run(statement.sql, params));
+      } else if (
+        sql.startsWith("INSERT INTO employee_payroll_obligations") ||
+        sql.startsWith("INSERT OR IGNORE INTO employee_payroll_obligations") ||
+        sql.startsWith("INSERT INTO employee_payroll_obligation_installments") ||
+        sql.startsWith("INSERT OR IGNORE INTO employee_payroll_obligation_installments") ||
+        sql.startsWith("UPDATE employee_payroll_obligation_installments") ||
+        sql.startsWith("UPDATE employee_payroll_obligations")
+      ) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
@@ -1628,6 +2227,78 @@ function seedPayrollEntry(fake, overrides = {}) {
     created_at: overrides.created_at || now,
     updated_at: overrides.updated_at || now,
   };
+  if (!fake.find("employee_profiles", "main", row.employee_id)) {
+    fake.seed("employee_profiles", {
+      id: row.employee_id,
+      salon_id: "main",
+      firebase_uid: null,
+      name: row.employee_name,
+      email: null,
+      phone_normalized: null,
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  if (!fake.rows("employee_employment").some((item) => item.salon_id === "main" && item.employee_id === row.employee_id)) {
+    fake.seed("employee_employment", {
+      salon_id: "main",
+      employee_id: row.employee_id,
+      employment_status: "active",
+      job_title: row.job_title,
+      base_salary_halalas: row.base_salary_halalas,
+      housing_allowance_halalas: 0,
+      transportation_allowance_halalas: 0,
+      other_allowances_halalas: 0,
+      social_insurance_category: "non_saudi",
+      social_insurance_effective_from: "2020-01-01",
+      gosi_wage_mode: "derived",
+      gosi_contributory_wage_override_halalas: 0,
+      gosi_contributory_wage_override_reason: null,
+      attendance_payroll_mode: "required",
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  if (!fake.rows("hr_work_schedules").some((item) => item.salon_id === "main" && item.employee_id === row.employee_id)) {
+    for (let weekday = 0; weekday <= 6; weekday += 1) {
+      fake.seed("hr_work_schedules", {
+        id: `${row.employee_id}__payroll-weekday-${weekday}`,
+        salon_id: "main",
+        employee_id: row.employee_id,
+        weekday,
+        shift_template_id: null,
+        active: 1,
+        start_time: "09:00",
+        end_time: "17:00",
+        effective_from: "2020-01-01",
+        effective_to: null,
+        schedule_source: "payroll_test_fixture",
+        created_at: now,
+        updated_at: now,
+      });
+    }
+  }
+  if (!fake.rows("attendance_records").some((item) => item.salon_id === "main" && item.employee_id === row.employee_id)) {
+    fake.seed("attendance_records", {
+      id: `${row.employee_id}__payroll-check-in`,
+      salon_id: "main",
+      employee_id: row.employee_id,
+      employee_uid: null,
+      date_key: "2026-07-01",
+      record_type: "check_in",
+      recorded_at: "2026-07-01T06:00:00.000Z",
+      latitude: null,
+      longitude: null,
+      accuracy_meters: null,
+      zone_id: null,
+      device_id: null,
+      source: "payroll_test_fixture",
+      note: null,
+      idempotency_key: null,
+      created_at: now,
+    });
+  }
   fake.seed("payroll_entries", row);
   return row;
 }
@@ -4077,4 +4748,54 @@ test("reception app_user can use operational client search through D1 role autho
     env(fake)
   );
   assert.equal(response.status, 200, JSON.stringify(await json(response)));
+});
+
+
+test("Stage11 booking lifecycle fails closed for partial HR projections while allowing staff-only resources", async () => {
+  const date = "2027-01-04";
+  const weekday = new Date(date + "T12:00:00.000Z").getUTCDay();
+
+  const resolveCase = async ({
+    id,
+    profileStatus = "active",
+    employmentStatus = "active",
+    endDate,
+    profile = true,
+    employment = true,
+  }) => {
+    const db = new FakeD1();
+    db.seed("staff", {
+      id, salon_id: "main", firebase_uid: null, name: id, phone_normalized: null,
+      active: 1, employment_status: "active", show_on_booking: 1, created_at: date, updated_at: date,
+    });
+    db.seed("hr_work_schedules", {
+      id: "schedule-" + id, salon_id: "main", employee_id: id, weekday,
+      shift_template_id: null, start_time: "09:00", end_time: "17:00", active: 1,
+      schedule_source: "test", effective_from: "2027-01-01", effective_to: null,
+      created_at: date, updated_at: date,
+    });
+    if (profile) {
+      db.seed("employee_profiles", {
+        id, salon_id: "main", firebase_uid: null, name: id, status: profileStatus,
+        created_at: date, updated_at: date,
+      });
+    }
+    if (employment) {
+      db.seed("employee_employment", {
+        salon_id: "main", employee_id: id, employment_status: employmentStatus,
+        end_date: endDate ?? null, created_at: date, updated_at: date,
+      });
+    }
+    return resolveStaffBookingDay(db, "main", db.find("staff", "main", id), date, "10:00", "11:00");
+  };
+
+  assert.equal((await resolveCase({ id: "active-employee", profileStatus: "active", employmentStatus: "active", endDate: null })).available, true);
+  assert.equal((await resolveCase({ id: "staff-only", profile: false, employment: false })).available, true);
+  assert.equal((await resolveCase({ id: "profile-only", employment: false })).available, false);
+  assert.equal((await resolveCase({ id: "employment-only", profile: false })).available, false);
+  assert.equal((await resolveCase({ id: "inactive-employee", profileStatus: "inactive", employmentStatus: "inactive", endDate: null })).available, false);
+  assert.equal((await resolveCase({ id: "inactive-profile", profileStatus: "inactive", employmentStatus: "active", endDate: null })).available, false);
+  assert.equal((await resolveCase({ id: "inactive-employment", profileStatus: "active", employmentStatus: "inactive", endDate: null })).available, false);
+  assert.equal((await resolveCase({ id: "offboarded-employee", profileStatus: "inactive", employmentStatus: "inactive", endDate: "2027-01-03" })).available, false);
+  assert.equal((await resolveCase({ id: "ended-employee", profileStatus: "active", employmentStatus: "active", endDate: "2027-01-03" })).available, false);
 });

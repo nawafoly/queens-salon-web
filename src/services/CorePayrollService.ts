@@ -2,38 +2,25 @@ import type {
   CoreAbsence,
   CoreAttendanceRecord,
   CoreHrEmployee,
-  CoreHrSchedule,
   CoreLeave,
-  CoreScheduleException,
-  CoreShiftAssignment,
-  CoreShiftTemplate,
+  CoreResolvedShift,
   CorePayrollEntry,
   CorePayrollPeriod,
+  CorePayrollCarryoverAdjustment,
 } from "../types/hrCoreApi.ts";
 import {
-  permissionIntervalsFromAttendanceRecords,
-} from "../helpers/hr/permissionAttendance.ts";
+  payrollCarryoverNetHalalas,
+  previousPayrollMonth,
+} from "../helpers/hr/payrollCarryoverPolicy.js";
 import {
-  filterPaidPermissionIntervals,
-  fullDayPaidLeaveDates,
-  mergePayrollDayUnits,
-  payrollAbsenceDayUnits,
-  payrollIntervalHours,
-  payrollLeaveDayUnits,
-  totalPayrollDayUnits,
-  unpaidPartialLeaveIntervalsForDate,
-} from "../helpers/hr/payrollLeaveAbsencePolicy.ts";
-import {
-  calculateAttendanceDisciplineDay,
-  summarizeAttendanceDisciplineMonth,
-  type AttendanceDisciplineDaySummary,
-} from "../helpers/hr/attendanceDiscipline.ts";
+  payrollApprovalReadiness,
+  payrollAttendanceReadiness,
+} from "../helpers/hr/payrollReadiness.js";
+import type { GosiSnapshot } from "../helpers/hr/gosiPolicy.js";
 import {
   ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
-  calculatePayrollSnapshot,
   evaluatePayrollSetup,
   isPayrollSnapshotLocked,
-  preserveLockedPayrollSnapshot,
   type PayrollAttendanceSummarySnapshot,
   type PayrollMonthlyHoursSource,
   type PayrollSetupMissingKey,
@@ -60,6 +47,7 @@ export type PayrollEntryView = PayrollSnapshot & {
   paidAt?: string | null;
   paidByUid?: string | null;
   auditLog?: Array<Record<string, unknown>>;
+  carryoverAdjustments?: CorePayrollCarryoverAdjustment[];
 };
 
 export type PayrollAccrualView = {
@@ -263,6 +251,82 @@ type PayrollDaySchedule = {
   earlyLeaveGraceMinutes?: number;
 };
 
+function payrollScheduleFromResolvedShift(
+  shift: CoreResolvedShift | null | undefined
+): PayrollDaySchedule {
+  if (!shift) {
+    return {
+      enabled: false,
+      start: null,
+      end: null,
+      source: "canonical_missing",
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+    };
+  }
+
+  const source = text(shift.source).toLowerCase();
+  const exceptionType = text(
+    shift.exceptionType ?? shift.exception_type
+  ).toLowerCase();
+
+  const active = shift.active;
+
+  if (
+    source === "none" ||
+    exceptionType === "off" ||
+    active === false ||
+    active === 0 ||
+    active === "0"
+  ) {
+    return {
+      enabled: false,
+      start: null,
+      end: null,
+      source: "canonical_" + (source || "off"),
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+    };
+  }
+
+  const start = text(
+    shift.templateStartTime ??
+      shift.template_start_time ??
+      shift.startTime ??
+      shift.start_time
+  );
+
+  const end = text(
+    shift.templateEndTime ??
+      shift.template_end_time ??
+      shift.endTime ??
+      shift.end_time
+  );
+
+  if (!start || !end) {
+    return {
+      enabled: false,
+      start: null,
+      end: null,
+      source: "canonical_invalid",
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+    };
+  }
+
+  return {
+    enabled: true,
+    start,
+    end,
+    source: "canonical_" + (source || "resolved"),
+    lateGraceMinutes: policyMinutes(
+      shift.lateGraceMinutes ??
+        shift.late_grace_minutes
+    ),
+    earlyLeaveGraceMinutes: 0,
+  };
+}
+
 export function payrollAccrualPeriodStatus(payrollMonth: string) {
   const [year, month] = String(payrollMonth || "").split("-").map(Number);
   if (!Number.isFinite(year) || !Number.isFinite(month)) {
@@ -278,15 +342,44 @@ export function payrollAccrualPeriodStatus(payrollMonth: string) {
   };
 }
 
+function payrollCalendarProgressRatio(
+  payrollMonth: string,
+  completedThroughDate: string | null
+) {
+  if (!completedThroughDate) return 0;
+  const [year, month] = String(payrollMonth || "").split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return 0;
+  const bounds = payrollMonthBounds(year, month);
+  if (completedThroughDate < bounds.monthStart) return 0;
+  const cappedDate =
+    completedThroughDate > bounds.monthEnd
+      ? bounds.monthEnd
+      : completedThroughDate;
+  const totalDays = dateKeysInRange(bounds.monthStart, bounds.monthEnd).length;
+  const completedDays = dateKeysInRange(bounds.monthStart, cappedDate).length;
+  return totalDays > 0
+    ? Math.min(1, Math.max(0, completedDays / totalDays))
+    : 0;
+}
+
 export function calculatePayrollAccrualView(entry: PayrollEntryView): PayrollAccrualView {
   const period = payrollAccrualPeriodStatus(entry.payrollMonth);
   const isPartial = period.isPartial;
+  const attendancePayrollMode =
+    entry.attendanceSummary?.attendancePayrollMode === "exempt"
+      ? "exempt"
+      : "required";
   const monthlyHours = positiveNumber(entry.monthlyHours);
   const scheduledHours = positiveNumber(entry.attendanceSummary?.totalScheduledHours);
   const progressRatio = isPartial
-    ? monthlyHours > 0
-      ? Math.min(1, Math.max(0, scheduledHours / monthlyHours))
-      : 0
+    ? attendancePayrollMode === "exempt"
+      ? payrollCalendarProgressRatio(
+          entry.payrollMonth,
+          period.completedThroughDate
+        )
+      : monthlyHours > 0
+        ? Math.min(1, Math.max(0, scheduledHours / monthlyHours))
+        : 0
     : 1;
 
   const baseAndAllowancesHalalas =
@@ -330,7 +423,13 @@ function isPayrollSetupMissingKey(value: string): value is PayrollSetupMissingKe
 }
 
 function asMonthlyHoursSource(value: string): PayrollMonthlyHoursSource | null {
-  return ["configured_monthly_hours", "configured_daily_hours", "saved_snapshot", "missing"].includes(value)
+  return [
+    "configured_monthly_hours",
+    "configured_daily_hours",
+    "saved_snapshot",
+    "not_required_attendance_exempt",
+    "missing",
+  ].includes(value)
     ? (value as PayrollMonthlyHoursSource)
     : null;
 }
@@ -561,6 +660,44 @@ function attendanceMetadata(
 
 function normalizeAttendanceSummaryMetadata(summary: PayrollAttendanceSummarySnapshot) {
   const recordCount = Math.max(0, Math.round(Number(summary.attendanceRecordCount || 0)));
+  const mode =
+    summary.attendancePayrollMode === "exempt"
+      ? "exempt"
+      : "required";
+  const exemptionReason =
+    mode === "exempt"
+      ? text(summary.attendancePayrollExemptionReason)
+      : "";
+
+  if (mode === "exempt") {
+    return {
+      ...summary,
+      totalScheduledHours: 0,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalRawMissingHours: 0,
+      totalPermissionRequestedHours: 0,
+      totalPermissionCoveredHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: 0,
+      incompleteDays: 0,
+      absenceDeductionOverlapHours: 0,
+      attendancePayrollMode: "exempt" as const,
+      attendancePayrollExemptionReason:
+        exemptionReason || null,
+      attendanceRecordCount: recordCount,
+      attendanceLinkStatus: "exempt" as const,
+      attendanceDeductionEligible: false,
+      attendanceDeductionNote:
+        exemptionReason
+          ? `معفى من البصمة للراتب: ${exemptionReason}`
+          : "معفى من البصمة للراتب.",
+    };
+  }
   if (typeof summary.attendanceDeductionEligible === "boolean") {
     return {
       ...summary,
@@ -593,633 +730,17 @@ function employeeBaseSalary(employee: CoreHrEmployee) {
   return positiveNumber(employment.base_salary_halalas ?? employment.baseSalaryHalalas);
 }
 
-function employeeAllowances(employee: CoreHrEmployee) {
+export function isEmployeePayrollEligible(employee: CoreHrEmployee) {
   const employment = employmentOf(employee);
-  return (
-    numberValue(employment.housing_allowance_halalas ?? employment.housingAllowanceHalalas) +
-    numberValue(employment.transportation_allowance_halalas ?? employment.transportationAllowanceHalalas) +
-    numberValue(employment.other_allowances_halalas ?? employment.otherAllowancesHalalas)
-  );
-}
-
-function employeeJobTitle(employee: CoreHrEmployee) {
-  const employment = employmentOf(employee);
-  return text(employment.job_title ?? employment.jobTitle ?? employment.title) || null;
-}
-
-function employeeWorkDays(employee: CoreHrEmployee) {
-  const employment = employmentOf(employee);
-  return positiveNumber(employment.expected_work_days ?? employment.expectedWorkDays);
-}
-
-function employeeMonthlyHours(employee: CoreHrEmployee) {
-  const employment = employmentOf(employee);
-  return positiveNumber(employment.expected_work_hours ?? employment.expectedWorkHours);
-}
-
-function explicitDailyScheduledHoursForMonth(employee: CoreHrEmployee, year: number, month: number, shiftTemplates: CoreShiftTemplate[] = []) {
-  const employment = employmentOf(employee);
-  const configuredDailyHours = positiveNumber(
-    employment.daily_scheduled_hours ??
-      employment.dailyScheduledHours ??
-      employment.expected_daily_hours ??
-      employment.expectedDailyHours
-  );
-  if (configuredDailyHours > 0) return configuredDailyHours;
-
-  if (employeeHasCoreShiftControl(employee)) {
-    const coreHours = dateKeysInPayrollCycle(year, month)
-      .map((date) => scheduleForDate(employee, date, 0, shiftTemplates))
-      .filter((schedule): schedule is { enabled: boolean; start: string; end: string; source: string } => Boolean(schedule?.enabled && schedule.start && schedule.end))
-      .map((schedule) => hoursBetween(schedule.start, schedule.end));
-    if (coreHours.length) {
-      const total = coreHours.reduce((sum, hours) => sum + hours, 0);
-      return Math.round((total / coreHours.length) * 100) / 100;
-    }
-  }
-
-  const explicitSchedules = (employee.schedules || []).filter((schedule) => {
-    if (schedule.active === false || Number((schedule as any).active) === 0) return false;
-    const sampleDate = dateKeysInPayrollCycle(year, month).find((date) => jsDateFromKey(date).getUTCDay() === Number(schedule.weekday));
-    if (!sampleDate) return false;
-    if (schedule.effectiveFrom && schedule.effectiveFrom > sampleDate) return false;
-    if (schedule.effectiveTo && schedule.effectiveTo < sampleDate) return false;
-    return true;
-  });
-  if (explicitSchedules.length) {
-    const total = explicitSchedules.reduce(
-      (sum, schedule) => sum + hoursBetween(schedule.startTime, schedule.endTime),
-      0
-    );
-    return Math.round((total / explicitSchedules.length) * 100) / 100;
-  }
-
-  const shiftStart = text(employment.shift_start_time ?? employment.shiftStartTime);
-  const shiftEnd = text(employment.shift_end_time ?? employment.shiftEndTime);
-  if (shiftStart && shiftEnd) return hoursBetween(shiftStart, shiftEnd);
-  return 0;
-}
-
-function employeeOvertimeMultiplier(employee: CoreHrEmployee) {
-  const employment = employmentOf(employee);
-  return positiveNumber(employment.overtime_multiplier ?? employment.overtimeMultiplier) || 1.5;
-}
-
-function employeePayrollOvertimeEnabled(employee: CoreHrEmployee) {
-  const employment = employmentOf(employee);
-  return boolValue(
-    employment.overtime_enabled ??
-      employment.overtimeEnabled ??
-      employment.payroll_overtime_enabled ??
-      employment.payrollOvertimeEnabled
-  );
-}
-
-function parseShiftSnapshot(value: unknown) {
-  const raw = text(value);
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-}
-
-function activeCoreScheduleExceptions(employee: CoreHrEmployee, dateKey: string) {
-  return ((employee as any).scheduleExceptions || [])
-    .filter((exception: CoreScheduleException) => {
-      if (exception.enabled === false || Number((exception as any).enabled) === 0) return false;
-      if (text(exception.status || "approved") !== "approved") return false;
-      return exception.dateFrom <= dateKey && exception.dateTo >= dateKey;
-    })
-    .sort((left: CoreScheduleException, right: CoreScheduleException) => text(right.createdAt).localeCompare(text(left.createdAt)));
-}
-
-function activeCoreShiftAssignments(employee: CoreHrEmployee, dateKey: string) {
-  return ((employee as any).shiftAssignments || [])
-    .filter((assignment: CoreShiftAssignment) => {
-      if (text(assignment.status || "published") !== "published") return false;
-      if (assignment.effectiveFrom > dateKey) return false;
-      if (assignment.effectiveTo && assignment.effectiveTo < dateKey) return false;
-      return true;
-    })
-    .sort((left: CoreShiftAssignment, right: CoreShiftAssignment) => right.effectiveFrom.localeCompare(left.effectiveFrom));
-}
-
-function coreShiftTemplateById(templates: CoreShiftTemplate[] | undefined, id?: string | null) {
-  const cleanId = text(id);
-  if (!cleanId) return null;
-  return (templates || []).find((template) => template.id === cleanId) || null;
-}
-
-function coreScheduleWindowFromParts(parts: Array<Record<string, unknown> | null | undefined>) {
-  for (const source of parts) {
-    if (!source) continue;
-    const start = text(
-      (source as any).templateStartTime ??
-        (source as any).template_start_time ??
-        (source as any).startTime ??
-        (source as any).start_time
-    );
-    const end = text(
-      (source as any).templateEndTime ??
-        (source as any).template_end_time ??
-        (source as any).endTime ??
-        (source as any).end_time
-    );
-    if (start || end) {
-      return {
-        start: start || DEFAULT_SHIFT_START,
-        end: end || DEFAULT_SHIFT_END,
-        lateGraceMinutes: policyMinutes((source as any).lateGraceMinutes ?? (source as any).late_grace_minutes),
-        earlyLeaveGraceMinutes: 0,
-      };
-    }
-  }
-  return null;
-}
-
-function mergeCoreSchedulePolicy(
-  window: { start: string; end: string; lateGraceMinutes?: number; earlyLeaveGraceMinutes?: number },
-  parts: Array<Record<string, unknown> | null | undefined>
-) {
-  return {
-    ...window,
-    lateGraceMinutes: firstPolicyMinutes(parts, "lateGraceMinutes", "late_grace_minutes"),
-    earlyLeaveGraceMinutes: 0,
-  };
-}
-
-function schedulePolicyValue(
-  parts: Array<Record<string, unknown> | null | undefined>,
-  camelKey: string,
-  snakeKey: string
-) {
-  for (const source of parts) {
-    if (!source) continue;
-    for (const raw of [(source as any)[camelKey], (source as any)[snakeKey]]) {
-      if (raw !== null && raw !== undefined && raw !== "") return policyMinutes(raw);
-    }
-  }
-  return undefined;
-}
-
-function coreAssignmentScheduleForDate(
-  employee: CoreHrEmployee,
-  dateKey: string,
-  templates: CoreShiftTemplate[] = []
-): PayrollDaySchedule | null {
-  const assignment = activeCoreShiftAssignments(employee, dateKey)[0];
-  if (!assignment) return null;
-  const snapshot = parseShiftSnapshot(assignment.snapshotJson || (assignment as any).snapshot_json);
-  const template = coreShiftTemplateById(
-    templates,
-    assignment.shiftTemplateId || (assignment as any).shift_template_id
-  );
-  const parts = [assignment as any, snapshot, template as any];
-  const window = coreScheduleWindowFromParts(parts);
-  if (!window) return null;
-  return {
-    enabled: true,
-    ...mergeCoreSchedulePolicy(window, parts),
-    source: "core_assignment_legacy",
-  };
-}
-
-type WeeklyScheduleResolution = {
-  configured: boolean;
-  schedule: PayrollDaySchedule | null;
-};
-
-function coreWeeklyScheduleForDate(
-  employee: CoreHrEmployee,
-  dateKey: string,
-  templates: CoreShiftTemplate[] = []
-): WeeklyScheduleResolution {
-  const allSchedules = employee.schedules || [];
-  if (!allSchedules.length) return { configured: false, schedule: null };
-
-  const weekday = jsDateFromKey(dateKey).getUTCDay();
-  const candidates = allSchedules
-    .filter((schedule) => {
-      if (Number(schedule.weekday) !== weekday) return false;
-      if (schedule.effectiveFrom && schedule.effectiveFrom > dateKey) return false;
-      if (schedule.effectiveTo && schedule.effectiveTo < dateKey) return false;
-      return true;
-    })
-    .sort((left, right) =>
-      text(right.effectiveFrom || "0000-01-01").localeCompare(
-        text(left.effectiveFrom || "0000-01-01")
-      )
-    );
-
-  const schedule = candidates[0] as (CoreHrSchedule & Record<string, unknown>) | undefined;
-  const source = text(schedule?.scheduleSource || (schedule as any)?.schedule_source).toLowerCase();
-  const active = schedule ? schedule.active !== false && Number(schedule.active) !== 0 : false;
-  if (!schedule || !active || source === "weekly_off") {
-    return {
-      configured: true,
-      schedule: {
-        enabled: false,
-        start: null,
-        end: null,
-        source: "weekly_off",
-        lateGraceMinutes: 0,
-        earlyLeaveGraceMinutes: 0,
-      },
-    };
-  }
-
-  const template = coreShiftTemplateById(
-    templates,
-    schedule.shiftTemplateId || (schedule as any).shift_template_id
-  );
-  const parts = [schedule as any, template as any];
-  const window = coreScheduleWindowFromParts(parts);
-  if (!window) {
-    return {
-      configured: true,
-      schedule: {
-        enabled: false,
-        start: null,
-        end: null,
-        source: "weekly_off",
-        lateGraceMinutes: 0,
-        earlyLeaveGraceMinutes: 0,
-      },
-    };
-  }
-
-  return {
-    configured: true,
-    schedule: {
-      enabled: true,
-      ...mergeCoreSchedulePolicy(window, parts),
-      source: source === "legacy" ? "weekly_schedule_legacy" : "weekly_schedule",
-    },
-  };
-}
-
-function fallbackEmploymentSchedule(
-  employee: CoreHrEmployee,
-  dateKey: string,
-  dailyScheduledHours: number
-): PayrollDaySchedule {
-  const weekday = jsDateFromKey(dateKey).getUTCDay();
-  const offDays = weeklyOffDays(employee);
-  if (offDays.has(WEEKDAY_KEY_BY_UTC_DAY[weekday]) || offDays.has(String(weekday))) {
-    return {
-      enabled: false,
-      start: null,
-      end: null,
-      source: "employment_weekly_off",
-      lateGraceMinutes: 0,
-      earlyLeaveGraceMinutes: 0,
-    };
-  }
-  const employment = employmentOf(employee);
-  const start = text(employment.shift_start_time ?? employment.shiftStartTime) || DEFAULT_SHIFT_START;
-  return {
-    enabled: true,
-    start,
-    end:
-      text(employment.shift_end_time ?? employment.shiftEndTime) ||
-      endTimeFromDailyHours(start, dailyScheduledHours) ||
-      DEFAULT_SHIFT_END,
-    lateGraceMinutes: policyMinutes(employment.late_grace_minutes ?? employment.lateGraceMinutes),
-    earlyLeaveGraceMinutes: 0,
-    source: "employment_fallback",
-  };
-}
-
-function scheduleForDate(
-  employee: CoreHrEmployee,
-  dateKey: string,
-  dailyScheduledHours = 0,
-  shiftTemplates: CoreShiftTemplate[] = []
-): PayrollDaySchedule {
-  const weekly = coreWeeklyScheduleForDate(employee, dateKey, shiftTemplates);
-  const legacyAssignment = coreAssignmentScheduleForDate(employee, dateKey, shiftTemplates);
-  const baseSchedule = weekly.configured
-    ? weekly.schedule!
-    : legacyAssignment || fallbackEmploymentSchedule(employee, dateKey, dailyScheduledHours);
-
-  const exception = activeCoreScheduleExceptions(employee, dateKey)[0];
-  if (!exception) return baseSchedule;
-
-  const exceptionType = text(
-    exception.exceptionType || (exception as any).exception_type
+  const profileStatus = text(employee.status).toLowerCase();
+  const employmentStatus = text(
+    employment.employment_status ?? employment.employmentStatus
   ).toLowerCase();
-  if (exceptionType === "off") {
-    return {
-      enabled: false,
-      start: null,
-      end: null,
-      source: "core_exception_off",
-      lateGraceMinutes: 0,
-      earlyLeaveGraceMinutes: 0,
-    };
-  }
 
-  const template = coreShiftTemplateById(
-    shiftTemplates,
-    exception.shiftTemplateId || (exception as any).shift_template_id
-  );
-  const parts = [exception as any, template as any];
-  const exceptionWindow = coreScheduleWindowFromParts(parts);
-  const customStart = text(exception.startTime || (exception as any).start_time);
-  const customEnd = text(exception.endTime || (exception as any).end_time);
-  const start =
-    exceptionType === "custom"
-      ? customStart || baseSchedule.start
-      : exceptionWindow?.start || baseSchedule.start;
-  const end =
-    exceptionType === "custom"
-      ? customEnd || baseSchedule.end
-      : exceptionWindow?.end || baseSchedule.end;
+  if (profileStatus && profileStatus !== "active") return false;
+  if (employmentStatus && employmentStatus !== "active") return false;
 
-  if (!start || !end) return baseSchedule;
-
-  return {
-    enabled: true,
-    start,
-    end,
-    lateGraceMinutes:
-      schedulePolicyValue(parts, "lateGraceMinutes", "late_grace_minutes") ??
-      baseSchedule.lateGraceMinutes ??
-      0,
-    earlyLeaveGraceMinutes: 0,
-    source: exceptionType === "custom" ? "core_exception_custom" : "core_exception_shift",
-  };
-}
-
-function employeeHasCoreShiftControl(employee: CoreHrEmployee) {
-  return (
-    (Array.isArray(employee.schedules) && employee.schedules.length > 0) ||
-    (Array.isArray((employee as any).shiftAssignments) && (employee as any).shiftAssignments.length > 0) ||
-    (Array.isArray((employee as any).scheduleExceptions) && (employee as any).scheduleExceptions.length > 0)
-  );
-}
-
-export function buildPayrollAttendanceSummaryForEmployee(input: {
-  employee: CoreHrEmployee;
-  records: CoreAttendanceRecord[];
-  leaves?: CoreLeave[];
-  absences?: CoreAbsence[];
-  year: number;
-  month: number;
-  shiftTemplates?: CoreShiftTemplate[];
-}) {
-  const days: AttendanceDisciplineDaySummary[] = [];
-  const bounds = payrollMonthBounds(input.year, input.month);
-  const completedThroughDate = completedPayrollThroughDate(bounds);
-  const dates =
-    bounds.monthStart <= completedThroughDate
-      ? dateKeysInRange(bounds.monthStart, completedThroughDate)
-      : [];
-  const recordsByDate = new Map<string, CoreAttendanceRecord[]>();
-  const periodRecords = input.records.filter(
-    (record) =>
-      isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd) &&
-      attendanceRecordMatchesEmployee(record, input.employee)
-  );
-  const employeeLeaves = (input.leaves || []).filter(
-    (leave) => text(leave.status).toLowerCase() === "approved" && leaveMatchesEmployee(leave, input.employee)
-  );
-  const employeeAbsences = (input.absences || []).filter(
-    (absence) => absenceMatchesEmployee(absence, input.employee)
-  );
-  const approvedLeaveDates = fullDayPaidLeaveDates(
-    employeeLeaves,
-    bounds.monthStart,
-    bounds.monthEnd
-  );
-  const paidLeaveUnits = payrollLeaveDayUnits(
-    employeeLeaves,
-    bounds.monthStart,
-    bounds.monthEnd,
-    "paid"
-  );
-  const unpaidLeaveUnits = payrollLeaveDayUnits(
-    employeeLeaves,
-    bounds.monthStart,
-    bounds.monthEnd,
-    "unpaid"
-  );
-  const recordedAbsenceUnits = payrollAbsenceDayUnits(
-    employeeAbsences,
-    bounds.monthStart,
-    bounds.monthEnd
-  );
-  const deductibleAbsenceUnits = mergePayrollDayUnits(recordedAbsenceUnits, unpaidLeaveUnits);
-  const paidLeaveDays = totalPayrollDayUnits(paidLeaveUnits);
-  const identity = resolvePayrollAttendanceIdentity(input.employee);
-  const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
-    input.employee,
-    input.year,
-    input.month,
-    input.shiftTemplates || []
-  );
-  const payrollSetup = evaluatePayrollSetup({
-    employeeId: input.employee.id,
-    baseSalaryHalalas: employeeBaseSalary(input.employee),
-    workDays: employeeWorkDays(input.employee),
-    monthlyHours: employeeMonthlyHours(input.employee),
-    dailyScheduledHours,
-  });
-  const hasCoreEmployeeIdentity = Boolean(identity.employeeId);
-
-  if (!hasCoreEmployeeIdentity || !payrollSetup.complete) {
-    return {
-      days,
-      summary: {
-        ...emptyAttendanceSummary(
-          "not_ready",
-          hasCoreEmployeeIdentity
-            ? ["إعداد الراتب غير مكتمل؛ لم يتم احتساب خصم حضور تلقائي."]
-            : ["لا توجد هوية موظفة معروفة في Core لربط سجلات البصمة."]
-        ),
-        approvedLeaveDays: paidLeaveDays,
-        approvedAbsenceDays: totalPayrollDayUnits(deductibleAbsenceUnits),
-      },
-    };
-  }
-
-  for (const record of periodRecords) {
-    const list = recordsByDate.get(record.dateKey) || [];
-    list.push(record);
-    recordsByDate.set(record.dateKey, list);
-  }
-
-  const eligibleUnpaidLeaveUnits = new Map<string, number>();
-  const eligibleRecordedAbsenceUnits = new Map<string, number>();
-  const eligibleDeductibleAbsenceUnits = new Map<string, number>();
-  let absenceDeductionOverlapHours = 0;
-
-  for (const date of dates) {
-    const schedule = scheduleForDate(input.employee, date, dailyScheduledHours, input.shiftTemplates || []);
-    const records = [...(recordsByDate.get(date) || [])].sort(
-      (left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)
-    );
-    const punchRecords = records.filter((record) =>
-      record.recordType === "check_in" || record.recordType === "check_out"
-    );
-    const rawPermissionIntervals = permissionIntervalsFromAttendanceRecords(records, date);
-    const permissionIntervals = filterPaidPermissionIntervals(
-      rawPermissionIntervals,
-      employeeLeaves,
-      date
-    );
-
-    if (schedule.enabled) {
-      const unpaidUnit = unpaidLeaveUnits.get(date) || 0;
-      const absenceUnit = recordedAbsenceUnits.get(date) || 0;
-      const deductibleUnit = deductibleAbsenceUnits.get(date) || 0;
-      if (unpaidUnit > 0) eligibleUnpaidLeaveUnits.set(date, unpaidUnit);
-      if (absenceUnit > 0) eligibleRecordedAbsenceUnits.set(date, absenceUnit);
-      if (deductibleUnit > 0) eligibleDeductibleAbsenceUnits.set(date, deductibleUnit);
-
-      if (deductibleUnit > 0) {
-        const scheduledHours = hoursBetween(schedule.start, schedule.end);
-        const unpaidPartialIntervals = unpaidPartialLeaveIntervalsForDate(employeeLeaves, date);
-        const unpaidPartialHours = unpaidPartialIntervals.reduce(
-          (sum, interval) => sum + payrollIntervalHours(interval.startTime, interval.endTime),
-          0
-        );
-        const recordedOverlapHours = Math.min(scheduledHours, scheduledHours * absenceUnit);
-        const unpaidOverlapHours = unpaidPartialIntervals.length
-          ? Math.min(scheduledHours, unpaidPartialHours)
-          : Math.min(scheduledHours, scheduledHours * unpaidUnit);
-        absenceDeductionOverlapHours += Math.max(recordedOverlapHours, unpaidOverlapHours);
-      }
-    }
-
-    if (!schedule.enabled && !punchRecords.length && !permissionIntervals.length) continue;
-    const firstCheckIn = punchRecords.find((record) => record.recordType === "check_in");
-    const lastCheckOut = [...punchRecords].reverse().find((record) => record.recordType === "check_out");
-    days.push(
-      calculateAttendanceDisciplineDay({
-        date,
-        scheduledStart: schedule.start,
-        scheduledEnd: schedule.end,
-        lateGraceMinutes: schedule.lateGraceMinutes,
-        earlyLeaveGraceMinutes: schedule.earlyLeaveGraceMinutes,
-        isScheduledWorkDay: schedule.enabled,
-        isApprovedLeave: approvedLeaveDates.has(date),
-        checkInAt: firstCheckIn?.recordedAt,
-        checkOutAt: lastCheckOut?.recordedAt,
-        permissionIntervals,
-        isAbsent:
-          schedule.enabled &&
-          !punchRecords.length &&
-          !approvedLeaveDates.has(date),
-      })
-    );
-  }
-
-  const disciplineSummary = summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot;
-  const permissionCoveredHours = Number(disciplineSummary.totalPermissionCoveredHours || 0);
-  const permissionRequestedHours = Number(disciplineSummary.totalPermissionRequestedHours || 0);
-  const punchRecordCount = periodRecords.filter(
-    (record) => record.recordType === "check_in" || record.recordType === "check_out"
-  ).length;
-  const unpaidLeaveDays = totalPayrollDayUnits(eligibleUnpaidLeaveUnits);
-  const recordedAbsenceDays = totalPayrollDayUnits(eligibleRecordedAbsenceUnits);
-  const deductibleAbsenceDays = totalPayrollDayUnits(eligibleDeductibleAbsenceUnits);
-
-  return {
-    days,
-    summary: {
-      ...disciplineSummary,
-      approvedLeaveDays: paidLeaveDays,
-      approvedAbsenceDays: deductibleAbsenceDays,
-      absenceDeductionOverlapHours: Math.round(absenceDeductionOverlapHours * 100) / 100,
-      attendanceNotes: [
-        ...(paidLeaveDays ? [`${paidLeaveDays} يوم/أيام إجازة مدفوعة معتمدة لم تدخل في خصم الحضور.`] : []),
-        ...(unpaidLeaveDays ? [`${unpaidLeaveDays} يوم/أيام إجازة بدون راتب تم احتسابها ضمن الخصم اليومي.`] : []),
-        ...(recordedAbsenceDays ? [`${recordedAbsenceDays} يوم/أيام غياب مسجلة دخلت ضمن الخصم اليومي.`] : []),
-        ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
-        ...(permissionRequestedHours > 0
-          ? [`الاستئذانات والإجازات الجزئية المدفوعة المعتمدة: ${permissionRequestedHours} ساعة، والمحتسب لتغطية نقص الدوام: ${permissionCoveredHours} ساعة.`]
-          : []),
-        ...(employeeHasCoreShiftControl(input.employee) ? ["تم احتساب الحضور بناءً على قوالب الشفتات والاستثناءات المنشورة في Core."] : []),
-      ],
-      ...attendanceMetadata(
-        punchRecordCount,
-        punchRecordCount > 0 ? "confirmed" : "unlinked"
-      ),
-    },
-  };
-}
-
-function snapshotFromEmployee(input: {
-  employee: CoreHrEmployee;
-  attendanceSummary: PayrollAttendanceSummarySnapshot;
-  year: number;
-  month: number;
-  existing?: PayrollEntryView;
-  shiftTemplates?: CoreShiftTemplate[];
-}) {
-  const workDays = employeeWorkDays(input.employee);
-  const monthlyHours = employeeMonthlyHours(input.employee);
-  const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
-    input.employee,
-    input.year,
-    input.month,
-    input.shiftTemplates || []
-  );
-  const monthlyHoursSource: PayrollMonthlyHoursSource =
-    monthlyHours > 0
-      ? "configured_monthly_hours"
-      : dailyScheduledHours > 0
-        ? "configured_daily_hours"
-        : "missing";
-  const next = calculatePayrollSnapshot({
-    employeeId: input.employee.id,
-    employeeName: input.employee.name,
-    jobTitle: employeeJobTitle(input.employee),
-    payrollMonth: payrollMonthKey(input.year, input.month),
-    baseSalaryHalalas: employeeBaseSalary(input.employee),
-    allowancesHalalas: employeeAllowances(input.employee),
-    workDays,
-    monthlyHours,
-    dailyScheduledHours,
-    attendanceSummary: input.attendanceSummary,
-    additions: input.existing?.additions || [],
-    deductions: input.existing?.deductions || [],
-    overtimeEnabled: employeePayrollOvertimeEnabled(input.employee),
-    overtimeMultiplier: employeeOvertimeMultiplier(input.employee),
-    monthlyHoursSource,
-    status: (input.existing?.status as PayrollStatus | undefined) || "draft",
-    notes: input.existing?.notes || null,
-  });
-  return preserveLockedPayrollSnapshot(input.existing, {
-    ...next,
-    id: input.existing?.id,
-    periodId: input.existing?.periodId,
-    saved: Boolean(input.existing?.saved),
-    approvedAt: input.existing?.approvedAt,
-    approvedByUid: input.existing?.approvedByUid,
-    paidAt: input.existing?.paidAt,
-    paidByUid: input.existing?.paidByUid,
-    auditLog: input.existing?.auditLog || [],
-  }) as PayrollEntryView;
-}
-
-export function rebuildPayrollEntryFromEmployeeSettings(input: {
-  entry: PayrollEntryView;
-  employee: CoreHrEmployee;
-  year: number;
-  month: number;
-}) {
-  return snapshotFromEmployee({
-    employee: input.employee,
-    attendanceSummary: input.entry.attendanceSummary,
-    year: input.year,
-    month: input.month,
-    existing: input.entry,
-  });
+  return employeeBaseSalary(employee) > 0;
 }
 
 export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
@@ -1261,8 +782,12 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
   const deductions = withoutLegacyAttendancePenaltyCarryovers(rawDeductions);
   const baseSalaryHalalas = numberValue(row.baseSalaryHalalas);
   const workDays = numberValue(row.workDays, 0);
-  const monthlyHours = numberValue(row.monthlyHours, 0);
-  const dailyScheduledHours = scheduleDailyHours;
+  const attendanceExempt =
+    attendanceSummary.attendancePayrollMode === "exempt";
+  const monthlyHours = attendanceExempt
+    ? 0
+    : numberValue(row.monthlyHours, 0);
+  const dailyScheduledHours = attendanceExempt ? 0 : scheduleDailyHours;
   const setup = evaluatePayrollSetup({
     employeeId: row.employeeId,
     baseSalaryHalalas,
@@ -1270,19 +795,36 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     monthlyHours,
     dailyScheduledHours,
     overtimeMultiplier: row.overtimeMultiplier,
-    monthlyHoursSource: scheduleMonthlyHoursSource || "saved_snapshot",
+    monthlyHoursSource: attendanceExempt
+      ? "not_required_attendance_exempt"
+      : scheduleMonthlyHoursSource || "saved_snapshot",
+    attendancePayrollMode: attendanceSummary.attendancePayrollMode,
   });
-  const payrollSetupMissing = scheduleSetupMissing || setup.missing;
-  const payrollSetupComplete =
-    scheduleSetupComplete === null ? payrollSetupMissing.length === 0 : scheduleSetupComplete;
-  const detectedExtraHours = numberValue(row.detectedExtraHours);
-  const overtimeEnabled = payrollSetupComplete && detectedExtraHours > 0
+  const savedSetupMissing = (scheduleSetupMissing || []).filter(
+    (key) => !(attendanceExempt && key === "monthlyHours")
+  );
+  const payrollSetupMissing = Array.from(
+    new Set([...savedSetupMissing, ...setup.missing])
+  );
+  const payrollSetupComplete = attendanceExempt
+    ? payrollSetupMissing.length === 0
+    : scheduleSetupComplete === null
+      ? payrollSetupMissing.length === 0
+      : scheduleSetupComplete;
+  const detectedExtraHours = attendanceExempt
+    ? 0
+    : numberValue(row.detectedExtraHours);
+  const overtimeEnabled = !attendanceExempt && payrollSetupComplete && detectedExtraHours > 0
     ? boolValue(row.overtimeEnabled)
     : false;
   const financialOvertimeHours = overtimeEnabled ? numberValue(row.financialOvertimeHours) : 0;
   const overtimeValueHalalas = overtimeEnabled
     ? numberValue(row.overtimeValueHalalas ?? row.overtimeBonusHalalas)
     : 0;
+  const gosiSnapshot = readJson<GosiSnapshot | null>(
+    row.gosiSnapshotJson,
+    null
+  );
 
   return {
     id: row.id,
@@ -1298,7 +840,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     monthlyHours,
     dailyScheduledHours,
     dailyRateHalalas: numberValue(row.dailyRateHalalas),
-    hourlyRateHalalas: numberValue(row.hourlyRateHalalas),
+    hourlyRateHalalas: attendanceExempt ? 0 : numberValue(row.hourlyRateHalalas),
     attendanceSummary,
     detectedExtraHours,
     overtimeEnabled,
@@ -1310,6 +852,15 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     manualAdditionsHalalas: numberValue(row.manualAdditionsHalalas),
     manualDeductionsHalalas: Math.max(0, numberValue(row.manualDeductionsHalalas) - legacyCarryoverHalalas),
     advancesHalalas: numberValue(row.advancesHalalas),
+    insuranceDeductionHalalas: numberValue(
+      row.insuranceDeductionHalalas ??
+        gosiSnapshot?.employee?.deductionHalalas
+    ),
+    employerGosiContributionHalalas: numberValue(
+      row.employerGosiContributionHalalas ??
+        gosiSnapshot?.employer?.contributionHalalas
+    ),
+    gosiSnapshot,
     absenceDeductionHalalas: numberValue(row.absenceDeductionHalalas),
     missingHoursDeductionHalalas: numberValue(row.missingHoursDeductionHalalas),
     grossSalaryHalalas: numberValue(row.grossSalaryHalalas),
@@ -1334,57 +885,33 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
 }
 
 export function payrollEntryPayload(entry: PayrollEntryView) {
+  // Only mutable/manual payroll inputs cross the browser -> Core boundary.
+  // Salary, attendance, overtime, GOSI, gross, deductions and net are derived
+  // canonically by the Core worker from D1 and are intentionally not submitted.
   return {
     id: entry.id,
     periodId: entry.periodId,
     employeeId: entry.employeeId,
-    employeeName: entry.employeeName,
-    jobTitle: entry.jobTitle,
     payrollMonth: entry.payrollMonth,
-    baseSalaryHalalas: entry.baseSalaryHalalas,
-    allowancesHalalas: entry.allowancesHalalas,
-    workDays: entry.workDays,
-    monthlyHours: entry.monthlyHours,
-    dailyRateHalalas: entry.dailyRateHalalas,
-    hourlyRateHalalas: entry.hourlyRateHalalas,
-    absenceDays: entry.attendanceSummary.absentDays,
-    absenceDeductionHalalas: entry.absenceDeductionHalalas,
-    expectedWorkHours: entry.attendanceSummary.totalScheduledHours,
-    actualWorkedHours: entry.attendanceSummary.totalActualWorkedHours,
-    missingHours: entry.attendanceSummary.totalMissingHours,
-    overtimeHours: entry.financialOvertimeHours,
-    attendanceSummary: entry.attendanceSummary,
-    detectedExtraHours: entry.detectedExtraHours,
-    overtimeEnabled: entry.overtimeEnabled,
-    financialOvertimeHours: entry.financialOvertimeHours,
-    overtimeMultiplier: entry.overtimeMultiplier,
-    overtimeValueHalalas: entry.overtimeValueHalalas,
-    overtimeBonusHalalas: entry.overtimeValueHalalas,
-    delayDeductionHalalas: 0,
-    insuranceDeductionHalalas: 0,
-    otherDeductionsHalalas: entry.manualDeductionsHalalas,
-    missingHoursDeductionHalalas: entry.missingHoursDeductionHalalas,
     additions: entry.additions,
     deductions: withoutLegacyAttendancePenaltyCarryovers(entry.deductions),
-    manualAdditionsHalalas: entry.manualAdditionsHalalas,
-    manualDeductionsHalalas: entry.manualDeductionsHalalas,
-    advancesHalalas: entry.advancesHalalas,
-    totalDeductionsHalalas: entry.totalDeductionsHalalas,
-    grossSalaryHalalas: entry.grossSalaryHalalas,
-    finalSalaryHalalas: entry.finalSalaryHalalas,
-    netSalaryHalalas: entry.netSalaryHalalas,
-    scheduleSnapshot: {
-      workDays: entry.workDays,
-      monthlyHours: entry.monthlyHours,
-      dailyScheduledHours: entry.dailyScheduledHours,
-      payrollSetupComplete: entry.payrollSetupComplete,
-      payrollSetupMissing: entry.payrollSetupMissing,
-      monthlyHoursSource: entry.monthlyHoursSource,
-    },
     status: entry.status,
     notes: entry.notes || null,
   };
 }
+
+export async function previewPayrollEntrySnapshot(entry: PayrollEntryView) {
+  const CoreHrService = await coreHrService();
+  const row = await CoreHrService.previewPayrollEntry(payrollEntryPayload(entry));
+  const preview = normalizePayrollEntry(row);
+  return {
+    ...preview,
+    id: entry.id,
+    periodId: entry.periodId || preview.periodId,
+    saved: Boolean(entry.saved),
+  } as PayrollEntryView;
+}
+
 
 export async function loadPayrollMonth(input: {
   year: number;
@@ -1414,6 +941,7 @@ export async function generatePayrollEntriesForMonths(input: {
   employeeId?: string;
   status?: string;
   currentEntries?: PayrollEntryView[];
+  reconcileLockedEntries?: boolean;
 }) {
   const monthKeys = Array.from(
     new Set(
@@ -1424,76 +952,133 @@ export async function generatePayrollEntriesForMonths(input: {
   ).sort((left, right) => left.localeCompare(right));
   if (!monthKeys.length) return [];
 
-  const monthKeySet = new Set(monthKeys);
+  // Locked-period reconciliation is performed by the Core carryover endpoint.
+  // The browser must never recalculate an approved/paid financial snapshot.
+  if (input.reconcileLockedEntries) {
+    return (input.currentEntries || [])
+      .filter((entry) => monthKeys.includes(entry.payrollMonth))
+      .filter((entry) => !input.employeeId || entry.employeeId === input.employeeId)
+      .filter((entry) => !input.status || entry.status === input.status)
+      .sort((left, right) => left.payrollMonth.localeCompare(right.payrollMonth) || left.employeeName.localeCompare(right.employeeName, "ar"));
+  }
+
   const CoreHrService = await coreHrService();
-  const [
-    employees,
-    attendance,
-    leaves,
-    absences,
-    shiftTemplates,
-    shiftAssignments,
-    scheduleExceptions,
-    savedEntries,
-  ] = await Promise.all([
+  const [employees, savedRows] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
-    CoreHrService.listAttendance(),
-    CoreHrService.listLeaves({ status: "approved" }),
-    CoreHrService.listAbsences(),
-    CoreHrService.listShiftTemplates({ active: "all" }),
-    CoreHrService.listShiftAssignments(),
-    CoreHrService.listScheduleExceptions(),
     input.currentEntries ? Promise.resolve(null) : CoreHrService.listPayrollEntries(),
   ]);
-
   const currentEntries = input.currentEntries
     ? input.currentEntries
-    : (Array.isArray(savedEntries) ? savedEntries : []).map(normalizePayrollEntry);
+    : (Array.isArray(savedRows) ? savedRows : []).map(normalizePayrollEntry);
   const existingMap = new Map(
-    currentEntries
-      .filter((entry) => monthKeySet.has(entry.payrollMonth))
-      .map((entry) => [`${entry.payrollMonth}|${entry.employeeId}`, entry])
+    currentEntries.map((entry) => [`${entry.payrollMonth}|${entry.employeeId}`, entry])
   );
-
-  return monthKeys.flatMap((payrollMonth) => {
-    const year = Number(payrollMonth.slice(0, 4));
-    const month = Number(payrollMonth.slice(5, 7));
-    const bounds = payrollMonthBounds(year, month);
-    const periodAttendanceRecords = attendance.filter((record) =>
-      isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
-    );
-
-    return employees
-      .filter((employee) => !input.employeeId || employee.id === input.employeeId)
-      .map((employee) => {
-        const employeeWithCoreShifts: CoreHrEmployee = {
-          ...employee,
-          shiftAssignments: shiftAssignments.filter((row) => row.employeeId === employee.id),
-          scheduleExceptions: scheduleExceptions.filter((row) => row.employeeId === employee.id),
-        } as CoreHrEmployee;
-        const employeeRecords = periodAttendanceRecords.filter((record) =>
-          attendanceRecordMatchesEmployee(record, employeeWithCoreShifts)
-        );
-        const attendanceSnapshot = buildPayrollAttendanceSummaryForEmployee({
-          employee: employeeWithCoreShifts,
-          records: employeeRecords,
-          leaves,
-          absences,
-          year,
-          month,
-          shiftTemplates,
-        });
-        return snapshotFromEmployee({
-          employee: employeeWithCoreShifts,
-          attendanceSummary: attendanceSnapshot.summary,
-          year,
-          month,
-          existing: existingMap.get(`${payrollMonth}|${employee.id}`),
-          shiftTemplates,
-        });
-      })
-      .filter((entry) => !input.status || entry.status === input.status);
+  const payrollEmployees = employees.filter((employee) => {
+    if (input.employeeId && employee.id !== input.employeeId) return false;
+    return isEmployeePayrollEligible(employee);
   });
+
+  const rows: PayrollEntryView[] = [];
+  for (const payrollMonth of monthKeys) {
+    for (const employee of payrollEmployees) {
+      const existing = existingMap.get(`${payrollMonth}|${employee.id}`);
+      if (existing && isPayrollSnapshotLocked(existing.status)) {
+        if (!input.status || existing.status === input.status) rows.push(existing);
+        continue;
+      }
+      const previewRow = await CoreHrService.previewPayrollEntry({
+        id: existing?.id,
+        periodId: existing?.periodId,
+        employeeId: employee.id,
+        payrollMonth,
+        status: existing?.status || "draft",
+        additions: existing?.additions || [],
+        deductions: existing?.deductions || [],
+        notes: existing?.notes || null,
+      });
+      const preview = normalizePayrollEntry(previewRow);
+      const normalized: PayrollEntryView = {
+        ...preview,
+        id: existing?.id,
+        periodId: existing?.periodId || preview.periodId,
+        saved: Boolean(existing?.saved),
+        approvedAt: existing?.approvedAt || null,
+        approvedByUid: existing?.approvedByUid || null,
+        paidAt: existing?.paidAt || null,
+        paidByUid: existing?.paidByUid || null,
+        auditLog: existing?.auditLog || [],
+      };
+      if (!input.status || normalized.status === input.status) rows.push(normalized);
+    }
+  }
+
+  return rows.sort((left, right) => {
+    const monthCompare = left.payrollMonth.localeCompare(right.payrollMonth);
+    if (monthCompare !== 0) return monthCompare;
+    return left.employeeName.localeCompare(right.employeeName, "ar");
+  });
+}
+
+
+export async function reconcilePreviousPayrollCarryovers(input: {
+  year: number;
+  month: number;
+  employeeId?: string;
+}) {
+  const target = payrollMonthBounds(input.year, input.month);
+  const sourcePayrollMonth = previousPayrollMonth(target.payrollMonth);
+  if (!sourcePayrollMonth) {
+    return { sourcePayrollMonth: "", targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+
+  const sourceYear = Number(sourcePayrollMonth.slice(0, 4));
+  const sourceMonth = Number(sourcePayrollMonth.slice(5, 7));
+  const sourceBounds = payrollMonthBounds(sourceYear, sourceMonth);
+  const today = todayRiyadhDateKey();
+  if (sourceBounds.monthEnd >= today) {
+    return {
+      sourcePayrollMonth,
+      targetPayrollMonth: target.payrollMonth,
+      deferred: true,
+      reason: "source_period_not_closed",
+      results: [],
+    };
+  }
+
+  const CoreHrService = await coreHrService();
+  const sourceRows = await CoreHrService.listPayrollEntries({
+    payrollMonth: sourcePayrollMonth,
+    employeeId: input.employeeId,
+  });
+  const lockedSourceEntries = sourceRows
+    .map(normalizePayrollEntry)
+    .filter((entry) => ["approved", "paid"].includes(entry.status));
+  if (!lockedSourceEntries.length) {
+    return { sourcePayrollMonth, targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+
+  const items = lockedSourceEntries.flatMap((sourceEntry) => {
+    if (!sourceEntry.id) return [];
+    return [{
+      sourcePayrollEntryId: sourceEntry.id,
+      targetPayrollMonth: target.payrollMonth,
+      sourceDate: sourceBounds.monthEnd,
+      reason: `تسوية فرق مسيرة ${sourcePayrollMonth} بعد إقفال الفترة وإعادة احتساب الحضور والإجازات والخصومات النهائية داخل Core.`,
+    }];
+  });
+  if (!items.length) {
+    return { sourcePayrollMonth, targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+  const reconciled = await CoreHrService.reconcilePayrollCarryoversBatch({ items });
+  return {
+    sourcePayrollMonth,
+    targetPayrollMonth: target.payrollMonth,
+    results: reconciled.results || [],
+  };
+}
+
+export function payrollEntryCarryoverNetHalalas(entry: PayrollEntryView) {
+  return payrollCarryoverNetHalalas(entry.additions || [], entry.deductions || []);
 }
 
 export async function generatePayrollEntries(input: {
@@ -1544,6 +1129,21 @@ export function assertPayrollEntryReady(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) {
     throw new Error("payroll_setup_incomplete");
   }
+
+  const attendanceReadiness = payrollAttendanceReadiness(
+    entry.attendanceSummary
+  );
+
+  if (!attendanceReadiness.ready) {
+    throw new Error(attendanceReadiness.code);
+  }
+}
+
+export function assertPayrollEntryApprovalReady(entry: PayrollEntryView) {
+  const readiness = payrollApprovalReadiness(entry as unknown as Record<string, unknown>);
+  if (!readiness.ready) {
+    throw new Error(readiness.code);
+  }
 }
 
 export async function updatePayrollEntryAdjustments(entry: PayrollEntryView) {
@@ -1554,19 +1154,9 @@ export async function updatePayrollEntryAdjustments(entry: PayrollEntryView) {
   );
 }
 
-export async function togglePayrollOvertime(entry: PayrollEntryView) {
-  assertPayrollEntryReady(entry);
-  if (entry.detectedExtraHours <= 0) return entry;
-  if (!entry.id) return savePayrollEntrySnapshot(entry);
-  const CoreHrService = await coreHrService();
-  return normalizePayrollEntry(
-    await CoreHrService.togglePayrollOvertime(entry.id, payrollEntryPayload(entry))
-  );
-}
-
 export async function approvePayrollEntry(entry: PayrollEntryView) {
-  assertPayrollEntryReady(entry);
-  const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
+  assertPayrollEntryApprovalReady(entry);
+  const saved = await savePayrollEntrySnapshot(entry);
   const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.approvePayrollEntry(saved.id!));
 }
@@ -1598,6 +1188,3 @@ export async function reopenPayrollEntry(
     })
   );
 }
-
-
-

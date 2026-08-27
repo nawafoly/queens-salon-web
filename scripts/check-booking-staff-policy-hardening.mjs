@@ -16,6 +16,9 @@ const requireText = (content, needle, message) => {
 const rejectText = (content, needle, message) => {
   if (content.includes(needle)) failures.push(message);
 };
+const requireMatch = (content, pattern, message) => {
+  if (!pattern.test(content)) failures.push(message);
+};
 
 // Customer booking must wait for the authoritative Core date/service/staff context,
 // then render only staff that still have a usable slot on that date.
@@ -24,15 +27,20 @@ requireText(
   'const coreAvailabilityLoading =',
   'Customer booking must wait for Core availability before rendering staff.'
 );
-requireText(
+requireMatch(
   ui,
-  ': availableStaff.filter((staff: any) => {',
-  'Customer booking must hide staff without a usable slot on the selected date.'
+  /const staffChoicesForItem\s*=\s*coreAvailabilityLoading[\s\S]{0,500}?bookingVisibleStaff\.filter\(\(staff:\s*any\)\s*=>\s*\{/,
+  'Customer booking must wait for Core availability and filter the Core-visible staff set.'
 );
-requireText(
+requireMatch(
   ui,
-  'availability.availableForDate === false',
+  /return\s+!id\s*\|\|\s*!coreUnavailableForItem\[id\];/,
   'Customer booking must honor Core full-day unavailability.'
+);
+requireMatch(
+  ui,
+  /listCoreBookableStaffForDate\s*\(/,
+  'Customer booking must derive date-specific staff from Core bookable-staff service.'
 );
 rejectText(
   ui,
@@ -61,16 +69,23 @@ rejectText(
   'Booking repository still relies on the legacy staff availability check.'
 );
 
-for (const needle of [
-  "reason: 'approved_leave'",
-  "reason: 'partial_leave'",
-  "reason: 'absence'",
-  'weekly_or_schedule_off',
-  "exceptionType === 'rest'",
-  'resolveEmployeeShift(db, salonId, employeeId, date)',
-  'staffCanPerformService',
-]) {
-  requireText(policy, needle, `Central booking policy guard missing: ${needle}`);
+const policyRequirements = [
+  [/reason:\s*["']approved_leave["']/, "approved leave"],
+  [/reason:\s*["']partial_leave["']/, "partial leave"],
+  [/reason:\s*["']absence["']/, "absence"],
+  [/weekly_or_schedule_off/, "weekly/schedule off"],
+  [/exceptionType\s*===\s*["']rest["']/, "rest exception"],
+  [/resolveEmployeeShift\s*\(/, "single canonical shift resolver"],
+  [/resolveEmployeeShiftsBatch\s*\(/, "batched canonical shift resolver"],
+  [/staffCanPerformService/, "staff/service assignment guard"],
+];
+
+for (const [pattern, label] of policyRequirements) {
+  requireMatch(
+    policy,
+    pattern,
+    "Central booking policy guard missing: " + label
+  );
 }
 
 requireText(

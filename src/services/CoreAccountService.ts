@@ -27,6 +27,7 @@ export type CoreAccount = {
   email: string;
   phone: string;
   displayName: string;
+  photoUrl?: string | null;
   primaryRole: UserRole | "accountant" | "client";
   role: UserRole | "accountant" | "client";
   status: AccountStatus;
@@ -76,6 +77,7 @@ export type AccountCreateInput = {
   email?: string;
   phone?: string;
   displayName?: string;
+  photoUrl?: string | null;
   role?: string;
   status?: AccountStatus;
   emailVerified?: boolean;

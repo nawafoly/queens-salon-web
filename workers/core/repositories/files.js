@@ -57,6 +57,33 @@ export async function createFileMetadata(db, salonId, data, actor = {}) {
   return row;
 }
 
+
+export async function patchFileMetadata(db, salonId, idValue, data = {}) {
+  const existing = await getFileMetadata(db, salonId, idValue);
+  const allowedStatuses = new Set(['active', 'read', 'archived', 'replaced']);
+  const statusRaw = data.status === undefined ? cleanText(existing.status || 'active') : cleanText(data.status).toLowerCase();
+  const status = statusRaw || 'active';
+  if (!allowedStatuses.has(status)) {
+    throw new AppError(400, 'files_r2:invalid_status');
+  }
+
+  const title = data.title === undefined ? existing.title : optionalText(data.title) || null;
+  const description = data.description === undefined ? existing.description : optionalText(data.description) || null;
+  const replacedByFileId = data.replacedByFileId === undefined && data.replaced_by_file_id === undefined
+    ? existing.replaced_by_file_id
+    : optionalText(data.replacedByFileId || data.replaced_by_file_id) || null;
+  const replacesFileId = data.replacesFileId === undefined && data.replaces_file_id === undefined
+    ? existing.replaces_file_id
+    : optionalText(data.replacesFileId || data.replaces_file_id) || null;
+
+  await dbRun(db, `UPDATE file_metadata
+    SET title = ?, description = ?, status = ?, replaced_by_file_id = ?, replaces_file_id = ?, updated_at = ?
+    WHERE salon_id = ? AND id = ?`, [
+    title, description, status, replacedByFileId, replacesFileId, nowIso(), salonId, existing.id,
+  ]);
+  return getFileMetadata(db, salonId, existing.id);
+}
+
 export async function putFileContent(db, salonId, idValue, request, env, options = {}) {
   const metadata = await getFileMetadata(db, salonId, idValue);
   const bucket = requireBucket(env);

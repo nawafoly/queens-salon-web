@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { calculateAttendanceMinutePolicy } from "../src/helpers/hr/attendancePolicyMath.js";
+import {
+  calculateAttendanceLatePresentation,
+  calculateAttendanceMinutePolicy,
+} from "../src/helpers/hr/attendancePolicyMath.js";
 import { evaluateCheckInWindow } from "./attendance-worker.js";
 
 test("late minutes must be compensated after the shift", () => {
@@ -148,4 +151,42 @@ test("weekly off rejects check-in even when the lock option is disabled", () => 
   });
   assert.equal(result.result, "rejected");
   assert.equal(result.rejectionReason, "not_scheduled_workday");
+});
+
+test("late grace is pending compensation while the shift is open", () => {
+  const openShift = calculateAttendanceLatePresentation({
+    actualLateMinutes: 10,
+    earlyLeaveMinutes: 0,
+    afterScheduleMinutes: 0,
+    lateGraceMinutes: 15,
+    compensationWindowOpen: true,
+    hasCheckOut: false,
+  });
+  assert.equal(openShift.pendingCompensationMinutes, 10);
+  assert.equal(openShift.displayLateMinutes, 0);
+  assert.equal(openShift.missingMinutes, 10);
+
+  const leftOnTime = calculateAttendanceLatePresentation({
+    actualLateMinutes: 10,
+    earlyLeaveMinutes: 0,
+    afterScheduleMinutes: 0,
+    lateGraceMinutes: 15,
+    compensationWindowOpen: false,
+    hasCheckOut: true,
+  });
+  assert.equal(leftOnTime.pendingCompensationMinutes, 0);
+  assert.equal(leftOnTime.displayLateMinutes, 10);
+  assert.equal(leftOnTime.missingMinutes, 10);
+
+  const compensated = calculateAttendanceLatePresentation({
+    actualLateMinutes: 10,
+    earlyLeaveMinutes: 0,
+    afterScheduleMinutes: 10,
+    lateGraceMinutes: 15,
+    compensationWindowOpen: false,
+    hasCheckOut: true,
+  });
+  assert.equal(compensated.displayLateMinutes, 0);
+  assert.equal(compensated.compensatedLateMinutes, 10);
+  assert.equal(compensated.missingMinutes, 0);
 });

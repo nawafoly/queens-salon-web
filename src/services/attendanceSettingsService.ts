@@ -1,13 +1,9 @@
 import {
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-import { db } from "./firebase";
-import { SALON_ID, hrCollection } from "./hrCollections";
+  deleteCoreAttendanceWorkZone,
+  getCoreAttendanceWorkZone,
+  listCoreAttendanceWorkZones,
+  saveCoreAttendanceWorkZone,
+} from "./CoreAttendanceWorkZoneService";
 import {
   getBrowserPosition,
   type AttendanceLocation,
@@ -110,18 +106,15 @@ export function buildWorkZoneId(name: string) {
 }
 
 export async function listWorkZones(): Promise<WorkZone[]> {
-  const snap = await getDocs(hrCollection("workZones"));
-  return snap.docs
-    .map((entry) => toWorkZone(entry.id, entry.data()))
-    .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "ar"));
+  const zones = await listCoreAttendanceWorkZones();
+  return zones.map((zone) => toWorkZone(zone.id, zone));
 }
 
 export async function getWorkZone(id: string): Promise<WorkZone | null> {
-  const cleanId = cleanText(id);
-  if (!cleanId) return null;
-  const snap = await getDoc(doc(db, "salons", SALON_ID, "work_zones", cleanId));
-  return snap.exists() ? toWorkZone(snap.id, snap.data()) : null;
+  const zone = await getCoreAttendanceWorkZone(id);
+  return zone ? toWorkZone(zone.id, zone) : null;
 }
+
 
 export function resolveAssignedAttendanceZoneId(profile: Record<string, any>) {
   const employment = profile?.employeeProfile?.employment || profile?.employment || {};
@@ -147,53 +140,23 @@ export function resolveAssignedAttendanceZoneId(profile: Record<string, any>) {
 
 export async function saveWorkZone(zone: Partial<WorkZone> & { id?: string; name: string }) {
   const id = cleanText(zone.id) || buildWorkZoneId(zone.name);
-
   const name = cleanText(zone.name) || id;
   const lat = safeNumber(zone.lat, 0);
   const lng = safeNumber(zone.lng, 0);
   const radiusMeters = Math.max(10, safeNumber(zone.radiusMeters, 100));
-  const branchId = cleanText(zone.branchId);
-  const branchName = cleanText(zone.branchName);
-
-  if (!name) {
-    throw new Error("اسم النطاق مطلوب.");
-  }
-
+  if (!name) throw new Error("اسم النطاق مطلوب.");
   assertValidLatLng(lat, lng);
-
-  if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) {
-    throw new Error("نصف قطر النطاق غير صحيح.");
-  }
-
-  const payload = {
-    name,
-    lat,
-    lng,
-    radiusMeters,
-    active: zone.active !== false,
-    salonId: SALON_ID,
-    updatedAt: serverTimestamp(),
-    ...(branchId ? { branchId } : {}),
-    ...(branchName ? { branchName } : {}),
-  };
-
-  await setDoc(
-    doc(db, "salons", SALON_ID, "work_zones", id),
-    {
-      ...payload,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  return { id, ...payload } as WorkZone;
+  if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) throw new Error("نصف قطر النطاق غير صحيح.");
+  const saved = await saveCoreAttendanceWorkZone({
+    id, name, lat, lng, radiusMeters, active: zone.active !== false,
+  });
+  return toWorkZone(saved.id, saved);
 }
 
 export async function removeWorkZone(id: string) {
-  const cleanId = cleanText(id);
-  if (!cleanId) return;
-  await deleteDoc(doc(db, "salons", SALON_ID, "work_zones", cleanId));
+  await deleteCoreAttendanceWorkZone(id);
 }
+
 
 function toRadians(value: number) {
   return (value * Math.PI) / 180;

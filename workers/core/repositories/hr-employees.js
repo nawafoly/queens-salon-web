@@ -17,6 +17,7 @@ import {
   rowNotFound,
   validDate,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 
 function moneyHalalas(value, field) {
   if (value === undefined || value === null || value === '') return 0;
@@ -51,6 +52,17 @@ function optionalNumber(value, field) {
   return Math.round(numeric * 100) / 100;
 }
 
+function hasOwn(object, key) {
+  return object && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function nullableTextField(candidates, fallback) {
+  for (const [object, key] of candidates) {
+    if (hasOwn(object, key)) return optionalText(object[key]) || null;
+  }
+  return optionalText(fallback) || null;
+}
+
 function positiveNumber(value, fallback, field) {
   if (value === undefined || value === null || value === '') return fallback;
   const numeric = Number(value);
@@ -65,6 +77,39 @@ function positiveNumber(value, fallback, field) {
 function payrollDeductionMethod(value) {
   const clean = cleanText(value).toLowerCase();
   return clean === 'daily' ? 'daily' : 'hourly';
+}
+
+function attendancePayrollMode(value) {
+  return cleanText(value).toLowerCase() === 'exempt'
+    ? 'exempt'
+    : 'required';
+}
+
+function socialInsuranceCategory(value) {
+  const clean = cleanText(value).toLowerCase();
+  if (!clean) return null;
+  if (![
+    'saudi_existing',
+    'saudi_new',
+    'gcc',
+    'non_saudi',
+  ].includes(clean)) {
+    const error = new Error('invalid_social_insurance_category');
+    error.code = 'core_hr:invalid_social_insurance_category';
+    throw error;
+  }
+  return clean;
+}
+
+function gosiWageMode(value) {
+  return cleanText(value).toLowerCase() === 'override'
+    ? 'override'
+    : 'derived';
+}
+
+function optionalMoneyHalalas(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  return moneyHalalas(value, field);
 }
 
 async function employmentFor(db, salonId, employeeId) {
@@ -133,6 +178,11 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   const existingEmployment = existing
     ? await employmentFor(db, salonId, id)
     : null;
+  const existingStaff = await dbFirst(
+    db,
+    'SELECT * FROM staff WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, id]
+  );
   const personal = data.personal || {};
   const requestedProfileStatus = data.status ?? data.employment?.status;
   const profile = {
@@ -150,11 +200,54 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     avatar_file_id: optionalText(
       data.avatarFileId ?? data.avatar_file_id ?? existing?.avatar_file_id
     ) || null,
+    avatar_url: nullableTextField([[data, 'avatarUrl'], [data, 'avatar_url']], existing?.avatar_url),
+    bio: nullableTextField([[data, 'bio']], existing?.bio),
+    cv_url: nullableTextField([[data, 'cvUrl'], [data, 'cv_url']], existing?.cv_url),
+    show_on_about: activeFlag(
+      data.showOnAbout ?? data.show_on_about ?? existing?.show_on_about,
+      1
+    ),
+    include_in_employee_management: activeFlag(
+      data.includeInEmployeeManagement ??
+        data.include_in_employee_management ??
+        existing?.include_in_employee_management,
+      1
+    ),
+    rating: optionalNumber(data.rating ?? existing?.rating, 'rating') ?? 0,
+    reviews_count: Math.max(
+      0,
+      Math.floor(
+        optionalNumber(
+          data.reviewsCount ?? data.reviews_count ?? existing?.reviews_count,
+          'reviewsCount'
+        ) ?? 0
+      )
+    ),
     status: cleanText(requestedProfileStatus ?? existing?.status ?? 'active') || 'active',
     created_at: existing?.created_at || now,
     updated_at: now,
   };
   const employmentInput = data.employment || data;
+  const socialInsuranceKeys = [
+    'socialInsuranceCategory',
+    'social_insurance_category',
+    'socialInsuranceEffectiveFrom',
+    'social_insurance_effective_from',
+    'socialInsuranceClassificationNote',
+    'social_insurance_classification_note',
+    'gosiWageMode',
+    'gosi_wage_mode',
+    'gosiContributoryWageOverrideHalalas',
+    'gosi_contributory_wage_override_halalas',
+    'gosiContributoryWageOverrideReason',
+    'gosi_contributory_wage_override_reason',
+    'gccHomeCountryCode',
+    'gcc_home_country_code',
+  ];
+  const socialInsuranceTouched = socialInsuranceKeys.some((key) =>
+    Object.prototype.hasOwnProperty.call(employmentInput, key)
+  );
+
   const employment = {
     salon_id: salonId,
     employee_id: id,
@@ -182,6 +275,12 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     ) || null,
     start_date: optionalText(
       employmentInput.startDate ?? employmentInput.start_date ?? existingEmployment?.start_date
+    ) || null,
+    end_date: optionalText(
+      employmentInput.endDate ??
+        employmentInput.end_date ??
+        employmentInput.employmentEndDate ??
+        existingEmployment?.end_date
     ) || null,
     leave_balance: Number(
       employmentInput.leaveBalance ??
@@ -257,6 +356,71 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         existingEmployment?.payroll_deduction_method ??
         'hourly'
     ),
+    attendance_payroll_mode: attendancePayrollMode(
+      employmentInput.attendancePayrollMode ??
+        employmentInput.attendance_payroll_mode ??
+        existingEmployment?.attendance_payroll_mode ??
+        'required'
+    ),
+    attendance_payroll_exemption_reason:
+      attendancePayrollMode(
+        employmentInput.attendancePayrollMode ??
+          employmentInput.attendance_payroll_mode ??
+          existingEmployment?.attendance_payroll_mode ??
+          'required'
+      ) === 'exempt'
+        ? optionalText(
+            employmentInput.attendancePayrollExemptionReason ??
+              employmentInput.attendance_payroll_exemption_reason ??
+              existingEmployment?.attendance_payroll_exemption_reason
+          ) || null
+        : null,
+    social_insurance_category: socialInsuranceCategory(
+      employmentInput.socialInsuranceCategory ??
+        employmentInput.social_insurance_category ??
+        existingEmployment?.social_insurance_category
+    ),
+    social_insurance_effective_from: optionalText(
+      employmentInput.socialInsuranceEffectiveFrom ??
+        employmentInput.social_insurance_effective_from ??
+        existingEmployment?.social_insurance_effective_from
+    ) || null,
+    social_insurance_classification_note: optionalText(
+      employmentInput.socialInsuranceClassificationNote ??
+        employmentInput.social_insurance_classification_note ??
+        existingEmployment?.social_insurance_classification_note
+    ) || null,
+    gosi_wage_mode: gosiWageMode(
+      employmentInput.gosiWageMode ??
+        employmentInput.gosi_wage_mode ??
+        existingEmployment?.gosi_wage_mode ??
+        'derived'
+    ),
+    gosi_contributory_wage_override_halalas: optionalMoneyHalalas(
+      employmentInput.gosiContributoryWageOverrideHalalas ??
+        employmentInput.gosi_contributory_wage_override_halalas ??
+        existingEmployment?.gosi_contributory_wage_override_halalas,
+      'gosiContributoryWageOverride'
+    ),
+    gosi_contributory_wage_override_reason: optionalText(
+      employmentInput.gosiContributoryWageOverrideReason ??
+        employmentInput.gosi_contributory_wage_override_reason ??
+        existingEmployment?.gosi_contributory_wage_override_reason
+    ) || null,
+    gcc_home_country_code: optionalText(
+      employmentInput.gccHomeCountryCode ??
+        employmentInput.gcc_home_country_code ??
+        existingEmployment?.gcc_home_country_code
+    ) || null,
+    social_insurance_updated_by_uid: socialInsuranceTouched
+      ? optionalText(actor.uid) || null
+      : existingEmployment?.social_insurance_updated_by_uid || null,
+    social_insurance_updated_by_email: socialInsuranceTouched
+      ? optionalText(actor.email) || null
+      : existingEmployment?.social_insurance_updated_by_email || null,
+    social_insurance_updated_at: socialInsuranceTouched
+      ? now
+      : existingEmployment?.social_insurance_updated_at || null,
     shift_start_time: optionalText(
       employmentInput.shiftStartTime ??
         employmentInput.shift_start_time ??
@@ -307,31 +471,140 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     updated_at: now,
   };
 
+  if (employment.social_insurance_effective_from) {
+    employment.social_insurance_effective_from = validDate(
+      employment.social_insurance_effective_from,
+      'socialInsuranceEffectiveFrom'
+    );
+  }
+  if (
+    profile.status === 'active' &&
+    employment.employment_status === 'active' &&
+    employment.social_insurance_category &&
+    !employment.social_insurance_effective_from
+  ) {
+    throw new AppError(409, 'core_hr:gosi_effective_date_required');
+  }
+
+  const bookingStaffInput = data.bookingStaff || data.booking_staff || data.staff || {};
+  const staff = {
+    id,
+    salon_id: salonId,
+    firebase_uid: optionalText(
+      bookingStaffInput.firebaseUid ?? bookingStaffInput.firebase_uid ?? profile.firebase_uid ?? existingStaff?.firebase_uid
+    ) || null,
+    name: requiredText(bookingStaffInput.name ?? profile.name ?? existingStaff?.name, 'name'),
+    phone_normalized:
+      bookingStaffInput.phone === undefined && bookingStaffInput.phoneNormalized === undefined
+        ? (profile.phone_normalized || existingStaff?.phone_normalized || null)
+        : (normalizePhone(bookingStaffInput.phoneNormalized || bookingStaffInput.phone) || null),
+    active: activeFlag(
+      bookingStaffInput.active ??
+        (profile.status === 'active' && employment.employment_status === 'active'),
+      1
+    ),
+    employment_status: cleanText(
+      bookingStaffInput.employmentStatus ??
+        bookingStaffInput.employment_status ??
+        employment.employment_status ??
+        existingStaff?.employment_status ??
+        'active'
+    ) || 'active',
+    avatar_url: optionalText(
+      bookingStaffInput.avatarUrl ?? bookingStaffInput.avatar_url ?? profile.avatar_url ?? existingStaff?.avatar_url
+    ) || null,
+    show_on_booking: activeFlag(
+      bookingStaffInput.showOnBooking ??
+        bookingStaffInput.show_on_booking ??
+        existingStaff?.show_on_booking,
+      0
+    ),
+    specialties_json: JSON.stringify(
+      Array.isArray(bookingStaffInput.specialties)
+        ? bookingStaffInput.specialties.map((value) => cleanText(value)).filter(Boolean)
+        : (() => {
+            try {
+              const parsed = JSON.parse(cleanText(existingStaff?.specialties_json) || '[]');
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          })()
+    ),
+    created_at: existingStaff?.created_at || now,
+    updated_at: now,
+  };
+
+  const offboardingFence = await dbFirst(
+    db,
+    `SELECT status, end_date
+       FROM employee_offboarding_fences
+      WHERE salon_id = ? AND employee_id = ? AND status = 'offboarded'
+      LIMIT 1`,
+    [salonId, id]
+  );
+  if (offboardingFence) {
+    const targetOperational =
+      cleanText(profile.status).toLowerCase() === 'active' ||
+      cleanText(employment.employment_status).toLowerCase() === 'active' ||
+      Number(staff.active) === 1 ||
+      Number(staff.show_on_booking) === 1 ||
+      cleanText(staff.employment_status).toLowerCase() === 'active';
+
+    if (targetOperational) {
+      throw new AppError(409, 'core_hr:employee_rehire_requires_lifecycle_operation');
+    }
+
+    const startDateChanged = Boolean(
+      existingEmployment &&
+      cleanText(employment.start_date) !== cleanText(existingEmployment.start_date)
+    );
+    const endDateChanged =
+      cleanText(employment.end_date) !== cleanText(offboardingFence.end_date);
+    if (startDateChanged || endDateChanged) {
+      throw new AppError(
+        409,
+        'core_hr:offboarding_lifecycle_fields_locked',
+        'Offboarded employment lifecycle dates require a dedicated lifecycle operation'
+      );
+    }
+  }
+
   await dbBatch(db, [
     {
       sql: `INSERT INTO employee_profiles
-        (id, salon_id, firebase_uid, name, email, phone_normalized, avatar_file_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, salon_id, firebase_uid, name, email, phone_normalized, avatar_file_id, avatar_url, bio, cv_url,
+         show_on_about, include_in_employee_management, rating, reviews_count, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
         firebase_uid = excluded.firebase_uid, name = excluded.name, email = excluded.email,
         phone_normalized = excluded.phone_normalized, avatar_file_id = excluded.avatar_file_id,
+        avatar_url = excluded.avatar_url, bio = excluded.bio, cv_url = excluded.cv_url,
+        show_on_about = excluded.show_on_about,
+        include_in_employee_management = excluded.include_in_employee_management,
+        rating = excluded.rating, reviews_count = excluded.reviews_count,
         status = excluded.status, updated_at = excluded.updated_at`,
       params: Object.values(profile),
     },
     {
       sql: `INSERT INTO employee_employment
         (salon_id, employee_id, title, job_title, department, employment_source, partner_id, partner_member_id,
-         contract_id, start_date, leave_balance, base_salary_halalas, housing_allowance_halalas,
+         contract_id, start_date, end_date, leave_balance, base_salary_halalas, housing_allowance_halalas,
          transportation_allowance_halalas, other_allowances_halalas, expected_work_days, expected_work_hours,
          daily_scheduled_hours, overtime_enabled, overtime_multiplier, payroll_deduction_method,
+         attendance_payroll_mode, attendance_payroll_exemption_reason,
+         social_insurance_category, social_insurance_effective_from, social_insurance_classification_note,
+         gosi_wage_mode, gosi_contributory_wage_override_halalas, gosi_contributory_wage_override_reason,
+         gcc_home_country_code, social_insurance_updated_by_uid, social_insurance_updated_by_email,
+         social_insurance_updated_at,
          shift_start_time, shift_end_time, weekly_off_days_json, allowed_zone_ids_json, employment_status,
          employee_code, fingerprint_number, admin_notes, updated_by_uid, updated_by_email, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (${Object.keys(employment).map(() => '?').join(', ')})
        ON CONFLICT(salon_id, employee_id) DO UPDATE SET
         title = excluded.title, job_title = excluded.job_title, department = excluded.department,
         employment_source = excluded.employment_source, partner_id = excluded.partner_id,
         partner_member_id = excluded.partner_member_id, contract_id = excluded.contract_id,
-        start_date = excluded.start_date,
+        start_date = excluded.start_date, end_date = excluded.end_date,
         base_salary_halalas = excluded.base_salary_halalas,
         housing_allowance_halalas = excluded.housing_allowance_halalas,
         transportation_allowance_halalas = excluded.transportation_allowance_halalas,
@@ -341,6 +614,18 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         overtime_enabled = excluded.overtime_enabled,
         overtime_multiplier = excluded.overtime_multiplier,
         payroll_deduction_method = excluded.payroll_deduction_method,
+        attendance_payroll_mode = excluded.attendance_payroll_mode,
+        attendance_payroll_exemption_reason = excluded.attendance_payroll_exemption_reason,
+        social_insurance_category = excluded.social_insurance_category,
+        social_insurance_effective_from = excluded.social_insurance_effective_from,
+        social_insurance_classification_note = excluded.social_insurance_classification_note,
+        gosi_wage_mode = excluded.gosi_wage_mode,
+        gosi_contributory_wage_override_halalas = excluded.gosi_contributory_wage_override_halalas,
+        gosi_contributory_wage_override_reason = excluded.gosi_contributory_wage_override_reason,
+        gcc_home_country_code = excluded.gcc_home_country_code,
+        social_insurance_updated_by_uid = excluded.social_insurance_updated_by_uid,
+        social_insurance_updated_by_email = excluded.social_insurance_updated_by_email,
+        social_insurance_updated_at = excluded.social_insurance_updated_at,
         shift_start_time = excluded.shift_start_time, shift_end_time = excluded.shift_end_time,
         weekly_off_days_json = excluded.weekly_off_days_json, allowed_zone_ids_json = excluded.allowed_zone_ids_json,
         employment_status = excluded.employment_status, employee_code = excluded.employee_code,
@@ -348,6 +633,16 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         updated_by_uid = excluded.updated_by_uid, updated_by_email = excluded.updated_by_email,
         updated_at = excluded.updated_at`,
       params: Object.values(employment),
+    },
+    {
+      sql: `INSERT INTO staff
+        (id, salon_id, firebase_uid, name, phone_normalized, active, employment_status, avatar_url, show_on_booking, specialties_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+        firebase_uid = excluded.firebase_uid, name = excluded.name, phone_normalized = excluded.phone_normalized,
+        active = excluded.active, employment_status = excluded.employment_status, avatar_url = excluded.avatar_url,
+        show_on_booking = excluded.show_on_booking, specialties_json = excluded.specialties_json, updated_at = excluded.updated_at`,
+      params: Object.values(staff),
     },
   ]);
   return getHrEmployee(db, salonId, id);

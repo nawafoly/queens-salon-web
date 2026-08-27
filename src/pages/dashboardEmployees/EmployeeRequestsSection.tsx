@@ -129,6 +129,8 @@ function formatRange(request: EmployeeLeaveRequest) {
 }
 
 function requestNumber(request: EmployeeLeaveRequest, index: number) {
+  const canonical = cleanText(request.requestNumber);
+  if (canonical) return canonical;
   const id = cleanText(request.id);
   if (/^req[-_]/i.test(id)) return id.toUpperCase();
   return `REQ-${String(1000 + index + 1).padStart(4, "0")}`;

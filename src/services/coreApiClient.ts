@@ -85,6 +85,7 @@ async function requestOnce<T>(
       data?: T;
       error?: string;
       message?: string;
+      details?: unknown;
     };
 
     if (!response.ok || payload.ok === false) {
@@ -93,7 +94,7 @@ async function requestOnce<T>(
         response.status,
         code,
         localizedMessage(response.status, code, String(payload.message || "")),
-        payload
+        payload.details
       );
     }
 

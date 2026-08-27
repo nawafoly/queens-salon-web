@@ -1,549 +1,214 @@
-import {
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
-
-import {
-  calculateLeaveDaysCount,
-  getEmployeeLeavePolicy,
-} from "../helpers/hr/employeeLeave";
-
 import { CoreHrService } from "./CoreHrService";
-
 import {
-  approveEmployeeLeaveRequest,
-  reviewLeaveRequest,
-  type EmployeeLeaveRequest,
-} from "./employeeHub";
-
-import { hrDoc } from "./hrCollections";
-
+  employeeRequestAction,
+  type EmployeeRequest,
+} from "./employeeRequests";
+import type { EmployeeLeaveRequest } from "./employeeHub";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
-
-function requestEmployeeId(
-  request: EmployeeLeaveRequest
-) {
-  return cleanText(
-    request.employeeId ||
-      request.employeeUid
-  );
-}
-
-
-async function resolveCoreEmployeeId(
-  request: EmployeeLeaveRequest
-) {
-  const requestedId =
-    requestEmployeeId(request);
-
-  if (!requestedId) {
-    throw new Error(
-      "employee_leave_employee_id_required"
-    );
+function requestVersion(request: EmployeeLeaveRequest) {
+  const value = Number(request.coreVersion);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error("employee_leave_request_version_required");
   }
-
-  try {
-    const employee =
-      await CoreHrService.getEmployee(
-        requestedId
-      );
-
-    return (
-      cleanText(employee.id) ||
-      requestedId
-    );
-  } catch (directError) {
-    // Historical/mirrored requests may contain
-    // Firebase UID where Core employee_profiles.id is required.
-    const candidates = new Set(
-      [
-        requestedId,
-        cleanText(request.employeeId),
-        cleanText(request.employeeUid),
-      ].filter(Boolean)
-    );
-
-    const employees =
-      await CoreHrService.listEmployees();
-
-    const matched =
-      employees.find((employee) => {
-        const row = employee as any;
-
-        return [
-          row.id,
-          row.employeeId,
-          row.firebaseUid,
-          row.firebase_uid,
-        ]
-          .map(cleanText)
-          .some((value) =>
-            candidates.has(value)
-          );
-      });
-
-    const canonicalId =
-      cleanText((matched as any)?.id);
-
-    if (canonicalId) {
-      return canonicalId;
-    }
-
-    throw directError;
-  }
+  return value;
 }
 
-
-function requestDays(
-  request: EmployeeLeaveRequest
-) {
-  const explicit = Number(request.days);
-
-  if (
-    Number.isFinite(explicit) &&
-    explicit > 0
-  ) {
-    return explicit;
-  }
-
-  return Number(
-    calculateLeaveDaysCount(
-      request.fromDate,
-      request.toDate
-    ) || 0
-  );
+function requestCoreStatus(request: EmployeeLeaveRequest) {
+  const explicit = cleanText(request.coreStatus).toLowerCase();
+  if (explicit) return explicit;
+  const legacy = cleanText(request.status).toLowerCase();
+  if (legacy === "approved") return "completed";
+  if (legacy === "rejected") return "rejected";
+  if (legacy === "cancelled") return "cancelled";
+  return "submitted";
 }
 
-
-async function findCoreLeaveForRequest(
-  employeeId: string,
-  requestId: string
-) {
-  const rows =
-    await CoreHrService.listLeaves({
-      employeeId,
-    });
-
-  return (
-    rows.find(
-      (leave) =>
-        cleanText(leave.requestId) ===
-        requestId
-    ) || null
-  );
+function updateRequestState(
+  base: EmployeeLeaveRequest,
+  row: EmployeeRequest
+): EmployeeLeaveRequest {
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const status = cleanText(row.status).toLowerCase();
+  return {
+    ...base,
+    employeeUid: cleanText(row.employee_uid || base.employeeUid),
+    employeeId: cleanText(row.employee_id || base.employeeId) || undefined,
+    employeeName: cleanText(row.employee_name_snapshot || base.employeeName) || undefined,
+    type: (cleanText(payload.leaveType || base.type || "annual") || "annual") as EmployeeLeaveRequest["type"],
+    fromDate: cleanText(payload.startDate || base.fromDate),
+    toDate: cleanText(payload.endDate || base.toDate),
+    durationKind: cleanText(payload.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",
+    partialStartTime: cleanText(payload.partialStartTime || base.partialStartTime) || undefined,
+    partialEndTime: cleanText(payload.partialEndTime || base.partialEndTime) || undefined,
+    note: cleanText(payload.reason || base.note) || undefined,
+    status:
+      status === "rejected"
+        ? "rejected"
+        : status === "cancelled"
+          ? "cancelled"
+          : ["approved", "executing", "completed"].includes(status)
+            ? "approved"
+            : "pending",
+    requestNumber: cleanText(row.request_number || base.requestNumber) || undefined,
+    coreStatus: status,
+    coreVersion: Number(row.version),
+    coreLeaveId:
+      cleanText(row.source_reference_type) === "employee_leave"
+        ? cleanText(row.source_reference_id) || undefined
+        : base.coreLeaveId,
+    updatedAt: row.updated_at,
+    reviewedAt: row.approved_at || row.rejected_at || base.reviewedAt,
+  };
 }
 
-
-async function ensureCoreLeaveForRequest(
+async function act(
   request: EmployeeLeaveRequest,
-  hrNote: string
+  action: Parameters<typeof employeeRequestAction>[1],
+  body: Record<string, unknown> = {}
 ) {
-  const requestId = cleanText(request.id);
+  const row = await employeeRequestAction(request.id, action, {
+    ...body,
+    version: requestVersion(request),
+  });
+  return updateRequestState(request, row);
+}
 
-  const employeeId =
-    await resolveCoreEmployeeId(request);
+async function moveToReview(request: EmployeeLeaveRequest) {
+  let current = request;
+  let status = requestCoreStatus(current);
 
-  if (!requestId) {
-    throw new Error(
-      "employee_leave_request_id_required"
-    );
+  if (status === "submitted") {
+    current = await act(current, "receive");
+    status = requestCoreStatus(current);
   }
 
+  if (status === "received") {
+    current = await act(current, "start-review");
+    status = requestCoreStatus(current);
+  }
+
+  if (status === "needs_info") {
+    current = await act(current, "answer-info", {
+      note: "استكمال المراجعة من إدارة الموظفات",
+    });
+    status = requestCoreStatus(current);
+  }
+
+  if (status === "rejected" || status === "cancelled") {
+    current = await act(current, "reopen", {
+      note: "إعادة فتح طلب الإجازة من إدارة الموظفات",
+    });
+  }
+
+  return current;
+}
+
+async function findOperationalLeave(request: EmployeeLeaveRequest) {
+  const employeeId = cleanText(request.employeeId);
   if (!employeeId) {
-    throw new Error(
-      "employee_leave_employee_id_required"
-    );
+    throw new Error("employee_leave_employee_id_required");
   }
 
-  const days = requestDays(request);
-
-  if (
-    !Number.isFinite(days) ||
-    days <= 0
-  ) {
-    throw new Error(
-      "employee_leave_days_invalid"
-    );
-  }
-
-  // Fail closed. Do not create a shadow employee
-  // just to approve a leave request.
-  await CoreHrService.getEmployee(
-    employeeId
-  );
-
-  let coreLeave =
-    await findCoreLeaveForRequest(
-      employeeId,
-      requestId
-    );
-
-  if (!coreLeave) {
-    const policy =
-      getEmployeeLeavePolicy(
-        request.type
-      );
-
-    try {
-      coreLeave =
-        await CoreHrService.createLeave({
-          employeeId,
-          employeeUid:
-            cleanText(
-              request.employeeUid
-            ) || undefined,
-          employeeName:
-            cleanText(
-              request.employeeName
-            ) || undefined,
-
-          status: "pending",
-
-          leaveType:
-            cleanText(
-              request.type
-            ) || "annual",
-
-          startDate:
-            cleanText(
-              request.fromDate
-            ),
-
-          endDate:
-            cleanText(
-              request.toDate
-            ),
-
-          daysCount: days,
-
-          durationKind:
-            request.durationKind ===
-            "partial"
-              ? "partial"
-              : "full_day",
-
-          partialStartTime:
-            request.durationKind ===
-            "partial"
-              ? cleanText(
-                  request.partialStartTime
-                ) || undefined
-              : undefined,
-
-          partialEndTime:
-            request.durationKind ===
-            "partial"
-              ? cleanText(
-                  request.partialEndTime
-                ) || undefined
-              : undefined,
-
-          requestId,
-
-          deductFromBalance:
-            policy.deductFromBalance,
-
-          affectsPayroll:
-            policy.affectsPayroll,
-
-          employeeNote:
-            cleanText(
-              request.note
-            ) || undefined,
-
-          hrNote:
-            cleanText(hrNote) ||
-            undefined,
-        });
-    } catch (error) {
-      // Concurrent/retried approval may have created
-      // the same request-linked Core leave already.
-      coreLeave =
-        await findCoreLeaveForRequest(
-          employeeId,
-          requestId
-        );
-
-      if (!coreLeave) {
-        throw error;
-      }
-    }
-  }
-
-  return coreLeave;
-}
-
-
-async function syncRequestMirror(
-  requestId: string,
-  patch: Record<string, unknown>
-) {
-  await updateDoc(
-    hrDoc(
-      "employeeLeaveRequests",
-      requestId
-    ),
-    {
-      ...patch,
-      updatedAt: serverTimestamp(),
-    } as any
+  const rows = await CoreHrService.listLeaves({ employeeId });
+  return (
+    rows.find((leave) => cleanText(leave.requestId) === cleanText(request.id)) ||
+    (request.coreLeaveId
+      ? rows.find((leave) => cleanText(leave.id) === cleanText(request.coreLeaveId))
+      : null) ||
+    null
   );
 }
-
 
 export async function decideCanonicalEmployeeLeaveRequest(
   request: EmployeeLeaveRequest,
-  nextStatus:
-    | "approved"
-    | "rejected"
-    | "cancelled",
+  nextStatus: "approved" | "rejected" | "cancelled",
   reviewer: {
     reviewerUid: string;
     reviewerName?: string;
     hrNote?: string;
   }
 ) {
-  const requestId =
-    cleanText(request.id);
+  const requestId = cleanText(request.id);
+  const reviewerUid = cleanText(reviewer.reviewerUid);
+  const reviewerName = cleanText(reviewer.reviewerName) || "الإدارة";
+  const hrNote = cleanText(reviewer.hrNote);
 
-  const reviewerUid =
-    cleanText(
-      reviewer.reviewerUid
-    );
-
-  const reviewerName =
-    cleanText(
-      reviewer.reviewerName
-    ) || "الإدارة";
-
-  const hrNote =
-    cleanText(reviewer.hrNote);
-
-  if (!requestId) {
-    throw new Error(
-      "employee_leave_request_id_required"
-    );
+  if (!requestId) throw new Error("employee_leave_request_id_required");
+  if (!reviewerUid) throw new Error("employee_leave_reviewer_required");
+  if (!Number.isInteger(Number(request.coreVersion))) {
+    throw new Error("employee_leave_core_request_required");
   }
 
-  if (!reviewerUid) {
-    throw new Error(
-      "employee_leave_reviewer_required"
-    );
-  }
-
-  const employeeId =
-    await resolveCoreEmployeeId(request);
-
-  if (!employeeId) {
-    throw new Error(
-      "employee_leave_employee_id_required"
-    );
-  }
-
-
-  // =====================================================
-  // APPROVE
-  // Core first. Firestore is only the request/UI mirror.
-  // =====================================================
+  let current = request;
+  let status = requestCoreStatus(current);
 
   if (nextStatus === "approved") {
-    let coreLeave =
-      await ensureCoreLeaveForRequest(
-        request,
-        hrNote
-      );
-
-    const coreStatus =
-      cleanText(
-        coreLeave.status
-      ).toLowerCase();
-
-    if (coreStatus === "pending") {
-      coreLeave =
-        await CoreHrService.decideLeave(
-          coreLeave.id,
-          "approved",
-          hrNote ||
-            "اعتماد طلب إجازة الموظفة"
-        );
-    } else if (
-      coreStatus !== "approved"
-    ) {
-      throw new Error(
-        `employee_leave_core_invalid_status:${coreStatus}`
-      );
+    if (status !== "completed") {
+      current = await moveToReview(current);
+      status = requestCoreStatus(current);
     }
 
-    // Only after Core operational approval succeeds
-    // may the request mirror become approved.
-    await approveEmployeeLeaveRequest({
-      requestId,
-      reviewerUid,
-      reviewerName,
+    if (status === "under_review") {
+      current = await act(current, "approve", {
+        note: hrNote || `اعتماد طلب الإجازة بواسطة ${reviewerName}`,
+      });
+      status = requestCoreStatus(current);
+    }
+
+    if (status === "approved" || status === "executing") {
+      current = await act(current, "execute", {
+        note: hrNote || "تنفيذ الإجازة المعتمدة",
+      });
+      status = requestCoreStatus(current);
+    }
+
+    if (status !== "completed") {
+      throw new Error(`employee_leave_core_request_invalid_status:${status}`);
+    }
+
+    const coreLeave = await findOperationalLeave(current);
+    if (!coreLeave || cleanText(coreLeave.status).toLowerCase() !== "approved") {
+      throw new Error("employee_leave_core_approval_missing");
+    }
+
+    return { requestId, request: current, coreLeave };
+  }
+
+  if (nextStatus === "rejected") {
+    if (status === "rejected") {
+      return { requestId, request: current, coreLeave: await findOperationalLeave(current).catch(() => null) };
+    }
+
+    if (["approved", "executing", "completed"].includes(status)) {
+      current = await act(current, "cancel", {
+        note: hrNote || "إلغاء إجازة سبق اعتمادها",
+      });
+    } else {
+      if (status === "submitted") {
+        current = await act(current, "receive");
+      }
+      current = await act(current, "reject", {
+        reason: hrNote || "تم رفض طلب الإجازة",
+      });
+    }
+
+    return { requestId, request: current, coreLeave: await findOperationalLeave(current).catch(() => null) };
+  }
+
+  if (status !== "cancelled") {
+    current = await act(current, "cancel", {
+      note: hrNote || "تم إلغاء طلب الإجازة",
     });
-
-    const policy =
-      getEmployeeLeavePolicy(
-        request.type
-      );
-
-    await syncRequestMirror(
-      requestId,
-      {
-        coreLeaveId: coreLeave.id,
-        deductFromBalance:
-          policy.deductFromBalance,
-        affectsPayroll:
-          policy.affectsPayroll,
-        hrNote: hrNote || undefined,
-      }
-    );
-
-    return {
-      requestId,
-      coreLeave,
-    };
   }
 
-
-  const existingCoreLeave =
-    await findCoreLeaveForRequest(
-      employeeId,
-      requestId
-    );
-
-
-  // =====================================================
-  // CANCEL
-  //
-  // An approved request MUST have Core operational state.
-  // Rejection of approved Core leave is its canonical
-  // cancellation/reversal path.
-  // =====================================================
-
-  if (nextStatus === "cancelled") {
-    if (
-      cleanText(
-        request.status
-      ).toLowerCase() === "approved" &&
-      !existingCoreLeave
-    ) {
-      throw new Error(
-        "employee_leave_core_record_missing"
-      );
-    }
-
-    if (existingCoreLeave) {
-      const coreStatus =
-        cleanText(
-          existingCoreLeave.status
-        ).toLowerCase();
-
-      if (
-        coreStatus === "approved" ||
-        coreStatus === "pending"
-      ) {
-        await CoreHrService.decideLeave(
-          existingCoreLeave.id,
-          "rejected",
-          hrNote ||
-            "إلغاء طلب الإجازة"
-        );
-      } else if (
-        coreStatus !== "rejected"
-      ) {
-        throw new Error(
-          `employee_leave_core_invalid_status:${coreStatus}`
-        );
-      }
-    }
-
-    await reviewLeaveRequest({
-      requestId,
-      status: "cancelled",
-      reviewerUid,
-      reviewerName,
-    });
-
-    if (existingCoreLeave) {
-      await syncRequestMirror(
-        requestId,
-        {
-          coreLeaveId:
-            existingCoreLeave.id,
-          hrNote:
-            hrNote || undefined,
-        }
-      );
-    }
-
-    return {
-      requestId,
-      coreLeave:
-        existingCoreLeave,
-    };
+  const coreLeave = await findOperationalLeave(current).catch(() => null);
+  if (coreLeave && cleanText(coreLeave.status).toLowerCase() === "approved") {
+    throw new Error("employee_leave_core_cancellation_missing");
   }
 
-
-  // =====================================================
-  // REJECT
-  //
-  // Usually no Core leave exists yet.
-  // If a previous partial/retried approval created one,
-  // reject/reverse Core first before changing the mirror.
-  // =====================================================
-
-  if (existingCoreLeave) {
-    const coreStatus =
-      cleanText(
-        existingCoreLeave.status
-      ).toLowerCase();
-
-    if (
-      coreStatus === "pending" ||
-      coreStatus === "approved"
-    ) {
-      await CoreHrService.decideLeave(
-        existingCoreLeave.id,
-        "rejected",
-        hrNote ||
-          "رفض طلب الإجازة"
-      );
-    } else if (
-      coreStatus !== "rejected"
-    ) {
-      throw new Error(
-        `employee_leave_core_invalid_status:${coreStatus}`
-      );
-    }
-  }
-
-  await reviewLeaveRequest({
-    requestId,
-    status: "rejected",
-    reviewerUid,
-    reviewerName,
-  });
-
-  if (existingCoreLeave) {
-    await syncRequestMirror(
-      requestId,
-      {
-        coreLeaveId:
-          existingCoreLeave.id,
-        hrNote:
-          hrNote || undefined,
-      }
-    );
-  }
-
-  return {
-    requestId,
-    coreLeave:
-      existingCoreLeave,
-  };
+  return { requestId, request: current, coreLeave };
 }

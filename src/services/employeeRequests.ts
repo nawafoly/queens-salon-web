@@ -111,6 +111,8 @@ const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
     "لا يمكن بدء تنفيذ الطلب قبل اعتماده. حدّث الطلب وتأكد أن حالته «تمت الموافقة» ثم أعد المحاولة.",
   "core_employee_request:leave_overlap":
     "تعذر تنفيذ الإجازة لأن هناك إجازة معتمدة أخرى تتداخل مع نفس الفترة.",
+  "core_employee_request:leave_effect_missing":
+    "تعذر إلغاء الإجازة المنفذة لأن السجل التشغيلي المرتبط بها غير موجود. لم يتم إغلاق الطلب لحماية الرصيد والسجل المالي.",
   "core_employee_request:insufficient_leave_balance":
     "تعذر تنفيذ الإجازة السنوية لأن رصيد الإجازات المتاح لا يغطي عدد الأيام المطلوبة.",
   "core_employee_request:execution_not_ready":
@@ -129,6 +131,8 @@ const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
   "core_employee_request:employee_salary_required": "لا يمكن حساب التعويض لأن الراتب الأساسي غير مسجل في ملف الموظفة داخل Core.",
   "core_employee_request:insufficient_annual_leave_balance": "رصيد الإجازة السنوية لا يغطي عدد الأيام المطلوب تعويضها. لم يتم تنفيذ أي صرف أو خصم.",
   "core_employee_request:payroll_entry_required": "لا يوجد مسير راتب مفتوح وقابل للتعديل للشهر المحدد. أنشئ أو افتح المسير أولًا ثم أعد التنفيذ.",
+  "core_employee_request:salary_advance_payroll_locked": "لا يمكن جدولة السلفة على شهر راتبه معتمد أو مدفوع. اختر شهر استقطاع مفتوحًا.",
+  "core_employee_request:execution_reference_missing": "تعذر إكمال التنفيذ لأن المرجع التشغيلي الأساسي لم يُسجل. أعد المحاولة بعد مراجعة السجل.",
   "core_employee_request:financial_payment_acknowledgement_required": "يجب الموافقة على الإقرار قبل إرسال طلب الصرف المالي.",
   "core_employee_request:financial_payment_signature_required": "يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.",
 };
@@ -155,7 +159,7 @@ export const EMPLOYEE_REQUEST_TYPE_LABELS: Record<EmployeeRequestType, string> =
   attendance_correction: "طلب تصحيح حضور",
   permission: "طلب استئذان",
   overtime: "طلب أوفرتايم",
-  salary_advance: "صرف معجل للراتب",
+  salary_advance: "طلب سلفة",
   exceptional_financial_payment: "طلب تعويض مالي بدل إجازة",
   leave: "طلب إجازة",
   exit_return: "طلب خروج وعودة",
@@ -211,6 +215,7 @@ export const EMPLOYEE_REQUEST_EVENT_LABELS: Record<string, string> = {
   execution_waiting: "التنفيذ بانتظار خطوة لاحقة",
   execution_completed: "اكتمل تنفيذ الطلب",
   execution_failed: "تعذر تنفيذ الطلب",
+  execution_reversed: "تم إلغاء التنفيذ واسترجاع أثره",
   actual_exit_recorded: "تم تسجيل الخروج الفعلي",
   actual_return_recorded: "تم تسجيل العودة الفعلية",
   comment_added: "أضيفت رسالة",
@@ -227,6 +232,12 @@ function makeIdempotencyKey(prefix: string) {
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}:${random}`;
+}
+
+function makeRequestActionIdempotencyKey(id: string, action: string, body: Record<string, unknown>) {
+  const version = Number(body.version);
+  const versionToken = Number.isInteger(version) && version >= 0 ? `v${version}` : "unversioned";
+  return `employee-request-action:${id}:${action}:${versionToken}`;
 }
 
 function isSignatureDataUrl(value: unknown) {
@@ -308,6 +319,24 @@ export async function createEmployeeRequest(input: {
   });
 }
 
+export async function createManagedEmployeeRequest(input: {
+  employeeId: string;
+  employeeUid?: string;
+  employeeName?: string;
+  requestType: EmployeeRequestType;
+  payload: Record<string, unknown>;
+  priority?: "low" | "normal" | "high" | "urgent";
+  title?: string;
+}) {
+  return coreApiRequest<EmployeeRequest>("/api/core/hr/employee-requests", {
+    method: "POST",
+    body: {
+      ...input,
+      idempotencyKey: makeIdempotencyKey(`managed-employee-request:${input.requestType}:${input.employeeId}`),
+    },
+  });
+}
+
 export async function employeeRequestAction(
   id: string,
   action:
@@ -332,7 +361,7 @@ export async function employeeRequestAction(
       method: "POST",
       body: {
         ...body,
-        idempotencyKey: makeIdempotencyKey(`employee-request-action:${id}:${action}`),
+        idempotencyKey: makeRequestActionIdempotencyKey(id, action, body),
       },
     }
   );

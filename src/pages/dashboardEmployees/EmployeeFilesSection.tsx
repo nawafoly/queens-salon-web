@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { serverTimestamp, updateDoc } from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createEmployeeFileRecord,
-  listEmployeeFilesByEmployee,
-  markEmployeeFileRead,
-  markEmployeeFilesRead,
-  type EmployeeFile,
-} from "../../services/employeeHub";
-import { hrDoc } from "../../services/hrCollections";
+  createCoreEmployeeFile,
+  downloadCoreEmployeeFile,
+  listCoreEmployeeFiles,
+  markCoreEmployeeFileRead,
+  openCoreEmployeeFile,
+  updateCoreEmployeeFileStatus,
+  type CoreEmployeeFile,
+} from "../../services/employeeFilesCore";
 import {
   DashboardDatePickerV2,
   DashboardFieldV2,
@@ -36,6 +36,8 @@ type EmployeeFilesSectionProps = {
 type FileCategory = "all" | "identity" | "contract" | "certificate" | "other";
 type ViewState = "ready" | "loading" | "empty" | "error";
 
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
 function cleanText(value: unknown) {
   return String(value || "").trim();
 }
@@ -47,16 +49,6 @@ function toMillis(value: unknown) {
   if (typeof value === "string") {
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : 0;
-  }
-  if (typeof value === "object") {
-    const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
-    if (typeof maybe.toMillis === "function") {
-      const ms = maybe.toMillis();
-      return Number.isFinite(ms) ? ms : 0;
-    }
-    if (typeof maybe.seconds === "number") {
-      return maybe.seconds * 1000 + Math.floor((maybe.nanoseconds || 0) / 1_000_000);
-    }
   }
   return 0;
 }
@@ -80,7 +72,7 @@ function formatDate(value: unknown) {
   }).format(new Date(ms));
 }
 
-function categoryOf(file: EmployeeFile): FileCategory {
+function categoryOf(file: CoreEmployeeFile): FileCategory {
   const text = `${cleanText(file.fileType)} ${cleanText(file.title)} ${cleanText(file.fileName)} ${cleanText(file.notes)}`.toLowerCase();
   if (/identity|id|هوية|اقامة|إقامة|بطاقة/.test(text)) return "identity";
   if (/contract|عقد|اتفاق/.test(text)) return "contract";
@@ -96,38 +88,37 @@ function categoryLabel(category: FileCategory) {
   return "كل المستندات";
 }
 
-function statusMeta(file: EmployeeFile): { label: string; tone: "default" | "gold" | "success" | "danger"; note: string } {
+function statusMeta(file: CoreEmployeeFile): { label: string; tone: "default" | "gold" | "success" | "danger"; note: string } {
   const status = cleanText(file.status || "active").toLowerCase();
-  const expiry = cleanText((file as any).expiresAt || (file as any).expiryDate || (file as any).expiresOn || "");
+  const expiryMatch = cleanText(file.notes).match(/تاريخ الانتهاء:\s*(\d{4}-\d{2}-\d{2})/);
+  const expiry = expiryMatch?.[1] || "";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   if (status === "archived" || status === "replaced") {
     return { label: status === "archived" ? "محذوف" : "مستبدل", tone: "danger", note: "-" };
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+  if (expiry) {
     const expiresAt = new Date(`${expiry}T00:00:00`);
     const diffDays = Math.ceil((expiresAt.getTime() - today.getTime()) / 86400000);
     if (diffDays < 0) return { label: "منتهي", tone: "danger", note: "-" };
     if (diffDays <= 45) return { label: "قريب الانتهاء", tone: "gold", note: `يحتاج تجديد خلال ${diffDays} يومًا` };
   }
+  if (status === "read") return { label: "مقروء", tone: "success", note: "-" };
   return { label: "ساري", tone: "success", note: "-" };
 }
 
-function fileUrl(file: EmployeeFile) {
-  return cleanText(file.storageUrl || (file as any).fileUrl || (file as any).viewUrl || "");
+function expiryOf(file: CoreEmployeeFile) {
+  return cleanText(file.notes).match(/تاريخ الانتهاء:\s*(\d{4}-\d{2}-\d{2})/)?.[1] || "";
 }
 
 export default function EmployeeFilesSection({
   isVisible,
   employeeId,
-  employeeUid,
   employeeName,
-  viewerUid,
-  viewerName,
   canManage,
 }: EmployeeFilesSectionProps) {
-  const [rows, setRows] = useState<EmployeeFile[]>([]);
+  const [rows, setRows] = useState<CoreEmployeeFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -135,34 +126,30 @@ export default function EmployeeFilesSection({
   const [category, setCategory] = useState<FileCategory>("all");
   const [dragging, setDragging] = useState(false);
   const [title, setTitle] = useState("");
-  const [storageUrl, setStorageUrl] = useState("");
-  const [fileName, setFileName] = useState("");
   const [notes, setNotes] = useState("");
   const [documentType, setDocumentType] = useState<FileCategory>("certificate");
   const [expiryDate, setExpiryDate] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [replacementId, setReplacementId] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const targetEmployeeUid = cleanText(employeeUid || employeeId);
-  const targetEmployeeId = cleanText(employeeId || employeeUid);
+  const targetEmployeeId = cleanText(employeeId);
 
   const load = useCallback(async () => {
     if (!isVisible || !targetEmployeeId) return;
     setLoading(true);
     setError("");
     try {
-      const files = await listEmployeeFilesByEmployee({
-        employeeUid: targetEmployeeUid,
-        employeeId: targetEmployeeId,
-        limitCount: 120,
-      });
-      setRows(files);
+      const files = await listCoreEmployeeFiles(500);
+      setRows(files.filter((file) => cleanText(file.employeeId) === targetEmployeeId));
     } catch (err) {
-      console.warn("employee files load failed", err);
+      console.warn("employee core files load failed", err);
       setRows([]);
-      setError("تعذر تحميل ملفات الموظفة.");
+      setError("تعذر تحميل ملفات الموظفة من Core.");
     } finally {
       setLoading(false);
     }
-  }, [isVisible, targetEmployeeId, targetEmployeeUid]);
+  }, [isVisible, targetEmployeeId]);
 
   useEffect(() => {
     void load();
@@ -195,14 +182,40 @@ export default function EmployeeFilesSection({
         ? "ready"
         : "empty";
 
+  const acceptFile = (file?: File | null) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      setError("حجم الملف أكبر من 10 ميجابايت.");
+      return;
+    }
+    setError("");
+    setSelectedFile(file);
+    if (!cleanText(title)) setTitle(file.name.replace(/\.[^.]+$/, ""));
+    setMessage(`تم اختيار الملف: ${file.name}`);
+  };
+
+  const resetForm = () => {
+    setTitle("");
+    setNotes("");
+    setExpiryDate("");
+    setDocumentType("certificate");
+    setSelectedFile(null);
+    setReplacementId("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const createFile = async () => {
     if (!canManage || saving) return;
     if (!cleanText(title)) {
       setError("اكتب اسم المستند قبل الحفظ.");
       return;
     }
-    if (!targetEmployeeUid && !targetEmployeeId) {
+    if (!targetEmployeeId) {
       setError("تعذر تحديد الموظفة لإضافة الملف.");
+      return;
+    }
+    if (!selectedFile) {
+      setError("اختر الملف من الجهاز قبل الحفظ.");
       return;
     }
     setSaving(true);
@@ -211,109 +224,84 @@ export default function EmployeeFilesSection({
     try {
       const categoryName = categoryLabel(documentType);
       const noteParts = [notes, expiryDate ? `تاريخ الانتهاء: ${expiryDate}` : "", `تصنيف: ${categoryName}`].filter(Boolean);
-      await createEmployeeFileRecord({
-        employeeUid: targetEmployeeUid || targetEmployeeId,
-        employeeId: targetEmployeeId || undefined,
+      await createCoreEmployeeFile({
+        employeeId: targetEmployeeId,
         direction: "outbound",
-        title,
-        fileName,
-        storageUrl,
+        title: cleanText(title),
         notes: noteParts.join(" | "),
         status: "active",
-        createdByUid: viewerUid,
-        createdByName: viewerName || "الإدارة",
+        file: selectedFile,
+        replacesFileId: cleanText(replacementId) || undefined,
       });
-      setTitle("");
-      setStorageUrl("");
-      setFileName("");
-      setNotes("");
-      setExpiryDate("");
-      setDocumentType("certificate");
-      setMessage("تم رفع بيانات المستند للموظفة.");
+      resetForm();
+      setMessage(replacementId ? "تم رفع النسخة الجديدة وربطها بالمستند السابق." : "تم رفع المستند إلى Core D1 / R2.");
       await load();
     } catch (err) {
-      console.warn("employee file create failed", err);
-      setError("تعذر إضافة الملف.");
+      console.warn("employee core file create failed", err);
+      setError("تعذر رفع الملف إلى Core/R2.");
     } finally {
       setSaving(false);
     }
   };
 
-  const markOneRead = async (file: EmployeeFile) => {
-    const reader = cleanText(viewerUid);
-    if (!reader) {
-      setError("تعذر تحديد المستخدم لتسجيل القراءة.");
-      return;
-    }
+  const markOneRead = async (file: CoreEmployeeFile) => {
     setSaving(true);
     setError("");
-    setMessage("");
     try {
-      await markEmployeeFileRead({ fileId: file.id, readerUid: reader });
-      setMessage("تم تسجيل الملف كمقروء.");
+      await markCoreEmployeeFileRead(file.id);
+      setMessage("تم تسجيل حالة الملف كمقروءة في Core.");
       await load();
     } catch (err) {
-      console.warn("employee file read failed", err);
-      setError("تعذر تسجيل قراءة الملف.");
+      console.warn("employee core file read failed", err);
+      setError("تعذر تسجيل حالة القراءة.");
     } finally {
       setSaving(false);
     }
   };
 
   const markAllRead = async () => {
-    const reader = cleanText(viewerUid);
-    if (!reader) {
-      setError("تعذر تحديد المستخدم لتسجيل القراءة.");
-      return;
-    }
+    const activeRows = rows.filter((row) => !["archived", "replaced", "read"].includes(cleanText(row.status).toLowerCase()));
+    if (!activeRows.length) return;
     setSaving(true);
     setError("");
-    setMessage("");
     try {
-      await markEmployeeFilesRead({
-        employeeUid: targetEmployeeUid,
-        employeeId: targetEmployeeId,
-        readerUid: reader,
-      });
-      setMessage("تم تسجيل كل ملفات الموظفة كمقروءة.");
+      await Promise.all(activeRows.map((file) => markCoreEmployeeFileRead(file.id)));
+      setMessage("تم تسجيل الملفات النشطة كمقروءة في Core.");
       await load();
     } catch (err) {
-      console.warn("employee files mark all read failed", err);
-      setError("تعذر تحديث قراءة الملفات.");
+      console.warn("employee core files mark all read failed", err);
+      setError("تعذر تحديث حالات قراءة الملفات.");
     } finally {
       setSaving(false);
     }
   };
 
-  const archiveFile = async (file: EmployeeFile) => {
+  const archiveFile = async (file: CoreEmployeeFile) => {
     if (!canManage || saving) return;
-    const ok = confirm(`حذف ${file.title}؟\nسيتم أرشفته من قائمة مستندات الموظفة مع بقاء السجل محفوظًا.`);
+    const ok = confirm(`حذف ${file.title}؟\nسيتم أرشفته من القائمة النشطة مع بقاء السجل في Core.`);
     if (!ok) return;
     setSaving(true);
     setError("");
-    setMessage("");
     try {
-      await updateDoc(hrDoc("employeeFiles", file.id), {
-        status: "archived",
-        updatedAt: serverTimestamp(),
-      } as any);
-      setMessage("تم حذف المستند من القائمة النشطة.");
+      await updateCoreEmployeeFileStatus(file.id, "archived");
+      setMessage("تم أرشفة المستند في Core.");
       await load();
     } catch (err) {
-      console.warn("employee file archive failed", err);
-      setError("تعذر حذف المستند.");
+      console.warn("employee core file archive failed", err);
+      setError("تعذر أرشفة المستند.");
     } finally {
       setSaving(false);
     }
   };
 
-  const prefillReplacement = (file: EmployeeFile) => {
+  const prefillReplacement = (file: CoreEmployeeFile) => {
     setTitle(file.title ? `${file.title} - نسخة محدثة` : "نسخة مستند محدثة");
-    setFileName(file.fileName || "");
-    setStorageUrl("");
     setNotes(`استبدال للمستند: ${file.title}`);
     setDocumentType(categoryOf(file));
     setExpiryDate("");
+    setSelectedFile(null);
+    setReplacementId(file.id);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -323,8 +311,8 @@ export default function EmployeeFilesSection({
     <div className="dsv2-ew-tab-panel dsv2-ew-files-live">
       <WorkspaceTabHeaderV2
         title="الملفات"
-        description="تصنيف ورفع وسحب وإفلات ومعاينة وتنزيل واستبدال وحذف، مع حالات الصلاحية والفراغ والخطأ."
-        badge={<WorkspaceStatusBadgeV2 tone={counts.expiring ? "gold" : "success"}>{counts.expiring ? "ملف قريب الانتهاء" : "جاهزة"}</WorkspaceStatusBadgeV2>}
+        description="مستندات الموظفة محفوظة ببياناتها في Core D1 ومحتواها الثنائي في R2 مع تنزيل ومعاينة مصادق عليهما."
+        badge={<WorkspaceStatusBadgeV2 tone={counts.expiring ? "gold" : "success"}>{counts.expiring ? "ملف قريب الانتهاء" : "Core / R2"}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
@@ -355,7 +343,13 @@ export default function EmployeeFilesSection({
           </nav>
         </WorkspaceCardV2>
 
-        <WorkspaceCardV2 title="رفع ملف" description="السحب والإفلات أو اختيار ملف من الجهاز." className="dsv2-ew-file-uploader">
+        <WorkspaceCardV2 title="رفع ملف" description="السحب والإفلات أو اختيار ملف من الجهاز — حتى 10 ميجابايت." className="dsv2-ew-file-uploader">
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            onChange={(event) => acceptFile(event.target.files?.[0])}
+          />
           <button
             type="button"
             className="dsv2-ew-dropzone"
@@ -366,23 +360,23 @@ export default function EmployeeFilesSection({
             onDrop={(event) => {
               event.preventDefault();
               setDragging(false);
-              setMessage("تم استقبال السحب. أدخل رابط التخزين أو اسم الملف ثم احفظ السجل.");
+              acceptFile(event.dataTransfer.files?.[0]);
             }}
             onDragOver={(event) => event.preventDefault()}
-            onClick={() => setMessage("أدخل بيانات المستند في النموذج بالأسفل ثم اضغط حفظ التغييرات.")}
+            onClick={() => fileInputRef.current?.click()}
           >
             <span className="dsv2-ew-dropzone__icon">↑</span>
-            <strong>{dragging ? "أفلِت الملف هنا" : "اسحب الملف وأفلته هنا"}</strong>
-            <small>أو اضغط لاختيار ملف — حتى 10 ميجابايت</small>
+            <strong>{selectedFile ? selectedFile.name : dragging ? "أفلِت الملف هنا" : "اسحب الملف وأفلته هنا"}</strong>
+            <small>{selectedFile ? `${Math.ceil(selectedFile.size / 1024)} KB` : "أو اضغط لاختيار ملف"}</small>
           </button>
-          <button type="button" className="dsv2-btn dsv2-btn--accent" disabled={!canManage || saving} onClick={() => void createFile()}>رفع مستند جديد</button>
+          <button type="button" className="dsv2-btn dsv2-btn--accent" disabled={!canManage || saving || !selectedFile} onClick={() => void createFile()}>{replacementId ? "رفع النسخة البديلة" : "رفع مستند جديد"}</button>
         </WorkspaceCardV2>
       </div>
 
       <WorkspaceCardV2
         title="قائمة المستندات"
-        description="حقول انتهاء وملاحظات وإجراءات كاملة لكل مستند."
-        actions={<div className="dsv2-cluster"><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()} disabled={loading}>تحديث</button><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void markAllRead()} disabled={!viewerUid || saving || !rows.length}>تعليم الكل كمقروء</button></div>}
+        description="الفتح والتنزيل يمران عبر Core Files API بمصادقة كاملة ولا يتم استخدام روابط تخزين مباشرة."
+        actions={<div className="dsv2-cluster"><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()} disabled={loading}>تحديث</button><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void markAllRead()} disabled={saving || !rows.length}>تعليم الكل كمقروء</button></div>}
       >
         <div className="dsv2-ew-form-grid">
           <DashboardFieldV2 id="dsv2-ew-file-category-live" label="التصنيف">
@@ -407,20 +401,19 @@ export default function EmployeeFilesSection({
             emptyText="لا توجد مستندات في هذا التصنيف."
             rows={filteredRows.map((file) => {
               const meta = statusMeta(file);
-              const url = fileUrl(file);
               return [
                 <strong>{file.title || file.fileName || file.id}</strong>,
                 categoryLabel(categoryOf(file)),
                 formatDate(file.createdAt),
-                formatDate((file as any).expiresAt || (file as any).expiryDate || (file as any).expiresOn),
+                formatDate(expiryOf(file)),
                 meta.note !== "-" ? meta.note : file.notes || "-",
                 <WorkspaceStatusBadgeV2 tone={meta.tone}>{meta.label}</WorkspaceStatusBadgeV2>,
                 <div className="dsv2-ew-file-actions">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>معاينة</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>تنزيل</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void openCoreEmployeeFile(file.id, file.fileName || file.title)}>معاينة</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void downloadCoreEmployeeFile(file.id, file.fileName || file.title)}>تنزيل</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!canManage || saving} onClick={() => prefillReplacement(file)}>استبدال</button>
                   <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || saving} onClick={() => void archiveFile(file)}>حذف</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!viewerUid || saving} onClick={() => void markOneRead(file)}>مقروء</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={saving || file.status === "read"} onClick={() => void markOneRead(file)}>مقروء</button>
                 </div>,
               ];
             })}
@@ -439,7 +432,7 @@ export default function EmployeeFilesSection({
         ) : (
           <WorkspaceNoticeV2
             title="تعذر تحميل الملفات"
-            description="تعذر الوصول إلى مساحة التخزين. أعد المحاولة دون تغيير الملفات الحالية."
+            description="تعذر الوصول إلى Core/R2. لم يتم استخدام أي Firestore fallback."
             tone="danger"
             action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
           />
@@ -447,9 +440,9 @@ export default function EmployeeFilesSection({
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
-        title="بيانات مستند"
-        description="حقول الاسم والنوع والانتهاء والملاحظات باستخدام مكونات V2."
-        actions={<button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => void createFile()} disabled={!canManage || saving}>حفظ التغييرات</button>}
+        title={replacementId ? "بيانات النسخة البديلة" : "بيانات مستند"}
+        description="بيانات المستند تحفظ في D1 والملف نفسه يرفع إلى R2."
+        actions={<button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => void createFile()} disabled={!canManage || saving || !selectedFile}>حفظ ورفع</button>}
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2 id="dsv2-ew-document-name-live" label="اسم المستند">
@@ -472,11 +465,8 @@ export default function EmployeeFilesSection({
           <DashboardFieldV2 id="dsv2-ew-document-expiry-live" label="تاريخ الانتهاء">
             <DashboardDatePickerV2 id="dsv2-ew-document-expiry-live" value={expiryDate} disabled={!canManage || saving} onChange={setExpiryDate} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="dsv2-ew-document-url-live" label="رابط الملف">
-            <input id="dsv2-ew-document-url-live" className="dsv2-input" value={storageUrl} disabled={!canManage || saving} onChange={(event) => setStorageUrl(event.target.value)} placeholder="https://..." dir="ltr" />
-          </DashboardFieldV2>
-          <DashboardFieldV2 id="dsv2-ew-document-file-name-live" label="اسم الملف">
-            <input id="dsv2-ew-document-file-name-live" className="dsv2-input" value={fileName} disabled={!canManage || saving} onChange={(event) => setFileName(event.target.value)} placeholder="document.pdf" dir="ltr" />
+          <DashboardFieldV2 id="dsv2-ew-document-file-name-live" label="الملف المختار">
+            <input id="dsv2-ew-document-file-name-live" className="dsv2-input" value={selectedFile?.name || ""} readOnly placeholder="اختر ملفًا من منطقة الرفع" dir="ltr" />
           </DashboardFieldV2>
           <DashboardFieldV2 id="dsv2-ew-document-note-live" label="الملاحظات">
             <input id="dsv2-ew-document-note-live" className="dsv2-input" value={notes} disabled={!canManage || saving} onChange={(event) => setNotes(event.target.value)} placeholder="يلزم التجديد قبل انتهاء الصلاحية" />

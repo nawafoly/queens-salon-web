@@ -6,6 +6,13 @@
   "observability": {
     "enabled": true
   },
+  "services": [
+    {
+      "binding": "MALIKAT_CORE_PARTNER",
+      "service": "queens-salon-core-api",
+      "entrypoint": "PartnerSchedulingEntrypoint"
+    }
+  ],
   "vars": {
     "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
     "BOOTSTRAP_ADMIN_EMAILS": "nawafaaa0@gmail.com,nawafaaa6@gmail.com",

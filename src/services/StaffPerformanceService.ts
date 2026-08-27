@@ -1,4 +1,5 @@
 ﻿import { CoreBookingService } from "./CoreBookingService";
+import { CoreHrService } from "./CoreHrService";
 import { CoreStaffService } from "./CoreStaffService";
 import {
   fetchAttendanceRecordsFromWorker,
@@ -6,10 +7,12 @@ import {
 } from "./attendanceWorkerService";
 import {
   calculateAttendanceDisciplineDay,
-  normalizeAttendanceTimeHHMM,
   riyadhDateKeyFromTimestamp,
   summarizeAttendanceDisciplineMonth,
 } from "../helpers/hr/attendanceDiscipline";
+import {
+  resolveAttendanceShiftForDate,
+} from "../helpers/hr/attendanceShiftResolver";
 import {
   calculateStaffPerformance,
   type StaffPerformanceAttendanceSnapshot,
@@ -19,16 +22,9 @@ import {
   type StaffPerformanceResult,
 } from "../helpers/hr/staffPerformance";
 import type { CoreBooking, CoreBookingItem, CoreStaff } from "../types/coreApi";
-import type { StaffPublicWithId } from "./firestoreStaffPublic";
+import type { CoreResolvedShift } from "../types/hrCoreApi";
 
-const DEFAULT_SHIFT_START = "10:00";
-const DEFAULT_SHIFT_END = "22:00";
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-
-type StaffPerformanceEmployeeSource = StaffPerformanceEmployeeInput & {
-  customWorkingHours?: StaffPublicWithId["customWorkingHours"];
-  useCustomWorkingHours?: boolean;
-};
+type StaffPerformanceEmployeeSource = StaffPerformanceEmployeeInput;
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -46,24 +42,7 @@ function dateInRange(date: string, fromDate: string, toDate: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= fromDate && date <= toDate;
 }
 
-function weekdayKey(date: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!match) return "sun";
-  const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return WEEKDAY_KEYS[value.getUTCDay()] || "sun";
-}
-
 function staffToPerformanceEmployee(staff: CoreStaff): StaffPerformanceEmployeeSource {
-  const schedules: StaffPerformanceEmployeeSource["customWorkingHours"] = {};
-  for (const schedule of staff.schedules || []) {
-    const key = WEEKDAY_KEYS[Number(schedule.weekday || 0)] || "sun";
-    schedules[key] = {
-      enabled: schedule.active,
-      start: schedule.startTime || DEFAULT_SHIFT_START,
-      end: schedule.endTime || DEFAULT_SHIFT_END,
-    };
-  }
-
   return {
     id: staff.id,
     name: staff.name || staff.id,
@@ -73,8 +52,6 @@ function staffToPerformanceEmployee(staff: CoreStaff): StaffPerformanceEmployeeS
     linkedUid: staff.firebaseUid || "",
     employeeUid: staff.firebaseUid || "",
     specialties: staff.specialties || [],
-    customWorkingHours: schedules,
-    useCustomWorkingHours: Boolean(Object.keys(schedules).length),
   };
 }
 
@@ -125,22 +102,12 @@ function recordMatchesEmployee(record: AttendanceWorkerRecord, employee: StaffPe
   return aliases.has(text(record.employeeDocId)) || aliases.has(text(record.employeeUid));
 }
 
-function resolveSchedule(employee: StaffPerformanceEmployeeSource, date: string) {
-  const key = weekdayKey(date);
-  const day = employee.useCustomWorkingHours ? employee.customWorkingHours?.[key] : undefined;
-  if (day?.enabled === false) {
-    return { enabled: false, start: DEFAULT_SHIFT_START, end: DEFAULT_SHIFT_END };
-  }
-  return {
-    enabled: true,
-    start: normalizeAttendanceTimeHHMM(day?.start) || DEFAULT_SHIFT_START,
-    end: normalizeAttendanceTimeHHMM(day?.end) || DEFAULT_SHIFT_END,
-  };
-}
+
 
 function summarizeAttendanceForEmployee(
   employee: StaffPerformanceEmployeeSource,
-  records: AttendanceWorkerRecord[]
+  records: AttendanceWorkerRecord[],
+  resolvedShiftsByDate: Map<string, CoreResolvedShift>
 ): StaffPerformanceAttendanceSnapshot {
   const recordsByDate = new Map<string, AttendanceWorkerRecord[]>();
 
@@ -152,20 +119,62 @@ function summarizeAttendanceForEmployee(
     recordsByDate.get(riyadhDate)!.push(record);
   }
 
-  const days = Array.from(recordsByDate.entries()).map(([date, dayRecords]) => {
+  let coreScheduleUnavailable = false;
+
+  const days = Array.from(recordsByDate.entries()).flatMap(([date, dayRecords]) => {
     const sorted = [...dayRecords].sort((left, right) => Date.parse(left.serverTime) - Date.parse(right.serverTime));
     const firstCheckIn = sorted.find((record) => record.type === "check_in");
     const lastCheckOut = [...sorted].reverse().find((record) => record.type === "check_out");
-    const schedule = resolveSchedule(employee, date);
-    return calculateAttendanceDisciplineDay({
-      date,
-      scheduledStart: schedule.start,
-      scheduledEnd: schedule.end,
-      isScheduledWorkDay: schedule.enabled,
-      checkInAt: firstCheckIn?.serverTime,
-      checkOutAt: lastCheckOut?.serverTime,
-    });
+
+    const shiftResolution =
+      resolveAttendanceShiftForDate({
+        dateKey: date,
+        coreResolvedShift:
+          resolvedShiftsByDate.get(date) ||
+          null,
+      });
+
+    if (shiftResolution.source === "core_unavailable") {
+      coreScheduleUnavailable = true;
+      return [];
+    }
+
+    return [
+      calculateAttendanceDisciplineDay({
+        date,
+        scheduledStart:
+          shiftResolution.startTime,
+        scheduledEnd:
+          shiftResolution.endTime,
+        lateGraceMinutes:
+          shiftResolution.lateGraceMinutes,
+        isScheduledWorkDay:
+          !shiftResolution.isOff,
+        checkInAt:
+          firstCheckIn?.serverTime,
+        checkOutAt:
+          lastCheckOut?.serverTime,
+      }),
+    ];
   });
+
+  if (coreScheduleUnavailable) {
+    return {
+      totalScheduledHours: 0,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: 0,
+      incompleteDays: 0,
+      available: false,
+      commitmentPercent: null,
+      note: "تعذر تحميل الدوام المعتمد من Malikat Core لبعض أيام الحضور",
+    };
+  }
 
   if (!days.length) {
     return {
@@ -226,8 +235,75 @@ async function loadAttendanceByEmployee(
     cursor = nextCursor;
   } while (cursor);
 
+  const resolvedShiftBatch =
+    await CoreHrService.resolveEmployeeShiftsRange({
+      employeeIds:
+        employees.map(
+          (employee) =>
+            employee.id
+        ),
+      dateFrom: fromDate,
+      dateTo: toDate,
+    });
+
+  const resolvedShiftsByEmployee =
+    new Map<
+      string,
+      Map<string, CoreResolvedShift>
+    >();
+
+  for (const row of resolvedShiftBatch.rows) {
+    const employeeId =
+      text(
+        row.employeeId ||
+        row.employee_id
+      );
+
+    const date =
+      text(
+        row.date
+      );
+
+    if (!employeeId || !date) {
+      continue;
+    }
+
+    if (
+      !resolvedShiftsByEmployee.has(
+        employeeId
+      )
+    ) {
+      resolvedShiftsByEmployee.set(
+        employeeId,
+        new Map()
+      );
+    }
+
+    resolvedShiftsByEmployee
+      .get(employeeId)!
+      .set(
+        date,
+        row
+      );
+  }
+
   return Object.fromEntries(
-    employees.map((employee) => [employee.id, summarizeAttendanceForEmployee(employee, records)])
+    employees.map(
+      (employee) => [
+        employee.id,
+        summarizeAttendanceForEmployee(
+          employee,
+          records,
+          resolvedShiftsByEmployee.get(
+            employee.id
+          ) ||
+            new Map<
+              string,
+              CoreResolvedShift
+            >()
+        ),
+      ]
+    )
   );
 }
 
@@ -270,8 +346,8 @@ export const StaffPerformanceService = {
     try {
       attendanceByEmployeeId = await loadAttendanceByEmployee(employees, fromDate, toDate);
     } catch (error) {
-      console.warn("[staff-performance] attendance read failed", error);
-      warnings.push("تعذر تحميل بيانات الحضور، لذلك يظهر الالتزام كغير متوفر.");
+      console.warn("[staff-performance] attendance/Core scheduling read failed", error);
+      warnings.push("تعذر تحميل بيانات الحضور أو الدوام المعتمد من Malikat Core، لذلك يظهر الالتزام كغير متوفر.");
     }
 
     return calculateStaffPerformance({

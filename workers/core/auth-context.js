@@ -73,7 +73,7 @@ export async function getAuthContext(request, env, options = {}) {
     throw new AppError(403, 'ACCOUNT_NOT_PROVISIONED');
   }
 
-  assertAccountCanAuthenticate(account);
+  if (!options.allowBlockedAccount) assertAccountCanAuthenticate(account);
 
   const [permissions, employeeLink] = await Promise.all([
     getEffectivePermissions(db, salonId, account),

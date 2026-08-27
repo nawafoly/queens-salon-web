@@ -7,47 +7,11 @@ import {
   type ShiftSchedule,
 } from "./attendanceCalculations.ts";
 import { permissionIntervalsFromRequests, type PermissionIntervalInput } from "./permissionAttendance.ts";
-import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "./staffScheduleHistory.ts";
 import type { CoreResolvedShift } from "../../types/hrCoreApi.ts";
 
-type AttendanceWorkingDay = {
-  enabled?: boolean;
-  shiftTemplateId?: string;
-  shiftName?: string;
-  start?: string;
-  end?: string;
-};
-
-export type AttendanceScheduleInput = ShiftSchedule & {
-  start?: string | null;
-  end?: string | null;
-  workStartTime?: string | null;
-  workEndTime?: string | null;
-  shiftStartTime?: string | null;
-  shiftEndTime?: string | null;
-  offDays?: unknown;
-  weeklyOffDay?: unknown;
-  exceptionalLeaveWeekdays?: unknown;
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Record<string, AttendanceWorkingDay> | null;
-  customWorkingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workingScheduleVersions?: Array<{
-    id?: string;
-    effectiveFrom?: string;
-    effectiveTo?: string;
-    useCustomWorkingHours?: boolean;
-    customWorkingHours?: Record<string, AttendanceWorkingDay>;
-  }> | null;
-};
-
 export type AttendanceShiftResolutionSource =
-  | "attendance_resolved_shift"
   | "core_resolved_shift"
-  | "historical_schedule"
-  | "profile_schedule"
-  | "default_fallback";
+  | "core_unavailable";
 
 export type AttendanceShiftResolution = {
   dateKey: string;
@@ -78,17 +42,6 @@ export type ResolvedAttendanceDay = {
   schedule: ShiftSchedule;
   computation: AttendanceDayComputation;
   status: AttendanceStatus;
-};
-
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
-  sun: "sunday",
-  mon: "monday",
-  tue: "tuesday",
-  wed: "wednesday",
-  thu: "thursday",
-  fri: "friday",
-  sat: "saturday",
 };
 
 function cleanText(value: unknown) {
@@ -153,21 +106,6 @@ export function attendanceMonthDateKeys(monthKey: string) {
   return Array.from({ length: lastDay }, (_, index) => `${normalized}-${String(index + 1).padStart(2, "0")}`);
 }
 
-function weekdayKeyForDate(dateKey: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) return "sun";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
-}
-
-function weeklyOffKeyForDate(dateKey: string) {
-  return WEEKDAY_TO_OFF_KEY[weekdayKeyForDate(dateKey)];
-}
-
-function uniqueTexts(values: unknown[]) {
-  return Array.from(new Set(values.map(cleanText).filter(Boolean)));
-}
-
 function parseJsonObject(value: unknown) {
   const raw = cleanText(value);
   if (!raw) return {};
@@ -177,25 +115,6 @@ function parseJsonObject(value: unknown) {
   } catch {
     return {};
   }
-}
-
-function getDayOverride(dateKey: string, input?: Record<string, unknown> | null) {
-  const source = input || {};
-  const candidates = [
-    source.customWorkingHourOverrides,
-    source.workingHourOverrides,
-    source.workHourOverrides,
-  ];
-  for (const value of candidates) {
-    const overrides = Array.isArray(value) ? value : [];
-    const match = overrides.find((override) => normalizeAttendanceDateKey((override as Record<string, unknown>).date) === dateKey);
-    if (match) return match as Record<string, unknown>;
-  }
-  return null;
-}
-
-export function isAttendanceDateSpecificOff(dateKey: string, input?: AttendanceScheduleInput | null) {
-  return getDayOverride(dateKey, input || {})?.enabled === false;
 }
 
 function sourceDocOf(row?: Record<string, unknown> | null) {
@@ -295,11 +214,11 @@ export function attendanceResolvedShiftWindow(row?: CoreResolvedShift | null) {
     cleanAttendanceTime((row as Record<string, unknown>).end_time) ||
     cleanAttendanceTime(snapshot.endTime) ||
     cleanAttendanceTime(snapshot.end_time);
-  if (!startTime && !endTime) return null;
+  if (!startTime || !endTime) return null;
 
   return {
-    startTime: startTime || "09:00",
-    endTime: endTime || "17:00",
+    startTime,
+    endTime,
     lateGraceMinutes: readPolicyMinutes(
       (row as Record<string, unknown>).lateGraceMinutes,
       (row as Record<string, unknown>).late_grace_minutes,
@@ -356,7 +275,6 @@ function scheduleFromResolvedShift(dateKey: string, row: CoreResolvedShift | nul
   if (!row || !window) return null;
   const exceptionType = cleanText((row as Record<string, unknown>).exceptionType || (row as Record<string, unknown>).exception_type).toLowerCase();
   const active = readActiveState((row as Record<string, unknown>).active);
-  const weeklyOffDay = weeklyOffKeyForDate(dateKey);
   if (window.isOff) {
     return {
       schedule: {
@@ -366,7 +284,7 @@ function scheduleFromResolvedShift(dateKey: string, row: CoreResolvedShift | nul
         earlyLeaveGraceMinutes: 0,
         attendanceLockEnabled: false,
         attendanceLockAfterMinutes: 0,
-        weeklyOffDays: [weeklyOffDay],
+        weeklyOffDays: [],
       },
       startTime: "",
       endTime: "",
@@ -392,135 +310,6 @@ function scheduleFromResolvedShift(dateKey: string, row: CoreResolvedShift | nul
     lateGraceMinutes: window.lateGraceMinutes,
     exceptionType,
     active,
-    isOff: false,
-  };
-}
-
-function fallbackScheduleResolution(dateKey: string, input?: AttendanceScheduleInput | null) {
-  const profile = (input || {}) as AttendanceScheduleInput & Record<string, unknown>;
-  const historicalVersion = resolveStaffScheduleVersionForDate(profile.workingScheduleVersions, dateKey);
-  const effectiveSource: AttendanceScheduleInput & Record<string, unknown> = historicalVersion
-    ? {
-        ...profile,
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      } as AttendanceScheduleInput & Record<string, unknown>
-    : profile;
-  const weekdayKey = weekdayKeyForDate(dateKey);
-  const fullWeekdayKey = WEEKDAY_TO_OFF_KEY[weekdayKey];
-  const useCustomWorkingHours = historicalVersion
-    ? historicalVersion.useCustomWorkingHours
-    : effectiveSource.useCustomWorkingHours === true;
-  const customHours = (effectiveSource.customWorkingHours || {}) as Record<string, AttendanceWorkingDay>;
-  const customDay = useCustomWorkingHours
-    ? customHours[weekdayKey] || customHours[fullWeekdayKey]
-    : undefined;
-  const override = getDayOverride(dateKey, profile);
-  const customOffDays = useCustomWorkingHours
-    ? Object.entries(customHours)
-        .filter(([, day]) => day?.enabled === false)
-        .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY] || key)
-        .filter(Boolean)
-    : [];
-  const explicitOffDays = historicalVersion
-    ? weeklyOffDaysFromScheduleSnapshot({
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      })
-    : [
-        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-      ];
-  const weeklyOffDays = uniqueTexts([...explicitOffDays, ...customOffDays]);
-  const overrideReopensDay = override?.enabled === true;
-  const effectiveWeeklyOffDays = overrideReopensDay
-    ? weeklyOffDays.filter((value) => {
-        const token = cleanText(value).toLowerCase();
-        return token !== weekdayKey && token !== fullWeekdayKey;
-      })
-    : weeklyOffDays;
-  const offByDate = override?.enabled === false || (!overrideReopensDay && customDay?.enabled === false);
-  const finalWeeklyOffDays = offByDate ? uniqueTexts([...effectiveWeeklyOffDays, fullWeekdayKey]) : effectiveWeeklyOffDays;
-  const source = historicalVersion
-    ? "historical_schedule"
-    : cleanAttendanceTime(override?.start) ||
-      cleanAttendanceTime(customDay?.start) ||
-      cleanAttendanceTime(effectiveSource.startTime) ||
-      cleanAttendanceTime(effectiveSource.start) ||
-      cleanAttendanceTime(effectiveSource.workStartTime) ||
-      cleanAttendanceTime(effectiveSource.shiftStartTime) ||
-      finalWeeklyOffDays.length
-        ? "profile_schedule"
-        : "default_fallback";
-  const sourceLabel = source === "historical_schedule"
-    ? "جدول تاريخي"
-    : source === "profile_schedule"
-      ? "جدول الموظفة"
-      : "دوام افتراضي";
-  const sourceDoc = historicalVersion?.id || "";
-  const shiftName = cleanText(customDay?.shiftName || (customDay as Record<string, unknown> | undefined)?.shift_name) || sourceLabel;
-  const lateGraceMinutes = readPolicyMinutes(effectiveSource.lateGraceMinutes, effectiveSource.late_grace_minutes) || 0;
-
-  if (offByDate) {
-    return {
-      source,
-      sourceLabel,
-      sourceDetail: source === "historical_schedule" ? "workingScheduleVersions" : "profile",
-      sourceDoc,
-      shiftName: "يوم راحة",
-      schedule: {
-        startTime: "",
-        endTime: "",
-        lateGraceMinutes,
-        earlyLeaveGraceMinutes: 0,
-        attendanceLockEnabled: false,
-        attendanceLockAfterMinutes: 0,
-        weeklyOffDays: finalWeeklyOffDays,
-      } satisfies ShiftSchedule,
-      startTime: "",
-      endTime: "",
-      lateGraceMinutes,
-      isOff: true,
-    };
-  }
-
-  const startTime =
-    cleanAttendanceTime(override?.start) ||
-    cleanAttendanceTime(customDay?.start) ||
-    cleanAttendanceTime(effectiveSource.startTime) ||
-    cleanAttendanceTime(effectiveSource.start) ||
-    cleanAttendanceTime(effectiveSource.workStartTime) ||
-    cleanAttendanceTime(effectiveSource.shiftStartTime) ||
-    "09:00";
-  const endTime =
-    cleanAttendanceTime(override?.end) ||
-    cleanAttendanceTime(customDay?.end) ||
-    cleanAttendanceTime(effectiveSource.endTime) ||
-    cleanAttendanceTime(effectiveSource.end) ||
-    cleanAttendanceTime(effectiveSource.workEndTime) ||
-    cleanAttendanceTime(effectiveSource.shiftEndTime) ||
-    "17:00";
-
-  return {
-    source,
-    sourceLabel,
-    sourceDetail: source === "historical_schedule" ? "workingScheduleVersions" : source === "profile_schedule" ? "profile" : "default",
-    sourceDoc,
-    shiftName,
-    schedule: {
-      startTime,
-      endTime,
-      lateGraceMinutes,
-      earlyLeaveGraceMinutes: 0,
-      attendanceLockEnabled: readPolicyFlag(effectiveSource.attendanceLockEnabled, effectiveSource.attendance_lock_enabled),
-      attendanceLockAfterMinutes: readPolicyMinutes(effectiveSource.attendanceLockAfterMinutes, effectiveSource.attendance_lock_after_minutes) || 0,
-      weeklyOffDays: finalWeeklyOffDays,
-    } satisfies ShiftSchedule,
-    startTime,
-    endTime,
-    lateGraceMinutes,
     isOff: false,
   };
 }
@@ -574,80 +363,125 @@ function buildResolution(input: {
 export function resolveAttendanceShiftForDate(input: {
   dateKey: string;
   row?: Record<string, unknown> | null;
-  schedule?: AttendanceScheduleInput | null;
   coreResolvedShift?: CoreResolvedShift | null;
   calculationTime?: string;
 }): AttendanceShiftResolution {
-  const dateKey = normalizeAttendanceDateKey(input.dateKey);
-  const recordResolvedShift = attendanceResolvedShiftFromRow(input.row);
-  const coreResolvedShift = input.coreResolvedShift || null;
-  const recordSchedule = scheduleFromResolvedShift(dateKey, recordResolvedShift);
-  if (recordSchedule) {
-    return buildResolution({
-      dateKey,
-      source: "attendance_resolved_shift",
-      sourceLabel: attendanceResolvedShiftSourceLabel(recordResolvedShift),
-      sourceDetail: "resolvedShift في سجل البصمة",
-      sourceType: sourceTypeOf(recordResolvedShift) || "attendance_record",
-      sourceDoc: sourceDocOf(recordResolvedShift),
-      shiftName: attendanceResolvedShiftName(recordResolvedShift),
-      schedule: recordSchedule.schedule,
-      startTime: recordSchedule.startTime,
-      endTime: recordSchedule.endTime,
-      lateGraceMinutes: recordSchedule.lateGraceMinutes,
-      exceptionType: recordSchedule.exceptionType,
-      active: recordSchedule.active,
-      coreResolvedShift,
-      recordResolvedShift,
-      fallbackUsed: false,
-      isOff: recordSchedule.isOff,
-      calculationTime: input.calculationTime,
-    });
-  }
+  const dateKey =
+    normalizeAttendanceDateKey(
+      input.dateKey
+    );
 
-  const coreSchedule = scheduleFromResolvedShift(dateKey, coreResolvedShift);
+  /*
+   * Audit metadata only.
+   * A shift snapshot stored on an attendance record
+   * must never become the operational schedule.
+   */
+  const recordResolvedShift =
+    attendanceResolvedShiftFromRow(
+      input.row
+    );
+
+  const coreResolvedShift =
+    input.coreResolvedShift || null;
+
+  const coreSchedule =
+    scheduleFromResolvedShift(
+      dateKey,
+      coreResolvedShift
+    );
+
   if (coreSchedule) {
     return buildResolution({
       dateKey,
-      source: "core_resolved_shift",
-      sourceLabel: attendanceResolvedShiftSourceLabel(coreResolvedShift),
-      sourceDetail: "CoreHrService.resolveEmployeeShift",
-      sourceType: sourceTypeOf(coreResolvedShift) || cleanText(coreResolvedShift?.source) || "core",
-      sourceDoc: sourceDocOf(coreResolvedShift),
-      shiftName: attendanceResolvedShiftName(coreResolvedShift),
-      schedule: coreSchedule.schedule,
-      startTime: coreSchedule.startTime,
-      endTime: coreSchedule.endTime,
-      lateGraceMinutes: coreSchedule.lateGraceMinutes,
-      exceptionType: coreSchedule.exceptionType,
-      active: coreSchedule.active,
+      source:
+        "core_resolved_shift",
+      sourceLabel:
+        attendanceResolvedShiftSourceLabel(
+          coreResolvedShift
+        ),
+      sourceDetail:
+        "CoreHrService.resolveEmployeeShift",
+      sourceType:
+        sourceTypeOf(
+          coreResolvedShift
+        ) ||
+        cleanText(
+          coreResolvedShift?.source
+        ) ||
+        "core",
+      sourceDoc:
+        sourceDocOf(
+          coreResolvedShift
+        ),
+      shiftName:
+        attendanceResolvedShiftName(
+          coreResolvedShift
+        ),
+      schedule:
+        coreSchedule.schedule,
+      startTime:
+        coreSchedule.startTime,
+      endTime:
+        coreSchedule.endTime,
+      lateGraceMinutes:
+        coreSchedule.lateGraceMinutes,
+      exceptionType:
+        coreSchedule.exceptionType,
+      active:
+        coreSchedule.active,
       coreResolvedShift,
       recordResolvedShift,
       fallbackUsed: false,
-      isOff: coreSchedule.isOff,
-      calculationTime: input.calculationTime,
+      fallbackSource: "",
+      isOff:
+        coreSchedule.isOff,
+      calculationTime:
+        input.calculationTime,
     });
   }
 
-  const fallback = fallbackScheduleResolution(dateKey, input.schedule);
+  /*
+   * Fail closed.
+   * Missing/incomplete Core data is NOT interpreted as:
+   * - attendance record snapshot
+   * - historical schedule
+   * - employee profile schedule
+   * - default 09:00-17:00
+   */
   return buildResolution({
     dateKey,
-    source: fallback.source as AttendanceShiftResolutionSource,
-    sourceLabel: fallback.sourceLabel,
-    sourceDetail: fallback.sourceDetail,
-    sourceType: fallback.sourceDetail,
-    sourceDoc: fallback.sourceDoc,
-    shiftName: fallback.shiftName,
-    schedule: fallback.schedule,
-    startTime: fallback.startTime,
-    endTime: fallback.endTime,
-    lateGraceMinutes: fallback.lateGraceMinutes,
+    source:
+      "core_unavailable",
+    sourceLabel:
+      "\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d",
+    sourceDetail:
+      "Core resolved shift missing or incomplete",
+    sourceType:
+      "core_unavailable",
+    sourceDoc: "",
+    shiftName:
+      "\u063a\u064a\u0631 \u0645\u062a\u0627\u062d",
+    schedule: {
+      startTime: "",
+      endTime: "",
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+      attendanceLockEnabled: false,
+      attendanceLockAfterMinutes: 0,
+      weeklyOffDays: [],
+    },
+    startTime: "",
+    endTime: "",
+    lateGraceMinutes: 0,
+    exceptionType: "",
+    active: null,
     coreResolvedShift,
     recordResolvedShift,
-    fallbackUsed: true,
-    fallbackSource: fallback.sourceLabel,
-    isOff: fallback.isOff,
-    calculationTime: input.calculationTime,
+    fallbackUsed: false,
+    fallbackSource: "",
+    isOff: false,
+    calculationTime:
+      input.calculationTime,
   });
 }
 
@@ -710,7 +544,6 @@ export function computeResolvedAttendanceDay(input: {
   dateKey: string;
   row?: Record<string, unknown> | null;
   records?: AttendanceRecord[];
-  schedule?: AttendanceScheduleInput | null;
   coreResolvedShift?: CoreResolvedShift | null;
   permissionIntervals?: PermissionIntervalInput[];
   permissionEntries?: unknown[];
@@ -719,37 +552,89 @@ export function computeResolvedAttendanceDay(input: {
   absenceDateKeys?: Set<string> | Iterable<string>;
   calculationTime?: string;
 }): ResolvedAttendanceDay {
-  const dateKey = normalizeAttendanceDateKey(input.dateKey);
-  const records = input.records || recordsFromAttendanceRow(input.row);
-  const shiftResolution = resolveAttendanceShiftForDate({
-    dateKey,
-    row: input.row,
-    schedule: input.schedule,
-    coreResolvedShift: input.coreResolvedShift,
-    calculationTime: input.calculationTime,
-  });
-  const permissionIntervals = input.permissionIntervals ||
-    (input.permissionEntries ? permissionIntervalsFromRequests(input.permissionEntries as Array<Record<string, unknown>>, dateKey) : undefined);
-  const computation = computeAttendanceDay(
-    dateKey,
-    records,
-    shiftResolution.schedule,
-    permissionIntervals
-  );
-  const status = getAttendanceDayStatus({
-    date: dateKey,
-    hasAttendance: records.length > 0,
-    checkOut: computation.checkOut,
-    computation,
-    todayDateKey: input.todayDateKey || riyadhTodayDateKey(),
-    weeklyOffDays: shiftResolution.schedule.weeklyOffDays,
-    approvedLeaveDateKeys: input.approvedLeaveDateKeys,
-    holidayDateKeys: shiftResolution.isOff || isAttendanceDateSpecificOff(dateKey, input.schedule) ? [dateKey] : [],
-    absenceDateKeys: input.absenceDateKeys,
-  });
+  const dateKey =
+    normalizeAttendanceDateKey(
+      input.dateKey
+    );
+
+  const records =
+    input.records ||
+    recordsFromAttendanceRow(
+      input.row
+    );
+
+  const shiftResolution =
+    resolveAttendanceShiftForDate({
+      dateKey,
+      row: input.row,
+      coreResolvedShift:
+        input.coreResolvedShift,
+      calculationTime:
+        input.calculationTime,
+    });
+
+  const permissionIntervals =
+    input.permissionIntervals ||
+    (
+      input.permissionEntries
+        ? permissionIntervalsFromRequests(
+            input.permissionEntries as
+              Array<Record<string, unknown>>,
+            dateKey
+          )
+        : undefined
+    );
+
+  const computation =
+    computeAttendanceDay(
+      dateKey,
+      records,
+      shiftResolution.schedule,
+      permissionIntervals
+    );
+
+  const resolvedStatus =
+    getAttendanceDayStatus({
+      date: dateKey,
+      hasAttendance:
+        records.length > 0,
+      checkOut:
+        computation.checkOut,
+      computation,
+      todayDateKey:
+        input.todayDateKey ||
+        riyadhTodayDateKey(),
+      weeklyOffDays:
+        shiftResolution.schedule.weeklyOffDays,
+      approvedLeaveDateKeys:
+        input.approvedLeaveDateKeys,
+      holidayDateKeys:
+        shiftResolution.isOff
+          ? [dateKey]
+          : [],
+      absenceDateKeys:
+        input.absenceDateKeys,
+    });
+
+  /*
+   * Leave and explicit absence are independent canonical facts.
+   * Missing scheduling must never erase them.
+   *
+   * For every other status, missing/incomplete Core scheduling
+   * fails closed as schedule_unavailable.
+   */
+  const status: AttendanceStatus =
+    shiftResolution.source ===
+      "core_unavailable" &&
+    resolvedStatus !== "leave" &&
+    resolvedStatus !== "absent"
+      ? "schedule_unavailable"
+      : resolvedStatus;
+
   return {
     shiftResolution,
-    schedule: shiftResolution.schedule,
+    schedule:
+      shiftResolution.schedule,
     computation,
     status,
   };

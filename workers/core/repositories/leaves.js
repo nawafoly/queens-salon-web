@@ -465,45 +465,6 @@ async function approveWithoutBalance(
     },
   ];
 
-  if (
-    cleanText(
-      leave.duration_kind
-    ).toLowerCase() !== 'partial'
-  ) {
-    statements.push({
-      sql: `
-        UPDATE staff
-           SET leave_start_date = ?,
-               leave_end_date = ?,
-               leave_note = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leaves current_leave
-              WHERE current_leave.salon_id = ?
-                AND current_leave.id = ?
-                AND current_leave.status = 'approved'
-           )
-      `,
-      params: [
-        leave.start_date,
-        leave.end_date,
-        optionalText(
-          decision.hrNote ||
-            decision.hr_note ||
-            leave.employee_note
-        ) || null,
-        now,
-        salonId,
-        leave.employee_id,
-        salonId,
-        leave.id,
-      ],
-    });
-  }
-
   const results = await dbBatch(
     db,
     statements
@@ -728,43 +689,6 @@ async function approveWithBalance(
     },
   ];
 
-  if (
-    cleanText(
-      leave.duration_kind
-    ).toLowerCase() !== 'partial'
-  ) {
-    statements.push({
-      sql: `
-        UPDATE staff
-           SET leave_start_date = ?,
-               leave_end_date = ?,
-               leave_note = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leaves approved_leave
-              WHERE approved_leave.salon_id = ?
-                AND approved_leave.id = ?
-                AND approved_leave.status = 'approved'
-                AND approved_leave.balance_adjustment_id = ?
-           )
-      `,
-      params: [
-        leave.start_date,
-        leave.end_date,
-        note,
-        now,
-        salonId,
-        leave.employee_id,
-        salonId,
-        leave.id,
-        adjustmentId,
-      ],
-    });
-  }
-
   const results = await dbBatch(
     db,
     statements
@@ -942,33 +866,6 @@ async function rejectApprovedWithoutBalance(
       ],
     },
   ];
-
-  if (
-    cleanText(
-      leave.duration_kind
-    ).toLowerCase() !== 'partial'
-  ) {
-    statements.push({
-      sql: `
-        UPDATE staff
-           SET leave_start_date = NULL,
-               leave_end_date = NULL,
-               leave_note = NULL,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND leave_start_date = ?
-           AND leave_end_date = ?
-      `,
-      params: [
-        now,
-        salonId,
-        leave.employee_id,
-        leave.start_date,
-        leave.end_date,
-      ],
-    });
-  }
 
   const results = await dbBatch(
     db,
@@ -1311,42 +1208,6 @@ async function rejectApprovedWithBalance(
       ],
     },
   ];
-
-  if (
-    cleanText(
-      leave.duration_kind
-    ).toLowerCase() !== 'partial'
-  ) {
-    statements.push({
-      sql: `
-        UPDATE staff
-           SET leave_start_date = NULL,
-               leave_end_date = NULL,
-               leave_note = NULL,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND leave_start_date = ?
-           AND leave_end_date = ?
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leaves rejected_leave
-              WHERE rejected_leave.salon_id = ?
-                AND rejected_leave.id = ?
-                AND rejected_leave.status = 'rejected'
-           )
-      `,
-      params: [
-        now,
-        salonId,
-        leave.employee_id,
-        leave.start_date,
-        leave.end_date,
-        salonId,
-        leave.id,
-      ],
-    });
-  }
 
   const results = await dbBatch(
     db,

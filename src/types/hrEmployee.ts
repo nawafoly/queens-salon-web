@@ -4,8 +4,6 @@ export const EMPLOYEE_FILE_CATEGORY = "employee_file" as const;
 export const EMPLOYEE_MESSAGES_COLLECTION = "employee_messages" as const;
 export const EMPLOYEE_NOTIFICATIONS_COLLECTION = "notifications" as const;
 export const EMPLOYEE_ABSENCES_COLLECTION = "employee_absences" as const;
-export const EMPLOYEE_PAYROLL_RECORDS_COLLECTION =
-  "employee_payroll_records" as const;
 export const EMPLOYEE_DEFAULT_FILE_TYPE = "general" as const;
 export const EMPLOYEE_FILE_STATUS_ACTIVE = "active" as const;
 export const EMPLOYEE_FILE_STATUS_REPLACED = "replaced" as const;
@@ -253,60 +251,6 @@ export type EmployeeAbsenceDoc = {
   createdByUid: string;
 };
 
-export type EmployeePayrollRecordDoc = {
-  employeeId: string;
-  employeeUid: string;
-  payrollMonth: string;
-  monthStart: string;
-  monthEnd: string;
-  calculationStartDate?: string | null;
-  calculationEndDate?: string | null;
-  baseSalary: number;
-  housingAllowance?: number | null;
-  transportationAllowance?: number | null;
-  otherAllowances?: number | null;
-  allowances?: number | null;
-  absenceDays: number;
-  absenceDeduction: number;
-  expectedWorkHours?: number | null;
-  actualWorkedHours?: number | null;
-  attendanceLateHours?: number | null;
-  attendanceMissingHours?: number | null;
-  attendanceOvertimeHours?: number | null;
-  attendanceCompleteDays?: number | null;
-  attendanceIncompleteDays?: number | null;
-  attendanceAbsentDays?: number | null;
-  attendanceAbsenceDeduction?: number | null;
-  scheduleSnapshot?: EmployeeWorkScheduleDoc | null;
-  delayDeduction?: number | null;
-  overtimeBonus?: number | null;
-  insuranceDeduction?: number | null;
-  salaryDeductions?: Array<{
-    id?: string;
-    title?: string;
-    amount?: number;
-  }> | null;
-  totalSalaryDeductions?: number | null;
-  absenceEntries?: Array<{
-    date: string;
-    type: EmployeeAbsenceType;
-    note?: string | null;
-  }> | null;
-  finalSalary: number;
-  mudadDocument?: {
-    id?: string | null;
-    fileName?: string | null;
-    filePath?: string | null;
-    fileUrl?: string | null;
-    contentType?: string | null;
-    fileSize?: number | null;
-    uploadedAt?: unknown;
-    uploadedBy?: string | null;
-  } | null;
-  createdAt?: unknown;
-  createdByUid?: string | null;
-  createdByEmail?: string | null;
-};
 
 export type EmployeeLeaveRequestStatus = "pending" | "approved" | "rejected";
 

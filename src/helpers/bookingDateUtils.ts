@@ -1,4 +1,3 @@
-import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
 export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 export type DateCalendar = "gregory" | "hijri";
 type BookingHourOverrideMode = "hours" | "closed";
@@ -344,63 +343,6 @@ export function formatBookingDateForView(dateISO: string, mode: BookingCalendarV
     month: "long",
     day: "numeric",
   }).format(d);
-}
-
-export function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
-  const target = normalizeIsoDate(dateISO) || todayISO();
-  const exceptionalDates = Array.isArray(staff?.exceptionalLeaveDates)
-    ? staff.exceptionalLeaveDates.map((d: any) => normalizeIsoDate(d)).filter(Boolean)
-    : [];
-  if (exceptionalDates.includes(target)) {
-    return { isOnLeave: true, leaveUntil: "", label: "إجازة في هذا اليوم" };
-  }
-
-  const dayKey = resolveWeekdayFromISO(target);
-  const historicalVersion = resolveStaffScheduleVersionForDate(staff?.workingScheduleVersions, target);
-  if (dayKey && historicalVersion) {
-    const historicalDay = historicalVersion.useCustomWorkingHours
-      ? (historicalVersion.customWorkingHours || {})[dayKey]
-      : undefined;
-    if (historicalDay?.enabled === false) {
-      return {
-        isOnLeave: true,
-        leaveUntil: "",
-        label: `إجازة أسبوعية من جدول فعلي: ${WEEKDAY_LABEL_AR[dayKey]}`,
-      };
-    }
-  }
-
-  const exceptionalWeekdays = !historicalVersion && Array.isArray(staff?.exceptionalLeaveWeekdays)
-    ? staff.exceptionalLeaveWeekdays
-        .map((d: any) => String(d || "").trim().toLowerCase())
-        .filter(Boolean)
-    : [];
-  if (dayKey && exceptionalWeekdays.includes(dayKey)) {
-    return {
-      isOnLeave: true,
-      leaveUntil: "",
-      label: `إجازة كل ${WEEKDAY_LABEL_AR[dayKey]}`,
-    };
-  }
-
-  const onLeave = !!staff?.onLeave;
-  const leaveFrom = normalizeIsoDate(staff?.leaveStartDate || staff?.leaveFrom || staff?.leaveFromDate);
-  const leaveUntil = normalizeIsoDate(staff?.leaveUntil);
-  if (!onLeave) {
-    return { isOnLeave: false, leaveUntil: "", label: "" };
-  }
-
-  const isOnLeave = (!leaveFrom || leaveFrom <= target) && (!leaveUntil || target <= leaveUntil);
-  if (!isOnLeave) {
-    return { isOnLeave: false, leaveUntil, label: "" };
-  }
-
-  const untilLabel = formatISODateAr(leaveUntil);
-  return {
-    isOnLeave: true,
-    leaveUntil,
-    label: untilLabel ? `في إجازة حتى ${untilLabel}` : "في إجازة",
-  };
 }
 
 export function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {

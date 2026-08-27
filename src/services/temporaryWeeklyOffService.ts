@@ -1,9 +1,8 @@
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-
-import { db } from "./firebase";
 import { CoreHrService } from "./CoreHrService";
 
 export const TEMP_WEEKLY_OFF_PREFIX = "[TEMP_WEEKLY_OFF:";
+export const TEMP_WEEKLY_OFF_SYNC_EVENT =
+  "queens:temporary-weekly-off-updated";
 
 export type TemporaryWeeklyOffOverride = {
   date: string;
@@ -27,10 +26,8 @@ type SaveTemporaryWeeklyOffInput = {
 type RemoveTemporaryWeeklyOffInput = {
   employeeId: string;
   token: string;
-  nextOverrides: TemporaryWeeklyOffOverride[];
 };
 
-const SALON_ID = "main";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -62,17 +59,6 @@ function toCoreRows(rows: unknown[]) {
   return rows.map((row) => row as Record<string, unknown>);
 }
 
-async function saveProfileOverrides(employeeId: string, overrides: TemporaryWeeklyOffOverride[]) {
-  await setDoc(
-    doc(db, "salons", SALON_ID, "staff_public", employeeId),
-    {
-      customWorkingHourOverrides: overrides,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
 async function cancelCoreExceptions(rows: Array<Record<string, unknown>>) {
   for (const row of rows) {
     const id = cleanText(row.id);
@@ -101,6 +87,27 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
 
   const affectedDates = new Set(input.affectedDates.filter(isDateKey));
   if (!affectedDates.size) throw new Error("لا توجد أيام مطابقة داخل الفترة المختارة.");
+
+  const overrideByDate = new Map(
+    (Array.isArray(input.nextOverrides)
+      ? input.nextOverrides
+      : []
+    )
+      .filter(
+        (row) =>
+          isDateKey(
+            row?.date
+          )
+      )
+      .map(
+        (row) => [
+          cleanText(
+            row.date
+          ),
+          row,
+        ]
+      )
+  );
 
   const existing = toCoreRows(await CoreHrService.listScheduleExceptions({ employeeId }));
   const conflicts = existing.filter((row) =>
@@ -137,7 +144,13 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
         enabled: true,
         startTime: null,
         endTime: null,
-        note: `${input.token} TEMP_OFF`,
+        note:
+          cleanText(
+            overrideByDate
+              .get(date)
+              ?.note
+          ) ||
+          `${input.token} TEMP_OFF`,
         status: "approved",
       });
       if (saved?.id) createdIds.push(saved.id);
@@ -152,7 +165,13 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
         enabled: true,
         startTime: input.workStart,
         endTime: input.workEnd,
-        note: `${input.token} TEMP_WORK`,
+        note:
+          cleanText(
+            overrideByDate
+              .get(date)
+              ?.note
+          ) ||
+          `${input.token} TEMP_WORK`,
         status: "approved",
       });
       if (saved?.id) createdIds.push(saved.id);
@@ -172,14 +191,6 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
 
   await cancelCoreExceptions(previousTemporary);
 
-  try {
-    await saveProfileOverrides(employeeId, input.nextOverrides);
-  } catch (error) {
-    // Core remains the operational source of truth. Surface the compatibility
-    // mirror failure instead of hiding it so the admin can retry the save.
-    throw new Error(`تم حفظ التغيير في Core لكن تعذرت مزامنة ملف الموظفة: ${cleanText((error as Error)?.message) || "خطأ غير معروف"}`);
-  }
-
   return {
     employeeId,
     createdCoreExceptions: createdIds.length,
@@ -197,7 +208,6 @@ export async function removeTemporaryWeeklyOff(input: RemoveTemporaryWeeklyOffIn
   );
 
   await cancelCoreExceptions(matching);
-  await saveProfileOverrides(employeeId, input.nextOverrides);
 
   return {
     employeeId,

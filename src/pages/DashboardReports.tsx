@@ -13,21 +13,20 @@ import {
   generatePayrollEntriesForMonths,
   type PayrollEntryView,
 } from "../services/CorePayrollService";
-import { CoreSettingsService } from "../services/CoreSettingsService";
 import { listCoreBookings } from "../services/firestoreBookings";
-import { listAllIncomeCore } from "../services/firestoreIncome";
-import { listAllExpensesCore } from "../services/firestoreExpenses";
+import { listAllIncomeCore } from "../services/CoreIncomeService";
+import { listAllExpensesCore } from "../services/CoreExpenseService";
 import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";
 import type { PaymentMethod } from "../types/finance";
 import { financePaymentMethodLabel, formatFinanceNote } from "../helpers/financeDisplay";
 import {
-  buildPayrollExpenseRowsForMonths,
   PAYROLL_CLOSE_DAY,
   payrollCycleKeyFromDate,
   payrollCycleRangeForMonthKey,
-  type BookingPayrollSource,
-  type StaffPayrollSource,
-} from "../helpers/staffPayroll";
+} from "../helpers/hr/payrollCycle";
+import {
+  projectCorePayrollEntriesToFinancialRows,
+} from "../helpers/corePayrollFinancialRows";
 
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -393,209 +392,6 @@ function monthRangeFromKey(monthKey: string) {
   return { from: toIsoDate(start), to: toIsoDate(end) };
 }
 
-const WEEKDAY_KEY_BY_NUMBER = {
-  0: "sun",
-  1: "mon",
-  2: "tue",
-  3: "wed",
-  4: "thu",
-  5: "fri",
-  6: "sat",
-} as const;
-
-function readRecordValue(record: Record<string, any>, ...keys: string[]) {
-  for (const key of keys) {
-    if (record[key] !== undefined && record[key] !== null) return record[key];
-  }
-  return undefined;
-}
-
-function normalizeCoreStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
-  return (Array.isArray(rows) ? rows : [])
-    .map((employee) => {
-      const id = String(employee?.id || "").trim();
-      if (!id) return null;
-
-      const employment =
-        employee?.employment && typeof employee.employment === "object"
-          ? (employee.employment as Record<string, any>)
-          : {};
-      const schedules = Array.isArray(employee?.schedules)
-        ? employee.schedules
-        : [];
-
-      const customWorkingHours: Record<
-        string,
-        { enabled: boolean; start: string; end: string }
-      > = {};
-      schedules.forEach((schedule: any) => {
-        if (schedule?.active === false) return;
-        const weekday = Number(schedule?.weekday);
-        const key =
-          WEEKDAY_KEY_BY_NUMBER[
-            weekday as keyof typeof WEEKDAY_KEY_BY_NUMBER
-          ];
-        if (!key) return;
-        const start = String(
-          schedule?.startTime || schedule?.start_time || ""
-        ).trim();
-        const end = String(
-          schedule?.endTime || schedule?.end_time || ""
-        ).trim();
-        if (!start || !end) return;
-        customWorkingHours[key] = { enabled: true, start, end };
-      });
-
-      const profileStatus = String(employee?.status || "")
-        .trim()
-        .toLowerCase();
-      const employmentStatus = String(
-        readRecordValue(
-          employment,
-          "employmentStatus",
-          "employment_status",
-          "status"
-        ) || ""
-      )
-        .trim()
-        .toLowerCase();
-      const inactiveStatuses = new Set([
-        "inactive",
-        "terminated",
-        "deleted",
-        "archived",
-        "resigned",
-      ]);
-
-      const baseSalaryHalalas = Number(
-        readRecordValue(
-          employment,
-          "baseSalaryHalalas",
-          "base_salary_halalas"
-        ) || 0
-      );
-      const monthlySalary = Number.isFinite(baseSalaryHalalas)
-        ? Math.max(0, baseSalaryHalalas / 100)
-        : 0;
-
-      return {
-        id,
-        name: String(employee?.name || "").trim() || id,
-        active:
-          !inactiveStatuses.has(profileStatus) &&
-          !inactiveStatuses.has(employmentStatus),
-        employmentEndDate:
-          String(
-            readRecordValue(
-              employment,
-              "employmentEndDate",
-              "employment_end_date",
-              "endDate",
-              "end_date"
-            ) || ""
-          ).trim() || undefined,
-        useCustomWorkingHours: Object.keys(customWorkingHours).length > 0,
-        customWorkingHours,
-        customWorkingHourOverrides: [],
-        monthlySalary,
-        overtimeMethod:
-          String(
-            readRecordValue(
-              employment,
-              "overtimeMethod",
-              "overtime_method"
-            ) || ""
-          ).trim() === "invoice_percentage"
-            ? "invoice_percentage"
-            : "hours_from_salary",
-        overtimeDaysPerMonth:
-          Number(
-            readRecordValue(
-              employment,
-              "overtimeDaysPerMonth",
-              "overtime_days_per_month",
-              "expectedWorkDays",
-              "expected_work_days"
-            ) ?? 30
-          ) || 30,
-        overtimeBaseHoursPerDay:
-          Number(
-            readRecordValue(
-              employment,
-              "overtimeBaseHoursPerDay",
-              "overtime_base_hours_per_day"
-            ) ?? 8
-          ) || 8,
-        overtimeSeasonBaseHoursPerDay:
-          Number(
-            readRecordValue(
-              employment,
-              "overtimeSeasonBaseHoursPerDay",
-              "overtime_season_base_hours_per_day"
-            ) ?? 6
-          ) || 6,
-        autoSeasonOvertimeBasis:
-          readRecordValue(
-            employment,
-            "autoSeasonOvertimeBasis",
-            "auto_season_overtime_basis"
-          ) === true ||
-          Number(
-            readRecordValue(
-              employment,
-              "autoSeasonOvertimeBasis",
-              "auto_season_overtime_basis"
-            )
-          ) === 1,
-        overtimeHoursBasis:
-          String(
-            readRecordValue(
-              employment,
-              "overtimeHoursBasis",
-              "overtime_hours_basis"
-            ) || ""
-          ).trim() === "season"
-            ? "season"
-            : "regular",
-        overtimePercent:
-          Number(
-            readRecordValue(
-              employment,
-              "overtimePercent",
-              "overtime_percent"
-            ) ?? 0
-          ) || 0,
-        overtimeInvoicePercent:
-          Number(
-            readRecordValue(
-              employment,
-              "overtimeInvoicePercent",
-              "overtime_invoice_percent"
-            ) ?? 0
-          ) || 0,
-      } as StaffPayrollSource;
-    })
-    .filter(Boolean) as StaffPayrollSource[];
-}
-
-function normalizeBookingPayrollRows(rows: BookingRow[]): BookingPayrollSource[] {
-  return (Array.isArray(rows) ? rows : [])
-    .map((x) => {
-      const date = String(x?.date || "").trim();
-      if (!isIsoDate(date)) return null;
-      return {
-        date,
-        status: String(x?.status || "").trim().toLowerCase(),
-        amount: Math.max(0, Number(x?.amount || 0)),
-        employeeId: String(x?.employeeId || "").trim() || null,
-        employeeUid: String(x?.employeeUid || "").trim() || null,
-        employeeKey: String(x?.employeeKey || "").trim() || null,
-        employeeName: String(x?.employeeName || "").trim() || null,
-      } as BookingPayrollSource;
-    })
-    .filter(Boolean) as BookingPayrollSource[];
-}
-
 function getRange(period: PeriodKey, customFrom: string, customTo: string, selectedMonth: string) {
   const now = new Date();
   const today = toIsoDate(now);
@@ -721,13 +517,11 @@ export default function DashboardReports() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
-  const [staffRows, setStaffRows] = useState<StaffPayrollSource[]>([]);
   const [payrollEntries, setPayrollEntries] = useState<any[]>([]);
   const [calculatedPayrollEntries, setCalculatedPayrollEntries] = useState<PayrollEntryView[]>([]);
   const [calculatedPayrollMonthKeys, setCalculatedPayrollMonthKeys] = useState<string[]>([]);
   const [payrollCalculationLoading, setPayrollCalculationLoading] = useState(false);
   const [payrollCalculationError, setPayrollCalculationError] = useState("");
-  const [appSettings, setAppSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastSyncMs, setLastSyncMs] = useState<number>(Date.now());
   const [loadErr, setLoadErr] = useState("");
@@ -741,13 +535,11 @@ export default function DashboardReports() {
 
   useEffect(() => {
     let active = true;
-    let pending = 6;
+    let pending = 4;
     let bookingsReady = false;
     let incomeReady = false;
     let expensesReady = false;
-    let staffReady = false;
     let payrollReady = false;
-    let settingsReady = false;
     setLoading(true);
     setLoadErr("");
 
@@ -755,13 +547,11 @@ export default function DashboardReports() {
       pending -= 1;
       if (active && pending <= 0) setLoading(false);
     };
-    const readyOnce = (key: "bookings" | "income" | "expenses" | "staff" | "payroll" | "settings") => {
+    const readyOnce = (key: "bookings" | "income" | "expenses" | "payroll") => {
       if (key === "bookings" && !bookingsReady) { bookingsReady = true; done(); }
       if (key === "income" && !incomeReady) { incomeReady = true; done(); }
       if (key === "expenses" && !expensesReady) { expensesReady = true; done(); }
-      if (key === "staff" && !staffReady) { staffReady = true; done(); }
       if (key === "payroll" && !payrollReady) { payrollReady = true; done(); }
-      if (key === "settings" && !settingsReady) { settingsReady = true; done(); }
     };
     const appendLoadError = (label: string, error: unknown) => {
       const detail = String((error as any)?.message || error || "خطأ غير معروف");
@@ -873,19 +663,6 @@ export default function DashboardReports() {
     refreshFinancialData();
     const refreshTimer = globalThis.setInterval(refreshFinancialData, 12_000);
 
-    const loadStaffData = async () => {
-      try {
-        const employees = await CoreHrService.listEmployees();
-        if (!active) return;
-        setStaffRows(normalizeCoreStaffPayrollRows(employees));
-        setLastSyncMs(Date.now());
-      } catch (error) {
-        if (active) appendLoadError("تعذر تحميل الموظفات", error);
-      } finally {
-        if (active) readyOnce("staff");
-      }
-    };
-
     const loadPayrollEntriesData = async () => {
       try {
         const rows = await CoreHrService.listPayrollEntries();
@@ -899,25 +676,7 @@ export default function DashboardReports() {
       }
     };
 
-    const loadSettingsData = async () => {
-      try {
-        const setting = await CoreSettingsService.get<any>("app");
-        if (!active) return;
-        if (!setting) {
-          throw new Error("SETTINGS_D1_NOT_FOUND");
-        }
-        setAppSettings(setting.value || {});
-        setLastSyncMs(Date.now());
-      } catch (error) {
-        if (active) appendLoadError("تعذر تحميل الإعدادات", error);
-      } finally {
-        if (active) readyOnce("settings");
-      }
-    };
-
-    void loadStaffData();
     void loadPayrollEntriesData();
-    void loadSettingsData();
 
     return () => {
       active = false;
@@ -1029,206 +788,27 @@ export default function DashboardReports() {
     });
   }, [incomeRows, range.from, range.to, incomeMethodFilter, incomeSourceFilter, incomeStatusFilter, bookingById]);
 
-  const payrollMonthKeys = useMemo(() => {
-    const set = new Set<string>();
-    bookings.forEach((x) => {
-      const mk = monthKeyFromIsoDate(String(x.date || ""));
-      if (mk) set.add(mk);
-    });
-    expenses.forEach((x) => {
-      const mk = monthKeyFromIsoDate(String(x.date || ""));
-      if (mk) set.add(mk);
-    });
-    incomeRows.forEach((x) => {
-      const mk = monthKeyFromIsoDate(incomeEffectiveDate(x));
-      if (mk) set.add(mk);
-    });
-    monthKeysBetween(range.from, range.to).forEach((mk) => set.add(mk));
-    const rangeToMonth = monthKeyFromIsoDate(String(range.to || ""));
-    if (rangeToMonth) {
-      set.add(rangeToMonth);
-      const prev = previousMonthKey(rangeToMonth);
-      if (prev) set.add(prev);
-    }
-    set.add(toMonthKey(new Date()));
-    const expanded = new Set<string>();
-    set.forEach((mk) => {
-      expanded.add(mk);
-      const prev = previousMonthKey(mk);
-      const next = nextMonthKey(mk);
-      if (prev) expanded.add(prev);
-      if (next) expanded.add(next);
-    });
-    return Array.from(expanded).sort((a, b) => a.localeCompare(b));
-  }, [bookings, expenses, range.from, range.to, incomeRows, bookingById]);
+  const recordedPayrollExpenses = useMemo<ExpenseRow[]>(
+    () =>
+      projectCorePayrollEntriesToFinancialRows(
+        payrollEntries,
+        "recorded"
+      ),
+    [payrollEntries]
+  );
 
-  const autoPayrollExpenses = useMemo<ExpenseRow[]>(() => {
-    if (!staffRows.length || !payrollMonthKeys.length) return [];
-    const bookingRows = normalizeBookingPayrollRows(bookings);
-    const payrollRows = buildPayrollExpenseRowsForMonths({
-      staffList: staffRows,
-      bookings: bookingRows,
-      appSettings: appSettings || {},
-      monthKeys: payrollMonthKeys,
-    });
-    return payrollRows.map((x) => ({
-      id: x.id,
-      date: String(x.date || "").trim(),
-      amount: Number(x.amount || 0),
-      category: String(x.category || "أخرى").trim() || "أخرى",
-      title: String(x.title || "").trim(),
-      note: String(x.note || "").trim(),
-      addedBy: "النظام (رواتب)",
-      createdAtMs: Number(x.createdAt || 0),
-      employeeId: String(x.staffId || "").trim() || undefined,
-      payrollMonth: String(x.monthKey || "").trim() || undefined,
-      payrollKind: x.kind,
-    }));
-  }, [staffRows, bookings, appSettings, payrollMonthKeys]);
-
-  const recordedPayrollEmployeeMonthKeys = useMemo(() => {
-    const keys = new Set<string>();
-    payrollEntries.forEach((entry) => {
-      const monthKey = String(entry?.payrollMonth || entry?.payroll_month || "").trim();
-      const employeeId = String(entry?.employeeId || entry?.employee_id || "").trim();
-      if (/^\d{4}-\d{2}$/.test(monthKey) && employeeId) {
-        keys.add(`${employeeId}|${monthKey}`);
-      }
-    });
-    return keys;
-  }, [payrollEntries]);
-
-  const recordedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
-    const rows: ExpenseRow[] = [];
-    payrollEntries.forEach((entry) => {
-      const id = String(entry?.id || "").trim();
-      const monthKey = String(entry?.payrollMonth || entry?.payroll_month || "").trim();
-      if (!id || !/^\d{4}-\d{2}$/.test(monthKey)) return;
-
-      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
-      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
-      const employeeName = String(entry?.employeeName || entry?.employee_name || entry?.employeeId || entry?.employee_id || "موظفة").trim();
-      const finalHalalas = Number(
-        entry?.finalSalaryHalalas ??
-          entry?.final_salary_halalas ??
-          entry?.netSalaryHalalas ??
-          entry?.net_salary_halalas ??
-          0
-      );
-      const overtimeHalalas = Math.max(
-        0,
-        Number(entry?.overtimeValueHalalas ?? entry?.overtime_value_halalas ?? 0) +
-          Number(entry?.overtimeBonusHalalas ?? entry?.overtime_bonus_halalas ?? 0)
-      );
-      const salaryHalalas = Math.max(0, finalHalalas - overtimeHalalas);
-      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
-
-      if (salaryHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_salary_core_${id}`,
-          date,
-          amount: salaryHalalas / 100,
-          category: "رواتب الموظفات",
-          title: `راتب ${employeeName} (${monthKey})`,
-          note: "كشف راتب محفوظ في Core D1",
-          addedBy: "النظام (كشف راتب)",
-          createdAtMs,
-          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
-          payrollMonth: monthKey,
-          payrollKind: "salary",
-        });
-      }
-
-      if (overtimeHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_overtime_core_${id}`,
-          date,
-          amount: overtimeHalalas / 100,
-          category: "أوفر تايم",
-          title: `أوفر تايم ${employeeName} (${monthKey})`,
-          note: "قيمة أوفر تايم محفوظة في كشف الراتب",
-          addedBy: "النظام (كشف راتب)",
-          createdAtMs,
-          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
-          payrollMonth: monthKey,
-          payrollKind: "overtime",
-        });
-      }
-    });
-    return rows;
-  }, [payrollEntries]);
-
-  const calculatedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
-    const rows: ExpenseRow[] = [];
-    calculatedPayrollEntries.forEach((entry) => {
-      const employeeId = String(entry.employeeId || "").trim();
-      const employeeName = String(entry.employeeName || employeeId || "موظفة").trim();
-      const monthKey = String(entry.payrollMonth || "").trim();
-      if (!employeeId || !/^\d{4}-\d{2}$/.test(monthKey)) return;
-
-      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
-      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
-      const netHalalas = Math.max(0, Number(entry.netSalaryHalalas || entry.finalSalaryHalalas || 0));
-      const overtimeHalalas = Math.min(
-        netHalalas,
-        Math.max(0, Number(entry.overtimeValueHalalas || 0))
-      );
-      const salaryHalalas = Math.max(0, netHalalas - overtimeHalalas);
-      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
-
-      if (salaryHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_salary_live_${employeeId}_${monthKey}`,
-          date,
-          amount: salaryHalalas / 100,
-          category: "رواتب الموظفات",
-          title: `صافي راتب ${employeeName} (${monthKey})`,
-          note: entry.saved
-            ? "صافي مسير محفوظ بعد الإضافات والخصومات"
-            : "صافي مسير محسوب تلقائيًا لجميع الموظفات",
-          addedBy: "النظام (احتساب المسير)",
-          createdAtMs,
-          employeeId,
-          payrollMonth: monthKey,
-          payrollKind: "salary",
-        });
-      }
-
-      if (overtimeHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_overtime_live_${employeeId}_${monthKey}`,
-          date,
-          amount: overtimeHalalas / 100,
-          category: "أوفر تايم",
-          title: `أوفر تايم ${employeeName} (${monthKey})`,
-          note: "قيمة الأوفر تايم ضمن صافي المسير المحسوب",
-          addedBy: "النظام (احتساب المسير)",
-          createdAtMs,
-          employeeId,
-          payrollMonth: monthKey,
-          payrollKind: "overtime",
-        });
-      }
-    });
-    return rows;
-  }, [calculatedPayrollEntries]);
+  const calculatedPayrollExpenses = useMemo<ExpenseRow[]>(
+    () =>
+      projectCorePayrollEntriesToFinancialRows(
+        calculatedPayrollEntries,
+        "calculated"
+      ),
+    [calculatedPayrollEntries]
+  );
 
   const calculatedPayrollMonthKeySet = useMemo(
     () => new Set(calculatedPayrollMonthKeys),
     [calculatedPayrollMonthKeys]
-  );
-
-  const effectiveAutoPayrollExpenses = useMemo(
-    () =>
-      autoPayrollExpenses.filter((row) => {
-        const monthKey = String(
-          row.payrollMonth || payrollCycleKeyFromDate(String(row.date || ""), PAYROLL_CLOSE_DAY)
-        ).trim();
-        if (monthKey && calculatedPayrollMonthKeySet.has(monthKey)) return false;
-        const employeeId = String(row.employeeId || "").trim();
-        return !employeeId || !monthKey || !recordedPayrollEmployeeMonthKeys.has(`${employeeId}|${monthKey}`);
-      }),
-    [autoPayrollExpenses, calculatedPayrollMonthKeySet, recordedPayrollEmployeeMonthKeys]
   );
 
   const effectiveRecordedPayrollExpenses = useMemo(
@@ -1244,7 +824,6 @@ export default function DashboardReports() {
     const map = new Map<string, ExpenseRow>();
     [
       ...expenses,
-      ...effectiveAutoPayrollExpenses,
       ...effectiveRecordedPayrollExpenses,
       ...calculatedPayrollExpenses,
     ].forEach((x) => {
@@ -1255,7 +834,6 @@ export default function DashboardReports() {
     return Array.from(map.values());
   }, [
     expenses,
-    effectiveAutoPayrollExpenses,
     effectiveRecordedPayrollExpenses,
     calculatedPayrollExpenses,
   ]);

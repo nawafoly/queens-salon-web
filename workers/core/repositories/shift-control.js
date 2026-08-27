@@ -9,6 +9,7 @@ import {
   integer,
   nowIso,
   optionalText,
+  placeholders,
   requiredId,
   requiredText,
   rowNotFound,
@@ -185,7 +186,7 @@ export async function previewShiftChange(db, salonId, data) {
     WHERE salon_id=? AND employee_id=? AND status!='cancelled'
       AND effective_from<=? AND COALESCE(effective_to,'9999-12-31')>=?`, [salonId, employeeId, dateTo, dateFrom]);
   const overlappingExceptions = await dbAll(db, `SELECT id, date_from, date_to, status FROM hr_schedule_exceptions
-    WHERE salon_id=? AND employee_id=? AND status='approved' AND date_from<=? AND date_to>=?`, [salonId, employeeId, dateTo, dateFrom]);
+    WHERE salon_id=? AND employee_id=? AND status IN ('approved','active') AND date_from<=? AND date_to>=?`, [salonId, employeeId, dateTo, dateFrom]);
   return {
     employee_id: employeeId,
     change_type: changeType,
@@ -432,6 +433,29 @@ export async function cancelShiftAssignment(db, salonId, idValue, data = {}, act
   return updateShiftAssignment(db, salonId, idValue, payload, actor);
 }
 
+function isOperationalScheduleExceptionStatus(status) {
+  return status === 'approved' || status === 'active';
+}
+
+async function assertNoOperationalScheduleExceptionOverlap(db, salonId, employeeId, dateFrom, dateTo, excludeId = null) {
+  const overlap = await dbFirst(db,
+    `SELECT id, date_from, date_to, exception_type, status
+       FROM hr_schedule_exceptions
+      WHERE salon_id=? AND employee_id=? AND status IN ('approved','active')
+        ${excludeId ? 'AND id!=?' : ''}
+        AND date_from<=? AND date_to>=?
+      LIMIT 1`,
+    excludeId
+      ? [salonId, employeeId, excludeId, dateTo, dateFrom]
+      : [salonId, employeeId, dateTo, dateFrom]);
+  if (overlap) {
+    throw Object.assign(new Error('schedule_exception_conflict'), {
+      code: 'core_hr:schedule_exception_conflict',
+      details: { overlappingExceptionId: overlap.id },
+    });
+  }
+}
+
 export async function createScheduleException(db, salonId, data, actor = {}) {
   const now = nowIso();
   const id = requiredId(data.id || generatedId('schedule_exception'));
@@ -440,10 +464,14 @@ export async function createScheduleException(db, salonId, data, actor = {}) {
   const to = dateKey(data.dateTo || data.date_to || from, 'dateTo');
   if (to < from) throw Object.assign(new Error('exception_range_invalid'), { code: 'core_hr:invalid_date_range' });
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, from, to, data);
+  const status = cleanText(data.status || 'approved');
+  if (isOperationalScheduleExceptionStatus(status)) {
+    await assertNoOperationalScheduleExceptionOverlap(db, salonId, employeeId, from, to);
+  }
   const row = [id, salonId, employeeId, from, to, requiredText(data.exceptionType || data.exception_type, 'exceptionType'),
     optionalText(data.shiftTemplateId || data.shift_template_id) || null, activeFlag(data.enabled, 1),
     timeValue(data.startTime || data.start_time, 'startTime'), timeValue(data.endTime || data.end_time, 'endTime'),
-    optionalText(data.note) || null, cleanText(data.status || 'approved'), optionalText(data.approvedByUid || actor.uid) || null,
+    optionalText(data.note) || null, status, optionalText(data.approvedByUid || actor.uid) || null,
     optionalText(actor.uid) || null, now, now];
   await dbBatch(db, [{ sql: `INSERT INTO hr_schedule_exceptions
     (id,salon_id,employee_id,date_from,date_to,exception_type,shift_template_id,enabled,start_time,end_time,note,status,approved_by_uid,created_by_uid,created_at,updated_at)
@@ -472,6 +500,16 @@ export async function updateScheduleException(db, salonId, idValue, data, actor 
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, before.date_from, before.date_to, data);
   const status = optionalText(data.status) || before.status;
   const enabled = data.enabled === undefined ? before.enabled : activeFlag(data.enabled, before.enabled);
+  if (isOperationalScheduleExceptionStatus(status)) {
+    await assertNoOperationalScheduleExceptionOverlap(
+      db,
+      salonId,
+      before.employee_id,
+      before.date_from,
+      before.date_to,
+      id
+    );
+  }
   await dbBatch(db, [{
     sql: `UPDATE hr_schedule_exceptions SET status=?, enabled=?, note=COALESCE(?, note), updated_at=? WHERE salon_id=? AND id=?`,
     params: [status, enabled, optionalText(data.note) || null, now, salonId, id],
@@ -485,15 +523,1068 @@ export async function updateScheduleException(db, salonId, idValue, data, actor 
   return saved;
 }
 
+
+function normalizeWorkingHourOverrideRows(
+  rows
+) {
+  const byDate =
+    new Map();
+
+  for (
+    const input of
+    Array.isArray(rows)
+      ? rows
+      : []
+  ) {
+    const date =
+      dateKey(
+        input?.date,
+        'date'
+      );
+
+    const enabled =
+      activeFlag(
+        input?.enabled,
+        1
+      ) === 1;
+
+    const startTime =
+      enabled
+        ? timeValue(
+            input?.start ??
+              input?.startTime ??
+              input?.start_time,
+            'startTime',
+            false
+          )
+        : null;
+
+    const endTime =
+      enabled
+        ? timeValue(
+            input?.end ??
+              input?.endTime ??
+              input?.end_time,
+            'endTime',
+            false
+          )
+        : null;
+
+    byDate.set(
+      date,
+      {
+        date,
+        enabled,
+        startTime,
+        endTime,
+        note:
+          optionalText(
+            input?.note
+          ) || null,
+      }
+    );
+  }
+
+  return Array
+    .from(
+      byDate.values()
+    )
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(
+          right.date
+        )
+    );
+}
+
+function workingHourOverrideSignature(
+  row
+) {
+  if (!row) {
+    return '';
+  }
+
+  return JSON.stringify({
+    enabled:
+      row.enabled === true,
+
+    startTime:
+      row.enabled
+        ? cleanText(
+            row.startTime
+          )
+        : '',
+
+    endTime:
+      row.enabled
+        ? cleanText(
+            row.endTime
+          )
+        : '',
+
+    note:
+      cleanText(
+        row.note
+      ),
+  });
+}
+
+function workingHourOverrideMap(
+  rows
+) {
+  return new Map(
+    normalizeWorkingHourOverrideRows(
+      rows
+    ).map(
+      (row) => [
+        row.date,
+        row,
+      ]
+    )
+  );
+}
+
+function workingHourOverrideRowsEqual(
+  left,
+  right
+) {
+  const a =
+    normalizeWorkingHourOverrideRows(
+      left
+    );
+
+  const b =
+    normalizeWorkingHourOverrideRows(
+      right
+    );
+
+  if (
+    a.length !==
+    b.length
+  ) {
+    return false;
+  }
+
+  return a.every(
+    (row, index) =>
+      row.date ===
+        b[index]?.date &&
+      workingHourOverrideSignature(
+        row
+      ) ===
+        workingHourOverrideSignature(
+          b[index]
+        )
+  );
+}
+
+function isApprovedWorkingHourException(
+  row
+) {
+  const type =
+    cleanText(
+      row?.exception_type
+    ).toLowerCase();
+
+  return (
+    cleanText(
+      row?.status
+    ).toLowerCase() ===
+      'approved' &&
+    (
+      type === 'custom' ||
+      type === 'off'
+    )
+  );
+}
+
+function exceptionRangeBounds(
+  row
+) {
+  const from =
+    dateKey(
+      row?.date_from,
+      'dateFrom'
+    );
+
+  const to =
+    dateKey(
+      row?.date_to ||
+        row?.date_from,
+      'dateTo'
+    );
+
+  if (
+    to < from
+  ) {
+    throw Object.assign(
+      new Error(
+        'exception_range_invalid'
+      ),
+      {
+        code:
+          'core_hr:invalid_date_range',
+      }
+    );
+  }
+
+  return {
+    from,
+    to,
+  };
+}
+
+function exceptionRangeContainsAny(
+  row,
+  dates
+) {
+  const {
+    from,
+    to,
+  } =
+    exceptionRangeBounds(
+      row
+    );
+
+  for (
+    const date of dates
+  ) {
+    if (
+      date >= from &&
+      date <= to
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function expandExceptionRangeDates(
+  row
+) {
+  const {
+    from,
+    to,
+  } =
+    exceptionRangeBounds(
+      row
+    );
+
+  const dates = [];
+
+  let cursor =
+    from;
+
+  let guard =
+    0;
+
+  while (
+    cursor <= to
+  ) {
+    dates.push(
+      cursor
+    );
+
+    cursor =
+      addDays(
+        cursor,
+        1
+      );
+
+    guard += 1;
+
+    if (
+      guard > 3700
+    ) {
+      throw Object.assign(
+        new Error(
+          'working_hour_exception_range_too_large'
+        ),
+        {
+          code:
+            'core_hr:working_hour_exception_range_too_large',
+        }
+      );
+    }
+  }
+
+  return dates;
+}
+
+function projectWorkingHourScheduleExceptions(
+  rows
+) {
+  const projected =
+    new Map();
+
+  const operational =
+    (
+      Array.isArray(rows)
+        ? rows
+        : []
+    )
+      .filter(
+        isApprovedWorkingHourException
+      )
+      .slice()
+      .sort(
+        (left, right) => {
+          const created =
+            cleanText(
+              left?.created_at
+            ).localeCompare(
+              cleanText(
+                right?.created_at
+              )
+            );
+
+          if (created) {
+            return created;
+          }
+
+          const updated =
+            cleanText(
+              left?.updated_at
+            ).localeCompare(
+              cleanText(
+                right?.updated_at
+              )
+            );
+
+          if (updated) {
+            return updated;
+          }
+
+          return cleanText(
+            left?.id
+          ).localeCompare(
+            cleanText(
+              right?.id
+            )
+          );
+        }
+      );
+
+  for (
+    const row of operational
+  ) {
+    const type =
+      cleanText(
+        row.exception_type
+      ).toLowerCase();
+
+    if (
+      type === 'custom' &&
+      activeFlag(
+        row.enabled,
+        0
+      ) !== 1
+    ) {
+      continue;
+    }
+
+    const dates =
+      expandExceptionRangeDates(
+        row
+      );
+
+    for (
+      const date of dates
+    ) {
+      if (
+        type === 'off'
+      ) {
+        projected.set(
+          date,
+          {
+            date,
+            enabled: false,
+            startTime: null,
+            endTime: null,
+            note:
+              optionalText(
+                row.note
+              ) || null,
+          }
+        );
+
+        continue;
+      }
+
+      projected.set(
+        date,
+        {
+          date,
+          enabled: true,
+          startTime:
+            timeValue(
+              row.start_time,
+              'startTime',
+              false
+            ),
+          endTime:
+            timeValue(
+              row.end_time,
+              'endTime',
+              false
+            ),
+          note:
+            optionalText(
+              row.note
+            ) || null,
+        }
+      );
+    }
+  }
+
+  return Array
+    .from(
+      projected.values()
+    )
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(
+          right.date
+        )
+    );
+}
+
+export async function syncWorkingHourScheduleExceptions(
+  db,
+  salonId,
+  data,
+  actor = {}
+) {
+  const employeeId =
+    requiredId(
+      data.employeeId ||
+        data.employee_id,
+      'employeeId'
+    );
+
+  const expected =
+    normalizeWorkingHourOverrideRows(
+      data.expectedOverrides ||
+        data.expected_overrides ||
+        []
+    );
+
+  const desired =
+    normalizeWorkingHourOverrideRows(
+      data.desiredOverrides ||
+        data.desired_overrides ||
+        []
+    );
+
+  const currentRows =
+    await dbAll(
+      db,
+      `SELECT *
+       FROM hr_schedule_exceptions
+       WHERE salon_id=?
+         AND employee_id=?
+       ORDER BY date_from DESC`,
+      [
+        salonId,
+        employeeId,
+      ]
+    );
+
+  const currentProjection =
+    projectWorkingHourScheduleExceptions(
+      currentRows
+    );
+
+  if (
+    !workingHourOverrideRowsEqual(
+      currentProjection,
+      expected
+    )
+  ) {
+    throw Object.assign(
+      new Error(
+        'working_hour_exceptions_changed'
+      ),
+      {
+        code:
+          'core_hr:working_hour_exceptions_changed',
+      }
+    );
+  }
+
+  const currentMap =
+    workingHourOverrideMap(
+      currentProjection
+    );
+
+  const desiredMap =
+    workingHourOverrideMap(
+      desired
+    );
+
+  const allDates =
+    new Set([
+      ...currentMap.keys(),
+      ...desiredMap.keys(),
+    ]);
+
+  const changedDates =
+    new Set(
+      Array
+        .from(
+          allDates
+        )
+        .filter(
+          (date) =>
+            workingHourOverrideSignature(
+              currentMap.get(
+                date
+              )
+            ) !==
+            workingHourOverrideSignature(
+              desiredMap.get(
+                date
+              )
+            )
+        )
+    );
+
+  if (
+    !changedDates.size
+  ) {
+    return {
+      employee_id:
+        employeeId,
+
+      changed:
+        false,
+
+      created_count:
+        0,
+
+      cancelled_count:
+        0,
+
+      rows:
+        currentRows,
+
+      overrides:
+        currentProjection,
+    };
+  }
+
+  const managedRows =
+    currentRows.filter(
+      isApprovedWorkingHourException
+    );
+
+  const touched =
+    new Map();
+
+  const expandedDates =
+    new Set(
+      changedDates
+    );
+
+  let expanded = true;
+
+  while (expanded) {
+    expanded = false;
+
+    for (
+      const row of managedRows
+    ) {
+      const id =
+        cleanText(
+          row.id
+        );
+
+      if (
+        !id ||
+        touched.has(id) ||
+        !exceptionRangeContainsAny(
+          row,
+          expandedDates
+        )
+      ) {
+        continue;
+      }
+
+      touched.set(
+        id,
+        row
+      );
+
+      for (
+        const date of
+        expandExceptionRangeDates(
+          row
+        )
+      ) {
+        if (
+          !expandedDates.has(
+            date
+          )
+        ) {
+          expandedDates.add(
+            date
+          );
+
+          expanded = true;
+        }
+      }
+    }
+  }
+
+  const shiftConflicts =
+    currentRows.filter(
+      (row) =>
+        cleanText(
+          row.status
+        ).toLowerCase() ===
+          'approved' &&
+        cleanText(
+          row.exception_type
+        ).toLowerCase() ===
+          'shift' &&
+        exceptionRangeContainsAny(
+          row,
+          expandedDates
+        )
+    );
+
+  if (
+    shiftConflicts.length
+  ) {
+    throw Object.assign(
+      new Error(
+        'working_hour_exception_shift_conflict'
+      ),
+      {
+        code:
+          'core_hr:working_hour_exception_shift_conflict',
+
+        conflictingExceptionIds:
+          shiftConflicts
+            .map(
+              (row) =>
+                cleanText(
+                  row.id
+                )
+            )
+            .filter(Boolean),
+      }
+    );
+  }
+
+  const touchedDates =
+    new Set();
+
+  for (
+    const row of
+    touched.values()
+  ) {
+    const {
+      from,
+      to,
+    } =
+      exceptionRangeBounds(
+        row
+      );
+
+    await assertUnlockedOrAdjustmentAllowed(
+      db,
+      salonId,
+      from,
+      to,
+      {}
+    );
+
+    for (
+      const date of
+      expandExceptionRangeDates(
+        row
+      )
+    ) {
+      touchedDates.add(
+        date
+      );
+    }
+  }
+
+  for (
+    const date of changedDates
+  ) {
+    if (
+      touchedDates.has(
+        date
+      )
+    ) {
+      continue;
+    }
+
+    await assertUnlockedOrAdjustmentAllowed(
+      db,
+      salonId,
+      date,
+      date,
+      {}
+    );
+  }
+
+  const finalRows = [];
+
+  for (
+    const date of
+    Array
+      .from(
+        expandedDates
+      )
+      .sort()
+  ) {
+    const source =
+      changedDates.has(
+        date
+      )
+        ? desiredMap.get(
+            date
+          )
+        : currentMap.get(
+            date
+          );
+
+    if (!source) {
+      continue;
+    }
+
+    finalRows.push({
+      ...source,
+      date,
+    });
+  }
+
+  const now =
+    nowIso();
+
+  const statements = [];
+
+  const createdRows = [];
+
+  for (
+    const override of finalRows
+  ) {
+    const id =
+      generatedId(
+        'schedule_exception'
+      );
+
+    const exceptionType =
+      override.enabled
+        ? 'custom'
+        : 'off';
+
+    const row = {
+      id,
+      salon_id:
+        salonId,
+      employee_id:
+        employeeId,
+      date_from:
+        override.date,
+      date_to:
+        override.date,
+      exception_type:
+        exceptionType,
+      shift_template_id:
+        null,
+      enabled:
+        1,
+      start_time:
+        override.enabled
+          ? override.startTime
+          : null,
+      end_time:
+        override.enabled
+          ? override.endTime
+          : null,
+      note:
+        override.note ||
+        null,
+      status:
+        'approved',
+      approved_by_uid:
+        optionalText(
+          actor.uid
+        ) || null,
+      created_by_uid:
+        optionalText(
+          actor.uid
+        ) || null,
+      created_at:
+        now,
+      updated_at:
+        now,
+    };
+
+    createdRows.push(
+      row
+    );
+
+    statements.push({
+      sql:
+        `INSERT INTO hr_schedule_exceptions
+         (id,salon_id,employee_id,date_from,date_to,exception_type,shift_template_id,enabled,start_time,end_time,note,status,approved_by_uid,created_by_uid,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+
+      params: [
+        row.id,
+        row.salon_id,
+        row.employee_id,
+        row.date_from,
+        row.date_to,
+        row.exception_type,
+        row.shift_template_id,
+        row.enabled,
+        row.start_time,
+        row.end_time,
+        row.note,
+        row.status,
+        row.approved_by_uid,
+        row.created_by_uid,
+        row.created_at,
+        row.updated_at,
+      ],
+    });
+
+    statements.push({
+      sql:
+        `INSERT INTO hr_shift_audit_log
+         (id,salon_id,actor_uid,action,entity_type,entity_id,before_json,after_json,reason,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+
+      params: [
+        generatedId(
+          'shift_audit'
+        ),
+        salonId,
+        optionalText(
+          actor.uid
+        ) || null,
+        'create',
+        'schedule_exception',
+        row.id,
+        null,
+        JSON.stringify(
+          row
+        ),
+        'sync_working_hour_overrides',
+        now,
+      ],
+    });
+  }
+
+  for (
+    const before of
+    touched.values()
+  ) {
+    const after = {
+      ...before,
+      status:
+        'cancelled',
+      enabled:
+        0,
+      updated_at:
+        now,
+    };
+
+    statements.push({
+      sql:
+        `UPDATE hr_schedule_exceptions
+         SET status='cancelled',
+             enabled=0,
+             updated_at=?
+         WHERE salon_id=?
+           AND id=?`,
+
+      params: [
+        now,
+        salonId,
+        before.id,
+      ],
+    });
+
+    statements.push({
+      sql:
+        `INSERT INTO hr_shift_audit_log
+         (id,salon_id,actor_uid,action,entity_type,entity_id,before_json,after_json,reason,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+
+      params: [
+        generatedId(
+          'shift_audit'
+        ),
+        salonId,
+        optionalText(
+          actor.uid
+        ) || null,
+        'cancel',
+        'schedule_exception',
+        before.id,
+        JSON.stringify(
+          before
+        ),
+        JSON.stringify(
+          after
+        ),
+        'sync_working_hour_overrides',
+        now,
+      ],
+    });
+  }
+
+  if (
+    statements.length
+  ) {
+    await dbBatch(
+      db,
+      statements
+    );
+  }
+
+  const refreshedRows =
+    await dbAll(
+      db,
+      `SELECT *
+       FROM hr_schedule_exceptions
+       WHERE salon_id=?
+         AND employee_id=?
+       ORDER BY date_from DESC`,
+      [
+        salonId,
+        employeeId,
+      ]
+    );
+
+  const refreshedProjection =
+    projectWorkingHourScheduleExceptions(
+      refreshedRows
+    );
+
+  if (
+    !workingHourOverrideRowsEqual(
+      refreshedProjection,
+      desired
+    )
+  ) {
+    throw Object.assign(
+      new Error(
+        'working_hour_exception_verification_failed'
+      ),
+      {
+        code:
+          'core_hr:working_hour_exception_verification_failed',
+      }
+    );
+  }
+
+  return {
+    employee_id:
+      employeeId,
+
+    changed:
+      true,
+
+    created_count:
+      createdRows.length,
+
+    cancelled_count:
+      touched.size,
+
+    rows:
+      refreshedRows,
+
+    overrides:
+      refreshedProjection,
+  };
+}
+
+function employeeOperationalOnDate(row, date) {
+  // Canonical staff resources predate the HR projection and remain a supported
+  // booking resource when no HR row exists. Absence of an HR projection is not
+  // evidence of inactivity; once HR lifecycle evidence exists it is authoritative.
+  if (!row) return true;
+  const hasProfile =
+    Number(row.has_profile) === 1 ||
+    cleanText(row.profile_status) !== "";
+  const hasEmployment =
+    Number(row.has_employment) === 1 ||
+    cleanText(row.employment_status) !== "" ||
+    cleanText(row.end_date) !== "";
+
+  if (!hasProfile && !hasEmployment) return true;
+  if (!hasProfile || !hasEmployment) return false;
+
+  const profileStatus = cleanText(row.profile_status).toLowerCase();
+  const employmentStatus = cleanText(row.employment_status).toLowerCase();
+  return profileStatus === 'active' &&
+    employmentStatus === 'active' &&
+    (!cleanText(row.end_date) || date <= cleanText(row.end_date));
+}
+
+function inactiveShiftResult(employeeId, date) {
+  return {
+    source: 'none',
+    date,
+    employee_id: employeeId,
+    operational: false,
+    blocked_reason: 'employee_not_active',
+  };
+}
+
 export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateValue) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const date = dateKey(dateValue, 'date');
+  const employeeState = await dbFirst(
+    db,
+    `SELECT employee_id,
+            MAX(has_profile) AS has_profile,
+            MAX(has_employment) AS has_employment,
+            MAX(profile_status) AS profile_status,
+            MAX(employment_status) AS employment_status,
+            MAX(end_date) AS end_date
+       FROM (
+         SELECT p.id AS employee_id,
+                1 AS has_profile,
+                0 AS has_employment,
+                p.status AS profile_status,
+                NULL AS employment_status,
+                NULL AS end_date
+           FROM employee_profiles p
+          WHERE p.salon_id=? AND p.id=?
+         UNION ALL
+         SELECT e.employee_id AS employee_id,
+                0 AS has_profile,
+                1 AS has_employment,
+                NULL AS profile_status,
+                e.employment_status AS employment_status,
+                e.end_date AS end_date
+           FROM employee_employment e
+          WHERE e.salon_id=? AND e.employee_id=?
+       ) lifecycle
+      GROUP BY employee_id
+      LIMIT 1`,
+    [salonId, employeeId, salonId, employeeId]
+  );
+  if (!employeeOperationalOnDate(employeeState, date)) {
+    return inactiveShiftResult(employeeId, date);
+  }
   const exception = await dbFirst(db, `SELECT e.*, t.name AS shift_name, t.start_time AS template_start_time,
     t.end_time AS template_end_time, t.crosses_midnight, t.break_minutes, t.late_grace_minutes,
     0 AS early_leave_grace_minutes, t.attendance_lock_enabled, t.attendance_lock_after_minutes,
     t.overtime_after_minutes
     FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t ON t.id=e.shift_template_id
-    WHERE e.salon_id=? AND e.employee_id=? AND e.status='approved' AND e.enabled=1 AND e.date_from<=? AND e.date_to>=?
+    WHERE e.salon_id=? AND e.employee_id=? AND e.status IN ('approved','active') AND (e.exception_type='off' OR e.enabled=1) AND e.date_from<=? AND e.date_to>=?
     ORDER BY e.created_at DESC LIMIT 1`, [salonId, employeeId, date, date]);
 
   const weeklySchedule = await dbFirst(db, `SELECT s.*, t.name AS shift_name, t.code AS shift_code,
@@ -555,6 +1646,589 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
     : { source: 'none', date, employee_id: employeeId };
 }
 
+
+function rowsByEmployeeId(rows) {
+  const grouped =
+    new Map();
+
+  for (const row of rows) {
+    const employeeId =
+      cleanText(
+        row?.employee_id
+      );
+
+    if (!employeeId) {
+      continue;
+    }
+
+    const current =
+      grouped.get(employeeId) ||
+      [];
+
+    current.push(row);
+    grouped.set(
+      employeeId,
+      current
+    );
+  }
+
+  return grouped;
+}
+
+function rowDateRangeContains(
+  row,
+  date,
+  fromField,
+  toField
+) {
+  const from =
+    cleanText(
+      row?.[fromField]
+    ) ||
+    "0000-01-01";
+
+  const to =
+    cleanText(
+      row?.[toField]
+    ) ||
+    "9999-12-31";
+
+  return (
+    from <= date &&
+    to >= date
+  );
+}
+
+function resolveEmployeeShiftFromBatchFacts(
+  employeeId,
+  date,
+  exceptionRows,
+  weeklyRows,
+  assignmentRows
+) {
+  const exception =
+    exceptionRows.find(
+      (row) =>
+        rowDateRangeContains(
+          row,
+          date,
+          "date_from",
+          "date_to"
+        )
+    ) ||
+    null;
+
+  const weeklySchedule =
+    weeklyRows.find(
+      (row) =>
+        Number(row.weekday) ===
+          weekdayNumber(date) &&
+        rowDateRangeContains(
+          row,
+          date,
+          "effective_from",
+          "effective_to"
+        )
+    ) ||
+    null;
+
+  const assignment =
+    assignmentRows.find(
+      (row) =>
+        rowDateRangeContains(
+          row,
+          date,
+          "effective_from",
+          "effective_to"
+        )
+    ) ||
+    null;
+
+  if (exception) {
+    const exceptionType =
+      cleanText(
+        exception.exception_type
+      );
+
+    if (
+      exceptionType ===
+        "custom" &&
+      !exception.shift_template_id
+    ) {
+      const base =
+        weeklySchedule &&
+        Number(
+          weeklySchedule.active
+        ) === 1
+          ? weeklySchedule
+          : assignment;
+
+      return {
+        source: "exception",
+        date,
+        ...exception,
+        late_grace_minutes:
+          base?.late_grace_minutes ??
+          0,
+        early_leave_grace_minutes:
+          0,
+        attendance_lock_enabled:
+          base?.attendance_lock_enabled ??
+          0,
+        attendance_lock_after_minutes:
+          base?.attendance_lock_after_minutes ??
+          30,
+        break_minutes:
+          base?.break_minutes ??
+          0,
+        overtime_after_minutes:
+          base?.overtime_after_minutes ??
+          0,
+      };
+    }
+
+    return {
+      source: "exception",
+      date,
+      ...exception,
+    };
+  }
+
+  if (weeklySchedule) {
+    if (
+      Number(
+        weeklySchedule.active
+      ) !== 1
+    ) {
+      return {
+        source:
+          "weekly_schedule",
+        date,
+        exception_type:
+          "off",
+        ...weeklySchedule,
+      };
+    }
+
+    return {
+      source:
+        "weekly_schedule",
+      date,
+      ...weeklySchedule,
+    };
+  }
+
+  return assignment
+    ? {
+        source:
+          "assignment",
+        date,
+        ...assignment,
+      }
+    : {
+        source:
+          "none",
+        date,
+        employee_id:
+          employeeId,
+      };
+}
+
+export async function resolveEmployeeShiftsBatch(
+  db,
+  salonId,
+  data = {}
+) {
+  const rawEmployeeIds =
+    Array.isArray(
+      data.employeeIds ??
+      data.employee_ids
+    )
+      ? (
+          data.employeeIds ??
+          data.employee_ids
+        )
+      : [];
+
+  const employeeIds =
+    Array.from(
+      new Set(
+        rawEmployeeIds
+          .map(
+            (value) =>
+              cleanText(value)
+          )
+          .filter(Boolean)
+      )
+    ).map(
+      (value) =>
+        requiredId(
+          value,
+          "employeeId"
+        )
+    );
+
+  if (!employeeIds.length) {
+    throw Object.assign(
+      new Error(
+        "employee_ids_required"
+      ),
+      {
+        code:
+          "core_hr:employee_ids_required",
+      }
+    );
+  }
+
+  if (
+    employeeIds.length >
+    100
+  ) {
+    throw Object.assign(
+      new Error(
+        "employee_batch_too_large"
+      ),
+      {
+        code:
+          "core_hr:employee_batch_too_large",
+      }
+    );
+  }
+
+  const dateFrom =
+    dateKey(
+      data.dateFrom ??
+        data.date_from,
+      "dateFrom"
+    );
+
+  const dateTo =
+    dateKey(
+      data.dateTo ??
+        data.date_to ??
+        dateFrom,
+      "dateTo"
+    );
+
+  if (dateTo < dateFrom) {
+    throw Object.assign(
+      new Error(
+        "date_range_invalid"
+      ),
+      {
+        code:
+          "core_hr:invalid_date_range",
+      }
+    );
+  }
+
+  const daysCount =
+    daysBetweenInclusive(
+      dateFrom,
+      dateTo
+    );
+
+  if (daysCount > 62) {
+    throw Object.assign(
+      new Error(
+        "shift_resolution_range_too_large"
+      ),
+      {
+        code:
+          "core_hr:shift_resolution_range_too_large",
+      }
+    );
+  }
+
+  if (
+    employeeIds.length *
+      daysCount >
+    5000
+  ) {
+    throw Object.assign(
+      new Error(
+        "shift_resolution_batch_too_large"
+      ),
+      {
+        code:
+          "core_hr:shift_resolution_batch_too_large",
+      }
+    );
+  }
+
+  // FakeD1 exists only for repository tests.
+  // Production D1 always uses the true batched path below.
+  if (db?.__fakeD1) {
+    const rows = [];
+
+    for (
+      const employeeId
+      of employeeIds
+    ) {
+      for (
+        let offset = 0;
+        offset < daysCount;
+        offset += 1
+      ) {
+        rows.push(
+          await resolveEmployeeShift(
+            db,
+            salonId,
+            employeeId,
+            addDays(
+              dateFrom,
+              offset
+            )
+          )
+        );
+      }
+    }
+
+    return {
+      date_from:
+        dateFrom,
+      date_to:
+        dateTo,
+      employees_count:
+        employeeIds.length,
+      days_count:
+        daysCount,
+      rows,
+    };
+  }
+
+  const marks =
+    placeholders(
+      employeeIds.length
+    );
+
+  const [
+    exceptions,
+    weeklySchedules,
+    assignments,
+    employmentRows,
+  ] =
+    await Promise.all([
+      dbAll(
+        db,
+        `SELECT e.*, t.name AS shift_name,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_schedule_exceptions e
+          LEFT JOIN hr_shift_templates t
+            ON t.id=e.shift_template_id
+          WHERE e.salon_id=?
+            AND e.employee_id IN (${marks})
+            AND e.status IN ('approved','active')
+            AND (e.exception_type='off' OR e.enabled=1)
+            AND e.date_from<=?
+            AND e.date_to>=?
+          ORDER BY e.employee_id, e.created_at DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+
+      dbAll(
+        db,
+        `SELECT s.*, t.name AS shift_name,
+          t.code AS shift_code,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_work_schedules s
+          LEFT JOIN hr_shift_templates t
+            ON t.id=s.shift_template_id
+            AND t.salon_id=s.salon_id
+          WHERE s.salon_id=?
+            AND s.employee_id IN (${marks})
+            AND (
+              s.effective_from IS NULL OR
+              s.effective_from<=?
+            )
+            AND (
+              s.effective_to IS NULL OR
+              s.effective_to>=?
+            )
+          ORDER BY
+            s.employee_id,
+            COALESCE(
+              s.effective_from,
+              '0000-01-01'
+            ) DESC,
+            s.updated_at DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+
+      dbAll(
+        db,
+        `SELECT a.*, t.name AS shift_name,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_shift_assignments a
+          LEFT JOIN hr_shift_templates t
+            ON t.id=a.shift_template_id
+          WHERE a.salon_id=?
+            AND a.employee_id IN (${marks})
+            AND a.status='published'
+            AND a.effective_from<=?
+            AND (
+              a.effective_to IS NULL OR
+              a.effective_to>=?
+            )
+          ORDER BY
+            a.employee_id,
+            a.effective_from DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+      dbAll(
+        db,
+        `SELECT employee_id,
+                MAX(has_profile) AS has_profile,
+                MAX(has_employment) AS has_employment,
+                MAX(profile_status) AS profile_status,
+                MAX(employment_status) AS employment_status,
+                MAX(end_date) AS end_date
+           FROM (
+             SELECT p.id AS employee_id,
+                    1 AS has_profile,
+                    0 AS has_employment,
+                    p.status AS profile_status,
+                    NULL AS employment_status,
+                    NULL AS end_date
+               FROM employee_profiles p
+              WHERE p.salon_id=? AND p.id IN (${marks})
+             UNION ALL
+             SELECT e.employee_id AS employee_id,
+                    0 AS has_profile,
+                    1 AS has_employment,
+                    NULL AS profile_status,
+                    e.employment_status AS employment_status,
+                    e.end_date AS end_date
+               FROM employee_employment e
+              WHERE e.salon_id=? AND e.employee_id IN (${marks})
+           ) lifecycle
+          GROUP BY employee_id`,
+        [salonId, ...employeeIds, salonId, ...employeeIds]
+      ),
+    ]);
+
+  const exceptionByEmployee =
+    rowsByEmployeeId(
+      exceptions
+    );
+
+  const weeklyByEmployee =
+    rowsByEmployeeId(
+      weeklySchedules
+    );
+
+  const assignmentByEmployee =
+    rowsByEmployeeId(
+      assignments
+    );
+  const employmentByEmployee = new Map(
+    employmentRows.map((row) => [cleanText(row.employee_id), row])
+  );
+
+  const rows = [];
+
+  for (
+    const employeeId
+    of employeeIds
+  ) {
+    const exceptionRows =
+      exceptionByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    const weeklyRows =
+      weeklyByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    const assignmentRows =
+      assignmentByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    for (
+      let offset = 0;
+      offset < daysCount;
+      offset += 1
+    ) {
+      const date =
+        addDays(
+          dateFrom,
+          offset
+        );
+
+      const employeeState = employmentByEmployee.get(employeeId) || null;
+      if (!employeeOperationalOnDate(employeeState, date)) {
+        rows.push(inactiveShiftResult(employeeId, date));
+        continue;
+      }
+
+      rows.push(
+        resolveEmployeeShiftFromBatchFacts(
+          employeeId,
+          date,
+          exceptionRows,
+          weeklyRows,
+          assignmentRows
+        )
+      );
+    }
+  }
+
+  return {
+    date_from:
+      dateFrom,
+    date_to:
+      dateTo,
+    employees_count:
+      employeeIds.length,
+    days_count:
+      daysCount,
+    rows,
+  };
+}
 
 function riyadhCronParts(value = new Date().toISOString()) {
   const date = new Date(value);

@@ -10,6 +10,7 @@ const MIGRATIONS = [
   "0004_admin_operations.sql",
   "0005_hr_settings_files.sql",
   "0014_app_users_permissions.sql",
+  "0033_app_user_profile_photo.sql",
 ];
 
 async function applyMigration(db, name) {

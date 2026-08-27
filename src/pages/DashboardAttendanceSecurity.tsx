@@ -21,7 +21,7 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { usePermissions } from "../security/PermissionContext";
-import { listActiveStaffAll } from "../services/bookingDataSourceCompat";
+import { CoreStaffService } from "../services/CoreStaffService";
 import { CoreHrService } from "../services/CoreHrService";
 import {
   getPermissionPayrollSummary,
@@ -67,7 +67,6 @@ import {
 type AttendanceTab = "discipline" | "overview" | "records" | "devices" | "alerts" | "zones";
 type RecordResultFilter = "all" | "allowed" | "rejected";
 type RecordTypeFilter = "all" | "check_in" | "check_out";
-type WeekdayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 
 type AttendanceDisciplineRow = AttendanceReportRowInput;
 
@@ -109,18 +108,6 @@ const EMPTY_DASHBOARD: AttendanceSecurityDashboard = {
   alerts: [],
   zones: [],
 };
-
-const DEFAULT_ATTENDANCE_SHIFT_START = "10:00";
-const DEFAULT_ATTENDANCE_SHIFT_END = "22:00";
-const WEEKDAY_KEYS_BY_JS_DAY: WeekdayKey[] = [
-  "sun",
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-];
 
 function localDateKey(date: Date) {
   const year = date.getFullYear();
@@ -359,17 +346,13 @@ function recordDevicePresentation(
   return { label, status, hasRisk };
 }
 
-function weekdayKeyForDate(dateKey: string): WeekdayKey {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) return "sun";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return WEEKDAY_KEYS_BY_JS_DAY[date.getUTCDay()] || "sun";
-}
+
 
 function staffIdentityKeys(row: Record<string, unknown>) {
   const keys = [
     row.id,
     row.uid,
+    row.firebaseUid,
     row.employeeUid,
     row.employeeId,
     row.employeeDocId,
@@ -385,78 +368,11 @@ function staffIdentityKeys(row: Record<string, unknown>) {
   );
 }
 
-function resolveStaffProfile(
-  record: Pick<AttendanceWorkerRecord, "employeeUid" | "employeeDocId">,
-  staffProfiles: Map<string, Record<string, unknown>>
-) {
-  const keys = [record.employeeDocId, record.employeeUid]
-    .map((key) => String(key || "").trim())
-    .filter(Boolean);
-  for (const key of keys) {
-    const profile = staffProfiles.get(key);
-    if (profile) return profile;
-  }
-  return undefined;
-}
 
-function cleanScheduleDay(value: unknown) {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
 
-function resolveApprovedScheduleForDate(
-  staff: Record<string, unknown> | undefined,
-  dateKey: string
-) {
-  const overrides = Array.isArray(staff?.customWorkingHourOverrides)
-    ? (staff?.customWorkingHourOverrides as unknown[])
-    : [];
-  const override = overrides
-    .map(cleanScheduleDay)
-    .find((item) => String(item?.date || "").trim() === dateKey);
 
-  const weekday = weekdayKeyForDate(dateKey);
-  const customWorkingHours = cleanScheduleDay(staff?.customWorkingHours) || {};
-  const customDay =
-    staff?.useCustomWorkingHours === true
-      ? cleanScheduleDay(customWorkingHours[weekday])
-      : undefined;
-  const source = override || customDay;
 
-  if (source?.enabled === false) {
-    return {
-      enabled: false,
-      start: undefined,
-      end: undefined,
-      lateGraceMinutes: 0,
-      earlyLeaveGraceMinutes: 0,
-      label: "غير مجدول",
-      note: override ? "استثناء اليوم" : "دوام الموظفة",
-    };
-  }
 
-  const start =
-    normalizeAttendanceTimeHHMM(String(source?.start || "")) ||
-    DEFAULT_ATTENDANCE_SHIFT_START;
-  const end =
-    normalizeAttendanceTimeHHMM(String(source?.end || "")) ||
-    DEFAULT_ATTENDANCE_SHIFT_END;
-
-  return {
-    enabled: true,
-    start,
-    end,
-    lateGraceMinutes: 0,
-    earlyLeaveGraceMinutes: 0,
-    label: `${start} - ${end}`,
-    note: override
-      ? "استثناء اليوم"
-      : customDay
-        ? "دوام الموظفة"
-        : "دوام الصالون الافتراضي",
-  };
-}
 
 function attendanceShiftKey(employeeId: string, date: string) {
   return `${employeeId}:${date}`;
@@ -510,45 +426,150 @@ function readPolicyMinutes(...values: unknown[]) {
 }
 
 function resolveCoreAttendanceSchedule(
-  row: CoreResolvedShift | null | undefined,
-  fallback: ReturnType<typeof resolveApprovedScheduleForDate>
-): ReturnType<typeof resolveApprovedScheduleForDate> {
-  const source = String((row as any)?.source || "").trim();
-  if (!row || !source || source === "none") return fallback;
+  row: CoreResolvedShift | null | undefined
+) {
+  const unavailable = (note: string) => ({
+    available: false,
+    enabled: false,
+    start: undefined,
+    end: undefined,
+    lateGraceMinutes: 0,
+    earlyLeaveGraceMinutes: 0,
+    label: "\u063a\u064a\u0631 \u0645\u062a\u0627\u062d",
+    note,
+  });
 
-  const exceptionType = String(
-    (row as any)?.exceptionType || (row as any)?.exception_type || ""
+  const source = String(
+    (row as any)?.source || ""
   ).trim();
-  if (exceptionType === "off" || (source === "weekly_schedule" && Number((row as any)?.active) !== 1)) {
+
+  if (!row || !source) {
+    return unavailable(
+      "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0634\u0641\u062a \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Core"
+    );
+  }
+
+  if (source === "none") {
     return {
+      available: true,
       enabled: false,
       start: undefined,
       end: undefined,
       lateGraceMinutes: 0,
       earlyLeaveGraceMinutes: 0,
-      label: "غير مجدول",
-      note: "استثناء منشور في Core",
+      label: "\u063a\u064a\u0631 \u0645\u062c\u062f\u0648\u0644",
+      note: "\u0644\u0627 \u064a\u0648\u062c\u062f \u0634\u0641\u062a \u0645\u0646\u0634\u0648\u0631 \u0641\u064a Core",
+    };
+  }
+
+  const exceptionType = String(
+    (row as any)?.exceptionType ||
+      (row as any)?.exception_type ||
+      ""
+  ).trim();
+
+  if (
+    exceptionType === "off" ||
+    (
+      source === "weekly_schedule" &&
+      Number((row as any)?.active) !== 1
+    )
+  ) {
+    return {
+      available: true,
+      enabled: false,
+      start: undefined,
+      end: undefined,
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+      label: "\u063a\u064a\u0631 \u0645\u062c\u062f\u0648\u0644",
+      note: "\u0627\u0633\u062a\u062b\u0646\u0627\u0621 \u0645\u0646\u0634\u0648\u0631 \u0641\u064a Core",
     };
   }
 
   const snapshot = parseResolvedShiftSnapshot(row);
-  const start = resolvedShiftTime(row, snapshot, "start");
-  const end = resolvedShiftTime(row, snapshot, "end");
-  if (!start || !end) return fallback;
+  const start = resolvedShiftTime(
+    row,
+    snapshot,
+    "start"
+  );
+  const end = resolvedShiftTime(
+    row,
+    snapshot,
+    "end"
+  );
+
+  if (!start || !end) {
+    return unavailable(
+      "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0634\u0641\u062a \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Core \u063a\u064a\u0631 \u0645\u0643\u062a\u0645\u0644\u0629"
+    );
+  }
 
   return {
+    available: true,
     enabled: true,
     start,
     end,
-    lateGraceMinutes: readPolicyMinutes(
-      (row as any)?.lateGraceMinutes,
-      (row as any)?.late_grace_minutes,
-      snapshot.lateGraceMinutes,
-      snapshot.late_grace_minutes
-    ) ?? 0,
+    lateGraceMinutes:
+      readPolicyMinutes(
+        (row as any)?.lateGraceMinutes,
+        (row as any)?.late_grace_minutes,
+        snapshot.lateGraceMinutes,
+        snapshot.late_grace_minutes
+      ) ?? 0,
     earlyLeaveGraceMinutes: 0,
     label: `${start} - ${end}`,
-    note: source === "exception" ? "استثناء منشور في Core" : "شفت منشور في Core",
+    note:
+      source === "exception"
+        ? "\u0627\u0633\u062a\u062b\u0646\u0627\u0621 \u0645\u0646\u0634\u0648\u0631 \u0641\u064a Core"
+        : "\u0634\u0641\u062a \u0645\u0646\u0634\u0648\u0631 \u0641\u064a Core",
+  };
+}
+
+function actualWorkedHoursFromPunches(
+  checkInAt?: string,
+  checkOutAt?: string
+) {
+  const start = Date.parse(String(checkInAt || ""));
+  const end = Date.parse(String(checkOutAt || ""));
+
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end < start
+  ) {
+    return 0;
+  }
+
+  return Math.round(
+    ((end - start) / 3600000) * 100
+  ) / 100;
+}
+
+function unavailableScheduleSummary(input: {
+  date: string;
+  checkInAt?: string;
+  checkOutAt?: string;
+}): AttendanceDisciplineDaySummary {
+  return {
+    date: input.date,
+    scheduledHours: 0,
+    actualWorkedHours: actualWorkedHoursFromPunches(
+      input.checkInAt,
+      input.checkOutAt
+    ),
+    lateHours: 0,
+    earlyLeaveHours: 0,
+    compensatedLateHours: 0,
+    rawMissingHours: 0,
+    permissionRequestedHours: 0,
+    permissionCoveredHours: 0,
+    missingHours: 0,
+    extraHours: 0,
+    afterScheduleHours: 0,
+    netHourDifference: 0,
+    status: "schedule_unavailable",
+    statusLabel: "\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d",
   };
 }
 
@@ -556,6 +577,7 @@ function disciplineStatusTone(status: AttendanceDayStatus) {
   if (status === "absent" || status === "missing_hours" || status === "incomplete") {
     return "danger";
   }
+  if (status === "schedule_unavailable") return "warning";
   if (status === "in_progress") return "active";
   if (
     status === "complete_with_permission" ||
@@ -579,7 +601,6 @@ export default function DashboardAttendanceSecurity() {
   const [activeTab, setActiveTab] = useState<AttendanceTab>("discipline");
   const [dashboard, setDashboard] = useState<AttendanceSecurityDashboard>(EMPTY_DASHBOARD);
   const [staffNames, setStaffNames] = useState<Map<string, string>>(new Map());
-  const [staffProfiles, setStaffProfiles] = useState<Map<string, Record<string, unknown>>>(new Map());
   const [coreResolvedShifts, setCoreResolvedShifts] = useState<Record<string, CoreResolvedShift | null>>({});
   const [permissionEntriesByEmployee, setPermissionEntriesByEmployee] = useState<Record<string, EmployeePermissionRequest[]>>({});
   const [loading, setLoading] = useState(true);
@@ -605,43 +626,72 @@ export default function DashboardAttendanceSecurity() {
           alertStatus: "open",
           limit: 200,
         }),
-        listActiveStaffAll(),
+        CoreStaffService.list({ activeOnly: true }),
       ]);
 
       if (result.status === "rejected") throw result.reason;
       setDashboard(result.value);
 
+      const canonicalEmployeeIdByAlias = new Map<string, string>();
+      if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
+        for (const row of staffResult.value as Array<Record<string, unknown>>) {
+          const canonicalEmployeeId = [
+            row.employeeId,
+            row.id,
+            row.employeeUid,
+            row.linkedUid,
+            row.authUid,
+            row.uid,
+    row.firebaseUid,
+          ]
+            .map((value) => String(value || "").trim())
+            .find(
+              (value) =>
+                value &&
+                !value.startsWith("app_user_") &&
+                /^[A-Za-z0-9_-]+$/.test(value)
+            );
+
+          if (!canonicalEmployeeId) continue;
+          for (const alias of staffIdentityKeys(row)) {
+            canonicalEmployeeIdByAlias.set(alias, canonicalEmployeeId);
+          }
+        }
+      }
+
       const attendancePairs = new Map<string, { employeeId: string; date: string }>();
       for (const record of result.value.records) {
         if (record.result !== "allowed") continue;
-        const employeeId = String(record.employeeDocId || record.employeeUid || "").trim();
+        const rawEmployeeId = String(record.employeeUid || record.employeeDocId || "").trim();
+        const employeeId = canonicalEmployeeIdByAlias.get(rawEmployeeId) || rawEmployeeId;
         const date = riyadhDateKeyFromTimestamp(record.serverTime);
-        if (!employeeId || !date) continue;
+        if (!employeeId || employeeId.startsWith("app_user_") || !date) continue;
         attendancePairs.set(attendanceShiftKey(employeeId, date), { employeeId, date });
       }
 
       const employeeIds = Array.from(
         new Set(Array.from(attendancePairs.values()).map((item) => item.employeeId))
       );
-      const [resolvedShiftPairs, permissionPairs] = await Promise.all([
-        Promise.all(
-          Array.from(attendancePairs.values()).map(async ({ employeeId, date }) => {
-            try {
-              return [
-                attendanceShiftKey(employeeId, date),
-                await CoreHrService.resolveEmployeeShift(employeeId, date),
-              ] as const;
-            } catch (contextError) {
-              console.warn("attendance discipline Core context load failed", {
-                kind: "resolved-shift",
-                employeeId,
-                date,
-                error: contextError,
-              });
-              return [attendanceShiftKey(employeeId, date), null] as const;
-            }
+
+      const resolvedShiftBatchPromise = employeeIds.length
+        ? CoreHrService.resolveEmployeeShiftsRange({
+            employeeIds,
+            dateFrom: fromDate,
+            dateTo: toDate,
+          }).catch((contextError) => {
+            console.warn("attendance discipline Core context load failed", {
+              kind: "resolved-shift-batch",
+              employeeIds,
+              fromDate,
+              toDate,
+              error: contextError,
+            });
+            return null;
           })
-        ),
+        : Promise.resolve(null);
+
+      const [resolvedShiftBatch, permissionPairs] = await Promise.all([
+        resolvedShiftBatchPromise,
         Promise.all(
           employeeIds.map(async (employeeId) => {
             try {
@@ -664,23 +714,78 @@ export default function DashboardAttendanceSecurity() {
           })
         ),
       ]);
+
+      const resolvedShiftByKey = new Map<string, CoreResolvedShift>();
+      for (const row of resolvedShiftBatch?.rows || []) {
+        const employeeId = String(row.employeeId || row.employee_id || "").trim();
+        const date = String(row.date || "").trim();
+        if (!employeeId || !date) continue;
+        resolvedShiftByKey.set(attendanceShiftKey(employeeId, date), row);
+      }
+
+      const resolvedShiftPairs = new Map<string, CoreResolvedShift | null>();
+      for (const record of result.value.records) {
+        if (record.result !== "allowed") continue;
+        const date = riyadhDateKeyFromTimestamp(record.serverTime);
+        if (!date) continue;
+
+        const recordIds = Array.from(
+          new Set(
+            [record.employeeDocId, record.employeeUid]
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          )
+        );
+        const canonicalEmployeeId =
+          recordIds
+            .map((id) => canonicalEmployeeIdByAlias.get(id) || id)
+            .find((id) => id && !id.startsWith("app_user_")) || "";
+
+        const resolvedShift = canonicalEmployeeId
+          ? resolvedShiftByKey.get(attendanceShiftKey(canonicalEmployeeId, date)) || null
+          : null;
+
+        for (const id of recordIds) {
+          resolvedShiftPairs.set(attendanceShiftKey(id, date), resolvedShift);
+        }
+        if (canonicalEmployeeId) {
+          resolvedShiftPairs.set(
+            attendanceShiftKey(canonicalEmployeeId, date),
+            resolvedShift
+          );
+        }
+      }
+
+      const permissionByCanonicalEmployeeId = new Map(permissionPairs);
+      const permissionPairsWithAliases = new Map<string, EmployeePermissionRequest[]>();
+      for (const employeeId of employeeIds) {
+        permissionPairsWithAliases.set(
+          employeeId,
+          permissionByCanonicalEmployeeId.get(employeeId) || []
+        );
+      }
+      for (const [alias, canonicalEmployeeId] of canonicalEmployeeIdByAlias) {
+        if (!permissionByCanonicalEmployeeId.has(canonicalEmployeeId)) continue;
+        permissionPairsWithAliases.set(
+          alias,
+          permissionByCanonicalEmployeeId.get(canonicalEmployeeId) || []
+        );
+      }
+
       setCoreResolvedShifts(Object.fromEntries(resolvedShiftPairs));
-      setPermissionEntriesByEmployee(Object.fromEntries(permissionPairs));
+      setPermissionEntriesByEmployee(Object.fromEntries(permissionPairsWithAliases));
 
       if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
         const next = new Map<string, string>();
-        const profiles = new Map<string, Record<string, unknown>>();
         for (const row of staffResult.value as Array<Record<string, unknown>>) {
           const name = String(
             row.name || row.displayName || row.fullName || row.title || ""
           ).trim();
           for (const id of staffIdentityKeys(row)) {
             if (name) next.set(id, name);
-            profiles.set(id, row);
           }
         }
         setStaffNames(next);
-        setStaffProfiles(profiles);
       }
     } catch (loadError: any) {
       setError(String(loadError?.message || "تعذر تحميل مركز متابعة البصمة."));
@@ -804,29 +909,36 @@ export default function DashboardAttendanceSecurity() {
         .reverse()
         .find((record) => record.type === "check_out");
       const firstRecord = records[0];
-      const staffProfile = firstRecord
-        ? resolveStaffProfile(firstRecord, staffProfiles)
-        : undefined;
-      const fallbackSchedule = resolveApprovedScheduleForDate(staffProfile, group.date);
       const schedule = resolveCoreAttendanceSchedule(
-        coreResolvedShifts[attendanceShiftKey(group.employeeId, group.date)],
-        fallbackSchedule
+        coreResolvedShifts[
+          attendanceShiftKey(
+            group.employeeId,
+            group.date
+          )
+        ]
       );
       const permissionIntervals = permissionIntervalsFromRequests(
         permissionEntriesByEmployee[group.employeeId],
         group.date
       );
-      const summary = calculateAttendanceDisciplineDay({
-        date: group.date,
-        scheduledStart: schedule.start,
-        scheduledEnd: schedule.end,
-        lateGraceMinutes: schedule.lateGraceMinutes,
-        earlyLeaveGraceMinutes: schedule.earlyLeaveGraceMinutes,
-        isScheduledWorkDay: schedule.enabled,
-        checkInAt: firstCheckIn?.serverTime,
-        checkOutAt: lastCheckOut?.serverTime,
-        permissionIntervals,
-      });
+      const summary = schedule.available
+        ? calculateAttendanceDisciplineDay({
+            date: group.date,
+            scheduledStart: schedule.start,
+            scheduledEnd: schedule.end,
+            lateGraceMinutes: schedule.lateGraceMinutes,
+            earlyLeaveGraceMinutes:
+              schedule.earlyLeaveGraceMinutes,
+            isScheduledWorkDay: schedule.enabled,
+            checkInAt: firstCheckIn?.serverTime,
+            checkOutAt: lastCheckOut?.serverTime,
+            permissionIntervals,
+          })
+        : unavailableScheduleSummary({
+            date: group.date,
+            checkInAt: firstCheckIn?.serverTime,
+            checkOutAt: lastCheckOut?.serverTime,
+          });
 
       return {
         key: `${group.employeeId}:${group.date}`,
@@ -863,7 +975,6 @@ export default function DashboardAttendanceSecurity() {
     permissionEntriesByEmployee,
     search,
     staffNames,
-    staffProfiles,
   ]);
 
   const disciplineSummary = useMemo(

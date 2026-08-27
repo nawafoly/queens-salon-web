@@ -79,6 +79,38 @@ if (fs.existsSync(path.join(root, 'src/styles/BookingInternalLegacy.css'))) {
   failures.push('src/styles/BookingInternalLegacy.css: dead legacy stylesheet must be deleted');
 }
 
+if (fs.existsSync(path.join(root, 'src/helpers/staffAvailability.ts'))) {
+  failures.push('src/helpers/staffAvailability.ts: legacy local booking availability helper must be deleted');
+}
+
+if (fs.existsSync(path.join(root, 'src/helpers/hr/staffScheduleHistory.ts'))) {
+  failures.push('src/helpers/hr/staffScheduleHistory.ts: legacy employee schedule history runtime must be deleted');
+}
+
+forbid(
+  'src/helpers/bookingDateUtils.ts',
+  'staffScheduleHistory',
+  'bookingDateUtils must remain date-only and must not resolve employee schedules'
+);
+
+forbid(
+  'src/helpers/bookingDateUtils.ts',
+  'getStaffLeaveMetaForDate',
+  'bookingDateUtils must not infer employee leave/off state'
+);
+
+forbid(
+  'src/services/firestoreBookings.ts',
+  'isStaffAvailableForDate',
+  'legacy Firestore booking validator must not decide employee availability locally'
+);
+
+requireText(
+  'src/services/firestoreBookings.ts',
+  'CoreAvailabilityService.getStaffDay',
+  'any retained Firestore booking validator must delegate dated employee availability to Malikat Core'
+);
+
 forbidRegex(
   'src/pages/Checkout.tsx',
   /from\s+["'][^"']*firestoreBookings["']/,

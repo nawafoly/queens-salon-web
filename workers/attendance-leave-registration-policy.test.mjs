@@ -42,15 +42,22 @@ test("the attendance-day handler blocks real punches but opens the leave modal o
   assert.match(dashboardEmployeesSource, /setLeaveModalOpen\(true\);/);
 });
 
-test("submitting the leave modal directly approves both Firestore and Core leave records", () => {
+test("submitting the leave modal approves through the canonical leave decision and verifies Core state", () => {
   assert.match(
     dashboardEmployeesSource,
-    /await approveEmployeeLeaveRequest\(\{[\s\S]*?requestId,[\s\S]*?reviewerUid: authUser\.uid[\s\S]*?\}\);/
+    /await decideCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical,[\s\S]*?"approved",[\s\S]*?reviewerUid: authUser\.uid[\s\S]*?\);/
   );
+
   assert.match(
     dashboardEmployeesSource,
-    /await CoreHrService\.decideLeave\([\s\S]*?coreLeaveId,[\s\S]*?"approved"[\s\S]*?\);/
+    /await CoreHrService\.listLeaves\(\{[\s\S]*?employeeId: selectedEmployeeId,[\s\S]*?\}\);/
   );
+
+  assert.doesNotMatch(
+    dashboardEmployeesSource,
+    /\bapproveEmployeeLeaveRequest\s*\(/
+  );
+
   assert.match(
     dashboardEmployeesSource,
     /description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب"/

@@ -11,7 +11,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { isStaffOperationallyActiveForDate } from "./staffAvailability";
+import { isStaffOperationallyActiveForDate } from "./staffOperationalStatus";
 
 
 export type BookingStatus = "confirmed" | "pending" | "cancelled" | "completed";

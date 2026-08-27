@@ -18,14 +18,9 @@ import {
   type StaffAttendanceWithId,
 } from "../services/firestoreAttendance";
 import {
-  computeAttendanceDay,
-  getAttendanceDayStatus,
   type AttendanceRecord,
   type AttendanceStatus,
-  type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../helpers/hr/staffScheduleHistory";
-import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
 import {
   attendanceResolvedShiftSourceLabel,
   computeResolvedAttendanceDay,
@@ -36,28 +31,6 @@ import type { CoreResolvedShift } from "../types/hrCoreApi";
 import "../styles/AttendanceMonthView.css";
 
 type AttendanceViewerMode = "employee" | "admin";
-
-type AttendanceScheduleInput = ShiftSchedule & {
-  start?: string | null;
-  end?: string | null;
-  workStartTime?: string | null;
-  workEndTime?: string | null;
-  shiftStartTime?: string | null;
-  shiftEndTime?: string | null;
-  offDays?: unknown;
-  weeklyOffDay?: unknown;
-  exceptionalLeaveWeekdays?: unknown;
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Record<string, { enabled?: boolean; start?: string; end?: string }> | null;
-  customWorkingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workingScheduleVersions?: Array<{
-    id?: string;
-    effectiveFrom?: string;
-    effectiveTo?: string;
-    useCustomWorkingHours?: boolean;
-    customWorkingHours?: Record<string, { enabled?: boolean; start?: string; end?: string }>;
-  }> | null;
-};
 
 type AttendanceMonthViewProps = {
   rows: StaffAttendanceWithId[];
@@ -76,11 +49,11 @@ type AttendanceMonthViewProps = {
   canCancelLeave?: boolean;
   showAdminActions?: boolean;
   showSummaryTools?: boolean;
-  schedule?: AttendanceScheduleInput | null;
   coreResolvedShifts?: Record<string, CoreResolvedShift | null> | null;
   coreResolvedShiftsLoading?: boolean;
   coreResolvedShiftsError?: string;
   approvedLeaveDateKeys?: Iterable<string>;
+  absenceDateKeys?: Iterable<string>;
   permissionEntries?: EmployeePermissionRequest[];
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
@@ -93,17 +66,6 @@ type AttendanceMonthViewProps = {
 };
 
 const WEEK_LABELS = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
-  sun: "sunday",
-  mon: "monday",
-  tue: "tuesday",
-  wed: "wednesday",
-  thu: "thursday",
-  fri: "friday",
-  sat: "saturday",
-};
-
 function normalizeMonthKey(value: string) {
   const s = String(value || "").trim();
   return /^\d{4}-\d{2}$/.test(s) ? s : new Date().toISOString().slice(0, 7);
@@ -141,199 +103,9 @@ function firstWeekday(monthKey: string) {
   return (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 1) % 7;
 }
 
-function weekdayKeyForDate(dateKey: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) return "sun";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
-}
-
 function cleanTime(value: unknown) {
   const raw = String(value || "").trim();
   return /^\d{1,2}:\d{2}$/.test(raw) ? raw : "";
-}
-
-function cleanShiftText(value: unknown) {
-  return String(value || "").trim();
-}
-
-function readPolicyMinutes(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const number = Number(value);
-    if (Number.isFinite(number) && number >= 0) return Math.round(number);
-  }
-  return undefined;
-}
-
-function parseShiftSnapshot(row?: CoreResolvedShift | null) {
-  const raw = cleanShiftText((row as any)?.snapshotJson || (row as any)?.snapshot_json);
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-}
-
-function resolvedShiftSourceLabel(row?: CoreResolvedShift | null) {
-  const source = cleanShiftText((row as any)?.source);
-  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
-  if (source === "exception") {
-    if (exceptionType === "off") return "استثناء: يوم راحة";
-    if (exceptionType === "custom") return "استثناء: وقت مخصص";
-    return "استثناء: شفت بديل";
-  }
-  if (source === "assignment") return "شفت منشور";
-  return "جدول الموظفة";
-}
-
-function resolvedShiftName(row?: CoreResolvedShift | null) {
-  const snapshot = parseShiftSnapshot(row);
-  return (
-    cleanShiftText((row as any)?.shiftName || (row as any)?.shift_name) ||
-    cleanShiftText(snapshot.name) ||
-    cleanShiftText(snapshot.code) ||
-    resolvedShiftSourceLabel(row)
-  );
-}
-
-function resolvedShiftWindow(row?: CoreResolvedShift | null) {
-  if (!row || cleanShiftText((row as any).source) === "none") return null;
-  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
-  if (exceptionType === "off") {
-    return {
-      startTime: "09:00",
-      endTime: "17:00",
-      lateGraceMinutes: 0,
-      earlyLeaveGraceMinutes: 0,
-      isOff: true,
-    };
-  }
-  const snapshot = parseShiftSnapshot(row);
-  const startTime =
-    cleanTime((row as any)?.templateStartTime) ||
-    cleanTime((row as any)?.template_start_time) ||
-    cleanTime((row as any)?.startTime) ||
-    cleanTime((row as any)?.start_time) ||
-    cleanTime(snapshot.start_time) ||
-    cleanTime(snapshot.startTime);
-  const endTime =
-    cleanTime((row as any)?.templateEndTime) ||
-    cleanTime((row as any)?.template_end_time) ||
-    cleanTime((row as any)?.endTime) ||
-    cleanTime((row as any)?.end_time) ||
-    cleanTime(snapshot.end_time) ||
-    cleanTime(snapshot.endTime);
-  if (!startTime && !endTime) return null;
-  return {
-    startTime: startTime || "09:00",
-    endTime: endTime || "17:00",
-    lateGraceMinutes: readPolicyMinutes(
-      (row as any)?.lateGraceMinutes,
-      (row as any)?.late_grace_minutes,
-      snapshot.lateGraceMinutes,
-      snapshot.late_grace_minutes
-    ),
-    earlyLeaveGraceMinutes: 0,
-    isOff: false,
-  };
-}
-
-function isCoreResolvedOff(row?: CoreResolvedShift | null) {
-  const source = cleanShiftText((row as any)?.source);
-  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
-  return exceptionType === "off" || (source === "weekly_schedule" && Number((row as any)?.active) !== 1);
-}
-
-function getDayOverride(dateKey: string, input?: AttendanceScheduleInput | null) {
-  const overrides = Array.isArray(input?.customWorkingHourOverrides)
-    ? input?.customWorkingHourOverrides || []
-    : [];
-  return overrides.find((override) => normalizeDateKey(override.date) === dateKey) || null;
-}
-
-function isDateSpecificOff(dateKey: string, input?: AttendanceScheduleInput | null) {
-  const override = getDayOverride(dateKey, input);
-  return override?.enabled === false;
-}
-
-function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null, resolved?: CoreResolvedShift | null): ShiftSchedule {
-  const coreWindow = resolvedShiftWindow(resolved);
-  if (coreWindow && !coreWindow.isOff) {
-    return {
-      startTime: coreWindow.startTime,
-      endTime: coreWindow.endTime,
-      lateGraceMinutes: coreWindow.lateGraceMinutes,
-      earlyLeaveGraceMinutes: coreWindow.earlyLeaveGraceMinutes,
-      weeklyOffDays: [],
-    };
-  }
-  const source = input || {};
-  const historicalVersion = resolveStaffScheduleVersionForDate(source.workingScheduleVersions, dateKey);
-  const effectiveSource: AttendanceScheduleInput = historicalVersion
-    ? {
-        ...source,
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      } as AttendanceScheduleInput
-    : source;
-  const weekdayKey = weekdayKeyForDate(dateKey);
-  const useCustomWorkingHours = historicalVersion
-    ? historicalVersion.useCustomWorkingHours
-    : effectiveSource.useCustomWorkingHours === true;
-  const customDay = useCustomWorkingHours ? effectiveSource.customWorkingHours?.[weekdayKey] : undefined;
-  const override = getDayOverride(dateKey, source);
-  const customHours = (effectiveSource.customWorkingHours || {}) as Record<
-    string,
-    { enabled?: boolean; start?: string; end?: string }
-  >;
-  const customOffDays = useCustomWorkingHours
-    ? Object.entries(customHours)
-        .filter(([, day]) => day?.enabled === false)
-        .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
-        .filter(Boolean)
-    : [];
-  const explicitOffDays = historicalVersion
-    ? weeklyOffDaysFromScheduleSnapshot({
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      })
-    : [
-        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-      ];
-
-  const startTime =
-    cleanTime(override?.start) ||
-    cleanTime(customDay?.start) ||
-    cleanTime(effectiveSource.startTime) ||
-    cleanTime(effectiveSource.start) ||
-    cleanTime(effectiveSource.workStartTime) ||
-    cleanTime(effectiveSource.shiftStartTime) ||
-    "09:00";
-  const endTime =
-    cleanTime(override?.end) ||
-    cleanTime(customDay?.end) ||
-    cleanTime(effectiveSource.endTime) ||
-    cleanTime(effectiveSource.end) ||
-    cleanTime(effectiveSource.workEndTime) ||
-    cleanTime(effectiveSource.shiftEndTime) ||
-    "17:00";
-
-  return {
-    startTime,
-    endTime,
-    lateGraceMinutes: readPolicyMinutes(
-      effectiveSource.lateGraceMinutes,
-      (effectiveSource as any).late_grace_minutes
-    ),
-    earlyLeaveGraceMinutes: 0,
-    weeklyOffDays: [...explicitOffDays, ...customOffDays],
-  };
 }
 
 function formatTime(value: unknown) {
@@ -421,7 +193,13 @@ function statusTone(status: AttendanceStatus) {
   if (status === "late") return "late";
   if (status === "missing_hours") return "partial";
   if (status === "in_progress") return "partial";
-  if (status === "partial" || status === "today_pending") return "partial";
+  if (
+    status === "partial" ||
+    status === "today_pending" ||
+    status === "schedule_unavailable"
+  ) {
+    return "partial";
+  }
   if (status === "absent") return "absent";
   if (status === "off_day") return "off-day";
   if (status === "leave") return "leave";
@@ -429,16 +207,19 @@ function statusTone(status: AttendanceStatus) {
 }
 
 function statusLabel(status: AttendanceStatus) {
-  if (status === "present") return "حضور مكتمل";
-  if (status === "late") return "متأخر";
-  if (status === "missing_hours") return "ناقص ساعات";
-  if (status === "in_progress") return "بانتظار الانصراف";
-  if (status === "partial") return "بصمة تحتاج إكمال";
-  if (status === "absent") return "غياب";
-  if (status === "off_day") return "يوم راحة";
-  if (status === "leave") return "إجازة";
-  if (status === "today_pending") return "لم يسجل بعد";
-  return "يوم قادم";
+  if (status === "present") return "\u062d\u0636\u0648\u0631 \u0645\u0643\u062a\u0645\u0644";
+  if (status === "late") return "\u0645\u062a\u0623\u062e\u0631";
+  if (status === "missing_hours") return "\u0646\u0627\u0642\u0635 \u0633\u0627\u0639\u0627\u062a";
+  if (status === "in_progress") return "\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u0627\u0644\u0627\u0646\u0635\u0631\u0627\u0641";
+  if (status === "partial") return "\u0628\u0635\u0645\u0629 \u062a\u062d\u062a\u0627\u062c \u0625\u0643\u0645\u0627\u0644";
+  if (status === "absent") return "\u063a\u064a\u0627\u0628";
+  if (status === "off_day") return "\u064a\u0648\u0645 \u0631\u0627\u062d\u0629";
+  if (status === "leave") return "\u0625\u062c\u0627\u0632\u0629";
+  if (status === "today_pending") return "\u0644\u0645 \u064a\u0633\u062c\u0644 \u0628\u0639\u062f";
+  if (status === "schedule_unavailable") {
+    return "\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d";
+  }
+  return "\u064a\u0648\u0645 \u0642\u0627\u062f\u0645";
 }
 
 function displayStatusLabel(status: AttendanceStatus, viewerMode: AttendanceViewerMode) {
@@ -469,11 +250,11 @@ export default function AttendanceMonthView({
   canCancelLeave,
   showAdminActions = false,
   showSummaryTools = true,
-  schedule,
   coreResolvedShifts,
   coreResolvedShiftsLoading = false,
   coreResolvedShiftsError = "",
   approvedLeaveDateKeys,
+  absenceDateKeys,
   permissionEntries,
   onMonthChange,
   onSelectedDateChange,
@@ -486,8 +267,37 @@ export default function AttendanceMonthView({
 }: AttendanceMonthViewProps) {
   const safeMonthKey = normalizeMonthKey(monthKey);
   const todayKey = getTodayAttendanceDateKey();
-  const leaveDateKeys = new Set(Array.from(approvedLeaveDateKeys || []).map(normalizeDateKey).filter(Boolean));
-  const rowsByDate = new Map(rows.map((row) => [normalizeDateKey(row.date) || row.id, row]));
+  const leaveDateKeys =
+    new Set(
+      Array.from(
+        approvedLeaveDateKeys ||
+        []
+      )
+        .map(normalizeDateKey)
+        .filter(Boolean)
+    );
+
+  const absenceDateKeySet =
+    new Set(
+      Array.from(
+        absenceDateKeys ||
+        []
+      )
+        .map(normalizeDateKey)
+        .filter(Boolean)
+    );
+
+  const rowsByDate =
+    new Map(
+      rows.map(
+        (row) => [
+          normalizeDateKey(
+            row.date
+          ) || row.id,
+          row,
+        ]
+      )
+    );
   const safeSelectedDate =
     normalizeDateKey(selectedDate) && selectedDate.startsWith(safeMonthKey)
       ? selectedDate
@@ -501,11 +311,13 @@ export default function AttendanceMonthView({
     dateKey: safeSelectedDate,
     row: selectedRow as (StaffAttendanceWithId & Record<string, unknown>) | null,
     records: selectedDayRecords,
-    schedule,
     coreResolvedShift: selectedCoreShift,
     permissionEntries,
     todayDateKey: todayKey,
-    approvedLeaveDateKeys: leaveDateKeys,
+    approvedLeaveDateKeys:
+      leaveDateKeys,
+    absenceDateKeys:
+      absenceDateKeySet,
   });
   const selectedSchedule = selectedResolvedDay.schedule;
   const selectedComputation = selectedResolvedDay.computation;
@@ -546,11 +358,13 @@ export default function AttendanceMonthView({
         dateKey,
         row: row as (StaffAttendanceWithId & Record<string, unknown>) | null,
         records: dayRecords,
-        schedule,
         coreResolvedShift: dayCoreShift,
         permissionEntries,
         todayDateKey: todayKey,
-        approvedLeaveDateKeys: leaveDateKeys,
+        approvedLeaveDateKeys:
+          leaveDateKeys,
+        absenceDateKeys:
+          absenceDateKeySet,
       });
       const status = resolvedDay.status;
       return {
@@ -589,11 +403,16 @@ export default function AttendanceMonthView({
   const isPartialDay =
     selectedStatus === "partial";
 
+  const isScheduleUnavailable =
+    selectedStatus ===
+    "schedule_unavailable";
+
   const isWorkedDay =
     !isRestDay &&
     !isLeaveDay &&
     !isAbsentDay &&
-    !isPendingDay;
+    !isPendingDay &&
+    !isScheduleUnavailable;
 
   const hasLate =
     selectedComputation.lateHours > 0.001;
@@ -942,6 +761,20 @@ export default function AttendanceMonthView({
             </div>
 
             <strong>غياب</strong>
+          </div>
+        ) : isScheduleUnavailable ? (
+          <div className="attendance-month__state-card is-pending">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </div>
+
+            <strong>
+              {"\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d"}
+            </strong>
+
+            <span>
+              {"\u062a\u0639\u0630\u0631 \u0627\u0644\u062d\u0635\u0648\u0644 \u0639\u0644\u0649 \u0627\u0644\u0634\u0641\u062a \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Malikat Core. \u0644\u0645 \u064a\u062a\u0645 \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0623\u064a \u062c\u062f\u0648\u0644 \u0642\u062f\u064a\u0645 \u0643\u0628\u062f\u064a\u0644."}
+            </span>
           </div>
         ) : isPendingDay ? (
           <div className="attendance-month__state-card is-pending">

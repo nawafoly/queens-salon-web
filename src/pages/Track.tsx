@@ -4,7 +4,7 @@ import "../styles/TrackMobile.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
-import { getBookingById, getTrackByPublicId } from "../services/firestoreBookings";
+import { getTrackByPublicId } from "../services/firestoreBookings";
 
 // ✅ Firebase (للإعدادات العامة: واتساب + خريطة)
 import { doc, onSnapshot } from "firebase/firestore";
@@ -171,28 +171,7 @@ const Track = () => {
             res.categoryId ||
             "-";
 
-          // Fallback for old track docs: read booking doc by same id.
-          if ((sectionLabel === "-" || categoryLabel === "-") && res.id) {
-            try {
-              const booking: any = await getBookingById(String(res.id));
-              if (booking) {
-                if (sectionLabel === "-") {
-                  sectionLabel =
-                    booking.serviceSnapshot?.sectionTitleAtBooking ||
-                    booking.serviceSnapshot?.sectionIdAtBooking ||
-                    "-";
-                }
-                if (categoryLabel === "-") {
-                  categoryLabel =
-                    booking.serviceSnapshot?.categoryNameAtBooking ||
-                    booking.serviceSnapshot?.categoryIdAtBooking ||
-                    "-";
-                }
-              }
-            } catch {
-              // Keep track payload when bookings read is unavailable by rules.
-            }
-          }
+
 
           setData({
             id: res.id,

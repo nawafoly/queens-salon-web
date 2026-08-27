@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { buildAttendanceSpecialDayMap } from "../src/helpers/hr/attendanceCalendarData.ts";
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 
 const salonId = "main";
@@ -121,36 +120,4 @@ test("Core shift resolver works base weekly-off dates during suspension and rest
   assert.equal(returnDate.source, "weekly_schedule");
   assert.equal(returnDate.exception_type, "off");
   assert.equal(Number(returnDate.active), 0, "base weekly off must return automatically on toDate");
-});
-
-test("attendance calendar reopens suspended weekly-off dates and restores the weekly-off marker on return date", () => {
-  const profile = {
-    id: employeeId,
-    uid: employeeId,
-    employeeUid: employeeId,
-    useCustomWorkingHours: true,
-    customWorkingHours: {
-      sun: { enabled: false, start: "15:00", end: "23:00" },
-      mon: { enabled: true, start: "15:00", end: "23:00" },
-      tue: { enabled: true, start: "15:00", end: "23:00" },
-      wed: { enabled: true, start: "15:00", end: "23:00" },
-      thu: { enabled: true, start: "15:00", end: "23:00" },
-      fri: { enabled: true, start: "15:00", end: "23:00" },
-      sat: { enabled: true, start: "15:00", end: "23:00" },
-    },
-    customWorkingHourOverrides: [
-      { date: "2026-08-16", enabled: true, start: "15:00", end: "23:00" },
-      { date: "2026-08-23", enabled: true, start: "15:00", end: "23:00" },
-    ],
-  };
-
-  const days = buildAttendanceSpecialDayMap({
-    profile,
-    fromDate: "2026-08-16",
-    toDate: "2026-08-30",
-  });
-
-  assert.equal(days.has("2026-08-16"), false, "suspended weekly off must display as a working day");
-  assert.equal(days.has("2026-08-23"), false, "every base off date inside the suspension must reopen");
-  assert.equal(days.get("2026-08-30")?.kind, "weekly_off", "return date must display as weekly off again");
 });

@@ -24,6 +24,18 @@ export const CoreCatalogService = {
     return rows.map(mapCoreService);
   },
 
+  async createService(input: Record<string, unknown>) {
+    return mapCoreService(await coreApiRequest<Record<string, unknown>>("/api/core/services", { method: "POST", body: input }));
+  },
+
+  async patchService(id: string, input: Record<string, unknown>) {
+    return mapCoreService(await coreApiRequest<Record<string, unknown>>(`/api/core/services/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+  },
+
+  async archiveService(id: string) {
+    return this.patchService(id, { active: false });
+  },
+
   async listSections(activeOnly = true) {
     return CoreAdminCatalogService.listSections(activeOnly ? true : undefined);
   },

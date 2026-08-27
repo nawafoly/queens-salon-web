@@ -440,6 +440,63 @@ export async function listBookings(db, salonId, query = {}) {
   });
 }
 
+export async function getPublicBookingTrack(db, salonId, publicId) {
+  const code = cleanText(publicId).toUpperCase();
+  if (!/^MK-\d{3,}$/.test(code)) throw new AppError(400, "core_booking:invalid_public_id");
+  const row = await dbFirst(
+    db,
+    "SELECT id FROM bookings WHERE salon_id = ? AND public_id = ? AND deleted_at IS NULL LIMIT 1",
+    [salonId, code]
+  );
+  if (!row) throw new AppError(404, "core_booking:not_found");
+  const booking = await getBooking(db, salonId, row.id);
+  const publicItems = await dbAll(
+    db,
+    `SELECT bi.id, bi.service_id, bi.service_name_snapshot, bi.staff_id,
+            bst.name AS staff_name,
+            bi.booking_date, bi.start_time, bi.end_time, bi.duration_minutes,
+            s.section_id, ss.name AS section_name, s.category_id, sc.name AS category_name
+       FROM booking_items bi
+       LEFT JOIN services s
+         ON s.salon_id = ? AND s.id = bi.service_id
+       LEFT JOIN service_sections ss
+         ON ss.salon_id = ? AND ss.id = s.section_id
+       LEFT JOIN service_categories sc
+         ON sc.salon_id = ? AND sc.id = s.category_id
+       LEFT JOIN staff bst
+         ON bst.salon_id = ? AND bst.id = bi.staff_id
+      WHERE bi.booking_id = ?
+      ORDER BY COALESCE(bi.booking_date, ''), COALESCE(bi.start_time, ''), bi.created_at, bi.id`,
+    [salonId, salonId, salonId, salonId, booking.id]
+  );
+  return {
+    id: booking.id,
+    public_id: booking.public_id,
+    status: booking.status,
+    booking_date: booking.booking_date,
+    start_time: booking.start_time,
+    end_time: booking.end_time,
+    staff_id: booking.staff_id,
+    staff_name: booking.staff_name,
+    updated_at: booking.updated_at,
+    items: publicItems.map((item) => ({
+      id: item.id,
+      service_id: item.service_id,
+      service_name_snapshot: item.service_name_snapshot,
+      section_id: item.section_id,
+      section_name: item.section_name,
+      category_id: item.category_id,
+      category_name: item.category_name,
+      staff_id: item.staff_id,
+      staff_name: item.staff_name,
+      booking_date: item.booking_date,
+      start_time: item.start_time,
+      end_time: item.end_time,
+      duration_minutes: item.duration_minutes,
+    })),
+  };
+}
+
 export async function getBooking(db, salonId, id) {
   const booking = await dbFirst(
     db,

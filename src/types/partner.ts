@@ -61,15 +61,6 @@ export type PartnerMemberOperationalProfile = {
   specialties: string[];
   specialtyLabels: string[];
   bio?: string;
-  showOnBooking: boolean;
-  onLeave: boolean;
-  leaveUntil?: string;
-  employmentEndDate?: string;
-  useCustomWorkingHours: boolean;
-  customWorkingHours?: Record<string, unknown>;
-  customWorkingHourOverrides?: Array<Record<string, unknown>>;
-  exceptionalLeaveDates: string[];
-  exceptionalLeaveWeekdays: string[];
   resourceIds: string[];
   contractId?: string;
   rating?: number;
@@ -189,11 +180,33 @@ export type CreatePartnerMemberInput = Omit<
 
 export type UpdatePartnerMemberInput = Partial<CreatePartnerMemberInput>;
 
+export type PartnerTodayOperationalState = {
+  employeeId: string;
+  date: string;
+  available: boolean;
+  showOnBooking?: boolean;
+  reason: string;
+  source: string;
+  startTime?: string;
+  endTime?: string;
+  leaveType?: string;
+  absenceType?: string;
+  blockedRanges: Array<{
+    startTime: string;
+    endTime: string;
+    source: string;
+    reason: string;
+    leaveId?: string;
+    leaveType?: string;
+  }>;
+};
+
 export type PartnerPortalMember = Omit<
   PartnerMember,
   "userUid" | "createdByUid" | "updatedByUid"
 > & {
   hasLogin: boolean;
+  todayOperationalState?: PartnerTodayOperationalState;
 };
 
 export type PartnerPortalPermissions = {

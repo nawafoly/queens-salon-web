@@ -14,6 +14,22 @@ export type AttendanceMinutePolicyResult = {
   extraMinutes: number;
 };
 
+export type AttendanceLatePresentationInput = AttendanceMinutePolicyInput & {
+  lateGraceMinutes?: number | null;
+  compensationWindowOpen?: boolean | null;
+  hasCheckOut?: boolean | null;
+};
+
+export type AttendanceLatePresentationResult = AttendanceMinutePolicyResult & {
+  lateGraceMinutes: number;
+  pendingCompensationMinutes: number;
+  displayLateMinutes: number;
+};
+
 export function calculateAttendanceMinutePolicy(
   input?: AttendanceMinutePolicyInput
 ): AttendanceMinutePolicyResult;
+
+export function calculateAttendanceLatePresentation(
+  input?: AttendanceLatePresentationInput
+): AttendanceLatePresentationResult;

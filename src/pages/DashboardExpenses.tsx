@@ -10,27 +10,28 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { Expense, PaymentMethod } from "../types/finance";
 import { FinanceSettingsService } from "../services/FinanceSettingsService";
-import { AppSettingsService } from "../services/AppSettingsService";
-import { listAllBookings } from "../services/firestoreBookings";
 import {
-  buildPayrollExpenseRowsForMonths,
   PAYROLL_CLOSE_DAY,
   payrollCycleKeyFromDate,
   payrollCycleRangeForMonthKey,
-  type StaffPayrollSource,
-  type BookingPayrollSource,
-} from "../helpers/staffPayroll";
+} from "../helpers/hr/payrollCycle";
+import {
+  generatePayrollEntriesForMonths,
+} from "../services/CorePayrollService";
+import { CoreHrService } from "../services/CoreHrService";
+import {
+  projectCorePayrollEntriesToFinancialRows,
+} from "../helpers/corePayrollFinancialRows";
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { usePermissions } from "../security/PermissionContext";
 import {
-  listAllExpensesFS,
-  removeExpenseFS,
-  upsertExpenseFS,
-  countMonthlyExpensesMissingNotesFS,
-} from "../services/firestoreExpenses";
+  listAllExpensesCore,
+  removeExpenseCore,
+  upsertExpenseCore,
+  countMonthlyExpensesMissingNotesCore,
+} from "../services/CoreExpenseService";
 import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
 import {
   DashboardConfirmV2,
@@ -216,61 +217,6 @@ function expenseSourceLabel(e: Expense): string {
   return category || "تشغيل";
 }
 
-function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
-  return (Array.isArray(rows) ? rows : [])
-    .map((x) => {
-      const id = String(x?.id || "").trim();
-      if (!id) return null;
-      return {
-        id,
-        name: String(x?.name || "").trim() || id,
-        active: x?.active !== false,
-        employmentEndDate: String(x?.employmentEndDate || "").trim() || undefined,
-        useCustomWorkingHours: !!x?.useCustomWorkingHours,
-        customWorkingHours: x?.customWorkingHours || {},
-        customWorkingHourOverrides: Array.isArray(x?.customWorkingHourOverrides)
-          ? x.customWorkingHourOverrides
-          : [],
-        monthlySalary: Number(x?.monthlySalary ?? 0) || 0,
-        overtimeMethod:
-          String(x?.overtimeMethod || "").trim() === "invoice_percentage"
-            ? "invoice_percentage"
-            : "hours_from_salary",
-        overtimeDaysPerMonth: Number(x?.overtimeDaysPerMonth ?? 30) || 30,
-        overtimeBaseHoursPerDay: Number(x?.overtimeBaseHoursPerDay ?? 8) || 8,
-        overtimeSeasonBaseHoursPerDay: Number(x?.overtimeSeasonBaseHoursPerDay ?? 6) || 6,
-        autoSeasonOvertimeBasis: x?.autoSeasonOvertimeBasis === true,
-        overtimeHoursBasis:
-          String(x?.overtimeHoursBasis || "").trim() === "season" ? "season" : "regular",
-        overtimePercent: Number(x?.overtimePercent ?? 0) || 0,
-        overtimeInvoicePercent: Number(x?.overtimeInvoicePercent ?? 0) || 0,
-      } as StaffPayrollSource;
-    })
-    .filter(Boolean) as StaffPayrollSource[];
-}
-
-function normalizeBookingPayrollRows(rows: any[]): BookingPayrollSource[] {
-  return (Array.isArray(rows) ? rows : [])
-    .map((x) => {
-      const date = String(x?.date || "").trim();
-      if (!isIsoDate(date)) return null;
-      return {
-        date,
-        status: String(x?.status || "").trim().toLowerCase() || "pending",
-        amount: Math.max(
-          0,
-          Number(x?.finalPrice ?? x?.total ?? x?.serviceSnapshot?.priceAtBooking ?? 0) || 0
-        ),
-        employeeId: String(x?.employeeId || "").trim() || null,
-        employeeUid: String(x?.employeeUid || "").trim() || null,
-        employeeKey: String(x?.employeeKey || "").trim() || null,
-        employeeName: String(x?.employeeName || "").trim() || null,
-      } as BookingPayrollSource;
-    })
-    .filter(Boolean) as BookingPayrollSource[];
-}
-
-
 function paymentMethodLabel(value: unknown): string {
   const raw = String(value || "").trim();
   const key = raw.toLowerCase();
@@ -443,81 +389,194 @@ const DashboardExpenses: React.FC = () => {
   const loadExpenses = async () => {
     try {
       setLoading(true);
-      const data = await listAllExpensesFS();
+      const data = await listAllExpensesCore();
       const manualItems = Array.isArray(data) ? data : [];
       setItems(manualItems);
 
       try {
-        const [staffSnap, allBookings, appSettings] = await Promise.all([
-          getDocs(collection(db, "salons", "main", "staff_public")),
-          listAllBookings(),
-          AppSettingsService.fetchRemote(),
-        ]);
+        const savedPayrollEntries =
+          await CoreHrService.listPayrollEntries();
 
-        const staffRows = normalizeStaffPayrollRows(
-          staffSnap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))
+        const monthKeysSet =
+          new Set<string>();
+
+        manualItems.forEach(
+          (item) => {
+            const monthKey =
+              monthKeyFromIsoDate(
+                String(
+                  item?.date ||
+                  ""
+                )
+              );
+
+            if (monthKey) {
+              monthKeysSet.add(
+                monthKey
+              );
+            }
+          }
         );
-        const bookingRows = normalizeBookingPayrollRows(allBookings as any[]);
-        const monthKeysSet = new Set<string>();
-        manualItems.forEach((x) => {
-          const mk = monthKeyFromIsoDate(String(x?.date || ""));
-          if (mk) monthKeysSet.add(mk);
-        });
-        bookingRows.forEach((x) => {
-          const mk = monthKeyFromIsoDate(String(x?.date || ""));
-          if (mk) monthKeysSet.add(mk);
-        });
-        monthKeysSet.add(todayISO().slice(0, 7));
-        const expandedMonthKeys = new Set<string>();
-        monthKeysSet.forEach((mk) => {
-          expandedMonthKeys.add(mk);
-          const prev = shiftMonthKey(mk, -1);
-          const next = shiftMonthKey(mk, 1);
-          if (prev) expandedMonthKeys.add(prev);
-          if (next) expandedMonthKeys.add(next);
-        });
 
-        const payrollRows = buildPayrollExpenseRowsForMonths({
-          staffList: staffRows,
-          bookings: bookingRows,
-          appSettings: appSettings || {},
-          monthKeys: Array.from(expandedMonthKeys),
-        });
+        (
+          Array.isArray(
+            savedPayrollEntries
+          )
+            ? savedPayrollEntries
+            : []
+        ).forEach(
+          (entry: any) => {
+            const monthKey =
+              String(
+                entry?.payrollMonth ??
+                entry?.payroll_month ??
+                ""
+              ).trim();
 
-        const payrollItems: Expense[] = payrollRows.map((x) => ({
-          id: x.id,
-          title: x.title,
-          category: x.category,
-          amount: Number(x.amount || 0),
-          date: String(x.date || ""),
-          paymentMethod: (x.paymentMethod || "transfer") as PaymentMethod,
-          note: String(x.note || "").trim() || undefined,
-          createdAt: Number(x.createdAt || Date.now()),
-          addedBy: "النظام (رواتب)",
-          createdByName: "النظام (رواتب)",
-          sourceKind: "auto_payroll",
-          sourceType: "payroll",
-          sourceRefId: String(x.id || "").trim() || undefined,
-          staffId: String(x.staffId || "").trim() || undefined,
-          staffName: String(x.staffName || "").trim() || undefined,
-          monthKey: String(x.monthKey || "").trim() || undefined,
-          payrollKind: x.kind,
-        }));
-        setAutoPayrollItems(payrollItems);
+            if (
+              /^\\d{4}-\\d{2}$/.test(
+                monthKey
+              )
+            ) {
+              monthKeysSet.add(
+                monthKey
+              );
+            }
+          }
+        );
+
+        if (
+          /^\\d{4}-\\d{2}$/.test(
+            selectedMonthKey
+          )
+        ) {
+          monthKeysSet.add(
+            selectedMonthKey
+          );
+        }
+
+        monthKeysSet.add(
+          todayISO().slice(0, 7)
+        );
+
+        const expandedMonthKeys =
+          new Set<string>();
+
+        monthKeysSet.forEach(
+          (monthKey) => {
+            expandedMonthKeys.add(
+              monthKey
+            );
+
+            const previous =
+              shiftMonthKey(
+                monthKey,
+                -1
+              );
+
+            const next =
+              shiftMonthKey(
+                monthKey,
+                1
+              );
+
+            if (previous) {
+              expandedMonthKeys.add(
+                previous
+              );
+            }
+
+            if (next) {
+              expandedMonthKeys.add(
+                next
+              );
+            }
+          }
+        );
+
+        const payrollEntries =
+          await generatePayrollEntriesForMonths({
+            monthKeys:
+              Array.from(
+                expandedMonthKeys
+              ).sort(
+                (left, right) =>
+                  left.localeCompare(
+                    right
+                  )
+              ),
+          });
+
+        const payrollItems: Expense[] =
+          projectCorePayrollEntriesToFinancialRows(
+            payrollEntries,
+            "calculated"
+          ).map((row) => ({
+            id: row.id,
+            title: row.title,
+            category: row.category,
+            amount: row.amount,
+            date: row.date,
+            paymentMethod:
+              "transfer" as PaymentMethod,
+            note:
+              row.note ||
+              undefined,
+            createdAt:
+              row.createdAtMs,
+            addedBy:
+              row.addedBy,
+            createdByName:
+              row.addedBy,
+            sourceKind:
+              "auto_payroll",
+            sourceType:
+              "payroll",
+            sourceRefId:
+              "payroll|" +
+              String(
+                row.employeeId ||
+                ""
+              ) +
+              "|" +
+              String(
+                row.payrollMonth ||
+                ""
+              ) +
+              "|" +
+              row.payrollKind,
+            staffId:
+              row.employeeId,
+            staffName:
+              row.employeeName,
+            monthKey:
+              row.payrollMonth,
+            payrollKind:
+              row.payrollKind,
+          }));
+
+        setAutoPayrollItems(
+          payrollItems
+        );
       } catch (payrollErr) {
-        console.warn("auto payroll expenses load error:", payrollErr);
-        setAutoPayrollItems([]);
+        console.warn(
+          "Malikat Core payroll expenses load error:",
+          payrollErr
+        );
+
+        setAutoPayrollItems(
+          []
+        );
       }
 
-      // ✅ NEW: عداد "بدون ملاحظات" من Firebase (هذا الشهر)
       try {
-        const n = await countMonthlyExpensesMissingNotesFS("main");
+        const n = await countMonthlyExpensesMissingNotesCore();
         setMissingNotesCountFS(Number(n || 0));
       } catch {
         setMissingNotesCountFS(0);
       }
     } catch (e) {
-      console.error("listAllExpensesFS error:", e);
+      console.error("listAllExpensesCore error:", e);
       setModalMsg(firebaseMsg(e));
       setItems([]);
       setAutoPayrollItems([]);
@@ -698,13 +757,13 @@ const DashboardExpenses: React.FC = () => {
 
     try {
       setLoading(true);
-      await upsertExpenseFS(expense);
+      await upsertExpenseCore(expense);
       await loadExpenses();
       resetForm();
       setAddOpen(false);
       setModalMsg("تمت إضافة المصروف بنجاح");
     } catch (e) {
-      console.error("upsertExpenseFS error:", e);
+      console.error("upsertExpenseCore error:", e);
       setModalMsg(firebaseMsg(e));
     } finally {
       setLoading(false);
@@ -723,10 +782,10 @@ const DashboardExpenses: React.FC = () => {
       onConfirm: async () => {
         try {
           setLoading(true);
-          await removeExpenseFS(id);
+          await removeExpenseCore(id);
           await loadExpenses();
         } catch (e) {
-          console.error("removeExpenseFS error:", e);
+          console.error("removeExpenseCore error:", e);
           setModalMsg(firebaseMsg(e));
         } finally {
           setLoading(false);
@@ -791,7 +850,7 @@ const DashboardExpenses: React.FC = () => {
 
     try {
       setLoading(true);
-      await upsertExpenseFS(updated);
+      await upsertExpenseCore(updated);
       await loadExpenses();
       setEditId(null);
       setModalMsg("تم التعديل ✅");
@@ -847,7 +906,7 @@ const DashboardExpenses: React.FC = () => {
               return;
             }
 
-            await Promise.all(toUpsert.map((x) => upsertExpenseFS(x)));
+            await Promise.all(toUpsert.map((x) => upsertExpenseCore(x)));
 
             localStorage.setItem(EXPENSES_MIGRATED_KEY, "1");
             localStorage.removeItem(LEGACY_EXPENSES_KEY);

@@ -21,6 +21,7 @@ export type AttendanceDayStatus =
   | "absent"
   | "off_day"
   | "off_day_work"
+  | "schedule_unavailable"
   | "leave";
 
 export type AttendanceDisciplineDayInput = {

@@ -26,6 +26,14 @@ export const CoreBookingService = {
     return mapCoreBooking(row);
   },
 
+  async trackPublic(publicId: string): Promise<CoreBooking> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/public/booking-track",
+      { query: { publicId } }
+    );
+    return mapCoreBooking(row);
+  },
+
   async create(input: CoreCreateBookingInput): Promise<CoreBooking> {
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/bookings",

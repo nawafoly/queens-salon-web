@@ -52,6 +52,7 @@ export function mapCoreService(row: Record<string, unknown>): CoreService {
     category_id: "categoryId",
     duration_minutes: "durationMinutes",
     price_halalas: "priceHalalas",
+    season_price_halalas: "seasonPriceHalalas",
     image_url: "imageUrl",
     sort_order: "sortOrder",
     created_at: "createdAt",
@@ -86,9 +87,6 @@ export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
     avatar_url: "avatarUrl",
     show_on_booking: "showOnBooking",
     specialties_json: "specialtiesJson",
-    leave_start_date: "leaveStartDate",
-    leave_end_date: "leaveEndDate",
-    leave_note: "leaveNote",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
@@ -127,7 +125,12 @@ function mapCoreBookingItem(
     salon_id: "salonId",
     service_id: "serviceId",
     service_name_snapshot: "serviceNameSnapshot",
+    section_id: "sectionId",
+    section_name: "sectionName",
+    category_id: "categoryId",
+    category_name: "categoryName",
     staff_id: "staffId",
+    staff_name: "staffName",
     unit_price_halalas: "unitPriceHalalas",
     total_halalas: "totalHalalas",
     discount_halalas: "discountHalalas",
@@ -317,10 +320,6 @@ export function coreStaffToLegacy(
     avatarUrl: staff.avatarUrl || undefined,
     showOnBooking: staff.showOnBooking !== false,
     // Runtime booking schedule comes only from Core availability / HR resolver.
-    useCustomWorkingHours: false,
-    onLeave: Boolean(staff.leaveStartDate || staff.leaveEndDate),
-    leaveUntil: staff.leaveEndDate || undefined,
-    leaveNote: staff.leaveNote || undefined,
   };
 }
 
@@ -378,6 +377,10 @@ export function coreBookingToLegacy(
           serviceNameAtBooking: firstItem.serviceNameSnapshot,
           priceAtBooking: sarFromHalalas(firstItem.totalHalalas),
           durationAtBooking: Number(firstItem.durationMinutes || 0),
+          sectionIdAtBooking: firstItem.sectionId || undefined,
+          sectionTitleAtBooking: firstItem.sectionName || undefined,
+          categoryIdAtBooking: firstItem.categoryId || undefined,
+          categoryNameAtBooking: firstItem.categoryName || undefined,
         }
       : undefined,
     employeeId: booking.staffId || firstItem?.staffId || null,

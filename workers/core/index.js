@@ -35,6 +35,7 @@ import {
   createBooking,
   deleteBooking,
   getBooking,
+  getPublicBookingTrack,
   listBookings,
   patchBooking,
   rescheduleBooking,
@@ -93,6 +94,7 @@ import {
   replaceHrSchedules,
   upsertHrEmployee,
 } from './repositories/hr-employees.js';
+import { offboardHrEmployee } from './repositories/employee-offboarding.js';
 import {
   getAttendanceState,
   listAttendance,
@@ -116,16 +118,33 @@ import {
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   approvePayrollEntry,
+  deferAttendanceDeduction,
   getPayrollEntry,
   listPayrollEntries,
+  listPayrollAdvanceDeductions,
   listPayrollPeriods,
+  listPayrollCarryoverAdjustments,
+  reconcilePayrollCarryoversBatch,
   markPayrollEntryPaid,
+  previewPayrollEntry,
   reopenPayrollEntry,
   togglePayrollOvertime,
   updatePayrollEntryAdjustments,
   upsertPayrollEntry,
   upsertPayrollPeriod,
 } from './repositories/payroll.js';
+import {
+  cancelPayrollObligation,
+  createPayrollObligation,
+  deferPayrollObligationInstallment,
+  listPayrollObligationDeductions,
+  listPayrollObligations,
+  listPayrollRecurringDeductions,
+  savePayrollRecurringDeduction,
+} from './repositories/payroll-obligations.js';
+import {
+  deferSalaryAdvanceInstallment,
+} from './repositories/salary-advance-deferrals.js';
 import {
   createTargetAdjustment,
   getEmployeeTargetDetails,
@@ -147,8 +166,10 @@ import {
   markClosedCheckInWindowsAbsent,
   previewShiftChange,
   resolveEmployeeShift,
+  resolveEmployeeShiftsBatch,
   saveShiftPayrollPeriodLock,
   saveShiftTemplate,
+  syncWorkingHourScheduleExceptions,
   updateScheduleException,
   updateShiftAssignment,
 } from './repositories/shift-control.js';
@@ -181,8 +202,21 @@ import {
   getFileContent,
   getFileMetadata,
   listFileMetadata,
+  patchFileMetadata,
   putFileContent,
 } from './repositories/files.js';
+import {
+  createEmployeeNotification,
+  createEmployeeMessage,
+  createRecruitmentApplication,
+  listEmployeeMessages,
+  listEmployeeNotifications,
+  listRecruitmentApplications,
+  markAllEmployeeNotificationsRead,
+  markEmployeeNotificationRead,
+  markEmployeeThreadRead,
+  patchRecruitmentApplication,
+} from './repositories/workforce-communications.js';
 import {
   addEmployeeRequestAttachment,
   addEmployeeRequestComment,
@@ -280,7 +314,7 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track"].includes(route.name)) ||
     (method === "POST" &&
       ["clients", "bookings", "discount:use"].includes(route.name))
   );
@@ -364,6 +398,10 @@ function match(url, method) {
     return { name: "client:loyalty-adjustment", id: loyaltyAdjustment[1] };
   }
 
+  if (path === "/api/core/public/booking-track" && method === "GET") {
+    return { name: "booking:public-track" };
+  }
+
   if (path === "/api/core/internal/bookings" && method === "POST") {
     return { name: "bookings:internal" };
   }
@@ -379,6 +417,25 @@ function match(url, method) {
     };
   }
 
+
+  if (path === "/api/core/hr/messages" && ["GET", "POST"].includes(method)) return { name: "employee-messages" };
+  const employeeMessageThreadRead = /^\/api\/core\/hr\/messages\/thread\/([^/]+)\/read$/.exec(path);
+  if (employeeMessageThreadRead && method === "POST") return { name: "employee-message-thread:read", id: employeeMessageThreadRead[1] };
+  if (path === "/api/core/hr/notifications/read-all" && method === "POST") return { name: "employee-notifications:read-all" };
+  const employeeNotificationRead = /^\/api\/core\/hr\/notifications\/([^/]+)\/read$/.exec(path);
+  if (employeeNotificationRead && method === "POST") return { name: "employee-notification:read", id: employeeNotificationRead[1] };
+  if (path === "/api/core/hr/notifications" && ["GET", "POST"].includes(method)) return { name: "employee-notifications" };
+  const recruitmentDetail = /^\/api\/core\/hr\/recruitment\/([^/]+)$/.exec(path);
+  if (recruitmentDetail && method === "PATCH") return { name: "recruitment:detail", id: recruitmentDetail[1] };
+  if (path === "/api/core/hr/recruitment" && ["GET", "POST"].includes(method)) return { name: "recruitment" };
+
+  if (path === "/api/core/hr/employee-profile/mine" && ["GET", "PATCH"].includes(method)) {
+    return { name: "employee-profile:mine" };
+  }
+  const employeeOffboard = /^\/api\/core\/hr\/employees\/([^/]+)\/offboard$/.exec(path);
+  if (employeeOffboard && method === "POST") {
+    return { name: "hr-employee:offboard", id: employeeOffboard[1] };
+  }
 
   if (path === "/api/core/hr/employee-request-payroll-impact/mine" && method === "GET") return { name: "employee-request:payroll-impact-mine" };
   if (path === "/api/core/hr/employee-request-notifications/read-all" && method === "POST") return { name: "employee-request-notification:read-all" };
@@ -473,9 +530,57 @@ function match(url, method) {
 
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+  if (
+    path === "/api/core/hr/resolved-shifts/batch" &&
+    method === "POST"
+  ) {
+    return { name: "hr-shift:resolve-batch" };
+  }
+
   const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
   if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
+  if (path === "/api/core/hr/payroll-entries/mine" && method === "GET") return { name: "payroll-entries:mine" };
+  if (path === "/api/core/hr/payroll-preview" && method === "POST") return { name: "payroll-preview" };
+  if (
+    path === "/api/core/hr/payroll-attendance-deductions/defer" &&
+    method === "POST"
+  ) {
+    return { name: "payroll-attendance-deduction:defer" };
+  }
+  if (
+    path === "/api/core/hr/payroll-advance-deductions" &&
+    method === "GET"
+  ) {
+    return { name: "payroll-advance-deductions" };
+  }
+  if (path === "/api/core/hr/payroll-obligations/deductions" && method === "GET") {
+    return { name: "payroll-obligation-deductions" };
+  }
+  const payrollRecurringDeduction = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)$/.exec(path);
+  if (payrollRecurringDeduction) {
+    return { name: "payroll-recurring-deduction", id: payrollRecurringDeduction[1] };
+  }
+  if (path === "/api/core/hr/payroll-recurring-deductions") {
+    return { name: "payroll-recurring-deductions" };
+  }
+  const payrollObligationCancel = /^\/api\/core\/hr\/payroll-obligations\/([^/]+)\/cancel$/.exec(path);
+  if (payrollObligationCancel && method === "POST") {
+    return { name: "payroll-obligation:cancel", id: payrollObligationCancel[1] };
+  }
+  if (path === "/api/core/hr/payroll-obligations") {
+    return { name: "payroll-obligations" };
+  }
+  const payrollObligationInstallmentDefer = /^\/api\/core\/hr\/payroll-obligation-installments\/([^/]+)\/defer$/.exec(path);
+  if (payrollObligationInstallmentDefer && method === "POST") {
+    return { name: "payroll-obligation-installment:defer", id: payrollObligationInstallmentDefer[1] };
+  }
+  const salaryAdvanceInstallmentDefer = /^\/api\/core\/hr\/salary-advance-installments\/([^/]+)\/defer$/.exec(path);
+  if (salaryAdvanceInstallmentDefer && method === "POST") {
+    return { name: "salary-advance-installment:defer", id: salaryAdvanceInstallmentDefer[1] };
+  }
+  if (path === "/api/core/hr/payroll-carryovers" && method === "GET") return { name: "payroll-carryovers" };
+  if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   if (path === "/api/core/hr/employee-targets/mine" && method === "GET") return { name: "employee-targets:mine" };
@@ -797,6 +902,10 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "booking:public-track":
+      if (method === "GET") return getPublicBookingTrack(db, ctx.salonId, query.publicId || query.public_id || query.code);
+      break;
+
     case "bookings":
       if (method === "GET" && route.id) {
         return getBooking(db, ctx.salonId, route.id);
@@ -949,9 +1058,90 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "audit":
+      requireAnyPermission(ctx, ["audit.read", "logs.view"]);
       if (method === "GET") return listAudit(db, ctx.salonId, query);
       if (method === "POST") return recordAudit(db, ctx.salonId, body, actorInfo);
       break;
+
+    case "employee-messages": {
+      requireAnyPermission(ctx, ["messages.view", "messages.manage"]);
+      if (method === "GET") {
+        return listEmployeeMessages(db, ctx.salonId, query, actorInfo, {
+          manageAll: ctx.permissions.includes("messages.manage"),
+        });
+      }
+      if (method === "POST") {
+        return createEmployeeMessage(db, ctx.salonId, body, actorInfo, {
+          managementSender: ctx.permissions.includes("messages.manage"),
+        });
+      }
+      break;
+    }
+
+    case "employee-message-thread:read":
+      requireAnyPermission(ctx, ["messages.view", "messages.manage"]);
+      return markEmployeeThreadRead(db, ctx.salonId, route.id, actorInfo);
+
+    case "employee-notifications": {
+      requireAnyPermission(ctx, [
+        "workspace.employee_portal.view",
+        "messages.view",
+        "messages.manage",
+        "employees.view",
+        "employees.update",
+        "employees.create",
+        "payroll.view",
+      ]);
+      if (method === "GET") return listEmployeeNotifications(db, ctx.salonId, query, actorInfo);
+      if (method === "POST") {
+        requireAnyPermission(ctx, [
+          "messages.manage",
+          "employees.update",
+          "employees.create",
+          "employees.manage",
+          "attendance.leaves.manage",
+          "payroll.manage",
+          "admin_accounts.manage",
+        ]);
+        return createEmployeeNotification(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+    }
+
+    case "employee-notification:read":
+      requireAnyPermission(ctx, [
+        "workspace.employee_portal.view",
+        "messages.view",
+        "messages.manage",
+        "employees.view",
+        "payroll.view",
+      ]);
+      return markEmployeeNotificationRead(db, ctx.salonId, route.id, actorInfo);
+
+    case "employee-notifications:read-all":
+      requireAnyPermission(ctx, [
+        "workspace.employee_portal.view",
+        "messages.view",
+        "messages.manage",
+        "employees.view",
+        "payroll.view",
+      ]);
+      return markAllEmployeeNotificationsRead(db, ctx.salonId, actorInfo);
+
+    case "recruitment":
+      if (method === "GET") {
+        requirePermission(ctx, "recruitment.view");
+        return listRecruitmentApplications(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "recruitment.manage");
+        return createRecruitmentApplication(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "recruitment:detail":
+      requirePermission(ctx, "recruitment.manage");
+      return patchRecruitmentApplication(db, ctx.salonId, route.id, body, actorInfo);
 
     case "employee-request:payroll-impact-mine":
       requireAnyPermission(ctx, ["employee_requests.own.view", "payroll.view"]);
@@ -1002,14 +1192,22 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
-    case "employee-requests":
-      requirePermission(ctx, "employee_requests.view");
-      if (method === "GET") return listEmployeeRequests(db, ctx.salonId, query, actorInfo);
+    case "employee-requests": {
+      const leaveScoped = cleanText(method === "POST"
+        ? body.requestType || body.request_type
+        : query.type || query.requestType || query.request_type
+      ).toLowerCase() === "leave";
+      const canManageLeaves = ctx.permissions.includes("attendance.leaves.manage");
+      if (method === "GET") {
+        if (!leaveScoped || !canManageLeaves) requirePermission(ctx, "employee_requests.view");
+        return listEmployeeRequests(db, ctx.salonId, query, actorInfo);
+      }
       if (method === "POST") {
-        requirePermission(ctx, "employee_requests.manage");
+        if (!leaveScoped || !canManageLeaves) requirePermission(ctx, "employee_requests.manage");
         return createEmployeeRequest(db, ctx.salonId, body, actorInfo);
       }
       break;
+    }
 
     case "employee-request:stats":
       requirePermission(ctx, "employee_requests.view");
@@ -1049,8 +1247,12 @@ async function dispatch(ctx, route, method, body, query, env) {
     }
 
     case "employee-request:action": {
+      const requestRow = await getEmployeeRequest(db, ctx.salonId, route.id, actorInfo);
+      const leaveManager =
+        requestRow.request_type === "leave" &&
+        ctx.permissions.includes("attendance.leaves.manage");
       const employeeActions = new Set(["answer-info", "cancel"]);
-      if (employeeActions.has(route.action) && !ctx.permissions.includes("employee_requests.manage")) {
+      if (employeeActions.has(route.action) && !ctx.permissions.includes("employee_requests.manage") && !leaveManager) {
         requirePermission(ctx, route.action === "cancel" ? "employee_requests.own.cancel" : "employee_requests.own.comment");
         return transitionEmployeeRequest(db, ctx.salonId, route.id, route.action, body, actorInfo, { ownOnly: true, externalAttendanceDb: env.ATTENDANCE_DB || null });
       }
@@ -1062,9 +1264,8 @@ async function dispatch(ctx, route, method, body, query, env) {
         cancel: "employee_requests.manage", reopen: "employee_requests.reopen", "record-exit": "employee_requests.execute",
         "record-return": "employee_requests.complete",
       }[route.action] || "employee_requests.manage";
-      requirePermission(ctx, actionPermission);
+      if (!leaveManager) requirePermission(ctx, actionPermission);
       if (["approve", "execute"].includes(route.action)) {
-        const requestRow = await getEmployeeRequest(db, ctx.salonId, route.id, actorInfo);
         if (requestRow.request_type === "salary_advance" && route.action === "approve") {
           requirePermission(ctx, "employee_requests.salary_advance.approve");
         }
@@ -1077,6 +1278,39 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       return transitionEmployeeRequest(db, ctx.salonId, route.id, route.action, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
     }
+
+    case "employee-profile:mine": {
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) {
+        throw new AppError(409, "core_hr:employee_link_required");
+      }
+
+      const current = await getHrEmployee(db, ctx.salonId, ctx.employeeId);
+      if (method === "GET") return current;
+
+      // Employee self-service is deliberately profile-only. Never accept
+      // employment, salary, attendance, GOSI, status or visibility fields
+      // from the browser. Those remain administration-owned Core data.
+      const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+      const safeProfile = {
+        id: ctx.employeeId,
+        name: has("name") ? body.name : current.name,
+        phone: has("phone") ? body.phone : current.phone_normalized,
+        avatarUrl: has("avatarUrl") ? body.avatarUrl : current.avatar_url,
+        bio: has("bio") ? body.bio : current.bio,
+      };
+
+      return upsertHrEmployee(
+        db,
+        ctx.salonId,
+        safeProfile,
+        actorInfo
+      );
+    }
+
+    case "hr-employee:offboard":
+      requirePermission(ctx, "employees.delete");
+      return offboardHrEmployee(db, ctx.salonId, route.id, body, actorInfo);
 
     case "hr-employees":
       if (method === "GET") {
@@ -1272,6 +1506,19 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "schedule-exceptions":
       requirePermission(ctx, "employees.schedule.manage");
+
+      if (
+        method === "PUT" &&
+        route.id === "working-hours-sync"
+      ) {
+        return syncWorkingHourScheduleExceptions(
+          db,
+          ctx.salonId,
+          body,
+          actorInfo
+        );
+      }
+
       if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
       if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return updateScheduleException(db, ctx.salonId, route.id, body, actorInfo);
@@ -1297,6 +1544,21 @@ async function dispatch(ctx, route, method, body, query, env) {
         return saveShiftPayrollPeriodLock(db, ctx.salonId, body, actorInfo);
       }
       break;
+
+    case "hr-shift:resolve-batch": {
+      requireAnyPermission(ctx, [
+        "employees.schedule.manage",
+        "attendance.view",
+        "payroll.view",
+        "payroll.manage",
+      ]);
+
+      return resolveEmployeeShiftsBatch(
+        db,
+        ctx.salonId,
+        body
+      );
+    }
 
     case "hr-shift:resolve": {
       const actorEmployeeId = cleanText(ctx.employeeId);
@@ -1444,6 +1706,92 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "DELETE" && route.id) return deleteAbsence(db, ctx.salonId, route.id);
       break;
 
+    case "payroll-carryovers":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      if (method === "GET") return listPayrollCarryoverAdjustments(db, ctx.salonId, query);
+      break;
+
+    case "payroll-reconciliations:batch":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "POST") return reconcilePayrollCarryoversBatch(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
+      break;
+
+    case "payroll-preview":
+      requirePermission(ctx, "payroll.manage");
+      return previewPayrollEntry(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
+
+    case "payroll-attendance-deduction:defer":
+      requirePermission(ctx, "payroll.manage");
+      return deferAttendanceDeduction(
+        db,
+        ctx.salonId,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
+
+    case "payroll-entries:mine":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) throw new AppError(403, "core_payroll:employee_link_required");
+      return (await listPayrollEntries(db, ctx.salonId, { employeeId: ctx.employeeId }))
+        .filter((row) => ["approved", "paid"].includes(cleanText(row.status || "").toLowerCase()));
+
+    case "payroll-advance-deductions":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollAdvanceDeductions(db, ctx.salonId, query);
+
+    case "payroll-recurring-deductions":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listPayrollRecurringDeductions(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return savePayrollRecurringDeduction(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "payroll-recurring-deduction":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "PATCH" || method === "POST") {
+        return savePayrollRecurringDeduction(db, ctx.salonId, body, actorInfo, route.id);
+      }
+      break;
+
+    case "payroll-obligations":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listPayrollObligations(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return createPayrollObligation(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "payroll-obligation-deductions":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollObligationDeductions(db, ctx.salonId, query);
+
+    case "payroll-obligation:cancel":
+      requirePermission(ctx, "payroll.manage");
+      return cancelPayrollObligation(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "payroll-obligation-installment:defer":
+      requirePermission(ctx, "payroll.manage");
+      return deferPayrollObligationInstallment(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "salary-advance-installment:defer":
+      requirePermission(ctx, "payroll.manage");
+      return deferSalaryAdvanceInstallment(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
+
     case "payroll-periods":
       if (method === "GET") {
         requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
@@ -1466,23 +1814,23 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       if (method === "POST") {
         requirePermission(ctx, "payroll.manage");
-        return upsertPayrollEntry(db, ctx.salonId, body, actorInfo);
+        return upsertPayrollEntry(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       }
       break;
 
     case "payroll-entry:adjustments":
       requirePermission(ctx, "payroll.manage");
-      if (method === "PATCH" || method === "POST") return updatePayrollEntryAdjustments(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "PATCH" || method === "POST") return updatePayrollEntryAdjustments(db, ctx.salonId, route.id, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:overtime":
       requirePermission(ctx, "payroll.manage");
-      if (method === "PATCH" || method === "POST") return togglePayrollOvertime(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "PATCH" || method === "POST") return togglePayrollOvertime(db, ctx.salonId, route.id, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:approve":
       requirePermission(ctx, "payroll.manage");
-      if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo);
+      if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:reopen":
@@ -1561,18 +1909,26 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "files": {
-      const fileManager = hasAnyPermissionKey(ctx, ["employees.files.view", "employees.files.manage", "employee_requests.view"]);
+      const canViewFiles = hasAnyPermissionKey(ctx, [
+        "employees.files.view",
+        "employees.files.manage",
+        "employee_requests.view",
+      ]);
+      const canManageFiles = hasAnyPermissionKey(ctx, [
+        "employees.files.manage",
+        "employee_requests.manage",
+      ]);
       if (method === "GET" && route.id) {
         await assertFileAccess(ctx, route.id, false);
         return getFileMetadata(db, ctx.salonId, route.id);
       }
       if (method === "GET") {
-        if (fileManager) return listFileMetadata(db, ctx.salonId, query);
+        if (canViewFiles) return listFileMetadata(db, ctx.salonId, query);
         if (!ctx.employeeId) throw new AppError(403, "files_r2:employee_link_required");
         return listFileMetadata(db, ctx.salonId, { ...query, employeeId: ctx.employeeId });
       }
       if (method === "POST") {
-        if (fileManager) return createFileMetadata(db, ctx.salonId, body, actorInfo);
+        if (canManageFiles) return createFileMetadata(db, ctx.salonId, body, actorInfo);
         if (!ctx.employeeId) throw new AppError(403, "files_r2:employee_link_required");
         const employeeFile = {
           ...body,
@@ -1583,6 +1939,23 @@ async function dispatch(ctx, route, method, body, query, env) {
         delete employeeFile.storageKey;
         delete employeeFile.storage_key;
         return createFileMetadata(db, ctx.salonId, employeeFile, actorInfo);
+      }
+      if (method === "PATCH" && route.id) {
+        const metadata = await assertFileAccess(ctx, route.id, false);
+        if (canManageFiles) {
+          return patchFileMetadata(db, ctx.salonId, route.id, body);
+        }
+        if (!ctx.employeeId || cleanText(metadata.employee_id) !== cleanText(ctx.employeeId)) {
+          throw new AppError(403, "files_r2:forbidden");
+        }
+        if (cleanText(metadata.category) !== "employee_internal_outbound") {
+          throw new AppError(403, "files_r2:self_update_read_only");
+        }
+        const keys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+        if (keys.some((key) => key !== "status") || cleanText(body.status).toLowerCase() !== "read") {
+          throw new AppError(403, "files_r2:self_update_read_only");
+        }
+        return patchFileMetadata(db, ctx.salonId, route.id, { status: "read" });
       }
       break;
     }
@@ -1631,6 +2004,7 @@ export async function handleRequest(request, env) {
   const allowGuest = isPublicRoute(route, request.method);
   const ctx = await actor(request, env, body, allowGuest, {
     touchLogin: route.name === "auth:me",
+    allowBlockedAccount: route.name === "auth:me",
   });
   if (rawContentRoute) {
     const fileMetadata = await assertFileAccess(ctx, route.id, request.method === "PUT");
@@ -1668,6 +2042,7 @@ export default {
         ok: false,
         error: normalized.code,
         message: normalized.message,
+        ...(normalized.details !== undefined ? { details: normalized.details } : {}),
       });
     }
   },

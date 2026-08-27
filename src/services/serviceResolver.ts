@@ -1,29 +1,22 @@
+// CORE D1 ONLY — service names are resolved from the canonical catalog.
+import { CoreCatalogService } from "./CoreCatalogService";
 
-
-// src/services/serviceResolver.ts
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebase";
-
-const SALON_ID = "main";
 const cache = new Map<string, string>();
+let loaded = false;
 
 export async function resolveServiceName(serviceId?: string) {
-    if (!serviceId) return "—";
+  const id = String(serviceId || "").trim();
+  if (!id) return "—";
+  if (cache.has(id)) return cache.get(id)!;
 
-    // كاش عشان ما نضرب Firestore كل مرة
-    if (cache.has(serviceId)) {
-        return cache.get(serviceId)!;
+  if (!loaded) {
+    const services = await CoreCatalogService.listServices({ activeOnly: false });
+    cache.clear();
+    for (const service of services) {
+      if (service.id) cache.set(service.id, String(service.name || "—"));
     }
+    loaded = true;
+  }
 
-    try {   
-        const ref = doc(db, "salons", SALON_ID, "services", serviceId);
-        const snap = await getDoc(ref);
-
-        const name = snap.exists() ? snap.data()?.name || "—" : "—";
-        cache.set(serviceId, name);
-        return name;
-    } catch {
-        return "—";
-    }
+  return cache.get(id) || "—";
 }
-

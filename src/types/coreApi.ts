@@ -32,6 +32,7 @@ export type CoreService = {
   description?: string | null;
   durationMinutes: number;
   priceHalalas: number;
+  seasonPriceHalalas?: number | null;
   active: boolean;
   imageUrl?: string | null;
   sortOrder: number;
@@ -66,9 +67,6 @@ export type CoreStaff = {
   showOnBooking?: boolean;
   specialties?: string[];
   schedules?: CoreStaffSchedule[];
-  leaveStartDate?: string | null;
-  leaveEndDate?: string | null;
-  leaveNote?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -79,7 +77,12 @@ export type CoreBookingItem = {
   salonId: string;
   serviceId: string;
   serviceNameSnapshot: string;
+  sectionId?: string | null;
+  sectionName?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
   staffId?: string | null;
+  staffName?: string | null;
   quantity: number;
   unitPriceHalalas: number;
   totalHalalas: number;

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { getDoc, getDocs, limit, query, where } from "firebase/firestore";
-
 import { auth } from "../../services/firebase";
-import { hrCollection, hrDoc, type HrCollectionKey } from "../../services/hrCollections";
 import { normalizeAuthRole } from "../../services/authAccess";
+import { CoreAccountService } from "../../services/CoreAccountService";
+import { CoreHrService } from "../../services/CoreHrService";
 
 export type HrSession = {
   user: FirebaseUser | null;
@@ -37,10 +36,6 @@ export function formatShortDate(value?: string) {
   const s = cleanText(value);
   if (!s) return "—";
   return s;
-}
-
-function uniqueText(values: unknown[]) {
-  return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
 function isBrokenIdentityText(value: unknown) {
@@ -191,222 +186,60 @@ function resolveSessionAvatarUrl(args: {
   );
 }
 
-function recordUidCandidates(data: Record<string, any> | null | undefined) {
-  return uniqueText([
-    data?.linkedUid,
-    data?.uid,
-    data?.linkedUserId,
-    data?.employeeUid,
-  ]);
+function booleanFlag(value: unknown, fallback = true) {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = cleanText(value).toLowerCase();
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  return fallback;
 }
 
-function recordEmailCandidates(data: Record<string, any> | null | undefined) {
-  return uniqueText([data?.email, data?.userEmail]).map((item) => item.toLowerCase());
-}
+function normalizeCoreEmployeeSessionDoc(raw: Record<string, any> | null | undefined) {
+  if (!raw) return null;
+  const employment =
+    raw.employment && typeof raw.employment === "object"
+      ? raw.employment
+      : {};
 
-function hasAttendanceZone(data: Record<string, any> | null | undefined) {
-  const employment = data?.employeeProfile?.employment || data?.employment || {};
-  const allowedZoneIds = Array.isArray(employment?.allowedZoneIds)
-    ? employment.allowedZoneIds
-    : Array.isArray(data?.allowedZoneIds)
-      ? data.allowedZoneIds
-      : [];
-
-  return Boolean(
-    cleanText(data?.allowedAttendanceZoneId) ||
-      cleanText(data?.attendanceZoneId) ||
-      cleanText(data?.assignedAttendanceZoneId) ||
-      cleanText(data?.attendanceScopeId) ||
-      cleanText(employment?.allowedAttendanceZoneId) ||
-      cleanText(employment?.attendanceZoneId) ||
-      cleanText(employment?.assignedAttendanceZoneId) ||
-      cleanText(employment?.attendanceScopeId) ||
-      allowedZoneIds.map(cleanText).some(Boolean)
+  const phone = cleanText(
+    raw.phone ||
+      raw.phoneNormalized ||
+      raw.phone_normalized ||
+      employment.phone ||
+      ""
   );
-}
-
-type EmployeeSessionRecord = {
-  id: string;
-  source: "employees" | "staffPublic";
-  data: Record<string, any>;
-};
-
-async function readEmployeeSessionDoc(
-  key: "employees" | "staffPublic",
-  id: string
-): Promise<EmployeeSessionRecord | null> {
-  const cleanId = cleanText(id);
-  if (!cleanId) return null;
-
-  try {
-    const snap = await getDoc(hrDoc(key, cleanId));
-    return snap.exists()
-      ? {
-          id: snap.id,
-          source: key,
-          data: { id: snap.id, documentId: snap.id, ...(snap.data() as Record<string, any>) },
-        }
-      : null;
-  } catch (error) {
-    console.warn(`[useEmployeeSession] failed to read ${key}/${cleanId}`, error);
-    return null;
-  }
-}
-
-async function queryEmployeeSessionDocs(
-  key: "employees" | "staffPublic",
-  fieldName: string,
-  value: string,
-  maxRows = 5
-): Promise<EmployeeSessionRecord[]> {
-  const cleanValue = cleanText(value);
-  if (!cleanValue) return [];
-
-  try {
-    const snap = await getDocs(
-      query(
-        hrCollection(key as HrCollectionKey),
-        where(fieldName, "==", cleanValue),
-        limit(maxRows)
-      )
-    );
-
-    return snap.docs.map((entry) => ({
-      id: entry.id,
-      source: key,
-      data: { id: entry.id, documentId: entry.id, ...(entry.data() as Record<string, any>) },
-    }));
-  } catch (error) {
-    console.warn(`[useEmployeeSession] failed to query ${key}.${fieldName}`, error);
-    return [];
-  }
-}
-
-function recordBelongsToUser(
-  record: EmployeeSessionRecord,
-  uid: string,
-  email: string,
-  trustedEmployeeIds: Set<string>,
-  trustedEmailIds: Set<string>
-) {
-  if (trustedEmployeeIds.has(record.id)) return true;
-
-  const uidMatches = recordUidCandidates(record.data).includes(uid) || record.id === uid;
-  if (uidMatches) return true;
-
-  const recordUids = recordUidCandidates(record.data);
-  const hasConflictingUid = recordUids.length > 0 && !recordUids.includes(uid);
-  if (hasConflictingUid) return false;
-
-  return Boolean(
-    email &&
-      trustedEmailIds.has(record.id) &&
-      recordEmailCandidates(record.data).includes(email)
+  const department = cleanText(
+    raw.department ||
+      employment.department ||
+      ""
   );
-}
-
-function recordPriority(record: EmployeeSessionRecord, preferredEmployeeIds: Set<string>) {
-  let score = 0;
-  if (preferredEmployeeIds.has(record.id)) score += 100;
-  if (recordUidCandidates(record.data).length) score += 60;
-  if (hasAttendanceZone(record.data)) score += 20;
-  if (record.source === "employees") score += 10;
-  return score;
-}
-
-async function resolveEmployeeSessionRecords(args: {
-  uid: string;
-  email: string;
-  userDoc: Record<string, any> | null;
-}) {
-  const uid = cleanText(args.uid);
-  const email = cleanEmail(args.email);
-  const userDoc = args.userDoc || {};
-  const explicitEmployeeIds = uniqueText([
-    userDoc?.employeeId,
-    userDoc?.linkedEmployeeDocId,
-  ]).filter((id) => id !== uid);
-  const lookupIds = uniqueText([...explicitEmployeeIds, uid]);
-
-  const directRecords = await Promise.all(
-    lookupIds.flatMap((id) => [
-      readEmployeeSessionDoc("employees", id),
-      readEmployeeSessionDoc("staffPublic", id),
-    ])
+  const title = cleanText(
+    raw.title ||
+      employment.title ||
+      employment.jobTitle ||
+      employment.job_title ||
+      ""
   );
-
-  const uidQueries = uid
-    ? await Promise.all([
-        queryEmployeeSessionDocs("employees", "linkedUid", uid),
-        queryEmployeeSessionDocs("employees", "uid", uid),
-        queryEmployeeSessionDocs("employees", "linkedUserId", uid),
-        queryEmployeeSessionDocs("staffPublic", "linkedUid", uid),
-        queryEmployeeSessionDocs("staffPublic", "uid", uid),
-        queryEmployeeSessionDocs("staffPublic", "linkedUserId", uid),
-      ])
-    : [];
-
-  const emailQueries = email
-    ? await Promise.all([
-        queryEmployeeSessionDocs("staffPublic", "email", email, 3),
-        queryEmployeeSessionDocs("staffPublic", "userEmail", email, 3),
-      ])
-    : [];
-
-  const byKey = new Map<string, EmployeeSessionRecord>();
-  for (const record of [
-    ...directRecords.filter(Boolean),
-    ...uidQueries.flat(),
-    ...emailQueries.flat(),
-  ] as EmployeeSessionRecord[]) {
-    byKey.set(`${record.source}:${record.id}`, record);
-  }
-
-  const allRecords = Array.from(byKey.values());
-  const emailMatchedIds = new Set(
-    allRecords
-      .filter((record) => {
-        const recordUids = recordUidCandidates(record.data);
-        return (
-          email &&
-          recordEmailCandidates(record.data).includes(email) &&
-          !recordUids.some((candidate) => candidate !== uid)
-        );
-      })
-      .map((record) => record.id)
-  );
-  const trustedEmailIds = emailMatchedIds.size === 1 ? emailMatchedIds : new Set<string>();
-  const preferredSet = new Set(explicitEmployeeIds);
-  const linkedRecords = allRecords
-    .filter((record) => recordBelongsToUser(record, uid, email, preferredSet, trustedEmailIds))
-    .sort((left, right) => recordPriority(right, preferredSet) - recordPriority(left, preferredSet));
-
-  const canonicalId = cleanText(
-    linkedRecords[0]?.id ||
-      userDoc?.employeeId ||
-      userDoc?.linkedEmployeeDocId ||
-      uid
-  );
-
-  const [employeeRecord, staffRecord] = await Promise.all([
-    readEmployeeSessionDoc("employees", canonicalId),
-    readEmployeeSessionDoc("staffPublic", canonicalId),
-  ]);
-
-  const employeeDoc =
-    employeeRecord?.data ||
-    linkedRecords.find((record) => record.source === "employees" && record.id === canonicalId)?.data ||
-    null;
-
-  const staffDoc =
-    staffRecord?.data ||
-    linkedRecords.find((record) => record.source === "staffPublic" && record.id === canonicalId)?.data ||
-    null;
 
   return {
-    employeeId: canonicalId,
-    employeeDoc,
-    staffDoc,
+    ...raw,
+    displayName: firstUsableIdentityText([raw.displayName, raw.name]),
+    ...(phone ? { phone } : {}),
+    department,
+    title,
+    employeeProfileEnabled: booleanFlag(
+      raw.employeeProfileEnabled ??
+        raw.includeInEmployeeManagement ??
+        raw.include_in_employee_management,
+      true
+    ),
+    showOnAbout: booleanFlag(
+      raw.showOnAbout ?? raw.show_on_about,
+      true
+    ),
+    employment,
   };
 }
 
@@ -446,69 +279,107 @@ export function useEmployeeSession() {
         return;
       }
 
-      const uid = user.uid;
-      const email = cleanEmail(user.email || "");
+      const uid = cleanText(user.uid);
+      const authEmail = cleanEmail(user.email || "");
       const authDisplayName = cleanText(user.displayName || "");
 
-      const userDoc = await getDoc(hrDoc("users", uid))
-        .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
-        .catch((error) => {
-          console.error("[useEmployeeSession] failed to load user doc", error);
-          return null;
-        });
-      const role = normalizeAuthRole(userDoc?.role || "guest");
-      const resolvedEmployee = await resolveEmployeeSessionRecords({
-        uid,
-        email,
-        userDoc,
-      });
-      const employeeId = resolvedEmployee.employeeId;
-      const resolvedDisplayName = resolveSessionDisplayName({
-        employeeDoc: resolvedEmployee.employeeDoc,
-        staffDoc: resolvedEmployee.staffDoc,
-        userDoc,
-        authDisplayName,
-        email: userDoc?.email || email,
-      });
-      const resolvedAvatarUrl = resolveSessionAvatarUrl({
-        employeeDoc: resolvedEmployee.employeeDoc,
-        staffDoc: resolvedEmployee.staffDoc,
-        userDoc,
-        authPhotoUrl: user.photoURL,
-      });
-      const normalizedEmployeeDoc = resolvedEmployee.employeeDoc
-        ? {
-            ...resolvedEmployee.employeeDoc,
-            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
-          }
-        : null;
-      const normalizedStaffDoc = resolvedEmployee.staffDoc
-        ? {
-            ...resolvedEmployee.staffDoc,
-            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
-          }
-        : null;
-      const normalizedUserDoc = userDoc
-        ? {
-            ...userDoc,
-            displayName: resolvedDisplayName,
-            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
-          }
-        : null;
+      try {
+        // Firebase authenticates only. Operational account status, role,
+        // permissions and employee linkage are canonical Core D1 data.
+        const me = await CoreAccountService.me();
+        const account = me.user || ({} as any);
+        const employeeId = cleanText(
+          me.employeeLink?.employeeId ||
+            account.employeeLink?.employeeId ||
+            ""
+        );
 
-      if (!alive || requestId !== requestSeqRef.current) return;
-      setSession({
-        user,
-        uid: cleanText(uid),
-        email: cleanEmail(userDoc?.email || email || ""),
-        displayName: resolvedDisplayName,
-        role,
-        employeeId,
-        userDoc: normalizedUserDoc,
-        employeeDoc: normalizedEmployeeDoc,
-        staffDoc: normalizedStaffDoc,
-        loading: false,
-      });
+        let coreEmployee: Record<string, any> | null = null;
+        if (employeeId) {
+          try {
+            coreEmployee = (await CoreHrService.getMyEmployeeProfile()) as unknown as Record<string, any>;
+          } catch (error) {
+            console.error("[useEmployeeSession] failed to load Core employee profile", error);
+            const linked = me.employeeLink?.employee || account.employeeLink?.employee || null;
+            if (linked) {
+              coreEmployee = {
+                id: employeeId,
+                name: linked.name,
+                email: linked.email,
+                phone: linked.phone,
+              };
+            }
+          }
+        }
+
+        const normalizedEmployeeDoc = normalizeCoreEmployeeSessionDoc(coreEmployee);
+        const normalizedUserDoc: Record<string, any> = {
+          ...account,
+          employeeLink: me.employeeLink || account.employeeLink || null,
+          permissions: me.permissions || account.permissions || [],
+        };
+        const role = normalizeAuthRole(
+          account.role || account.primaryRole || me.roles?.[0] || "guest"
+        );
+        const resolvedDisplayName = resolveSessionDisplayName({
+          employeeDoc: normalizedEmployeeDoc,
+          staffDoc: normalizedEmployeeDoc,
+          userDoc: normalizedUserDoc,
+          authDisplayName,
+          email: account.email || authEmail,
+        });
+        const resolvedAvatarUrl = resolveSessionAvatarUrl({
+          employeeDoc: normalizedEmployeeDoc,
+          staffDoc: normalizedEmployeeDoc,
+          userDoc: normalizedUserDoc,
+          authPhotoUrl: user.photoURL,
+        });
+
+        const employeeDoc = normalizedEmployeeDoc
+          ? {
+              ...normalizedEmployeeDoc,
+              ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
+            }
+          : null;
+        const userDoc = {
+          ...normalizedUserDoc,
+          displayName: resolvedDisplayName,
+          ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
+        };
+
+        if (!alive || requestId !== requestSeqRef.current) return;
+        setSession({
+          user,
+          uid,
+          email: cleanEmail(account.email || authEmail),
+          displayName: resolvedDisplayName,
+          role,
+          employeeId,
+          userDoc,
+          employeeDoc,
+          // Compatibility shape for employee pages that still prefer staffDoc;
+          // the value is Core-derived, never a Firestore mirror.
+          staffDoc: employeeDoc,
+          loading: false,
+        });
+      } catch (error) {
+        console.error("[useEmployeeSession] failed to resolve canonical Core session", error);
+        if (!alive || requestId !== requestSeqRef.current) return;
+        // Fail closed: a Firebase identity alone grants no operational role or
+        // employee linkage when Core account resolution is unavailable.
+        setSession({
+          user,
+          uid,
+          email: authEmail,
+          displayName: authDisplayName || authEmail || "الموظفة",
+          role: "guest",
+          employeeId: "",
+          userDoc: null,
+          employeeDoc: null,
+          staffDoc: null,
+          loading: false,
+        });
+      }
     });
 
     return () => {

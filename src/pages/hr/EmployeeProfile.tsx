@@ -14,7 +14,7 @@ import {
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { syncEmployeeRecordFromUser } from "../../services/employeeHub";
+import { CoreHrService } from "../../services/CoreHrService";
 import { uploadFileToR2 } from "../../services/r2Upload";
 import { cleanText, type HrSession } from "./shared";
 import "../../styles/dashboard-v2/dashboard-v2.css";
@@ -33,7 +33,6 @@ type ProfileState = {
   bio: string;
   employeeProfileEnabled: boolean;
   showOnAbout: boolean;
-  showOnBooking: boolean;
 };
 
 function roleLabel(value: unknown) {
@@ -55,7 +54,6 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
     bio: "",
     employeeProfileEnabled: true,
     showOnAbout: true,
-    showOnBooking: true,
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -65,14 +63,13 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
     const base = session.employeeDoc || session.staffDoc || session.userDoc || {};
     setProfile({
       displayName: cleanText(base.displayName || base.name || session.displayName || ""),
-      phone: cleanText(base.phone || session.userDoc?.phone || ""),
+      phone: cleanText(base.phone || base.phoneNormalized || session.userDoc?.phone || ""),
       department: cleanText(base.department || ""),
       title: cleanText(base.title || ""),
       avatarUrl: cleanText(base.avatarUrl || base.photoURL || base.photoUrl || ""),
       bio: cleanText(base.bio || ""),
       employeeProfileEnabled: base.employeeProfileEnabled !== false,
       showOnAbout: base.showOnAbout !== false,
-      showOnBooking: base.showOnBooking !== false,
     });
   }, [session.displayName, session.employeeDoc, session.staffDoc, session.userDoc]);
 
@@ -99,24 +96,23 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
     setSaving(true);
     setMessage("");
     try {
-      await syncEmployeeRecordFromUser({
-        uid: session.uid,
-        email: session.email,
-        displayName: next.displayName,
+      const saved = await CoreHrService.saveMyEmployeeProfile({
+        name: next.displayName,
         phone: next.phone,
-        role: session.role as any,
-        active: true,
-        employeeId: session.employeeId || session.uid,
-        linkedEmployeeDocId: session.employeeId || session.uid,
-        employeeProfileEnabled: next.employeeProfileEnabled,
-        showOnAbout: next.showOnAbout,
-        showOnBooking: next.showOnBooking,
-        department: next.department,
-        title: next.title,
-        avatarUrl: next.avatarUrl,
-        bio: next.bio,
+        avatarUrl: next.avatarUrl || null,
+        bio: next.bio || null,
       });
-      setProfile(next);
+      setProfile((current) => ({
+        ...next,
+        department: current.department,
+        title: current.title,
+        employeeProfileEnabled: current.employeeProfileEnabled,
+        showOnAbout: current.showOnAbout,
+        displayName: cleanText(saved.name || next.displayName),
+        phone: cleanText(saved.phoneNormalized || next.phone),
+        avatarUrl: cleanText(saved.avatarUrl || next.avatarUrl),
+        bio: cleanText(saved.bio || next.bio),
+      }));
       await Promise.resolve(onPortalChange?.());
       setMessage("تم حفظ بيانات الملف الشخصي بنجاح.");
     } catch (error) {
@@ -137,24 +133,20 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
         ownerId: session.employeeId || session.uid,
       });
       const next = { ...profile, avatarUrl: uploaded.storageUrl };
-      await syncEmployeeRecordFromUser({
-        uid: session.uid,
-        email: session.email,
-        displayName: next.displayName,
+      const saved = await CoreHrService.saveMyEmployeeProfile({
+        name: next.displayName,
         phone: next.phone,
-        role: session.role as any,
-        active: true,
-        employeeId: session.employeeId || session.uid,
-        linkedEmployeeDocId: session.employeeId || session.uid,
-        employeeProfileEnabled: next.employeeProfileEnabled,
-        showOnAbout: next.showOnAbout,
-        showOnBooking: next.showOnBooking,
-        department: next.department,
-        title: next.title,
         avatarUrl: next.avatarUrl,
-        bio: next.bio,
+        bio: next.bio || null,
       });
-      setProfile(next);
+      setProfile((current) => ({
+        ...next,
+        department: current.department,
+        title: current.title,
+        employeeProfileEnabled: current.employeeProfileEnabled,
+        showOnAbout: current.showOnAbout,
+        avatarUrl: cleanText(saved.avatarUrl || next.avatarUrl),
+      }));
       await Promise.resolve(onPortalChange?.());
       setMessage("تم تحديث الصورة الشخصية.");
     } catch (error) {
@@ -298,9 +290,10 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
               <input
                 className="dsv2-input"
                 value={profile.department}
-                onChange={(event) => setProfile((current) => ({ ...current, department: event.target.value }))}
-                disabled={saving}
+                disabled
+                readOnly
               />
+              <small className="employee-profile-v2-field__hint">القسم يُدار من الإدارة داخل ملف الموظفة في Core.</small>
             </label>
 
             <label className="dsv2-field">
@@ -308,9 +301,10 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
               <input
                 className="dsv2-input"
                 value={profile.title}
-                onChange={(event) => setProfile((current) => ({ ...current, title: event.target.value }))}
-                disabled={saving}
+                disabled
+                readOnly
               />
+              <small className="employee-profile-v2-field__hint">المسمى الوظيفي يُدار من الإدارة ولا يمكن تغييره من الحساب الشخصي.</small>
             </label>
 
             <label className="dsv2-field employee-profile-v2-field--wide">
@@ -344,7 +338,7 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
             <div>
               <span className="employee-profile-v2-panel__eyebrow">الظهور</span>
               <h2>إعدادات الملف</h2>
-              <p>تحكم في ظهور حسابك داخل النظام والموقع.</p>
+              <p>هذه الإعدادات تشغيلية وتُدار من الإدارة لحماية صلاحيات الملف والظهور العام.</p>
             </div>
             <FontAwesomeIcon className="employee-profile-v2-panel__icon" icon={faShieldHalved} />
           </header>
@@ -358,8 +352,7 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
               <input
                 type="checkbox"
                 checked={profile.employeeProfileEnabled}
-                onChange={(event) => setProfile((current) => ({ ...current, employeeProfileEnabled: event.target.checked }))}
-                disabled={saving}
+                disabled
               />
               <span className="employee-profile-v2-switch__control" aria-hidden="true" />
             </label>
@@ -372,30 +365,17 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
               <input
                 type="checkbox"
                 checked={profile.showOnAbout}
-                onChange={(event) => setProfile((current) => ({ ...current, showOnAbout: event.target.checked }))}
-                disabled={saving}
+                disabled
               />
               <span className="employee-profile-v2-switch__control" aria-hidden="true" />
             </label>
 
-            <label className="employee-profile-v2-switch">
-              <span className="employee-profile-v2-switch__copy">
-                <strong>الظهور في صفحة الحجز</strong>
-                <small>السماح للعميلات باختيارك أثناء الحجز.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={profile.showOnBooking}
-                onChange={(event) => setProfile((current) => ({ ...current, showOnBooking: event.target.checked }))}
-                disabled={saving}
-              />
-              <span className="employee-profile-v2-switch__control" aria-hidden="true" />
-            </label>
+
           </div>
 
           <div className="employee-profile-v2-visibility-note">
             <FontAwesomeIcon icon={faCircleCheck} />
-            <span>تغييرات الظهور لا تُطبق حتى تضغط حفظ التغييرات.</span>
+            <span>تعديل التفعيل أو الظهور يتم من لوحة الإدارة فقط.</span>
           </div>
         </aside>
       </div>
@@ -403,7 +383,7 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
       <footer className="dsv2-card dsv2-card--padded employee-profile-v2-savebar">
         <div className="employee-profile-v2-savebar__copy">
           <strong>حفظ الملف الشخصي</strong>
-          <p>راجع البيانات وإعدادات الظهور قبل تثبيت التغييرات.</p>
+          <p>سيتم حفظ الاسم والهاتف والصورة والنبذة في Malikat Core. البيانات الوظيفية وإعدادات الظهور تبقى للإدارة.</p>
         </div>
         <button
           type="button"

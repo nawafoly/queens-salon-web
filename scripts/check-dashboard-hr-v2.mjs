@@ -42,11 +42,10 @@ rejectText(overview, "madan-hr-overview-v3", "Legacy HR overview root class rema
 
 for (const businessGuard of [
   "createEmployeeAbsenceRecord",
-  "listAttendanceByDateRangeForEmployeeFromWorker",
-  "summarizeAttendanceForPayroll",
-  "computeEmployeePayroll",
-  "parseEmployeePayrollMonth",
-  "buildApprovedLeaveDateKeys",
+  "listAttendanceForEmployeesDateFromWorker",
+  "getAttendanceDayStatus",
+  "generatePayrollEntriesForMonths",
+  "payrollMonthBounds",
 ]) {
   requireText(page, businessGuard, `Business-logic guard missing: ${businessGuard}`);
 }
