@@ -127,4 +127,3 @@ export async function upsertIncomeCore(item: IncomeItem) {
 export async function removeIncomeCore(id: string) {
   await CoreFinanceService.deleteIncome(id);
 }
-
