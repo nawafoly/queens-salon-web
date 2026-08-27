@@ -689,7 +689,12 @@ export default function AttendanceMonthView({
               >
                 <span className="attendance-month__day-marker" />
                 <strong>{cell.day}</strong>
-                {cell.isException ? (
+                {viewerMode === "employee" ? (
+                  <span className="attendance-month__primary-status-label">
+                    {displayStatusLabel(cell.status, viewerMode, cell.coreShift)}
+                  </span>
+                ) : null}
+                {cell.isException && cell.status !== "off_day" ? (
                   <span className="attendance-month__exception-label">
                     {"استثناء"}
                   </span>
