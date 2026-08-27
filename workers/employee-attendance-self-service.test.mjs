@@ -196,3 +196,34 @@ test("late, leave and exception calendar colors are distinct", async () => {
     "#7c3aed"
   );
 });
+test("employee calendar keeps attendance result primary and shift exception secondary", async () => {
+  const view = await source(
+    "src/components/AttendanceMonthView.tsx"
+  );
+
+  assert.match(
+    view,
+    /attendance-month__primary-status-label/
+  );
+
+  assert.match(
+    view,
+    /cell\.isException && cell\.status !== "off_day"/
+  );
+});
+
+test("weekly off uses a pale yellow distinct from late", async () => {
+  const css = await source(
+    "src/styles/dashboard-v2/components/employee-attendance-month-status.css"
+  );
+
+  assert.match(
+    css,
+    /\.is-off-day[\s\S]*#fefce8/
+  );
+
+  assert.match(
+    css,
+    /\.is-late[\s\S]*#fff7ed/
+  );
+});

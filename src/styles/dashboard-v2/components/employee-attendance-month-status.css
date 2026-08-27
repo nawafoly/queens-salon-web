@@ -42,9 +42,9 @@
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-off-day,
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-off-day {
-  --employee-attendance-day-accent: var(--dsv2-muted);
-  --employee-attendance-day-bg: var(--dsv2-surface-soft);
-  --employee-attendance-day-border: var(--dsv2-border);
+  --employee-attendance-day-accent: #854d0e;
+  --employee-attendance-day-bg: #fefce8;
+  --employee-attendance-day-border: #fde68a;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span {
@@ -80,10 +80,18 @@
   --employee-attendance-day-border: #7dd3fc;
 }
 
-.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.has-exception {
-  box-shadow: inset 0 0 0 2px #7dd3fc;
-}
 
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__primary-status-label {
+  display: inline-flex;
+  min-height: 16px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 5px;
+  color: var(--employee-attendance-day-accent);
+  font-size: 0.48rem;
+  font-weight: 950;
+  line-height: 1;
+}
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__exception-label {
   display: inline-flex;
   min-height: 16px;
