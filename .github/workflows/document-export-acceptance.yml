@@ -17,6 +17,8 @@ on:
       - "src/pages/DashboardStaffPerformance.tsx"
       - "scripts/check-dashboard-requests-v2.mjs"
       - "workers/document-export-contract.test.mjs"
+      - "workers/payroll-obligation-settlement-concurrency.test.mjs"
+      - "migrations/core/0037_payroll_obligation_settlement_concurrency.sql"
   push:
     branches: [main]
     paths:
@@ -34,6 +36,8 @@ on:
       - "src/pages/DashboardStaffPerformance.tsx"
       - "scripts/check-dashboard-requests-v2.mjs"
       - "workers/document-export-contract.test.mjs"
+      - "workers/payroll-obligation-settlement-concurrency.test.mjs"
+      - "migrations/core/0037_payroll_obligation_settlement_concurrency.sql"
   workflow_dispatch:
 
 permissions:
@@ -62,6 +66,9 @@ jobs:
 
       - name: Employee requests V2
         run: npm run check:dashboard-requests-v2
+
+      - name: Payroll obligation concurrency
+        run: node --test workers/payroll-obligation-settlement-concurrency.test.mjs
 
       - name: Build
         run: npm run build
