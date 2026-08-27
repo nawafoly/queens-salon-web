@@ -2360,7 +2360,7 @@ test('Core leave API separates manager routes from employee self scope', async (
 
   const selfEnd =
     source.indexOf(
-      '    case "hr-employee:leave-balance":',
+      '    case "employee-portal:absences":',
       selfStart
     );
 
@@ -2380,9 +2380,29 @@ test('Core leave API separates manager routes from employee self scope', async (
     /employeeId:\s*ctx\.employeeId/
   );
 
+  assert.match(
+    selfBlock,
+    /requestedEmployeeId[\s\S]*query\.employeeId/
+  );
+
+  assert.match(
+    selfBlock,
+    /requestedEmployeeId !==[\s\S]*ctx\.employeeId/
+  );
+
+  assert.match(
+    selfBlock,
+    /403[\s\S]*core_employee_portal:cross_employee_forbidden/
+  );
+
   assert.doesNotMatch(
     selfBlock,
-    /query\.employeeId/
+    /employeeId:\s*requestedEmployeeId/
+  );
+
+  assert.doesNotMatch(
+    selfBlock,
+    /employeeId:\s*query\./
   );
 
   assert.doesNotMatch(

@@ -284,6 +284,63 @@ export const CoreHrService = {
     return camel<CoreResolvedShift>(row);
   },
 
+  async resolveMyShiftsRange(input: {
+    dateFrom: string;
+    dateTo: string;
+  }): Promise<CoreResolvedShiftRangeResult> {
+    const payload =
+      await coreApiRequest<
+        Record<string, unknown>
+      >(
+        "/api/core/hr/employee-portal/resolved-shifts",
+        {
+          query: {
+            dateFrom:
+              input.dateFrom,
+            dateTo:
+              input.dateTo,
+          },
+        }
+      );
+
+    const rows =
+      Array.isArray(payload.rows)
+        ? payload.rows.map(
+            (row) =>
+              camel<CoreResolvedShift>(
+                row as Record<
+                  string,
+                  unknown
+                >
+              )
+          )
+        : [];
+
+    return {
+      dateFrom: String(
+        payload.date_from ||
+        payload.dateFrom ||
+        input.dateFrom
+      ),
+      dateTo: String(
+        payload.date_to ||
+        payload.dateTo ||
+        input.dateTo
+      ),
+      employeesCount: Number(
+        payload.employees_count ||
+        payload.employeesCount ||
+        1
+      ),
+      daysCount: Number(
+        payload.days_count ||
+        payload.daysCount ||
+        0
+      ),
+      rows,
+    };
+  },
+
   async resolveEmployeeShiftsBatch(input: {
     employeeIds: string[];
     dateFrom: string;
@@ -651,6 +708,19 @@ export const CoreHrService = {
           leaveEntitlementDate,
         },
       }
+    );
+  },
+  async listMyAbsences() {
+    const rows =
+      await coreApiRequest<
+        Record<string, unknown>[]
+      >(
+        "/api/core/hr/employee-portal/absences"
+      );
+
+    return rows.map(
+      (row) =>
+        camel<CoreAbsence>(row)
     );
   },
   async listAbsences(query: { employeeId?: string } = {}) {

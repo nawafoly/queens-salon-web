@@ -410,15 +410,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [employeeTargetLoading, setEmployeeTargetLoading] = useState(false);
   const [employeeTargetError, setEmployeeTargetError] = useState("");
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
-  const attendanceCoreEmployeeId =
-    [session.employeeId, session.uid]
-      .map(cleanText)
-      .find(
-        (id) =>
-          id &&
-          !id.startsWith("app_user_") &&
-          /^[A-Za-z0-9_-]+$/.test(id)
-      ) || "";
   const assignedAttendanceZoneId = resolveAssignedAttendanceZoneId(profile);
   const attendanceDate = getTodayAttendanceDateKey();
   const canViewAttendance = hasPermission("attendance.own.view");
@@ -615,10 +606,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
       try {
         const rows =
-          await CoreHrService.listAbsences({
-            employeeId:
-              attendanceEmployeeId,
-          });
+          await CoreHrService.listMyAbsences();
 
         if (!alive) return;
 
@@ -685,7 +673,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   ]);
 
   useEffect(() => {
-    if (!canViewAttendance || !attendanceCoreEmployeeId) {
+    if (!canViewAttendance) {
       setTodayResolvedShift(null);
       setTodayResolvedShiftLoading(false);
       setTodayResolvedShiftError("");
@@ -698,8 +686,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setTodayResolvedShiftLoading(true);
       setTodayResolvedShiftError("");
       try {
-        const batch = await CoreHrService.resolveEmployeeShiftsRange({
-          employeeIds: [attendanceCoreEmployeeId],
+        const batch = await CoreHrService.resolveMyShiftsRange({
           dateFrom: attendanceDate,
           dateTo: attendanceDate,
         });
@@ -722,10 +709,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceCoreEmployeeId, attendanceDate, canViewAttendance]);
+  }, [attendanceDate, canViewAttendance]);
 
   useEffect(() => {
-    if (!attendanceOnly || !canViewAttendance || !attendanceCoreEmployeeId) {
+    if (!attendanceOnly || !canViewAttendance) {
       setAttendanceMonthResolvedShifts({});
       setAttendanceMonthResolvedShiftsLoading(false);
       setAttendanceMonthResolvedShiftsError("");
@@ -747,8 +734,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setAttendanceMonthResolvedShiftsLoading(true);
       setAttendanceMonthResolvedShiftsError("");
       try {
-        const batch = await CoreHrService.resolveEmployeeShiftsRange({
-          employeeIds: [attendanceCoreEmployeeId],
+        const batch = await CoreHrService.resolveMyShiftsRange({
           dateFrom: dateKeys[0],
           dateTo: dateKeys[dateKeys.length - 1],
         });
@@ -765,8 +751,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         );
       } catch (error) {
         if (!alive) return;
-        console.warn("employee attendance month shift batch resolve failed", {
-          employeeId: attendanceCoreEmployeeId,
+        console.warn("employee attendance month self shift resolve failed", {
           month: monthKey,
           error,
         });
@@ -782,7 +767,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceCoreEmployeeId, attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance]);
+  }, [attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance]);
 
   useEffect(() => {
     if (!attendanceEmployeeId) {
@@ -1021,12 +1006,20 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     if (!canViewAttendance || !attendanceEmployeeId || !session.uid || attendanceBusy) {
       return;
     }
-    if (type === "check_in" && (todayResolvedShiftLoading || todayResolvedShiftError || !hasResolvedWorkShift)) {
+    if (type === "check_in" && todayResolvedShiftLoading) {
       setAttendanceMessage(
-        todayResolvedShiftError ||
-          (todayResolvedShiftLoading
-            ? "جاري تحميل جدول الدوام المعتمد."
-            : "لا يوجد شفت عمل معتمد لهذا اليوم.")
+        "???? ????? ???? ?????? ???????."
+      );
+      return;
+    }
+
+    if (
+      type === "check_in" &&
+      !todayResolvedShiftError &&
+      !hasResolvedWorkShift
+    ) {
+      setAttendanceMessage(
+        "?? ???? ??? ??? ????? ???? ?????."
       );
       return;
     }
@@ -1153,13 +1146,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         : "نشط";
   const attendanceStatus = attendance?.status || "not_started";
   const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
+  const canAttemptCheckInWithServerValidation =
+    Boolean(todayResolvedShiftError) ||
+    hasResolvedWorkShift;
+
   const canCheckIn =
     canViewAttendance &&
     !attendanceBusy &&
     !attendanceLoading &&
     !todayResolvedShiftLoading &&
-    !todayResolvedShiftError &&
-    hasResolvedWorkShift &&
+    canAttemptCheckInWithServerValidation &&
     attendanceDayStatus !== "leave" &&
     attendanceDayStatus !== "off_day" &&
     attendanceStatus === "not_started" &&
@@ -1177,9 +1173,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       ? "تسجيل انصراف"
       : todayResolvedShiftLoading
         ? "جاري تحميل الشفت"
-        : todayResolvedShiftError
-          ? "تعذر تحميل الشفت"
-          : attendanceDayStatus === "leave"
+        : attendanceDayStatus === "leave"
             ? "إجازة معتمدة"
             : attendanceDayStatus === "off_day"
               ? "يوم راحة"
@@ -1229,7 +1223,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     : todayResolvedShiftLoading
       ? "جاري قراءة الشفت المنشور من النظام المركزي."
       : todayResolvedShiftError
-        ? "تعذر التحقق من الشفت، لذلك تم تعطيل تسجيل حضور جديد بدل استخدام جدول قديم."
+        ? "تعذر عرض بيانات الشفت في التقويم. عند تسجيل الحضور سيتم التحقق من الشفت مباشرة من Core داخل خادم الحضور."
         : attendanceDayStatus === "leave"
           ? "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية."
           : attendanceDayStatus === "off_day"

@@ -520,6 +520,22 @@ function match(url, method) {
       name: "employee-portal:leaves",
     };
   }
+  if (
+    path === "/api/core/hr/employee-portal/absences" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-portal:absences",
+    };
+  }
+  if (
+    path === "/api/core/hr/employee-portal/resolved-shifts" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-portal:resolved-shifts",
+    };
+  }
   const leaveBalanceState = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance$/.exec(path);
   if (leaveBalanceState && method === "GET") {
     return {
@@ -1388,7 +1404,33 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
 
       // Self endpoint is identity-bound.
-      // Never accept employeeId / employeeUid from the client.
+      // The browser never chooses the employee identity.
+      const requestedEmployeeId =
+        cleanText(
+          query.employeeId ||
+          query.employee_id
+        );
+
+      const requestedEmployeeUid =
+        cleanText(
+          query.employeeUid ||
+          query.employee_uid
+        );
+
+      if (
+        (requestedEmployeeId &&
+          requestedEmployeeId !==
+            cleanText(ctx.employeeId)) ||
+        (requestedEmployeeUid &&
+          requestedEmployeeUid !==
+            cleanText(ctx.identity?.uid))
+      ) {
+        throw new AppError(
+          403,
+          "core_employee_portal:cross_employee_forbidden"
+        );
+      }
+
       const selfQuery = {
         employeeId: ctx.employeeId,
       };
@@ -1407,6 +1449,106 @@ async function dispatch(ctx, route, method, body, query, env) {
         selfQuery
       );
     }
+
+    case "employee-portal:absences": {
+      requirePermission(
+        ctx,
+        "attendance.own.view"
+      );
+
+      const ownEmployeeId =
+        cleanText(ctx.employeeId);
+
+      if (!ownEmployeeId) {
+        throw new AppError(
+          403,
+          "core_attendance:employee_link_required"
+        );
+      }
+
+      const requestedEmployeeId =
+        cleanText(
+          query.employeeId ||
+          query.employee_id
+        );
+
+      if (
+        requestedEmployeeId &&
+        requestedEmployeeId !== ownEmployeeId
+      ) {
+        throw new AppError(
+          403,
+          "core_attendance:cross_employee_forbidden"
+        );
+      }
+
+      return listAbsences(
+        db,
+        ctx.salonId,
+        {
+          employeeId: ownEmployeeId,
+        }
+      );
+    }
+
+    case "employee-portal:resolved-shifts": {
+      requirePermission(
+        ctx,
+        "attendance.own.view"
+      );
+
+      const ownEmployeeId =
+        cleanText(ctx.employeeId);
+
+      if (!ownEmployeeId) {
+        throw new AppError(
+          403,
+          "core_attendance:employee_link_required"
+        );
+      }
+
+      const requestedEmployeeId =
+        cleanText(
+          query.employeeId ||
+          query.employee_id
+        );
+
+      if (
+        requestedEmployeeId &&
+        requestedEmployeeId !== ownEmployeeId
+      ) {
+        throw new AppError(
+          403,
+          "core_attendance:cross_employee_forbidden"
+        );
+      }
+
+      const dateFrom =
+        cleanText(
+          query.dateFrom ||
+          query.date_from
+        );
+
+      const dateTo =
+        cleanText(
+          query.dateTo ||
+          query.date_to ||
+          dateFrom
+        );
+
+      return resolveEmployeeShiftsBatch(
+        db,
+        ctx.salonId,
+        {
+          employeeIds: [
+            ownEmployeeId,
+          ],
+          dateFrom,
+          dateTo,
+        }
+      );
+    }
+
     case "hr-employee:leave-balance":
       requireAnyPermission(ctx, [
         "employees.view",
