@@ -1,5 +1,12 @@
 
 import type { GosiSnapshot } from "./gosiPolicy.js";
+import {
+  SA_LABOR_POLICY_VERSION,
+  calculateFixedActualWageHalalas,
+  calculateMonthlyDailyWageHalalas,
+  calculateStatutoryHourlyRates,
+  calculateStatutoryOvertimeHalalas,
+} from "./saLaborPolicy.js";
 
 export function payrollMonthBounds(year: number, month: number) {
   const normalizedMonth = Math.max(1, Math.min(12, Math.trunc(Number(month) || 1)));
@@ -131,6 +138,10 @@ export type PayrollSnapshot = {
   payrollMonth: string;
   baseSalaryHalalas: number;
   allowancesHalalas: number;
+  laborPolicyVersion: string;
+  fixedActualWageHalalas: number;
+  overtimeActualHourlyHalalas: number;
+  overtimeBasicHourlyHalalas: number;
   workDays: number;
   monthlyHours: number;
   dailyScheduledHours: number;
@@ -304,14 +315,32 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     monthlyHoursSource: input.monthlyHoursSource,
     attendancePayrollMode,
   });
-  const dailyRateHalalas = workDays > 0 ? roundHalalas(baseSalaryHalalas / workDays) : 0;
-  const hourlyRateHalalas = attendanceExempt
-    ? 0
-    : monthlyHours > 0
-      ? roundHalalas(baseSalaryHalalas / monthlyHours)
-      : dailyScheduledHours > 0
-        ? roundHalalas(dailyRateHalalas / dailyScheduledHours)
-        : 0;
+  const fixedActualWageHalalas = calculateFixedActualWageHalalas({
+    baseSalaryHalalas,
+    allowancesHalalas,
+  });
+
+  const dailyRateHalalas = calculateMonthlyDailyWageHalalas({
+    baseSalaryHalalas,
+    allowancesHalalas,
+  });
+
+  const statutoryHourlyRates = attendanceExempt
+    ? {
+        reviewRequired: false,
+        actualHourlyHalalas: 0,
+        basicHourlyHalalas: 0,
+      }
+    : calculateStatutoryHourlyRates({
+        baseSalaryHalalas,
+        allowancesHalalas,
+        dailyNormalHours: dailyScheduledHours,
+      });
+
+  const hourlyRateHalalas =
+    statutoryHourlyRates.reviewRequired
+      ? 0
+      : statutoryHourlyRates.actualHourlyHalalas;
 
   const rawAttendanceMissingHours = attendanceExempt
     ? 0
@@ -434,8 +463,27 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     hourlyRateHalalas > 0;
   const financialOvertimeHours = overtimeEnabled ? detectedExtraHours : 0;
   const overtimeMultiplier = positive(input.overtimeMultiplier, 1.5);
+  const overtimeCalculation = overtimeEnabled
+    ? calculateStatutoryOvertimeHalalas({
+        baseSalaryHalalas,
+        allowancesHalalas,
+        dailyNormalHours: dailyScheduledHours,
+        overtimeMinutes: financialOvertimeHours * 60,
+        basicPremiumBps: Math.max(
+          5000,
+          Math.round((overtimeMultiplier - 1) * 10000)
+        ),
+      })
+    : {
+        actualHourlyHalalas:
+          statutoryHourlyRates.actualHourlyHalalas || 0,
+        basicHourlyHalalas:
+          statutoryHourlyRates.basicHourlyHalalas || 0,
+        amountHalalas: 0,
+      };
+
   const overtimeValueHalalas = roundHalalas(
-    financialOvertimeHours * hourlyRateHalalas * overtimeMultiplier
+    overtimeCalculation.amountHalalas
   );
 
   const totalAdditionsHalalas =
@@ -463,6 +511,12 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     payrollMonth: input.payrollMonth,
     baseSalaryHalalas,
     allowancesHalalas,
+    laborPolicyVersion: SA_LABOR_POLICY_VERSION,
+    fixedActualWageHalalas,
+    overtimeActualHourlyHalalas:
+      overtimeCalculation.actualHourlyHalalas || 0,
+    overtimeBasicHourlyHalalas:
+      overtimeCalculation.basicHourlyHalalas || 0,
     workDays,
     monthlyHours,
     dailyScheduledHours,

@@ -163,8 +163,38 @@ test("missing hours outside a partial unpaid leave are still deducted", () => {
   assert.equal(result.totalDeductionsHalalas, 10000);
 });
 
-test("payroll payload persists the calculated absence deduction instead of zeroing it", () => {
-  const source = readFileSync(new URL("../src/services/CorePayrollService.ts", import.meta.url), "utf8");
-  assert.match(source, /absenceDeductionHalalas:\s*entry\.absenceDeductionHalalas/);
-  assert.doesNotMatch(source, /absenceDeductionHalalas:\s*0,/);
+test("browser payroll payload leaves the derived absence deduction to canonical Core authority", () => {
+  const service = readFileSync(
+    new URL("../src/services/CorePayrollService.ts", import.meta.url),
+    "utf8"
+  );
+  const core = readFileSync(
+    new URL("../workers/core/repositories/payroll.js", import.meta.url),
+    "utf8"
+  );
+
+  const payloadStart = service.indexOf(
+    "export function payrollEntryPayload"
+  );
+  const payloadEnd = service.indexOf(
+    "export async function previewPayrollEntrySnapshot"
+  );
+
+  assert.ok(payloadStart >= 0);
+  assert.ok(payloadEnd > payloadStart);
+
+  const payloadSource = service.slice(
+    payloadStart,
+    payloadEnd
+  );
+
+  assert.doesNotMatch(
+    payloadSource,
+    /absenceDeductionHalalas/
+  );
+
+  assert.match(
+    core,
+    /absenceDeductionHalalas:\s*authority\.absenceDeductionHalalas/
+  );
 });

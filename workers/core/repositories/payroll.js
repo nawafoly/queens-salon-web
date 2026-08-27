@@ -15,6 +15,13 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { calculateGosi } from '../../../src/helpers/hr/gosiPolicy.js';
+import {
+  SA_LABOR_POLICY_VERSION,
+  calculateFixedActualWageHalalas,
+  calculateMonthlyDailyWageHalalas,
+  calculateStatutoryHourlyRates,
+  calculateStatutoryOvertimeHalalas,
+} from '../../../src/helpers/hr/saLaborPolicy.js';
 import { listAttendance } from './attendance.js';
 import { listLeaves } from './leaves.js';
 import { listAbsences } from './absences.js';
@@ -454,8 +461,35 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   const configuredMonthlyHours = summary.attendancePayrollMode === 'exempt' ? 0 : Math.max(0, Number(employment.expected_work_hours || 0) || 0);
   const dailyScheduledHours = summary.attendancePayrollMode === 'exempt' ? 0 : (attendance.dailyScheduledHours || Math.max(0, Number(employment.daily_scheduled_hours || 0) || 0));
   const monthlyHours = configuredMonthlyHours > 0 ? configuredMonthlyHours : (workDays > 0 && dailyScheduledHours > 0 ? Math.round(workDays * dailyScheduledHours * 100) / 100 : 0);
-  const dailyRateHalalas = workDays > 0 ? Math.round(baseSalaryHalalas / workDays) : 0;
-  const hourlyRateHalalas = summary.attendancePayrollMode === 'exempt' ? 0 : (monthlyHours > 0 ? Math.round(baseSalaryHalalas / monthlyHours) : (dailyScheduledHours > 0 ? Math.round(dailyRateHalalas / dailyScheduledHours) : 0));
+  const fixedActualWageHalalas =
+    calculateFixedActualWageHalalas({
+      baseSalaryHalalas,
+      allowancesHalalas,
+    });
+
+  const dailyRateHalalas =
+    calculateMonthlyDailyWageHalalas({
+      baseSalaryHalalas,
+      allowancesHalalas,
+    });
+
+  const statutoryHourlyRates =
+    summary.attendancePayrollMode === 'exempt'
+      ? {
+          reviewRequired: false,
+          actualHourlyHalalas: 0,
+          basicHourlyHalalas: 0,
+        }
+      : calculateStatutoryHourlyRates({
+          baseSalaryHalalas,
+          allowancesHalalas,
+          dailyNormalHours: dailyScheduledHours,
+        });
+
+  const hourlyRateHalalas =
+    statutoryHourlyRates.reviewRequired
+      ? 0
+      : statutoryHourlyRates.actualHourlyHalalas;
   const setupMissing = [];
   if (!employeeId) setupMissing.push('employeeId');
   if (baseSalaryHalalas <= 0) setupMissing.push('baseSalary');
@@ -541,10 +575,52 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
       : null;
 
   const overtimeEnabled = activeFlag(employment.overtime_enabled);
-  const overtimeMultiplier = Math.max(0, Number(employment.overtime_multiplier || 1.5) || 1.5);
-  const detectedExtraHours = Math.max(0, Number(summary.totalExtraHours || 0) || 0);
-  const financialOvertimeHours = overtimeEnabled && payrollSetupComplete ? detectedExtraHours : 0;
-  const overtimeValueHalalas = Math.round(financialOvertimeHours * hourlyRateHalalas * overtimeMultiplier);
+  const overtimeMultiplier = Math.max(
+    1.5,
+    Number(employment.overtime_multiplier || 1.5) || 1.5
+  );
+  const detectedExtraHours = Math.max(
+    0,
+    Number(summary.totalExtraHours || 0) || 0
+  );
+  const financialOvertimeHours =
+    overtimeEnabled && payrollSetupComplete
+      ? detectedExtraHours
+      : 0;
+
+  const overtimeCalculation =
+    financialOvertimeHours > 0
+      ? calculateStatutoryOvertimeHalalas({
+          baseSalaryHalalas,
+          allowancesHalalas,
+          dailyNormalHours: dailyScheduledHours,
+          overtimeMinutes: financialOvertimeHours * 60,
+          basicPremiumBps: Math.max(
+            5000,
+            Math.round((overtimeMultiplier - 1) * 10000)
+          ),
+        })
+      : {
+          actualHourlyHalalas:
+            statutoryHourlyRates.actualHourlyHalalas || 0,
+          basicHourlyHalalas:
+            statutoryHourlyRates.basicHourlyHalalas || 0,
+          amountHalalas: 0,
+        };
+
+  if (
+    financialOvertimeHours > 0 &&
+    overtimeCalculation.reviewRequired
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:overtime_daily_hours_required'
+    );
+  }
+
+  const overtimeValueHalalas = payrollRoundMoney(
+    overtimeCalculation.amountHalalas
+  );
   const gosiSnapshot = canonicalGosiFromEmployment(employment, payrollMonth);
   const insuranceDeductionHalalas = payrollRoundMoney(gosiSnapshot?.employee?.deductionHalalas);
   const employerGosiContributionHalalas = payrollRoundMoney(gosiSnapshot?.employer?.contributionHalalas);
@@ -553,6 +629,18 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     summary,
     baseSalaryHalalas,
     allowancesHalalas,
+    laborPolicyVersion: SA_LABOR_POLICY_VERSION,
+    fixedActualWageHalalas,
+    wageSourceUpdatedAt:
+      optionalText(employment.updated_at) || null,
+    overtimeActualHourlyHalalas:
+      payrollRoundMoney(
+        overtimeCalculation.actualHourlyHalalas
+      ),
+    overtimeBasicHourlyHalalas:
+      payrollRoundMoney(
+        overtimeCalculation.basicHourlyHalalas
+      ),
     workDays,
     monthlyHours,
     dailyScheduledHours,
@@ -736,6 +824,10 @@ async function assertPayrollApprovalReady(
               attendance_payroll_exemption_reason,
               employment_status,
               base_salary_halalas,
+              housing_allowance_halalas,
+              transportation_allowance_halalas,
+              other_allowances_halalas,
+              updated_at,
               social_insurance_category,
               social_insurance_effective_from
          FROM employee_employment
@@ -757,6 +849,35 @@ async function assertPayrollApprovalReady(
     );
     if (canonicalBaseSalaryHalalas <= 0) {
       throw new AppError(409, 'core_payroll:employee_not_payroll_eligible');
+    }
+
+    const canonicalAllowancesHalalas =
+      intMoney(employment.housing_allowance_halalas) +
+      intMoney(employment.transportation_allowance_halalas) +
+      intMoney(employment.other_allowances_halalas);
+
+    const canonicalFixedActualWageHalalas =
+      calculateFixedActualWageHalalas({
+        baseSalaryHalalas: canonicalBaseSalaryHalalas,
+        allowancesHalalas: canonicalAllowancesHalalas,
+      });
+
+    if (
+      intMoney(row.base_salary_halalas) !==
+        canonicalBaseSalaryHalalas ||
+      intMoney(row.allowances_halalas) !==
+        canonicalAllowancesHalalas ||
+      intMoney(row.fixed_actual_wage_halalas) !==
+        canonicalFixedActualWageHalalas ||
+      cleanText(row.labor_policy_version) !==
+        SA_LABOR_POLICY_VERSION ||
+      cleanText(row.wage_source_updated_at) !==
+        cleanText(employment.updated_at)
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:wage_snapshot_stale'
+      );
     }
 
     const canonicalMode =
@@ -1120,11 +1241,100 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
   const missingHoursDeductionHalalas = payrollRoundMoney(missingHours * hourlyRateHalalas);
   const detectedExtraHours = Math.max(0, payrollRoundHours(summary.totalExtraHours || 0));
   const overtimeEnabled = activeFlag(sourceEntry.overtime_enabled) === 1;
-  const overtimeMultiplier = Math.max(0, numberValue(sourceEntry.overtime_multiplier, 1.5));
-  const financialOvertimeHours = overtimeEnabled ? detectedExtraHours : 0;
-  const overtimeValueHalalas = payrollRoundMoney(
-    financialOvertimeHours * hourlyRateHalalas * overtimeMultiplier
+  const overtimeMultiplier = Math.max(
+    1.5,
+    numberValue(sourceEntry.overtime_multiplier, 1.5)
   );
+  const financialOvertimeHours =
+    overtimeEnabled ? detectedExtraHours : 0;
+
+  let overtimeValueHalalas = 0;
+
+  if (financialOvertimeHours > 0) {
+    const sourceLaborPolicyVersion =
+      cleanText(sourceEntry.labor_policy_version);
+
+    if (
+      sourceLaborPolicyVersion ===
+      SA_LABOR_POLICY_VERSION
+    ) {
+      const sourceActualHourlyHalalas =
+        intMoney(
+          sourceEntry.overtime_actual_hourly_halalas
+        );
+      const sourceBasicHourlyHalalas =
+        intMoney(
+          sourceEntry.overtime_basic_hourly_halalas
+        );
+
+      if (
+        sourceActualHourlyHalalas <= 0 ||
+        sourceBasicHourlyHalalas <= 0
+      ) {
+        throw new AppError(
+          409,
+          'core_payroll:locked_labor_snapshot_incomplete'
+        );
+      }
+
+      const basicPremiumBps = Math.max(
+        5000,
+        Math.round(
+          (overtimeMultiplier - 1) * 10000
+        )
+      );
+
+      const overtimeHourlyHalalas =
+        sourceActualHourlyHalalas +
+        (
+          sourceBasicHourlyHalalas *
+          basicPremiumBps /
+          10000
+        );
+
+      overtimeValueHalalas =
+        payrollRoundMoney(
+          financialOvertimeHours *
+          overtimeHourlyHalalas
+        );
+    } else {
+      // Historical locked payrolls keep their originally approved
+      // overtime unit value. We do not retrofit a new labor policy
+      // into an approved/paid historical snapshot.
+      const historicalOvertimeHours =
+        Math.max(
+          0,
+          numberValue(
+            sourceEntry.financial_overtime_hours,
+            0
+          )
+        );
+      const historicalOvertimeValueHalalas =
+        intMoney(
+          sourceEntry.overtime_value_halalas
+        );
+
+      if (
+        historicalOvertimeHours <= 0 ||
+        historicalOvertimeValueHalalas <= 0
+      ) {
+        throw new AppError(
+          409,
+          'core_payroll:legacy_locked_overtime_review_required'
+        );
+      }
+
+      const historicalOvertimeUnitHalalas =
+        historicalOvertimeValueHalalas /
+        historicalOvertimeHours;
+
+      overtimeValueHalalas =
+        payrollRoundMoney(
+          financialOvertimeHours *
+          historicalOvertimeUnitHalalas
+        );
+    }
+  }
   const grossSalaryHalalas =
     intMoney(sourceEntry.base_salary_halalas) +
     intMoney(sourceEntry.allowances_halalas) +
@@ -1339,6 +1549,11 @@ const PAYROLL_ENTRY_MUTATION_COLUMNS = [
   'employer_gosi_contribution_halalas',
   'gosi_snapshot_json',
   'gosi_calculated_at',
+  'labor_policy_version',
+  'fixed_actual_wage_halalas',
+  'wage_source_updated_at',
+  'overtime_actual_hourly_halalas',
+  'overtime_basic_hourly_halalas',
   'other_deductions_halalas',
   'missing_hours_deduction_halalas',
   'additions_json',
@@ -1377,7 +1592,10 @@ export function buildPayrollEntryMutationStatement(row) {
        overtime_value_halalas, overtime_bonus_halalas, delay_deduction_halalas,
        insurance_deduction_halalas, gosi_insurance_category, gosi_policy_version,
        gosi_contributory_wage_halalas, employer_gosi_contribution_halalas, gosi_snapshot_json,
-       gosi_calculated_at, other_deductions_halalas, missing_hours_deduction_halalas,
+       gosi_calculated_at, labor_policy_version, fixed_actual_wage_halalas,
+       wage_source_updated_at, overtime_actual_hourly_halalas,
+       overtime_basic_hourly_halalas, other_deductions_halalas,
+       missing_hours_deduction_halalas,
        additions_json, manual_additions_halalas, manual_deductions_halalas, advances_halalas,
        total_deductions_halalas, gross_salary_halalas, final_salary_halalas, net_salary_halalas,
        schedule_snapshot_json, absence_entries_json, deductions_json, mudad_file_id, status,
@@ -1407,6 +1625,11 @@ export function buildPayrollEntryMutationStatement(row) {
         employer_gosi_contribution_halalas = excluded.employer_gosi_contribution_halalas,
         gosi_snapshot_json = excluded.gosi_snapshot_json,
         gosi_calculated_at = excluded.gosi_calculated_at,
+        labor_policy_version = excluded.labor_policy_version,
+        fixed_actual_wage_halalas = excluded.fixed_actual_wage_halalas,
+        wage_source_updated_at = excluded.wage_source_updated_at,
+        overtime_actual_hourly_halalas = excluded.overtime_actual_hourly_halalas,
+        overtime_basic_hourly_halalas = excluded.overtime_basic_hourly_halalas,
         other_deductions_halalas = excluded.other_deductions_halalas,
         missing_hours_deduction_halalas = excluded.missing_hours_deduction_halalas,
         additions_json = excluded.additions_json,
@@ -1584,6 +1807,15 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     employerGosiContributionHalalas: authority.employerGosiContributionHalalas,
     gosiSnapshot: authority.gosiSnapshot,
     gosiCalculatedAt: now,
+    laborPolicyVersion: authority.laborPolicyVersion,
+    fixedActualWageHalalas:
+      authority.fixedActualWageHalalas,
+    wageSourceUpdatedAt:
+      authority.wageSourceUpdatedAt,
+    overtimeActualHourlyHalalas:
+      authority.overtimeActualHourlyHalalas,
+    overtimeBasicHourlyHalalas:
+      authority.overtimeBasicHourlyHalalas,
     deductions: canonicalDeductions,
     otherDeductionsHalalas: canonicalLegacyOtherDeductionsHalalas,
     manualAdditionsHalalas: canonicalManualAdditionsHalalas,
@@ -1603,6 +1835,12 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
       monthlyHoursSource: authority.monthlyHoursSource,
       attendancePayrollMode: authority.summary.attendancePayrollMode || 'required',
       attendancePayrollExemptionReason: authority.summary.attendancePayrollExemptionReason || null,
+      laborPolicyVersion: authority.laborPolicyVersion,
+      fixedActualWageHalalas: authority.fixedActualWageHalalas,
+      wageSourceUpdatedAt: authority.wageSourceUpdatedAt,
+      attendanceDeductionWageBasis: 'actual_wage',
+      overtimeCalculationBasis:
+        'actual_hourly_plus_50pct_basic_hourly',
     },
   };
 
@@ -1658,6 +1896,31 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     gosi_calculated_at: optionalText(
       data.gosiCalculatedAt ?? data.gosi_calculated_at
     ) || (data.gosiSnapshot || data.gosi_snapshot ? now : null),
+    labor_policy_version:
+      optionalText(
+        data.laborPolicyVersion ??
+          data.labor_policy_version
+      ) || null,
+    fixed_actual_wage_halalas:
+      intMoney(
+        data.fixedActualWageHalalas ??
+          data.fixed_actual_wage_halalas
+      ),
+    wage_source_updated_at:
+      optionalText(
+        data.wageSourceUpdatedAt ??
+          data.wage_source_updated_at
+      ) || null,
+    overtime_actual_hourly_halalas:
+      intMoney(
+        data.overtimeActualHourlyHalalas ??
+          data.overtime_actual_hourly_halalas
+      ),
+    overtime_basic_hourly_halalas:
+      intMoney(
+        data.overtimeBasicHourlyHalalas ??
+          data.overtime_basic_hourly_halalas
+      ),
     other_deductions_halalas: intMoney(data.otherDeductionsHalalas ?? data.other_deductions_halalas),
     missing_hours_deduction_halalas: intMoney(data.missingHoursDeductionHalalas ?? data.missing_hours_deduction_halalas),
     additions_json: jsonText(data.additions ?? data.additions_json, []),

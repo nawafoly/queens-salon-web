@@ -293,17 +293,24 @@ export async function createLeave(
     );
   }
 
-  const deductFromBalance = flag(
-    data.deductFromBalance ??
-      data.deduct_from_balance,
-    0
-  );
+  const leaveType =
+    cleanText(
+      data.leaveType ||
+        data.leave_type ||
+        'annual'
+    ).toLowerCase() || 'annual';
 
-  const affectsPayroll = flag(
-    data.affectsPayroll ??
-      data.affects_payroll,
-    0
-  );
+  // Annual leave is the only legacy balance bucket.
+  // Sick, emergency and statutory leave must never consume
+  // employee_employment.leave_balance implicitly.
+  const deductFromBalance =
+    leaveType === 'annual' ? 1 : 0;
+
+  // This flag remains only an operational hint.
+  // Detailed sick/statutory pay bands are handled by the
+  // dedicated Saudi Labor payroll policy, not by browser input.
+  const affectsPayroll =
+    leaveType === 'unpaid' ? 1 : 0;
 
   // Balance-affecting leave is restricted to half-day
   // increments. Non-deducting partial leave may preserve
@@ -341,12 +348,7 @@ export async function createLeave(
           data.employee_email
       ) || null,
     status: 'pending',
-    leave_type:
-      cleanText(
-        data.leaveType ||
-          data.leave_type ||
-          'annual'
-      ) || 'annual',
+    leave_type: leaveType,
     start_date: startDate,
     end_date: endDate,
     days_count: daysCount,

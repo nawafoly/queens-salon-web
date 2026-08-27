@@ -136,10 +136,7 @@ export function getEmployeeLeavePolicy(value: unknown) {
     .toLowerCase();
 
   return {
-    deductFromBalance:
-      type === "annual" ||
-      type === "sick" ||
-      type === "emergency",
+    deductFromBalance: type === "annual",
     affectsPayroll: type === "unpaid",
   };
 }

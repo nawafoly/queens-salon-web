@@ -135,6 +135,8 @@ async function setup() {
     '0034_employee_offboarding_invariants.sql',
     '0035_salary_advance_installment_deferrals.sql',
     '0036_attendance_deduction_deferral_integrity.sql',
+    '0037_payroll_obligation_settlement_concurrency.sql',
+    '0038_sa_labor_compliance_foundation.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
