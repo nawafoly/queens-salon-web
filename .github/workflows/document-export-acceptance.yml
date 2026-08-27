@@ -4,6 +4,17 @@ on:
   pull_request:
     paths:
       - ".github/workflows/document-export-acceptance.yml"
+      - "src/components/AttendanceMonthView.tsx"
+      - "src/pages/hr/EmployeeOverview.tsx"
+      - "src/services/CoreHrService.ts"
+      - "src/styles/dashboard-v2/components/employee-attendance-month-status.css"
+      - "src/styles/dashboard-v2/pages/employee-portal-overview.css"
+      - "workers/attendance-worker.js"
+      - "workers/core/index.js"
+      - "workers/hr-core-worker.test.mjs"
+      - "workers/employee-attendance-self-service.test.mjs"
+      - "workers/shift-attendance-policy.test.mjs"
+      - "package.json"
       - "src/documents/**"
       - "src/components/hr/LeaveRequestDocument.tsx"
       - "src/services/leaveRequestExport.ts"
@@ -23,6 +34,17 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/document-export-acceptance.yml"
+      - "src/components/AttendanceMonthView.tsx"
+      - "src/pages/hr/EmployeeOverview.tsx"
+      - "src/services/CoreHrService.ts"
+      - "src/styles/dashboard-v2/components/employee-attendance-month-status.css"
+      - "src/styles/dashboard-v2/pages/employee-portal-overview.css"
+      - "workers/attendance-worker.js"
+      - "workers/core/index.js"
+      - "workers/hr-core-worker.test.mjs"
+      - "workers/employee-attendance-self-service.test.mjs"
+      - "workers/shift-attendance-policy.test.mjs"
+      - "package.json"
       - "src/documents/**"
       - "src/components/hr/LeaveRequestDocument.tsx"
       - "src/services/leaveRequestExport.ts"
@@ -69,6 +91,9 @@ jobs:
 
       - name: Payroll obligation concurrency
         run: node --test workers/payroll-obligation-settlement-concurrency.test.mjs
+
+      - name: Employee attendance self-service
+        run: npm run test:attendance:worker
 
       - name: Build
         run: npm run build

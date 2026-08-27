@@ -52,9 +52,32 @@ function riyadhClockParts(value = new Date().toISOString()) {
 }
 
 export function evaluateCheckInWindow({ type, now, shift }) {
-  if (type !== "check_in" || !shift) return { result: "allowed", rejectionReason: null };
+  if (type !== "check_in") {
+    return {
+      result: "allowed",
+      rejectionReason: null,
+    };
+  }
+
+  if (!shift) {
+    return {
+      result: "rejected",
+      rejectionReason: "core_shift_resolution_unavailable",
+    };
+  }
+
   const source = normalizeText(shift.source);
-  const exceptionType = normalizeText(shift.exception_type || shift.exceptionType);
+  const exceptionType = normalizeText(
+    shift.exception_type ||
+    shift.exceptionType
+  );
+
+  if (!source || source === "none") {
+    return {
+      result: "rejected",
+      rejectionReason: "not_scheduled_workday",
+    };
+  }
   if (source === "weekly_schedule" && (Number(shift.active) !== 1 || exceptionType === "off")) {
     return { result: "rejected", rejectionReason: "not_scheduled_workday" };
   }
@@ -211,16 +234,89 @@ export async function resolveCanonicalAttendanceIdentity(directoryDb, salonId, i
   }
 }
 
-async function resolveAttendanceCheckInPolicy({ directoryDb, salonId, requester, employeeResolution, type, now }) {
-  if (!directoryDb || type !== "check_in") {
-    return { result: "allowed", rejectionReason: null, coreEmployeeId: "" };
+async function resolveAttendanceCheckInPolicy({
+  directoryDb,
+  salonId,
+  requester,
+  employeeResolution,
+  type,
+  now,
+}) {
+  if (type !== "check_in") {
+    return {
+      result: "allowed",
+      rejectionReason: null,
+      coreEmployeeId: "",
+    };
   }
-  const coreEmployeeId = await resolveCoreEmployeeId(directoryDb, salonId, requester, employeeResolution);
-  if (!coreEmployeeId) return { result: "allowed", rejectionReason: null, coreEmployeeId: "" };
+
+  if (!directoryDb) {
+    return {
+      result: "rejected",
+      rejectionReason: "core_shift_resolution_unavailable",
+      coreEmployeeId: "",
+    };
+  }
+
+  const coreEmployeeId =
+    await resolveCoreEmployeeId(
+      directoryDb,
+      salonId,
+      requester,
+      employeeResolution
+    );
+
+  if (!coreEmployeeId) {
+    return {
+      result: "rejected",
+      rejectionReason: "attendance_employee_link_required",
+      coreEmployeeId: "",
+    };
+  }
+
   const clock = riyadhClockParts(now);
-  if (!clock) return { result: "allowed", rejectionReason: null, coreEmployeeId };
-  const shift = await resolveEmployeeShift(directoryDb, salonId, coreEmployeeId, clock.dateKey).catch(() => null);
-  return { ...evaluateCheckInWindow({ type, now, shift }), coreEmployeeId, shift, dateKey: clock.dateKey };
+
+  if (!clock) {
+    return {
+      result: "rejected",
+      rejectionReason: "core_shift_resolution_unavailable",
+      coreEmployeeId,
+    };
+  }
+
+  let shift;
+
+  try {
+    shift = await resolveEmployeeShift(
+      directoryDb,
+      salonId,
+      coreEmployeeId,
+      clock.dateKey
+    );
+  } catch (error) {
+    console.warn(
+      "[attendance] canonical Core shift resolution failed",
+      error
+    );
+
+    return {
+      result: "rejected",
+      rejectionReason: "core_shift_resolution_failed",
+      coreEmployeeId,
+      dateKey: clock.dateKey,
+    };
+  }
+
+  return {
+    ...evaluateCheckInWindow({
+      type,
+      now,
+      shift,
+    }),
+    coreEmployeeId,
+    shift,
+    dateKey: clock.dateKey,
+  };
 }
 
 async function markAutomaticLockAbsence(directoryDb, salonId, employeeId, employeeUid, dateKey) {
