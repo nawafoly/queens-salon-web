@@ -66,6 +66,26 @@ test('official payroll exports are unified, professional and keep leave compensa
   assert.match(dashboard, /handleExportPayrollMobileExcel/);
 });
 
+test('payroll Excel exposes attendance, GOSI and deferred deductions with complete numeric totals', () => {
+  const report = read('src/helpers/reports/exportPayrollReportV2.ts');
+  const excel = read('src/services/exports-v2/payroll-executive-excel.ts');
+
+  assert.match(report, /deferredAttendanceDeduction/);
+  assert.match(report, /attendanceDeferredMissingHoursDeductionHalalas/);
+  assert.match(report, /خصم حضور مؤجل \(لا يخصم هذه الفترة\)/);
+  assert.match(report, /ترحيل خصم الحضور إلى/);
+  assert.match(report, /خصم GOSI للموظفة/);
+  assert.match(report, /مساهمة المنشأة GOSI/);
+
+  assert.match(excel, /function isTotalableDetailColumn/);
+  assert.match(excel, /column\.type === "number"/);
+  assert.match(excel, /column\.type === "currency"/);
+  assert.match(excel, /isHourColumn\(column\.key\)/);
+  assert.match(excel, /0\.00 &quot;ر\.س&quot;/);
+  assert.match(excel, /خصم الحضور المؤجل بند إفصاح فقط/);
+  assert.match(excel, /الموظفة غير السعودية/);
+});
+
 test('payroll approval and next-period reconciliation are explicit source-of-truth operations', () => {
   const service = read('src/services/CorePayrollService.ts');
   const repository = read('workers/core/repositories/payroll.js');

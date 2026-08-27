@@ -63,6 +63,8 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   missingHours: string;
   absenceDeduction: number;
   missingHoursDeduction: number;
+  deferredAttendanceDeduction: number;
+  deferredAttendanceTargetMonth: string;
   overtimeStatus: string;
   overtimeValue: number;
   additions: number;
@@ -76,6 +78,15 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   expectedNet: number;
   status: string;
   notes: string;
+};
+
+type PayrollAttendanceExportSnapshot = PayrollEntryView["attendanceSummary"] & {
+  attendanceDeferredMissingHoursDeductionHalalas?: number | null;
+  attendanceDeductionDeferral?: {
+    targetPayrollMonth?: string | null;
+    amountHalalas?: number | null;
+    status?: string | null;
+  } | null;
 };
 
 type PayslipExportRow = Record<string, ExportV2Value> & {
@@ -279,6 +290,18 @@ export function buildPayrollReportDataV2(
   const rows: PayrollExportRow[] = entries.map((entry) => {
     const accrual = calculatePayrollAccrualView(entry);
     const leaveCompensationHalalas = payrollLeaveCompensationHalalas(entry);
+    const attendanceSnapshot =
+      entry.attendanceSummary as PayrollAttendanceExportSnapshot;
+    const attendanceDeferral =
+      attendanceSnapshot.attendanceDeductionDeferral || null;
+    const deferredAttendanceDeductionHalalas = Math.max(
+      0,
+      Number(
+        attendanceSnapshot.attendanceDeferredMissingHoursDeductionHalalas ??
+          attendanceDeferral?.amountHalalas ??
+          0
+      ) || 0
+    );
     return {
       employeeName: exportV2SafeText(entry.employeeName, "موظفة غير محددة"),
       jobTitle: exportV2SafeText(entry.jobTitle, "غير محدد"),
@@ -293,6 +316,16 @@ export function buildPayrollReportDataV2(
       missingHours: formatAttendanceHours(entry.attendanceSummary.totalMissingHours),
       absenceDeduction: halalasToRiyals(entry.absenceDeductionHalalas),
       missingHoursDeduction: halalasToRiyals(entry.missingHoursDeductionHalalas),
+      deferredAttendanceDeduction: halalasToRiyals(
+        deferredAttendanceDeductionHalalas
+      ),
+      deferredAttendanceTargetMonth:
+        deferredAttendanceDeductionHalalas > 0
+          ? exportV2SafeText(
+              attendanceDeferral?.targetPayrollMonth,
+              "غير محدد"
+            )
+          : "—",
       overtimeStatus: entry.overtimeEnabled ? "محتسب" : "غير محتسب",
       overtimeValue: halalasToRiyals(entry.overtimeValueHalalas),
       additions: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)),
@@ -423,6 +456,8 @@ export function buildPayrollReportDataV2(
       { key: "missingHours", header: "نقص الساعات", width: 14, align: "center", hideInPdf: true },
       { key: "absenceDeduction", header: "خصم الغياب", type: "currency", width: 14, align: "center", hideInPdf: true },
       { key: "missingHoursDeduction", header: "خصم نقص الساعات", type: "currency", width: 17, align: "center", hideInPdf: true },
+      { key: "deferredAttendanceDeduction", header: "خصم حضور مؤجل (لا يخصم هذه الفترة)", type: "currency", width: 23, align: "center", hideInPdf: true },
+      { key: "deferredAttendanceTargetMonth", header: "ترحيل خصم الحضور إلى", width: 18, align: "center", hideInPdf: true },
       { key: "overtimeStatus", header: "الأوفر تايم", type: "status", width: 14, align: "center", hideInPdf: true },
       { key: "overtimeValue", header: "قيمة الأوفر تايم", type: "currency", width: 17, align: "center", hideInPdf: true },
       { key: "additions", header: "إجمالي الإضافات (يشمل البدلات والأوفر تايم)", type: "currency", width: 23, align: "center" },
