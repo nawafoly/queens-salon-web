@@ -26,6 +26,7 @@ import { listAttendance } from './attendance.js';
 import { listLeaves } from './leaves.js';
 import { listAbsences } from './absences.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
+import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.js';
 import { payrollAttendanceReadiness } from '../../../src/helpers/hr/payrollReadiness.js';
 import {
   payrollCarryoverDelta,
@@ -583,10 +584,43 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     0,
     Number(summary.totalExtraHours || 0) || 0
   );
+  const reconciledCashOvertimeRows =
+    await listReconciledCashOvertimeForPayroll(
+      db,
+      salonId,
+      employeeId,
+      payrollMonth
+    );
+  const reconciledOvertimeMinutes =
+    reconciledCashOvertimeRows.reduce(
+      (total, row) =>
+        total + Math.max(0, Number(row.actual_worked_minutes || 0) || 0),
+      0
+    );
+
+  if (!overtimeEnabled && reconciledOvertimeMinutes > 0) {
+    throw new AppError(
+      409,
+      'core_payroll:reconciled_overtime_policy_disabled'
+    );
+  }
+
   const financialOvertimeHours =
-    overtimeEnabled && payrollSetupComplete
-      ? detectedExtraHours
-      : 0;
+    payrollRoundHours(reconciledOvertimeMinutes / 60);
+
+  summary.rawDetectedExtraHours = detectedExtraHours;
+  summary.reconciledCashOvertimeMinutes = reconciledOvertimeMinutes;
+  summary.reconciledCashOvertimeHours = financialOvertimeHours;
+  summary.overtimeFinancialAuthority = 'reconciled_cash_overtime_only';
+  summary.overtimeSourceSnapshot = reconciledCashOvertimeRows.map((row) => ({
+    id: cleanText(row.id),
+    requestId: cleanText(row.request_id) || null,
+    date: cleanText(row.date_key),
+    minutes: Math.max(0, Number(row.actual_worked_minutes || 0) || 0),
+    financialStatus: cleanText(row.financial_status),
+    attendanceReconciledAt: cleanText(row.attendance_reconciled_at) || null,
+    policyVersion: cleanText(row.policy_version) || null,
+  }));
 
   const overtimeCalculation =
     financialOvertimeHours > 0
@@ -594,7 +628,7 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
           baseSalaryHalalas,
           allowancesHalalas,
           dailyNormalHours: dailyScheduledHours,
-          overtimeMinutes: financialOvertimeHours * 60,
+          overtimeMinutes: reconciledOvertimeMinutes,
           basicPremiumBps: Math.max(
             5000,
             Math.round((overtimeMultiplier - 1) * 10000)
@@ -651,6 +685,8 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     missingHoursDeductionHalalas,
     attendanceDeductionDeferral,
     detectedExtraHours,
+    reconciledOvertimeMinutes,
+    overtimeSourceSnapshot: summary.overtimeSourceSnapshot,
     overtimeEnabled,
     financialOvertimeHours,
     overtimeMultiplier,
@@ -1239,102 +1275,13 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     )
   );
   const missingHoursDeductionHalalas = payrollRoundMoney(missingHours * hourlyRateHalalas);
-  const detectedExtraHours = Math.max(0, payrollRoundHours(summary.totalExtraHours || 0));
-  const overtimeEnabled = activeFlag(sourceEntry.overtime_enabled) === 1;
-  const overtimeMultiplier = Math.max(
-    1.5,
-    numberValue(sourceEntry.overtime_multiplier, 1.5)
+  // Approved/paid payroll is an immutable overtime financial snapshot.
+  // Raw attendance extra time is never allowed to create or recalculate money
+  // during carryover reconciliation. Any overtime correction requires an
+  // explicit reopen/reversal workflow with reconciled evidence.
+  const overtimeValueHalalas = intMoney(
+    sourceEntry.overtime_value_halalas
   );
-  const financialOvertimeHours =
-    overtimeEnabled ? detectedExtraHours : 0;
-
-  let overtimeValueHalalas = 0;
-
-  if (financialOvertimeHours > 0) {
-    const sourceLaborPolicyVersion =
-      cleanText(sourceEntry.labor_policy_version);
-
-    if (
-      sourceLaborPolicyVersion ===
-      SA_LABOR_POLICY_VERSION
-    ) {
-      const sourceActualHourlyHalalas =
-        intMoney(
-          sourceEntry.overtime_actual_hourly_halalas
-        );
-      const sourceBasicHourlyHalalas =
-        intMoney(
-          sourceEntry.overtime_basic_hourly_halalas
-        );
-
-      if (
-        sourceActualHourlyHalalas <= 0 ||
-        sourceBasicHourlyHalalas <= 0
-      ) {
-        throw new AppError(
-          409,
-          'core_payroll:locked_labor_snapshot_incomplete'
-        );
-      }
-
-      const basicPremiumBps = Math.max(
-        5000,
-        Math.round(
-          (overtimeMultiplier - 1) * 10000
-        )
-      );
-
-      const overtimeHourlyHalalas =
-        sourceActualHourlyHalalas +
-        (
-          sourceBasicHourlyHalalas *
-          basicPremiumBps /
-          10000
-        );
-
-      overtimeValueHalalas =
-        payrollRoundMoney(
-          financialOvertimeHours *
-          overtimeHourlyHalalas
-        );
-    } else {
-      // Historical locked payrolls keep their originally approved
-      // overtime unit value. We do not retrofit a new labor policy
-      // into an approved/paid historical snapshot.
-      const historicalOvertimeHours =
-        Math.max(
-          0,
-          numberValue(
-            sourceEntry.financial_overtime_hours,
-            0
-          )
-        );
-      const historicalOvertimeValueHalalas =
-        intMoney(
-          sourceEntry.overtime_value_halalas
-        );
-
-      if (
-        historicalOvertimeHours <= 0 ||
-        historicalOvertimeValueHalalas <= 0
-      ) {
-        throw new AppError(
-          409,
-          'core_payroll:legacy_locked_overtime_review_required'
-        );
-      }
-
-      const historicalOvertimeUnitHalalas =
-        historicalOvertimeValueHalalas /
-        historicalOvertimeHours;
-
-      overtimeValueHalalas =
-        payrollRoundMoney(
-          financialOvertimeHours *
-          historicalOvertimeUnitHalalas
-        );
-    }
-  }
   const grossSalaryHalalas =
     intMoney(sourceEntry.base_salary_halalas) +
     intMoney(sourceEntry.allowances_halalas) +
@@ -1841,6 +1788,12 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
       attendanceDeductionWageBasis: 'actual_wage',
       overtimeCalculationBasis:
         'actual_hourly_plus_50pct_basic_hourly',
+      overtimeFinancialAuthority:
+        'reconciled_cash_overtime_only',
+      reconciledOvertimeMinutes:
+        authority.reconciledOvertimeMinutes,
+      overtimeSourceSnapshot:
+        authority.overtimeSourceSnapshot,
     },
   };
 
