@@ -143,6 +143,30 @@ import {
   savePayrollRecurringDeduction,
 } from './repositories/payroll-obligations.js';
 import {
+  cancelPayrollDeductionCourtOverride,
+  classifyPayrollObligationDeduction,
+  classifyRecurringPayrollDeduction,
+  listPayrollDeductionClassificationEvents,
+  savePayrollDeductionCourtOverride,
+} from './repositories/payroll-deduction-compliance.js';
+import {
+  createDisciplinaryFineFundDisbursement,
+  getDisciplinaryFineFundBalance,
+  listDisciplinaryFineFundLedger,
+} from './repositories/disciplinary-fine-fund.js';
+import {
+  cancelDisciplinaryCase,
+  createDisciplinaryCase,
+  listDisciplinaryCases,
+} from './repositories/disciplinary-compliance.js';
+import {
+  createPublicHolidayWorkAssignment,
+  ensureFixedSaudiPublicHolidays,
+  reconcilePublicHolidayWorkDate,
+  reconcileWeeklyRestDate,
+  verifySaudiEidHolidayPeriod,
+} from './repositories/holiday-calendar-compliance.js';
+import {
   deferSalaryAdvanceInstallment,
 } from './repositories/salary-advance-deferrals.js';
 import {
@@ -573,6 +597,26 @@ function match(url, method) {
   if (path === "/api/core/hr/payroll-obligations/deductions" && method === "GET") {
     return { name: "payroll-obligation-deductions" };
   }
+  const payrollObligationClassification = /^\/api\/core\/hr\/payroll-obligations\/([^/]+)\/classification$/.exec(path);
+  if (payrollObligationClassification && method === "POST") return { name: "payroll-obligation:classification", id: payrollObligationClassification[1] };
+  const payrollRecurringClassification = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)\/classification$/.exec(path);
+  if (payrollRecurringClassification && method === "POST") return { name: "payroll-recurring-deduction:classification", id: payrollRecurringClassification[1] };
+  if (path === "/api/core/hr/payroll-deduction-classification-events" && method === "GET") return { name: "payroll-deduction-classification-events" };
+  const payrollDeductionOverrideCancel = /^\/api\/core\/hr\/payroll-deduction-overrides\/([^/]+)\/cancel$/.exec(path);
+  if (payrollDeductionOverrideCancel && method === "POST") return { name: "payroll-deduction-override:cancel", id: payrollDeductionOverrideCancel[1] };
+  if (path === "/api/core/hr/payroll-deduction-overrides" && method === "POST") return { name: "payroll-deduction-override:create" };
+  const disciplinaryCaseCancel = /^\/api\/core\/hr\/disciplinary-cases\/([^/]+)\/cancel$/.exec(path);
+  if (disciplinaryCaseCancel && method === "POST") return { name: "disciplinary-case:cancel", id: disciplinaryCaseCancel[1] };
+  if (path === "/api/core/hr/disciplinary-cases" && ["GET", "POST"].includes(method)) return { name: "disciplinary-cases" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/balance" && method === "GET") return { name: "disciplinary-fine-fund:balance" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/ledger" && method === "GET") return { name: "disciplinary-fine-fund:ledger" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/disbursements" && method === "POST") return { name: "disciplinary-fine-fund:disburse" };
+  const fixedSaudiHolidayEnsure = /^\/api\/core\/hr\/public-holidays\/fixed\/(\d{4})\/ensure$/.exec(path);
+  if (fixedSaudiHolidayEnsure && method === "POST") return { name: "public-holidays:fixed-ensure", year: fixedSaudiHolidayEnsure[1] };
+  if (path === "/api/core/hr/public-holidays/eid-periods" && method === "POST") return { name: "public-holidays:eid-period" };
+  if (path === "/api/core/hr/public-holiday-work-assignments" && method === "POST") return { name: "public-holiday-work:assign" };
+  if (path === "/api/core/hr/public-holiday-work/reconcile" && method === "POST") return { name: "public-holiday-work:reconcile" };
+  if (path === "/api/core/hr/weekly-rest/reconcile" && method === "POST") return { name: "weekly-rest:reconcile" };
   const payrollRecurringDeduction = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)$/.exec(path);
   if (payrollRecurringDeduction) {
     return { name: "payroll-recurring-deduction", id: payrollRecurringDeduction[1] };
@@ -1882,6 +1926,91 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollAdvanceDeductions(db, ctx.salonId, query);
 
+    case "payroll-obligation:classification":
+      requirePermission(ctx, "payroll.manage");
+      return classifyPayrollObligationDeduction(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "payroll-recurring-deduction:classification":
+      requirePermission(ctx, "payroll.manage");
+      return classifyRecurringPayrollDeduction(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "payroll-deduction-classification-events":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollDeductionClassificationEvents(db, ctx.salonId, query);
+
+    case "payroll-deduction-override:create":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, ADMIN_ROLES);
+      return savePayrollDeductionCourtOverride(db, ctx.salonId, body, actorInfo);
+
+    case "payroll-deduction-override:cancel":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, ADMIN_ROLES);
+      return cancelPayrollDeductionCourtOverride(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "disciplinary-cases":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.manage", "payroll.manage"]);
+      if (method === "GET") return listDisciplinaryCases(db, ctx.salonId, query);
+      if (method === "POST") return createDisciplinaryCase(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "disciplinary-case:cancel":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.manage", "payroll.manage"]);
+      return cancelDisciplinaryCase(db, ctx.salonId, route.id, body, actorInfo);
+    case "disciplinary-fine-fund:balance":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return getDisciplinaryFineFundBalance(db, ctx.salonId);
+
+    case "disciplinary-fine-fund:ledger":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listDisciplinaryFineFundLedger(db, ctx.salonId, query);
+
+    case "disciplinary-fine-fund:disburse":
+      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "payroll.manage");
+      return createDisciplinaryFineFundDisbursement(db, ctx.salonId, body, actorInfo);
+    case "public-holidays:fixed-ensure":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.leaves.manage"]);
+      return ensureFixedSaudiPublicHolidays(db, route.year);
+
+    case "public-holidays:eid-period":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.leaves.manage"]);
+      return verifySaudiEidHolidayPeriod(db, body);
+
+    case "public-holiday-work:assign":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
+      return createPublicHolidayWorkAssignment(db, ctx.salonId, body, actorInfo);
+
+    case "public-holiday-work:reconcile":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "payroll.manage"]);
+      return reconcilePublicHolidayWorkDate(
+        db,
+        ctx.salonId,
+        body.employeeId || body.employee_id,
+        body.holidayDate || body.holiday_date,
+        actorInfo,
+        env.ATTENDANCE_DB || null
+      );
+
+    case "weekly-rest:reconcile":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "payroll.manage"]);
+      return reconcileWeeklyRestDate(
+        db,
+        ctx.salonId,
+        body.employeeId || body.employee_id,
+        body.restDate || body.rest_date,
+        actorInfo,
+        env.ATTENDANCE_DB || null
+      );
     case "payroll-recurring-deductions":
       if (method === "GET") {
         requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);

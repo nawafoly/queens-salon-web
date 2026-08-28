@@ -8,7 +8,8 @@ function read(path) {
 
 test("salary advance deductions come only from canonical Core installments", () => {
   const payroll = read("workers/core/repositories/payroll.js");
-  const employeeRequests = read("workers/core/repositories/employee-requests.js");
+  const employeeRequests = read("workers/core/repositories/employee-requests-legacy.js");
+  const activeRequests = read("workers/core/repositories/employee-requests.js");
   const worker = read("workers/core/index.js");
   const service = read("src/services/CoreHrService.ts");
   const generator = read("src/services/CorePayrollService.ts");
@@ -19,6 +20,7 @@ test("salary advance deductions come only from canonical Core installments", () 
   assert.match(payroll, /core_payroll:manual_advance_not_allowed/);
   assert.match(payroll, /core_payroll:advance_deduction_mismatch/);
   assert.match(payroll, /salary_advance_installments/);
+  assert.match(activeRequests, /employee-requests-legacy\.js/);
   assert.match(employeeRequests, /core_employee_request:salary_advance_payroll_locked/);
   assert.match(worker, /payroll-advance-deductions/);
   assert.match(service, /listPayrollAdvanceDeductions/);

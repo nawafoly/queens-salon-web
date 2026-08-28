@@ -1,95 +1,262 @@
-// CORE D1 ONLY — do not add Firestore fallback.
-// Approved leave balance mutations are owned by Core D1.
+// CORE D1 ONLY — canonical Saudi leave runtime dispatcher.
+// The legacy repository remains available only for storage/lifecycle operations
+// that do not own statutory entitlement calculations.
 
 import {
-  changes,
   cleanText,
-  dbAll,
-  dbBatch,
   dbFirst,
-  generatedId,
-  nowIso,
-  optionalText,
-  requiredId,
-  validDate,
-  validTime,
+  dbRun,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import {
+  SA_LEAVE_TYPES,
+  getSaLeaveTypePolicy,
+  normalizeSaLeaveType,
+} from '../../../src/helpers/hr/saLeaveEntitlements.js';
+import {
+  listLeaves as legacyListLeaves,
+  createLeave as legacyCreateLeave,
+  decideLeave as legacyDecideLeave,
+} from './leaves-legacy.js';
+import { approveAnnualLeave } from './annual-leave.js';
+import { cancelApprovedAnnualLeave } from './annual-leave-cancellation.js';
+import {
+  approveSickLeave,
+  cancelApprovedSickLeave,
+} from './sick-leave.js';
+import {
+  approveTimeEntitlementLeave,
+  cancelTimeEntitlementLeave,
+} from './leave-time-entitlements.js';
+import { WEEKLY_REST_MINUTES } from './weekly-rest-entitlements.js';
+import {
+  approveSpecialStatutoryLeave,
+  cancelSpecialStatutoryLeave,
+  specialStatutoryLeaveRuntimeSupport,
+} from './special-statutory-leave.js';
+import {
+  approveSensitiveFamilyLeave,
+  cancelSensitiveFamilyLeave,
+} from './sensitive-family-leave.js';
+import { annualLeavePublicHolidayExtension } from './public-holiday-overlap.js';
 
-const LEAVE_BALANCE_SOURCE_TYPE = 'leave_request';
-const MAX_LEAVE_DAYS = 3650;
+const DETERMINISTIC_SPECIAL_TYPES = new Set([
+  SA_LEAVE_TYPES.marriage,
+  SA_LEAVE_TYPES.bereavementSpouseAscendantDescendant,
+  SA_LEAVE_TYPES.bereavementSibling,
+  SA_LEAVE_TYPES.newborn,
+  SA_LEAVE_TYPES.hajj,
+  SA_LEAVE_TYPES.exam,
+]);
 
-function daysBetween(startDate, endDate) {
-  const start = new Date(`${startDate}T12:00:00.000Z`);
-  const end = new Date(`${endDate}T12:00:00.000Z`);
+const SENSITIVE_FAMILY_TYPES = new Set([
+  SA_LEAVE_TYPES.maternity,
+  SA_LEAVE_TYPES.childMedicalCare,
+  SA_LEAVE_TYPES.widowMuslim,
+  SA_LEAVE_TYPES.widowNonMuslim,
+]);
 
-  const days =
-    Math.floor(
-      (end.getTime() - start.getTime()) / 86400000
-    ) + 1;
+const CANONICAL_APPROVAL_TYPES = new Set([
+  SA_LEAVE_TYPES.annual,
+  SA_LEAVE_TYPES.sick,
+  SA_LEAVE_TYPES.overtimeCompTimeUse,
+  SA_LEAVE_TYPES.weeklyRestSubstituteUse,
+  ...DETERMINISTIC_SPECIAL_TYPES,
+  ...SENSITIVE_FAMILY_TYPES,
+]);
 
-  if (!Number.isFinite(days) || days < 1) {
+const LEGACY_SAFE_APPROVAL_TYPES = new Set([
+  SA_LEAVE_TYPES.unpaid,
+]);
+
+const ENTITLEMENT_CONSUMPTION_TYPES = new Set([
+  SA_LEAVE_TYPES.overtimeCompTimeUse,
+  SA_LEAVE_TYPES.weeklyRestSubstituteUse,
+]);
+
+const STATUTORY_VALIDATION_TYPES = new Set([
+  SA_LEAVE_TYPES.marriage,
+  SA_LEAVE_TYPES.bereavementSpouseAscendantDescendant,
+  SA_LEAVE_TYPES.bereavementSibling,
+  SA_LEAVE_TYPES.newborn,
+  SA_LEAVE_TYPES.hajj,
+  SA_LEAVE_TYPES.exam,
+  ...SENSITIVE_FAMILY_TYPES,
+]);
+
+function legalBasisForLeaveType(leaveType) {
+  switch (leaveType) {
+    case SA_LEAVE_TYPES.annual:
+      return 'SA_LABOR_ARTICLE_109';
+    case SA_LEAVE_TYPES.sick:
+      return 'SA_LABOR_ARTICLE_117';
+    case SA_LEAVE_TYPES.unpaid:
+      return 'SA_LABOR_UNPAID_LEAVE';
+    case SA_LEAVE_TYPES.marriage:
+    case SA_LEAVE_TYPES.bereavementSpouseAscendantDescendant:
+    case SA_LEAVE_TYPES.bereavementSibling:
+    case SA_LEAVE_TYPES.newborn:
+      return 'SA_LABOR_ARTICLE_113';
+    case SA_LEAVE_TYPES.hajj:
+      return 'SA_LABOR_ARTICLE_114';
+    case SA_LEAVE_TYPES.exam:
+      return 'SA_LABOR_ARTICLE_115';
+    case SA_LEAVE_TYPES.maternity:
+    case SA_LEAVE_TYPES.childMedicalCare:
+      return 'SA_LABOR_ARTICLE_151';
+    case SA_LEAVE_TYPES.widowMuslim:
+    case SA_LEAVE_TYPES.widowNonMuslim:
+      return 'SA_LABOR_ARTICLE_160';
+    case SA_LEAVE_TYPES.overtimeCompTimeUse:
+      return 'SA_LABOR_OVERTIME_COMP_TIME';
+    case SA_LEAVE_TYPES.weeklyRestSubstituteUse:
+      return 'SA_LABOR_WEEKLY_REST_SUBSTITUTE';
+    default:
+      return 'HR_REVIEW_REQUIRED';
+  }
+}
+
+function validClockMinutes(value, field) {
+  const text = cleanText(value);
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (!match) {
+    throw new AppError(400, `core_leave:invalid_${field}`);
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new AppError(400, `core_leave:invalid_${field}`);
+  }
+  return hour * 60 + minute;
+}
+
+function explicitEntitlementMinutes(data = {}) {
+  const raw = data.entitlementMinutes ?? data.entitlement_minutes;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const minutes = Number(raw);
+  if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 60 * 24 * 366) {
+    throw new AppError(400, 'core_leave:invalid_entitlement_minutes');
+  }
+  return minutes;
+}
+
+function timeEntitlementRequestMinutes(data, leaveType) {
+  if (!ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) return 0;
+
+  const durationKind = cleanText(
+    data.durationKind ?? data.duration_kind ?? 'full_day'
+  ).toLowerCase() === 'partial'
+    ? 'partial'
+    : 'full_day';
+  const explicit = explicitEntitlementMinutes(data);
+
+  if (leaveType === SA_LEAVE_TYPES.weeklyRestSubstituteUse) {
+    const startDate = cleanText(data.startDate ?? data.start_date);
+    const endDate = cleanText(data.endDate ?? data.end_date);
+    if (durationKind !== 'full_day' || !startDate || startDate !== endDate) {
+      throw new AppError(409, 'core_leave:weekly_rest_requires_single_full_day');
+    }
+    if (explicit != null && explicit !== WEEKLY_REST_MINUTES) {
+      throw new AppError(409, 'core_leave:weekly_rest_requires_24h_block');
+    }
+    return WEEKLY_REST_MINUTES;
+  }
+
+  if (durationKind === 'partial') {
+    const from = validClockMinutes(
+      data.partialStartTime ?? data.partial_start_time,
+      'partial_start_time'
+    );
+    const to = validClockMinutes(
+      data.partialEndTime ?? data.partial_end_time,
+      'partial_end_time'
+    );
+    if (to <= from) {
+      throw new AppError(400, 'core_leave:invalid_partial_range');
+    }
+    const derived = to - from;
+    if (explicit != null && explicit !== derived) {
+      throw new AppError(409, 'core_leave:entitlement_minutes_mismatch');
+    }
+    return derived;
+  }
+
+  if (explicit == null) {
+    throw new AppError(409, 'core_leave:overtime_comp_minutes_required');
+  }
+  return explicit;
+}
+
+export function requireExplicitSaLeaveType(data = {}) {
+  const raw = cleanText(
+    data.leaveType ?? data.leave_type
+  ).toLowerCase();
+
+  if (!raw) {
     throw new AppError(
       400,
-      'core_leave:invalid_range'
+      'core_leave:leave_type_required',
+      'leaveType is required'
     );
   }
 
-  return days;
+  const leaveType = normalizeSaLeaveType(raw);
+  const policy = getSaLeaveTypePolicy(raw);
+
+  return {
+    rawLeaveType: raw,
+    leaveType,
+    policy,
+  };
 }
 
-function flag(value, fallback = 0) {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ''
-  ) {
-    return fallback ? 1 : 0;
+export function leaveDecisionRuntime(leave, requestedStatus) {
+  const leaveType = normalizeSaLeaveType(leave?.leave_type);
+  const currentStatus = cleanText(leave?.status).toLowerCase();
+  const status = cleanText(requestedStatus).toLowerCase();
+
+  if (!['approved', 'rejected'].includes(status)) {
+    throw new AppError(400, 'core_leave:invalid_decision');
   }
 
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    value === 'true'
-  )
-    ? 1
-    : 0;
-}
-
-function balanceDays(value) {
-  const days = Number(value);
-
-  if (
-    !Number.isFinite(days) ||
-    days <= 0 ||
-    days > MAX_LEAVE_DAYS
-  ) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_balance_days'
-    );
+  if (status === 'approved') {
+    if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_approve';
+    if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_approve';
+    if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
+      return 'time_entitlement_approve';
+    }
+    if (leaveType === SA_LEAVE_TYPES.otherHrReview) return 'hr_review_block';
+    if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
+      return 'special_statutory_approve';
+    }
+    if (SENSITIVE_FAMILY_TYPES.has(leaveType)) {
+      return 'sensitive_family_approve';
+    }
+    if (STATUTORY_VALIDATION_TYPES.has(leaveType)) {
+      return 'statutory_validation_block';
+    }
+    if (LEGACY_SAFE_APPROVAL_TYPES.has(leaveType)) return 'legacy_safe';
+    return 'hr_review_block';
   }
 
-  if (Math.round(days * 2) !== days * 2) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_balance_days_increment'
-    );
+  if (currentStatus === 'approved') {
+    if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_cancel';
+    if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_cancel';
+    if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
+      return 'time_entitlement_cancel';
+    }
+    if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
+      return 'special_statutory_cancel';
+    }
+    if (SENSITIVE_FAMILY_TYPES.has(leaveType)) {
+      return 'sensitive_family_cancel';
+    }
   }
 
-  return Math.round(days * 2) / 2;
+  return 'legacy_safe';
 }
 
-function actorField(actor, field) {
-  return optionalText(actor?.[field]) || null;
-}
-
-async function leaveById(
-  db,
-  salonId,
-  id
-) {
+async function leaveById(db, salonId, id) {
   return dbFirst(
     db,
     `SELECT *
@@ -101,1282 +268,232 @@ async function leaveById(
   );
 }
 
-async function employmentByEmployee(
-  db,
-  salonId,
-  employeeId
-) {
-  return dbFirst(
-    db,
-    `SELECT *
-       FROM employee_employment
-      WHERE salon_id = ?
-        AND employee_id = ?
-      LIMIT 1`,
-    [salonId, employeeId]
-  );
-}
-
-async function ledgerBySource(
-  db,
-  salonId,
-  sourceId
-) {
-  return dbFirst(
-    db,
-    `SELECT *
-       FROM employee_leave_balance_ledger
-      WHERE salon_id = ?
-        AND source_type = ?
-        AND source_id = ?
-      LIMIT 1`,
-    [
-      salonId,
-      LEAVE_BALANCE_SOURCE_TYPE,
-      sourceId,
-    ]
-  );
-}
-
-async function reversalForEntry(
-  db,
-  salonId,
-  entryId
-) {
-  return dbFirst(
-    db,
-    `SELECT *
-       FROM employee_leave_balance_ledger
-      WHERE salon_id = ?
-        AND source_type = 'reversal'
-        AND source_id = ?
-      LIMIT 1`,
-    [salonId, entryId]
-  );
-}
-
-export async function listLeaves(
-  db,
-  salonId,
-  query = {}
-) {
-  let rows = await dbAll(
-    db,
-    `SELECT *
-       FROM employee_leaves
-      WHERE salon_id = ?
-      ORDER BY start_date DESC
-      LIMIT 1000`,
-    [salonId]
-  );
-
-  const employeeId = cleanText(
-    query.employeeId || query.employee_id
-  );
-
-  const status = cleanText(
-    query.status
-  ).toLowerCase();
-
-  if (employeeId) {
-    rows = rows.filter(
-      (row) => row.employee_id === employeeId
-    );
-  }
-
-  if (status) {
-    rows = rows.filter(
-      (row) =>
-        cleanText(row.status).toLowerCase() ===
-        status
-    );
-  }
-
-  return rows;
+export async function listLeaves(db, salonId, query = {}) {
+  return legacyListLeaves(db, salonId, query);
 }
 
 export async function createLeave(
   db,
   salonId,
-  data,
+  data = {},
   actor = {}
 ) {
-  const startDate = validDate(
-    data.startDate || data.start_date,
-    'startDate'
+  const resolved = requireExplicitSaLeaveType(data);
+  const entitlementMinutesRequested = timeEntitlementRequestMinutes(
+    data,
+    resolved.leaveType
   );
-
-  const endDate = validDate(
-    data.endDate || data.end_date,
-    'endDate'
-  );
-
-  if (endDate < startDate) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_range'
-    );
-  }
-
-  const durationKind =
-    cleanText(
-      data.durationKind ||
-        data.duration_kind
-    ).toLowerCase() === 'partial'
-      ? 'partial'
-      : 'full_day';
-
-  if (
-    durationKind === 'partial' &&
-    startDate !== endDate
-  ) {
-    throw new AppError(
-      400,
-      'core_leave:partial_single_day'
-    );
-  }
-
-  const partialStartTime =
-    durationKind === 'partial'
-      ? validTime(
-          data.partialStartTime ||
-            data.partial_start_time,
-          'partialStartTime'
-        )
-      : null;
-
-  const partialEndTime =
-    durationKind === 'partial'
-      ? validTime(
-          data.partialEndTime ||
-            data.partial_end_time,
-          'partialEndTime'
-        )
-      : null;
-
-  if (
-    durationKind === 'partial' &&
-    partialStartTime >= partialEndTime
-  ) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_partial_range'
-    );
-  }
-
-  const requestedStatus = cleanText(
-    data.status || 'pending'
-  ).toLowerCase();
-
-  // No caller may bypass the approval lifecycle.
-  if (requestedStatus !== 'pending') {
-    throw new AppError(
-      400,
-      'core_leave:create_status_must_be_pending'
-    );
-  }
-
-  const rawDays = Number(
-    data.daysCount ??
-      data.days_count ??
-      daysBetween(startDate, endDate)
-  );
-
-  if (
-    !Number.isFinite(rawDays) ||
-    rawDays <= 0 ||
-    rawDays > MAX_LEAVE_DAYS
-  ) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_days_count'
-    );
-  }
-
-  const deductFromBalance = flag(
-    data.deductFromBalance ??
-      data.deduct_from_balance,
-    0
-  );
-
-  const affectsPayroll = flag(
-    data.affectsPayroll ??
-      data.affects_payroll,
-    0
-  );
-
-  // Balance-affecting leave is restricted to half-day
-  // increments. Non-deducting partial leave may preserve
-  // its fractional operational duration.
-  const daysCount =
-    deductFromBalance
-      ? balanceDays(rawDays)
-      : Math.round(rawDays * 1000) / 1000;
-
-  const now = nowIso();
-
-  const row = {
-    id: requiredId(
-      data.id || generatedId('leave')
-    ),
-    salon_id: salonId,
-    employee_id: requiredId(
-      data.employeeId || data.employee_id,
-      'employeeId'
-    ),
-    employee_uid:
-      optionalText(
-        data.employeeUid ||
-          data.employee_uid ||
-          actor.uid
-      ) || null,
-    employee_name:
-      optionalText(
-        data.employeeName ||
-          data.employee_name
-      ) || null,
-    employee_email:
-      optionalText(
-        data.employeeEmail ||
-          data.employee_email
-      ) || null,
-    status: 'pending',
-    leave_type:
-      cleanText(
-        data.leaveType ||
-          data.leave_type ||
-          'annual'
-      ) || 'annual',
-    start_date: startDate,
-    end_date: endDate,
-    days_count: daysCount,
-    duration_kind: durationKind,
-    partial_start_time: partialStartTime,
-    partial_end_time: partialEndTime,
-    request_id:
-      optionalText(
-        data.requestId ||
-          data.request_id
-      ) || null,
-    deduct_from_balance: deductFromBalance,
-    affects_payroll: affectsPayroll,
-    balance_adjustment_id: null,
-    employee_note:
-      optionalText(
-        data.employeeNote ||
-          data.employee_note
-      ) || null,
-    hr_note:
-      optionalText(
-        data.hrNote ||
-          data.hr_note
-      ) || null,
-    decided_at: null,
-    decided_by_uid: null,
-    decided_by_email: null,
-    decided_by_name: null,
-    created_at: now,
-    updated_at: now,
-  };
-
-  await dbBatch(db, [
-    {
-      sql: `
-        INSERT INTO employee_leaves (
-          id,
-          salon_id,
-          employee_id,
-          employee_uid,
-          employee_name,
-          employee_email,
-          status,
-          leave_type,
-          start_date,
-          end_date,
-          days_count,
-          duration_kind,
-          partial_start_time,
-          partial_end_time,
-          request_id,
-          deduct_from_balance,
-          affects_payroll,
-          balance_adjustment_id,
-          employee_note,
-          hr_note,
-          decided_at,
-          decided_by_uid,
-          decided_by_email,
-          decided_by_name,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?
-        )
-      `,
-      params: Object.values(row),
-    },
-  ]);
-
-  return row;
-}
-
-async function approveWithoutBalance(
-  db,
-  salonId,
-  leave,
-  decision,
-  actor
-) {
-  const now = nowIso();
-
-  const statements = [
-    {
-      sql: `
-        UPDATE employee_leaves
-           SET status = 'approved',
-               hr_note = ?,
-               decided_at = ?,
-               decided_by_uid = ?,
-               decided_by_email = ?,
-               decided_by_name = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND status = 'pending'
-      `,
-      params: [
-        optionalText(
-          decision.hrNote ||
-            decision.hr_note
-        ) ||
-          leave.hr_note ||
-          null,
-        now,
-        actorField(actor, 'uid'),
-        actorField(actor, 'email'),
-        actorField(actor, 'name'),
-        now,
-        salonId,
-        leave.id,
-      ],
-    },
-  ];
-
-  const results = await dbBatch(
-    db,
-    statements
-  );
-
-  if (changes(results?.[0]) < 1) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
-
-    if (latest?.status === 'approved') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:approval_not_applied'
-    );
-  }
-
-  return leaveById(
+  const created = await legacyCreateLeave(
     db,
     salonId,
-    leave.id
-  );
-}
-
-async function approveWithBalance(
-  db,
-  salonId,
-  leave,
-  decision,
-  actor
-) {
-  const days = balanceDays(
-    leave.days_count
-  );
-
-  const adjustmentId = requiredId(
-    leave.balance_adjustment_id ||
-      generatedId('leave_balance'),
-    'balanceAdjustmentId'
-  );
-
-  const now = nowIso();
-
-  const actorUid =
-    actorField(actor, 'uid');
-  const actorEmail =
-    actorField(actor, 'email');
-  const actorName =
-    actorField(actor, 'name');
-
-  const note =
-    optionalText(
-      decision.hrNote ||
-        decision.hr_note ||
-        leave.employee_note
-    ) || null;
-
-  const statements = [
     {
-      sql: `
-        UPDATE employee_employment
-           SET leave_balance =
-                 leave_balance - ?,
-               leave_balance_last_entry_id = ?,
-               updated_by_uid = ?,
-               updated_by_email = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND employee_id = ?
-           AND leave_balance >= ?
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leaves pending_leave
-              WHERE pending_leave.salon_id = ?
-                AND pending_leave.id = ?
-                AND pending_leave.employee_id = ?
-                AND pending_leave.status = 'pending'
-                AND pending_leave.deduct_from_balance = 1
-                AND pending_leave.balance_adjustment_id IS NULL
-           )
-           AND NOT EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger existing
-              WHERE existing.salon_id = ?
-                AND existing.source_type = ?
-                AND existing.source_id = ?
-           )
-      `,
-      params: [
-        days,
-        adjustmentId,
-        actorUid,
-        actorEmail,
-        now,
-        salonId,
-        leave.employee_id,
-        days,
-        salonId,
-        leave.id,
-        leave.employee_id,
-        salonId,
-        LEAVE_BALANCE_SOURCE_TYPE,
-        leave.id,
-      ],
+      ...data,
+      leaveType: resolved.leaveType,
+      leave_type: resolved.leaveType,
     },
-    {
-      sql: `
-        INSERT INTO employee_leave_balance_ledger (
-          id,
-          salon_id,
-          employee_id,
-          action_type,
-          days,
-          change_amount,
-          balance_before,
-          balance_after,
-          operation_date,
-          note,
-          source_type,
-          source_id,
-          created_by_uid,
-          created_by_email,
-          created_by_name,
-          created_at
-        )
-        SELECT
-          ?,
-          ?,
-          employment.employee_id,
-          'deduct',
-          ?,
-          ?,
-          employment.leave_balance + ?,
-          employment.leave_balance,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        FROM employee_employment employment
-        JOIN employee_leaves pending_leave
-          ON pending_leave.salon_id =
-               employment.salon_id
-         AND pending_leave.employee_id =
-               employment.employee_id
-        WHERE employment.salon_id = ?
-          AND employment.employee_id = ?
-          AND employment.leave_balance_last_entry_id = ?
-          AND pending_leave.id = ?
-          AND pending_leave.status = 'pending'
-          AND pending_leave.balance_adjustment_id IS NULL
-      `,
-      params: [
-        adjustmentId,
-        salonId,
-        days,
-        -days,
-        days,
-        now.slice(0, 10),
-        note,
-        LEAVE_BALANCE_SOURCE_TYPE,
-        leave.id,
-        actorUid,
-        actorEmail,
-        actorName,
-        now,
-        salonId,
-        leave.employee_id,
-        adjustmentId,
-        leave.id,
-      ],
-    },
-    {
-      sql: `
-        UPDATE employee_leaves
-           SET status = 'approved',
-               balance_adjustment_id = ?,
-               hr_note = ?,
-               decided_at = ?,
-               decided_by_uid = ?,
-               decided_by_email = ?,
-               decided_by_name = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND status = 'pending'
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger ledger
-              WHERE ledger.salon_id = ?
-                AND ledger.id = ?
-                AND ledger.source_type = ?
-                AND ledger.source_id = ?
-           )
-      `,
-      params: [
-        adjustmentId,
-        note,
-        now,
-        actorUid,
-        actorEmail,
-        actorName,
-        now,
-        salonId,
-        leave.id,
-        salonId,
-        adjustmentId,
-        LEAVE_BALANCE_SOURCE_TYPE,
-        leave.id,
-      ],
-    },
-  ];
-
-  const results = await dbBatch(
-    db,
-    statements
+    actor
   );
 
-  if (changes(results?.[0]) < 1) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
+  const documentationStatus = resolved.policy.documentationRequired
+    ? 'required'
+    : 'not_required';
 
-    if (latest?.status === 'approved') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    const employment =
-      await employmentByEmployee(
-        db,
-        salonId,
-        leave.employee_id
-      );
-
-    if (!employment) {
-      throw new AppError(
-        404,
-        'core_leave:employee_employment_not_found'
-      );
-    }
-
-    if (
-      Number(
-        employment.leave_balance || 0
-      ) < days
-    ) {
-      throw new AppError(
-        409,
-        'core_leave:insufficient_balance'
-      );
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:approval_not_applied'
-    );
-  }
-
-  if (
-    changes(results?.[1]) < 1 ||
-    changes(results?.[2]) < 1
-  ) {
-    throw new AppError(
-      500,
-      'core_leave:approval_incomplete'
-    );
-  }
-
-  return leaveById(
+  await dbRun(
     db,
-    salonId,
-    leave.id
-  );
-}
-
-async function rejectPendingLeave(
-  db,
-  salonId,
-  leave,
-  decision,
-  actor
-) {
-  const now = nowIso();
-
-  const result = await dbBatch(db, [
-    {
-      sql: `
-        UPDATE employee_leaves
-           SET status = 'rejected',
-               hr_note = ?,
-               decided_at = ?,
-               decided_by_uid = ?,
-               decided_by_email = ?,
-               decided_by_name = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND status = 'pending'
-      `,
-      params: [
-        optionalText(
-          decision.hrNote ||
-            decision.hr_note
-        ) ||
-          leave.hr_note ||
-          null,
-        now,
-        actorField(actor, 'uid'),
-        actorField(actor, 'email'),
-        actorField(actor, 'name'),
-        now,
-        salonId,
-        leave.id,
-      ],
-    },
-  ]);
-
-  if (changes(result?.[0]) < 1) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
-
-    if (latest?.status === 'rejected') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:rejection_not_applied'
-    );
-  }
-
-  return leaveById(
-    db,
-    salonId,
-    leave.id
-  );
-}
-
-async function rejectApprovedWithoutBalance(
-  db,
-  salonId,
-  leave,
-  decision,
-  actor
-) {
-  const now = nowIso();
-
-  const statements = [
-    {
-      sql: `
-        UPDATE employee_leaves
-           SET status = 'rejected',
-               hr_note = ?,
-               decided_at = ?,
-               decided_by_uid = ?,
-               decided_by_email = ?,
-               decided_by_name = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND status = 'approved'
-      `,
-      params: [
-        optionalText(
-          decision.hrNote ||
-            decision.hr_note
-        ) ||
-          leave.hr_note ||
-          null,
-        now,
-        actorField(actor, 'uid'),
-        actorField(actor, 'email'),
-        actorField(actor, 'name'),
-        now,
-        salonId,
-        leave.id,
-      ],
-    },
-  ];
-
-  const results = await dbBatch(
-    db,
-    statements
-  );
-
-  if (changes(results?.[0]) < 1) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
-
-    if (latest?.status === 'rejected') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:rejection_not_applied'
-    );
-  }
-
-  return leaveById(
-    db,
-    salonId,
-    leave.id
-  );
-}
-
-async function rejectApprovedWithBalance(
-  db,
-  salonId,
-  leave,
-  decision,
-  actor
-) {
-  const originalId = requiredId(
-    leave.balance_adjustment_id,
-    'balanceAdjustmentId'
-  );
-
-  const original = await dbFirst(
-    db,
-    `SELECT *
-       FROM employee_leave_balance_ledger
+    `UPDATE employee_leaves
+        SET policy_version = ?,
+            balance_bucket = ?,
+            legal_basis = ?,
+            documentation_status = ?,
+            statutory_review_required = ?,
+            deduct_from_balance = ?,
+            affects_payroll = ?,
+            entitlement_minutes_requested = ?,
+            updated_at = ?
       WHERE salon_id = ?
         AND id = ?
-        AND employee_id = ?
-        AND source_type = ?
-        AND source_id = ?
-      LIMIT 1`,
+        AND status = 'pending'`,
     [
+      resolved.policy.policyVersion || null,
+      resolved.policy.entitlementBucket || null,
+      legalBasisForLeaveType(resolved.leaveType),
+      documentationStatus,
+      resolved.policy.reviewRequired ? 1 : 0,
+      resolved.policy.deductAnnualBalance ? 1 : 0,
+      resolved.policy.affectsPayroll ? 1 : 0,
+      entitlementMinutesRequested,
+      created.updated_at,
       salonId,
-      originalId,
-      leave.employee_id,
-      LEAVE_BALANCE_SOURCE_TYPE,
-      leave.id,
+      created.id,
     ]
   );
 
-  if (!original) {
-    throw new AppError(
-      409,
-      'core_leave:balance_adjustment_missing'
-    );
-  }
-
-  const existingReversal =
-    await reversalForEntry(
-      db,
-      salonId,
-      originalId
-    );
-
-  if (
-    original.deleted_at ||
-    existingReversal
-  ) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
-
-    if (latest?.status === 'rejected') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:reversal_state_mismatch'
-    );
-  }
-
-  const originalChange = Number(
-    original.change_amount || 0
-  );
-
-  if (
-    !Number.isFinite(originalChange) ||
-    originalChange >= 0
-  ) {
-    throw new AppError(
-      409,
-      'core_leave:invalid_balance_adjustment'
-    );
-  }
-
-  const restoredDays =
-    Math.abs(originalChange);
-
-  const reversalId = requiredId(
-    generatedId(
-      'leave_balance_reversal'
-    ),
-    'reversalId'
-  );
-
-  const now = nowIso();
-
-  const actorUid =
-    actorField(actor, 'uid');
-  const actorEmail =
-    actorField(actor, 'email');
-  const actorName =
-    actorField(actor, 'name');
-
-  const note =
-    optionalText(
-      decision.hrNote ||
-        decision.hr_note ||
-        'إلغاء إجازة معتمدة واسترجاع الرصيد'
-    ) || null;
-
-  const statements = [
-    {
-      sql: `
-        UPDATE employee_employment
-           SET leave_balance =
-                 leave_balance + ?,
-               leave_balance_last_entry_id = ?,
-               updated_by_uid = ?,
-               updated_by_email = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND employee_id = ?
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leaves approved_leave
-              WHERE approved_leave.salon_id = ?
-                AND approved_leave.id = ?
-                AND approved_leave.employee_id = ?
-                AND approved_leave.status = 'approved'
-                AND approved_leave.balance_adjustment_id = ?
-           )
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger original
-              WHERE original.salon_id = ?
-                AND original.id = ?
-                AND original.deleted_at IS NULL
-           )
-           AND NOT EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger reversal
-              WHERE reversal.salon_id = ?
-                AND reversal.source_type = 'reversal'
-                AND reversal.source_id = ?
-           )
-      `,
-      params: [
-        restoredDays,
-        reversalId,
-        actorUid,
-        actorEmail,
-        now,
-        salonId,
-        leave.employee_id,
-        salonId,
-        leave.id,
-        leave.employee_id,
-        originalId,
-        salonId,
-        originalId,
-        salonId,
-        originalId,
-      ],
-    },
-    {
-      sql: `
-        INSERT INTO employee_leave_balance_ledger (
-          id,
-          salon_id,
-          employee_id,
-          action_type,
-          days,
-          change_amount,
-          balance_before,
-          balance_after,
-          operation_date,
-          note,
-          source_type,
-          source_id,
-          created_by_uid,
-          created_by_email,
-          created_by_name,
-          created_at
-        )
-        SELECT
-          ?,
-          ?,
-          original.employee_id,
-          'add',
-          ?,
-          ?,
-          employment.leave_balance - ?,
-          employment.leave_balance,
-          ?,
-          ?,
-          'reversal',
-          original.id,
-          ?,
-          ?,
-          ?,
-          ?
-        FROM employee_leave_balance_ledger original
-        JOIN employee_employment employment
-          ON employment.salon_id =
-               original.salon_id
-         AND employment.employee_id =
-               original.employee_id
-        WHERE original.salon_id = ?
-          AND original.id = ?
-          AND original.deleted_at IS NULL
-          AND employment.leave_balance_last_entry_id = ?
-          AND NOT EXISTS (
-            SELECT 1
-              FROM employee_leave_balance_ledger existing
-             WHERE existing.salon_id =
-                     original.salon_id
-               AND existing.source_type =
-                     'reversal'
-               AND existing.source_id =
-                     original.id
-          )
-      `,
-      params: [
-        reversalId,
-        salonId,
-        restoredDays,
-        restoredDays,
-        restoredDays,
-        now.slice(0, 10),
-        note,
-        actorUid,
-        actorEmail,
-        actorName,
-        now,
-        salonId,
-        originalId,
-        reversalId,
-      ],
-    },
-    {
-      sql: `
-        UPDATE employee_leave_balance_ledger
-           SET deleted_at = ?,
-               deleted_by_uid = ?,
-               deleted_by_email = ?,
-               deleted_by_name = ?,
-               delete_reason = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND deleted_at IS NULL
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger reversal
-              WHERE reversal.salon_id = ?
-                AND reversal.id = ?
-                AND reversal.source_type =
-                      'reversal'
-                AND reversal.source_id = ?
-           )
-      `,
-      params: [
-        now,
-        actorUid,
-        actorEmail,
-        actorName,
-        note,
-        salonId,
-        originalId,
-        salonId,
-        reversalId,
-        originalId,
-      ],
-    },
-    {
-      sql: `
-        UPDATE employee_leaves
-           SET status = 'rejected',
-               hr_note = ?,
-               decided_at = ?,
-               decided_by_uid = ?,
-               decided_by_email = ?,
-               decided_by_name = ?,
-               updated_at = ?
-         WHERE salon_id = ?
-           AND id = ?
-           AND status = 'approved'
-           AND EXISTS (
-             SELECT 1
-               FROM employee_leave_balance_ledger reversal
-              WHERE reversal.salon_id = ?
-                AND reversal.id = ?
-                AND reversal.source_type =
-                      'reversal'
-                AND reversal.source_id = ?
-           )
-      `,
-      params: [
-        note,
-        now,
-        actorUid,
-        actorEmail,
-        actorName,
-        now,
-        salonId,
-        leave.id,
-        salonId,
-        reversalId,
-        originalId,
-      ],
-    },
-  ];
-
-  const results = await dbBatch(
-    db,
-    statements
-  );
-
-  if (changes(results?.[0]) < 1) {
-    const latest = await leaveById(
-      db,
-      salonId,
-      leave.id
-    );
-
-    if (latest?.status === 'rejected') {
-      return {
-        ...latest,
-        idempotent: true,
-      };
-    }
-
-    throw new AppError(
-      409,
-      'core_leave:reversal_not_applied'
-    );
-  }
-
-  if (
-    changes(results?.[1]) < 1 ||
-    changes(results?.[2]) < 1 ||
-    changes(results?.[3]) < 1
-  ) {
-    throw new AppError(
-      500,
-      'core_leave:reversal_incomplete'
-    );
-  }
-
-  return leaveById(
-    db,
-    salonId,
-    leave.id
-  );
+  return (
+    await leaveById(db, salonId, created.id)
+  ) || created;
 }
 
 export async function decideLeave(
   db,
   salonId,
   idValue,
-  decision,
+  decision = {},
   actor = {}
 ) {
-  const id = requiredId(
-    idValue,
-    'leaveId'
-  );
-
-  const status = cleanText(
-    decision.status
-  ).toLowerCase();
-
-  if (
-    !['approved', 'rejected'].includes(
-      status
-    )
-  ) {
-    throw new AppError(
-      400,
-      'core_leave:invalid_decision'
-    );
+  const id = cleanText(idValue);
+  if (!id) {
+    throw new AppError(400, 'core_leave:invalid_leave_id');
   }
 
-  const leave = await leaveById(
-    db,
-    salonId,
-    id
-  );
-
+  const leave = await leaveById(db, salonId, id);
   if (!leave) {
-    throw new AppError(
-      404,
-      'core_leave:not_found'
-    );
+    throw new AppError(404, 'core_leave:not_found');
   }
 
-  if (leave.status === status) {
+  const requestedStatus = cleanText(decision.status).toLowerCase();
+  if (cleanText(leave.status).toLowerCase() === requestedStatus) {
     return {
       ...leave,
       idempotent: true,
     };
   }
 
-  if (status === 'approved') {
-    if (leave.status !== 'pending') {
+  const runtime = leaveDecisionRuntime(leave, requestedStatus);
+
+  switch (runtime) {
+    case 'annual_approve': {
+      const overlap = await annualLeavePublicHolidayExtension(
+        db,
+        salonId,
+        leave
+      );
+      const approved = await approveAnnualLeave(
+        db,
+        salonId,
+        overlap.leave,
+        decision,
+        actor
+      );
+      return {
+        ...approved,
+        publicHolidayOverlap: {
+          originalEndDate: overlap.originalEndDate,
+          effectiveEndDate: overlap.effectiveEndDate,
+          overlapDays: overlap.overlapDays,
+          holidays: overlap.holidays,
+        },
+      };
+    }
+
+    case 'annual_cancel':
+      return cancelApprovedAnnualLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sick_approve':
+      return approveSickLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sick_cancel':
+      return cancelApprovedSickLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'time_entitlement_approve':
+      return approveTimeEntitlementLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'time_entitlement_cancel':
+      return cancelTimeEntitlementLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'special_statutory_approve':
+      return approveSpecialStatutoryLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'special_statutory_cancel':
+      return cancelSpecialStatutoryLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sensitive_family_approve':
+      return approveSensitiveFamilyLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sensitive_family_cancel':
+      return cancelSensitiveFamilyLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'statutory_validation_block': {
+      const support = specialStatutoryLeaveRuntimeSupport(leave.leave_type);
       throw new AppError(
         409,
-        'core_leave:invalid_transition'
+        support === 'specialized_required'
+          ? `core_leave:${normalizeSaLeaveType(leave.leave_type)}_specialized_validation_required`
+          : 'core_leave:statutory_validation_required'
       );
     }
 
-    if (
-      Number(
-        leave.deduct_from_balance || 0
-      ) === 1
-    ) {
-      return approveWithBalance(
+    case 'hr_review_block':
+      throw new AppError(
+        409,
+        'core_leave:hr_review_resolution_required'
+      );
+
+    default:
+      return legacyDecideLeave(
         db,
         salonId,
-        leave,
+        id,
         decision,
         actor
       );
-    }
-
-    return approveWithoutBalance(
-      db,
-      salonId,
-      leave,
-      decision,
-      actor
-    );
   }
-
-  // Rejected pending request: no balance ever moved.
-  if (leave.status === 'pending') {
-    return rejectPendingLeave(
-      db,
-      salonId,
-      leave,
-      decision,
-      actor
-    );
-  }
-
-  // Rejecting an already approved leave is the canonical
-  // cancellation path. Restore balance exactly once when
-  // this leave had deducted it.
-  if (leave.status === 'approved') {
-    if (
-      Number(
-        leave.deduct_from_balance || 0
-      ) === 1
-    ) {
-      if (!leave.balance_adjustment_id) {
-        throw new AppError(
-          409,
-          'core_leave:balance_adjustment_missing'
-        );
-      }
-
-      return rejectApprovedWithBalance(
-        db,
-        salonId,
-        leave,
-        decision,
-        actor
-      );
-    }
-
-    return rejectApprovedWithoutBalance(
-      db,
-      salonId,
-      leave,
-      decision,
-      actor
-    );
-  }
-
-  throw new AppError(
-    409,
-    'core_leave:invalid_transition'
-  );
 }
+
+export {
+  CANONICAL_APPROVAL_TYPES,
+  LEGACY_SAFE_APPROVAL_TYPES,
+};

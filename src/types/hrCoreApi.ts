@@ -289,6 +289,11 @@ export type CorePayrollEntry = Record<string, unknown> & {
   employerGosiContributionHalalas?: number;
   gosiSnapshotJson?: string | null;
   gosiCalculatedAt?: string | null;
+  laborPolicyVersion?: string | null;
+  fixedActualWageHalalas?: number;
+  wageSourceUpdatedAt?: string | null;
+  overtimeActualHourlyHalalas?: number;
+  overtimeBasicHourlyHalalas?: number;
   missingHoursDeductionHalalas?: number;
   grossSalaryHalalas?: number;
   totalDeductionsHalalas?: number;

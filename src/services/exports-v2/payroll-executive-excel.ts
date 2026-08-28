@@ -148,6 +148,16 @@ function isHourColumn(key: unknown) {
   return ["scheduledHours", "actualWorkedHours", "missingHours"].includes(String(key));
 }
 
+function isTotalableDetailColumn(
+  column: ExportV2Column<Record<string, ExportV2Value>>
+) {
+  return (
+    column.type === "number" ||
+    column.type === "currency" ||
+    isHourColumn(column.key)
+  );
+}
+
 function clean(value: unknown, fallback = "—") {
   const text = String(value ?? "").trim();
   return text || fallback;
@@ -255,8 +265,8 @@ function stylesXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <numFmts count="5">
-    <numFmt numFmtId="164" formatCode="#\,##0.00 &quot;ر.س&quot;;[Red]-#\,##0.00 &quot;ر.س&quot;;-"/>
-    <numFmt numFmtId="165" formatCode="#\,##0.##;[Red]-#\,##0.##;-"/>
+    <numFmt numFmtId="164" formatCode="#\,##0.00 &quot;ر.س&quot;;[Red]-#\,##0.00 &quot;ر.س&quot;;0.00 &quot;ر.س&quot;"/>
+    <numFmt numFmtId="165" formatCode="#\,##0.##;[Red]-#\,##0.##;0"/>
     <numFmt numFmtId="166" formatCode="yyyy/mm/dd"/>
     <numFmt numFmtId="167" formatCode="yyyy/mm/dd hh:mm"/>
     <numFmt numFmtId="168" formatCode="0.## &quot;ساعة&quot;"/>
@@ -359,6 +369,8 @@ function detailWidth(column: ExportV2Column<Record<string, ExportV2Value>>) {
     missingHours: 17,
     absenceDeduction: 19,
     missingHoursDeduction: 22,
+    deferredAttendanceDeduction: 23,
+    deferredAttendanceTargetMonth: 18,
     overtimeStatus: 18,
     overtimeValue: 20,
     additions: 22,
@@ -592,11 +604,21 @@ function buildUnifiedPayrollSheet(report: ExportV2Report<Record<string, ExportV2
   const detailTotals: Row = { index: detailTotalRow, height: 32, cells: [] };
   detailColumns.forEach((column, index) => {
     const key = String(column.key);
-    const shouldTotal = ["baseSalary", "overtimeValue", "additions", "leaveCompensation", "deductions", "previousPeriodAdjustment", "expectedNet"].includes(key);
+    const shouldTotal = isTotalableDetailColumn(column);
+    const totalStyle = isHourColumn(column.key)
+      ? S.hours
+      : column.type === "number"
+        ? S.number
+        : S.totalCurrency;
     if (index === 0) {
       detailTotals.cells.push({ ref: ref(index, detailTotalRow), value: "الإجمالي", style: S.totalLabel });
     } else if (shouldTotal && report.rows.length) {
-      detailTotals.cells.push({ ref: ref(index, detailTotalRow), value: 0, style: S.totalCurrency, formula: `SUM(${col(index)}${detailStart}:${col(index)}${detailStart + report.rows.length - 1})` });
+      detailTotals.cells.push({
+        ref: ref(index, detailTotalRow),
+        value: 0,
+        style: totalStyle,
+        formula: `SUM(${col(index)}${detailStart}:${col(index)}${detailStart + report.rows.length - 1})`,
+      });
     } else {
       detailTotals.cells.push({ ref: ref(index, detailTotalRow), value: "", style: S.totalLabel });
     }
@@ -632,10 +654,12 @@ function buildUnifiedPayrollSheet(report: ExportV2Report<Record<string, ExportV2
   const accountingNotes = [
     "• تعويض رصيد الإجازات بند مالي مستقل، ولا يدخل ضمن الإضافات أو المكافآت. يظهر في عمود مستقل ويُضاف فقط إلى الصافي عند وجود مبلغ معتمد له.",
     `• ${netLabel(report)} = الراتب الأساسي + الإضافات والمكافآت + تعويض رصيد الإجازات − إجمالي الخصومات${hasCarryover ? " ± تسويات الفترات السابقة" : ""}.`,
+    "• خصم الحضور المؤجل بند إفصاح فقط ولا يخصم من صافي الفترة الحالية؛ يظهر مبلغ الخصم وشهر التحصيل المستهدف في عمودين مستقلين.",
+    "• للموظفة غير السعودية يكون خصم GOSI على الموظفة صفراً، بينما تظهر مساهمة المخاطر المهنية على المنشأة ضمن عمود مساهمة المنشأة GOSI.",
     "• التقرير الرسمي يعتمد صافي الفترة المتوقع/المعتمد، مع ترحيل فروقات ما بعد الاعتماد كتسويات للفترة التالية.",
   ];
   accountingNotes.forEach((note, index) => addMerged(noteSectionRow + 1 + index, 0, visibleColumnCount - 1, note, S.note, undefined, 24));
-  const footerRow = noteSectionRow + 5;
+  const footerRow = noteSectionRow + accountingNotes.length + 2;
   addMerged(footerRow, 0, visibleColumnCount - 1, `مَلِكات — تقرير رواتب رسمي موحّد | ${monthLabel}`, S.footer, undefined, 24);
 
   const widths = detailColumns.map(detailWidth);
@@ -747,6 +771,21 @@ function buildMobilePayrollSheet(report: ExportV2Report<Record<string, ExportV2V
     cursor += 1;
     addPairRow(cursor, "الخصومات", numberValue(item.deductions), "تسوية سابقة", numberValue(item.previousPeriodAdjustment), numberValue(item.deductions) > 0 ? S.currencyRed : S.currency, numberValue(item.previousPeriodAdjustment) < 0 ? S.currencyRed : numberValue(item.previousPeriodAdjustment) > 0 ? S.currencyGreen : S.currency);
     cursor += 1;
+    const deferredAttendanceDeduction = numberValue(
+      item.deferredAttendanceDeduction
+    );
+    if (deferredAttendanceDeduction > 0) {
+      addPairRow(
+        cursor,
+        "خصم حضور مؤجل",
+        deferredAttendanceDeduction,
+        "التحصيل المستهدف",
+        clean(item.deferredAttendanceTargetMonth, "غير محدد"),
+        S.currencyRed,
+        S.metaValue
+      );
+      cursor += 1;
+    }
     const netRow: Row = { index: cursor, height: 32, cells: [] };
     netRow.cells.push(...mergedCells(cursor, 0, 1, netLabel(report), S.totalLabel));
     netRow.cells.push(...mergedCells(cursor, 2, 3, numberValue(item.expectedNet), S.totalCurrency));

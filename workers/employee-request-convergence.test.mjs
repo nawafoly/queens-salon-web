@@ -5,26 +5,32 @@ const read=(p)=>readFileSync(p,"utf8");
 
 test("employee requests use one canonical master reference and salary advance naming",()=>{
  const service=read("src/services/employeeRequests.ts");
- const worker=read("workers/core/repositories/employee-requests.js");
+ const activeWorker=read("workers/core/repositories/employee-requests.js");
+ const legacyWorker=read("workers/core/repositories/employee-requests-legacy.js");
  const migration=read("migrations/core/0025_employee_request_reference_integrity.sql");
  assert.match(service,/salary_advance:\s*"طلب سلفة"/);
- assert.match(worker,/salary_advance:\s*'طلب سلفة'/);
+ assert.match(legacyWorker,/salary_advance:\s*'طلب سلفة'/);
  assert.doesNotMatch(service,/صرف معجل للراتب/);
- assert.doesNotMatch(worker,/صرف معجل للراتب/);
- assert.match(worker,/core_employee_request:execution_reference_missing/);
- assert.match(worker,/source_reference_type = \?, source_reference_id = \?/);
+ assert.doesNotMatch(activeWorker,/صرف معجل للراتب/);
+ assert.doesNotMatch(legacyWorker,/صرف معجل للراتب/);
+ assert.match(activeWorker,/employee-requests-legacy\.js/);
+ assert.match(activeWorker,/executeStatutoryOvertimeRequest/);
+ assert.match(legacyWorker,/core_employee_request:execution_reference_missing/);
+ assert.match(legacyWorker,/source_reference_type = \?, source_reference_id = \?/);
  for(const token of ["employee_permission_request","employee_leave","overtime","salary_advance","employee_financial_payment","attendance_record","exit_return","resignation"]) assert.match(migration,new RegExp(token));
 });
 
-test("needs-info can resume review and request actions are version-idempotent",()=>{
+test("needs-info can resume review and request actions remain version-idempotent behind compliance guard",()=>{
  const admin=read("src/pages/hr/AdminEmployeeRequests.tsx");
  const service=read("src/services/employeeRequests.ts");
- const worker=read("workers/core/repositories/employee-requests.js");
+ const activeWorker=read("workers/core/repositories/employee-requests.js");
+ const legacyWorker=read("workers/core/repositories/employee-requests-legacy.js");
  assert.match(admin,/selected\.status === "needs_info"/);
  assert.match(admin,/runAction\("start-review"\)/);
  assert.match(admin,/استئناف المراجعة/);
- assert.match(worker,/needs_info:\s*new Set\(\['under_review'/);
- assert.match(worker,/answer_info:\s*'under_review'/);
+ assert.match(activeWorker,/legacyTransitionEmployeeRequest/);
+ assert.match(legacyWorker,/needs_info:\s*new Set\(\['under_review'/);
+ assert.match(legacyWorker,/answer_info:\s*'under_review'/);
  assert.match(service,/makeRequestActionIdempotencyKey/);
  assert.match(service,/employee-request-action:\$\{id\}:\$\{action\}:\$\{versionToken\}/);
 });

@@ -60,6 +60,7 @@ class FakeD1 {
       "employee_recurring_deductions",
       "employee_payroll_obligations",
       "employee_payroll_obligation_installments",
+      "employee_overtime_records",
       "employee_target_plans",
       "employee_target_tiers",
       "employee_target_assignments",
@@ -1101,6 +1102,26 @@ class FakeD1 {
       if (normalized.includes("entity_id = ?")) rows = rows.filter((row) => row.entity_id === params[index++]);
       if (normalized.includes("action = ?")) rows = rows.filter((row) => row.action === params[index++]);
       return rows.slice(0, Number(params[params.length - 1] || 200));
+    }
+    if (
+      normalized.includes("FROM employee_overtime_records") &&
+      normalized.includes("compensation_mode = 'cash_overtime'")
+    ) {
+      const [salonId, employeeId, payrollMonth] = params;
+      return this.rows("employee_overtime_records")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.payroll_month === payrollMonth &&
+          row.compensation_mode === "cash_overtime" &&
+          ["ready_for_payroll", "included"].includes(row.financial_status) &&
+          Number(row.actual_worked_minutes || 0) > 0
+        )
+        .sort((a, b) =>
+          String(a.date_key || "").localeCompare(String(b.date_key || "")) ||
+          String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
+          String(a.id || "").localeCompare(String(b.id || ""))
+        );
     }
     throw new Error(`unhandled fake D1 all: ${normalized}`);
   }

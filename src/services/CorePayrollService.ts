@@ -836,6 +836,26 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     payrollMonth: row.payrollMonth,
     baseSalaryHalalas,
     allowancesHalalas: numberValue(row.allowancesHalalas),
+    laborPolicyVersion:
+      text(
+        row.laborPolicyVersion ??
+          scheduleSnapshot?.laborPolicyVersion
+      ),
+    fixedActualWageHalalas:
+      numberValue(
+        row.fixedActualWageHalalas ??
+          scheduleSnapshot?.fixedActualWageHalalas,
+        baseSalaryHalalas +
+          numberValue(row.allowancesHalalas)
+      ),
+    overtimeActualHourlyHalalas:
+      numberValue(
+        row.overtimeActualHourlyHalalas
+      ),
+    overtimeBasicHourlyHalalas:
+      numberValue(
+        row.overtimeBasicHourlyHalalas
+      ),
     workDays,
     monthlyHours,
     dailyScheduledHours,
