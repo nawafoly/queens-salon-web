@@ -66,7 +66,7 @@ test('approved annual and sick cancellation dispatch to canonical reversal runti
   );
 });
 
-test('comp-time and weekly-rest substitute use cannot bypass their entitlement ledgers', () => {
+test('comp-time and weekly-rest substitute use dispatch through their entitlement ledgers', () => {
   for (const leaveType of [
     'overtime_comp_time_use',
     'weekly_rest_substitute_use',
@@ -76,7 +76,14 @@ test('comp-time and weekly-rest substitute use cannot bypass their entitlement l
         { leave_type: leaveType, status: 'pending' },
         'approved'
       ),
-      'entitlement_consumption_block'
+      'time_entitlement_approve'
+    );
+    assert.equal(
+      leaveDecisionRuntime(
+        { leave_type: leaveType, status: 'approved' },
+        'rejected'
+      ),
+      'time_entitlement_cancel'
     );
   }
 });
