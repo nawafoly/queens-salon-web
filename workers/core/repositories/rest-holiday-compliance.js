@@ -165,10 +165,11 @@ export function isExplicitWeeklyRestShift(shift) {
   ) {
     // A generic one-off day off is not automatically the statutory weekly
     // rest. The existing temporary-weekly-off workflow marks replacement
-    // weekly-rest dates explicitly in the exception note.
-    return cleanText(shift?.note).startsWith(
-      '[temp_weekly_off:'
-    );
+    // weekly-rest dates explicitly in the exception note. Notes are legacy
+    // user-visible audit text, so marker matching must be case-insensitive.
+    return cleanText(shift?.note)
+      .toLowerCase()
+      .startsWith('[temp_weekly_off:');
   }
 
   if (source === 'weekly_schedule') {
