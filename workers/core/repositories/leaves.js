@@ -34,6 +34,7 @@ import {
   cancelSpecialStatutoryLeave,
   specialStatutoryLeaveRuntimeSupport,
 } from './special-statutory-leave.js';
+import { annualLeavePublicHolidayExtension } from './public-holiday-overlap.js';
 
 const DETERMINISTIC_SPECIAL_TYPES = new Set([
   SA_LEAVE_TYPES.marriage,
@@ -345,14 +346,29 @@ export async function decideLeave(
   const runtime = leaveDecisionRuntime(leave, requestedStatus);
 
   switch (runtime) {
-    case 'annual_approve':
-      return approveAnnualLeave(
+    case 'annual_approve': {
+      const overlap = await annualLeavePublicHolidayExtension(
         db,
         salonId,
-        leave,
+        leave
+      );
+      const approved = await approveAnnualLeave(
+        db,
+        salonId,
+        overlap.leave,
         decision,
         actor
       );
+      return {
+        ...approved,
+        publicHolidayOverlap: {
+          originalEndDate: overlap.originalEndDate,
+          effectiveEndDate: overlap.effectiveEndDate,
+          overlapDays: overlap.overlapDays,
+          holidays: overlap.holidays,
+        },
+      };
+    }
 
     case 'annual_cancel':
       return cancelApprovedAnnualLeave(
