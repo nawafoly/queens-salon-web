@@ -150,6 +150,11 @@ import {
   savePayrollDeductionCourtOverride,
 } from './repositories/payroll-deduction-compliance.js';
 import {
+  createDisciplinaryFineFundDisbursement,
+  getDisciplinaryFineFundBalance,
+  listDisciplinaryFineFundLedger,
+} from './repositories/disciplinary-fine-fund.js';
+import {
   cancelDisciplinaryCase,
   createDisciplinaryCase,
   listDisciplinaryCases,
@@ -603,6 +608,9 @@ function match(url, method) {
   const disciplinaryCaseCancel = /^\/api\/core\/hr\/disciplinary-cases\/([^/]+)\/cancel$/.exec(path);
   if (disciplinaryCaseCancel && method === "POST") return { name: "disciplinary-case:cancel", id: disciplinaryCaseCancel[1] };
   if (path === "/api/core/hr/disciplinary-cases" && ["GET", "POST"].includes(method)) return { name: "disciplinary-cases" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/balance" && method === "GET") return { name: "disciplinary-fine-fund:balance" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/ledger" && method === "GET") return { name: "disciplinary-fine-fund:ledger" };
+  if (path === "/api/core/hr/disciplinary-fine-fund/disbursements" && method === "POST") return { name: "disciplinary-fine-fund:disburse" };
   const fixedSaudiHolidayEnsure = /^\/api\/core\/hr\/public-holidays\/fixed\/(\d{4})\/ensure$/.exec(path);
   if (fixedSaudiHolidayEnsure && method === "POST") return { name: "public-holidays:fixed-ensure", year: fixedSaudiHolidayEnsure[1] };
   if (path === "/api/core/hr/public-holidays/eid-periods" && method === "POST") return { name: "public-holidays:eid-period" };
@@ -1951,6 +1959,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requireAnyPermission(ctx, ["employees.manage", "payroll.manage"]);
       return cancelDisciplinaryCase(db, ctx.salonId, route.id, body, actorInfo);
+    case "disciplinary-fine-fund:balance":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return getDisciplinaryFineFundBalance(db, ctx.salonId);
+
+    case "disciplinary-fine-fund:ledger":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listDisciplinaryFineFundLedger(db, ctx.salonId, query);
+
+    case "disciplinary-fine-fund:disburse":
+      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "payroll.manage");
+      return createDisciplinaryFineFundDisbursement(db, ctx.salonId, body, actorInfo);
     case "public-holidays:fixed-ensure":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.leaves.manage"]);
