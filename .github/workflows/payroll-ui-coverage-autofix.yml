@@ -1,0 +1,650 @@
+name: Payroll UI coverage autofix
+
+on:
+  push:
+    branches:
+      - fix/payroll-ui-coverage-and-export
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply focused payroll UI/export fixes
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function read(path) {
+            return fs.readFileSync(path, 'utf8');
+          }
+
+          function write(path, content) {
+            fs.writeFileSync(path, content, 'utf8');
+          }
+
+          function replaceOnce(path, oldText, newText) {
+            const source = read(path);
+            const count = source.split(oldText).length - 1;
+            if (count !== 1) {
+              throw new Error(`${path}: expected exactly one anchor, found ${count}: ${oldText.slice(0, 120)}`);
+            }
+            write(path, source.replace(oldText, newText));
+          }
+
+          // 1) Core API errors: preserve domain-specific payroll messages and remove booking-only wording.
+          {
+            const path = 'src/services/coreApiClient.ts';
+            const oldText = `function localizedMessage(status: number, code: string, fallback: string): string {
+  if (status === 401) return "انتهت جلسة الدخول. سجّل الدخول مرة أخرى.";
+  if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
+  if (status === 409) {
+    return code.includes("slot")
+      ? "الموعد محجوز بالفعل. اختاري وقتًا آخر."
+      : "يوجد تعارض في البيانات.";
+  }
+  if (status === 400 || status === 422) return "بعض البيانات غير صحيحة.";
+  if (status === 408) return "انتهت مهلة الاتصال بخدمة الحجز.";
+  if (status >= 500) return "خدمة الحجز غير متاحة مؤقتًا.";
+  return fallback || "تعذر تنفيذ الطلب.";
+}`;
+            const newText = `const CORE_API_CODE_MESSAGES: Record<string, string> = {
+  "core_payroll:deduction_reason_required": "اكتب سبب الخصم أو قرار التأجيل قبل المتابعة.",
+  "core_payroll:deduction_amount_required": "اكتب مبلغًا أكبر من صفر.",
+  "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
+  "core_payroll:obligation_snapshot_stale": "تغيّر جدول الخصومات والالتزامات بعد حساب المسودة. أعد حساب المسيرة.",
+  "core_payroll:attendance_deferral_target_must_be_future": "شهر تحصيل خصم الحضور يجب أن يكون بعد شهر الخصم الأصلي.",
+  "core_payroll:attendance_deferral_source_payroll_locked": "لا يمكن تأجيل خصم حضور من مسير معتمد أو مدفوع.",
+  "core_payroll:attendance_deferral_target_payroll_locked": "شهر التحصيل المختار يحتوي مسيرًا معتمدًا أو مدفوعًا. اختر شهرًا آخر.",
+  "core_payroll:attendance_deferral_period_locked": "فترة المصدر أو شهر التحصيل مقفلة ولا تقبل التأجيل.",
+  "core_payroll:attendance_deduction_not_present": "لا يوجد خصم حضور حالي قابل للتأجيل لهذه الموظفة.",
+  "core_payroll:attendance_deferral_idempotency_conflict": "يوجد تأجيل حضور سابق يتعارض مع الطلب الحالي. حدّث البيانات وراجع سجل الالتزامات.",
+  "core_payroll:obligation_target_payroll_locked": "لا يمكن تعديل تحصيل شهر له مسير معتمد أو مدفوع.",
+  "core_payroll:attendance_obligation_requires_canonical_path": "خصم الحضور التلقائي يجب إدارته من مسار تأجيل خصم الحضور في الرواتب.",
+};
+
+function localizedMessage(status: number, code: string, fallback: string): string {
+  const specific = CORE_API_CODE_MESSAGES[code];
+  if (specific) return specific;
+  if (status === 401) return "انتهت جلسة الدخول. سجّل الدخول مرة أخرى.";
+  if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
+  if (status === 409) {
+    return code.includes("slot")
+      ? "الموعد محجوز بالفعل. اختاري وقتًا آخر."
+      : "يوجد تعارض في البيانات. حدّث الصفحة وحاول مرة أخرى.";
+  }
+  if (status === 400 || status === 422) return "بعض البيانات غير صحيحة. راجع الحقول المطلوبة.";
+  if (status === 408) return "انتهت مهلة الاتصال بالخدمة الأساسية.";
+  if (status >= 500) return "الخدمة الأساسية غير متاحة مؤقتًا.";
+  const safeFallback = String(fallback || "").trim();
+  return safeFallback && !safeFallback.startsWith("core_")
+    ? safeFallback
+    : "تعذر تنفيذ الطلب.";
+}`;
+            replaceOnce(path, oldText, newText);
+          }
+
+          // 2) Employee payroll obligations: use CoreApiError.code when present instead of losing the actionable reason.
+          replaceOnce(
+            'src/pages/dashboardEmployees/PayrollObligationsPanel.tsx',
+            `function errorMessage(error: unknown) {
+  const raw = cleanText((error as Error)?.message || error);
+  const code = raw.split(":").pop() || raw;`,
+            `function errorMessage(error: unknown) {
+  const raw = cleanText((error as Error)?.message || error);
+  const rawCode = cleanText((error as { code?: unknown })?.code);
+  const code = (rawCode || raw).split(":").pop() || rawCode || raw;`
+          );
+
+          // 3) Payroll report contract: expose salary advances and any residual/unclassified deduction explicitly.
+          replaceOnce(
+            'src/helpers/reports/exportPayrollReportV2.ts',
+            `  obligationDeductions: number;
+  manualDeductions: number;
+  previousPeriodAdjustment: number;`,
+            `  obligationDeductions: number;
+  advanceDeductions: number;
+  manualDeductions: number;
+  unclassifiedDeductions: number;
+  previousPeriodAdjustment: number;`
+          );
+
+          replaceOnce(
+            'src/helpers/reports/exportPayrollReportV2.ts',
+            `function statusLabel(value: unknown) {`,
+            `function payrollUnclassifiedDeductionsHalalas(entry: PayrollEntryView) {
+  const obligationDeductionsHalalas = payrollObligationDeductionTotal(entry.deductions || []);
+  const manualDeductionsHalalas = payrollOrdinaryManualDeductionsHalalas(entry);
+  const explainedHalalas =
+    Math.max(0, Number(entry.absenceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.missingHoursDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.insuranceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.advancesHalalas || 0)) +
+    obligationDeductionsHalalas +
+    manualDeductionsHalalas;
+  return Math.max(0, payrollOrdinaryDeductionsHalalas(entry) - explainedHalalas);
+}
+
+function statusLabel(value: unknown) {`
+          );
+
+          replaceOnce(
+            'src/helpers/reports/exportPayrollReportV2.ts',
+            `      obligationDeductions: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])),
+      manualDeductions: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)),
+      previousPeriodAdjustment: halalasToRiyals(payrollEntryCarryoverNetHalalas(entry)),`,
+            `      obligationDeductions: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])),
+      advanceDeductions: halalasToRiyals(entry.advancesHalalas),
+      manualDeductions: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)),
+      unclassifiedDeductions: halalasToRiyals(payrollUnclassifiedDeductionsHalalas(entry)),
+      previousPeriodAdjustment: halalasToRiyals(payrollEntryCarryoverNetHalalas(entry)),`
+          );
+
+          replaceOnce(
+            'src/helpers/reports/exportPayrollReportV2.ts',
+            `      { key: "obligationDeductions", header: "التزامات وأقساط إدارية", type: "currency", width: 20, align: "center" },
+      { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
+      { key: "deductions", header: "إجمالي الخصومات قبل التسويات", type: "currency", width: 20, align: "center" },`,
+            `      { key: "obligationDeductions", header: "التزامات وأقساط إدارية", type: "currency", width: 20, align: "center" },
+      { key: "advanceDeductions", header: "أقساط السلف", type: "currency", width: 16, align: "center" },
+      { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
+      { key: "unclassifiedDeductions", header: "خصومات أخرى غير مصنفة", type: "currency", width: 19, align: "center" },
+      { key: "deductions", header: "إجمالي الخصومات قبل التسويات", type: "currency", width: 20, align: "center" },`
+          );
+
+          // 4) Excel: keep formulas, but write real cached totals so Excel readers never see zero before recalculation.
+          replaceOnce(
+            'src/services/exports-v2/payroll-executive-excel.ts',
+            `    if ([8, 10, 12, 14, 16].includes(block.start) && report.rows.length) {
+      const letter = col(block.start);
+      value = 0;
+      style = S.totalCurrency;
+      formula = \`SUM(\${letter}\${officialStart}:\${letter}\${officialStart + report.rows.length - 1})\`;
+    }`,
+            `    if ([8, 10, 12, 14, 16].includes(block.start) && report.rows.length) {
+      const letter = col(block.start);
+      value = report.rows.reduce((sum, row) => sum + numberValue(row[block.key]), 0);
+      style = S.totalCurrency;
+      formula = \`SUM(\${letter}\${officialStart}:\${letter}\${officialStart + report.rows.length - 1})\`;
+    }`
+          );
+
+          replaceOnce(
+            'src/services/exports-v2/payroll-executive-excel.ts',
+            `    } else if (shouldTotal && report.rows.length) {
+      detailTotals.cells.push({
+        ref: ref(index, detailTotalRow),
+        value: 0,
+        style: totalStyle,
+        formula: \`SUM(\${col(index)}\${detailStart}:\${col(index)}\${detailStart + report.rows.length - 1})\`,
+      });`,
+            `    } else if (shouldTotal && report.rows.length) {
+      const cachedTotal = report.rows.reduce((sum, row) => {
+        const raw = row[column.key];
+        const parsed = isHourColumn(column.key) ? localizedNumber(raw) : numberValue(raw);
+        return sum + (parsed ?? 0);
+      }, 0);
+      detailTotals.cells.push({
+        ref: ref(index, detailTotalRow),
+        value: cachedTotal,
+        style: totalStyle,
+        formula: \`SUM(\${col(index)}\${detailStart}:\${col(index)}\${detailStart + report.rows.length - 1})\`,
+      });`
+          );
+
+          replaceOnce(
+            'src/services/exports-v2/payroll-executive-excel.ts',
+            `    addPairRow(cursor, "الخصومات", numberValue(item.deductions), "تسوية سابقة", numberValue(item.previousPeriodAdjustment), numberValue(item.deductions) > 0 ? S.currencyRed : S.currency, numberValue(item.previousPeriodAdjustment) < 0 ? S.currencyRed : numberValue(item.previousPeriodAdjustment) > 0 ? S.currencyGreen : S.currency);
+    cursor += 1;
+    const deferredAttendanceDeduction = numberValue(`,
+            `    addPairRow(cursor, "الخصومات", numberValue(item.deductions), "تسوية سابقة", numberValue(item.previousPeriodAdjustment), numberValue(item.deductions) > 0 ? S.currencyRed : S.currency, numberValue(item.previousPeriodAdjustment) < 0 ? S.currencyRed : numberValue(item.previousPeriodAdjustment) > 0 ? S.currencyGreen : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "خصم الغياب", numberValue(item.absenceDeduction), "خصم نقص الساعات", numberValue(item.missingHoursDeduction), numberValue(item.absenceDeduction) > 0 ? S.currencyRed : S.currency, numberValue(item.missingHoursDeduction) > 0 ? S.currencyRed : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "خصم GOSI", numberValue(item.insuranceDeduction), "أقساط السلف", numberValue(item.advanceDeductions), numberValue(item.insuranceDeduction) > 0 ? S.currencyRed : S.currency, numberValue(item.advanceDeductions) > 0 ? S.currencyRed : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "التزامات والأقساط", numberValue(item.obligationDeductions), "يدوي / غير مصنف", numberValue(item.manualDeductions) + numberValue(item.unclassifiedDeductions), numberValue(item.obligationDeductions) > 0 ? S.currencyRed : S.currency, numberValue(item.manualDeductions) + numberValue(item.unclassifiedDeductions) > 0 ? S.currencyRed : S.currency);
+    cursor += 1;
+    const deferredAttendanceDeduction = numberValue(`
+          );
+
+          // 5) Payroll UI: surface attendance deferral, full deduction breakdown, and actionable payroll error codes.
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `type AdjustmentDraft = {
+  mode: AdjustmentMode;
+  entry: PayrollEntryView;
+  kind: PayrollManualItemKind;
+  amount: string;
+  reason: string;
+  note: string;
+};`,
+            `type AdjustmentDraft = {
+  mode: AdjustmentMode;
+  entry: PayrollEntryView;
+  kind: PayrollManualItemKind;
+  amount: string;
+  reason: string;
+  note: string;
+};
+
+type AttendanceDeferralDraft = {
+  entry: PayrollEntryView;
+  targetPayrollMonth: string;
+  reason: string;
+  note: string;
+};
+
+type PayrollAttendanceDeferralSnapshot = PayrollEntryView["attendanceSummary"] & {
+  attendanceDeferredMissingHoursDeductionHalalas?: number | null;
+  attendanceDeductionDeferral?: {
+    targetPayrollMonth?: string | null;
+    amountHalalas?: number | null;
+    status?: string | null;
+  } | null;
+};`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `function formatPreviousPeriodAdjustment(entry: PayrollEntryView) {`,
+            `function attendanceDeferralSnapshot(entry: PayrollEntryView) {
+  return entry.attendanceSummary as PayrollAttendanceDeferralSnapshot;
+}
+
+function attendanceDeferredAmountHalalas(entry: PayrollEntryView) {
+  const snapshot = attendanceDeferralSnapshot(entry);
+  return Math.max(
+    0,
+    Number(
+      snapshot.attendanceDeferredMissingHoursDeductionHalalas ??
+        snapshot.attendanceDeductionDeferral?.amountHalalas ??
+        0
+    ) || 0
+  );
+}
+
+function attendanceDeferralTargetMonth(entry: PayrollEntryView) {
+  return String(attendanceDeferralSnapshot(entry).attendanceDeductionDeferral?.targetPayrollMonth || "").trim();
+}
+
+function payrollUnclassifiedDeductionsHalalas(entry: PayrollEntryView) {
+  const obligationHalalas = payrollObligationDeductionTotal(entry.deductions || []);
+  const manualHalalas = ordinaryManualDeductionsHalalas(entry);
+  const ordinaryDeductionsHalalas = Math.max(
+    0,
+    Number(entry.totalDeductionsHalalas || 0) - carryoverDeductionHalalas(entry)
+  );
+  const explainedHalalas =
+    Math.max(0, Number(entry.absenceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.missingHoursDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.insuranceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.advancesHalalas || 0)) +
+    obligationHalalas +
+    manualHalalas;
+  return Math.max(0, ordinaryDeductionsHalalas - explainedHalalas);
+}
+
+function shiftPayrollMonth(monthKey: string, offset = 1) {
+  const match = /^(\\d{4})-(\\d{2})$/.exec(String(monthKey || "").trim());
+  if (!match) return monthKey;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + offset, 1));
+  return \`${'${date.getUTCFullYear()}'}-${'${String(date.getUTCMonth() + 1).padStart(2, "0")}'}\`;
+}
+
+function formatPreviousPeriodAdjustment(entry: PayrollEntryView) {`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `function payrollActionErrorMessage(error: unknown, fallback: string) {
+  const message = String((error as any)?.message || error || "");`,
+            `function payrollActionErrorMessage(error: unknown, fallback: string) {
+  const message = String((error as any)?.code || (error as any)?.message || error || "");`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `  if (message === "core_payroll:obligation_snapshot_stale") {
+    return "جدول الخصومات والالتزامات تغير بعد حساب المسودة. أعد حساب المسيرة قبل الاعتماد.";
+  }`,
+            `  if (message === "core_payroll:obligation_snapshot_stale") {
+    return "جدول الخصومات والالتزامات تغير بعد حساب المسودة. أعد حساب المسيرة قبل الاعتماد.";
+  }
+  if (message === "core_payroll:attendance_deferral_snapshot_stale") {
+    return "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.";
+  }
+  if (message === "core_payroll:attendance_deferral_target_must_be_future") {
+    return "شهر التحصيل يجب أن يكون بعد شهر الخصم الأصلي.";
+  }
+  if (message === "core_payroll:attendance_deferral_source_payroll_locked") {
+    return "لا يمكن تأجيل خصم حضور من مسير معتمد أو مدفوع.";
+  }
+  if (message === "core_payroll:attendance_deferral_target_payroll_locked") {
+    return "شهر التحصيل المختار مقفل بمسير معتمد أو مدفوع. اختر شهرًا آخر.";
+  }
+  if (message === "core_payroll:attendance_deferral_period_locked") {
+    return "فترة المصدر أو شهر التحصيل مقفلة ولا تقبل التأجيل.";
+  }
+  if (message === "core_payroll:attendance_deduction_not_present") {
+    return "لا يوجد خصم حضور حالي قابل للتأجيل لهذه الموظفة.";
+  }
+  if (message === "core_payroll:deduction_reason_required") {
+    return "سبب التأجيل مطلوب.";
+  }`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `  const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
+  const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);`,
+            `  const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
+  const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);
+  const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `  const handleApprove = async (entry: PayrollEntryView) => {`,
+            `  const openAttendanceDeferral = (entry: PayrollEntryView) => {
+    if (
+      !canManage ||
+      isPayrollSnapshotLocked(entry.status) ||
+      Number(entry.missingHoursDeductionHalalas || 0) <= 0
+    ) {
+      return;
+    }
+    setAttendanceDeferral({
+      entry,
+      targetPayrollMonth: shiftPayrollMonth(entry.payrollMonth, 1),
+      reason: "",
+      note: "",
+    });
+  };
+
+  const submitAttendanceDeferral = async () => {
+    if (!attendanceDeferral || !canManage || isPayrollSnapshotLocked(attendanceDeferral.entry.status)) return;
+    const reason = attendanceDeferral.reason.trim();
+    if (!reason) {
+      setError("سبب التأجيل مطلوب.");
+      return;
+    }
+    if (attendanceDeferral.targetPayrollMonth <= attendanceDeferral.entry.payrollMonth) {
+      setError("شهر التحصيل يجب أن يكون بعد شهر الخصم الأصلي.");
+      return;
+    }
+
+    setBusy("attendance-deferral");
+    setError("");
+    try {
+      await CoreHrService.deferAttendanceDeduction({
+        employeeId: attendanceDeferral.entry.employeeId,
+        originalPayrollMonth: attendanceDeferral.entry.payrollMonth,
+        targetPayrollMonth: attendanceDeferral.targetPayrollMonth,
+        reason,
+        note: attendanceDeferral.note.trim() || undefined,
+      });
+
+      const [entryYear, entryMonth] = attendanceDeferral.entry.payrollMonth.split("-").map(Number);
+      const generated = await generatePayrollEntries({
+        year: entryYear,
+        month: entryMonth,
+        employeeId: attendanceDeferral.entry.employeeId,
+        currentEntries: entries,
+      });
+      const recalculated = generated[0] || attendanceDeferral.entry;
+      const next = recalculated.id
+        ? (await savePayrollDrafts([{ ...recalculated, periodId: recalculated.periodId || attendanceDeferral.entry.periodId }]))[0] || recalculated
+        : recalculated;
+      setEntries((current) => replaceEntry(current, next));
+      setSelectedEntry((current) => (current?.employeeId === next.employeeId ? next : current));
+      const targetMonth = attendanceDeferral.targetPayrollMonth;
+      setAttendanceDeferral(null);
+      setMessage(\`تم تأجيل خصم الحضور إلى ${'${targetMonth}'} مع حفظ سبب القرار وسجل الالتزام.\`);
+    } catch (actionError: any) {
+      setError(payrollActionErrorMessage(actionError, "تعذر تأجيل خصم الحضور."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const handleApprove = async (entry: PayrollEntryView) => {`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `              const manualAdjustments = hasManualAdjustments(entry);
+              const payrollMoney = calculatePayrollAccrualView(entry);`,
+            `              const manualAdjustments = hasManualAdjustments(entry);
+              const payrollMoney = calculatePayrollAccrualView(entry);
+              const obligationDeductionHalalas = payrollObligationDeductionTotal(entry.deductions || []);
+              const manualDeductionHalalas = ordinaryManualDeductionsHalalas(entry);
+              const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
+              const deferredAttendanceHalalas = attendanceDeferredAmountHalalas(entry);
+              const deferredAttendanceTarget = attendanceDeferralTargetMonth(entry);`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `                  <td className="payroll-money-cell is-negative">
+                    <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
+                    <small>غياب {formatPayrollMoney(entry.absenceDeductionHalalas)}</small>
+                    <small>نقص ساعات {formatPayrollMoney(entry.missingHoursDeductionHalalas)}</small>
+                  </td>`,
+            `                  <td className="payroll-money-cell is-negative">
+                    <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
+                    <small>غياب {formatPayrollMoney(entry.absenceDeductionHalalas)}</small>
+                    <small>نقص ساعات {formatPayrollMoney(entry.missingHoursDeductionHalalas)}</small>
+                    {Number(entry.insuranceDeductionHalalas || 0) > 0 ? <small>GOSI {formatPayrollMoney(entry.insuranceDeductionHalalas)}</small> : null}
+                    {Number(entry.advancesHalalas || 0) > 0 ? <small>سلف {formatPayrollMoney(entry.advancesHalalas)}</small> : null}
+                    {obligationDeductionHalalas > 0 ? <small>التزامات {formatPayrollMoney(obligationDeductionHalalas)}</small> : null}
+                    {manualDeductionHalalas > 0 ? <small>يدوي {formatPayrollMoney(manualDeductionHalalas)}</small> : null}
+                    {unclassifiedDeductionHalalas > 0 ? <small>أخرى {formatPayrollMoney(unclassifiedDeductionHalalas)}</small> : null}
+                    {deferredAttendanceHalalas > 0 ? (
+                      <small>مؤجل {formatPayrollMoney(deferredAttendanceHalalas)} إلى {deferredAttendanceTarget || "شهر لاحق"}</small>
+                    ) : null}
+                  </td>`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
+                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة استحقاق</button>`,
+            `                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
+                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة استحقاق</button>
+                        {deferredAttendanceHalalas > 0 ? (
+                          <span className="payroll-action-help">
+                            <small>خصم الحضور مؤجل إلى {deferredAttendanceTarget || "شهر لاحق"}</small>
+                            <a className="payroll-action-link" href={employeePayrollPath(entry)}>إدارة الالتزام</a>
+                          </span>
+                        ) : Number(entry.missingHoursDeductionHalalas || 0) > 0 && !isPayrollSnapshotLocked(entry.status) ? (
+                          <button
+                            type="button"
+                            disabled={!actions.canEditAdjustments || busy === "attendance-deferral"}
+                            onClick={() => openAttendanceDeferral(entry)}
+                          >
+                            تأجيل خصم الحضور
+                          </button>
+                        ) : null}`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `      {adjustment ? createPortal(`,
+            `      {attendanceDeferral ? createPortal(
+        <div className="dashboard-v2 payroll-modal-backdrop" role="presentation" onMouseDown={() => setAttendanceDeferral(null)}>
+          <aside className="payroll-modal payroll-adjustment-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <span>تأجيل خصم الحضور</span>
+                <h2>{attendanceDeferral.entry.employeeName}</h2>
+              </div>
+              <button type="button" onClick={() => setAttendanceDeferral(null)}><FiX /></button>
+            </header>
+            <label>
+              <span>خصم الحضور الحالي</span>
+              <input readOnly value={(Number(attendanceDeferral.entry.missingHoursDeductionHalalas || 0) / 100).toFixed(2)} />
+            </label>
+            <label>
+              <span>شهر الخصم الأصلي</span>
+              <input readOnly value={attendanceDeferral.entry.payrollMonth} />
+            </label>
+            <label>
+              <span>شهر التحصيل الجديد</span>
+              <input
+                type="month"
+                min={shiftPayrollMonth(attendanceDeferral.entry.payrollMonth, 1)}
+                value={attendanceDeferral.targetPayrollMonth}
+                onChange={(event) => setAttendanceDeferral({ ...attendanceDeferral, targetPayrollMonth: event.target.value })}
+              />
+            </label>
+            <label>
+              <span>سبب التأجيل</span>
+              <input
+                value={attendanceDeferral.reason}
+                onChange={(event) => setAttendanceDeferral({ ...attendanceDeferral, reason: event.target.value })}
+                placeholder="مثال: ظرف الموظفة — بموافقة الإدارة"
+              />
+            </label>
+            <label>
+              <span>ملاحظة اختيارية</span>
+              <textarea value={attendanceDeferral.note} onChange={(event) => setAttendanceDeferral({ ...attendanceDeferral, note: event.target.value })} />
+            </label>
+            <footer>
+              <button type="button" onClick={() => setAttendanceDeferral(null)}>إلغاء</button>
+              <button type="button" className="is-primary" disabled={busy === "attendance-deferral"} onClick={() => void submitAttendanceDeferral()}>تأكيد التأجيل</button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
+      {adjustment ? createPortal(`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `  const approvalReadiness = payrollApprovalReadiness(
+    entry as unknown as Record<string, unknown>
+  );
+  return createPortal(`,
+            `  const approvalReadiness = payrollApprovalReadiness(
+    entry as unknown as Record<string, unknown>
+  );
+  const deferredAttendanceHalalas = attendanceDeferredAmountHalalas(entry);
+  const deferredAttendanceTarget = attendanceDeferralTargetMonth(entry);
+  const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
+  return createPortal(`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `              <div><dt>خصم نقص الساعات / التأخير / الخروج المبكر</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>خصم التأمينات الاجتماعية (GOSI)</dt><dd>{formatPayrollMoney(entry.insuranceDeductionHalalas)}</dd></div>`,
+            `              <div><dt>خصم نقص الساعات / التأخير / الخروج المبكر</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              {deferredAttendanceHalalas > 0 ? (
+                <div><dt>خصم حضور مؤجل</dt><dd>{formatPayrollMoney(deferredAttendanceHalalas)} إلى {deferredAttendanceTarget || "شهر لاحق"}</dd></div>
+              ) : null}
+              <div><dt>خصم التأمينات الاجتماعية (GOSI)</dt><dd>{formatPayrollMoney(entry.insuranceDeductionHalalas)}</dd></div>`
+          );
+
+          replaceOnce(
+            'src/pages/DashboardPayroll.tsx',
+            `              <div><dt>خصومات يدوية وجزاءات أخرى</dt><dd>{formatPayrollMoney(ordinaryManualDeductionsHalalas(entry))}</dd></div>
+              <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>`,
+            `              <div><dt>خصومات يدوية وجزاءات أخرى</dt><dd>{formatPayrollMoney(ordinaryManualDeductionsHalalas(entry))}</dd></div>
+              {unclassifiedDeductionHalalas > 0 ? (
+                <div><dt>خصومات أخرى غير مصنفة</dt><dd>{formatPayrollMoney(unclassifiedDeductionHalalas)}</dd></div>
+              ) : null}
+              <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>`
+          );
+
+          // 6) Regression contract: the UI/export must keep these capabilities visible.
+          replaceOnce(
+            'workers/payroll-executive-export-contract.test.mjs',
+            `  const dashboard = read('src/pages/DashboardPayroll.tsx');`,
+            `  const dashboard = read('src/pages/DashboardPayroll.tsx');
+  const coreApi = read('src/services/coreApiClient.ts');
+  const obligationsPanel = read('src/pages/dashboardEmployees/PayrollObligationsPanel.tsx');`
+          );
+
+          replaceOnce(
+            'workers/payroll-executive-export-contract.test.mjs',
+            `  assert.match(dashboard, /handleExportPayrollMobileExcel/);
+});`,
+            `  assert.match(dashboard, /handleExportPayrollMobileExcel/);
+  assert.match(dashboard, /deferAttendanceDeduction/);
+  assert.match(dashboard, /تأجيل خصم الحضور/);
+  assert.match(dashboard, /advancesHalalas/);
+  assert.match(dashboard, /خصومات أخرى غير مصنفة/);
+  assert.doesNotMatch(coreApi, /خدمة الحجز/);
+  assert.match(coreApi, /attendance_deferral_snapshot_stale/);
+  assert.match(coreApi, /deduction_reason_required/);
+  assert.match(obligationsPanel, /rawCode/);
+});`
+          );
+
+          replaceOnce(
+            'workers/payroll-executive-export-contract.test.mjs',
+            `  assert.match(report, /مساهمة المنشأة GOSI/);`,
+            `  assert.match(report, /مساهمة المنشأة GOSI/);
+  assert.match(report, /advanceDeductions/);
+  assert.match(report, /أقساط السلف/);
+  assert.match(report, /unclassifiedDeductions/);
+  assert.match(report, /خصومات أخرى غير مصنفة/);`
+          );
+
+          replaceOnce(
+            'workers/payroll-executive-export-contract.test.mjs',
+            `  assert.match(excel, /للموظفة غير السعودية/);`,
+            `  assert.match(excel, /للموظفة غير السعودية/);
+  assert.match(excel, /row\[block\.key\]/);
+  assert.match(excel, /cachedTotal/);
+  assert.match(excel, /أقساط السلف/);`
+          );
+
+          console.log('Focused payroll UI/export patch applied successfully.');
+          NODE
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Targeted payroll export contract
+        run: node --test workers/payroll-executive-export-contract.test.mjs
+
+      - name: Core worker regression suite
+        run: npm run test:core:worker
+
+      - name: Production build
+        run: npm run build
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: Commit validated changes and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/payroll-ui-coverage-autofix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/coreApiClient.ts \
+                  src/pages/dashboardEmployees/PayrollObligationsPanel.tsx \
+                  src/helpers/reports/exportPayrollReportV2.ts \
+                  src/services/exports-v2/payroll-executive-excel.ts \
+                  src/pages/DashboardPayroll.tsx \
+                  workers/payroll-executive-export-contract.test.mjs \
+                  .github/workflows/payroll-ui-coverage-autofix.yml
+          git commit -m "fix(payroll): expose deferrals and complete export breakdown"
+          git push origin HEAD:fix/payroll-ui-coverage-and-export
