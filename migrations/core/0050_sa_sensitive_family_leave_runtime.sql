@@ -19,6 +19,26 @@ CREATE INDEX idx_employee_leave_statutory_link
     status
   );
 
+CREATE UNIQUE INDEX idx_employee_leave_statutory_link_code
+  ON employee_leaves(
+    salon_id,
+    employee_id,
+    statutory_linked_leave_id,
+    statutory_validation_code
+  )
+  WHERE statutory_linked_leave_id IS NOT NULL
+    AND statutory_validation_code IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_child_medical_one_active_episode
+  ON employee_leaves(
+    salon_id,
+    employee_id,
+    statutory_linked_leave_id
+  )
+  WHERE leave_type = 'child_medical_care'
+    AND status = 'approved'
+    AND statutory_linked_leave_id IS NOT NULL;
+
 CREATE TABLE employee_maternity_leave_episodes (
   leave_id TEXT PRIMARY KEY,
   salon_id TEXT NOT NULL,
@@ -120,16 +140,11 @@ WHEN
          AND maternity.status = 'approved'
          AND episode.birth_reconciliation_status = 'reconciled'
          AND NEW.start_date = date(
-           CASE
-             WHEN COALESCE(episode.mandatory_post_birth_end_date, '') > maternity.end_date
-               THEN episode.mandatory_post_birth_end_date
-             ELSE maternity.end_date
-           END,
+           COALESCE(maternity.statutory_end_date, maternity.end_date),
            '+1 day'
          )
     ) OR
-    NEW.days_count <= 0 OR
-    NEW.days_count > 30
+    NEW.days_count <> 30
   )
 BEGIN
   SELECT RAISE(
@@ -150,8 +165,7 @@ WHEN
   (
     NEW.statutory_event_date IS NULL OR
     NEW.start_date <> NEW.statutory_event_date OR
-    NEW.days_count <= 0 OR
-    NEW.days_count > 15
+    NEW.days_count <> 15
   )
 BEGIN
   SELECT RAISE(
@@ -186,7 +200,7 @@ END;
 -- A maternity leave approved before birth may remain payroll-safe only until
 -- the expected birth date reaches the payroll period. From that point the
 -- actual birth date must be reconciled so the mandatory six-week post-birth
--- period and any unpaid completion are known before payroll is locked.
+-- period and any linked unpaid completion are known before payroll is locked.
 CREATE TRIGGER trg_payroll_blocks_unreconciled_maternity
 BEFORE UPDATE OF status ON payroll_entries
 WHEN
