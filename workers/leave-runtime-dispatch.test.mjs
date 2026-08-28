@@ -88,7 +88,7 @@ test('comp-time and weekly-rest substitute use dispatch through their entitlemen
   }
 });
 
-test('special statutory leave does not approve before its validator is connected', () => {
+test('deterministic statutory leave dispatches to canonical validation runtime', () => {
   for (const leaveType of [
     'marriage',
     'bereavement_spouse_ascendant_descendant',
@@ -96,6 +96,26 @@ test('special statutory leave does not approve before its validator is connected
     'newborn',
     'hajj',
     'exam',
+  ]) {
+    assert.equal(
+      leaveDecisionRuntime(
+        { leave_type: leaveType, status: 'pending' },
+        'approved'
+      ),
+      'special_statutory_approve'
+    );
+    assert.equal(
+      leaveDecisionRuntime(
+        { leave_type: leaveType, status: 'approved' },
+        'rejected'
+      ),
+      'special_statutory_cancel'
+    );
+  }
+});
+
+test('sensitive and complex family leave stays fail-closed until specialized validators are connected', () => {
+  for (const leaveType of [
     'maternity',
     'child_medical_care',
     'widow_muslim',
