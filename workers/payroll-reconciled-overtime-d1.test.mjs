@@ -54,6 +54,9 @@ async function setup() {
     status TEXT NOT NULL DEFAULT 'draft',
     overtime_enabled INTEGER NOT NULL DEFAULT 0,
     financial_overtime_hours REAL NOT NULL DEFAULT 0,
+    overtime_multiplier REAL NOT NULL DEFAULT 1.5,
+    overtime_actual_hourly_halalas INTEGER NOT NULL DEFAULT 1125,
+    overtime_basic_hourly_halalas INTEGER NOT NULL DEFAULT 1042,
     overtime_value_halalas INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
   )`).run();
@@ -119,8 +122,9 @@ test('payroll approval atomically includes reconciled cash overtime and reopen r
   await db.prepare(`INSERT INTO payroll_entries (
       id, salon_id, employee_id, payroll_month, status,
       overtime_enabled, financial_overtime_hours,
-      overtime_value_halalas, updated_at
-    ) VALUES ('pay-1','main','emp-1','2026-08','draft',1,2,3000,'2026-08-28T00:00:00Z')`)
+      overtime_multiplier, overtime_actual_hourly_halalas,
+      overtime_basic_hourly_halalas, overtime_value_halalas, updated_at
+    ) VALUES ('pay-1','main','emp-1','2026-08','draft',1,2,1.5,1125,1042,3292,'2026-08-28T00:00:00Z')`)
     .run();
 
   const draft = await db.prepare("SELECT * FROM payroll_entries WHERE id='pay-1'").first();
@@ -145,8 +149,9 @@ test('approval fails when financial hours do not match reconciled minutes', asyn
   await db.prepare(`INSERT INTO payroll_entries (
       id, salon_id, employee_id, payroll_month, status,
       overtime_enabled, financial_overtime_hours,
-      overtime_value_halalas, updated_at
-    ) VALUES ('pay-mismatch','main','emp-1','2026-08','draft',1,1,1500,'2026-08-28T00:00:00Z')`)
+      overtime_multiplier, overtime_actual_hourly_halalas,
+      overtime_basic_hourly_halalas, overtime_value_halalas, updated_at
+    ) VALUES ('pay-mismatch','main','emp-1','2026-08','draft',1,1,1.5,1125,1042,1646,'2026-08-28T00:00:00Z')`)
     .run();
   await assert.rejects(
     () => db.prepare("UPDATE payroll_entries SET status='approved' WHERE id='pay-mismatch'").run(),
@@ -154,9 +159,27 @@ test('approval fails when financial hours do not match reconciled minutes', asyn
   );
 });
 
+test('approval fails when statutory overtime value does not match reconciled minutes and wage evidence', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await insertCashOvertime(db, 'ot-value-mismatch', 120);
+  await db.prepare(`INSERT INTO payroll_entries (
+      id, salon_id, employee_id, payroll_month, status,
+      overtime_enabled, financial_overtime_hours,
+      overtime_multiplier, overtime_actual_hourly_halalas,
+      overtime_basic_hourly_halalas, overtime_value_halalas, updated_at
+    ) VALUES ('pay-value-mismatch','main','emp-1','2026-08','draft',1,2,1.5,1125,1042,3000,'2026-08-28T00:00:00Z')`)
+    .run();
+  await assert.rejects(
+    () => db.prepare("UPDATE payroll_entries SET status='approved' WHERE id='pay-value-mismatch'").run(),
+    /payroll_reconciled_overtime_value_formula_mismatch/
+  );
+});
+
 test('comp-time can never be linked to payroll or marked included', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
+
   await assert.rejects(
     () => db.prepare(`INSERT INTO employee_overtime_records (
         id, salon_id, request_id, employee_id, date_key, payroll_month,
@@ -166,7 +189,11 @@ test('comp-time can never be linked to payroll or marked included', async (t) =>
       ) VALUES ('ot-comp','main','req-comp','emp-1','2026-08-20','2026-08',
         'pay-1','approved','2026-08-20T20:00:00Z','comp_time',
         'sa-labor-2025-amended-v1',120,'2026-08-20T20:00:00Z',
-        'included','{}','ledger-1')`).run(),
-    /comp_time_cannot_be_included_in_payroll/
+        'included','{}','ledger-1')`).run()
   );
+
+  const forbidden = await db.prepare(
+    "SELECT COUNT(*) AS count FROM employee_overtime_records WHERE id='ot-comp'"
+  ).first();
+  assert.equal(Number(forbidden.count), 0);
 });
