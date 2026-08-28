@@ -7,7 +7,10 @@ import {
   dbFirst,
 } from '../d1.js';
 import { AppError } from '../errors.js';
-import { requireExplicitSaLeaveType } from './leaves.js';
+import {
+  leaveDecisionRuntime,
+  requireExplicitSaLeaveType,
+} from './leaves.js';
 import {
   createEmployeeRequest as legacyCreateEmployeeRequest,
   transitionEmployeeRequest as legacyTransitionEmployeeRequest,
@@ -62,6 +65,38 @@ function assertGate(requestType, action = '') {
   const gate = employeeRequestComplianceGate(requestType, action);
   if (!gate.allowed) {
     throw new AppError(409, gate.code);
+  }
+}
+
+function assertLeaveRequestDecisionAllowed(payload, actionKey) {
+  if (!['approve', 'execute'].includes(actionKey)) return;
+
+  const resolved = requireExplicitSaLeaveType(payload);
+  const runtime = leaveDecisionRuntime(
+    {
+      leave_type: resolved.leaveType,
+      status: 'pending',
+    },
+    'approved'
+  );
+
+  if (runtime === 'hr_review_block') {
+    throw new AppError(
+      409,
+      'core_leave:hr_review_resolution_required'
+    );
+  }
+  if (runtime === 'entitlement_consumption_block') {
+    throw new AppError(
+      409,
+      'core_leave:entitlement_consumption_runtime_required'
+    );
+  }
+  if (runtime === 'statutory_validation_block') {
+    throw new AppError(
+      409,
+      'core_leave:statutory_validation_required'
+    );
   }
 }
 
@@ -122,7 +157,7 @@ export async function transitionEmployeeRequest(
 ) {
   const row = await dbFirst(
     db,
-    `SELECT request_type, status, source_reference_id
+    `SELECT request_type, status, source_reference_id, payload_json
        FROM employee_requests
       WHERE salon_id = ?
         AND id = ?
@@ -136,6 +171,13 @@ export async function transitionEmployeeRequest(
 
   const actionKey = cleanText(action).toLowerCase();
   assertGate(row.request_type, actionKey);
+
+  if (cleanText(row.request_type).toLowerCase() === 'leave') {
+    assertLeaveRequestDecisionAllowed(
+      parsePayload(row.payload_json),
+      actionKey
+    );
+  }
 
   return legacyTransitionEmployeeRequest(
     db,
