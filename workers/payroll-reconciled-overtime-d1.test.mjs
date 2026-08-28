@@ -151,7 +151,7 @@ test('approval fails when financial hours do not match reconciled minutes', asyn
       overtime_enabled, financial_overtime_hours,
       overtime_multiplier, overtime_actual_hourly_halalas,
       overtime_basic_hourly_halalas, overtime_value_halalas, updated_at
-    ) VALUES ('pay-mismatch','main','emp-1','2026-08','draft',1,1,1.5,1125,1042,1646,'2026-08-28T00:00:00Z')`)
+    ) VALUES ('pay-mismatch','main','emp-1','2026-08','draft',1,1,1.5,1125,1042,3292,'2026-08-28T00:00:00Z')`)
     .run();
   await assert.rejects(
     () => db.prepare("UPDATE payroll_entries SET status='approved' WHERE id='pay-mismatch'").run(),
