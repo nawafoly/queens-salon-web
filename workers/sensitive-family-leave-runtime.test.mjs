@@ -13,7 +13,8 @@ function splitMigrationStatements(sql) {
   const statements = [];
   const pushPlain = (chunk) => {
     for (const statement of chunk.split(';').map((value) => value.trim()).filter(Boolean)) {
-      statements.push(statement);
+      const executableSql = statement.replace(/^\s*--.*$/gm, '').trim();
+      if (executableSql) statements.push(statement);
     }
   };
   const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
