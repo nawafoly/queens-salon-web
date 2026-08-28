@@ -24,10 +24,17 @@ import {
   approveSickLeave,
   cancelApprovedSickLeave,
 } from './sick-leave.js';
+import {
+  approveTimeEntitlementLeave,
+  cancelTimeEntitlementLeave,
+} from './leave-time-entitlements.js';
+import { WEEKLY_REST_MINUTES } from './weekly-rest-entitlements.js';
 
 const CANONICAL_APPROVAL_TYPES = new Set([
   SA_LEAVE_TYPES.annual,
   SA_LEAVE_TYPES.sick,
+  SA_LEAVE_TYPES.overtimeCompTimeUse,
+  SA_LEAVE_TYPES.weeklyRestSubstituteUse,
 ]);
 
 const LEGACY_SAFE_APPROVAL_TYPES = new Set([
@@ -84,6 +91,77 @@ function legalBasisForLeaveType(leaveType) {
   }
 }
 
+function validClockMinutes(value, field) {
+  const text = cleanText(value);
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (!match) {
+    throw new AppError(400, `core_leave:invalid_${field}`);
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new AppError(400, `core_leave:invalid_${field}`);
+  }
+  return hour * 60 + minute;
+}
+
+function explicitEntitlementMinutes(data = {}) {
+  const raw = data.entitlementMinutes ?? data.entitlement_minutes;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const minutes = Number(raw);
+  if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 60 * 24 * 366) {
+    throw new AppError(400, 'core_leave:invalid_entitlement_minutes');
+  }
+  return minutes;
+}
+
+function timeEntitlementRequestMinutes(data, leaveType) {
+  if (!ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) return 0;
+
+  const durationKind = cleanText(
+    data.durationKind ?? data.duration_kind ?? 'full_day'
+  ).toLowerCase() === 'partial'
+    ? 'partial'
+    : 'full_day';
+  const explicit = explicitEntitlementMinutes(data);
+
+  if (leaveType === SA_LEAVE_TYPES.weeklyRestSubstituteUse) {
+    const startDate = cleanText(data.startDate ?? data.start_date);
+    const endDate = cleanText(data.endDate ?? data.end_date);
+    if (durationKind !== 'full_day' || !startDate || startDate !== endDate) {
+      throw new AppError(409, 'core_leave:weekly_rest_requires_single_full_day');
+    }
+    if (explicit != null && explicit !== WEEKLY_REST_MINUTES) {
+      throw new AppError(409, 'core_leave:weekly_rest_requires_24h_block');
+    }
+    return WEEKLY_REST_MINUTES;
+  }
+
+  if (durationKind === 'partial') {
+    const from = validClockMinutes(
+      data.partialStartTime ?? data.partial_start_time,
+      'partial_start_time'
+    );
+    const to = validClockMinutes(
+      data.partialEndTime ?? data.partial_end_time,
+      'partial_end_time'
+    );
+    if (to <= from) {
+      throw new AppError(400, 'core_leave:invalid_partial_range');
+    }
+    const derived = to - from;
+    if (explicit != null && explicit !== derived) {
+      throw new AppError(409, 'core_leave:entitlement_minutes_mismatch');
+    }
+    return derived;
+  }
+
+  if (explicit == null) {
+    throw new AppError(409, 'core_leave:overtime_comp_minutes_required');
+  }
+  return explicit;
+}
+
 export function requireExplicitSaLeaveType(data = {}) {
   const raw = cleanText(
     data.leaveType ?? data.leave_type
@@ -119,10 +197,10 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
   if (status === 'approved') {
     if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_approve';
     if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_approve';
-    if (leaveType === SA_LEAVE_TYPES.otherHrReview) return 'hr_review_block';
     if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
-      return 'entitlement_consumption_block';
+      return 'time_entitlement_approve';
     }
+    if (leaveType === SA_LEAVE_TYPES.otherHrReview) return 'hr_review_block';
     if (STATUTORY_VALIDATION_TYPES.has(leaveType)) {
       return 'statutory_validation_block';
     }
@@ -133,6 +211,9 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
   if (currentStatus === 'approved') {
     if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_cancel';
     if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_cancel';
+    if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
+      return 'time_entitlement_cancel';
+    }
   }
 
   return 'legacy_safe';
@@ -161,6 +242,10 @@ export async function createLeave(
   actor = {}
 ) {
   const resolved = requireExplicitSaLeaveType(data);
+  const entitlementMinutesRequested = timeEntitlementRequestMinutes(
+    data,
+    resolved.leaveType
+  );
   const created = await legacyCreateLeave(
     db,
     salonId,
@@ -186,6 +271,7 @@ export async function createLeave(
             statutory_review_required = ?,
             deduct_from_balance = ?,
             affects_payroll = ?,
+            entitlement_minutes_requested = ?,
             updated_at = ?
       WHERE salon_id = ?
         AND id = ?
@@ -198,6 +284,7 @@ export async function createLeave(
       resolved.policy.reviewRequired ? 1 : 0,
       resolved.policy.deductAnnualBalance ? 1 : 0,
       resolved.policy.affectsPayroll ? 1 : 0,
+      entitlementMinutesRequested,
       created.updated_at,
       salonId,
       created.id,
@@ -273,10 +360,22 @@ export async function decideLeave(
         actor
       );
 
-    case 'entitlement_consumption_block':
-      throw new AppError(
-        409,
-        'core_leave:entitlement_consumption_runtime_required'
+    case 'time_entitlement_approve':
+      return approveTimeEntitlementLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'time_entitlement_cancel':
+      return cancelTimeEntitlementLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
       );
 
     case 'statutory_validation_block':
