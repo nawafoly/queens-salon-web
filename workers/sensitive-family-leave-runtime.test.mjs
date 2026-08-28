@@ -9,6 +9,31 @@ import {
   sensitiveFamilyLeaveRuntimeSupport,
 } from './core/repositories/sensitive-family-leave.js';
 
+function splitMigrationStatements(sql) {
+  const statements = [];
+  const pushPlain = (chunk) => {
+    for (const statement of chunk.split(';').map((value) => value.trim()).filter(Boolean)) {
+      statements.push(statement);
+    }
+  };
+  const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
+  let cursor = 0;
+  for (const match of sql.matchAll(triggerPattern)) {
+    pushPlain(sql.slice(cursor, match.index));
+    statements.push(match[0].trim());
+    cursor = match.index + match[0].length;
+  }
+  pushPlain(sql.slice(cursor));
+  return statements;
+}
+
+async function applyMigration(db, path) {
+  const sql = readFileSync(path, 'utf8');
+  for (const statement of splitMigrationStatements(sql)) {
+    await db.prepare(statement).run();
+  }
+}
+
 async function setup() {
   const script = 'export default { fetch(){ return new Response("ok") } }';
   const mf = new Miniflare({
@@ -30,55 +55,54 @@ async function setup() {
   });
   const db = await mf.getD1Database('CORE_DB');
 
-  await db.exec(`
-    CREATE TABLE employee_leaves (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      employee_uid TEXT,
-      employee_name TEXT,
-      employee_email TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      leave_type TEXT NOT NULL,
-      start_date TEXT NOT NULL,
-      end_date TEXT NOT NULL,
-      days_count REAL NOT NULL DEFAULT 0,
-      duration_kind TEXT NOT NULL DEFAULT 'full_day',
-      employee_note TEXT,
-      hr_note TEXT,
-      decided_at TEXT,
-      decided_by_uid TEXT,
-      decided_by_email TEXT,
-      decided_by_name TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      deduct_from_balance INTEGER NOT NULL DEFAULT 0,
-      affects_payroll INTEGER NOT NULL DEFAULT 0,
-      policy_version TEXT,
-      pay_rate_bps INTEGER,
-      balance_bucket TEXT,
-      legal_basis TEXT,
-      documentation_status TEXT NOT NULL DEFAULT 'required',
-      statutory_review_required INTEGER NOT NULL DEFAULT 0,
-      statutory_event_date TEXT,
-      statutory_evidence_reference TEXT,
-      statutory_evidence_json TEXT NOT NULL DEFAULT '{}',
-      statutory_validation_code TEXT,
-      statutory_validated_at TEXT,
-      statutory_validated_by_uid TEXT
-    );
+  await db.prepare(`CREATE TABLE employee_leaves (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    employee_uid TEXT,
+    employee_name TEXT,
+    employee_email TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    leave_type TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    days_count REAL NOT NULL DEFAULT 0,
+    duration_kind TEXT NOT NULL DEFAULT 'full_day',
+    employee_note TEXT,
+    hr_note TEXT,
+    decided_at TEXT,
+    decided_by_uid TEXT,
+    decided_by_email TEXT,
+    decided_by_name TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deduct_from_balance INTEGER NOT NULL DEFAULT 0,
+    affects_payroll INTEGER NOT NULL DEFAULT 0,
+    policy_version TEXT,
+    pay_rate_bps INTEGER,
+    balance_bucket TEXT,
+    legal_basis TEXT,
+    documentation_status TEXT NOT NULL DEFAULT 'required',
+    statutory_review_required INTEGER NOT NULL DEFAULT 0,
+    statutory_event_date TEXT,
+    statutory_evidence_reference TEXT,
+    statutory_evidence_json TEXT NOT NULL DEFAULT '{}',
+    statutory_validation_code TEXT,
+    statutory_validated_at TEXT,
+    statutory_validated_by_uid TEXT
+  )`).run();
 
-    CREATE TABLE payroll_entries (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      payroll_month TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'draft'
-    );
-  `);
+  await db.prepare(`CREATE TABLE payroll_entries (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    payroll_month TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft'
+  )`).run();
 
-  await db.exec(
-    readFileSync('migrations/core/0050_sa_sensitive_family_leave_runtime.sql', 'utf8')
+  await applyMigration(
+    db,
+    'migrations/core/0050_sa_sensitive_family_leave_runtime.sql'
   );
 
   return { mf, db };
