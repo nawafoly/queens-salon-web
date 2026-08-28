@@ -40,9 +40,14 @@ CREATE TABLE employee_payroll_deduction_overrides (
   created_at TEXT NOT NULL,
   cancelled_by_uid TEXT,
   cancelled_at TEXT,
-  cancellation_reason TEXT,
-  UNIQUE(salon_id, employee_id, payroll_month, status)
+  cancellation_reason TEXT
 );
+
+CREATE UNIQUE INDEX idx_payroll_deduction_override_one_active
+  ON employee_payroll_deduction_overrides(
+    salon_id, employee_id, payroll_month
+  )
+  WHERE status = 'active';
 
 CREATE INDEX idx_payroll_deduction_override_employee_month
   ON employee_payroll_deduction_overrides(
@@ -55,6 +60,18 @@ UPDATE employee_payroll_obligations
        evidence_reference = COALESCE(evidence_reference, source_ref)
  WHERE source_type = 'attendance'
    AND obligation_kind = 'attendance_missing_hours';
+
+CREATE TRIGGER trg_attendance_obligation_deduction_classification
+AFTER INSERT ON employee_payroll_obligations
+WHEN NEW.source_type = 'attendance'
+ AND NEW.obligation_kind = 'attendance_missing_hours'
+BEGIN
+  UPDATE employee_payroll_obligations
+     SET labor_deduction_class = 'deferred_time_not_worked_adjustment',
+         evidence_reference = COALESCE(evidence_reference, source_ref)
+   WHERE salon_id = NEW.salon_id
+     AND id = NEW.id;
+END;
 
 -- Recurring obligations inherit legal classification/evidence from their durable
 -- recurring source when materialized. No inference is made from free-text kind.
