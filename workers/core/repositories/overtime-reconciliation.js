@@ -85,7 +85,11 @@ export async function reconcileOvertimeAttendance(
   if (!record) throw new AppError(404, 'core_overtime:not_found');
 
   const financialStatus = cleanText(record.financial_status).toLowerCase();
-  if (financialStatus === 'included' || cleanText(record.payroll_entry_id)) {
+  if (
+    financialStatus === 'included' ||
+    financialStatus === 'comp_time_credited' ||
+    cleanText(record.payroll_entry_id)
+  ) {
     return { record, locked: true, idempotent: true };
   }
 
@@ -227,7 +231,7 @@ export async function reconcileOvertimeAttendance(
               financial_status = 'comp_time_credited',
               updated_at = ?
         WHERE salon_id = ? AND id = ?
-          AND financial_status NOT IN ('included')`,
+          AND financial_status NOT IN ('included','comp_time_credited')`,
       [
         actualWorkedMinutes,
         JSON.stringify(evidence),
