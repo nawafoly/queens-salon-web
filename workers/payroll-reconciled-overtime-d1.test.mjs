@@ -142,6 +142,25 @@ test('payroll approval atomically includes reconciled cash overtime and reopen r
   assert.equal(released.payroll_entry_id, null);
 });
 
+test('proven reconciled overtime is not extinguished by an internal overtime-enabled toggle', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await insertCashOvertime(db, 'ot-toggle-off', 120);
+
+  await db.prepare(`INSERT INTO payroll_entries (
+      id, salon_id, employee_id, payroll_month, status,
+      overtime_enabled, financial_overtime_hours,
+      overtime_multiplier, overtime_actual_hourly_halalas,
+      overtime_basic_hourly_halalas, overtime_value_halalas, updated_at
+    ) VALUES ('pay-toggle-off','main','emp-1','2026-08','draft',0,2,1.5,1125,1042,3292,'2026-08-28T00:00:00Z')`)
+    .run();
+
+  await db.prepare("UPDATE payroll_entries SET status='approved' WHERE id='pay-toggle-off'").run();
+  const included = await db.prepare("SELECT financial_status, payroll_entry_id FROM employee_overtime_records WHERE id='ot-toggle-off'").first();
+  assert.equal(included.financial_status, 'included');
+  assert.equal(included.payroll_entry_id, 'pay-toggle-off');
+});
+
 test('approval fails when financial hours do not match reconciled minutes', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
