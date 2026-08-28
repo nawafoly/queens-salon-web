@@ -29,12 +29,27 @@ import {
   cancelTimeEntitlementLeave,
 } from './leave-time-entitlements.js';
 import { WEEKLY_REST_MINUTES } from './weekly-rest-entitlements.js';
+import {
+  approveSpecialStatutoryLeave,
+  cancelSpecialStatutoryLeave,
+  specialStatutoryLeaveRuntimeSupport,
+} from './special-statutory-leave.js';
+
+const DETERMINISTIC_SPECIAL_TYPES = new Set([
+  SA_LEAVE_TYPES.marriage,
+  SA_LEAVE_TYPES.bereavementSpouseAscendantDescendant,
+  SA_LEAVE_TYPES.bereavementSibling,
+  SA_LEAVE_TYPES.newborn,
+  SA_LEAVE_TYPES.hajj,
+  SA_LEAVE_TYPES.exam,
+]);
 
 const CANONICAL_APPROVAL_TYPES = new Set([
   SA_LEAVE_TYPES.annual,
   SA_LEAVE_TYPES.sick,
   SA_LEAVE_TYPES.overtimeCompTimeUse,
   SA_LEAVE_TYPES.weeklyRestSubstituteUse,
+  ...DETERMINISTIC_SPECIAL_TYPES,
 ]);
 
 const LEGACY_SAFE_APPROVAL_TYPES = new Set([
@@ -71,17 +86,17 @@ function legalBasisForLeaveType(leaveType) {
     case SA_LEAVE_TYPES.bereavementSpouseAscendantDescendant:
     case SA_LEAVE_TYPES.bereavementSibling:
     case SA_LEAVE_TYPES.newborn:
-      return 'SA_LABOR_SPECIAL_LEAVE';
+      return 'SA_LABOR_ARTICLE_113';
     case SA_LEAVE_TYPES.hajj:
-      return 'SA_LABOR_HAJJ_LEAVE';
+      return 'SA_LABOR_ARTICLE_114';
     case SA_LEAVE_TYPES.exam:
-      return 'SA_LABOR_EXAM_LEAVE';
+      return 'SA_LABOR_ARTICLE_115';
     case SA_LEAVE_TYPES.maternity:
     case SA_LEAVE_TYPES.childMedicalCare:
-      return 'SA_LABOR_MATERNITY_FAMILY_LEAVE';
+      return 'SA_LABOR_ARTICLE_151';
     case SA_LEAVE_TYPES.widowMuslim:
     case SA_LEAVE_TYPES.widowNonMuslim:
-      return 'SA_LABOR_WIDOW_LEAVE';
+      return 'SA_LABOR_ARTICLE_160';
     case SA_LEAVE_TYPES.overtimeCompTimeUse:
       return 'SA_LABOR_OVERTIME_COMP_TIME';
     case SA_LEAVE_TYPES.weeklyRestSubstituteUse:
@@ -201,6 +216,9 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
       return 'time_entitlement_approve';
     }
     if (leaveType === SA_LEAVE_TYPES.otherHrReview) return 'hr_review_block';
+    if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
+      return 'special_statutory_approve';
+    }
     if (STATUTORY_VALIDATION_TYPES.has(leaveType)) {
       return 'statutory_validation_block';
     }
@@ -213,6 +231,9 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
     if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_cancel';
     if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
       return 'time_entitlement_cancel';
+    }
+    if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
+      return 'special_statutory_cancel';
     }
   }
 
@@ -378,11 +399,33 @@ export async function decideLeave(
         actor
       );
 
-    case 'statutory_validation_block':
+    case 'special_statutory_approve':
+      return approveSpecialStatutoryLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'special_statutory_cancel':
+      return cancelSpecialStatutoryLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'statutory_validation_block': {
+      const support = specialStatutoryLeaveRuntimeSupport(leave.leave_type);
       throw new AppError(
         409,
-        'core_leave:statutory_validation_required'
+        support === 'specialized_required'
+          ? `core_leave:${normalizeSaLeaveType(leave.leave_type)}_specialized_validation_required`
+          : 'core_leave:statutory_validation_required'
       );
+    }
 
     case 'hr_review_block':
       throw new AppError(
