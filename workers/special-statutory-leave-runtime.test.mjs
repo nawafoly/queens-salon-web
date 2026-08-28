@@ -281,12 +281,12 @@ test('paid exam leave requires employer-approved enrollment, actual consecutive 
   );
 });
 
-test('complex maternity and widow cases stay fail-closed instead of inferring sensitive eligibility', () => {
+test('sensitive family categories keep dedicated evidence validators and canonical dispatch', () => {
   for (const type of ['maternity', 'child_medical_care', 'widow_muslim', 'widow_non_muslim']) {
     assert.equal(specialStatutoryLeaveRuntimeSupport(type), 'specialized_required');
     assert.equal(
       leaveDecisionRuntime({ leave_type: type, status: 'pending' }, 'approved'),
-      'statutory_validation_block'
+      'sensitive_family_approve'
     );
   }
 });
