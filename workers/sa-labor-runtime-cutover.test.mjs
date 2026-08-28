@@ -4,6 +4,11 @@ import { test } from "node:test";
 
 import { calculatePayrollSnapshot } from "../src/helpers/hr/payrollCalculations.ts";
 import { SA_LABOR_POLICY_VERSION } from "../src/helpers/hr/saLaborPolicy.js";
+import {
+  SA_LEAVE_TYPES,
+  getSaLeaveTypePolicy,
+  normalizeSaLeaveType,
+} from "../src/helpers/hr/saLeaveEntitlements.js";
 
 test("Aida payroll uses 2700 actual fixed wage for attendance and statutory overtime", () => {
   const result = calculatePayrollSnapshot({
@@ -93,12 +98,17 @@ test("legacy annual balance is never consumed by sick or emergency leave", () =>
     frontend,
     /deductFromBalance: type === "annual"/
   );
-  assert.match(
-    core,
-    /leaveType === 'annual' \? 1 : 0/
-  );
   assert.doesNotMatch(
     frontend,
     /type === "sick" \|\|/
   );
+
+  assert.equal(getSaLeaveTypePolicy("annual").deductAnnualBalance, true);
+  assert.equal(getSaLeaveTypePolicy("sick").deductAnnualBalance, false);
+  assert.equal(getSaLeaveTypePolicy("emergency").deductAnnualBalance, false);
+  assert.equal(normalizeSaLeaveType("emergency"), SA_LEAVE_TYPES.otherHrReview);
+
+  assert.match(core, /resolved\.policy\.deductAnnualBalance \? 1 : 0/);
+  assert.match(core, /SA_LEAVE_TYPES\.sick/);
+  assert.match(core, /SA_LEAVE_TYPES\.otherHrReview/);
 });
