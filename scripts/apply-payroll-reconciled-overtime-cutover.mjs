@@ -72,9 +72,7 @@ replaceExact(
   }
 
   const financialOvertimeHours =
-    overtimeEnabled && payrollSetupComplete
-      ? payrollRoundHours(reconciledOvertimeMinutes / 60)
-      : 0;
+    payrollRoundHours(reconciledOvertimeMinutes / 60);
 
   summary.rawDetectedExtraHours = detectedExtraHours;
   summary.reconciledCashOvertimeMinutes = reconciledOvertimeMinutes;
