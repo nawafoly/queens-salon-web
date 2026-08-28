@@ -59,17 +59,54 @@ const checks = [
   },
   {
     file: "workers/core/repositories/employee-requests.js",
-    required: [/cancelExecutedLeaveRequest/, /execution_reversed/, /decideLeave\(/, /existingLeaveStatus !== 'approved'/],
+    required: [
+      /employee-requests-legacy\.js/,
+      /requireExplicitSaLeaveType/,
+      /assertLeaveRequestDecisionAllowed/,
+      /executeStatutoryOvertimeRequest/,
+      /annual_leave_cash_substitution_during_service_not_allowed/,
+    ],
+    forbidden: [
+      /leaveType:\s*cleanText\([^)]*payload\.leaveType[^)]*\)\s*\|\|\s*['"]annual['"]/,
+      /baseSalaryHalalas\s*\/\s*30/,
+      /leave_balance\s*=\s*leave_balance\s*-\s*\?/,
+    ],
+  },
+  {
+    file: "workers/core/repositories/employee-requests-legacy.js",
+    required: [
+      /cancelExecutedLeaveRequest/,
+      /execution_reversed/,
+      /decideLeave\(/,
+      /existingLeaveStatus !== 'approved'/,
+    ],
     forbidden: [],
   },
   {
     file: "workers/core/repositories/leaves.js",
     required: [
-      /NOT EXISTS \([\s\S]{0,260}source_type = 'reversal'[\s\S]{0,160}source_id = \?/,
-      /INSERT INTO employee_leave_balance_ledger[\s\S]{0,700}'reversal'/,
-      /UPDATE employee_leaves[\s\S]{0,260}status = 'rejected'/,
+      /leaves-legacy\.js/,
+      /requireExplicitSaLeaveType/,
+      /approveAnnualLeave/,
+      /cancelApprovedAnnualLeave/,
+      /approveSickLeave/,
+      /cancelApprovedSickLeave/,
+      /leaveDecisionRuntime/,
+      /core_leave:leave_type_required/,
     ],
-    forbidden: [],
+    forbidden: [
+      /data\.leaveType[\s\S]{0,120}\|\|\s*['"]annual['"]/,
+      /leave_balance\s*=\s*leave_balance\s*[-+]\s*\?/,
+    ],
+  },
+  {
+    file: "workers/core/repositories/annual-leave-cancellation.js",
+    required: [
+      /LEAVE_REVERSAL/,
+      /leave_reversal/,
+      /UPDATE employee_leaves[\s\S]{0,500}status = 'rejected'/,
+    ],
+    forbidden: [/DELETE FROM employee_leave_balance_ledger/],
   },
   {
     file: "workers/core/repositories/booking-staff-policy.js",
@@ -125,12 +162,8 @@ for (const [name, required, forbidden] of activeEmployeeHubFunctions) {
     failures.push(`src/services/employeeHub.ts: missing active function ${name}`);
     continue;
   }
-  if (!required.test(block)) {
-    failures.push(`src/services/employeeHub.ts:${name}: missing ${required}`);
-  }
-  if (forbidden.test(block)) {
-    failures.push(`src/services/employeeHub.ts:${name}: forbidden legacy runtime ${forbidden}`);
-  }
+  if (!required.test(block)) failures.push(`src/services/employeeHub.ts:${name}: missing ${required}`);
+  if (forbidden.test(block)) failures.push(`src/services/employeeHub.ts:${name}: forbidden legacy runtime ${forbidden}`);
 }
 
 if (failures.length) {
@@ -141,12 +174,15 @@ if (failures.length) {
 
 console.log("employee leave Core cutover guard passed");
 console.log("- active employee leave entry is Employee Requests -> Core employee_requests");
-console.log("- manager leave lifecycle is Core employee_requests -> employee_leaves");
+console.log("- leave type is explicit; missing type never defaults to annual");
+console.log("- annual and sick decisions dispatch through statutory runtimes");
+console.log("- active-service annual leave cash substitution is blocked");
+console.log("- overtime request authorization never creates payroll money before attendance reconciliation");
+console.log("- historical request/leave lifecycle code is isolated behind legacy adapters for audit compatibility");
 console.log("- DashboardEmployees never writes operational leave state to Firestore mirrors");
 console.log("- dashboard leave status is derived from approved Core employee_leaves; partial leave never marks a full-day status");
-console.log("- executed leave cancellation reverses canonical leave state and balance exactly once before request cancellation");
+console.log("- approved annual cancellation writes a reversal event and preserves original ledger history");
 console.log("- absence create/list runtime is Core-owned");
 console.log("- booking availability reads leave state and leave note from the same canonical employee_leaves fact");
 console.log("- historical EmployeeLeave/permission pages remain unreachable from the active employee portal");
 console.log("- partial permission cancellation refreshes payroll state");
-console.log("- partial leave retries finish any missing permission effect without duplicating the approved leave");
