@@ -83,7 +83,7 @@ test('payroll Excel exposes attendance, GOSI and deferred deductions with comple
   assert.match(excel, /isHourColumn\(column\.key\)/);
   assert.match(excel, /0\.00 &quot;ر\.س&quot;/);
   assert.match(excel, /خصم الحضور المؤجل بند إفصاح فقط/);
-  assert.match(excel, /الموظفة غير السعودية/);
+  assert.match(excel, /للموظفة غير السعودية/);
 });
 
 test('payroll approval and next-period reconciliation are explicit source-of-truth operations', () => {
