@@ -17,6 +17,20 @@ function replaceExact(label, before, after) {
   source = source.slice(0, first) + normalizedAfter + source.slice(first + normalizedBefore.length);
 }
 
+function replaceRange(label, start, end, replacement) {
+  const normalizedStart = start.replace(/\r\n/g, '\n');
+  const normalizedEnd = end.replace(/\r\n/g, '\n');
+  const normalizedReplacement = replacement.replace(/\r\n/g, '\n');
+  const first = source.indexOf(normalizedStart);
+  if (first < 0) throw new Error(`${label}: start_anchor_not_found`);
+  if (source.indexOf(normalizedStart, first + normalizedStart.length) >= 0) {
+    throw new Error(`${label}: start_anchor_not_unique`);
+  }
+  const endIndex = source.indexOf(normalizedEnd, first + normalizedStart.length);
+  if (endIndex < 0) throw new Error(`${label}: end_anchor_not_found`);
+  source = source.slice(0, first) + normalizedReplacement + source.slice(endIndex);
+}
+
 if (!source.includes("from './overtime-reconciliation.js'")) {
   replaceExact(
     'overtime import',
@@ -123,6 +137,20 @@ replaceExact(
         authority.reconciledOvertimeMinutes,
       overtimeSourceSnapshot:
         authority.overtimeSourceSnapshot,
+`
+);
+
+replaceRange(
+  'locked carryover overtime authority',
+  '  const detectedExtraHours = Math.max(0, payrollRoundHours(summary.totalExtraHours || 0));\n',
+  '  const grossSalaryHalalas =\n',
+`  // Approved/paid payroll is an immutable overtime financial snapshot.
+  // Raw attendance extra time is never allowed to create or recalculate money
+  // during carryover reconciliation. Any overtime correction requires an
+  // explicit reopen/reversal workflow with reconciled evidence.
+  const overtimeValueHalalas = intMoney(
+    sourceEntry.overtime_value_halalas
+  );
 `
 );
 
