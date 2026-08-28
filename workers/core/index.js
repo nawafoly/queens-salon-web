@@ -143,6 +143,18 @@ import {
   savePayrollRecurringDeduction,
 } from './repositories/payroll-obligations.js';
 import {
+  cancelPayrollDeductionCourtOverride,
+  classifyPayrollObligationDeduction,
+  classifyRecurringPayrollDeduction,
+  listPayrollDeductionClassificationEvents,
+  savePayrollDeductionCourtOverride,
+} from './repositories/payroll-deduction-compliance.js';
+import {
+  cancelDisciplinaryCase,
+  createDisciplinaryCase,
+  listDisciplinaryCases,
+} from './repositories/disciplinary-compliance.js';
+import {
   deferSalaryAdvanceInstallment,
 } from './repositories/salary-advance-deferrals.js';
 import {
@@ -573,6 +585,17 @@ function match(url, method) {
   if (path === "/api/core/hr/payroll-obligations/deductions" && method === "GET") {
     return { name: "payroll-obligation-deductions" };
   }
+  const payrollObligationClassification = /^\/api\/core\/hr\/payroll-obligations\/([^/]+)\/classification$/.exec(path);
+  if (payrollObligationClassification && method === "POST") return { name: "payroll-obligation:classification", id: payrollObligationClassification[1] };
+  const payrollRecurringClassification = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)\/classification$/.exec(path);
+  if (payrollRecurringClassification && method === "POST") return { name: "payroll-recurring-deduction:classification", id: payrollRecurringClassification[1] };
+  if (path === "/api/core/hr/payroll-deduction-classification-events" && method === "GET") return { name: "payroll-deduction-classification-events" };
+  const payrollDeductionOverrideCancel = /^\/api\/core\/hr\/payroll-deduction-overrides\/([^/]+)\/cancel$/.exec(path);
+  if (payrollDeductionOverrideCancel && method === "POST") return { name: "payroll-deduction-override:cancel", id: payrollDeductionOverrideCancel[1] };
+  if (path === "/api/core/hr/payroll-deduction-overrides" && method === "POST") return { name: "payroll-deduction-override:create" };
+  const disciplinaryCaseCancel = /^\/api\/core\/hr\/disciplinary-cases\/([^/]+)\/cancel$/.exec(path);
+  if (disciplinaryCaseCancel && method === "POST") return { name: "disciplinary-case:cancel", id: disciplinaryCaseCancel[1] };
+  if (path === "/api/core/hr/disciplinary-cases" && ["GET", "POST"].includes(method)) return { name: "disciplinary-cases" };
   const payrollRecurringDeduction = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)$/.exec(path);
   if (payrollRecurringDeduction) {
     return { name: "payroll-recurring-deduction", id: payrollRecurringDeduction[1] };
@@ -1882,6 +1905,39 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollAdvanceDeductions(db, ctx.salonId, query);
 
+    case "payroll-obligation:classification":
+      requirePermission(ctx, "payroll.manage");
+      return classifyPayrollObligationDeduction(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "payroll-recurring-deduction:classification":
+      requirePermission(ctx, "payroll.manage");
+      return classifyRecurringPayrollDeduction(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "payroll-deduction-classification-events":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollDeductionClassificationEvents(db, ctx.salonId, query);
+
+    case "payroll-deduction-override:create":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, ADMIN_ROLES);
+      return savePayrollDeductionCourtOverride(db, ctx.salonId, body, actorInfo);
+
+    case "payroll-deduction-override:cancel":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, ADMIN_ROLES);
+      return cancelPayrollDeductionCourtOverride(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "disciplinary-cases":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.manage", "payroll.manage"]);
+      if (method === "GET") return listDisciplinaryCases(db, ctx.salonId, query);
+      if (method === "POST") return createDisciplinaryCase(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "disciplinary-case:cancel":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requireAnyPermission(ctx, ["employees.manage", "payroll.manage"]);
+      return cancelDisciplinaryCase(db, ctx.salonId, route.id, body, actorInfo);
     case "payroll-recurring-deductions":
       if (method === "GET") {
         requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
