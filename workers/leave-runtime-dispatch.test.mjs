@@ -114,7 +114,7 @@ test('deterministic statutory leave dispatches to canonical validation runtime',
   }
 });
 
-test('sensitive and complex family leave stays fail-closed until specialized validators are connected', () => {
+test('sensitive and complex family leave dispatches to specialized family runtime', () => {
   for (const leaveType of [
     'maternity',
     'child_medical_care',
@@ -126,7 +126,14 @@ test('sensitive and complex family leave stays fail-closed until specialized val
         { leave_type: leaveType, status: 'pending' },
         'approved'
       ),
-      'statutory_validation_block'
+      'sensitive_family_approve'
+    );
+    assert.equal(
+      leaveDecisionRuntime(
+        { leave_type: leaveType, status: 'approved' },
+        'rejected'
+      ),
+      'sensitive_family_cancel'
     );
   }
 });
