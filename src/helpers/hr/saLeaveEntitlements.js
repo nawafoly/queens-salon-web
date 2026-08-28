@@ -87,6 +87,20 @@ function roundDays(value) {
   return Math.round((Number(value) || 0) * 10000) / 10000;
 }
 
+function contractAnnualDays(value) {
+  return Math.max(0, Number(value || 0) || 0);
+}
+
+function annualEntitlementForServiceYear(serviceYear, contractualDays) {
+  const statutoryEntitlementDays =
+    serviceYear.completedServiceYearsAtStart >= 5 ? 30 : 21;
+  return {
+    statutoryEntitlementDays,
+    contractualEntitlementDays: contractualDays || null,
+    annualEntitlementDays: Math.max(statutoryEntitlementDays, contractualDays),
+  };
+}
+
 export function normalizeSaLeaveType(value) {
   const type = cleanText(value);
   if (KNOWN_LEAVE_TYPES.has(type)) return type;
@@ -201,20 +215,19 @@ export function calculateAnnualLeaveAccrual(input = {}) {
   const startDate = dateKey(input.startDate, 'startDate');
   const asOfDate = dateKey(input.asOfDate, 'asOfDate');
   const serviceYear = annualLeaveServiceYear(startDate, asOfDate);
-  const statutoryEntitlementDays =
-    serviceYear.completedServiceYearsAtStart >= 5 ? 30 : 21;
-  const contractualDays = Math.max(0, Number(input.contractAnnualDays || 0) || 0);
-  const annualEntitlementDays = Math.max(statutoryEntitlementDays, contractualDays);
+  const contractualDays = contractAnnualDays(input.contractAnnualDays);
+  const entitlement = annualEntitlementForServiceYear(serviceYear, contractualDays);
   const periodDays = daysBetween(serviceYear.serviceYearStart, serviceYear.serviceYearEnd);
-  const accrualEndExclusive = addDays(asOfDate, 1) < serviceYear.serviceYearEnd
-    ? addDays(asOfDate, 1)
+  const asOfExclusive = addDays(asOfDate, 1);
+  const accrualEndExclusive = asOfExclusive < serviceYear.serviceYearEnd
+    ? asOfExclusive
     : serviceYear.serviceYearEnd;
   const elapsedDays = Math.max(
     0,
     Math.min(periodDays, daysBetween(serviceYear.serviceYearStart, accrualEndExclusive))
   );
   const accruedDays = periodDays > 0
-    ? roundDays(annualEntitlementDays * elapsedDays / periodDays)
+    ? roundDays(entitlement.annualEntitlementDays * elapsedDays / periodDays)
     : 0;
 
   return {
@@ -224,24 +237,154 @@ export function calculateAnnualLeaveAccrual(input = {}) {
     serviceYearStart: serviceYear.serviceYearStart,
     serviceYearEnd: serviceYear.serviceYearEnd,
     completedServiceYearsAtStart: serviceYear.completedServiceYearsAtStart,
-    statutoryEntitlementDays,
-    contractualEntitlementDays: contractualDays || null,
-    annualEntitlementDays,
+    ...entitlement,
     periodDays,
     elapsedDays,
     accruedDays,
   };
 }
 
-export function calculateAnnualLeaveAvailable(input = {}) {
-  const accrual = calculateAnnualLeaveAccrual(input);
-  const persistedNetDays = Number(input.persistedNetDays || 0) || 0;
-  const availableDays = roundDays(accrual.accruedDays + persistedNetDays);
+export function calculateAnnualLeaveAccrualRange(input = {}) {
+  const startDate = dateKey(input.startDate, 'startDate');
+  const asOfDate = dateKey(input.asOfDate, 'asOfDate');
+  const contractualDays = contractAnnualDays(input.contractAnnualDays);
+
+  if (asOfDate < startDate) {
+    throw new Error('asOfDate_before_startDate');
+  }
+
+  let cursor = startDate;
+  let fromExclusiveDate = null;
+
+  if (
+    input.fromExclusiveDate !== undefined &&
+    input.fromExclusiveDate !== null &&
+    String(input.fromExclusiveDate).trim() !== ''
+  ) {
+    fromExclusiveDate = dateKey(input.fromExclusiveDate, 'fromExclusiveDate');
+    if (fromExclusiveDate >= startDate) {
+      cursor = addDays(fromExclusiveDate, 1);
+    }
+  }
+
+  if (cursor > asOfDate) {
+    return {
+      policyVersion: SA_LABOR_POLICY_VERSION,
+      startDate,
+      fromExclusiveDate,
+      asOfDate,
+      accruedDays: 0,
+      segments: [],
+    };
+  }
+
+  const asOfExclusive = addDays(asOfDate, 1);
+  const segments = [];
+  let total = 0;
+  let guard = 0;
+
+  while (cursor < asOfExclusive) {
+    guard += 1;
+    if (guard > 200) throw new Error('annual_accrual_range_too_large');
+
+    const serviceYear = annualLeaveServiceYear(startDate, cursor);
+    const entitlement = annualEntitlementForServiceYear(serviceYear, contractualDays);
+    const periodDays = daysBetween(serviceYear.serviceYearStart, serviceYear.serviceYearEnd);
+    const segmentEndExclusive =
+      serviceYear.serviceYearEnd < asOfExclusive
+        ? serviceYear.serviceYearEnd
+        : asOfExclusive;
+    const elapsedDays = Math.max(0, daysBetween(cursor, segmentEndExclusive));
+    const accruedDays = periodDays > 0
+      ? entitlement.annualEntitlementDays * elapsedDays / periodDays
+      : 0;
+
+    segments.push({
+      serviceYearStart: serviceYear.serviceYearStart,
+      serviceYearEnd: serviceYear.serviceYearEnd,
+      fromDate: cursor,
+      toDateExclusive: segmentEndExclusive,
+      completedServiceYearsAtStart: serviceYear.completedServiceYearsAtStart,
+      ...entitlement,
+      periodDays,
+      elapsedDays,
+      accruedDays: roundDays(accruedDays),
+    });
+
+    total += accruedDays;
+    cursor = segmentEndExclusive;
+  }
 
   return {
-    ...accrual,
-    persistedNetDays: roundDays(persistedNetDays),
+    policyVersion: SA_LABOR_POLICY_VERSION,
+    startDate,
+    fromExclusiveDate,
+    asOfDate,
+    accruedDays: roundDays(total),
+    segments,
+  };
+}
+
+export function calculateAnnualLeaveAvailable(input = {}) {
+  const startDate = dateKey(input.startDate, 'startDate');
+  const asOfDate = dateKey(input.asOfDate, 'asOfDate');
+  const contractualDays = contractAnnualDays(input.contractAnnualDays);
+  const openingBalanceDays = Number(input.openingBalanceDays || 0) || 0;
+  const postOpeningNetDays = Number(
+    input.postOpeningNetDays ?? input.persistedNetDays ?? 0
+  ) || 0;
+
+  let openingBalanceEffectiveDate = null;
+  if (
+    input.openingBalanceEffectiveDate !== undefined &&
+    input.openingBalanceEffectiveDate !== null &&
+    String(input.openingBalanceEffectiveDate).trim() !== ''
+  ) {
+    openingBalanceEffectiveDate = dateKey(
+      input.openingBalanceEffectiveDate,
+      'openingBalanceEffectiveDate'
+    );
+    if (openingBalanceEffectiveDate < startDate) {
+      throw new Error('openingBalanceEffectiveDate_before_startDate');
+    }
+  }
+
+  const openingApplied =
+    Boolean(openingBalanceEffectiveDate) &&
+    openingBalanceEffectiveDate <= asOfDate;
+
+  const liveAccrual = calculateAnnualLeaveAccrualRange({
+    startDate,
+    asOfDate,
+    contractAnnualDays: contractualDays,
+    fromExclusiveDate: openingApplied
+      ? openingBalanceEffectiveDate
+      : null,
+  });
+
+  const effectiveOpeningBalanceDays = openingApplied
+    ? openingBalanceDays
+    : 0;
+  const effectivePostOpeningNetDays = openingApplied || !openingBalanceEffectiveDate
+    ? postOpeningNetDays
+    : 0;
+  const availableDays = roundDays(
+    effectiveOpeningBalanceDays +
+      liveAccrual.accruedDays +
+      effectivePostOpeningNetDays
+  );
+
+  return {
+    policyVersion: SA_LABOR_POLICY_VERSION,
+    startDate,
+    asOfDate,
+    openingBalanceEffectiveDate,
+    openingApplied,
+    openingBalanceDays: roundDays(effectiveOpeningBalanceDays),
+    accruedSinceAnchorDays: liveAccrual.accruedDays,
+    postOpeningNetDays: roundDays(effectivePostOpeningNetDays),
     availableDays,
+    accrualSegments: liveAccrual.segments,
   };
 }
 
