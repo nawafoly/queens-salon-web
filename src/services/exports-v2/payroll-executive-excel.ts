@@ -556,7 +556,7 @@ function buildUnifiedPayrollSheet(report: ExportV2Report<Record<string, ExportV2
     if (block.start === 0) value = "الإجمالي";
     if ([8, 10, 12, 14, 16].includes(block.start) && report.rows.length) {
       const letter = col(block.start);
-      value = 0;
+      value = report.rows.reduce((sum, row) => sum + numberValue(row[block.key]), 0);
       style = S.totalCurrency;
       formula = `SUM(${letter}${officialStart}:${letter}${officialStart + report.rows.length - 1})`;
     }
@@ -613,9 +613,14 @@ function buildUnifiedPayrollSheet(report: ExportV2Report<Record<string, ExportV2
     if (index === 0) {
       detailTotals.cells.push({ ref: ref(index, detailTotalRow), value: "الإجمالي", style: S.totalLabel });
     } else if (shouldTotal && report.rows.length) {
+      const cachedTotal = report.rows.reduce((sum, row) => {
+        const raw = row[column.key];
+        const parsed = isHourColumn(column.key) ? localizedNumber(raw) : numberValue(raw);
+        return sum + (parsed ?? 0);
+      }, 0);
       detailTotals.cells.push({
         ref: ref(index, detailTotalRow),
-        value: 0,
+        value: cachedTotal,
         style: totalStyle,
         formula: `SUM(${col(index)}${detailStart}:${col(index)}${detailStart + report.rows.length - 1})`,
       });
@@ -770,6 +775,12 @@ function buildMobilePayrollSheet(report: ExportV2Report<Record<string, ExportV2V
     addPairRow(cursor, "الإضافات والمكافآت", numberValue(item.additions), "تعويض الإجازات", numberValue(item.leaveCompensation), numberValue(item.additions) > 0 ? S.currencyGreen : S.currency, numberValue(item.leaveCompensation) > 0 ? S.currencyGreen : S.currency);
     cursor += 1;
     addPairRow(cursor, "الخصومات", numberValue(item.deductions), "تسوية سابقة", numberValue(item.previousPeriodAdjustment), numberValue(item.deductions) > 0 ? S.currencyRed : S.currency, numberValue(item.previousPeriodAdjustment) < 0 ? S.currencyRed : numberValue(item.previousPeriodAdjustment) > 0 ? S.currencyGreen : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "خصم الغياب", numberValue(item.absenceDeduction), "خصم نقص الساعات", numberValue(item.missingHoursDeduction), numberValue(item.absenceDeduction) > 0 ? S.currencyRed : S.currency, numberValue(item.missingHoursDeduction) > 0 ? S.currencyRed : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "خصم GOSI", numberValue(item.insuranceDeduction), "أقساط السلف", numberValue(item.advanceDeductions), numberValue(item.insuranceDeduction) > 0 ? S.currencyRed : S.currency, numberValue(item.advanceDeductions) > 0 ? S.currencyRed : S.currency);
+    cursor += 1;
+    addPairRow(cursor, "التزامات والأقساط", numberValue(item.obligationDeductions), "يدوي / غير مصنف", numberValue(item.manualDeductions) + numberValue(item.unclassifiedDeductions), numberValue(item.obligationDeductions) > 0 ? S.currencyRed : S.currency, numberValue(item.manualDeductions) + numberValue(item.unclassifiedDeductions) > 0 ? S.currencyRed : S.currency);
     cursor += 1;
     const deferredAttendanceDeduction = numberValue(
       item.deferredAttendanceDeduction

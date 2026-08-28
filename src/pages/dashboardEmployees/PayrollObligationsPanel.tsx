@@ -109,7 +109,8 @@ function shiftMonth(monthKey: string, offset: number) {
 
 function errorMessage(error: unknown) {
   const raw = cleanText((error as Error)?.message || error);
-  const code = raw.split(":").pop() || raw;
+  const rawCode = cleanText((error as { code?: unknown })?.code);
+  const code = (rawCode || raw).split(":").pop() || rawCode || raw;
   const labels: Record<string, string> = {
     statutory_deduction_not_deferrable: "خصومات GOSI النظامية لا يمكن تأجيلها أو تقسيطها من هذه الشاشة.",
     deduction_reason_required: "اكتب سبب الخصم أو القرار المالي.",

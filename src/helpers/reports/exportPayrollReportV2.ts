@@ -73,7 +73,9 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   insuranceDeduction: number;
   employerGosiContribution: number;
   obligationDeductions: number;
+  advanceDeductions: number;
   manualDeductions: number;
+  unclassifiedDeductions: number;
   previousPeriodAdjustment: number;
   expectedNet: number;
   status: string;
@@ -196,6 +198,19 @@ function payrollOrdinaryManualDeductionsHalalas(entry: PayrollEntryView) {
       payrollCarryoverDeductionHalalas(entry) -
       payrollObligationDeductionTotal(entry.deductions || [])
   );
+}
+
+function payrollUnclassifiedDeductionsHalalas(entry: PayrollEntryView) {
+  const obligationDeductionsHalalas = payrollObligationDeductionTotal(entry.deductions || []);
+  const manualDeductionsHalalas = payrollOrdinaryManualDeductionsHalalas(entry);
+  const explainedHalalas =
+    Math.max(0, Number(entry.absenceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.missingHoursDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.insuranceDeductionHalalas || 0)) +
+    Math.max(0, Number(entry.advancesHalalas || 0)) +
+    obligationDeductionsHalalas +
+    manualDeductionsHalalas;
+  return Math.max(0, payrollOrdinaryDeductionsHalalas(entry) - explainedHalalas);
 }
 
 function statusLabel(value: unknown) {
@@ -334,7 +349,9 @@ export function buildPayrollReportDataV2(
       insuranceDeduction: halalasToRiyals(entry.insuranceDeductionHalalas),
       employerGosiContribution: halalasToRiyals(entry.employerGosiContributionHalalas),
       obligationDeductions: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])),
+      advanceDeductions: halalasToRiyals(entry.advancesHalalas),
       manualDeductions: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)),
+      unclassifiedDeductions: halalasToRiyals(payrollUnclassifiedDeductionsHalalas(entry)),
       previousPeriodAdjustment: halalasToRiyals(payrollEntryCarryoverNetHalalas(entry)),
       expectedNet: halalasToRiyals(accrual.expectedNetHalalas),
       status: statusLabel(entry.status),
@@ -465,7 +482,9 @@ export function buildPayrollReportDataV2(
       { key: "insuranceDeduction", header: "خصم GOSI للموظفة", type: "currency", width: 17, align: "center" },
       { key: "employerGosiContribution", header: "مساهمة المنشأة GOSI", type: "currency", width: 19, align: "center" },
       { key: "obligationDeductions", header: "التزامات وأقساط إدارية", type: "currency", width: 20, align: "center" },
+      { key: "advanceDeductions", header: "أقساط السلف", type: "currency", width: 16, align: "center" },
       { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
+      { key: "unclassifiedDeductions", header: "خصومات أخرى غير مصنفة", type: "currency", width: 19, align: "center" },
       { key: "deductions", header: "إجمالي الخصومات قبل التسويات", type: "currency", width: 20, align: "center" },
       { key: "previousPeriodAdjustment", header: "تسوية فترات سابقة", type: "currency", width: 17, align: "center" },
       { key: "expectedNet", header: netExportLabel, type: "currency", width: 18, align: "center" },
