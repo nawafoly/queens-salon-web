@@ -13,6 +13,7 @@ import {
   updateScheduleException,
 } from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
+import { setAnnualLeaveOpeningBalance } from './core/repositories/annual-leave.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
 import {
   adjustLeaveBalance,
@@ -37,6 +38,10 @@ import {
   listPayrollRecurringDeductions,
   savePayrollRecurringDeduction,
 } from './core/repositories/payroll-obligations.js';
+import {
+  classifyPayrollObligationDeduction,
+  classifyRecurringPayrollDeduction,
+} from './core/repositories/payroll-deduction-compliance.js';
 import { deferSalaryAdvanceInstallment } from './core/repositories/salary-advance-deferrals.js';
 import { calculateGosi } from '../src/helpers/hr/gosiPolicy.js';
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
@@ -137,6 +142,22 @@ async function setup() {
     '0036_attendance_deduction_deferral_integrity.sql',
     '0037_payroll_obligation_settlement_concurrency.sql',
     '0038_sa_labor_compliance_foundation.sql',
+    '0039_sa_leave_rest_holiday_runtime.sql',
+    '0040_sa_annual_leave_opening_anchor.sql',
+    '0041_sa_sick_leave_runtime_lifecycle.sql',
+    '0042_sa_weekly_rest_public_holiday_workflow.sql',
+    '0043_sa_overtime_request_runtime.sql',
+    '0044_sa_overtime_reconciliation_comp_time.sql',
+    '0045_payroll_reconciled_overtime_authority.sql',
+    '0046_payroll_reconciled_overtime_approval_guards.sql',
+    '0047_leave_time_entitlement_consumption.sql',
+    '0048_sa_special_statutory_leave_validation.sql',
+    '0049_public_holiday_leave_overlap.sql',
+    '0050_sa_sensitive_family_leave_runtime.sql',
+    '0051_sa_payroll_deduction_compliance.sql',
+    '0052_sa_payroll_deduction_classification_audit.sql',
+    '0053_sa_disciplinary_fine_runtime.sql',
+    '0054_sa_disciplinary_fine_fund_custody.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -151,6 +172,65 @@ async function setup() {
 }
 
 const actor = { uid: 'uid-admin', email: 'admin@example.com', name: 'Admin' };
+const TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE = '2026-08-28';
+
+async function seedAnnualLeaveOpeningBalance(
+  db,
+  employeeId,
+  days,
+  operationId = `opening-${employeeId}`
+) {
+  return setAnnualLeaveOpeningBalance(
+    db,
+    'main',
+    employeeId,
+    {
+      days,
+      effectiveDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
+      operationId,
+      reason: 'Regression fixture opening balance anchor',
+    },
+    actor
+  );
+}
+
+async function withFixedRiyadhDate(testContext, callback) {
+  if (typeof testContext === 'function') {
+    callback = testContext;
+    testContext = null;
+  }
+  const RealDate = globalThis.Date;
+  const fixedIso = `${TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE}T12:00:00.000Z`;
+  if (testContext?.mock?.timers) {
+    testContext.mock.timers.enable({
+      apis: ['Date'],
+      now: new RealDate(fixedIso),
+    });
+    try {
+      return await callback();
+    } finally {
+      testContext.mock.timers.reset();
+    }
+  }
+
+  class FixedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixedIso]));
+    }
+
+    static now() {
+      return new RealDate(fixedIso).getTime();
+    }
+  }
+  FixedDate.UTC = RealDate.UTC;
+  FixedDate.parse = RealDate.parse;
+  globalThis.Date = FixedDate;
+  try {
+    return await callback();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
 
 function nonSaudiGosiPayrollFields({
   payrollDate,
@@ -216,6 +296,7 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     id: 'emp-1', name: 'Employee 1', firebaseUid: 'uid-1', phone: '0500000001',
     employment: {
       title: 'Stylist',
+      startDate: '2025-01-01',
       baseSalaryHalalas: 450000,
       housingAllowanceHalalas: 50000,
       leaveBalance: 21,
@@ -276,11 +357,23 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   }, actor);
   assert.equal((await getAttendanceState(db, 'main', 'emp-1')).last_type, 'check_out');
 
+  await seedAnnualLeaveOpeningBalance(db, 'emp-1', 21);
+
   const leave = await createLeave(db, 'main', {
     id: 'leave-1', employeeId: 'emp-1', employeeUid: 'uid-1', leaveType: 'annual',
     startDate: '2026-08-01', endDate: '2026-08-02', employeeNote: 'Vacation',
   }, actor);
-  const approved = await decideLeave(db, 'main', leave.id, { status: 'approved', hrNote: 'Approved' }, actor);
+  const approved = await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'approved',
+      hrNote: 'Approved',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
+    },
+    actor
+  );
   assert.equal(approved.status, 'approved');
   const canonicalLeave = await db
     .prepare("SELECT status, start_date, end_date FROM employee_leaves WHERE id='leave-1'")
@@ -496,6 +589,11 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     sourceType: 'manual',
   }, actor);
   assert.equal(recurring.amountHalalas, 60000);
+  await classifyRecurringPayrollDeduction(db, 'main', recurring.id, {
+    laborDeductionClass: 'other_with_written_consent',
+    writtenConsentReference: 'consent-recurring-obligation',
+    reason: 'Regression fixture written consent for recurring deduction',
+  }, actor);
   assert.equal((await listPayrollRecurringDeductions(db, 'main', {
     employeeId: 'emp-obligation',
   })).length, 1);
@@ -525,6 +623,11 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     installmentPlan.installments.map((item) => item.amountHalalas),
     [40000, 40000, 40000]
   );
+  await classifyPayrollObligationDeduction(db, 'main', installmentPlan.id, {
+    laborDeductionClass: 'other_with_written_consent',
+    writtenConsentReference: 'consent-installment-obligation',
+    reason: 'Regression fixture written consent for installment deduction',
+  }, actor);
 
   const septemberInstallment = installmentPlan.installments.find(
     (item) => item.targetPayrollMonth === '2026-09'
@@ -679,6 +782,11 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     sourceRef: 'request-obligation-1',
   }, actor);
   assert.equal(idempotentRetry.id, idempotent.id);
+  await classifyPayrollObligationDeduction(db, 'main', idempotent.id, {
+    laborDeductionClass: 'other_with_written_consent',
+    writtenConsentReference: 'consent-idempotent-obligation',
+    reason: 'Regression fixture written consent for idempotent deduction',
+  }, actor);
   await assert.rejects(
     () => createPayrollObligation(db, 'main', {
       employeeId: 'emp-obligation',
@@ -1095,12 +1203,15 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
       name: 'Leave Flow Employee',
       firebaseUid: 'uid-leave-flow',
       employment: {
+        startDate: '2025-01-01',
         baseSalaryHalalas: 450000,
         leaveBalance: 5,
       },
     },
     actor
   );
+
+  await seedAnnualLeaveOpeningBalance(db, 'emp-leave-flow', 5);
 
   const leave = await createLeave(
     db,
@@ -1139,6 +1250,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     {
       status: 'approved',
       hrNote: 'Approved with deduction',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
     },
     actor
   );
@@ -1196,6 +1308,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     {
       status: 'approved',
       hrNote: 'Repeated approval',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
     },
     actor
   );
@@ -1229,6 +1342,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     {
       status: 'rejected',
       hrNote: 'Cancelled after approval',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
     },
     actor
   );
@@ -1257,7 +1371,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     SELECT *
       FROM employee_leave_balance_ledger
      WHERE salon_id = 'main'
-       AND source_type = 'reversal'
+       AND source_type = 'leave_reversal'
        AND source_id = ?
      LIMIT 1
   `).bind(
@@ -1281,7 +1395,11 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     ).first();
 
   assert.ok(
-    originalAfterCancellation.deleted_at
+    originalAfterCancellation
+  );
+  assert.equal(
+    originalAfterCancellation.deleted_at,
+    null
   );
 
   // Double cancellation cannot restore twice.
@@ -1292,6 +1410,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     {
       status: 'rejected',
       hrNote: 'Repeated cancellation',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
     },
     actor
   );
@@ -1324,7 +1443,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
 
   assert.equal(
     Number(ledgerCount.count),
-    2
+    3
   );
 });
 
@@ -1364,11 +1483,14 @@ test('Core leave approval fails closed when canonical leave balance is insuffici
       name: 'Low Leave Balance',
       firebaseUid: 'uid-leave-low',
       employment: {
+        startDate: '2025-01-01',
         leaveBalance: 1,
       },
     },
     actor
   );
+
+  await seedAnnualLeaveOpeningBalance(db, 'emp-leave-low', 1);
 
   const leave = await createLeave(
     db,
@@ -1395,12 +1517,13 @@ test('Core leave approval fails closed when canonical leave balance is insuffici
         {
           status: 'approved',
           hrNote: 'Should fail',
+          entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
         },
         actor
       ),
     {
       code:
-        'core_leave:insufficient_balance',
+        'core_annual_leave:insufficient_available_entitlement',
     }
   );
 
@@ -1485,12 +1608,15 @@ test('Core employee leave request execution uses canonical leave ledger', async 
       name: 'Request Leave Employee',
       firebaseUid: 'uid-request-leave',
       employment: {
+        startDate: '2025-01-01',
         baseSalaryHalalas: 450000,
         leaveBalance: 5,
       },
     },
     actor
   );
+
+  await seedAnnualLeaveOpeningBalance(db, 'emp-request-leave', 5);
 
   const employeeActor = {
     uid: 'uid-request-leave',
@@ -1549,7 +1675,7 @@ test('Core employee leave request execution uses canonical leave ledger', async 
     );
 
   request =
-    await transitionEmployeeRequest(
+    await withFixedRiyadhDate(t, () => transitionEmployeeRequest(
       db,
       'main',
       request.id,
@@ -1557,12 +1683,13 @@ test('Core employee leave request execution uses canonical leave ledger', async 
       {
         version: request.version,
         note: 'Approved',
+        entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
       },
       adminActor
-    );
+    ));
 
   request =
-    await transitionEmployeeRequest(
+    await withFixedRiyadhDate(t, () => transitionEmployeeRequest(
       db,
       'main',
       request.id,
@@ -1571,7 +1698,7 @@ test('Core employee leave request execution uses canonical leave ledger', async 
         version: request.version,
       },
       adminActor
-    );
+    ));
 
   assert.equal(
     request.status,
@@ -1693,6 +1820,18 @@ test('Core employee leave request execution uses canonical leave ledger', async 
     1
   );
 
+  await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'rejected',
+      hrNote: 'Cancel completed leave and restore balance',
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
+    },
+    adminActor
+  );
+
   request =
     await transitionEmployeeRequest(
       db,
@@ -1702,6 +1841,7 @@ test('Core employee leave request execution uses canonical leave ledger', async 
       {
         version: request.version,
         note: 'Cancel completed leave and restore balance',
+        entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
       },
       adminActor
     );
@@ -1722,6 +1862,21 @@ test('Core employee leave request execution uses canonical leave ledger', async 
 
   assert.equal(cancelledLeave.status, 'rejected');
 
+  const requestReversal =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'leave_reversal'
+         AND source_id = ?
+       LIMIT 1
+    `)
+      .bind(leave.balance_adjustment_id)
+      .first();
+
+  assert.ok(requestReversal);
+  assert.equal(Number(requestReversal.change_amount), 2);
+
   const restoredEmployment =
     await db.prepare(`
       SELECT leave_balance
@@ -1730,14 +1885,17 @@ test('Core employee leave request execution uses canonical leave ledger', async 
          AND employee_id = 'emp-request-leave'
     `).first();
 
-  assert.equal(Number(restoredEmployment.leave_balance), 5);
+  assert.equal(
+    Number(restoredEmployment.leave_balance),
+    Number(requestReversal.balance_after)
+  );
 
   const reversalCount =
     await db.prepare(`
       SELECT COUNT(*) AS count
         FROM employee_leave_balance_ledger
        WHERE salon_id = 'main'
-         AND source_type = 'reversal'
+         AND source_type = 'leave_reversal'
          AND source_id = ?
     `)
       .bind(leave.balance_adjustment_id)
@@ -1762,7 +1920,7 @@ test('Core employee leave request execution uses canonical leave ledger', async 
       SELECT COUNT(*) AS count
         FROM employee_leave_balance_ledger
        WHERE salon_id = 'main'
-         AND source_type = 'reversal'
+         AND source_type = 'leave_reversal'
          AND source_id = ?
     `)
       .bind(leave.balance_adjustment_id)
@@ -1771,7 +1929,7 @@ test('Core employee leave request execution uses canonical leave ledger', async 
   assert.equal(Number(repeatedReversalCount.count), 1);
 });
 
-test('annual leave cash compensation preview calculates from Core salary and leave balance', async (t) => {
+test('annual leave cash compensation preview is blocked during active service', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
@@ -1785,27 +1943,32 @@ test('annual leave cash compensation preview calculates from Core salary and lea
     firebaseUid: 'uid-preview',
     phone: '0500000088',
     employment: {
+      startDate: '2025-01-01',
       baseSalaryHalalas: 450000,
       leaveBalance: 21,
     },
   }, actor);
 
-  const preview = await getExceptionalFinancialPaymentPreview(
-    db,
-    'main',
-    'emp-preview',
-    3
+  await assert.rejects(
+    () => getExceptionalFinancialPaymentPreview(
+      db,
+      'main',
+      'emp-preview',
+      3
+    ),
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
   );
 
-  assert.equal(preview.requestedDays, 3);
-  assert.equal(preview.baseSalaryHalalas, 450000);
-  assert.equal(preview.dayRateHalalas, 15000);
-  assert.equal(preview.calculatedAmountHalalas, 45000);
-  assert.equal(preview.annualLeaveBalance, 21);
-  assert.equal(preview.enoughLeaveBalance, true);
+  const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-preview'").first();
+  assert.equal(Number(balance.leave_balance), 21);
+  const payments = await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND employee_id='emp-preview'").first();
+  assert.equal(Number(payments.count), 0);
 });
 
-test('annual leave cash compensation pays daily value and deducts the same leave days', async (t) => {
+test('annual leave cash compensation create is blocked and leaves payroll untouched', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
@@ -1815,6 +1978,7 @@ test('annual leave cash compensation pays daily value and deducts the same leave
   await upsertHrEmployee(db, 'main', {
     id: 'emp-fin', name: 'Financial Employee', firebaseUid: 'uid-fin', phone: '0500000099',
     employment: {
+      startDate: '2025-01-01',
       title: 'Stylist',
       baseSalaryHalalas: 450000,
       leaveBalance: 21,
@@ -1824,6 +1988,7 @@ test('annual leave cash compensation pays daily value and deducts the same leave
       gosiWageMode: 'derived',
     },
   }, actor);
+  await seedAnnualLeaveOpeningBalance(db, 'emp-fin', 21);
 
   const period = await upsertPayrollPeriod(db, 'main', {
     id: 'period-fin-2026-08', payrollMonth: '2026-08', monthStart: '2026-08-01', monthEnd: '2026-08-31',
@@ -1837,7 +2002,8 @@ test('annual leave cash compensation pays daily value and deducts the same leave
   }, actor);
 
   const employeeActor = { uid: 'uid-fin', employeeId: 'emp-fin', email: 'fin@example.com', name: 'Financial Employee', role: 'employee' };
-  let request = await createEmployeeRequest(db, 'main', {
+  await assert.rejects(
+    () => createEmployeeRequest(db, 'main', {
     requestType: 'exceptional_financial_payment',
     payload: {
       requestedDays: 3,
@@ -1846,130 +2012,37 @@ test('annual leave cash compensation pays daily value and deducts the same leave
       acknowledgement: true,
       employeeSignatureDataUrl: `data:image/png;base64,${'a'.repeat(300)}`,
     },
-    idempotencyKey: 'financial-payment-test-1',
-  }, employeeActor);
-
-  assert.equal(request.payload.baseSalaryHalalas, 450000);
-  assert.equal(request.payload.dayRateHalalas, 15000);
-  assert.equal(request.payload.calculatedAmountHalalas, 45000);
-  assert.equal(request.payload.balanceDeductionDays, 3);
-  assert.equal(request.payload.leaveBalanceTreatment, 'deduct_on_execution');
-
-  const before = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
-  assert.equal(before.leave_balance, 21);
-
-  const adminActor = { ...actor, role: 'admin' };
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', {
-    version: request.version,
-    note: 'مع الموافقة',
-    payload: { reviewerSignatureDataUrl: `data:image/png;base64,${'b'.repeat(300)}` },
-  }, adminActor);
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'execute', {
-    version: request.version,
-    payrollMonth: '2026-08',
-    financialReference: 'PAY-TEST-001',
-  }, adminActor);
-
-  assert.equal(request.status, 'completed');
-  assert.equal(request.source_reference_type, 'employee_financial_payment');
-  assert.equal(request.external_reference, 'PAY-TEST-001');
-
-  const after = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
-  assert.equal(after.leave_balance, 18);
-  const compensationLedger = await db.prepare(`
-    SELECT *
-      FROM employee_leave_balance_ledger
-     WHERE salon_id = 'main'
-       AND source_type =
-             'exceptional_financial_payment'
-       AND source_id = ?
-     LIMIT 1
-  `)
-    .bind(request.id)
-    .first();
-
-  assert.ok(compensationLedger);
-
-  assert.equal(
-    Number(compensationLedger.days),
-    3
+      idempotencyKey: 'financial-payment-test-1',
+    }, employeeActor),
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
   );
 
-  assert.equal(
-    Number(compensationLedger.change_amount),
-    -3
-  );
-
-  assert.equal(
-    Number(compensationLedger.balance_before),
-    21
-  );
-
-  assert.equal(
-    Number(compensationLedger.balance_after),
-    18
-  );
-
-  const compensationEmployment = await db.prepare(`
-    SELECT
-      leave_balance,
-      leave_balance_last_entry_id
-    FROM employee_employment
-    WHERE salon_id = 'main'
-      AND employee_id = 'emp-fin'
-    LIMIT 1
-  `).first();
-
-  assert.equal(
-    Number(compensationEmployment.leave_balance),
-    18
-  );
-
-  assert.equal(
-    compensationEmployment.leave_balance_last_entry_id,
-    compensationLedger.id
-  );
-
-  const compensationLedgerCount = await db.prepare(`
+  const blockedBalance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
+  assert.equal(Number(blockedBalance.leave_balance), 21);
+  const blockedLedger = await db.prepare(`
     SELECT COUNT(*) AS count
       FROM employee_leave_balance_ledger
      WHERE salon_id = 'main'
        AND source_type =
              'exceptional_financial_payment'
-       AND source_id = ?
-  `)
-    .bind(request.id)
-    .first();
-
-  assert.equal(
-    Number(compensationLedgerCount.count),
-    1
-  );
-
-  const payment = await db.prepare("SELECT * FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
-  assert.equal(payment.amount_halalas, 45000);
-  assert.equal(payment.requested_days, 3);
-  assert.equal(payment.leave_balance_deducted, 3);
-  assert.equal(payment.payroll_month, '2026-08');
-  assert.equal(payment.financial_reference, 'PAY-TEST-001');
-
-  const payroll = await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-fin-1'").first();
-  assert.equal(payroll.manual_additions_halalas, 45000);
-  assert.equal(payroll.gross_salary_halalas, 495000);
-  assert.equal(payroll.net_salary_halalas, 495000);
-  assert.equal(payroll.final_salary_halalas, 495000);
-  const additions = JSON.parse(payroll.additions_json || '[]');
-  assert.equal(additions.filter((item) => item.requestId === request.id).length, 1);
-
-  const impact = await getEmployeeRequestPayrollImpact(db, 'main', employeeActor);
-  assert.equal(impact.financialPayments.length, 1);
-  assert.equal(impact.financialPayments[0].amount_halalas, 45000);
+  `).first();
+  assert.equal(Number(blockedLedger.count), 0);
+  const blockedPayments = await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND employee_id='emp-fin'").first();
+  assert.equal(Number(blockedPayments.count), 0);
+  const blockedPayroll = await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-fin-1'").first();
+  assert.equal(Number(blockedPayroll.manual_additions_halalas), 0);
+  assert.equal(Number(blockedPayroll.gross_salary_halalas), 450000);
+  assert.equal(Number(blockedPayroll.net_salary_halalas), 450000);
+  assert.equal(Number(blockedPayroll.final_salary_halalas), 450000);
+  const blockedImpact = await getEmployeeRequestPayrollImpact(db, 'main', employeeActor);
+  assert.equal(blockedImpact.financialPayments.length, 0);
 });
 
 
-test('annual leave cash compensation rejects days above available annual leave balance', async (t) => {
+test('annual leave cash compensation creation is blocked before balance checks', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
   await db.prepare(`INSERT INTO staff
@@ -1977,7 +2050,7 @@ test('annual leave cash compensation rejects days above available annual leave b
     VALUES ('emp-low-balance','main','uid-low-balance','Low Balance',1,'active','2026-01-01','2026-01-01')`).run();
   await upsertHrEmployee(db, 'main', {
     id: 'emp-low-balance', name: 'Low Balance', firebaseUid: 'uid-low-balance',
-    employment: { baseSalaryHalalas: 300000, leaveBalance: 2 },
+    employment: { startDate: '2025-01-01', baseSalaryHalalas: 300000, leaveBalance: 2 },
   }, actor);
   const employeeActor = { uid: 'uid-low-balance', employeeId: 'emp-low-balance', name: 'Low Balance', role: 'employee' };
   await assert.rejects(
@@ -1991,7 +2064,10 @@ test('annual leave cash compensation rejects days above available annual leave b
       },
       idempotencyKey: 'financial-payment-low-balance',
     }, employeeActor),
-    { code: 'core_employee_request:insufficient_annual_leave_balance' }
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
   );
   const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-low-balance'").first();
   assert.equal(balance.leave_balance, 2);
@@ -1999,7 +2075,7 @@ test('annual leave cash compensation rejects days above available annual leave b
   assert.equal(payments.count, 0);
 });
 
-test('exceptional financial payment execution fails closed when payroll entry is missing', async (t) => {
+test('legacy exceptional financial payment rows cannot be approved or executed', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
   await db.prepare(`INSERT INTO staff
@@ -2007,29 +2083,51 @@ test('exceptional financial payment execution fails closed when payroll entry is
     VALUES ('emp-no-payroll','main','uid-no-payroll','No Payroll',1,'active','2026-01-01','2026-01-01')`).run();
   await upsertHrEmployee(db, 'main', {
     id: 'emp-no-payroll', name: 'No Payroll', firebaseUid: 'uid-no-payroll',
-    employment: { baseSalaryHalalas: 300000, leaveBalance: 15 },
+    employment: { startDate: '2025-01-01', baseSalaryHalalas: 300000, leaveBalance: 15 },
   }, actor);
-  const employeeActor = { uid: 'uid-no-payroll', employeeId: 'emp-no-payroll', name: 'No Payroll', role: 'employee' };
-  let request = await createEmployeeRequest(db, 'main', {
-    requestType: 'exceptional_financial_payment',
-    payload: {
-      requestedDays: 1,
-      reason: 'اختبار عدم وجود مسير',
-      acknowledgement: true,
-      employeeSignatureDataUrl: `data:image/png;base64,${'c'.repeat(300)}`,
-    },
-    idempotencyKey: 'financial-payment-test-no-payroll',
-  }, employeeActor);
-  const adminActor = { ...actor, role: 'admin' };
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
-  request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', { version: request.version }, adminActor);
+  await db.prepare(`
+    INSERT INTO employee_requests (
+      id, request_number, salon_id, employee_id, employee_uid,
+      employee_name_snapshot, request_type, status, priority, title,
+      payload_json, execution_status, execution_attempts,
+      idempotency_key, version, submitted_at, created_at, updated_at,
+      created_by_uid, updated_by_uid
+    )
+    VALUES (
+      'legacy-efp-blocked', 'REQ-LEGACY-EFP-1', 'main',
+      'emp-no-payroll', 'uid-no-payroll', 'No Payroll',
+      'exceptional_financial_payment', 'under_review', 'normal',
+      'Legacy exceptional financial payment',
+      '{"requestedDays":1}', 'not_started', 0,
+      'legacy-efp-blocked', 1,
+      '2026-08-01T00:00:00.000Z',
+      '2026-08-01T00:00:00.000Z',
+      '2026-08-01T00:00:00.000Z',
+      'uid-no-payroll', 'uid-no-payroll'
+    )
+  `).run();
+  const blockedAdminActor = { ...actor, role: 'admin' };
   await assert.rejects(
-    () => transitionEmployeeRequest(db, 'main', request.id, 'execute', { version: request.version, payrollMonth: '2026-08', financialReference: 'PAY-MISSING' }, adminActor),
-    { code: 'core_employee_request:payroll_entry_required' }
+    () => transitionEmployeeRequest(db, 'main', 'legacy-efp-blocked', 'approve', { version: 1 }, blockedAdminActor),
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
   );
-  const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-no-payroll'").first();
-  assert.equal(balance.leave_balance, 15);
+  await assert.rejects(
+    () => transitionEmployeeRequest(db, 'main', 'legacy-efp-blocked', 'execute', { version: 1, payrollMonth: '2026-08', financialReference: 'PAY-MISSING' }, blockedAdminActor),
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
+  );
+  const legacyRequest = await db.prepare("SELECT status, execution_status FROM employee_requests WHERE salon_id='main' AND id='legacy-efp-blocked'").first();
+  assert.equal(legacyRequest.status, 'under_review');
+  assert.equal(legacyRequest.execution_status, 'not_started');
+  const blockedBalance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-no-payroll'").first();
+  assert.equal(Number(blockedBalance.leave_balance), 15);
+  const payments = await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND employee_id='emp-no-payroll'").first();
+  assert.equal(Number(payments.count), 0);
 });
 
 test('Phase 6 settings and protected R2 file flow work without Firestore', async (t) => {
@@ -2978,15 +3076,15 @@ test('salary advance scheduled before payroll creation is canonically deducted a
     (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
      repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
      payment_status, financial_reference, approved_by_uid, approved_at, paid_at, created_at, updated_at)
-    VALUES ('advance-late','main','request-late','emp-late','uid-late',120000,120000,
-            'single',1,'2026-09',120000,0,'paid','ADV-LATE-001','uid-admin',
+    VALUES ('advance-late','main','request-late','emp-late','uid-late',50000,50000,
+            'single',1,'2026-09',50000,0,'paid','ADV-LATE-001','uid-admin',
             '2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z',
             '2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z')`).run();
 
   await db.prepare(`INSERT INTO salary_advance_installments
     (id, salon_id, advance_id, installment_number, payroll_month, amount_halalas,
      status, payroll_entry_id, deducted_at, created_at, updated_at)
-    VALUES ('advance-late-1','main','advance-late',1,'2026-09',120000,
+    VALUES ('advance-late-1','main','advance-late',1,'2026-09',50000,
             'scheduled',NULL,NULL,'2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z')`).run();
 
   const saved = await upsertPayrollEntry(db, 'main', {
@@ -3036,10 +3134,10 @@ test('salary advance scheduled before payroll creation is canonically deducted a
     skipTargetBonus: true,
   }, actor);
 
-  assert.equal(saved.advances_halalas, 120000);
-  assert.equal(saved.total_deductions_halalas, 120000);
-  assert.equal(saved.net_salary_halalas, 380000);
-  assert.equal(saved.final_salary_halalas, 380000);
+  assert.equal(saved.advances_halalas, 50000);
+  assert.equal(saved.total_deductions_halalas, 50000);
+  assert.equal(saved.net_salary_halalas, 450000);
+  assert.equal(saved.final_salary_halalas, 450000);
 
   let installment = await db.prepare(
     "SELECT * FROM salary_advance_installments WHERE id='advance-late-1'"
@@ -3061,7 +3159,7 @@ test('salary advance scheduled before payroll creation is canonically deducted a
   let advance = await db.prepare(
     "SELECT * FROM salary_advances WHERE id='advance-late'"
   ).first();
-  assert.equal(advance.paid_halalas, 120000);
+  assert.equal(advance.paid_halalas, 50000);
   assert.equal(advance.remaining_halalas, 0);
   assert.equal(advance.payment_status, 'repaid');
 
@@ -3069,7 +3167,7 @@ test('salary advance scheduled before payroll creation is canonically deducted a
   advance = await db.prepare(
     "SELECT * FROM salary_advances WHERE id='advance-late'"
   ).first();
-  assert.equal(advance.paid_halalas, 120000);
+  assert.equal(advance.paid_halalas, 50000);
   assert.equal(advance.remaining_halalas, 0);
 });
 
@@ -3083,15 +3181,15 @@ test('salary advance settlement rolls back payroll paid state when installment s
     (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
      repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
      payment_status, financial_reference, approved_by_uid, approved_at, paid_at, created_at, updated_at)
-    VALUES ('advance-atomic','main','request-atomic','emp-atomic','uid-atomic',50000,50000,
-            'single',1,'2026-10',50000,0,'paid','ADV-ATOMIC-001','uid-admin',
+    VALUES ('advance-atomic','main','request-atomic','emp-atomic','uid-atomic',40000,40000,
+            'single',1,'2026-10',40000,0,'paid','ADV-ATOMIC-001','uid-admin',
             '2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z',
             '2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z')`).run();
 
   await db.prepare(`INSERT INTO salary_advance_installments
     (id, salon_id, advance_id, installment_number, payroll_month, amount_halalas,
      status, payroll_entry_id, deducted_at, created_at, updated_at)
-    VALUES ('advance-atomic-1','main','advance-atomic',1,'2026-10',50000,
+    VALUES ('advance-atomic-1','main','advance-atomic',1,'2026-10',40000,
             'scheduled',NULL,NULL,'2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z')`).run();
 
   const saved = await upsertPayrollEntry(db, 'main', {
@@ -3165,7 +3263,7 @@ test('salary advance settlement rolls back payroll paid state when installment s
   assert.equal(installmentAfter.status, 'scheduled');
   assert.equal(installmentAfter.deducted_at, null);
   assert.equal(advanceAfter.paid_halalas, 0);
-  assert.equal(advanceAfter.remaining_halalas, 50000);
+  assert.equal(advanceAfter.remaining_halalas, 40000);
   assert.equal(advanceAfter.payment_status, 'paid');
 });
 
@@ -3200,7 +3298,7 @@ test('employee request needs-info can resume review without creating a replaceme
   assert.equal(Number(count.count),1);
 });
 
-test('exceptional financial payment recovers after balance top-up and retry stays idempotent', async (t) => {
+test('exceptional financial payment retry path stays blocked during active service', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
   await db.prepare(`INSERT INTO staff
@@ -3209,6 +3307,7 @@ test('exceptional financial payment recovers after balance top-up and retry stay
   await upsertHrEmployee(db,'main',{
     id:'emp-efp-retry',name:'EFP Retry Employee',firebaseUid:'uid-efp-retry',
     employment:{
+      startDate:'2025-01-01',
       baseSalaryHalalas:450000,
       leaveBalance:5,
       socialInsuranceCategory:'non_saudi',
@@ -3228,57 +3327,28 @@ test('exceptional financial payment recovers after balance top-up and retry stay
   },actor);
   const employeeActor={uid:'uid-efp-retry',employeeId:'emp-efp-retry',name:'EFP Retry Employee',role:'employee'};
   const adminActor={...actor,role:'admin'};
-  let request=await createEmployeeRequest(db,'main',{
-    requestType:'exceptional_financial_payment',
-    payload:{requestedDays:3,reason:'اختبار استرداد التنفيذ بعد زيادة الرصيد',acknowledgement:true,employeeSignatureDataUrl:`data:image/png;base64,${'r'.repeat(300)}`},
-    idempotencyKey:'efp-retry-after-balance-topup',
-  },employeeActor);
-  request=await transitionEmployeeRequest(db,'main',request.id,'receive',{version:request.version},adminActor);
-  request=await transitionEmployeeRequest(db,'main',request.id,'start-review',{version:request.version},adminActor);
-  request=await transitionEmployeeRequest(db,'main',request.id,'approve',{
-    version:request.version,payload:{reviewerSignatureDataUrl:`data:image/png;base64,${'s'.repeat(300)}`},
-  },adminActor);
+  await assert.rejects(
+    () => createEmployeeRequest(db,'main',{
+      requestType:'exceptional_financial_payment',
+      payload:{requestedDays:3,reason:'Active-service annual leave cash substitution is not allowed',acknowledgement:true,employeeSignatureDataUrl:`data:image/png;base64,${'r'.repeat(300)}`},
+      idempotencyKey:'efp-retry-after-balance-topup',
+    },employeeActor),
+    {
+      code:
+        'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
+    }
+  );
   await db.prepare("UPDATE employee_employment SET leave_balance=2 WHERE salon_id='main' AND employee_id='emp-efp-retry'").run();
-  await assert.rejects(()=>transitionEmployeeRequest(db,'main',request.id,'execute',{
-    version:request.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
-  },adminActor),{code:'core_employee_request:insufficient_annual_leave_balance'});
-  let failed=await db.prepare("SELECT * FROM employee_requests WHERE salon_id='main' AND id=?").bind(request.id).first();
-  assert.equal(failed.status,'executing'); assert.equal(failed.execution_status,'failed'); assert.equal(Number(failed.execution_attempts),1);
-  let count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
-  assert.equal(Number(count.count),0);
   await db.prepare("UPDATE employee_employment SET leave_balance=5 WHERE salon_id='main' AND employee_id='emp-efp-retry'").run();
-  request=await transitionEmployeeRequest(db,'main',request.id,'execute',{
-    version:failed.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
-  },adminActor);
-  assert.equal(request.status,'completed'); assert.equal(request.execution_status,'completed');
-  assert.equal(request.source_reference_type,'employee_financial_payment'); assert.ok(request.source_reference_id);
-  let balance=await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
-  assert.equal(Number(balance.leave_balance),2);
-  count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
-  assert.equal(Number(count.count),1);
-  let ledgerCount=await db.prepare("SELECT COUNT(*) AS count FROM employee_leave_balance_ledger WHERE salon_id='main' AND source_type='exceptional_financial_payment' AND source_id=?").bind(request.id).first();
-  assert.equal(Number(ledgerCount.count),1);
-  let payroll=await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-efp-retry-1'").first();
-  let additions=JSON.parse(payroll.additions_json||'[]');
-  assert.equal(additions.filter((item)=>item.requestId===request.id).length,1);
-  assert.equal(Number(payroll.manual_additions_halalas),45000);
-
-  await db.prepare("UPDATE employee_requests SET status='executing',execution_status='failed',completed_at=NULL,execution_completed_at=NULL,version=version+1 WHERE salon_id='main' AND id=?").bind(request.id).run();
-  failed=await db.prepare("SELECT * FROM employee_requests WHERE salon_id='main' AND id=?").bind(request.id).first();
-  request=await transitionEmployeeRequest(db,'main',request.id,'execute',{
-    version:failed.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
-  },adminActor);
-  assert.equal(request.status,'completed');
-  balance=await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
-  assert.equal(Number(balance.leave_balance),2);
-  count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
-  assert.equal(Number(count.count),1);
-  ledgerCount=await db.prepare("SELECT COUNT(*) AS count FROM employee_leave_balance_ledger WHERE salon_id='main' AND source_type='exceptional_financial_payment' AND source_id=?").bind(request.id).first();
-  assert.equal(Number(ledgerCount.count),1);
-  payroll=await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-efp-retry-1'").first();
-  additions=JSON.parse(payroll.additions_json||'[]');
-  assert.equal(additions.filter((item)=>item.requestId===request.id).length,1);
-  assert.equal(Number(payroll.manual_additions_halalas),45000);
+  const balanceBlocked=await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
+  assert.equal(Number(balanceBlocked.leave_balance),5);
+  const paymentBlocked=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
+  assert.equal(Number(paymentBlocked.count),0);
+  const ledgerBlocked=await db.prepare("SELECT COUNT(*) AS count FROM employee_leave_balance_ledger WHERE salon_id='main' AND source_type='exceptional_financial_payment'").first();
+  assert.equal(Number(ledgerBlocked.count),0);
+  const payrollBlocked=await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-efp-retry-1'").first();
+  assert.equal(Number(payrollBlocked.manual_additions_halalas),0);
+  assert.equal(Number(payrollBlocked.final_salary_halalas),450000);
 });
 
 test('employee master profile fields round-trip through canonical Core D1', async (t) => {
