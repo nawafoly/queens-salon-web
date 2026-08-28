@@ -13,6 +13,8 @@ test('official payroll exports are unified, professional and keep leave compensa
   const payslipExcel = read('src/services/exports-v2/payroll-payslip-excel.ts');
   const payslipPdf = read('src/services/exports-v2/payroll-payslip-pdf.ts');
   const dashboard = read('src/pages/DashboardPayroll.tsx');
+  const coreApi = read('src/services/coreApiClient.ts');
+  const obligationsPanel = read('src/pages/dashboardEmployees/PayrollObligationsPanel.tsx');
 
   assert.doesNotMatch(report, /المستحق حتى اليوم|earnedToDate/);
   assert.doesNotMatch(pdf, /المستحق حتى اليوم|earnedToDate/);
@@ -64,6 +66,14 @@ test('official payroll exports are unified, professional and keep leave compensa
   assert.match(dashboard, /createPortal/);
   assert.match(dashboard, /Excel جوال/);
   assert.match(dashboard, /handleExportPayrollMobileExcel/);
+  assert.match(dashboard, /deferAttendanceDeduction/);
+  assert.match(dashboard, /تأجيل خصم الحضور/);
+  assert.match(dashboard, /advancesHalalas/);
+  assert.match(dashboard, /خصومات أخرى غير مصنفة/);
+  assert.doesNotMatch(coreApi, /خدمة الحجز/);
+  assert.match(coreApi, /attendance_deferral_snapshot_stale/);
+  assert.match(coreApi, /deduction_reason_required/);
+  assert.match(obligationsPanel, /rawCode/);
 });
 
 test('payroll Excel exposes attendance, GOSI and deferred deductions with complete numeric totals', () => {
@@ -76,6 +86,10 @@ test('payroll Excel exposes attendance, GOSI and deferred deductions with comple
   assert.match(report, /ترحيل خصم الحضور إلى/);
   assert.match(report, /خصم GOSI للموظفة/);
   assert.match(report, /مساهمة المنشأة GOSI/);
+  assert.match(report, /advanceDeductions/);
+  assert.match(report, /أقساط السلف/);
+  assert.match(report, /unclassifiedDeductions/);
+  assert.match(report, /خصومات أخرى غير مصنفة/);
 
   assert.match(excel, /function isTotalableDetailColumn/);
   assert.match(excel, /column\.type === "number"/);
@@ -84,6 +98,9 @@ test('payroll Excel exposes attendance, GOSI and deferred deductions with comple
   assert.match(excel, /0\.00 &quot;ر\.س&quot;/);
   assert.match(excel, /خصم الحضور المؤجل بند إفصاح فقط/);
   assert.match(excel, /للموظفة غير السعودية/);
+  assert.match(excel, /row[block.key]/);
+  assert.match(excel, /cachedTotal/);
+  assert.match(excel, /أقساط السلف/);
 });
 
 test('payroll approval and next-period reconciliation are explicit source-of-truth operations', () => {
