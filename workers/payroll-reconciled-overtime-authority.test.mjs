@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const payroll = readFileSync('workers/core/repositories/payroll.js', 'utf8');
 const migration = readFileSync('migrations/core/0045_payroll_reconciled_overtime_authority.sql', 'utf8');
+const approvalGuards = readFileSync('migrations/core/0046_payroll_reconciled_overtime_approval_guards.sql', 'utf8');
 
 test('draft payroll financial overtime comes only from reconciled cash overtime', () => {
   assert.match(
@@ -17,6 +18,17 @@ test('draft payroll financial overtime comes only from reconciled cash overtime'
   assert.doesNotMatch(
     payroll,
     /const financialOvertimeHours\s*=\s*[\s\S]{0,120}\?\s*detectedExtraHours\s*:\s*0/
+  );
+});
+
+test('locked payroll carryover preserves approved overtime instead of inventing money from raw extra time', () => {
+  assert.match(
+    payroll,
+    /Approved\/paid payroll is an immutable overtime financial snapshot/
+  );
+  assert.match(
+    payroll,
+    /const overtimeValueHalalas\s*=\s*intMoney\(\s*sourceEntry\.overtime_value_halalas\s*\)/
   );
 });
 
@@ -34,4 +46,6 @@ test('database prevents comp-time and cash-payroll double compensation', () => {
   assert.match(migration, /payroll_reconciled_overtime_snapshot_stale/);
   assert.match(migration, /trg_payroll_approval_include_reconciled_overtime/);
   assert.match(migration, /trg_payroll_reopen_release_reconciled_overtime/);
+  assert.match(approvalGuards, /payroll_reconciled_overtime_hours_mismatch/);
+  assert.match(approvalGuards, /payroll_reconciled_overtime_value_formula_mismatch/);
 });
