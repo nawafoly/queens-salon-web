@@ -2,15 +2,19 @@
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 
 const path = 'workers/core/repositories/payroll.js';
-let source = readFileSync(path, 'utf8');
+const rawSource = readFileSync(path, 'utf8');
+const originalEol = rawSource.includes('\r\n') ? '\r\n' : '\n';
+let source = rawSource.replace(/\r\n/g, '\n');
 
 function replaceExact(label, before, after) {
-  const first = source.indexOf(before);
+  const normalizedBefore = before.replace(/\r\n/g, '\n');
+  const normalizedAfter = after.replace(/\r\n/g, '\n');
+  const first = source.indexOf(normalizedBefore);
   if (first < 0) throw new Error(`${label}: anchor_not_found`);
-  if (source.indexOf(before, first + before.length) >= 0) {
+  if (source.indexOf(normalizedBefore, first + normalizedBefore.length) >= 0) {
     throw new Error(`${label}: anchor_not_unique`);
   }
-  source = source.slice(0, first) + after + source.slice(first + before.length);
+  source = source.slice(0, first) + normalizedAfter + source.slice(first + normalizedBefore.length);
 }
 
 if (!source.includes("from './overtime-reconciliation.js'")) {
@@ -124,7 +128,10 @@ replaceExact(
 `
 );
 
-writeFileSync(path, source, 'utf8');
+const output = originalEol === '\r\n'
+  ? source.replace(/\n/g, '\r\n')
+  : source;
+writeFileSync(path, output, 'utf8');
 
 // One-shot migration helper: remove itself so it cannot become a second runtime.
 unlinkSync(new URL(import.meta.url));
