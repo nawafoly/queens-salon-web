@@ -215,9 +215,17 @@ test("admin UI and dashboard pass the partial leave contract end to end", () => 
   assert.match(dashboard, /partialEndTime:\s*isPartialLeave/);
   assert.match(
     canonicalLeaveBridge,
-    /durationKind:\s*request\.durationKind\s*===\s*"partial"[\s\S]{0,120}?\?\s*"partial"[\s\S]{0,120}?:\s*"full_day"/
+    /durationKind:\s*cleanText\(payload\.durationKind\)\.toLowerCase\(\)\s*===\s*"partial"\s*\?\s*"partial"\s*:\s*"full_day"/
   );
-  assert.match(canonicalLeaveBridge, /partialStartTime:\s*request\.durationKind\s*===\s*"partial"/);
-  assert.match(canonicalLeaveBridge, /partialEndTime:\s*request\.durationKind\s*===\s*"partial"/);
-  assert.match(canonicalLeaveBridge, /CoreHrService\.createLeave\(\{/);
+  assert.match(
+    canonicalLeaveBridge,
+    /partialStartTime:\s*cleanText\(payload\.partialStartTime\s*\|\|\s*base\.partialStartTime\)/
+  );
+  assert.match(
+    canonicalLeaveBridge,
+    /partialEndTime:\s*cleanText\(payload\.partialEndTime\s*\|\|\s*base\.partialEndTime\)/
+  );
+  assert.match(canonicalLeaveBridge, /employeeRequestAction\(request\.id, action/);
+  assert.match(canonicalLeaveBridge, /CoreHrService\.listLeaves\(\{ employeeId \}\)/);
+  assert.doesNotMatch(canonicalLeaveBridge, /CoreHrService\.createLeave\(/);
 });
