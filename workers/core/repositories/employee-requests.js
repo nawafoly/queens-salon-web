@@ -11,6 +11,7 @@ import {
   leaveDecisionRuntime,
   requireExplicitSaLeaveType,
 } from './leaves.js';
+import { executeStatutoryOvertimeRequest } from './employee-request-overtime.js';
 import {
   createEmployeeRequest as legacyCreateEmployeeRequest,
   transitionEmployeeRequest as legacyTransitionEmployeeRequest,
@@ -46,16 +47,6 @@ export function employeeRequestComplianceGate(
         code: 'core_employee_request:annual_leave_cash_substitution_during_service_not_allowed',
       };
     }
-  }
-
-  if (
-    requestType === 'overtime' &&
-    action === 'execute'
-  ) {
-    return {
-      allowed: false,
-      code: 'core_employee_request:overtime_statutory_runtime_required',
-    };
   }
 
   return { allowed: true, code: null };
@@ -176,6 +167,25 @@ export async function transitionEmployeeRequest(
     assertLeaveRequestDecisionAllowed(
       parsePayload(row.payload_json),
       actionKey
+    );
+  }
+
+  if (
+    cleanText(row.request_type).toLowerCase() === 'overtime' &&
+    actionKey === 'execute'
+  ) {
+    if (options.ownOnly) {
+      throw new AppError(
+        403,
+        'core_employee_request:employee_action_forbidden'
+      );
+    }
+    return executeStatutoryOvertimeRequest(
+      db,
+      salonId,
+      idValue,
+      input,
+      actor
     );
   }
 

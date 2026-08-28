@@ -36,12 +36,10 @@ test('historical exceptional financial payment cancellation and rejection remain
   );
 });
 
-test('legacy overtime execution fails closed until statutory request runtime owns it', () => {
-  const gate = employeeRequestComplianceGate('overtime', 'execute');
-  assert.equal(gate.allowed, false);
+test('overtime execution is allowed because the wrapper owns a statutory runtime', () => {
   assert.equal(
-    gate.code,
-    'core_employee_request:overtime_statutory_runtime_required'
+    employeeRequestComplianceGate('overtime', 'execute').allowed,
+    true
   );
 });
 
