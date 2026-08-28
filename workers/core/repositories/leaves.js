@@ -34,6 +34,10 @@ import {
   cancelSpecialStatutoryLeave,
   specialStatutoryLeaveRuntimeSupport,
 } from './special-statutory-leave.js';
+import {
+  approveSensitiveFamilyLeave,
+  cancelSensitiveFamilyLeave,
+} from './sensitive-family-leave.js';
 import { annualLeavePublicHolidayExtension } from './public-holiday-overlap.js';
 
 const DETERMINISTIC_SPECIAL_TYPES = new Set([
@@ -45,12 +49,20 @@ const DETERMINISTIC_SPECIAL_TYPES = new Set([
   SA_LEAVE_TYPES.exam,
 ]);
 
+const SENSITIVE_FAMILY_TYPES = new Set([
+  SA_LEAVE_TYPES.maternity,
+  SA_LEAVE_TYPES.childMedicalCare,
+  SA_LEAVE_TYPES.widowMuslim,
+  SA_LEAVE_TYPES.widowNonMuslim,
+]);
+
 const CANONICAL_APPROVAL_TYPES = new Set([
   SA_LEAVE_TYPES.annual,
   SA_LEAVE_TYPES.sick,
   SA_LEAVE_TYPES.overtimeCompTimeUse,
   SA_LEAVE_TYPES.weeklyRestSubstituteUse,
   ...DETERMINISTIC_SPECIAL_TYPES,
+  ...SENSITIVE_FAMILY_TYPES,
 ]);
 
 const LEGACY_SAFE_APPROVAL_TYPES = new Set([
@@ -69,10 +81,7 @@ const STATUTORY_VALIDATION_TYPES = new Set([
   SA_LEAVE_TYPES.newborn,
   SA_LEAVE_TYPES.hajj,
   SA_LEAVE_TYPES.exam,
-  SA_LEAVE_TYPES.maternity,
-  SA_LEAVE_TYPES.childMedicalCare,
-  SA_LEAVE_TYPES.widowMuslim,
-  SA_LEAVE_TYPES.widowNonMuslim,
+  ...SENSITIVE_FAMILY_TYPES,
 ]);
 
 function legalBasisForLeaveType(leaveType) {
@@ -220,6 +229,9 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
     if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
       return 'special_statutory_approve';
     }
+    if (SENSITIVE_FAMILY_TYPES.has(leaveType)) {
+      return 'sensitive_family_approve';
+    }
     if (STATUTORY_VALIDATION_TYPES.has(leaveType)) {
       return 'statutory_validation_block';
     }
@@ -235,6 +247,9 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
     }
     if (DETERMINISTIC_SPECIAL_TYPES.has(leaveType)) {
       return 'special_statutory_cancel';
+    }
+    if (SENSITIVE_FAMILY_TYPES.has(leaveType)) {
+      return 'sensitive_family_cancel';
     }
   }
 
@@ -426,6 +441,24 @@ export async function decideLeave(
 
     case 'special_statutory_cancel':
       return cancelSpecialStatutoryLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sensitive_family_approve':
+      return approveSensitiveFamilyLeave(
+        db,
+        salonId,
+        leave,
+        decision,
+        actor
+      );
+
+    case 'sensitive_family_cancel':
+      return cancelSensitiveFamilyLeave(
         db,
         salonId,
         leave,
