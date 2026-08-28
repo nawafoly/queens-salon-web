@@ -119,7 +119,14 @@ WHEN
          AND maternity.leave_type = 'maternity'
          AND maternity.status = 'approved'
          AND episode.birth_reconciliation_status = 'reconciled'
-         AND NEW.start_date = date(maternity.end_date, '+1 day')
+         AND NEW.start_date = date(
+           CASE
+             WHEN COALESCE(episode.mandatory_post_birth_end_date, '') > maternity.end_date
+               THEN episode.mandatory_post_birth_end_date
+             ELSE maternity.end_date
+           END,
+           '+1 day'
+         )
     ) OR
     NEW.days_count <= 0 OR
     NEW.days_count > 30
