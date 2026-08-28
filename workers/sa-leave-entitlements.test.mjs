@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   SA_LEAVE_TYPES,
   annualLeaveStatutoryMinimumDays,
   calculateAnnualLeaveAccrual,
+  calculateAnnualLeaveAccrualRange,
   calculateAnnualLeaveAvailable,
   calculateSickLeaveSegments,
   completedServiceYears,
@@ -46,14 +48,37 @@ test('contractual annual entitlement may exceed statutory minimum but never redu
   }).annualEntitlementDays, 30);
 });
 
-test('opening/manual persisted balance is additive to live statutory accrual', () => {
-  const result = calculateAnnualLeaveAvailable({
+test('opening balance is an as-of anchor and does not double-count prior accrual', () => {
+  const onAnchor = calculateAnnualLeaveAvailable({
     startDate: '2026-01-01',
-    asOfDate: '2026-01-01',
-    persistedNetDays: 7,
+    asOfDate: '2026-08-28',
+    openingBalanceEffectiveDate: '2026-08-28',
+    openingBalanceDays: 7,
   });
-  assert.equal(result.elapsedDays, 1);
-  assert.ok(result.availableDays > 7);
+  assert.equal(onAnchor.availableDays, 7);
+  assert.equal(onAnchor.accruedSinceAnchorDays, 0);
+
+  const nextDay = calculateAnnualLeaveAvailable({
+    startDate: '2026-01-01',
+    asOfDate: '2026-08-29',
+    openingBalanceEffectiveDate: '2026-08-28',
+    openingBalanceDays: 7,
+  });
+  assert.ok(nextDay.availableDays > 7);
+  assert.ok(nextDay.availableDays < 7.1);
+});
+
+test('accrual range splits at exact five-year anniversary', () => {
+  const result = calculateAnnualLeaveAccrualRange({
+    startDate: '2021-08-28',
+    fromExclusiveDate: '2026-08-26',
+    asOfDate: '2026-08-29',
+  });
+  assert.equal(result.segments.length, 2);
+  assert.equal(result.segments[0].annualEntitlementDays, 21);
+  assert.equal(result.segments[0].elapsedDays, 1);
+  assert.equal(result.segments[1].annualEntitlementDays, 30);
+  assert.equal(result.segments[1].elapsedDays, 2);
 });
 
 test('only annual leave debits annual balance', () => {
@@ -90,4 +115,14 @@ test('sick leave beyond statutory 120-day band fails closed to review', () => {
   assert.equal(segments[0].reviewRequired, false);
   assert.equal(segments[1].ordinalFrom, 121);
   assert.equal(segments[1].reviewRequired, true);
+});
+
+test('opening balance migration supports a zero audited anchor and one active anchor per employee', () => {
+  const migration = readFileSync(
+    new URL('../migrations/core/0040_sa_annual_leave_opening_anchor.sql', import.meta.url),
+    'utf8'
+  );
+  assert.match(migration, /entry_code = 'OPENING_BALANCE' AND days = 0/);
+  assert.match(migration, /idx_employee_leave_opening_balance_active/);
+  assert.match(migration, /entry_code = 'OPENING_BALANCE'/);
 });
