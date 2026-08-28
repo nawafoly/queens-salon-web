@@ -54,7 +54,7 @@ test("Aida payroll uses 2700 actual fixed wage for attendance and statutory over
   assert.equal(result.netSalaryHalalas, 262646);
 });
 
-test("Core payroll persists labor policy evidence and rejects stale wage snapshots", () => {
+test("Core payroll persists labor policy evidence, rejects stale wages and uses reconciled overtime authority", () => {
   const source = readFileSync(
     new URL("../workers/core/repositories/payroll.js", import.meta.url),
     "utf8"
@@ -72,11 +72,19 @@ test("Core payroll persists labor policy evidence and rejects stale wage snapsho
   );
   assert.match(
     source,
-    /core_payroll:locked_labor_snapshot_incomplete/
+    /listReconciledCashOvertimeForPayroll/
   );
   assert.match(
     source,
-    /core_payroll:legacy_locked_overtime_review_required/
+    /reconciled_cash_overtime_only/
+  );
+  assert.match(
+    source,
+    /Approved\/paid payroll is an immutable overtime financial snapshot/
+  );
+  assert.match(
+    source,
+    /sourceEntry\.overtime_value_halalas/
   );
   assert.doesNotMatch(
     source,
