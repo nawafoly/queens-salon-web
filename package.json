@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev-with-partners.mjs",
     "dev:full": "node scripts/dev-with-partners.mjs",
+    "dev:setup": "node scripts/dev-setup.mjs",
     "dev:vite": "vite",
     "dev:partners": "wrangler dev --config wrangler.partners.jsonc --local --port 8787 --show-interactive-dev-session=false",
     "dev:packages": "npm run dev:core",
@@ -28,8 +29,8 @@
     "test:packages:emulator": "npm --prefix functions run build && firebase emulators:exec --project waves-hotel-dashboard --only auth,firestore,functions \"npm --prefix functions run test:emulator\"",
     "cap:sync:customer": "npm run build:customer && cross-env CAP_APP_VARIANT=customer cap sync android",
     "cap:open:customer": "cross-env CAP_APP_VARIANT=customer cap open android",
-    "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android",
-    "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android",
+    "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android-hr",
+    "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android-hr",
     "dev:core": "wrangler dev --config wrangler.core.jsonc --local --port 8807 --show-interactive-dev-session=false",
     "dev:all": "node scripts/dev-all.mjs",
     "check:frontend-core-migration": "node scripts/check-frontend-core-migration.mjs",
