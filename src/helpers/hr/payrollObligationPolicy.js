@@ -190,6 +190,52 @@ export function withoutPayrollObligationDeductionItems(items) {
   return (Array.isArray(items) ? items : []).filter((item) => !isPayrollObligationDeductionItem(item));
 }
 
+export function isAttendancePayrollObligationDeductionItem(item) {
+  if (!isPayrollObligationDeductionItem(item)) return false;
+
+  const obligationKind = String(
+    item?.obligationKind ??
+    item?.obligation_kind ??
+    item?.trace?.obligationKind ??
+    item?.trace?.obligation_kind ??
+    ""
+  ).trim().toLowerCase();
+
+  const originSourceType = String(
+    item?.trace?.sourceType ??
+    item?.trace?.source_type ??
+    ""
+  ).trim().toLowerCase();
+
+  return (
+    originSourceType === "attendance" ||
+    obligationKind === "attendance_missing_hours"
+  );
+}
+
+export function payrollAttendanceObligationDeductionTotal(items) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    if (!isAttendancePayrollObligationDeductionItem(item)) return sum;
+    return sum + money(
+      item?.amountHalalas ??
+      item?.amount_halalas ??
+      item?.amount
+    );
+  }, 0);
+}
+
+export function payrollOtherObligationDeductionTotal(items) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    if (!isPayrollObligationDeductionItem(item)) return sum;
+    if (isAttendancePayrollObligationDeductionItem(item)) return sum;
+    return sum + money(
+      item?.amountHalalas ??
+      item?.amount_halalas ??
+      item?.amount
+    );
+  }, 0);
+}
+
 export function payrollObligationDeductionTotal(items) {
   return (Array.isArray(items) ? items : []).reduce((sum, item) => {
     if (!isPayrollObligationDeductionItem(item)) return sum;

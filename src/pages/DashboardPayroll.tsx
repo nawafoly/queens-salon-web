@@ -57,7 +57,11 @@ import {
   payrollAttendanceReadiness,
 } from "../helpers/hr/payrollReadiness.js";
 import { isPayrollCarryoverItem } from "../helpers/hr/payrollCarryoverPolicy.js";
-import { payrollObligationDeductionTotal } from "../helpers/hr/payrollObligationPolicy.js";
+import {
+  payrollAttendanceObligationDeductionTotal,
+  payrollObligationDeductionTotal,
+  payrollOtherObligationDeductionTotal,
+} from "../helpers/hr/payrollObligationPolicy.js";
 import {
   payrollExportExclusionReason,
 } from "../helpers/reports/exportPayrollReport";
@@ -1199,7 +1203,10 @@ export default function DashboardPayroll() {
               const exclusionReason = exportEligible ? "" : payrollOfficialExclusionReason(entry);
               const manualAdjustments = hasManualAdjustments(entry);
               const payrollMoney = calculatePayrollAccrualView(entry);
-              const obligationDeductionHalalas = payrollObligationDeductionTotal(entry.deductions || []);
+              const attendanceObligationDeductionHalalas =
+                payrollAttendanceObligationDeductionTotal(entry.deductions || []);
+              const otherObligationDeductionHalalas =
+                payrollOtherObligationDeductionTotal(entry.deductions || []);
               const manualDeductionHalalas = ordinaryManualDeductionsHalalas(entry);
               const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
               const deferredAttendanceHalalas = attendanceDeferredAmountHalalas(entry);
@@ -1257,7 +1264,12 @@ export default function DashboardPayroll() {
                     <small>نقص ساعات {formatPayrollMoney(entry.missingHoursDeductionHalalas)}</small>
                     {Number(entry.insuranceDeductionHalalas || 0) > 0 ? <small>GOSI {formatPayrollMoney(entry.insuranceDeductionHalalas)}</small> : null}
                     {Number(entry.advancesHalalas || 0) > 0 ? <small>سلف {formatPayrollMoney(entry.advancesHalalas)}</small> : null}
-                    {obligationDeductionHalalas > 0 ? <small>التزامات {formatPayrollMoney(obligationDeductionHalalas)}</small> : null}
+                    {attendanceObligationDeductionHalalas > 0 ? (
+                      <small>حضور مرحّل {formatPayrollMoney(attendanceObligationDeductionHalalas)}</small>
+                    ) : null}
+                    {otherObligationDeductionHalalas > 0 ? (
+                      <small>استقطاع مجدول {formatPayrollMoney(otherObligationDeductionHalalas)}</small>
+                    ) : null}
                     {manualDeductionHalalas > 0 ? <small>يدوي {formatPayrollMoney(manualDeductionHalalas)}</small> : null}
                     {unclassifiedDeductionHalalas > 0 ? <small>أخرى {formatPayrollMoney(unclassifiedDeductionHalalas)}</small> : null}
                     {deferredAttendanceHalalas > 0 ? (
@@ -1504,6 +1516,10 @@ function PayrollDetailsModal({
   );
   const deferredAttendanceHalalas = attendanceDeferredAmountHalalas(entry);
   const deferredAttendanceTarget = attendanceDeferralTargetMonth(entry);
+  const carriedAttendanceDeductionHalalas =
+    payrollAttendanceObligationDeductionTotal(entry.deductions || []);
+  const otherScheduledDeductionHalalas =
+    payrollOtherObligationDeductionTotal(entry.deductions || []);
   const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
   return createPortal(
     <div className="dashboard-v2 payroll-modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -1623,12 +1639,21 @@ function PayrollDetailsModal({
             <h3>الخصومات</h3>
             <dl>
               <div><dt>خصم الغياب</dt><dd>{formatPayrollMoney(entry.absenceDeductionHalalas)}</dd></div>
-              <div><dt>خصم نقص الساعات / التأخير / الخروج المبكر</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>خصم حضور هذه الفترة (نقص ساعات / تأخير / خروج مبكر)</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
               {deferredAttendanceHalalas > 0 ? (
                 <div><dt>خصم حضور مؤجل</dt><dd>{formatPayrollMoney(deferredAttendanceHalalas)} إلى {deferredAttendanceTarget || "شهر لاحق"}</dd></div>
               ) : null}
               <div><dt>خصم التأمينات الاجتماعية (GOSI)</dt><dd>{formatPayrollMoney(entry.insuranceDeductionHalalas)}</dd></div>
-              <div><dt>التزامات وأقساط إدارية</dt><dd>{formatPayrollMoney(payrollObligationDeductionTotal(entry.deductions || []))}</dd></div>
+              {carriedAttendanceDeductionHalalas > 0 ? (
+                <div>
+                  <dt>خصم حضور مرحّل من فترة سابقة</dt>
+                  <dd>{formatPayrollMoney(carriedAttendanceDeductionHalalas)}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>استقطاعات مجدولة أخرى</dt>
+                <dd>{formatPayrollMoney(otherScheduledDeductionHalalas)}</dd>
+              </div>
               <div><dt>تسويات فترات سابقة</dt><dd>{formatPreviousPeriodAdjustment(entry)}</dd></div>
               <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
               <div><dt>خصومات يدوية وجزاءات أخرى</dt><dd>{formatPayrollMoney(ordinaryManualDeductionsHalalas(entry))}</dd></div>

@@ -6,7 +6,11 @@ import {
 } from "../../services/CorePayrollService";
 import { formatAttendanceHours } from "../hr/attendanceDiscipline";
 import { isPayrollCarryoverItem } from "../hr/payrollCarryoverPolicy.js";
-import { payrollObligationDeductionTotal } from "../hr/payrollObligationPolicy.js";
+import {
+  payrollAttendanceObligationDeductionTotal,
+  payrollObligationDeductionTotal,
+  payrollOtherObligationDeductionTotal,
+} from "../hr/payrollObligationPolicy.js";
 import {
   exportV2FormatPeriod,
   exportV2SafeText,
@@ -75,7 +79,8 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   insuranceDeduction: number;
   employerGosiRate: string;
   employerGosiContribution: number;
-  obligationDeductions: number;
+  carriedAttendanceDeduction: number;
+  otherScheduledDeductions: number;
   advanceDeductions: number;
   manualDeductions: number;
   unclassifiedDeductions: number;
@@ -362,7 +367,12 @@ export function buildPayrollReportDataV2(
         entry.gosiSnapshot?.employer?.totalRateBps
       ),
       employerGosiContribution: halalasToRiyals(entry.employerGosiContributionHalalas),
-      obligationDeductions: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])),
+      carriedAttendanceDeduction: halalasToRiyals(
+        payrollAttendanceObligationDeductionTotal(entry.deductions || [])
+      ),
+      otherScheduledDeductions: halalasToRiyals(
+        payrollOtherObligationDeductionTotal(entry.deductions || [])
+      ),
       advanceDeductions: halalasToRiyals(entry.advancesHalalas),
       manualDeductions: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)),
       unclassifiedDeductions: halalasToRiyals(payrollUnclassifiedDeductionsHalalas(entry)),
@@ -502,7 +512,8 @@ export function buildPayrollReportDataV2(
       { key: "insuranceDeduction", header: "خصم GOSI للموظفة", type: "currency", width: 17, align: "center" },
       { key: "employerGosiRate", header: "نسبة مساهمة المنشأة GOSI", width: 19, align: "center" },
       { key: "employerGosiContribution", header: "مساهمة المنشأة GOSI", type: "currency", width: 19, align: "center" },
-      { key: "obligationDeductions", header: "التزامات وأقساط إدارية", type: "currency", width: 20, align: "center" },
+      { key: "carriedAttendanceDeduction", header: "خصم حضور مرحّل من فترة سابقة", type: "currency", width: 21, align: "center" },
+      { key: "otherScheduledDeductions", header: "استقطاعات مجدولة أخرى", type: "currency", width: 20, align: "center" },
       { key: "advanceDeductions", header: "أقساط السلف", type: "currency", width: 16, align: "center" },
       { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
       { key: "unclassifiedDeductions", header: "خصومات أخرى غير مصنفة", type: "currency", width: 19, align: "center" },
@@ -604,7 +615,20 @@ export function buildPayrollPayslipDataV2(
     },
     { item: "خصم التأمينات الاجتماعية (GOSI)", value: halalasToRiyals(entry.insuranceDeductionHalalas), note: entry.gosiSnapshot ? `السياسة: ${entry.gosiSnapshot.policyVersion}` : "لا يوجد Snapshot تأمينات محفوظ" },
     { item: "السلف", value: halalasToRiyals(entry.advancesHalalas), note: "" },
-    { item: "التزامات وأقساط إدارية", value: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])), note: "تظهر وفق جدول التحصيل المعتمد للشهر." },
+    {
+      item: "خصم حضور مرحّل من فترة سابقة",
+      value: halalasToRiyals(
+        payrollAttendanceObligationDeductionTotal(entry.deductions || [])
+      ),
+      note: "أصله خصم حضور أو نقص ساعات تم تأجيل تحصيله من فترة سابقة؛ ليس التزامًا إداريًا.",
+    },
+    {
+      item: "استقطاعات مجدولة أخرى",
+      value: halalasToRiyals(
+        payrollOtherObligationDeductionTotal(entry.deductions || [])
+      ),
+      note: "استقطاعات مجدولة لا تشمل خصم الحضور المرحّل.",
+    },
     { item: "الخصومات اليدوية والجزاءات الأخرى", value: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)), note: "لا تشمل GOSI أو الالتزامات المجدولة أو تسويات الفترات السابقة." },
     {
       item: "تسويات فترات سابقة",
