@@ -2,9 +2,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
-const isWindows = process.platform === "win32";
-const npx = isWindows ? "npx.cmd" : "npx";
 const projectRoot = process.cwd();
+const wranglerBin = resolve(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 const coreDevConfig = resolve(projectRoot, "wrangler.core.dev.jsonc");
 const partnersDevConfig = resolve(projectRoot, "wrangler.partners.dev.jsonc");
 const generatedCoreConfig = resolve(projectRoot, ".wrangler.core.setup.local.generated.jsonc");
@@ -14,31 +13,27 @@ function fail(message) {
   process.exit(1);
 }
 
-function run(label, args) {
+function runWrangler(label, args, options = {}) {
   console.log(`\n[dev:setup] ${label}`);
-  const result = spawnSync(npx, args, {
+  const result = spawnSync(process.execPath, [wranglerBin, ...args], {
     cwd: projectRoot,
-    stdio: "inherit",
     shell: false,
     env: process.env,
+    ...options,
   });
 
   if (result.error) fail(`${label}: ${result.error.message}`);
   if (result.status !== 0) fail(`${label} exited with code ${result.status ?? "unknown"}`);
+  return result;
+}
+
+function run(label, args) {
+  runWrangler(label, args, { stdio: "inherit" });
 }
 
 function runJson(label, args) {
-  console.log(`\n[dev:setup] ${label}`);
-  const result = spawnSync(npx, args, {
-    cwd: projectRoot,
-    encoding: "utf8",
-    shell: false,
-    env: process.env,
-  });
-
+  const result = runWrangler(label, args, { encoding: "utf8" });
   if (result.stderr) process.stderr.write(result.stderr);
-  if (result.error) fail(`${label}: ${result.error.message}`);
-  if (result.status !== 0) fail(`${label} exited with code ${result.status ?? "unknown"}`);
 
   try {
     return JSON.parse(result.stdout || "null");
@@ -75,6 +70,9 @@ console.log(`[dev:setup] Node ${process.version}`);
 if (!existsSync(resolve(projectRoot, "node_modules"))) {
   fail("node_modules is missing. Run npm install once, then rerun npm run dev:setup.");
 }
+if (!existsSync(wranglerBin)) {
+  fail("Local Wrangler is missing. Run npm install once, then rerun npm run dev:setup.");
+}
 if (!existsSync(coreDevConfig)) {
   fail("wrangler.core.dev.jsonc is missing on this device.");
 }
@@ -86,7 +84,6 @@ try {
   createLocalOnlyCoreConfig();
 
   run("Apply pending Core D1 migrations locally", [
-    "wrangler",
     "d1",
     "migrations",
     "apply",
@@ -97,7 +94,6 @@ try {
   ]);
 
   run("Verify Core D1 migration state", [
-    "wrangler",
     "d1",
     "migrations",
     "list",
@@ -108,7 +104,6 @@ try {
   ]);
 
   const accountResult = runJson("Verify an active internal account exists locally", [
-    "wrangler",
     "d1",
     "execute",
     "queens-salon-core",
