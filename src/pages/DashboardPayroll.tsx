@@ -513,7 +513,9 @@ export default function DashboardPayroll() {
         if (entry.payrollSetupComplete) {
           acc.complete += 1;
           acc.base += entry.baseSalaryHalalas;
+          acc.allowances += entry.allowancesHalalas;
           acc.additions += payrollOrdinaryAdditionsHalalas(entry);
+          acc.overtime += entry.overtimeValueHalalas;
           acc.leaveCompensation += payrollLeaveCompensationHalalas(entry);
           acc.deductions += entry.totalDeductionsHalalas;
           acc.net += entry.netSalaryHalalas;
@@ -539,7 +541,9 @@ export default function DashboardPayroll() {
         saved: 0,
         preview: 0,
         base: 0,
+        allowances: 0,
         additions: 0,
+        overtime: 0,
         leaveCompensation: 0,
         deductions: 0,
         net: 0,
@@ -1114,8 +1118,10 @@ export default function DashboardPayroll() {
           <span className="dsv2-badge">{payrollMonth}</span>
         </div>
         <div className="payroll-financial-grid">
-          <div className="payroll-financial-item"><span>إجمالي الرواتب</span><strong>{formatPayrollMoney(summary.base)}</strong></div>
+          <div className="payroll-financial-item"><span>إجمالي الرواتب الأساسية</span><strong>{formatPayrollMoney(summary.base)}</strong></div>
+          <div className="payroll-financial-item"><span>البدلات التعاقدية</span><strong>{formatPayrollMoney(summary.allowances)}</strong></div>
           <div className="payroll-financial-item is-positive"><span>الإضافات والمكافآت</span><strong>{formatPayrollMoney(summary.additions)}</strong></div>
+          <div className="payroll-financial-item is-positive"><span>الأوفر تايم</span><strong>{formatPayrollMoney(summary.overtime)}</strong></div>
           <div className="payroll-financial-item"><span>تعويض رصيد الإجازات</span><strong>{formatPayrollMoney(summary.leaveCompensation)}</strong></div>
           <div className="payroll-financial-item is-negative"><span>الخصومات</span><strong>{formatPayrollMoney(summary.deductions)}</strong></div>
           <div className="payroll-financial-item is-accrued"><span>المستحق حتى اليوم</span><strong>{formatPayrollMoney(summary.earned)}</strong></div>
@@ -1158,7 +1164,9 @@ export default function DashboardPayroll() {
               <th>الجاهزية</th>
               <th>إعداد الراتب</th>
               <th>الراتب الأساسي</th>
+              <th>البدلات التعاقدية</th>
               <th>الإضافات والمكافآت</th>
+              <th>الأوفر تايم</th>
               <th>تعويض رصيد الإجازات</th>
               <th>الخصومات</th>
               <th>المستحق / المتوقع</th>
@@ -1239,7 +1247,9 @@ export default function DashboardPayroll() {
                       <small><a href={employeePayrollPath(entry)}>إعداد الراتب</a></small>
                     ) : null}
                   </td>
+                  <td className="payroll-money-cell">{formatPayrollMoney(entry.allowancesHalalas)}</td>
                   <td className="payroll-money-cell is-positive">{formatPayrollMoney(payrollOrdinaryAdditionsHalalas(entry))}</td>
+                  <td className="payroll-money-cell is-positive">{formatPayrollMoney(entry.overtimeValueHalalas)}</td>
                   <td className="payroll-money-cell">{formatPayrollMoney(payrollLeaveCompensationHalalas(entry))}</td>
                   <td className="payroll-money-cell is-negative">
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
@@ -1621,7 +1631,9 @@ function PayrollDetailsModal({
 
         <section className="payroll-net-panel">
           <div><span>إجمالي الراتب</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
-          <div><span>إجمالي الإضافات والمكافآت</span><strong>{formatPayrollMoney(payrollOrdinaryAdditionsHalalas(entry))}</strong></div>
+          <div><span>البدلات التعاقدية</span><strong>{formatPayrollMoney(entry.allowancesHalalas)}</strong></div>
+          <div><span>الإضافات والمكافآت</span><strong>{formatPayrollMoney(payrollOrdinaryAdditionsHalalas(entry))}</strong></div>
+          <div><span>الأوفر تايم</span><strong>{formatPayrollMoney(entry.overtimeValueHalalas)}</strong></div>
           <div><span>تعويض رصيد الإجازات</span><strong>{formatPayrollMoney(payrollLeaveCompensationHalalas(entry))}</strong></div>
           <div><span>إجمالي الخصومات</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
           <div className="is-net">
