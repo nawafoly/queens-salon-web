@@ -40,11 +40,13 @@ export type PayrollReportV2Input = {
   includeIncomplete?: boolean;
   originalCount?: number;
   excludedRows?: Array<{ employeeName: string; reason: string }>;
+  isForecast?: boolean;
   filters: PayrollReportV2Filters;
 };
 
 export type PayrollPayslipV2Input = {
   entry: PayrollEntryView;
+  isForecast?: boolean;
   payrollBounds?: {
     monthStart?: string;
     monthEnd?: string;
@@ -230,7 +232,9 @@ function statusLabel(value: unknown) {
   return STATUS_LABELS[key] || exportV2SafeText(key, "غير محدد");
 }
 
-function attendanceStatus(entry: PayrollEntryView) {
+function attendanceStatus(entry: PayrollEntryView, isForecast = false) {
+  if (isForecast) return "لم تبدأ الفترة";
+
   if (
     entry.attendanceSummary.attendancePayrollMode === "exempt" ||
     entry.attendanceSummary.attendanceLinkStatus === "exempt"
@@ -333,7 +337,7 @@ export function buildPayrollReportDataV2(
       employeeName: exportV2SafeText(entry.employeeName, "موظفة غير محددة"),
       jobTitle: exportV2SafeText(entry.jobTitle, "غير محدد"),
       setupStatus: setupStatus(entry),
-      attendanceStatus: attendanceStatus(entry),
+      attendanceStatus: attendanceStatus(entry, Boolean(input.isForecast)),
       baseSalary: halalasToRiyals(entry.baseSalaryHalalas),
       contractualAllowances: halalasToRiyals(entry.allowancesHalalas),
       attendanceDays: Number(entry.attendanceSummary.attendanceDays || 0),
@@ -444,8 +448,12 @@ export function buildPayrollReportDataV2(
   return {
     slug: "payroll",
     reportCode: "HR-PAYROLL",
-    title: "تقرير مسيرة الرواتب",
-    subtitle: "ملخص تنفيذي واضح للمسيرة الشهرية؛ تفاصيل الحضور التشغيلية الكاملة متاحة في Excel وكشف الموظفة.",
+    title: input.isForecast
+      ? "تقرير مسيرة الرواتب التقديري"
+      : "تقرير مسيرة الرواتب",
+    subtitle: input.isForecast
+      ? "معاينة مستقبلية غير معتمدة؛ تعتمد القيم النهائية بعد بدء الفترة واحتساب الحضور."
+      : "ملخص تنفيذي واضح للمسيرة الشهرية؛ تفاصيل الحضور التشغيلية الكاملة متاحة في Excel وكشف الموظفة.",
     summarySheetName: "ملخص الرواتب",
     detailsSheetName: "تفاصيل الرواتب",
     period: periodLabel(input.filters),
@@ -466,7 +474,11 @@ export function buildPayrollReportDataV2(
       { label: "تاريخ الصرف المتوقع", value: exportV2SafeText(input.filters.payDate, "غير محدد") },
       {
         label: "نطاق التصدير",
-        value: input.includeIncomplete ? "يشمل السجلات غير المكتملة" : "السجلات المكتملة فقط",
+        value: input.isForecast
+          ? "معاينة مستقبلية تقديرية — غير معتمدة"
+          : input.includeIncomplete
+            ? "يشمل السجلات غير المكتملة"
+            : "السجلات المكتملة فقط",
       },
     ],
     summary: [
@@ -608,10 +620,18 @@ export function buildPayrollPayslipDataV2(
     },
     {
       item: "خصم نقص الساعات / التأخير / الخروج المبكر",
-      value: entry.attendanceSummary.attendanceDeductionEligible === false
+      value: input.isForecast
         ? 0
-        : halalasToRiyals(entry.missingHoursDeductionHalalas),
-      note: entry.attendanceSummary.attendanceDeductionEligible === false ? (entry.attendanceSummary.attendancePayrollMode === "exempt" ? "معفى من الحضور والانصراف" : "لم يطبق") : "",
+        : entry.attendanceSummary.attendanceDeductionEligible === false
+          ? 0
+          : halalasToRiyals(entry.missingHoursDeductionHalalas),
+      note: input.isForecast
+        ? "فترة مستقبلية؛ لم يبدأ احتساب الحضور بعد."
+        : entry.attendanceSummary.attendanceDeductionEligible === false
+          ? (entry.attendanceSummary.attendancePayrollMode === "exempt"
+              ? "معفى من الحضور والانصراف"
+              : "لم يطبق")
+          : "",
     },
     { item: "خصم التأمينات الاجتماعية (GOSI)", value: halalasToRiyals(entry.insuranceDeductionHalalas), note: entry.gosiSnapshot ? `السياسة: ${entry.gosiSnapshot.policyVersion}` : "لا يوجد Snapshot تأمينات محفوظ" },
     { item: "السلف", value: halalasToRiyals(entry.advancesHalalas), note: "" },
@@ -652,7 +672,9 @@ export function buildPayrollPayslipDataV2(
   return {
     slug: `payroll-payslip-${entry.employeeId}`,
     reportCode: "HR-PAYSLIP",
-    title: "كشف راتب موظفة",
+    title: input.isForecast
+      ? "كشف راتب تقديري"
+      : "كشف راتب موظفة",
     subtitle: `${exportV2SafeText(entry.employeeName)} — ${exportV2SafeText(entry.jobTitle, "موظفة")}`,
     summarySheetName: "ملخص كشف الراتب",
     detailsSheetName: "بنود كشف الراتب",

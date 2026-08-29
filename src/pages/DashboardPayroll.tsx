@@ -441,6 +441,11 @@ export default function DashboardPayroll() {
   const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
   const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);
   const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);
+  const [actionMenu, setActionMenu] = useState<{
+    entry: PayrollEntryView;
+    top: number;
+    left: number;
+  } | null>(null);
   const [includeIncompleteExport, setIncludeIncompleteExport] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -449,6 +454,59 @@ export default function DashboardPayroll() {
 
   const payrollBounds = payrollMonthBounds(year, month);
   const payrollMonth = payrollBounds.payrollMonth;
+
+  const currentPeriod = currentYearMonth();
+  const currentPayrollMonth =
+    String(currentPeriod.year) +
+    "-" +
+    String(currentPeriod.month).padStart(2, "0");
+
+  const isFuturePayrollPeriod = payrollMonth > currentPayrollMonth;
+
+  const futureExportExclusionReason = (entry: PayrollEntryView) => {
+    if (!entry.payrollSetupComplete) {
+      return "إعداد الراتب غير مكتمل.";
+    }
+
+    const gosi = entry.gosiSnapshot as any;
+    if (!gosi?.policyVersion || !gosi?.insuranceCategory) {
+      return "إعداد GOSI غير مكتمل أو غير ساري على الفترة.";
+    }
+
+    return "";
+  };
+
+  const selectedPeriodExportExclusionReason = (entry: PayrollEntryView) =>
+    isFuturePayrollPeriod
+      ? futureExportExclusionReason(entry)
+      : payrollOfficialExclusionReason(entry);
+
+  const isSelectedPeriodExportEligible = (entry: PayrollEntryView) =>
+    !selectedPeriodExportExclusionReason(entry);
+
+  const openPayrollActionMenu = (event: any, entry: PayrollEntryView) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 260;
+    const estimatedHeight = 360;
+    const gap = 8;
+    const edge = 12;
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top =
+      spaceBelow >= estimatedHeight + gap
+        ? rect.bottom + gap
+        : Math.max(edge, rect.top - estimatedHeight - gap);
+
+    const left = Math.max(
+      edge,
+      Math.min(
+        rect.right - width,
+        window.innerWidth - width - edge
+      )
+    );
+
+    setActionMenu({ entry, top, left });
+  };
 
   const load = async () => {
     setLoading(true);
@@ -506,7 +564,7 @@ export default function DashboardPayroll() {
         const approvalReadiness = payrollApprovalReadiness(
           entry as unknown as Record<string, unknown>
         );
-        const exportEligible = isPayrollOfficialExportEligible(entry);
+        const exportEligible = isSelectedPeriodExportEligible(entry);
 
         acc.count += 1;
         if (entry.saved) acc.saved += 1;
@@ -524,8 +582,15 @@ export default function DashboardPayroll() {
           acc.deductions += entry.totalDeductionsHalalas;
           acc.net += entry.netSalaryHalalas;
           acc.earned += calculatePayrollAccrualView(entry).earnedToDateHalalas;
-          if (!attendanceReadiness.ready) acc.attendanceReview += 1;
-          else if (!approvalReadiness.ready && approvalReadiness.stage === "gosi") acc.gosiReview += 1;
+          if (isFuturePayrollPeriod) {
+            if (!exportEligible && entry.payrollSetupComplete) {
+              acc.gosiReview += 1;
+            }
+          } else if (!attendanceReadiness.ready) {
+            acc.attendanceReview += 1;
+          } else if (!approvalReadiness.ready && approvalReadiness.stage === "gosi") {
+            acc.gosiReview += 1;
+          }
         } else {
           acc.incomplete += 1;
         }
@@ -557,7 +622,7 @@ export default function DashboardPayroll() {
         paid: 0,
       }
     );
-  }, [visibleEntries]);
+  }, [visibleEntries, isFuturePayrollPeriod]);
 
   const selectedEmployeeName =
     employeeFilter === "all"
@@ -567,30 +632,51 @@ export default function DashboardPayroll() {
   const officialExportableCount = visibleEntries.filter(
     isPayrollOfficialExportEligible
   ).length;
+
+  const periodExportableCount = visibleEntries.filter(
+    isSelectedPeriodExportEligible
+  ).length;
+
   const exportableEntries = includeIncompleteExport
     ? visibleEntries
-    : visibleEntries.filter(isPayrollOfficialExportEligible);
+    : visibleEntries.filter(isSelectedPeriodExportEligible);
+
   const exportableCount = exportableEntries.length;
-  const payrollCycleLabel = `فترة الاحتساب: ${payrollBounds.monthStart} إلى ${payrollBounds.monthEnd} · الصرف المتوقع: ${payrollBounds.payDate}`;
+
+  const payrollCycleLabel =
+    "فترة الاحتساب: " +
+    payrollBounds.monthStart +
+    " إلى " +
+    payrollBounds.monthEnd +
+    " · الصرف المتوقع: " +
+    payrollBounds.payDate;
+
   const payrollPeriodStatus = payrollAccrualPeriodStatus(payrollMonth);
-  const payrollPartialLabel = payrollPeriodStatus.isPartial
-    ? "مسيرة جزئية محسوبة حتى " + (payrollPeriodStatus.completedThroughDate || "لم تبدأ الفترة")
-    : "مسيرة مكتملة / نهائية";
+
+  const payrollPartialLabel = isFuturePayrollPeriod
+    ? "فترة مستقبلية — معاينة تقديرية غير معتمدة"
+    : payrollPeriodStatus.isPartial
+      ? "مسيرة جزئية محسوبة حتى " +
+        (payrollPeriodStatus.completedThroughDate || "لم تبدأ الفترة")
+      : "مسيرة مكتملة / نهائية";
 
   const payrollReportInput = () => {
     const exportedEntries = exportableEntries;
     const excludedRows = includeIncompleteExport
       ? []
       : visibleEntries
-          .filter((entry) => !isPayrollOfficialExportEligible(entry))
+          .filter((entry) => !isSelectedPeriodExportEligible(entry))
           .map((entry) => ({
             employeeName: entry.employeeName || entry.employeeId || "غير متوفر",
-            reason: payrollOfficialExclusionReason(entry) || "غير قابل للتصدير",
+            reason:
+              selectedPeriodExportExclusionReason(entry) ||
+              "غير قابل للتصدير",
           }));
 
     return {
       entries: exportedEntries,
       includeIncomplete: includeIncompleteExport,
+      isForecast: isFuturePayrollPeriod,
       originalCount: visibleEntries.length,
       excludedRows,
       filters: {
@@ -1042,9 +1128,21 @@ export default function DashboardPayroll() {
 
           <div className="payroll-export-meta">
             <span className="dsv2-badge dsv2-badge--success">
-              {includeIncompleteExport
-                ? `مراجعة داخلية: سيتم تصدير ${exportableCount} · الجاهز رسميًا ${officialExportableCount}`
-                : `جاهز للتصدير الرسمي ${officialExportableCount} من ${visibleEntries.length}`}
+              {isFuturePayrollPeriod
+                ? "معاينة مستقبلية: قابل للتصدير " +
+                  periodExportableCount +
+                  " من " +
+                  visibleEntries.length +
+                  " — غير معتمدة"
+                : includeIncompleteExport
+                  ? "مراجعة داخلية: سيتم تصدير " +
+                    exportableCount +
+                    " · الجاهز رسميًا " +
+                    officialExportableCount
+                  : "جاهز للتصدير الرسمي " +
+                    officialExportableCount +
+                    " من " +
+                    visibleEntries.length}
             </span>
             <label className="payroll-export-option">
               <input
@@ -1086,9 +1184,15 @@ export default function DashboardPayroll() {
             <small>المؤهلون حاليًا مع حفظ السجلات التاريخية المقفلة</small>
           </article>
           <article className="payroll-readiness-card is-ready">
-            <span>جاهزون للتصدير</span>
+            <span>
+              {isFuturePayrollPeriod ? "جاهزون للمعاينة" : "جاهزون للتصدير"}
+            </span>
             <strong>{summary.exportReady}</strong>
-            <small>الراتب والحضور وGOSI جاهزة</small>
+            <small>
+              {isFuturePayrollPeriod
+                ? "إعداد الراتب وGOSI جاهزان؛ الحضور يبدأ مع الفترة"
+                : "الراتب والحضور وGOSI جاهزة"}
+            </small>
           </article>
           <article className="payroll-readiness-card is-setup">
             <span>يحتاج إعداد راتب</span>
@@ -1157,7 +1261,10 @@ export default function DashboardPayroll() {
           </div>
           <div className="payroll-table-counts">
             <span className="dsv2-badge">{visibleEntries.length} سجل</span>
-            <span className="dsv2-badge dsv2-badge--success">{summary.exportReady} جاهز للتصدير</span>
+            <span className="dsv2-badge dsv2-badge--success">
+              {summary.exportReady}{" "}
+              {isFuturePayrollPeriod ? "جاهز للمعاينة" : "جاهز للتصدير"}
+            </span>
           </div>
         </header>
         <div className="dsv2-table-scroll payroll-table-wrap">
@@ -1190,17 +1297,24 @@ export default function DashboardPayroll() {
               const approvalReadiness = payrollApprovalReadiness(
                 entry as unknown as Record<string, unknown>
               );
-              const exportEligible = isPayrollOfficialExportEligible(entry);
+              const exportEligible = isSelectedPeriodExportEligible(entry);
               const attendanceReadiness = payrollAttendanceReadiness(entry.attendanceSummary);
               const payrollExempt = attendancePayrollExempt(entry);
               const setupBlocked = !entry.payrollSetupComplete;
-              const attendanceReview = entry.payrollSetupComplete && !attendanceReadiness.ready;
+              const attendanceReview =
+                !isFuturePayrollPeriod &&
+                entry.payrollSetupComplete &&
+                !attendanceReadiness.ready;
               const gosiReview =
                 entry.payrollSetupComplete &&
-                attendanceReadiness.ready &&
-                !approvalReadiness.ready &&
-                approvalReadiness.stage === "gosi";
-              const exclusionReason = exportEligible ? "" : payrollOfficialExclusionReason(entry);
+                (isFuturePayrollPeriod
+                  ? !isSelectedPeriodExportEligible(entry)
+                  : attendanceReadiness.ready &&
+                    !approvalReadiness.ready &&
+                    approvalReadiness.stage === "gosi");
+              const exclusionReason = exportEligible
+                ? ""
+                : selectedPeriodExportExclusionReason(entry);
               const manualAdjustments = hasManualAdjustments(entry);
               const payrollMoney = calculatePayrollAccrualView(entry);
               const attendanceObligationDeductionHalalas =
@@ -1211,9 +1325,12 @@ export default function DashboardPayroll() {
               const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
               const deferredAttendanceHalalas = attendanceDeferredAmountHalalas(entry);
               const deferredAttendanceTarget = attendanceDeferralTargetMonth(entry);
-              const rowState = exportEligible
-                ? "is-ready"
-                : setupBlocked
+              const rowState =
+                isFuturePayrollPeriod && exportEligible
+                  ? "is-future"
+                  : exportEligible
+                    ? "is-ready"
+                    : setupBlocked
                   ? "is-setup-blocked"
                   : attendanceReview
                     ? "is-attendance-review"
@@ -1231,10 +1348,34 @@ export default function DashboardPayroll() {
                     </div>
                   </td>
                   <td className="payroll-readiness-cell">
-                    <span className={`payroll-readiness-badge ${exportEligible ? "is-ready" : setupBlocked || gosiReview ? "is-setup" : "is-attendance"}`}>
-                      {exportEligible ? "جاهز للتصدير" : setupBlocked ? "يحتاج إعداد راتب" : gosiReview ? "يحتاج إعداد GOSI" : "يحتاج مراجعة حضور"}
+                    <span
+                      className={
+                        "payroll-readiness-badge " +
+                        (isFuturePayrollPeriod && exportEligible
+                          ? "is-future"
+                          : exportEligible
+                            ? "is-ready"
+                            : setupBlocked || gosiReview
+                              ? "is-setup"
+                              : "is-attendance")
+                      }
+                    >
+                      {isFuturePayrollPeriod && exportEligible
+                        ? "معاينة مستقبلية"
+                        : exportEligible
+                          ? "جاهز للتصدير"
+                          : setupBlocked
+                            ? "يحتاج إعداد راتب"
+                            : gosiReview
+                              ? "يحتاج إعداد GOSI"
+                              : "يحتاج مراجعة حضور"}
                     </span>
                     {payrollExempt ? <span className="payroll-mini-badge is-exempt">معفى من البصمة</span> : null}
+                    {isFuturePayrollPeriod && exportEligible ? (
+                      <small className="payroll-readiness-reason">
+                        الحضور لم يبدأ بعد؛ الكشف تقديري حتى بدء الفترة.
+                      </small>
+                    ) : null}
                     {attendanceReview ? (
                       <small className="payroll-readiness-reason">{attendanceReadiness.message || attendanceLinkLabel(entry)}</small>
                     ) : null}
@@ -1297,63 +1438,13 @@ export default function DashboardPayroll() {
                   </td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
-                    <details
-                        className="payroll-actions-menu"
-                        onBlur={(event) => {
-                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                            event.currentTarget.removeAttribute("open");
-                          }
-                        }}
-                        onClick={(event) => {
-                          const target = event.target as Element;
-                          if (target.closest(".payroll-row-actions button, .payroll-row-actions a")) {
-                            event.currentTarget.removeAttribute("open");
-                          }
-                        }}
-                      >
-                      <summary>الإجراءات</summary>
-                      <div className="payroll-row-actions">
-                        <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض التفاصيل</button>
-                        <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
-                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
-                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة استحقاق</button>
-                        {deferredAttendanceHalalas > 0 ? (
-                          <span className="payroll-action-help">
-                            <small>خصم الحضور مؤجل إلى {deferredAttendanceTarget || "شهر لاحق"}</small>
-                            <a className="payroll-action-link" href={employeePayrollPath(entry)}>إدارة الالتزام</a>
-                          </span>
-                        ) : Number(entry.missingHoursDeductionHalalas || 0) > 0 && !isPayrollSnapshotLocked(entry.status) ? (
-                          <button
-                            type="button"
-                            disabled={!actions.canEditAdjustments || busy === "attendance-deferral"}
-                            onClick={() => openAttendanceDeferral(entry)}
-                          >
-                            تأجيل خصم الحضور
-                          </button>
-                        ) : null}
-                        {!entry.payrollSetupComplete ? (
-                          <span className="payroll-action-help">
-                            <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
-                            <small>استكمال الحقول الظاهرة في حالة الإعداد</small>
-                          </span>
-                        ) : null}
-                        {actions.showApprove ? (
-                          <button
-                            type="button"
-                            disabled={!actions.canApprove || !payrollApprovalReadiness(entry as unknown as Record<string, unknown>).ready}
-                            onClick={() => void handleApprove(entry)}
-                          >
-                            اعتماد
-                          </button>
-                        ) : null}
-                        {actions.showMarkPaid ? (
-                          <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
-                        ) : null}
-                        {actions.showReopen ? (
-                          <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />إعادة فتح الراتب</button>
-                        ) : null}
-                      </div>
-                    </details>
+                    <button
+                      type="button"
+                      className="payroll-actions-trigger"
+                      onClick={(event) => openPayrollActionMenu(event, entry)}
+                    >
+                      الإجراءات
+                    </button>
                   </td>
                 </tr>
               );
@@ -1367,34 +1458,225 @@ export default function DashboardPayroll() {
         </div>
       </section>
 
+      {actionMenu
+        ? createPortal(
+            <div
+              className="dashboard-v2 payroll-actions-layer"
+              dir="rtl"
+              onMouseDown={() => setActionMenu(null)}
+            >
+              <div
+                className="payroll-actions-popover"
+                role="menu"
+                style={{
+                  top: actionMenu.top,
+                  left: actionMenu.left,
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                {(() => {
+                  const entry = actionMenu.entry;
+                  const actions = payrollActionVisibility({
+                    status: entry.status,
+                    payrollSetupComplete: entry.payrollSetupComplete,
+                    canManage,
+                    role,
+                  });
+
+                  const deferredAttendanceHalalas =
+                    attendanceDeferredAmountHalalas(entry);
+
+                  const deferredAttendanceTarget =
+                    attendanceDeferralTargetMonth(entry);
+
+                  const approvalReadiness = payrollApprovalReadiness(
+                    entry as unknown as Record<string, unknown>
+                  );
+
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionMenu(null);
+                          setSelectedEntry(entry);
+                        }}
+                      >
+                        <FiEye /> عرض التفاصيل
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!actions.canRecalculate}
+                        onClick={() => {
+                          setActionMenu(null);
+                          void handleRecalculateEntry(entry);
+                        }}
+                      >
+                        إعادة الحساب
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!actions.canEditAdjustments}
+                        onClick={() => {
+                          setActionMenu(null);
+                          openAdjustment(entry, "deduction");
+                        }}
+                      >
+                        إضافة خصم
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!actions.canEditAdjustments}
+                        onClick={() => {
+                          setActionMenu(null);
+                          openAdjustment(entry, "addition");
+                        }}
+                      >
+                        إضافة استحقاق
+                      </button>
+
+                      {deferredAttendanceHalalas > 0 ? (
+                        <span className="payroll-action-help">
+                          <small>
+                            خصم الحضور مؤجل إلى{" "}
+                            {deferredAttendanceTarget || "شهر لاحق"}
+                          </small>
+                          <a
+                            className="payroll-action-link"
+                            href={employeePayrollPath(entry)}
+                            onClick={() => setActionMenu(null)}
+                          >
+                            إدارة الالتزام
+                          </a>
+                        </span>
+                      ) : Number(entry.missingHoursDeductionHalalas || 0) > 0 &&
+                        !isPayrollSnapshotLocked(entry.status) ? (
+                        <button
+                          type="button"
+                          disabled={
+                            !actions.canEditAdjustments ||
+                            busy === "attendance-deferral"
+                          }
+                          onClick={() => {
+                            setActionMenu(null);
+                            openAttendanceDeferral(entry);
+                          }}
+                        >
+                          تأجيل خصم الحضور
+                        </button>
+                      ) : null}
+
+                      {actions.showApprove ? (
+                        <button
+                          type="button"
+                          disabled={
+                            !actions.canApprove ||
+                            !approvalReadiness.ready
+                          }
+                          onClick={() => {
+                            setActionMenu(null);
+                            void handleApprove(entry);
+                          }}
+                        >
+                          اعتماد
+                        </button>
+                      ) : null}
+
+                      {actions.showMarkPaid ? (
+                        <button
+                          type="button"
+                          disabled={!actions.canMarkPaid}
+                          onClick={() => {
+                            setActionMenu(null);
+                            void handlePaid(entry);
+                          }}
+                        >
+                          تسجيل كمدفوع
+                        </button>
+                      ) : null}
+
+                      {actions.showReopen ? (
+                        <button
+                          type="button"
+                          disabled={!actions.canReopen}
+                          onClick={() => {
+                            setActionMenu(null);
+                            void handleReopen(entry);
+                          }}
+                        >
+                          <FiUnlock /> إعادة فتح الراتب
+                        </button>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
       {selectedEntry ? (
         <PayrollDetailsModal
           entry={selectedEntry}
           onClose={() => setSelectedEntry(null)}
           onAdd={(mode) => openAdjustment(selectedEntry, mode)}
           onExportPayslipPdf={() => {
-            const exclusionReason = payrollOfficialExclusionReason(selectedEntry);
+            const exclusionReason =
+              selectedPeriodExportExclusionReason(selectedEntry);
             if (exclusionReason) {
-              setError(`تعذر تصدير كشف الراتب الرسمي: ${exclusionReason}`);
+              setError(
+                (isFuturePayrollPeriod
+                  ? "تعذر تصدير الكشف التقديري: "
+                  : "تعذر تصدير كشف الراتب الرسمي: ") +
+                  exclusionReason
+              );
               return;
             }
-            exportPayrollPayslipPdfV2({ entry: selectedEntry, payrollBounds });
+            exportPayrollPayslipPdfV2({
+              entry: selectedEntry,
+              payrollBounds,
+              isForecast: isFuturePayrollPeriod,
+            });
           }}
           onExportPayslipExcel={() => {
-            const exclusionReason = payrollOfficialExclusionReason(selectedEntry);
+            const exclusionReason =
+              selectedPeriodExportExclusionReason(selectedEntry);
             if (exclusionReason) {
-              setError(`تعذر تصدير كشف الراتب الرسمي: ${exclusionReason}`);
+              setError(
+                (isFuturePayrollPeriod
+                  ? "تعذر تصدير الكشف التقديري: "
+                  : "تعذر تصدير كشف الراتب الرسمي: ") +
+                  exclusionReason
+              );
               return;
             }
-            exportPayrollPayslipExcelV2({ entry: selectedEntry, payrollBounds });
+            exportPayrollPayslipExcelV2({
+              entry: selectedEntry,
+              payrollBounds,
+              isForecast: isFuturePayrollPeriod,
+            });
           }}
           onExportPayslipMobileExcel={() => {
-            const exclusionReason = payrollOfficialExclusionReason(selectedEntry);
+            const exclusionReason =
+              selectedPeriodExportExclusionReason(selectedEntry);
             if (exclusionReason) {
-              setError(`تعذر تصدير كشف الراتب الرسمي: ${exclusionReason}`);
+              setError(
+                (isFuturePayrollPeriod
+                  ? "تعذر تصدير الكشف التقديري: "
+                  : "تعذر تصدير كشف الراتب الرسمي: ") +
+                  exclusionReason
+              );
               return;
             }
-            exportPayrollPayslipMobileExcelV2({ entry: selectedEntry, payrollBounds });
+            exportPayrollPayslipMobileExcelV2({
+              entry: selectedEntry,
+              payrollBounds,
+              isForecast: isFuturePayrollPeriod,
+            });
           }}
           payrollBounds={payrollBounds}
         />
