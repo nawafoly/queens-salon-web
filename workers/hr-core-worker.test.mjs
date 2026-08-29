@@ -31,6 +31,8 @@ import {
   upsertPayrollPeriod,
 } from './core/repositories/payroll.js';
 import {
+  cancelPayrollObligation,
+
   createPayrollObligation,
   deferPayrollObligationInstallment,
   listPayrollObligationDeductions,
@@ -158,6 +160,8 @@ async function setup() {
     '0052_sa_payroll_deduction_classification_audit.sql',
     '0053_sa_disciplinary_fine_runtime.sql',
     '0054_sa_disciplinary_fine_fund_custody.sql',
+
+    '0055_attendance_deferral_recreate_after_cancel.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -5122,5 +5126,83 @@ test('Stage 11 attendance deduction deferral preserves origin and collects once 
   assert.equal(
     final.results.filter((row) => row.paid_at).length,
     0
+  );
+});
+
+test('Stage 11 attendance deferral can be recreated after cancellation', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const employeeId = 'emp-att-deferral-recreate';
+  const sourceRef = `attendance_missing_hours:${employeeId}:2026-08`;
+
+  await db.prepare(`
+    INSERT INTO staff
+      (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES
+      (?, 'main', 'uid-att-deferral-recreate', 'Attendance Deferral Recreate', 1, 'active', '2026-01-01', '2026-01-01')
+  `).bind(employeeId).run();
+
+  const createCanonicalAttendanceObligation = (
+    amountHalalas,
+    targetPayrollMonth,
+    reason
+  ) =>
+    createPayrollObligation(
+      db,
+      'main',
+      {
+        employeeId,
+        kind: 'attendance_missing_hours',
+        originalPayrollMonth: '2026-08',
+        targetPayrollMonth,
+        amountHalalas,
+        reason,
+        sourceType: 'attendance',
+        sourceRef,
+      },
+      actor,
+      { canonicalSourceType: 'attendance' }
+    );
+
+  const first = await createCanonicalAttendanceObligation(
+    8463,
+    '2026-09',
+    'Initial attendance deferral'
+  );
+  assert.equal(first.status, 'scheduled');
+
+  const cancelled = await cancelPayrollObligation(
+    db,
+    'main',
+    first.id,
+    { reason: 'Attendance was recalculated before payroll approval' },
+    actor
+  );
+  assert.equal(cancelled.status, 'cancelled');
+
+  const recreated = await createCanonicalAttendanceObligation(
+    8563,
+    '2026-10',
+    'Recreated after attendance recalculation'
+  );
+
+  assert.notEqual(recreated.id, first.id);
+  assert.equal(recreated.status, 'scheduled');
+  assert.equal(recreated.originalAmountHalalas, 8563);
+  assert.equal(recreated.installments[0].targetPayrollMonth, '2026-10');
+
+  const obligations = (
+    await listPayrollObligations(db, 'main', { employeeId })
+  ).filter((item) => item.sourceRef === sourceRef);
+
+  assert.equal(obligations.length, 2);
+  assert.equal(
+    obligations.filter((item) => item.status === 'cancelled').length,
+    1
+  );
+  assert.equal(
+    obligations.filter((item) => item.status === 'scheduled').length,
+    1
   );
 });
