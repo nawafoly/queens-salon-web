@@ -1285,7 +1285,20 @@ export default function DashboardPayroll() {
                   </td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
-                    <details className="payroll-actions-menu">
+                    <details
+                        className="payroll-actions-menu"
+                        onBlur={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            event.currentTarget.removeAttribute("open");
+                          }
+                        }}
+                        onClick={(event) => {
+                          const target = event.target as Element;
+                          if (target.closest(".payroll-row-actions button, .payroll-row-actions a")) {
+                            event.currentTarget.removeAttribute("open");
+                          }
+                        }}
+                      >
                       <summary>الإجراءات</summary>
                       <div className="payroll-row-actions">
                         <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض التفاصيل</button>
