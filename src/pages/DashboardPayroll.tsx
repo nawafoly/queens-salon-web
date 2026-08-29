@@ -1406,7 +1406,7 @@ export default function DashboardPayroll() {
                     {Number(entry.insuranceDeductionHalalas || 0) > 0 ? <small>GOSI {formatPayrollMoney(entry.insuranceDeductionHalalas)}</small> : null}
                     {Number(entry.advancesHalalas || 0) > 0 ? <small>سلف {formatPayrollMoney(entry.advancesHalalas)}</small> : null}
                     {attendanceObligationDeductionHalalas > 0 ? (
-                      <small>حضور مرحّل {formatPayrollMoney(attendanceObligationDeductionHalalas)}</small>
+                      <small>خصم حضور (لم يخصم في الفترة السابقة) {formatPayrollMoney(attendanceObligationDeductionHalalas)}</small>
                     ) : null}
                     {otherObligationDeductionHalalas > 0 ? (
                       <small>استقطاع مجدول {formatPayrollMoney(otherObligationDeductionHalalas)}</small>
@@ -1414,7 +1414,7 @@ export default function DashboardPayroll() {
                     {manualDeductionHalalas > 0 ? <small>يدوي {formatPayrollMoney(manualDeductionHalalas)}</small> : null}
                     {unclassifiedDeductionHalalas > 0 ? <small>أخرى {formatPayrollMoney(unclassifiedDeductionHalalas)}</small> : null}
                     {deferredAttendanceHalalas > 0 ? (
-                      <small>مؤجل {formatPayrollMoney(deferredAttendanceHalalas)} إلى {deferredAttendanceTarget || "شهر لاحق"}</small>
+                      <small>خصم حضور مؤجل (لا يخصم هذه الفترة) {formatPayrollMoney(deferredAttendanceHalalas)} · إلى {deferredAttendanceTarget || "شهر لاحق"}</small>
                     ) : null}
                   </td>
                   <td className="payroll-net-cell">
@@ -1541,7 +1541,7 @@ export default function DashboardPayroll() {
                       {deferredAttendanceHalalas > 0 ? (
                         <span className="payroll-action-help">
                           <small>
-                            خصم الحضور مؤجل إلى{" "}
+                            خصم حضور مؤجل (لا يخصم هذه الفترة) — التحصيل في{" "}
                             {deferredAttendanceTarget || "شهر لاحق"}
                           </small>
                           <a
@@ -1923,12 +1923,12 @@ function PayrollDetailsModal({
               <div><dt>خصم الغياب</dt><dd>{formatPayrollMoney(entry.absenceDeductionHalalas)}</dd></div>
               <div><dt>خصم حضور هذه الفترة (نقص ساعات / تأخير / خروج مبكر)</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
               {deferredAttendanceHalalas > 0 ? (
-                <div><dt>خصم حضور مؤجل</dt><dd>{formatPayrollMoney(deferredAttendanceHalalas)} إلى {deferredAttendanceTarget || "شهر لاحق"}</dd></div>
+                <div><dt>خصم حضور مؤجل (لا يخصم هذه الفترة)</dt><dd>{formatPayrollMoney(deferredAttendanceHalalas)} · التحصيل في {deferredAttendanceTarget || "شهر لاحق"}</dd></div>
               ) : null}
               <div><dt>خصم التأمينات الاجتماعية (GOSI)</dt><dd>{formatPayrollMoney(entry.insuranceDeductionHalalas)}</dd></div>
               {carriedAttendanceDeductionHalalas > 0 ? (
                 <div>
-                  <dt>خصم حضور مرحّل من فترة سابقة</dt>
+                  <dt>خصم حضور (لم يخصم في الفترة السابقة)</dt>
                   <dd>{formatPayrollMoney(carriedAttendanceDeductionHalalas)}</dd>
                 </div>
               ) : null}

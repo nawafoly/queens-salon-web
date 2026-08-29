@@ -192,13 +192,50 @@ export function payrollOrdinaryAdditionsHalalas(entry: PayrollEntryView) {
   return payrollOrdinaryManualAdditionsHalalas(entry);
 }
 
-function payrollOrdinaryManualAdditionsHalalas(entry: PayrollEntryView) {
-  return Math.max(
-    0,
-    Number(entry.manualAdditionsHalalas || 0) -
-      payrollLeaveCompensationHalalas(entry) -
-      payrollCarryoverAdditionHalalas(entry)
+function isContractualAllowanceAddition(
+  item: PayrollEntryView["additions"][number] | undefined
+) {
+  if (!item) return false;
+
+  const haystack = [
+    item.kind,
+    item.type,
+    item.sourceType,
+    item.label,
+    item.reason,
+    item.note,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join(" ");
+
+  return (
+    haystack.includes("housing allowance") ||
+    haystack.includes("transport allowance") ||
+    haystack.includes("transportation allowance") ||
+    haystack.includes("بدل السكن") ||
+    haystack.includes("بدل مواصلات") ||
+    haystack.includes("بدل المواصلات") ||
+    haystack.includes("بدل نقل")
   );
+}
+
+function payrollOrdinaryManualAdditionsHalalas(entry: PayrollEntryView) {
+  /*
+   * الإضافات والمكافآت تُشتق من بنود additions الفعلية فقط.
+   * لا نعتمد manualAdditionsHalalas لأنه aggregate محفوظ وقد يحتوي
+   * على بيانات تاريخية مختلطة.
+   *
+   * السكن والمواصلات مصدرهما allowancesHalalas ولا يدخلان هنا.
+   */
+  return (entry.additions || [])
+    .filter((item) => !isLeaveCompensationAddition(item))
+    .filter((item) => !isPayrollCarryoverItem(item))
+    .filter((item) => !isContractualAllowanceAddition(item))
+    .reduce(
+      (sum, item) =>
+        sum + Math.max(0, Number(item.amountHalalas || 0)),
+      0
+    );
 }
 
 export function payrollOrdinaryDeductionsHalalas(entry: PayrollEntryView) {
@@ -524,7 +561,7 @@ export function buildPayrollReportDataV2(
       { key: "insuranceDeduction", header: "خصم GOSI للموظفة", type: "currency", width: 17, align: "center" },
       { key: "employerGosiRate", header: "نسبة مساهمة المنشأة GOSI", width: 19, align: "center" },
       { key: "employerGosiContribution", header: "مساهمة المنشأة GOSI", type: "currency", width: 19, align: "center" },
-      { key: "carriedAttendanceDeduction", header: "خصم حضور مرحّل من فترة سابقة", type: "currency", width: 21, align: "center" },
+      { key: "carriedAttendanceDeduction", header: "خصم حضور (لم يخصم في الفترة السابقة)", type: "currency", width: 21, align: "center" },
       { key: "otherScheduledDeductions", header: "استقطاعات مجدولة أخرى", type: "currency", width: 20, align: "center" },
       { key: "advanceDeductions", header: "أقساط السلف", type: "currency", width: 16, align: "center" },
       { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
@@ -636,11 +673,11 @@ export function buildPayrollPayslipDataV2(
     { item: "خصم التأمينات الاجتماعية (GOSI)", value: halalasToRiyals(entry.insuranceDeductionHalalas), note: entry.gosiSnapshot ? `السياسة: ${entry.gosiSnapshot.policyVersion}` : "لا يوجد Snapshot تأمينات محفوظ" },
     { item: "السلف", value: halalasToRiyals(entry.advancesHalalas), note: "" },
     {
-      item: "خصم حضور مرحّل من فترة سابقة",
+      item: "خصم حضور (لم يخصم في الفترة السابقة)",
       value: halalasToRiyals(
         payrollAttendanceObligationDeductionTotal(entry.deductions || [])
       ),
-      note: "أصله خصم حضور أو نقص ساعات تم تأجيل تحصيله من فترة سابقة؛ ليس التزامًا إداريًا.",
+      note: "خصم حضور مستحق في هذه الفترة لأنه لم يخصم في الفترة السابقة.",
     },
     {
       item: "استقطاعات مجدولة أخرى",
