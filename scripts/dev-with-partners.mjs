@@ -13,6 +13,7 @@ const processes = [
     args: [
       "wrangler",
       "dev",
+      "--local",
       "--config",
       "wrangler.core.dev.jsonc",
       "--port",
@@ -26,6 +27,7 @@ const processes = [
     args: [
       "wrangler",
       "dev",
+      "--local",
       "--config",
       "wrangler.partners.dev.jsonc",
       "--port",
