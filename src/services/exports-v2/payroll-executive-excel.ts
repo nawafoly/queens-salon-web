@@ -316,33 +316,33 @@ function stylesXml() {
     <xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="166" fontId="5" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="1"/></xf>
     <xf numFmtId="0" fontId="5" fillId="7" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="6" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="6" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="5" fillId="8" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="7" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="7" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="5" fillId="9" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="8" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="8" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="5" fillId="10" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="9" fillId="10" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="9" fillId="10" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
-    <xf numFmtId="164" fontId="5" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="5" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="7" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="8" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="5" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="164" fontId="5" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="164" fontId="7" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="164" fontId="8" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="5" fillId="7" borderId="2" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="164" fontId="9" fillId="7" borderId="2" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="164" fontId="9" fillId="7" borderId="2" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="7" fillId="8" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="9" fillId="11" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="8" fillId="9" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="7" fillId="10" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="11" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top" readingOrder="2" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="165" fontId="9" fillId="10" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="168" fontId="0" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="168" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="165" fontId="0" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
-    <xf numFmtId="165" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="165" fontId="9" fillId="10" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="168" fontId="0" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="168" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="165" fontId="0" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
+    <xf numFmtId="165" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" shrinkToFit="1"/></xf>
     <xf numFmtId="0" fontId="12" fillId="9" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2" wrapText="1" shrinkToFit="1"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -356,32 +356,69 @@ function visibleDetailColumns(report: ExportV2Report<Record<string, ExportV2Valu
 
 function detailWidth(column: ExportV2Column<Record<string, ExportV2Value>>) {
   const map: Record<string, number> = {
-    employeeName: 24,
+    employeeName: 26,
     jobTitle: 22,
     setupStatus: 22,
     attendanceStatus: 24,
+
     baseSalary: 24,
+    contractualAllowances: 24,
+
     attendanceDays: 12,
-    absentDays: 11,
-    incompleteDays: 13,
+    absentDays: 12,
+    incompleteDays: 14,
     scheduledHours: 18,
     actualWorkedHours: 18,
-    missingHours: 17,
-    absenceDeduction: 19,
-    missingHoursDeduction: 22,
-    deferredAttendanceDeduction: 23,
-    deferredAttendanceTargetMonth: 18,
+    missingHours: 18,
+
+    absenceDeduction: 22,
+    missingHoursDeduction: 24,
+    deferredAttendanceDeduction: 28,
+    deferredAttendanceTargetMonth: 20,
+
     overtimeStatus: 18,
-    overtimeValue: 20,
-    additions: 22,
+    overtimeValue: 22,
+
+    additions: 24,
     leaveCompensation: 24,
-    deductions: 22,
-    previousPeriodAdjustment: 22,
-    expectedNet: 26,
-    status: 17,
-    notes: 46,
+
+    employeeGosiRate: 18,
+    insuranceDeduction: 24,
+    employerGosiRate: 20,
+    employerGosiContribution: 26,
+
+    carriedAttendanceDeduction: 30,
+    otherScheduledDeductions: 26,
+    advanceDeductions: 22,
+    manualDeductions: 24,
+    unclassifiedDeductions: 26,
+
+    deductions: 26,
+    previousPeriodAdjustment: 26,
+    expectedNet: 28,
+
+    status: 18,
+    notes: 48,
   };
-  return map[String(column.key)] || Math.max(12, Math.min(28, Number(column.width || 14)));
+
+  const explicit = map[String(column.key)];
+  if (explicit) return explicit;
+
+  const configured = Number(column.width || 14);
+
+  if (column.type === "currency") {
+    return Math.max(24, Math.min(32, configured));
+  }
+
+  if (column.type === "number") {
+    return Math.max(16, Math.min(24, configured));
+  }
+
+  if (column.type === "status") {
+    return Math.max(18, Math.min(28, configured));
+  }
+
+  return Math.max(14, Math.min(32, configured));
 }
 
 function detailStyle(column: ExportV2Column<Record<string, ExportV2Value>>, value: ExportV2Value, row: number) {
