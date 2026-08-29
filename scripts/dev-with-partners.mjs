@@ -1,10 +1,52 @@
 import { spawn } from "node:child_process";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const isWindows = process.platform === "win32";
 const npx = isWindows ? "npx.cmd" : "npx";
+const projectRoot = process.cwd();
 
 const LOCAL_CORE_URL = "http://127.0.0.1:8807";
 const LOCAL_PARTNERS_URL = "http://127.0.0.1:8787";
+
+const generatedConfigs = [
+  {
+    source: "wrangler.core.dev.jsonc",
+    generated: ".wrangler.core.local.generated.jsonc",
+  },
+  {
+    source: "wrangler.partners.dev.jsonc",
+    generated: ".wrangler.partners.local.generated.jsonc",
+  },
+];
+
+function cleanupGeneratedConfigs() {
+  for (const item of generatedConfigs) {
+    rmSync(resolve(projectRoot, item.generated), { force: true });
+  }
+}
+
+function createLocalOnlyConfig(item) {
+  const sourcePath = resolve(projectRoot, item.source);
+  const generatedPath = resolve(projectRoot, item.generated);
+  const source = readFileSync(sourcePath, "utf8");
+
+  // Developer configs may intentionally opt into remote bindings for explicit
+  // inspection workflows. `npm run dev` must never inherit those production-
+  // connected bindings, so create an ignored local-only copy instead of
+  // modifying the protected developer config.
+  const localOnly = source.replace(
+    /^\s*"remote"\s*:\s*true\s*,?\s*(?:\r?\n|$)/gm,
+    ""
+  );
+
+  writeFileSync(generatedPath, localOnly, "utf8");
+  return item.generated;
+}
+
+cleanupGeneratedConfigs();
+const [coreConfig, partnersConfig] = generatedConfigs.map(createLocalOnlyConfig);
+process.on("exit", cleanupGeneratedConfigs);
 
 const processes = [
   {
@@ -13,8 +55,9 @@ const processes = [
     args: [
       "wrangler",
       "dev",
+      "--local",
       "--config",
-      "wrangler.core.dev.jsonc",
+      coreConfig,
       "--port",
       "8807",
       "--show-interactive-dev-session=false",
@@ -26,8 +69,9 @@ const processes = [
     args: [
       "wrangler",
       "dev",
+      "--local",
       "--config",
-      "wrangler.partners.dev.jsonc",
+      partnersConfig,
       "--port",
       "8787",
       "--show-interactive-dev-session=false",

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev-with-partners.mjs",
     "dev:full": "node scripts/dev-with-partners.mjs",
+    "dev:setup": "node scripts/dev-setup.mjs",
     "dev:vite": "vite",
     "dev:partners": "wrangler dev --config wrangler.partners.jsonc --local --port 8787 --show-interactive-dev-session=false",
     "dev:packages": "npm run dev:core",

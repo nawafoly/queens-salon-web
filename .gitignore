@@ -50,6 +50,7 @@ android-hr/app/src/main/assets/capacitor.config.json
 .migration-work/
 vite-*.out.log
 vite-*.err.log
+/.wrangler.*.local.generated.jsonc
 
 # Local inspection files
 /project-files-report.txt
