@@ -330,10 +330,18 @@ export default function EmployeeStatsSection({
             }
           />
           <WorkspaceMetricV2
-            label="نسبة الموظفة"
+            label="نسبة خصم الموظفة GOSI"
             value={
               payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
                 ? formatRateBasisPoints(payrollSetup.gosiEmployeeRateBps)
+                : "غير محسوبة"
+            }
+          />
+          <WorkspaceMetricV2
+            label="نسبة مساهمة المنشأة GOSI"
+            value={
+              payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
+                ? formatRateBasisPoints(payrollSetup.gosiEmployerRateBps)
                 : "غير محسوبة"
             }
           />

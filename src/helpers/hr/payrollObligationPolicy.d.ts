@@ -37,6 +37,9 @@ export function buildInstallmentPlan(input: {
 
 export const PAYROLL_OBLIGATION_SOURCE_TYPE: "payroll_obligation";
 export function isPayrollObligationDeductionItem(item: unknown): boolean;
+export function isAttendancePayrollObligationDeductionItem(item: unknown): boolean;
+export function payrollAttendanceObligationDeductionTotal(items: readonly unknown[] | null | undefined): number;
+export function payrollOtherObligationDeductionTotal(items: readonly unknown[] | null | undefined): number;
 export function payrollObligationDeductionItem(input: {
   obligationId: string;
   installmentId: string;

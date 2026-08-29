@@ -613,7 +613,7 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
         ORDER BY created_at DESC LIMIT 1`,
       [salonId, employeeId, sourceType, sourceRef]
     );
-    if (idempotentExisting) {
+    if (idempotentExisting && !(sourceType === 'attendance' && cleanText(idempotentExisting.status).toLowerCase() === 'cancelled')) {
       const matchesExisting =
         cleanText(idempotentExisting.obligation_kind) === kind &&
         cleanText(idempotentExisting.original_payroll_month) === originalPayrollMonth &&

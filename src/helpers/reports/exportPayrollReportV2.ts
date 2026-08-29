@@ -6,7 +6,11 @@ import {
 } from "../../services/CorePayrollService";
 import { formatAttendanceHours } from "../hr/attendanceDiscipline";
 import { isPayrollCarryoverItem } from "../hr/payrollCarryoverPolicy.js";
-import { payrollObligationDeductionTotal } from "../hr/payrollObligationPolicy.js";
+import {
+  payrollAttendanceObligationDeductionTotal,
+  payrollObligationDeductionTotal,
+  payrollOtherObligationDeductionTotal,
+} from "../hr/payrollObligationPolicy.js";
 import {
   exportV2FormatPeriod,
   exportV2SafeText,
@@ -36,11 +40,13 @@ export type PayrollReportV2Input = {
   includeIncomplete?: boolean;
   originalCount?: number;
   excludedRows?: Array<{ employeeName: string; reason: string }>;
+  isForecast?: boolean;
   filters: PayrollReportV2Filters;
 };
 
 export type PayrollPayslipV2Input = {
   entry: PayrollEntryView;
+  isForecast?: boolean;
   payrollBounds?: {
     monthStart?: string;
     monthEnd?: string;
@@ -55,6 +61,7 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   setupStatus: string;
   attendanceStatus: string;
   baseSalary: number;
+  contractualAllowances: number;
   attendanceDays: number;
   absentDays: number;
   incompleteDays: number;
@@ -70,9 +77,12 @@ type PayrollExportRow = Record<string, ExportV2Value> & {
   additions: number;
   leaveCompensation: number;
   deductions: number;
+  employeeGosiRate: string;
   insuranceDeduction: number;
+  employerGosiRate: string;
   employerGosiContribution: number;
-  obligationDeductions: number;
+  carriedAttendanceDeduction: number;
+  otherScheduledDeductions: number;
   advanceDeductions: number;
   manualDeductions: number;
   unclassifiedDeductions: number;
@@ -136,6 +146,13 @@ function halalasToRiyals(value: unknown) {
   return Number.isFinite(parsed) ? Math.round(parsed) / 100 : 0;
 }
 
+function gosiRateLabel(value: unknown) {
+  const bps = Number(value);
+  return Number.isFinite(bps) && bps >= 0
+    ? `${Math.round(bps) / 100}%`
+    : "غير محسوبة";
+}
+
 function isLeaveCompensationAddition(item: PayrollEntryView["additions"][number] | undefined) {
   if (!item) return false;
   const type = String(item.type || item.sourceType || "").trim().toLowerCase();
@@ -170,21 +187,55 @@ function payrollCarryoverDeductionHalalas(entry: PayrollEntryView) {
 }
 
 export function payrollOrdinaryAdditionsHalalas(entry: PayrollEntryView) {
-  return Math.max(
-    0,
-    Number(entry.totalAdditionsHalalas || 0) -
-      payrollLeaveCompensationHalalas(entry) -
-      payrollCarryoverAdditionHalalas(entry)
+  // "الإضافات والمكافآت" must never include contractual allowances,
+  // overtime, leave compensation, or carryover adjustments.
+  return payrollOrdinaryManualAdditionsHalalas(entry);
+}
+
+function isContractualAllowanceAddition(
+  item: PayrollEntryView["additions"][number] | undefined
+) {
+  if (!item) return false;
+
+  const haystack = [
+    item.kind,
+    item.type,
+    item.sourceType,
+    item.label,
+    item.reason,
+    item.note,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join(" ");
+
+  return (
+    haystack.includes("housing allowance") ||
+    haystack.includes("transport allowance") ||
+    haystack.includes("transportation allowance") ||
+    haystack.includes("بدل السكن") ||
+    haystack.includes("بدل مواصلات") ||
+    haystack.includes("بدل المواصلات") ||
+    haystack.includes("بدل نقل")
   );
 }
 
 function payrollOrdinaryManualAdditionsHalalas(entry: PayrollEntryView) {
-  return Math.max(
-    0,
-    Number(entry.manualAdditionsHalalas || 0) -
-      payrollLeaveCompensationHalalas(entry) -
-      payrollCarryoverAdditionHalalas(entry)
-  );
+  /*
+   * الإضافات والمكافآت تُشتق من بنود additions الفعلية فقط.
+   * لا نعتمد manualAdditionsHalalas لأنه aggregate محفوظ وقد يحتوي
+   * على بيانات تاريخية مختلطة.
+   *
+   * السكن والمواصلات مصدرهما allowancesHalalas ولا يدخلان هنا.
+   */
+  return (entry.additions || [])
+    .filter((item) => !isLeaveCompensationAddition(item))
+    .filter((item) => !isPayrollCarryoverItem(item))
+    .filter((item) => !isContractualAllowanceAddition(item))
+    .reduce(
+      (sum, item) =>
+        sum + Math.max(0, Number(item.amountHalalas || 0)),
+      0
+    );
 }
 
 export function payrollOrdinaryDeductionsHalalas(entry: PayrollEntryView) {
@@ -218,7 +269,9 @@ function statusLabel(value: unknown) {
   return STATUS_LABELS[key] || exportV2SafeText(key, "غير محدد");
 }
 
-function attendanceStatus(entry: PayrollEntryView) {
+function attendanceStatus(entry: PayrollEntryView, isForecast = false) {
+  if (isForecast) return "لم تبدأ الفترة";
+
   if (
     entry.attendanceSummary.attendancePayrollMode === "exempt" ||
     entry.attendanceSummary.attendanceLinkStatus === "exempt"
@@ -321,8 +374,9 @@ export function buildPayrollReportDataV2(
       employeeName: exportV2SafeText(entry.employeeName, "موظفة غير محددة"),
       jobTitle: exportV2SafeText(entry.jobTitle, "غير محدد"),
       setupStatus: setupStatus(entry),
-      attendanceStatus: attendanceStatus(entry),
+      attendanceStatus: attendanceStatus(entry, Boolean(input.isForecast)),
       baseSalary: halalasToRiyals(entry.baseSalaryHalalas),
+      contractualAllowances: halalasToRiyals(entry.allowancesHalalas),
       attendanceDays: Number(entry.attendanceSummary.attendanceDays || 0),
       absentDays: Number(entry.attendanceSummary.absentDays || 0),
       incompleteDays: Number(entry.attendanceSummary.incompleteDays || 0),
@@ -346,9 +400,20 @@ export function buildPayrollReportDataV2(
       additions: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)),
       leaveCompensation: halalasToRiyals(leaveCompensationHalalas),
       deductions: halalasToRiyals(payrollOrdinaryDeductionsHalalas(entry)),
+      employeeGosiRate: gosiRateLabel(
+        entry.gosiSnapshot?.employee?.totalRateBps
+      ),
       insuranceDeduction: halalasToRiyals(entry.insuranceDeductionHalalas),
+      employerGosiRate: gosiRateLabel(
+        entry.gosiSnapshot?.employer?.totalRateBps
+      ),
       employerGosiContribution: halalasToRiyals(entry.employerGosiContributionHalalas),
-      obligationDeductions: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])),
+      carriedAttendanceDeduction: halalasToRiyals(
+        payrollAttendanceObligationDeductionTotal(entry.deductions || [])
+      ),
+      otherScheduledDeductions: halalasToRiyals(
+        payrollOtherObligationDeductionTotal(entry.deductions || [])
+      ),
       advanceDeductions: halalasToRiyals(entry.advancesHalalas),
       manualDeductions: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)),
       unclassifiedDeductions: halalasToRiyals(payrollUnclassifiedDeductionsHalalas(entry)),
@@ -364,6 +429,7 @@ export function buildPayrollReportDataV2(
     (acc, entry) => {
       const accrual = calculatePayrollAccrualView(entry);
       acc.baseSalary += halalasToRiyals(entry.baseSalaryHalalas);
+      acc.contractualAllowances += halalasToRiyals(entry.allowancesHalalas);
       acc.overtimeValue += halalasToRiyals(entry.overtimeValueHalalas);
       acc.additions += halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry));
       acc.leaveCompensation += halalasToRiyals(payrollLeaveCompensationHalalas(entry));
@@ -374,6 +440,7 @@ export function buildPayrollReportDataV2(
     },
     {
       baseSalary: 0,
+      contractualAllowances: 0,
       overtimeValue: 0,
       additions: 0,
       leaveCompensation: 0,
@@ -418,8 +485,12 @@ export function buildPayrollReportDataV2(
   return {
     slug: "payroll",
     reportCode: "HR-PAYROLL",
-    title: "تقرير مسيرة الرواتب",
-    subtitle: "ملخص تنفيذي واضح للمسيرة الشهرية؛ تفاصيل الحضور التشغيلية الكاملة متاحة في Excel وكشف الموظفة.",
+    title: input.isForecast
+      ? "تقرير مسيرة الرواتب التقديري"
+      : "تقرير مسيرة الرواتب",
+    subtitle: input.isForecast
+      ? "معاينة مستقبلية غير معتمدة؛ تعتمد القيم النهائية بعد بدء الفترة واحتساب الحضور."
+      : "ملخص تنفيذي واضح للمسيرة الشهرية؛ تفاصيل الحضور التشغيلية الكاملة متاحة في Excel وكشف الموظفة.",
     summarySheetName: "ملخص الرواتب",
     detailsSheetName: "تفاصيل الرواتب",
     period: periodLabel(input.filters),
@@ -440,12 +511,18 @@ export function buildPayrollReportDataV2(
       { label: "تاريخ الصرف المتوقع", value: exportV2SafeText(input.filters.payDate, "غير محدد") },
       {
         label: "نطاق التصدير",
-        value: input.includeIncomplete ? "يشمل السجلات غير المكتملة" : "السجلات المكتملة فقط",
+        value: input.isForecast
+          ? "معاينة مستقبلية تقديرية — غير معتمدة"
+          : input.includeIncomplete
+            ? "يشمل السجلات غير المكتملة"
+            : "السجلات المكتملة فقط",
       },
     ],
     summary: [
       { label: "إجمالي الرواتب الأساسية", value: totals.baseSalary, type: "currency", tone: "gold" },
-      { label: "إجمالي الإضافات", value: totals.additions, type: "currency", tone: "success" },
+      { label: "إجمالي البدلات التعاقدية", value: totals.contractualAllowances, type: "currency", tone: "neutral" },
+      { label: "إجمالي الإضافات والمكافآت", value: totals.additions, type: "currency", tone: "success" },
+      { label: "إجمالي الأوفر تايم", value: totals.overtimeValue, type: "currency", tone: totals.overtimeValue > 0 ? "success" : "neutral" },
       { label: "تعويض رصيد الإجازات", value: totals.leaveCompensation, type: "currency", tone: totals.leaveCompensation > 0 ? "gold" : "neutral" },
       { label: "إجمالي الخصومات", value: totals.deductions, type: "currency", tone: "danger" },
       { label: "تسويات فترات سابقة", value: totals.previousPeriodAdjustment, type: "currency", tone: totals.previousPeriodAdjustment < 0 ? "danger" : totals.previousPeriodAdjustment > 0 ? "success" : "neutral" },
@@ -465,6 +542,7 @@ export function buildPayrollReportDataV2(
       { key: "setupStatus", header: "إعداد الراتب", width: 23 },
       { key: "attendanceStatus", header: "ربط الحضور", width: 17, align: "center" },
       { key: "baseSalary", header: "الراتب الأساسي", type: "currency", width: 16, align: "center" },
+      { key: "contractualAllowances", header: "البدلات التعاقدية", type: "currency", width: 17, align: "center" },
       { key: "attendanceDays", header: "الحضور", type: "number", width: 11, align: "center", hideInPdf: true },
       { key: "absentDays", header: "الغياب", type: "number", width: 11, align: "center", hideInPdf: true },
       { key: "incompleteDays", header: "بصمة ناقصة", type: "number", width: 13, align: "center", hideInPdf: true },
@@ -477,11 +555,14 @@ export function buildPayrollReportDataV2(
       { key: "deferredAttendanceTargetMonth", header: "ترحيل خصم الحضور إلى", width: 18, align: "center", hideInPdf: true },
       { key: "overtimeStatus", header: "الأوفر تايم", type: "status", width: 14, align: "center", hideInPdf: true },
       { key: "overtimeValue", header: "قيمة الأوفر تايم", type: "currency", width: 17, align: "center", hideInPdf: true },
-      { key: "additions", header: "إجمالي الإضافات (يشمل البدلات والأوفر تايم)", type: "currency", width: 23, align: "center" },
+      { key: "additions", header: "الإضافات والمكافآت", type: "currency", width: 19, align: "center" },
       { key: "leaveCompensation", header: "تعويض رصيد الإجازات", type: "currency", width: 19, align: "center" },
+      { key: "employeeGosiRate", header: "نسبة خصم الموظفة GOSI", width: 17, align: "center" },
       { key: "insuranceDeduction", header: "خصم GOSI للموظفة", type: "currency", width: 17, align: "center" },
+      { key: "employerGosiRate", header: "نسبة مساهمة المنشأة GOSI", width: 19, align: "center" },
       { key: "employerGosiContribution", header: "مساهمة المنشأة GOSI", type: "currency", width: 19, align: "center" },
-      { key: "obligationDeductions", header: "التزامات وأقساط إدارية", type: "currency", width: 20, align: "center" },
+      { key: "carriedAttendanceDeduction", header: "خصم حضور (لم يخصم في الفترة السابقة)", type: "currency", width: 21, align: "center" },
+      { key: "otherScheduledDeductions", header: "استقطاعات مجدولة أخرى", type: "currency", width: 20, align: "center" },
       { key: "advanceDeductions", header: "أقساط السلف", type: "currency", width: 16, align: "center" },
       { key: "manualDeductions", header: "خصومات يدوية أخرى", type: "currency", width: 18, align: "center" },
       { key: "unclassifiedDeductions", header: "خصومات أخرى غير مصنفة", type: "currency", width: 19, align: "center" },
@@ -494,6 +575,7 @@ export function buildPayrollReportDataV2(
     rows,
     totals: {
       baseSalary: totals.baseSalary,
+      contractualAllowances: totals.contractualAllowances,
       overtimeValue: totals.overtimeValue,
       additions: totals.additions,
       leaveCompensation: totals.leaveCompensation,
@@ -518,6 +600,8 @@ export function buildPayrollReportDataV2(
       : [],
     emptyMessage: "لا توجد رواتب مطابقة للفلاتر الحالية.",
     notes: [
+      "البدلات التعاقدية مستقلة عن الإضافات والمكافآت وعن الأوفر تايم، ولا يجوز جمعها تحت بند واحد.",
+      "نسبة GOSI للموظفة ونسبة مساهمة المنشأة تعرضان كلٌ على حدة؛ غير السعودي قد تكون نسبة الموظف 0% بينما تتحمل المنشأة أخطار المهنة حسب السياسة الفعالة.",
       "التقرير التنفيذي يعرض السجلات الجاهزة للتصدير الرسمي فقط، بينما تبقى تفاصيل الحضور التشغيلية كاملة في Excel.",
       "عند اعتماد المسيرة يصبح صافي الصرف Snapshot ثابتًا ولا يعاد فتح الشهر السابق ماليًا.",
       "أي فرق يظهر بعد الاعتماد عند الإقفال النهائي للفترة يُرحّل تلقائيًا كتسوية موثقة في أول مسيرة لاحقة، إضافة أو خصم، دون ازدواجية.",
@@ -554,7 +638,7 @@ export function buildPayrollPayslipDataV2(
   const accrual = calculatePayrollAccrualView(entry);
   const rows: PayslipExportRow[] = [
     { item: "الراتب الأساسي", value: halalasToRiyals(entry.baseSalaryHalalas), note: "" },
-    { item: "البدلات", value: halalasToRiyals(entry.allowancesHalalas), note: "" },
+    { item: "البدلات التعاقدية", value: halalasToRiyals(entry.allowancesHalalas), note: "بدلات العقد الثابتة؛ لا تعد مكافآت أو إضافات." },
     { item: "الإضافات والمكافآت", value: halalasToRiyals(payrollOrdinaryManualAdditionsHalalas(entry)), note: "لا يشمل تعويض رصيد الإجازات." },
     {
       item: "تعويض رصيد الإجازات",
@@ -566,7 +650,6 @@ export function buildPayrollPayslipDataV2(
       value: halalasToRiyals(entry.overtimeValueHalalas),
       note: entry.overtimeEnabled ? "محتسب" : "غير محتسب",
     },
-    { item: "إجمالي الإضافات والمكافآت", value: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)), note: "تعويض رصيد الإجازات يظهر كبند مستقل ولا يدخل في هذا الإجمالي." },
     {
       item: "خصم الغياب",
       value: halalasToRiyals(entry.absenceDeductionHalalas),
@@ -574,14 +657,35 @@ export function buildPayrollPayslipDataV2(
     },
     {
       item: "خصم نقص الساعات / التأخير / الخروج المبكر",
-      value: entry.attendanceSummary.attendanceDeductionEligible === false
+      value: input.isForecast
         ? 0
-        : halalasToRiyals(entry.missingHoursDeductionHalalas),
-      note: entry.attendanceSummary.attendanceDeductionEligible === false ? (entry.attendanceSummary.attendancePayrollMode === "exempt" ? "معفى من الحضور والانصراف" : "لم يطبق") : "",
+        : entry.attendanceSummary.attendanceDeductionEligible === false
+          ? 0
+          : halalasToRiyals(entry.missingHoursDeductionHalalas),
+      note: input.isForecast
+        ? "فترة مستقبلية؛ لم يبدأ احتساب الحضور بعد."
+        : entry.attendanceSummary.attendanceDeductionEligible === false
+          ? (entry.attendanceSummary.attendancePayrollMode === "exempt"
+              ? "معفى من الحضور والانصراف"
+              : "لم يطبق")
+          : "",
     },
     { item: "خصم التأمينات الاجتماعية (GOSI)", value: halalasToRiyals(entry.insuranceDeductionHalalas), note: entry.gosiSnapshot ? `السياسة: ${entry.gosiSnapshot.policyVersion}` : "لا يوجد Snapshot تأمينات محفوظ" },
     { item: "السلف", value: halalasToRiyals(entry.advancesHalalas), note: "" },
-    { item: "التزامات وأقساط إدارية", value: halalasToRiyals(payrollObligationDeductionTotal(entry.deductions || [])), note: "تظهر وفق جدول التحصيل المعتمد للشهر." },
+    {
+      item: "خصم حضور (لم يخصم في الفترة السابقة)",
+      value: halalasToRiyals(
+        payrollAttendanceObligationDeductionTotal(entry.deductions || [])
+      ),
+      note: "خصم حضور مستحق في هذه الفترة لأنه لم يخصم في الفترة السابقة.",
+    },
+    {
+      item: "استقطاعات مجدولة أخرى",
+      value: halalasToRiyals(
+        payrollOtherObligationDeductionTotal(entry.deductions || [])
+      ),
+      note: "استقطاعات مجدولة لا تشمل خصم الحضور المرحّل.",
+    },
     { item: "الخصومات اليدوية والجزاءات الأخرى", value: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)), note: "لا تشمل GOSI أو الالتزامات المجدولة أو تسويات الفترات السابقة." },
     {
       item: "تسويات فترات سابقة",
@@ -605,7 +709,9 @@ export function buildPayrollPayslipDataV2(
   return {
     slug: `payroll-payslip-${entry.employeeId}`,
     reportCode: "HR-PAYSLIP",
-    title: "كشف راتب موظفة",
+    title: input.isForecast
+      ? "كشف راتب تقديري"
+      : "كشف راتب موظفة",
     subtitle: `${exportV2SafeText(entry.employeeName)} — ${exportV2SafeText(entry.jobTitle, "موظفة")}`,
     summarySheetName: "ملخص كشف الراتب",
     detailsSheetName: "بنود كشف الراتب",
@@ -626,7 +732,9 @@ export function buildPayrollPayslipDataV2(
     summary: [
       { label: "الموظفة", value: entry.employeeName, tone: "dark" },
       { label: "الراتب الأساسي", value: halalasToRiyals(entry.baseSalaryHalalas), type: "currency", tone: "gold" },
-      { label: "إجمالي الإضافات", value: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)), type: "currency", tone: "success" },
+      { label: "البدلات التعاقدية", value: halalasToRiyals(entry.allowancesHalalas), type: "currency", tone: "neutral" },
+      { label: "الإضافات والمكافآت", value: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)), type: "currency", tone: "success" },
+      { label: "الأوفر تايم", value: halalasToRiyals(entry.overtimeValueHalalas), type: "currency", tone: entry.overtimeValueHalalas > 0 ? "success" : "neutral" },
       { label: "تعويض رصيد الإجازات", value: halalasToRiyals(payrollLeaveCompensationHalalas(entry)), type: "currency", tone: payrollLeaveCompensationHalalas(entry) > 0 ? "gold" : "neutral" },
       { label: "إجمالي الخصومات قبل التسويات", value: halalasToRiyals(payrollOrdinaryDeductionsHalalas(entry)), type: "currency", tone: "danger" },
       { label: "خصم GOSI للموظفة", value: halalasToRiyals(entry.insuranceDeductionHalalas), type: "currency", tone: entry.insuranceDeductionHalalas > 0 ? "danger" : "neutral" },
