@@ -102,7 +102,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.3.1",
-    "wrangler": "^4.122.0"
+    "wrangler": "4.113.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.3.1"
