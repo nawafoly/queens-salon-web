@@ -278,6 +278,38 @@ export function calculateAttendanceDisciplineDay(
     });
   }
 
+  const currentDayMinutes = currentMinutesFromDayStart(date);
+  const isCurrentDayStillOpen =
+    hasSchedule &&
+    currentDayMinutes != null &&
+    currentDayMinutes >= 0 &&
+    scheduledEndMinutes != null &&
+    currentDayMinutes <= scheduledEndMinutes;
+
+  if (isCurrentDayStillOpen && !hasCompletePunches) {
+    const liveWorkedMinutes =
+      hasCheckIn && checkInMinutes != null
+        ? Math.max(0, currentDayMinutes - checkInMinutes)
+        : 0;
+
+    return makeDaySummary(input, {
+      scheduledHours: roundHours(scheduledMinutes),
+      actualWorkedHours: roundHours(liveWorkedMinutes),
+      lateHours: 0,
+      earlyLeaveHours: 0,
+      compensatedLateHours: 0,
+      rawMissingHours: 0,
+      permissionRequestedHours: 0,
+      permissionCoveredHours: 0,
+      missingHours: 0,
+      extraHours: 0,
+      afterScheduleHours: 0,
+      netHourDifference: 0,
+      status: "in_progress",
+      statusLabel: hasCheckIn ? "قيد الدوام" : "اليوم جارٍ",
+    });
+  }
+
   const shouldTreatMissingPunchesAsAbsent = input.treatMissingPunchesAsAbsent !== false;
   if ((input.isAbsent || (shouldTreatMissingPunchesAsAbsent && !hasCheckIn && !hasCheckOut)) && scheduledMinutes > 0) {
     const coverage = calculatePermissionCoverage({

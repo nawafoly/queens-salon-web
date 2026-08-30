@@ -101,6 +101,55 @@
   margin-top: 12px;
 }
 
+.payroll-period-lock-card {
+  display: grid;
+  gap: 14px;
+}
+
+.payroll-period-lock-state {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  border-radius: 14px;
+}
+
+.payroll-period-lock-state strong {
+  font-size: 1.05rem;
+}
+
+.payroll-period-lock-state span {
+  font-size: 0.86rem;
+  opacity: 0.75;
+}
+
+.payroll-period-lock-state.is-locked {
+  border-color: rgba(180, 55, 55, 0.28);
+  background: rgba(180, 55, 55, 0.07);
+}
+
+.payroll-period-lock-state.is-open {
+  border-color: rgba(31, 132, 84, 0.28);
+  background: rgba(31, 132, 84, 0.07);
+}
+
+.payroll-period-lock-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.payroll-period-lock-range strong {
+  unicode-bidi: isolate;
+}
+
+.payroll-period-lock-card .payroll-compliance-actions button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 @media (max-width: 1050px) {
   .payroll-compliance-grid {
     grid-template-columns: 1fr;

@@ -776,6 +776,16 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     }
   ));
   const status = (text(row.status) || "draft") as PayrollStatus;
+  const auditLog = readJson<Array<Record<string, unknown>>>(row.auditLogJson, []);
+  const lateApprovalAudit = [...auditLog]
+    .reverse()
+    .find((event) => text(event.action) === "late_approval_recorded");
+  const lateApprovedNetHalalas =
+    lateApprovalAudit &&
+    ["approved", "paid"].includes(status) &&
+    Number.isFinite(Number(lateApprovalAudit.approvedNetHalalas))
+      ? Math.max(0, Number(lateApprovalAudit.approvedNetHalalas))
+      : null;
   const additions = readJson<PayrollManualItem[]>(row.additionsJson, []);
   const rawDeductions = readJson<PayrollManualItem[]>(row.deductionsJson, []);
   const legacyCarryoverHalalas = legacyAttendancePenaltyCarryoverAmount(rawDeductions);
@@ -889,8 +899,13 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
       numberValue(row.manualAdditionsHalalas) +
       overtimeValueHalalas,
     totalDeductionsHalalas: Math.max(0, numberValue(row.totalDeductionsHalalas) - legacyCarryoverHalalas),
-    netSalaryHalalas: numberValue(row.netSalaryHalalas ?? row.finalSalaryHalalas) + legacyCarryoverHalalas,
-    finalSalaryHalalas: numberValue(row.finalSalaryHalalas) + legacyCarryoverHalalas,
+    netSalaryHalalas:
+      lateApprovedNetHalalas ??
+      (numberValue(row.netSalaryHalalas ?? row.finalSalaryHalalas) +
+        legacyCarryoverHalalas),
+    finalSalaryHalalas:
+      lateApprovedNetHalalas ??
+      (numberValue(row.finalSalaryHalalas) + legacyCarryoverHalalas),
     payrollSetupComplete,
     payrollSetupMissing,
     monthlyHoursSource: setup.monthlyHoursSource,
@@ -900,7 +915,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     approvedByUid: text(row.approvedByUid) || null,
     paidAt: text(row.paidAt) || null,
     paidByUid: text(row.paidByUid) || null,
-    auditLog: readJson<Array<Record<string, unknown>>>(row.auditLogJson, []),
+    auditLog,
   };
 }
 
@@ -1181,6 +1196,23 @@ export async function approvePayrollEntry(entry: PayrollEntryView) {
   return normalizePayrollEntry(await CoreHrService.approvePayrollEntry(saved.id!));
 }
 
+export async function recordLatePayrollApproval(
+  entry: PayrollEntryView,
+  input: {
+    approvalDate: string;
+    approvedNetHalalas: number;
+    reason: string;
+  }
+) {
+  if (!entry.id || !entry.saved) {
+    throw new Error("payroll_late_approval_entry_must_be_saved");
+  }
+  const CoreHrService = await coreHrService();
+  return normalizePayrollEntry(
+    await CoreHrService.recordLatePayrollApproval(entry.id, input)
+  );
+}
+
 export async function markPayrollEntryPaid(entry: PayrollEntryView) {
   assertPayrollEntryReady(entry);
   if (entry.status !== "approved") {
@@ -1190,6 +1222,30 @@ export async function markPayrollEntryPaid(entry: PayrollEntryView) {
   const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.markPayrollEntryPaid(saved.id!));
 }
+
+export async function reversePayrollEntryPayment(
+  entry: PayrollEntryView,
+  reason: string
+) {
+  if (!entry.id || !entry.saved) {
+    throw new Error("payroll_payment_reversal_entry_must_be_saved");
+  }
+  if (entry.status !== "paid") {
+    throw new Error("payroll_not_paid");
+  }
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) {
+    throw new Error("payroll_payment_reversal_reason_required");
+  }
+
+  const CoreHrService = await coreHrService();
+  return normalizePayrollEntry(
+    await CoreHrService.reversePayrollEntryPayment(entry.id, {
+      reason: normalizedReason,
+    })
+  );
+}
+
 
 export async function reopenPayrollEntry(
   entry: PayrollEntryView,

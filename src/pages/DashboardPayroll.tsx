@@ -18,7 +18,10 @@ import {
   FiUnlock,
   FiX,
 } from "react-icons/fi";
-import { DashboardSelectV2 } from "../components/dashboard-v2";
+import {
+  DashboardDatePickerV2,
+  DashboardSelectV2,
+} from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
 import PayrollComplianceWorkspace from "./payroll/PayrollComplianceWorkspace";
@@ -30,10 +33,12 @@ import {
   isEmployeePayrollEligible,
   loadPayrollMonth,
   markPayrollEntryPaid,
+  reversePayrollEntryPayment,
   payrollMonthBounds,
   payrollAccrualPeriodStatus,
   payrollEntryCarryoverNetHalalas,
   reconcilePreviousPayrollCarryovers,
+  recordLatePayrollApproval,
   reopenPayrollEntry,
   savePayrollDrafts,
   updatePayrollEntryAdjustments,
@@ -105,6 +110,19 @@ type ReopenPayrollDraft = {
   reason: string;
 };
 
+type PayrollLateApprovalDraft = {
+  employeeId: string;
+  approvalDate: string;
+  approvedAmountRiyals: string;
+  reason: string;
+};
+
+type PayrollPaymentControlDraft = {
+  mode: "pay-batch" | "unpay-batch" | "unpay-one";
+  entry: PayrollEntryView | null;
+  reason: string;
+};
+
 type PayrollAttendanceDeferralSnapshot = PayrollEntryView["attendanceSummary"] & {
   attendanceDeferredMissingHoursDeductionHalalas?: number | null;
   attendanceDeductionDeferral?: {
@@ -164,6 +182,25 @@ function currentYearMonth() {
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
+
+function riyadhTodayDateKey() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const read = (type: string) =>
+    parts.find((part) => part.type === type)?.value || "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
+function shiftDateKey(dateKey: string, days: number) {
+  const [dateYear, dateMonth, dateDay] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(dateYear, dateMonth - 1, dateDay + days));
+  return date.toISOString().slice(0, 10);
+}
+
 
 function replaceEntry(list: PayrollEntryView[], next: PayrollEntryView) {
   const key = `${next.employeeId}:${next.payrollMonth}`;
@@ -437,6 +474,42 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "core_payroll:employee_not_payroll_eligible") {
     return "الموظفة غير مؤهلة لمسير راتب حالي لأنها لا تملك راتبًا أساسيًا موجبًا.";
   }
+  if (message === "payroll_late_approval_entry_must_be_saved") {
+    return "احفظ مسودة راتب الموظفة أولًا قبل تسجيل اعتماد متأخر.";
+  }
+  if (message === "core_payroll:already_approved") {
+    return "هذه المسيرة معتمدة بالفعل ولا تحتاج تسجيل اعتماد متأخر.";
+  }
+  if (message === "core_payroll:late_approval_date_outside_period") {
+    return "تاريخ الاعتماد الفعلي يجب أن يكون داخل شهر المسيرة نفسها.";
+  }
+  if (message === "core_payroll:late_approval_date_must_be_past") {
+    return "الاعتماد المتأخر يقبل تاريخًا سابقًا فقط. لاعتماد اليوم استخدم زر اعتماد العادي.";
+  }
+  if (message === "core_payroll:late_approval_amount_invalid") {
+    return "المبلغ المعتمد فعليًا غير صالح.";
+  }
+  if (message === "core_payroll:late_approval_reason_required") {
+    return "سبب التسجيل المتأخر مطلوب.";
+  }
+  if (message === "core_payroll:late_approval_invalid_status") {
+    return "حالة هذه المسيرة لا تسمح بتسجيل اعتماد متأخر.";
+  }
+  if (
+    message === "payroll_payment_reversal_reason_required" ||
+    message === "core_payroll:payment_reversal_reason_required"
+  ) {
+    return "سبب إلغاء تسجيل الدفع مطلوب.";
+  }
+  if (message === "payroll_not_paid" || message === "core_payroll:not_paid") {
+    return "لا يمكن إلغاء تسجيل الدفع لأن الراتب غير مسجل كمدفوع.";
+  }
+  if (message === "payroll_payment_reversal_entry_must_be_saved") {
+    return "لا يمكن إلغاء تسجيل الدفع لسجل غير محفوظ.";
+  }
+  if (message === "core_payroll:payment_reversal_obligation_cancelled") {
+    return "لا يمكن عكس الدفع لأن أحد التزامات الراتب المرتبطة أُلغي بعد الدفع.";
+  }
   if (message === "payroll_paid_reopen_not_allowed" || message === "core_payroll:paid_reopen_not_allowed") {
     return "لا يمكن إعادة فتح راتب مدفوع. يحتاج ذلك مسار إلغاء دفع منفصل.";
   }
@@ -449,6 +522,11 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
 export default function DashboardPayroll() {
   const { hasPermission, role } = usePermissions();
   const canManage = hasPermission("payroll.manage");
+  const canRecordLateApproval =
+    canManage &&
+    ["owner", "admin", "hr"].includes(
+      String(role || "").trim().toLowerCase()
+    );
   const initial = currentYearMonth();
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
@@ -461,7 +539,11 @@ export default function DashboardPayroll() {
   const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);
   const [approvalConfirmation, setApprovalConfirmation] =
     useState<PayrollApprovalConfirmationDraft | null>(null);
+  const [lateApproval, setLateApproval] =
+    useState<PayrollLateApprovalDraft | null>(null);
   const [reopenDraft, setReopenDraft] = useState<ReopenPayrollDraft | null>(null);
+  const [paymentControl, setPaymentControl] =
+    useState<PayrollPaymentControlDraft | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     entry: PayrollEntryView;
     top: number;
@@ -576,6 +658,64 @@ export default function DashboardPayroll() {
         return true;
       }),
     [employeeFilter, entries, payrollMonth, statusFilter]
+  );
+
+  const lateApprovalCandidates = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.payrollMonth === payrollMonth &&
+          !["approved", "paid"].includes(entry.status)
+      ),
+    [entries, payrollMonth]
+  );
+
+  const selectedLateApprovalEntry = lateApproval
+    ? lateApprovalCandidates.find(
+        (entry) => entry.employeeId === lateApproval.employeeId
+      ) || null
+    : null;
+
+  const lateApprovalMaxDate = (() => {
+    const yesterday = shiftDateKey(riyadhTodayDateKey(), -1);
+    return payrollBounds.monthEnd < yesterday
+      ? payrollBounds.monthEnd
+      : yesterday;
+  })();
+
+  const approvedPaymentEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.payrollMonth === payrollMonth &&
+          entry.status === "approved"
+      ),
+    [entries, payrollMonth]
+  );
+
+  const paidPaymentEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.payrollMonth === payrollMonth &&
+          entry.status === "paid"
+      ),
+    [entries, payrollMonth]
+  );
+
+  const paymentControlTargets = paymentControl
+    ? paymentControl.mode === "pay-batch"
+      ? approvedPaymentEntries
+      : paymentControl.mode === "unpay-batch"
+        ? paidPaymentEntries
+        : paymentControl.entry
+          ? [paymentControl.entry]
+          : []
+    : [];
+
+  const paymentControlTotalHalalas = paymentControlTargets.reduce(
+    (total, entry) => total + Math.max(0, Number(entry.netSalaryHalalas || 0)),
+    0
   );
 
   const summary = useMemo(() => {
@@ -780,6 +920,203 @@ export default function DashboardPayroll() {
       setMessage(`تم حفظ ${saved.length} مسودة في نظام الرواتب.`);
     } catch (actionError: any) {
       setError(String(actionError?.message || "تعذر حفظ مسودات الرواتب."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const openBatchPaymentControl = (
+    mode: "pay-batch" | "unpay-batch"
+  ) => {
+    const targets =
+      mode === "pay-batch" ? approvedPaymentEntries : paidPaymentEntries;
+
+    if (!targets.length) {
+      setError(
+        mode === "pay-batch"
+          ? "لا توجد رواتب معتمدة جاهزة لتسجيل الدفع."
+          : "لا توجد رواتب مسجلة كمدفوعة لإلغاء تسجيلها."
+      );
+      return;
+    }
+
+    setError("");
+    setPaymentControl({
+      mode,
+      entry: null,
+      reason: "",
+    });
+  };
+
+  const openSinglePaymentReversal = (entry: PayrollEntryView) => {
+    setError("");
+    setPaymentControl({
+      mode: "unpay-one",
+      entry,
+      reason: "",
+    });
+  };
+
+  const submitPaymentControl = async () => {
+    if (!paymentControl || !canManage || !paymentControlTargets.length) {
+      return;
+    }
+
+    const reversing = paymentControl.mode !== "pay-batch";
+    const reason = paymentControl.reason.trim();
+
+    if (reversing && !reason) {
+      setError("سبب إلغاء تسجيل الدفع مطلوب.");
+      return;
+    }
+
+    setBusy(
+      paymentControl.mode === "pay-batch"
+        ? "pay-batch"
+        : paymentControl.mode === "unpay-batch"
+          ? "unpay-batch"
+          : `unpay:${paymentControl.entry?.employeeId || "entry"}`
+    );
+    setError("");
+
+    let nextEntries = entries;
+    let successCount = 0;
+    const failures: string[] = [];
+
+    for (const target of paymentControlTargets) {
+      try {
+        const saved = reversing
+          ? await reversePayrollEntryPayment(target, reason)
+          : await markPayrollEntryPaid(target);
+        nextEntries = replaceEntry(nextEntries, saved);
+        successCount += 1;
+      } catch (actionError: any) {
+        failures.push(
+          `${target.employeeName || target.employeeId}: ${payrollActionErrorMessage(
+            actionError,
+            reversing
+              ? "تعذر إلغاء تسجيل الدفع."
+              : "تعذر تسجيل الدفع."
+          )}`
+        );
+      }
+    }
+
+    setEntries(nextEntries);
+    setPaymentControl(null);
+
+    if (successCount > 0) {
+      setMessage(
+        reversing
+          ? `تم إلغاء تسجيل الدفع عن ${successCount} مسير.`
+          : `تم تسجيل ${successCount} مسير كمدفوع.`
+      );
+    }
+
+    if (failures.length) {
+      setError(
+        `تم تنفيذ ${successCount} من ${paymentControlTargets.length}. تعذر: ${failures.join(
+          " | "
+        )}`
+      );
+    }
+
+    setBusy("");
+  };
+
+  const openLateApproval = () => {
+    if (!canRecordLateApproval) return;
+
+    const preferred =
+      employeeFilter !== "all"
+        ? lateApprovalCandidates.find(
+            (entry) => entry.employeeId === employeeFilter
+          )
+        : lateApprovalCandidates[0];
+
+    if (!preferred) {
+      setError(
+        "لا توجد مسيرة غير معتمدة لهذه الفترة."
+      );
+      return;
+    }
+
+    setError("");
+    setLateApproval({
+      employeeId: preferred.employeeId,
+      approvalDate: "",
+      approvedAmountRiyals: (
+        Number(preferred.netSalaryHalalas || 0) / 100
+      ).toFixed(2),
+      reason: "تم اعتماد المسيرة سابقًا ولم يتم تسجيلها في النظام.",
+    });
+  };
+
+  const submitLateApproval = async () => {
+    if (!lateApproval || !selectedLateApprovalEntry || !canRecordLateApproval) {
+      return;
+    }
+
+    if (!lateApproval.approvalDate) {
+      setError("اختر تاريخ الاعتماد الفعلي.");
+      return;
+    }
+
+    const amountRiyals = Number(lateApproval.approvedAmountRiyals);
+    if (!Number.isFinite(amountRiyals) || amountRiyals < 0) {
+      setError("أدخل المبلغ الذي تم اعتماده فعليًا.");
+      return;
+    }
+
+    const reason = lateApproval.reason.trim();
+    if (!reason) {
+      setError("سبب التسجيل المتأخر مطلوب.");
+      return;
+    }
+
+    setBusy(`late-approve:${selectedLateApprovalEntry.employeeId}`);
+    setError("");
+    try {
+      let approvalEntry = selectedLateApprovalEntry;
+
+      if (!approvalEntry.saved) {
+        const period = await ensurePayrollPeriod(year, month);
+        const persisted = await savePayrollDrafts([
+          {
+            ...approvalEntry,
+            periodId: approvalEntry.periodId || period.id,
+          },
+        ]);
+        approvalEntry = persisted[0] || approvalEntry;
+        if (!approvalEntry.saved || !approvalEntry.id) {
+          throw new Error("payroll_late_approval_entry_must_be_saved");
+        }
+        setEntries((current) => replaceEntry(current, approvalEntry));
+      }
+
+      const saved = await recordLatePayrollApproval(
+        approvalEntry,
+        {
+          approvalDate: lateApproval.approvalDate,
+          approvedNetHalalas: Math.round(amountRiyals * 100),
+          reason,
+        }
+      );
+      setEntries((current) => replaceEntry(current, saved));
+      setSelectedEntry((current) =>
+        current?.employeeId === saved.employeeId ? saved : current
+      );
+      setLateApproval(null);
+      setMessage(
+        `تم تسجيل اعتماد ${saved.employeeName} بأثر فعلي بتاريخ ${lateApproval.approvalDate}. وقت تسجيل العملية الحالي محفوظ في سجل التدقيق.`
+      );
+    } catch (actionError: any) {
+      setError(
+        payrollActionErrorMessage(
+          actionError,
+          "تعذر تسجيل الاعتماد المتأخر."
+        )
+      );
     } finally {
       setBusy("");
     }
@@ -1150,6 +1487,46 @@ export default function DashboardPayroll() {
               disabled={!canManage || Boolean(busy)}
             >
               <FiSave /> حفظ المسودات
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={openLateApproval}
+              disabled={
+                !canRecordLateApproval ||
+                Boolean(busy) ||
+                isFuturePayrollPeriod
+              }
+              title="لتوثيق اعتماد تم فعليًا في تاريخ سابق ولم يُسجل وقتها"
+            >
+              <FiClock /> تسجيل اعتماد متأخر
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={() => openBatchPaymentControl("pay-batch")}
+              disabled={
+                !canManage ||
+                Boolean(busy) ||
+                approvedPaymentEntries.length === 0
+              }
+              title="يسجل كل الرواتب المعتمدة في المسيرة كمدفوعة"
+            >
+              <FiDollarSign /> تسجيل دفع المسيرة
+            </button>
+
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={() => openBatchPaymentControl("unpay-batch")}
+              disabled={
+                !canManage ||
+                Boolean(busy) ||
+                paidPaymentEntries.length === 0
+              }
+              title="يرجع الرواتب المسجلة كمدفوعة إلى حالة معتمد مع عكس آثار الدفع"
+            >
+              <FiUnlock /> إلغاء تسجيل دفع المسيرة
             </button>
           </div>
 
@@ -1743,6 +2120,304 @@ export default function DashboardPayroll() {
         />
       ) : null}
 
+      {paymentControl ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setPaymentControl(null)}
+        >
+          <aside
+            className="payroll-modal payroll-payment-control-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="إدارة تسجيل الدفع"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>
+                  {paymentControl.mode === "pay-batch"
+                    ? "تأكيد تنفيذ الدفع"
+                    : "تصحيح تسجيل الدفع"}
+                </span>
+                <h2>
+                  {paymentControl.mode === "pay-batch"
+                    ? "تسجيل دفع المسيرة"
+                    : paymentControl.mode === "unpay-batch"
+                      ? "إلغاء تسجيل دفع المسيرة"
+                      : `إلغاء تسجيل دفع ${paymentControl.entry?.employeeName || ""}`}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentControl(null)}
+                aria-label="إغلاق"
+              >
+                <FiX />
+              </button>
+            </header>
+
+            <div
+              className={
+                "payroll-payment-control-summary " +
+                (paymentControl.mode === "pay-batch"
+                  ? "is-pay"
+                  : "is-reversal")
+              }
+            >
+              {paymentControl.mode === "pay-batch" ? (
+                <FiDollarSign />
+              ) : (
+                <FiUnlock />
+              )}
+              <div>
+                <strong>
+                  {paymentControlTargets.length}{" "}
+                  {paymentControlTargets.length === 1 ? "مسير" : "مسيرات"}
+                </strong>
+                <span>
+                  الإجمالي:{" "}
+                  {formatPayrollMoney(paymentControlTotalHalalas)}
+                </span>
+              </div>
+            </div>
+
+            {paymentControl.mode === "pay-batch" ? (
+              <div className="payroll-payment-control-note">
+                <FiAlertTriangle />
+                <p>
+                  استخدم هذا الإجراء بعد تنفيذ التحويلات فعليًا. تصدير ملف
+                  الرواتب وحده لا يعني أن الرواتب دُفعت.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="payroll-payment-control-note is-warning">
+                  <FiAlertTriangle />
+                  <p>
+                    هذا الإجراء لتصحيح تسجيل تم بالخطأ فقط. إذا وصلت الأموال
+                    فعليًا للموظفة ثم تم استردادها، فلا تستخدم إلغاء التسجيل
+                    كبديل عن حركة استرداد مالية.
+                  </p>
+                </div>
+
+                <label className="payroll-payment-control-reason">
+                  <span>سبب إلغاء تسجيل الدفع</span>
+                  <textarea
+                    rows={3}
+                    value={paymentControl.reason}
+                    onChange={(event) =>
+                      setPaymentControl({
+                        ...paymentControl,
+                        reason: event.target.value,
+                      })
+                    }
+                    placeholder="مثال: تم تسجيل الدفع بالخطأ قبل تنفيذ التحويل البنكي"
+                  />
+                </label>
+              </>
+            )}
+
+            <footer>
+              <button
+                type="button"
+                onClick={() => setPaymentControl(null)}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={
+                  Boolean(busy) ||
+                  paymentControlTargets.length === 0 ||
+                  (paymentControl.mode !== "pay-batch" &&
+                    !paymentControl.reason.trim())
+                }
+                onClick={() => void submitPaymentControl()}
+              >
+                {paymentControl.mode === "pay-batch"
+                  ? "تأكيد تسجيل الدفع"
+                  : "تأكيد إلغاء تسجيل الدفع"}
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
+      {lateApproval ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setLateApproval(null)}
+        >
+          <aside
+            className="payroll-modal payroll-late-approval-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="تسجيل اعتماد متأخر"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>توثيق عملية حدثت سابقًا</span>
+                <h2>تسجيل اعتماد متأخر</h2>
+                <p>سجّل تاريخ ومبلغ الاعتماد الذي تم فعليًا ولم يُوثق وقتها.</p>
+              </div>
+              <button
+                type="button"
+                className="payroll-late-approval-close"
+                onClick={() => setLateApproval(null)}
+                aria-label="إغلاق"
+              >
+                <FiX />
+              </button>
+            </header>
+
+            <div className="payroll-late-approval-note is-warning">
+              <FiAlertTriangle />
+              <div>
+                <strong>لن نعيد حساب الماضي من بيانات اليوم.</strong>
+                <small>
+                  المبلغ الذي تدخله هو المبلغ الذي تم اعتماده فعليًا، وهو
+                  مرجع التسوية اللاحقة.
+                </small>
+              </div>
+            </div>
+
+            <div className="payroll-late-approval-fields">
+              <label>
+                <span>الموظفة</span>
+                <DashboardSelectV2
+                  value={lateApproval.employeeId}
+                  options={lateApprovalCandidates.map((entry) => ({
+                    value: entry.employeeId,
+                    label: entry.employeeName || entry.employeeId,
+                  }))}
+                  onChange={(employeeId) => {
+                    const nextEntry = lateApprovalCandidates.find(
+                      (entry) => entry.employeeId === employeeId
+                    );
+                    setLateApproval({
+                      ...lateApproval,
+                      employeeId,
+                      approvedAmountRiyals: (
+                        Number(nextEntry?.netSalaryHalalas || 0) / 100
+                      ).toFixed(2),
+                    });
+                  }}
+                />
+              </label>
+
+              <label>
+                <span>مسيرة الراتب</span>
+                <input
+                  className="dsv2-input"
+                  readOnly
+                  dir="ltr"
+                  value={payrollMonth}
+                />
+              </label>
+
+              <label>
+                <span>تاريخ الاعتماد الفعلي</span>
+                <DashboardDatePickerV2
+                  value={lateApproval.approvalDate}
+                  min={payrollBounds.monthStart}
+                  max={lateApprovalMaxDate}
+                  clearable={false}
+                  placeholder="اختر التاريخ"
+                  onChange={(approvalDate) =>
+                    setLateApproval({ ...lateApproval, approvalDate })
+                  }
+                />
+              </label>
+
+              <label>
+                <span>المبلغ المعتمد فعليًا</span>
+                <div className="payroll-late-approval-amount-wrap">
+                  <input
+                    className="dsv2-input payroll-late-approval-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    dir="ltr"
+                    lang="en"
+                    inputMode="decimal"
+                    value={lateApproval.approvedAmountRiyals}
+                    onChange={(event) =>
+                      setLateApproval({
+                        ...lateApproval,
+                        approvedAmountRiyals: event.target.value,
+                      })
+                    }
+                    placeholder="3610.00"
+                  />
+                  <span className="payroll-late-approval-currency">SAR</span>
+                </div>
+                {selectedLateApprovalEntry ? (
+                  <small>
+                    تم تعبئة المبلغ تلقائيًا من حساب النظام. عدله فقط إذا كان
+                    المبلغ الذي تم اعتماده فعليًا وقتها مختلفًا.
+                  </small>
+                ) : null}
+              </label>
+
+              <label className="payroll-late-approval-reason">
+                <span>سبب التسجيل المتأخر</span>
+                <textarea
+                  className="dsv2-textarea"
+                  rows={2}
+                  value={lateApproval.reason}
+                  onChange={(event) =>
+                    setLateApproval({
+                      ...lateApproval,
+                      reason: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="payroll-late-approval-audit">
+              <FiClock />
+              <div>
+                <strong>
+                  تاريخ الاعتماد الفعلي:{" "}
+                  {lateApproval.approvalDate || "لم يُحدد"}
+                </strong>
+                <small>
+                  تاريخ إدخال السجل في النظام يبقى وقت اليوم الحقيقي لأغراض
+                  التدقيق.
+                </small>
+              </div>
+            </div>
+
+            <footer>
+              <button type="button" onClick={() => setLateApproval(null)}>
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={
+                  busy.startsWith("late-approve:") ||
+                  !selectedLateApprovalEntry ||
+                  !lateApproval.approvalDate ||
+                  lateApproval.approvedAmountRiyals === "" ||
+                  !lateApproval.reason.trim()
+                }
+                onClick={() => void submitLateApproval()}
+              >
+                تسجيل الاعتماد المتأخر
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
       {approvalConfirmation ? createPortal(
         <div
           className="dashboard-v2 payroll-modal-backdrop"
@@ -1769,18 +2444,32 @@ export default function DashboardPayroll() {
             <div className="payroll-alert is-warning">
               <FiAlertTriangle />
               <div>
-                <strong>هذه الفترة لم تُقفل بعد، وسيتم اعتماد الصافي المتوقع.</strong>
+                <strong>
+                  سيتم اعتماد راتب {approvalConfirmation.entry.payrollMonth} الكامل المتوقع،
+                  وليس راتب الأيام المنقضية فقط.
+                </strong>
                 <small>
-                  الصافي المتوقع للصرف:{" "}
+                  راتب الشهر الكامل المتوقع للاعتماد:{" "}
                   {formatPayrollMoney(approvalConfirmation.expectedNetHalalas)}
+                </small>
+                <small>
+                  المستحق المكتسب حتى{" "}
+                  {calculatePayrollAccrualView(approvalConfirmation.entry)
+                    .completedThroughDate || "آخر يوم مكتمل"}:{" "}
+                  {formatPayrollMoney(
+                    calculatePayrollAccrualView(approvalConfirmation.entry)
+                      .earnedToDateHalalas
+                  )}{" "}
+                  — للمراجعة فقط
                 </small>
               </div>
             </div>
 
             <p>
-              أي فرق يظهر بعد الاعتماد، مثل الغياب أو نقص الساعات أو
-              الإجازة بدون راتب أو إضافة معتمدة، سيُرحّل تلقائيًا كتسوية
-              إلى أول مسيرة لاحقة قبل اعتمادها.
+              تاريخ الاعتماد المبكر لا يغيّر فترة الراتب: الاعتماد يخص راتب
+              الشهر كاملًا. أي فرق يظهر لاحقًا خلال بقية الشهر، مثل الغياب أو
+              نقص الساعات أو الإجازة بدون راتب، سيُرحّل تلقائيًا كتسوية إلى
+              أول مسيرة لاحقة قبل اعتمادها.
             </p>
 
             <footer>

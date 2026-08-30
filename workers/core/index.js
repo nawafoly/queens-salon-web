@@ -118,6 +118,7 @@ import {
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   approvePayrollEntry,
+  recordLatePayrollApproval,
   deferAttendanceDeduction,
   getPayrollEntry,
   listPayrollEntries,
@@ -126,6 +127,7 @@ import {
   listPayrollCarryoverAdjustments,
   reconcilePayrollCarryoversBatch,
   markPayrollEntryPaid,
+  reversePayrollEntryPayment,
   previewPayrollEntry,
   reopenPayrollEntry,
   togglePayrollOvertime,
@@ -650,7 +652,7 @@ function match(url, method) {
   }
   if (path === "/api/core/hr/payroll-carryovers" && method === "GET") return { name: "payroll-carryovers" };
   if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
-  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
+  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|late-approve|paid|unpay|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   if (path === "/api/core/hr/employee-targets/mine" && method === "GET") return { name: "employee-targets:mine" };
   if (path === "/api/core/hr/employee-targets/rebuild" && method === "POST") return { name: "employee-targets:rebuild" };
@@ -2121,6 +2123,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
+    case "payroll-entry:late-approve":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      if (method === "POST") {
+        return recordLatePayrollApproval(
+          db,
+          ctx.salonId,
+          route.id,
+          body,
+          actorInfo
+        );
+      }
+      break;
+
     case "payroll-entry:reopen":
       requirePermission(ctx, "payroll.manage");
       requireRole(ctx.role, ADMIN_ROLES);
@@ -2130,6 +2146,20 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-entry:paid":
       requirePermission(ctx, "payroll.manage");
       if (method === "POST") return markPayrollEntryPaid(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "payroll-entry:unpay":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, PAYROLL_MANAGEMENT_ROLES);
+      if (method === "POST") {
+        return reversePayrollEntryPayment(
+          db,
+          ctx.salonId,
+          route.id,
+          body,
+          actorInfo
+        );
+      }
       break;
 
     case "employee-targets":

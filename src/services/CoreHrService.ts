@@ -936,8 +936,29 @@ export const CoreHrService = {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/approve`, { method: "POST" });
     return camel<CorePayrollEntry>(row);
   },
+  async recordLatePayrollApproval(
+    id: string,
+    input: {
+      approvalDate: string;
+      approvedNetHalalas: number;
+      reason: string;
+    }
+  ) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-entries/${encodeURIComponent(id)}/late-approve`,
+      { method: "POST", body: input }
+    );
+    return camel<CorePayrollEntry>(row);
+  },
   async markPayrollEntryPaid(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/paid`, { method: "POST" });
+    return camel<CorePayrollEntry>(row);
+  },
+  async reversePayrollEntryPayment(id: string, input: { reason: string }) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-entries/${encodeURIComponent(id)}/unpay`,
+      { method: "POST", body: input }
+    );
     return camel<CorePayrollEntry>(row);
   },
   async reopenPayrollEntry(id: string, input: { reason: string; status?: "draft" | "reviewed" }) {

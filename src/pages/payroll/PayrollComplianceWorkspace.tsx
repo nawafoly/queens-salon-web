@@ -685,42 +685,70 @@ export default function PayrollComplianceWorkspace({
             </button>
           </article>
 
-          <article className="payroll-compliance-card">
-            <h3>قفل فترة الشفتات للراتب</h3>
-            <div className="payroll-compliance-kpi">
-              <span>الفترة</span>
+          <article className="payroll-compliance-card payroll-period-lock-card">
+            <h3>حماية جداول الدوام للفترة</h3>
+
+            <div
+              className={
+                "payroll-period-lock-state " +
+                (text(periodLock?.status).toLowerCase() === "locked"
+                  ? "is-locked"
+                  : "is-open")
+              }
+            >
               <strong>
-                {bounds.start} → {bounds.end}
+                {text(periodLock?.status).toLowerCase() === "locked"
+                  ? "🔒 جداول الفترة محمية"
+                  : "🔓 جداول الفترة قابلة للتعديل"}
               </strong>
-              <small>
-                الحالة:{" "}
-                {text(periodLock?.status || "غير مقفلة")}
-              </small>
+              <span>لا يؤثر هذا القفل على تسجيل الحضور والبصمة، ولا يعني اعتماد الرواتب.</span>
             </div>
+
+            <div className="payroll-period-lock-range">
+              <span>من</span>
+              <strong dir="ltr">{bounds.start}</strong>
+              <span>إلى</span>
+              <strong dir="ltr">{bounds.end}</strong>
+            </div>
+
             <label className="payroll-compliance-single-field">
-              <span>سبب القرار</span>
+              <span>سبب القرار الجديد</span>
               <input
                 className="dsv2-input"
                 value={lockReason}
                 onChange={(event) => setLockReason(event.target.value)}
+                placeholder="اكتب سبب القفل أو الفتح"
               />
             </label>
+
             <div className="payroll-compliance-actions">
               <button
                 type="button"
                 className="dsv2-btn dsv2-btn--primary"
                 onClick={() => void saveLock("locked")}
-                disabled={!canManage || Boolean(busy)}
+                disabled={
+                  !canManage ||
+                  Boolean(busy) ||
+                  text(periodLock?.status).toLowerCase() === "locked"
+                }
               >
-                قفل الفترة
+                {text(periodLock?.status).toLowerCase() === "locked"
+                  ? "الجداول محمية الآن"
+                  : "قفل الفترة"}
               </button>
               <button
                 type="button"
                 className="dsv2-btn dsv2-btn--secondary"
                 onClick={() => void saveLock("unlocked")}
-                disabled={!canManage || Boolean(busy)}
+                disabled={
+                  !canManage ||
+                  Boolean(busy) ||
+                  text(periodLock?.status).toLowerCase() !== "locked"
+                }
               >
-                فتح الفترة
+                {text(periodLock?.status).toLowerCase() === "locked"
+                  ? "فتح الفترة"
+                  : "الجداول مفتوحة الآن"}
               </button>
             </div>
           </article>

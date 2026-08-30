@@ -44,6 +44,7 @@ import {
   getCanonicalAttendanceDeductionDeferral,
   listPayrollObligationDeductions,
   payrollObligationPaidStatements,
+  payrollObligationPaymentReversalStatements,
 } from './payroll-obligations.js';
 
 const PAYROLL_DAY_MS = 24 * 60 * 60 * 1000;
@@ -257,6 +258,8 @@ function canonicalGosiFromEmployment(employment, payrollMonth) {
 async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollMonth, employment, options = {}) {
   const bounds = payrollMonthBoundsCanonical(payrollMonth);
   const completedThrough = payrollCompletedThrough(bounds);
+  const completedPeriodEnd =
+    completedThrough < bounds.monthEnd ? completedThrough : bounds.monthEnd;
   const attendanceMode = cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt' ? 'exempt' : 'required';
   const [attendanceRows, leaveRows, absenceRows, permissionRows, shiftBatch] = await Promise.all([
     listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
@@ -274,7 +277,10 @@ async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollM
   for (const leave of leaveRows || []) {
     if (payrollLeaveIsPartial(leave)) continue;
     const from = cleanText(leave.start_date) < bounds.monthStart ? bounds.monthStart : cleanText(leave.start_date);
-    const to = cleanText(leave.end_date) > bounds.monthEnd ? bounds.monthEnd : cleanText(leave.end_date);
+    const to =
+      cleanText(leave.end_date) > completedPeriodEnd
+        ? completedPeriodEnd
+        : cleanText(leave.end_date);
     if (!from || !to || from > to) continue;
     for (const dateKey of payrollDateKeys(from, to)) {
       if (payrollLeaveIsUnpaid(leave)) approvedAbsenceDays += 1;
@@ -286,7 +292,7 @@ async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollM
   }
   for (const absence of absenceRows || []) {
     const dateKey = cleanText(absence.date_key);
-    if (dateKey < bounds.monthStart || dateKey > bounds.monthEnd) continue;
+    if (dateKey < bounds.monthStart || dateKey > completedPeriodEnd) continue;
     approvedAbsenceDays += payrollAbsenceUnit(absence.absence_type);
   }
   approvedLeaveDays = payrollRoundHours(approvedLeaveDays);
@@ -1164,10 +1170,22 @@ async function nextApprovalSnapshotVersion(db, salonId, payrollEntryId) {
   return Math.max(0, Number(row?.version || 0)) + 1;
 }
 
-async function buildApprovalSnapshotStatement(db, salonId, entry, actor = {}, approvedAt = nowIso()) {
+async function buildApprovalSnapshotStatement(
+  db,
+  salonId,
+  entry,
+  actor = {},
+  approvedAt = nowIso(),
+  snapshotOptions = {}
+) {
   const approvalVersion = await nextApprovalSnapshotVersion(db, salonId, entry.id);
   const snapshotId = generatedId('payroll_approval_snapshot');
-  const approvedNetHalalas = Math.max(0, Number(entry.net_salary_halalas ?? entry.final_salary_halalas ?? 0));
+  const approvedNetHalalas = Object.prototype.hasOwnProperty.call(
+    snapshotOptions,
+    'approvedNetHalalas'
+  )
+    ? Math.max(0, Number(snapshotOptions.approvedNetHalalas || 0))
+    : Math.max(0, Number(entry.net_salary_halalas ?? entry.final_salary_halalas ?? 0));
   const baseSalaryHalalas = Math.max(0, Number(entry.base_salary_halalas || 0));
   const grossSalaryHalalas = Math.max(0, Number(entry.gross_salary_halalas || 0));
   const totalAdditionsHalalas = Math.max(0, grossSalaryHalalas - baseSalaryHalalas);
@@ -1197,8 +1215,8 @@ async function buildApprovalSnapshotStatement(db, salonId, entry, actor = {}, ap
       entry.attendance_summary_json || null,
       entry.gosi_snapshot_json || null,
       Math.max(0, Number(entry.employer_gosi_contribution_halalas || 0)),
-      JSON.stringify(entry),
-      approvedAt,
+      JSON.stringify(snapshotOptions.entrySnapshot || entry),
+      optionalText(snapshotOptions.createdAt) || approvedAt,
     ],
   };
 }
@@ -2280,6 +2298,156 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
   return getPayrollEntry(db, salonId, existing.id);
 }
 
+export async function recordLatePayrollApproval(
+  db,
+  salonId,
+  id,
+  data = {},
+  actor = {}
+) {
+  const existing = await getPayrollEntry(db, salonId, id);
+  const currentStatus = cleanText(existing.status || 'draft');
+
+  if (currentStatus === 'paid') {
+    throw new AppError(409, 'core_payroll:already_paid');
+  }
+  if (currentStatus === 'approved') {
+    throw new AppError(409, 'core_payroll:already_approved');
+  }
+  if (!['draft', 'reviewed'].includes(currentStatus)) {
+    throw new AppError(409, 'core_payroll:late_approval_invalid_status');
+  }
+
+  const approvalDate = validDate(
+    data.approvalDate || data.approval_date,
+    'approvalDate'
+  );
+  const bounds = payrollMonthBoundsCanonical(existing.payroll_month);
+  if (approvalDate < bounds.monthStart || approvalDate > bounds.monthEnd) {
+    throw new AppError(400, 'core_payroll:late_approval_date_outside_period');
+  }
+
+  const today = payrollRiyadhTodayKey();
+  if (approvalDate >= today) {
+    throw new AppError(400, 'core_payroll:late_approval_date_must_be_past');
+  }
+
+  const approvedNetHalalas = Number(
+    data.approvedNetHalalas ?? data.approved_net_halalas
+  );
+  if (
+    !Number.isSafeInteger(approvedNetHalalas) ||
+    approvedNetHalalas < 0
+  ) {
+    throw new AppError(400, 'core_payroll:late_approval_amount_invalid');
+  }
+
+  const reason = optionalText(data.reason);
+  if (!reason) {
+    throw new AppError(400, 'core_payroll:late_approval_reason_required');
+  }
+
+  const now = nowIso();
+  const auditEntry = {
+    action: 'late_approval_recorded',
+    byUid: optionalText(actor.uid) || null,
+    byEmail: optionalText(actor.email) || null,
+    at: now,
+    effectiveApprovalDate: approvalDate,
+    approvedNetHalalas,
+    systemCalculatedNetHalalasAtRecording: Math.max(
+      0,
+      Number(existing.net_salary_halalas ?? existing.final_salary_halalas ?? 0)
+    ),
+    reason,
+    previousStatus: currentStatus,
+  };
+
+  // A late approval records a historical fact; it must not pretend that today's
+  // attendance state is what existed on the historical approval date.
+  // The explicitly entered approved amount is therefore the immutable carryover
+  // baseline. The current Core row remains available for later final reconciliation.
+  const historicalSnapshotEntry = {
+    ...existing,
+    status: 'approved',
+    approved_at: approvalDate,
+    approved_by_uid: optionalText(actor.uid) || null,
+    net_salary_halalas: approvedNetHalalas,
+    final_salary_halalas: approvedNetHalalas,
+    late_approval_record: {
+      effective_approval_date: approvalDate,
+      approved_net_halalas: approvedNetHalalas,
+      recorded_at: now,
+      recorded_by_uid: optionalText(actor.uid) || null,
+      recorded_by_email: optionalText(actor.email) || null,
+      reason,
+    },
+  };
+
+  const snapshotStatement = await buildApprovalSnapshotStatement(
+    db,
+    salonId,
+    existing,
+    actor,
+    approvalDate,
+    {
+      approvedNetHalalas,
+      createdAt: now,
+      entrySnapshot: historicalSnapshotEntry,
+    }
+  );
+
+  const statements = [
+    { sql: snapshotStatement.sql, params: snapshotStatement.params },
+    {
+      sql: `UPDATE payroll_entries
+               SET status = 'approved',
+                   approved_at = ?,
+                   approved_by_uid = ?,
+                   audit_log_json = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status IN ('draft', 'reviewed')`,
+      params: [
+        approvalDate,
+        optionalText(actor.uid) || null,
+        appendAuditEntry(existing, auditEntry),
+        now,
+        salonId,
+        existing.id,
+      ],
+    },
+  ];
+
+  // Carryovers already present in this payroll month are considered applied by
+  // the historical approval, but the system records that application now.
+  for (const carryoverId of carryoverSourceIds(existing)) {
+    statements.push({
+      sql: `UPDATE payroll_carryover_adjustments
+               SET status = 'applied',
+                   target_payroll_entry_id = ?,
+                   applied_at = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND target_payroll_month = ?
+               AND status = 'pending'`,
+      params: [
+        existing.id,
+        now,
+        now,
+        salonId,
+        carryoverId,
+        existing.payroll_month,
+      ],
+    });
+  }
+
+  await dbBatch(db, statements);
+  return getPayrollEntry(db, salonId, existing.id);
+}
+
 export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   const currentStatus = cleanText(existing.status || 'draft');
@@ -2445,6 +2613,130 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
   }
 
   statements.push(...obligationStatements);
+  await dbBatch(db, statements);
+  return getPayrollEntry(db, salonId, existing.id);
+}
+
+
+export async function reversePayrollEntryPayment(
+  db,
+  salonId,
+  id,
+  data = {},
+  actor = {}
+) {
+  const existing = await getPayrollEntry(db, salonId, id);
+  const currentStatus = cleanText(existing.status);
+
+  if (currentStatus === 'approved') return existing;
+  if (currentStatus !== 'paid') {
+    throw new AppError(409, 'core_payroll:not_paid');
+  }
+
+  const reason = cleanText(data.reason);
+  if (!reason) {
+    throw new AppError(400, 'core_payroll:payment_reversal_reason_required');
+  }
+
+  const now = nowIso();
+
+  const installments = await dbAll(
+    db,
+    `SELECT
+       advance_id,
+       SUM(amount_halalas) AS amount_halalas
+     FROM salary_advance_installments
+    WHERE salon_id = ?
+      AND payroll_entry_id = ?
+      AND payroll_month = ?
+      AND status = 'deducted'
+    GROUP BY advance_id`,
+    [salonId, existing.id, existing.payroll_month]
+  );
+
+  const obligationStatements =
+    await payrollObligationPaymentReversalStatements(
+      db,
+      salonId,
+      existing,
+      now
+    );
+
+  const auditLog = appendAuditEntry(existing, {
+    action: 'payment_reversed',
+    byUid: optionalText(actor.uid) || null,
+    byEmail: optionalText(actor.email) || null,
+    at: now,
+    reason,
+    previousPaidAt: optionalText(existing.paid_at) || null,
+    previousPaidByUid: optionalText(existing.paid_by_uid) || null,
+  });
+
+  const statements = [
+    {
+      sql: `UPDATE payroll_entries
+               SET status = 'approved',
+                   paid_at = NULL,
+                   paid_by_uid = NULL,
+                   audit_log_json = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status = 'paid'`,
+      params: [
+        auditLog,
+        now,
+        salonId,
+        existing.id,
+      ],
+    },
+  ];
+
+  for (const installment of installments) {
+    const amount = Math.max(0, Number(installment.amount_halalas || 0));
+
+    statements.push({
+      sql: `UPDATE salary_advances
+               SET paid_halalas = MAX(0, paid_halalas - ?),
+                   remaining_halalas =
+                     MIN(approved_halalas, remaining_halalas + ?),
+                   payment_status = CASE
+                     WHEN paid_halalas <= ? THEN 'paid'
+                     ELSE 'partially_repaid'
+                   END,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?`,
+      params: [
+        amount,
+        amount,
+        amount,
+        now,
+        salonId,
+        installment.advance_id,
+      ],
+    });
+  }
+
+  statements.push({
+    sql: `UPDATE salary_advance_installments
+             SET status = 'scheduled',
+                 deducted_at = NULL,
+                 updated_at = ?
+           WHERE salon_id = ?
+             AND payroll_entry_id = ?
+             AND payroll_month = ?
+             AND status = 'deducted'`,
+    params: [
+      now,
+      salonId,
+      existing.id,
+      existing.payroll_month,
+    ],
+  });
+
+  statements.push(...obligationStatements);
+
   await dbBatch(db, statements);
   return getPayrollEntry(db, salonId, existing.id);
 }
