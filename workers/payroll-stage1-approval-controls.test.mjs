@@ -79,3 +79,23 @@ test("floating layer stays above payroll modal", () => {
 
   assert.ok(floatingZ > modalZ, `floating z-index ${floatingZ} must be above modal ${modalZ}`);
 });
+
+test("payroll compliance ignores stale employee/month loads before replacing state", () => {
+  const workspace = read("src/pages/payroll/PayrollComplianceWorkspace.tsx");
+
+  assert.match(workspace, /const loadGenerationRef = useRef\(0\)/);
+  assert.match(workspace, /const activeSelectionRef = useRef\(\{ employeeId, payrollMonth \}\)/);
+  assert.match(workspace, /const generation = \+\+loadGenerationRef\.current/);
+  assert.match(workspace, /employeeId: requestedEmployeeId/);
+  assert.match(workspace, /payrollMonth: requestedPayrollMonth/);
+  assert.match(workspace, /generation === loadGenerationRef\.current/);
+  assert.match(workspace, /activeSelectionRef\.current\.employeeId === requestedEmployeeId/);
+  assert.match(workspace, /activeSelectionRef\.current\.payrollMonth === requestedPayrollMonth/);
+
+  const applyGuard = workspace.indexOf("if (!selectionIsCurrent()) return;");
+  const obligationsWrite = workspace.indexOf("setObligations(obligationRows as any[])");
+  assert.ok(
+    applyGuard >= 0 && obligationsWrite > applyGuard,
+    "stale-load guard must run before compliance arrays are replaced"
+  );
+});

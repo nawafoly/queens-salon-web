@@ -1,5 +1,6 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import { CoreComplianceService } from "../../services/CoreComplianceService";
 import { CoreHrService } from "../../services/CoreHrService";
@@ -106,6 +107,11 @@ export default function PayrollComplianceWorkspace({
 
   const [lockReason, setLockReason] = useState("");
 
+
+  const loadGenerationRef = useRef(0);
+  const activeSelectionRef = useRef({ employeeId, payrollMonth });
+  activeSelectionRef.current = { employeeId, payrollMonth };
+
   const bounds = useMemo(() => monthBounds(payrollMonth), [payrollMonth]);
 
   useEffect(() => {
@@ -139,9 +145,24 @@ export default function PayrollComplianceWorkspace({
       setInstallmentId(scheduled?.id || "");
     }
   }, [installments, installmentId, payrollMonth]);
-
   const load = async () => {
-    if (!employeeId) return;
+    const generation = ++loadGenerationRef.current;
+    const {
+      employeeId: requestedEmployeeId,
+      payrollMonth: requestedPayrollMonth,
+    } = activeSelectionRef.current;
+
+    if (!requestedEmployeeId) {
+      setLoading(false);
+      return;
+    }
+
+    const requestedBounds = monthBounds(requestedPayrollMonth);
+    const selectionIsCurrent = () =>
+      generation === loadGenerationRef.current &&
+      activeSelectionRef.current.employeeId === requestedEmployeeId &&
+      activeSelectionRef.current.payrollMonth === requestedPayrollMonth;
+
     setLoading(true);
     setError("");
     try {
@@ -154,23 +175,34 @@ export default function PayrollComplianceWorkspace({
         carryoverRows,
         lockRows,
       ] = await Promise.all([
-        CoreHrService.listPayrollObligations({ employeeId }),
-        CoreHrService.listPayrollRecurringDeductions({ employeeId }),
-        CoreComplianceService.listPayrollDeductionClassificationEvents({ employeeId }),
-        CoreComplianceService.listPayrollDeductionCourtOverrides({
-          employeeId,
-          payrollMonth,
+        CoreHrService.listPayrollObligations({
+          employeeId: requestedEmployeeId,
         }),
-        CoreHrService.listSalaryAdvanceInstallments({ employeeId, payrollMonth }),
+        CoreHrService.listPayrollRecurringDeductions({
+          employeeId: requestedEmployeeId,
+        }),
+        CoreComplianceService.listPayrollDeductionClassificationEvents({
+          employeeId: requestedEmployeeId,
+        }),
+        CoreComplianceService.listPayrollDeductionCourtOverrides({
+          employeeId: requestedEmployeeId,
+          payrollMonth: requestedPayrollMonth,
+        }),
+        CoreHrService.listSalaryAdvanceInstallments({
+          employeeId: requestedEmployeeId,
+          payrollMonth: requestedPayrollMonth,
+        }),
         CoreHrService.listPayrollCarryovers({
-          employeeId,
-          targetPayrollMonth: payrollMonth,
+          employeeId: requestedEmployeeId,
+          targetPayrollMonth: requestedPayrollMonth,
         }),
         CoreHrService.listShiftPayrollPeriodLocks({
-          from: bounds.start,
-          to: bounds.end,
+          from: requestedBounds.start,
+          to: requestedBounds.end,
         }),
       ]);
+
+      if (!selectionIsCurrent()) return;
 
       setObligations(obligationRows as any[]);
       setRecurring(recurringRows as any[]);
@@ -180,9 +212,12 @@ export default function PayrollComplianceWorkspace({
       setCarryovers(carryoverRows as any[]);
       setLocks(lockRows as any[]);
     } catch (loadError: any) {
-      setError(text(loadError?.message || "تعذر تحميل أدوات الامتثال."));
+      if (!selectionIsCurrent()) return;
+      setError(text(loadError?.message || "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط£ط¯ظˆط§طھ ط§ظ„ط§ظ…طھط«ط§ظ„."));
     } finally {
-      setLoading(false);
+      if (selectionIsCurrent()) {
+        setLoading(false);
+      }
     }
   };
 
@@ -480,9 +515,8 @@ export default function PayrollComplianceWorkspace({
               {deductionClass === "judicial_debt" ? (
                 <label>
                   <span>السقف القضائي %</span>
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     className="dsv2-input"
-                    type="number"
                     min="1"
                     max="100"
                     step="0.01"
@@ -522,9 +556,8 @@ export default function PayrollComplianceWorkspace({
             <div className="payroll-compliance-form-grid">
               <label>
                 <span>السقف %</span>
-                <input dir="ltr" lang="en"
+                <DashboardNumberInputV2
                   className="dsv2-input"
-                  type="number"
                   min="0"
                   max="100"
                   step="0.01"
