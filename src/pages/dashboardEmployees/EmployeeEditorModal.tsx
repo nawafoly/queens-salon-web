@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { DashboardModalV2 } from "../../components/dashboard-v2";
 import {
@@ -86,8 +86,8 @@ export default function EmployeeEditorModal({
       <div>
         {!isCreateMode && canManage && canDelete && onDelete ? (
           <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={onDelete} disabled={busy}>
-            <FontAwesomeIcon icon={faTrash} />
-            أرشفة
+            <FontAwesomeIcon icon={faUserSlash} />
+            إنهاء الخدمة
           </button>
         ) : null}
       </div>

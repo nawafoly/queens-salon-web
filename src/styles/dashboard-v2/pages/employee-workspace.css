@@ -1,7 +1,7 @@
 /* Employee Workspace V2 — isolated under Dashboard V2 */
 .dashboard-v2 .dsv2-employee-workspace {
   --dsv2-ew-border: color-mix(in srgb, var(--dsv2-black) 12%, transparent);
-  --dsv2-ew-muted: var(--dsv2-muted);
+  --dsv2-ew-muted: var(--dsv2-text-soft);
   --dsv2-ew-soft: var(--dsv2-surface-soft);
   --dsv2-ew-gold-soft: var(--dsv2-gold-soft);
   --dsv2-ew-success-soft: var(--dsv2-green-soft);
@@ -2245,5 +2245,28 @@
 
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message {
     max-width: 92%;
+  }
+}
+
+/* EMPLOYEE_WORKSPACE_LIFECYCLE_ACTIONS_V1
+ * Lifecycle actions are independent from save/cancel form actions.
+ */
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--dsv2-control-gap, var(--dsv2-space-3));
+}
+
+@media (max-width: 767px) {
+  .dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__workspace-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__workspace-actions .dsv2-btn {
+    width: 100%;
   }
 }

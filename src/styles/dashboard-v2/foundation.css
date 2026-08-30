@@ -55,7 +55,7 @@
 
 .dashboard-v2 .dsv2-page-subtitle {
   margin: var(--dsv2-space-2) 0 0;
-  color: var(--dsv2-muted);
+  color: var(--dsv2-text-soft);
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.8;
@@ -71,7 +71,7 @@
 
 .dashboard-v2 .dsv2-section-caption {
   margin: var(--dsv2-space-1) 0 0;
-  color: var(--dsv2-muted);
+  color: var(--dsv2-text-soft);
   font-size: 0.74rem;
   font-weight: 700;
   line-height: 1.65;

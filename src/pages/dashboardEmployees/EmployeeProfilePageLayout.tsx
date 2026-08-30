@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import { createPortal } from "react-dom";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
@@ -41,8 +41,8 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
     }, 80);
   };
 
-  const savebar = (
-    <div className="dashboard-v2 dsv2-page dsv2-floating-root employees-v2-savebar-root" aria-hidden={!showSavebar}>
+  const savebar = showSavebar ? (
+    <div className="dashboard-v2 dsv2-page dsv2-floating-root employees-v2-savebar-root">
       <footer className="dsv2-ew-savebar employees-v2-profile-savebar" data-dirty={showSavebar ? "true" : "false"}>
         <div className="dsv2-ew-savebar__status">
           <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
@@ -57,19 +57,6 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         </div>
 
         <div className="dsv2-ew-savebar__actions">
-          {props.canManage && props.canDelete && props.onDelete ? (
-            <button
-              className="dsv2-btn dsv2-btn--danger"
-              type="button"
-              onClick={props.onDelete}
-              disabled={props.saving || !showSavebar}
-              data-dsv2-ignore-dirty="true"
-            >
-              <FontAwesomeIcon icon={faTrash} />
-              أرشفة الموظفة
-            </button>
-          ) : null}
-
           <button
             className="dsv2-btn dsv2-btn--secondary"
             type="button"
@@ -94,9 +81,11 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         </div>
       </footer>
     </div>
-  );
+  ) : null;
   const savebarPortal =
-    typeof document === "undefined" ? savebar : createPortal(savebar, document.body);
+    !savebar || typeof document === "undefined"
+      ? savebar
+      : createPortal(savebar, document.body);
 
   return (
     <section
@@ -168,10 +157,25 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
           <p>{activeHint}</p>
         </div>
 
-        <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={props.onClose}>
-          <FontAwesomeIcon icon={faArrowRight} />
-          العودة إلى الموظفات
-        </button>
+        <div className="employees-v2-profile__workspace-actions">
+          {props.canManage && props.canDelete && props.onDelete ? (
+            <button
+              className="dsv2-btn dsv2-btn--danger"
+              type="button"
+              onClick={props.onDelete}
+              disabled={props.saving}
+              data-dsv2-ignore-dirty="true"
+            >
+              <FontAwesomeIcon icon={faUserSlash} />
+              إنهاء الخدمة
+            </button>
+          ) : null}
+
+          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={props.onClose}>
+            <FontAwesomeIcon icon={faArrowRight} />
+            العودة إلى الموظفات
+          </button>
+        </div>
       </div>
 
       <nav className="dsv2-ew-tabs" role="tablist" aria-label="أقسام ملف الموظفة">

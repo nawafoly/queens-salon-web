@@ -5683,6 +5683,18 @@ export default function DashboardEmployees() {
         refreshedCoreSchedules
       );
 
+      // EMPLOYEE_SAVE_DIRTY_BASELINE_FIX_V1
+      // Rehydrate the editor from the canonical rows that were just verified.
+      // Without this, the savebar can remain dirty after a successful save
+      // because modalCustomWorkingHours still represents the pre-save editor
+      // projection while coreScheduleRows already represents the persisted one.
+      setModalCustomWorkingHours(
+        resolveCoreScheduleEditorRows(
+          refreshedCoreSchedules,
+          todayIso()
+        )
+      );
+
       setCoreScheduleExceptionRows(
         refreshedCoreExceptionRows
       );

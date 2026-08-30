@@ -15,7 +15,7 @@
 }
 
 .dashboard-v2 .dsv2-field__hint {
-  color: var(--dsv2-muted);
+  color: var(--dsv2-text-soft);
   font-size: 0.66rem;
   font-weight: 700;
   line-height: 1.55;
@@ -46,7 +46,7 @@
 
 .dashboard-v2 .dsv2-input::placeholder,
 .dashboard-v2 .dsv2-textarea::placeholder {
-  color: var(--dsv2-muted-soft);
+  color: var(--dsv2-muted);
   opacity: 1;
 }
 
