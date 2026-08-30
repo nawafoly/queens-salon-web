@@ -360,6 +360,37 @@ export async function listPayrollDeductionClassificationEvents(
   return rows;
 }
 
+export async function listPayrollDeductionCourtOverrides(
+  db,
+  salonId,
+  query = {}
+) {
+  let rows = await dbAll(
+    db,
+    `SELECT * FROM employee_payroll_deduction_overrides
+      WHERE salon_id = ?
+      ORDER BY created_at DESC
+      LIMIT 500`,
+    [salonId]
+  );
+
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const payrollMonth = cleanText(query.payrollMonth || query.payroll_month);
+  const status = cleanText(query.status);
+
+  if (employeeId) {
+    rows = rows.filter((row) => cleanText(row.employee_id) === employeeId);
+  }
+  if (payrollMonth) {
+    rows = rows.filter((row) => cleanText(row.payroll_month) === payrollMonth);
+  }
+  if (status) {
+    rows = rows.filter((row) => cleanText(row.status) === status);
+  }
+
+  return rows;
+}
+
 export async function savePayrollDeductionCourtOverride(
   db,
   salonId,

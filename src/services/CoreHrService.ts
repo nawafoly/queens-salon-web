@@ -764,6 +764,30 @@ export const CoreHrService = {
       }>(row)
     );
   },
+  async listSalaryAdvanceInstallments(
+    query: { employeeId: string; payrollMonth?: string }
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/salary-advance-installments",
+      { query }
+    );
+    return rows.map((row) =>
+      camel<{
+        id: string;
+        advanceId: string;
+        employeeId: string;
+        installmentNumber: number;
+        payrollMonth: string;
+        amountHalalas: number;
+        status: string;
+        payrollEntryId: string | null;
+        deductedAt: string | null;
+        updatedAt: string | null;
+        paymentStatus: string | null;
+        firstDeductionMonth: string | null;
+      }>(row)
+    );
+  },
   async listPayrollRecurringDeductions(
     query: { employeeId?: string; status?: string } = {}
   ) {

@@ -1,0 +1,129 @@
+.payroll-compliance-workspace {
+  margin-top: 18px;
+}
+
+.payroll-compliance-head,
+.payroll-compliance-toolbar,
+.payroll-compliance-actions,
+.payroll-compliance-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.payroll-compliance-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.payroll-compliance-head h2 {
+  margin: 8px 0 4px;
+}
+
+.payroll-compliance-head p {
+  margin: 0;
+  opacity: 0.75;
+}
+
+.payroll-compliance-toolbar {
+  min-width: min(100%, 360px);
+}
+
+.payroll-compliance-toolbar .dsv2-input {
+  min-width: 220px;
+}
+
+.payroll-compliance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.payroll-compliance-card {
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.payroll-compliance-card h3 {
+  margin: 0 0 14px;
+}
+
+.payroll-compliance-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.payroll-compliance-form-grid label,
+.payroll-compliance-single-field {
+  display: grid;
+  gap: 6px;
+}
+
+.payroll-compliance-form-grid .is-wide {
+  grid-column: 1 / -1;
+}
+
+.payroll-compliance-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.payroll-compliance-row {
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+}
+
+.payroll-compliance-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.payroll-compliance-row span,
+.payroll-compliance-kpi small {
+  opacity: 0.72;
+  font-size: 0.88rem;
+}
+
+.payroll-compliance-kpi {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.payroll-compliance-actions {
+  margin-top: 12px;
+}
+
+@media (max-width: 1050px) {
+  .payroll-compliance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .payroll-compliance-head,
+  .payroll-compliance-toolbar {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .payroll-compliance-toolbar .dsv2-input,
+  .payroll-compliance-toolbar .dsv2-btn {
+    width: 100%;
+  }
+
+  .payroll-compliance-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-compliance-form-grid .is-wide {
+    grid-column: auto;
+  }
+}

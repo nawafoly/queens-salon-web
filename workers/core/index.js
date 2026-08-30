@@ -147,6 +147,7 @@ import {
   classifyPayrollObligationDeduction,
   classifyRecurringPayrollDeduction,
   listPayrollDeductionClassificationEvents,
+  listPayrollDeductionCourtOverrides,
   savePayrollDeductionCourtOverride,
 } from './repositories/payroll-deduction-compliance.js';
 import {
@@ -168,6 +169,7 @@ import {
 } from './repositories/holiday-calendar-compliance.js';
 import {
   deferSalaryAdvanceInstallment,
+  listSalaryAdvanceInstallments,
 } from './repositories/salary-advance-deferrals.js';
 import {
   createTargetAdjustment,
@@ -594,6 +596,12 @@ function match(url, method) {
   ) {
     return { name: "payroll-advance-deductions" };
   }
+  if (
+    path === "/api/core/hr/salary-advance-installments" &&
+    method === "GET"
+  ) {
+    return { name: "salary-advance-installments" };
+  }
   if (path === "/api/core/hr/payroll-obligations/deductions" && method === "GET") {
     return { name: "payroll-obligation-deductions" };
   }
@@ -604,6 +612,7 @@ function match(url, method) {
   if (path === "/api/core/hr/payroll-deduction-classification-events" && method === "GET") return { name: "payroll-deduction-classification-events" };
   const payrollDeductionOverrideCancel = /^\/api\/core\/hr\/payroll-deduction-overrides\/([^/]+)\/cancel$/.exec(path);
   if (payrollDeductionOverrideCancel && method === "POST") return { name: "payroll-deduction-override:cancel", id: payrollDeductionOverrideCancel[1] };
+  if (path === "/api/core/hr/payroll-deduction-overrides" && method === "GET") return { name: "payroll-deduction-overrides" };
   if (path === "/api/core/hr/payroll-deduction-overrides" && method === "POST") return { name: "payroll-deduction-override:create" };
   const disciplinaryCaseCancel = /^\/api\/core\/hr\/disciplinary-cases\/([^/]+)\/cancel$/.exec(path);
   if (disciplinaryCaseCancel && method === "POST") return { name: "disciplinary-case:cancel", id: disciplinaryCaseCancel[1] };
@@ -1926,6 +1935,10 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollAdvanceDeductions(db, ctx.salonId, query);
 
+    case "salary-advance-installments":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listSalaryAdvanceInstallments(db, ctx.salonId, query);
+
     case "payroll-obligation:classification":
       requirePermission(ctx, "payroll.manage");
       return classifyPayrollObligationDeduction(db, ctx.salonId, route.id, body, actorInfo);
@@ -1937,6 +1950,10 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-deduction-classification-events":
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollDeductionClassificationEvents(db, ctx.salonId, query);
+
+    case "payroll-deduction-overrides":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollDeductionCourtOverrides(db, ctx.salonId, query);
 
     case "payroll-deduction-override:create":
       requirePermission(ctx, "payroll.manage");

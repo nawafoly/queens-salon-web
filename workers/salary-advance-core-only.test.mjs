@@ -98,3 +98,25 @@ test("salary advance installment deferral is canonical, atomic, scoped and permi
   assert.match(service, /idempotencyKey:\s*string/);
   assert.match(service, /\/api\/core\/hr\/salary-advance-installments\/\$\{encodeURIComponent\(id\)\}\/defer/);
 });
+
+test("salary advance installments expose a scoped administrative read path", () => {
+  const deferrals = read("workers/core/repositories/salary-advance-deferrals.js");
+  const worker = read("workers/core/index.js");
+  const service = read("src/services/CoreHrService.ts");
+
+  assert.ok(deferrals.includes("export async function listSalaryAdvanceInstallments"));
+  assert.ok(deferrals.includes("JOIN salary_advances sa"));
+  assert.ok(deferrals.includes("sa.employee_id = ?"));
+  assert.ok(deferrals.includes("sai.payroll_month = ?"));
+  assert.ok(deferrals.includes("employeeId: row.employee_id"));
+
+  assert.ok(worker.includes('path === "/api/core/hr/salary-advance-installments"'));
+  assert.ok(worker.includes('case "salary-advance-installments":'));
+  assert.ok(worker.includes('requireAnyPermission(ctx, ["payroll.view", "payroll.manage"])'));
+  assert.ok(worker.includes("listSalaryAdvanceInstallments(db, ctx.salonId, query)"));
+
+  assert.ok(service.includes("async listSalaryAdvanceInstallments("));
+  assert.ok(service.includes("employeeId: string"));
+  assert.ok(service.includes("payrollMonth?: string"));
+  assert.ok(service.includes('"/api/core/hr/salary-advance-installments"'));
+});

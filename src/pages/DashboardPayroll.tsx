@@ -21,6 +21,7 @@ import {
 import { DashboardSelectV2 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
+import PayrollComplianceWorkspace from "./payroll/PayrollComplianceWorkspace";
 import {
   approvePayrollEntry,
   calculatePayrollAccrualView,
@@ -92,6 +93,16 @@ type AttendanceDeferralDraft = {
   targetPayrollMonth: string;
   reason: string;
   note: string;
+};
+
+type PayrollApprovalConfirmationDraft = {
+  entry: PayrollEntryView;
+  expectedNetHalalas: number;
+};
+
+type ReopenPayrollDraft = {
+  entry: PayrollEntryView;
+  reason: string;
 };
 
 type PayrollAttendanceDeferralSnapshot = PayrollEntryView["attendanceSummary"] & {
@@ -319,6 +330,13 @@ function shiftPayrollMonth(monthKey: string, offset = 1) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function futurePayrollMonthOptions(monthKey: string, count = 12) {
+  return Array.from({ length: count }, (_, index) => {
+    const value = shiftPayrollMonth(monthKey, index + 1);
+    return { value, label: value };
+  });
+}
+
 function formatPreviousPeriodAdjustment(entry: PayrollEntryView) {
   const signed = payrollEntryCarryoverNetHalalas(entry);
   if (!signed) return "لا يوجد";
@@ -441,6 +459,9 @@ export default function DashboardPayroll() {
   const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
   const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);
   const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);
+  const [approvalConfirmation, setApprovalConfirmation] =
+    useState<PayrollApprovalConfirmationDraft | null>(null);
+  const [reopenDraft, setReopenDraft] = useState<ReopenPayrollDraft | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     entry: PayrollEntryView;
     top: number;
@@ -928,17 +949,34 @@ export default function DashboardPayroll() {
       const approvalEntry = regenerated[0] || entry;
       const payrollMoney = calculatePayrollAccrualView(approvalEntry);
       if (payrollMoney.isPartial) {
-        const confirmed = window.confirm(
-          "سيتم اعتماد وصرف الصافي المتوقع لنهاية الفترة قبل إقفال الشهر." +
-            "\n\nالصافي المتوقع للصرف: " +
-            formatPayrollMoney(payrollMoney.expectedNetHalalas) +
-            "\n\nأي فرق يظهر بعد الاعتماد (غياب، نقص ساعات، إجازة بدون راتب أو إضافة معتمدة) سيُرحّل تلقائيًا كتسوية في أول مسيرة لاحقة قبل اعتمادها." +
-            "\n\nهل تريد الاعتماد؟"
-        );
-        if (!confirmed) return;
+        setApprovalConfirmation({
+          entry: approvalEntry,
+          expectedNetHalalas: payrollMoney.expectedNetHalalas,
+        });
+        return;
       }
       const saved = await approvePayrollEntry(approvalEntry);
       setEntries((current) => replaceEntry(current, saved));
+      setMessage("تم اعتماد الراتب.");
+    } catch (actionError: any) {
+      setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitApprovalConfirmation = async () => {
+    if (!approvalConfirmation || !canManage) return;
+    const entry = approvalConfirmation.entry;
+    setBusy(`approve:${entry.employeeId}`);
+    setError("");
+    try {
+      const saved = await approvePayrollEntry(entry);
+      setEntries((current) => replaceEntry(current, saved));
+      setSelectedEntry((current) =>
+        current?.employeeId === saved.employeeId ? saved : current
+      );
+      setApprovalConfirmation(null);
       setMessage("تم اعتماد الراتب.");
     } catch (actionError: any) {
       setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
@@ -976,7 +1014,7 @@ export default function DashboardPayroll() {
     }
   };
 
-  const handleReopen = async (entry: PayrollEntryView) => {
+  const handleReopen = (entry: PayrollEntryView) => {
     const visibility = payrollActionVisibility({
       status: entry.status,
       payrollSetupComplete: entry.payrollSetupComplete,
@@ -984,23 +1022,40 @@ export default function DashboardPayroll() {
       role,
     });
     if (!visibility.canReopen) return;
-    const confirmed = window.confirm(
-      "سيتم إعادة فتح الراتب المعتمد وتحويله إلى مسودة حتى يمكن إعادة الحساب. لن يتم تعديل الراتب تلقائيًا حتى تضغط إعادة الحساب بعد الفتح. هل تريد المتابعة؟"
-    );
-    if (!confirmed) return;
-    const reason = window.prompt("اكتب سبب إعادة فتح الراتب", "إعادة احتساب الحضور بعد تحديث سياسة الغياب");
-    if (!reason?.trim()) {
+    setReopenDraft({
+      entry,
+      reason: "إعادة احتساب الحضور بعد تحديث سياسة الغياب",
+    });
+  };
+
+  const submitReopen = async () => {
+    if (!reopenDraft) return;
+    const reason = reopenDraft.reason.trim();
+    if (!reason) {
       setError("سبب إعادة فتح الراتب مطلوب.");
       return;
     }
+
+    const entry = reopenDraft.entry;
     setBusy(`reopen:${entry.employeeId}`);
+    setError("");
     try {
-      const saved = await reopenPayrollEntry(entry, { reason: reason.trim(), status: "draft" });
+      const saved = await reopenPayrollEntry(entry, {
+        reason,
+        status: "draft",
+      });
       setEntries((current) => replaceEntry(current, saved));
-      setSelectedEntry((current) => (current?.employeeId === saved.employeeId ? saved : current));
-      setMessage("تمت إعادة فتح الراتب. يمكنك الآن إعادة الحساب ثم الاعتماد من جديد.");
+      setSelectedEntry((current) =>
+        current?.employeeId === saved.employeeId ? saved : current
+      );
+      setReopenDraft(null);
+      setMessage(
+        "تمت إعادة فتح الراتب. يمكنك الآن إعادة الحساب ثم الاعتماد من جديد."
+      );
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "تعذرت إعادة فتح الراتب."));
+      setError(
+        payrollActionErrorMessage(actionError, "تعذرت إعادة فتح الراتب.")
+      );
     } finally {
       setBusy("");
     }
@@ -1161,6 +1216,12 @@ export default function DashboardPayroll() {
         <span>{payrollCycleLabel}</span>
         <strong>{payrollPartialLabel}</strong>
       </div>
+
+      <PayrollComplianceWorkspace
+        employees={employees}
+        payrollMonth={payrollMonth}
+        canManage={canManage}
+      />
 
       {error ? <div className="payroll-alert is-error">{error}</div> : null}
       {message ? <div className="payroll-alert"><FiCheckCircle />{message}</div> : null}
@@ -1604,7 +1665,7 @@ export default function DashboardPayroll() {
                           disabled={!actions.canReopen}
                           onClick={() => {
                             setActionMenu(null);
-                            void handleReopen(entry);
+                            handleReopen(entry);
                           }}
                         >
                           <FiUnlock /> إعادة فتح الراتب
@@ -1682,6 +1743,127 @@ export default function DashboardPayroll() {
         />
       ) : null}
 
+      {approvalConfirmation ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setApprovalConfirmation(null)}
+        >
+          <aside
+            className="payroll-modal payroll-adjustment-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="تأكيد اعتماد الراتب الجزئي"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>تأكيد الاعتماد</span>
+                <h2>{approvalConfirmation.entry.employeeName}</h2>
+              </div>
+              <button type="button" onClick={() => setApprovalConfirmation(null)} aria-label="إغلاق">
+                <FiX />
+              </button>
+            </header>
+
+            <div className="payroll-alert is-warning">
+              <FiAlertTriangle />
+              <div>
+                <strong>هذه الفترة لم تُقفل بعد، وسيتم اعتماد الصافي المتوقع.</strong>
+                <small>
+                  الصافي المتوقع للصرف:{" "}
+                  {formatPayrollMoney(approvalConfirmation.expectedNetHalalas)}
+                </small>
+              </div>
+            </div>
+
+            <p>
+              أي فرق يظهر بعد الاعتماد، مثل الغياب أو نقص الساعات أو
+              الإجازة بدون راتب أو إضافة معتمدة، سيُرحّل تلقائيًا كتسوية
+              إلى أول مسيرة لاحقة قبل اعتمادها.
+            </p>
+
+            <footer>
+              <button type="button" onClick={() => setApprovalConfirmation(null)}>
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={busy.startsWith("approve:")}
+                onClick={() => void submitApprovalConfirmation()}
+              >
+                تأكيد الاعتماد
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
+      {reopenDraft ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setReopenDraft(null)}
+        >
+          <aside
+            className="payroll-modal payroll-adjustment-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="إعادة فتح الراتب"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>إعادة فتح الراتب</span>
+                <h2>{reopenDraft.entry.employeeName}</h2>
+              </div>
+              <button type="button" onClick={() => setReopenDraft(null)} aria-label="إغلاق">
+                <FiX />
+              </button>
+            </header>
+
+            <div className="payroll-alert is-warning">
+              <FiAlertTriangle />
+              <div>
+                <strong>سيعود الراتب المعتمد إلى مسودة قابلة لإعادة الحساب.</strong>
+                <small>لن يتم تعديل الراتب تلقائيًا حتى تنفيذ إعادة الحساب.</small>
+              </div>
+            </div>
+
+            <label>
+              <span>سبب إعادة الفتح</span>
+              <textarea
+                rows={3}
+                value={reopenDraft.reason}
+                onChange={(event) =>
+                  setReopenDraft({
+                    ...reopenDraft,
+                    reason: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <footer>
+              <button type="button" onClick={() => setReopenDraft(null)}>
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={busy.startsWith("reopen:")}
+                onClick={() => void submitReopen()}
+              >
+                تأكيد إعادة الفتح
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
       {attendanceDeferral ? createPortal(
         <div className="dashboard-v2 payroll-modal-backdrop" role="presentation" onMouseDown={() => setAttendanceDeferral(null)}>
           <aside className="payroll-modal payroll-adjustment-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -1702,11 +1884,17 @@ export default function DashboardPayroll() {
             </label>
             <label>
               <span>شهر التحصيل الجديد</span>
-              <input
-                type="month"
-                min={shiftPayrollMonth(attendanceDeferral.entry.payrollMonth, 1)}
+              <DashboardSelectV2
                 value={attendanceDeferral.targetPayrollMonth}
-                onChange={(event) => setAttendanceDeferral({ ...attendanceDeferral, targetPayrollMonth: event.target.value })}
+                options={futurePayrollMonthOptions(
+                  attendanceDeferral.entry.payrollMonth
+                )}
+                onChange={(value) =>
+                  setAttendanceDeferral({
+                    ...attendanceDeferral,
+                    targetPayrollMonth: value,
+                  })
+                }
               />
             </label>
             <label>
