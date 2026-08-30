@@ -13,6 +13,14 @@ import {
 import { AppError, normalizeError } from './errors.js';
 import { getAuthContext } from './auth-context.js';
 import {
+  abandonIdempotentOperation,
+  beginIdempotentOperation,
+  completeIdempotentOperation,
+  normalizeOperationId,
+  requestFingerprint,
+  shouldUseIdempotency,
+} from './idempotency.js';
+import {
   createClient,
   getClient,
   listClients,
@@ -302,7 +310,8 @@ function allowedOrigins(env) {
 function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Request-Id, Idempotency-Key",
+    "Access-Control-Expose-Headers": "X-Request-Id",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -333,8 +342,33 @@ async function readJson(request) {
 }
 
 function salonId(data, env) {
+  // CORE_TENANT_AUTHORITY_V1
+  // The Worker deployment/binding selects the tenant. Request data is never
+  // allowed to escape that tenant boundary.
+  const configuredSalonId =
+    cleanText(env.SALON_ID);
+
+  const requestedSalonId =
+    cleanText(
+      data?.salonId ??
+        data?.salon_id
+    );
+
+  if (
+    configuredSalonId &&
+    requestedSalonId &&
+    requestedSalonId !== configuredSalonId
+  ) {
+    throw new AppError(
+      403,
+      "core_auth:tenant_mismatch"
+    );
+  }
+
   return requiredId(
-    data?.salonId || env.SALON_ID || "main",
+    configuredSalonId ||
+      requestedSalonId ||
+      "main",
     "salonId"
   );
 }
@@ -2350,19 +2384,266 @@ export async function handleRequest(request, env) {
   return jsonResponse(request, env, 200, { ok: true, data });
 }
 
+// CORE_REQUEST_OBSERVABILITY_V1
+function normalizeRequestId(value) {
+  const requestId = cleanText(value);
+
+  if (
+    requestId &&
+    requestId.length <= 128 &&
+    /^[A-Za-z0-9._:-]+$/.test(requestId)
+  ) {
+    return requestId;
+  }
+
+  return crypto.randomUUID();
+}
+
+function requestWithTraceHeaders(
+  request,
+  requestId
+) {
+  const headers = new Headers(request.headers);
+  headers.set("X-Request-Id", requestId);
+
+  return new Request(request, { headers });
+}
+
+function responseWithRequestId(
+  response,
+  requestId
+) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", requestId);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function structuredRequestLog(fields) {
+  console.log(
+    JSON.stringify({
+      event: "core_request_completed",
+      ...fields,
+    })
+  );
+}
+
 export default {
   async fetch(request, env) {
+    const startedAt = Date.now();
+    const requestId = normalizeRequestId(
+      request.headers.get("X-Request-Id")
+    );
+    const rawOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+    const operationId =
+      rawOperationId
+        ? normalizeOperationId(rawOperationId)
+        : "";
+    const tracedRequest = requestWithTraceHeaders(
+      request,
+      requestId
+    );
+    const method = String(
+      tracedRequest.method || "GET"
+    ).toUpperCase();
+    const url = new URL(tracedRequest.url);
+    // IDEMPOTENCY_CONFIGURED_TENANT_FENCE_V1
+    // The generic replay ledger is only active when the Worker deployment
+    // provides an explicit tenant authority. Never collapse an unconfigured
+    // compatibility request into the shared "main" ledger namespace.
+    const tenantId =
+      cleanText(env.SALON_ID);
+
+    let response;
+    let fingerprint = "";
+    let idempotencyActive = false;
+    let replayed = false;
+
     try {
-      return await handleRequest(request, env);
+      if (rawOperationId && !operationId) {
+        throw new AppError(
+          400,
+          "core_api:invalid_idempotency_key"
+        );
+      }
+
+      if (
+        tenantId &&
+        shouldUseIdempotency(
+          tracedRequest,
+          operationId
+        )
+      ) {
+        fingerprint =
+          await requestFingerprint(
+            tracedRequest
+          );
+
+        const gate =
+          await beginIdempotentOperation(
+            requireDb(env),
+            tenantId || null,
+            operationId,
+            fingerprint,
+            requestId
+          );
+
+        if (gate.action === "conflict") {
+          throw new AppError(
+            409,
+            "core_api:idempotency_key_reused"
+          );
+        }
+
+        if (gate.action === "in_progress") {
+          throw new AppError(
+            409,
+            "core_api:idempotency_in_progress"
+          );
+        }
+
+        if (gate.action === "replay") {
+          replayed = true;
+
+          let payload;
+
+          try {
+            payload = JSON.parse(
+              gate.responseBody
+            );
+          } catch {
+            payload = {
+              ok: false,
+              error:
+                "core_api:idempotency_replay_invalid",
+            };
+          }
+
+          response = jsonResponse(
+            tracedRequest,
+            env,
+            gate.status,
+            payload
+          );
+        } else {
+          idempotencyActive = true;
+        }
+      }
+
+      if (!response) {
+        try {
+          response =
+            await handleRequest(
+              tracedRequest,
+              env
+            );
+        } catch (error) {
+          const normalized =
+            normalizeError(error);
+
+          response = jsonResponse(
+            tracedRequest,
+            env,
+            normalized.status,
+            {
+              ok: false,
+              error: normalized.code,
+              message: normalized.message,
+              ...(normalized.details !== undefined
+                ? {
+                    details:
+                      normalized.details,
+                  }
+                : {}),
+            }
+          );
+        }
+      }
+
+      if (
+        idempotencyActive &&
+        operationId &&
+        fingerprint
+      ) {
+        if (response.status === 401) {
+          await abandonIdempotentOperation(
+            requireDb(env),
+            tenantId,
+            operationId,
+            fingerprint
+          );
+        } else {
+          const contentType =
+            cleanText(
+              response.headers.get(
+                "Content-Type"
+              )
+            ).toLowerCase();
+
+          if (
+            contentType.includes(
+              "application/json"
+            )
+          ) {
+            await completeIdempotentOperation(
+              requireDb(env),
+              tenantId,
+              operationId,
+              fingerprint,
+              requestId,
+              response.status,
+              await response.clone().text()
+            );
+          }
+        }
+      }
     } catch (error) {
-      const normalized = normalizeError(error);
-      return jsonResponse(request, env, normalized.status, {
-        ok: false,
-        error: normalized.code,
-        message: normalized.message,
-        ...(normalized.details !== undefined ? { details: normalized.details } : {}),
-      });
+      const normalized =
+        normalizeError(error);
+
+      response = jsonResponse(
+        tracedRequest,
+        env,
+        normalized.status,
+        {
+          ok: false,
+          error: normalized.code,
+          message: normalized.message,
+          ...(normalized.details !== undefined
+            ? {
+                details:
+                  normalized.details,
+              }
+            : {}),
+        }
+      );
     }
+
+    const finalResponse =
+      responseWithRequestId(
+        response,
+        requestId
+      );
+
+    structuredRequestLog({
+      requestId,
+      operationId: operationId || null,
+      tenantId,
+      method,
+      path: url.pathname,
+      status: finalResponse.status,
+      durationMs:
+        Date.now() - startedAt,
+      replayed,
+    });
+
+    return finalResponse;
   },
   async scheduled(event, env, ctx) {
     const salonId = cleanText(env.SALON_ID) || "main";

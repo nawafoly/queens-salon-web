@@ -1,3 +1,4 @@
+import { DashboardDateInputV2, DashboardSelectBridgeV2, DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -2663,7 +2664,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
   const monthTitle = useMemo(() => {
     return new Intl.DateTimeFormat(
-      "ar-SA-u-ca-gregory",
+      "ar-SA-u-ca-gregory-nu-latn",
       {
         month: "long",
         year: "numeric",
@@ -3119,7 +3120,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           السعر النهائي
         </div>
 
-        <input
+        <input dir="ltr" lang="en"
           type="number"
           min={0}
           step="0.01"
@@ -3167,7 +3168,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
               مبلغ الكاش
             </div>
 
-            <input
+            <input dir="ltr" lang="en"
               type="number"
               min={0}
               step="0.01"
@@ -3188,7 +3189,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
               مبلغ الشبكة
             </div>
 
-            <input
+            <input dir="ltr" lang="en"
               type="number"
               min={0}
               step="0.01"
@@ -3229,7 +3230,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             مبلغ العربون
           </div>
 
-          <input
+          <input dir="ltr" lang="en"
             type="number"
             min={0}
             step="0.01"
@@ -8046,7 +8047,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <>
                   <strong>حالة الاسترجاع: تم الاسترجاع</strong>
                   <span>
-                    المبلغ: {Number(activeRefundForTarget.amount || 0).toLocaleString()} ر.س
+                    المبلغ: {Number(activeRefundForTarget.amount || 0).toLocaleString("ar-SA-u-nu-latn")} ر.س
                     {" • "}
                     الطريقة: {activeRefundForTarget.method === "transfer" ? "تحويل" : activeRefundForTarget.method === "card" ? "شبكة" : "كاش"}
                     {" • "}
@@ -8064,7 +8065,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="bk-refund-form">
               <label>
                 <div className="bk-field-label">مبلغ الاسترجاع</div>
-                <input
+                <input dir="ltr" lang="en"
                   type="number"
                   className="bk-input"
                   value={refundDraft.amount}
@@ -8076,7 +8077,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               <label>
                 <div className="bk-field-label">طريقة الاسترجاع</div>
-                <select
+                <DashboardSelectBridgeV2
                   className="bk-select"
                   value={refundDraft.method}
                   onChange={(e) =>
@@ -8089,18 +8090,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   <option value="card">شبكة</option>
                   <option value="none">لا يوجد دفع</option>
                   <option value="other">أخرى</option>
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
 
               <label>
                 <div className="bk-field-label">تاريخ الاسترجاع</div>
-                <input
-                  type="date"
-                  className="bk-input"
-                  value={refundDraft.date}
-                  onChange={(e) => setRefundDraft((p) => ({ ...p, date: e.target.value }))}
-                  disabled={refundSaving}
-                />
+                <DashboardDateInputV2 className="bk-input" value={refundDraft.date} onChange={(e) => setRefundDraft((p) => ({ ...p, date: e.target.value }))} disabled={refundSaving} />
               </label>
 
               <label>
@@ -8254,7 +8249,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <div className="bk-mixed-payment-box">
                   <label>
                     <div className="bk-field-label">مبلغ الكاش</div>
-                    <input
+                    <input dir="ltr" lang="en"
                       type="number"
                       min={0}
                       step="0.01"
@@ -8268,7 +8263,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   </label>
                   <label>
                     <div className="bk-field-label">مبلغ الشبكة</div>
-                    <input
+                    <input dir="ltr" lang="en"
                       type="number"
                       min={0}
                       step="0.01"
@@ -8300,7 +8295,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               {confirmDraft.paymentMode === "partial" && confirmDraft.paymentMethod !== "mixed" ? (
                 <label>
                   <div className="bk-field-label">مبلغ العربون</div>
-                  <input
+                  <input dir="ltr" lang="en"
                     type="number"
                     min={0}
                     step="0.01"
@@ -8411,7 +8406,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <div className="bk-edit-grid bk-edit-grid--catalog">
                 <label>
                   <div className="bk-field-label">القسم</div>
-                  <select
+                  <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.sectionId}
                     onChange={(e) => {
@@ -8431,12 +8426,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         {section.name}
                       </option>
                     ))}
-                  </select>
+                  </DashboardSelectBridgeV2>
                 </label>
 
                 <label>
                   <div className="bk-field-label">التصنيف</div>
-                  <select
+                  <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.categoryId}
                     onChange={(e) => {
@@ -8457,13 +8452,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         {category.name}
                       </option>
                     ))}
-                  </select>
+                  </DashboardSelectBridgeV2>
                 </label>
               </div>
 
               <label>
                 <div className="bk-field-label">الخدمة</div>
-                <select
+                <DashboardSelectBridgeV2
                   className="bk-select"
                   value={editDraft.serviceId}
                   onChange={(e) => {
@@ -8487,7 +8482,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       {service.name}
                     </option>
                   ))}
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
 
               {editCatalogLoading ? (
@@ -8497,30 +8492,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <div className="bk-edit-grid">
                 <label>
                   <div className="bk-field-label">التاريخ</div>
-                  <input
-                    type="date"
-                    className="bk-input"
-                    value={editDraft.date}
-                    onChange={(e) => setEditDraft((p) => ({ ...p, date: e.target.value }))}
-                    disabled={editSaving}
-                  />
+                  <DashboardDateInputV2 className="bk-input" value={editDraft.date} onChange={(e) => setEditDraft((p) => ({ ...p, date: e.target.value }))} disabled={editSaving} />
                 </label>
 
                 <label>
                   <div className="bk-field-label">الوقت</div>
-                  <input
-                    type="time"
-                    className="bk-input"
-                    value={editDraft.time}
-                    onChange={(e) => setEditDraft((p) => ({ ...p, time: e.target.value }))}
-                    disabled={editSaving}
-                  />
+                  <DashboardTimeInputV2 className="bk-input" value={editDraft.time} onChange={(e) => setEditDraft((p) => ({ ...p, time: e.target.value }))} disabled={editSaving} />
                 </label>
               </div>
 
               <label>
                 <div className="bk-field-label">السعر النهائي</div>
-                <input
+                <input dir="ltr" lang="en"
                   type="number"
                   min={0}
                   step="0.01"
@@ -8534,7 +8517,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               <label>
                 <div className="bk-field-label">نوع الدفع</div>
-                <select
+                <DashboardSelectBridgeV2
                   className="bk-select"
                   value={editDraft.paymentMethod === "none" ? "none" : editDraft.paymentType}
                   onChange={(e) =>
@@ -8560,13 +8543,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   <option value="full">دفع كامل</option>
                   <option value="partial">عربون</option>
                   <option value="none">بدون دفع</option>
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
 
               {editDraft.paymentMethod !== "none" ? (
                 <label>
                   <div className="bk-field-label">طريقة الدفع</div>
-                  <select
+                  <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.paymentMethod}
                     onChange={(e) =>
@@ -8581,14 +8564,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <option value="card">شبكة</option>
                     <option value="transfer">تحويل</option>
                     <option value="other">أخرى</option>
-                  </select>
+                  </DashboardSelectBridgeV2>
                 </label>
               ) : null}
 
               {editDraft.paymentMethod !== "none" && editDraft.paymentType === "partial" ? (
                 <label>
                   <div className="bk-field-label">مبلغ العربون</div>
-                  <input
+                  <input dir="ltr" lang="en"
                     type="number"
                     min={0}
                     step="0.01"

@@ -41,7 +41,7 @@ const EMPTY_RESULT: StaffPerformanceResult = {
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => {
   const value = String(index + 1);
-  return { value, label: (index + 1).toLocaleString("ar-SA") };
+  return { value, label: (index + 1).toLocaleString("ar-SA-u-nu-latn") };
 });
 
 const bookingStatusOptions = [
@@ -55,7 +55,7 @@ function currentYearMonth() {
 }
 
 function formatSar(value: number) {
-  return `${(Number(value || 0) / 100).toLocaleString("ar-SA", {
+  return `${(Number(value || 0) / 100).toLocaleString("ar-SA-u-nu-latn", {
     maximumFractionDigits: 2,
   })} ر.س`;
 }
@@ -67,11 +67,11 @@ function formatNullableSar(value: number | null) {
 function formatRating(row: StaffPerformanceRow) {
   return row.averageRating == null
     ? "غير متوفر"
-    : `${row.averageRating.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} (${row.ratingCount})`;
+    : `${row.averageRating.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} (${row.ratingCount})`;
 }
 
 function formatPercent(value: number | null) {
-  return value == null ? "غير متوفر" : `${Math.round(value).toLocaleString("ar-SA")}%`;
+  return value == null ? "غير متوفر" : `${Math.round(value).toLocaleString("ar-SA-u-nu-latn")}%`;
 }
 
 function scoreTone(score: number) {
@@ -183,7 +183,7 @@ export default function DashboardStaffPerformance() {
   const statsCards = [
     {
       label: "الحجوزات المكتملة",
-      value: result.summary.totalCompletedBookings.toLocaleString("ar-SA"),
+      value: result.summary.totalCompletedBookings.toLocaleString("ar-SA-u-nu-latn"),
       icon: FiCalendar,
       tone: "dsv2-metric-card--gold",
     },
@@ -195,13 +195,13 @@ export default function DashboardStaffPerformance() {
     },
     {
       label: "الموظفات النشطات",
-      value: result.summary.activeEmployees.toLocaleString("ar-SA"),
+      value: result.summary.activeEmployees.toLocaleString("ar-SA-u-nu-latn"),
       icon: FiUsers,
       tone: "dsv2-metric-card--dark",
     },
     {
       label: "متوسط درجة الأداء",
-      value: `${result.summary.averagePerformanceScore.toLocaleString("ar-SA")}/100`,
+      value: `${result.summary.averagePerformanceScore.toLocaleString("ar-SA-u-nu-latn")}/100`,
       icon: FiBarChart2,
       tone: "dsv2-metric-card--danger",
     },
@@ -231,7 +231,7 @@ export default function DashboardStaffPerformance() {
       <section className="dsv2-card dsv2-card--padded dsv2-staff-performance-toolbar" aria-label="فلاتر أداء الموظفات">
         <label className="dsv2-field">
           <span className="dsv2-field__label">السنة</span>
-          <input
+          <input dir="ltr" lang="en"
             className="dsv2-input"
             type="number"
             value={year}
@@ -362,15 +362,15 @@ export default function DashboardStaffPerformance() {
                     </span>
                     <span className="dsv2-table__secondary">{row.department || row.jobTitle || "غير محدد"}</span>
                   </td>
-                  <td data-label="الحجوزات المكتملة">{row.completedBookings.toLocaleString("ar-SA")}</td>
-                  <td data-label="العميلات المخدومات">{row.uniqueClients.toLocaleString("ar-SA")}</td>
-                  <td data-label="الخدمات المنفذة">{row.servicesPerformed.toLocaleString("ar-SA")}</td>
+                  <td data-label="الحجوزات المكتملة">{row.completedBookings.toLocaleString("ar-SA-u-nu-latn")}</td>
+                  <td data-label="العميلات المخدومات">{row.uniqueClients.toLocaleString("ar-SA-u-nu-latn")}</td>
+                  <td data-label="الخدمات المنفذة">{row.servicesPerformed.toLocaleString("ar-SA-u-nu-latn")}</td>
                   <td data-label="الإيراد المنسوب">{formatSar(row.attributedRevenueHalalas)}</td>
                   <td data-label="متوسط التقييم">{formatRating(row)}</td>
                   <td data-label="الالتزام بالحضور">{formatPercent(row.attendance.commitmentPercent)}</td>
                   <td data-label="درجة الأداء">
                     <span className={`dsv2-staff-performance-score ${scoreTone(row.performanceScore)}`}>
-                      {row.performanceScore.toLocaleString("ar-SA")}
+                      {row.performanceScore.toLocaleString("ar-SA-u-nu-latn")}
                     </span>
                   </td>
                   <td data-label="الإجراءات">
@@ -424,7 +424,7 @@ export default function DashboardStaffPerformance() {
             </article>
             <article className="dsv2-card dsv2-card--padded">
               <span>الإلغاءات / no-show</span>
-              <strong>{selectedRow.cancellations.toLocaleString("ar-SA")} / {selectedRow.noShows.toLocaleString("ar-SA")}</strong>
+              <strong>{selectedRow.cancellations.toLocaleString("ar-SA-u-nu-latn")} / {selectedRow.noShows.toLocaleString("ar-SA-u-nu-latn")}</strong>
             </article>
             <article className="dsv2-card dsv2-card--padded">
               <span>التقييمات</span>
@@ -443,7 +443,7 @@ export default function DashboardStaffPerformance() {
                         <strong>{booking.publicId}</strong>
                         <small>{booking.date}، {booking.clientName}</small>
                       </div>
-                      <span>{booking.serviceCount.toLocaleString("ar-SA")} خدمة</span>
+                      <span>{booking.serviceCount.toLocaleString("ar-SA-u-nu-latn")} خدمة</span>
                       <b>{formatSar(booking.revenueHalalas)}</b>
                     </article>
                   ))}
@@ -460,7 +460,7 @@ export default function DashboardStaffPerformance() {
                   {selectedRow.topServices.slice(0, 6).map((service) => (
                     <article key={service.serviceId}>
                       <span>{service.serviceName}</span>
-                      <strong>{service.count.toLocaleString("ar-SA")}</strong>
+                      <strong>{service.count.toLocaleString("ar-SA-u-nu-latn")}</strong>
                       <small>{formatSar(service.revenueHalalas)}</small>
                     </article>
                   ))}
@@ -473,7 +473,7 @@ export default function DashboardStaffPerformance() {
             <section className="dsv2-card dsv2-card--padded">
               <h3 className="dsv2-section-title">الحضور والانضباط</h3>
               <dl className="dsv2-staff-performance-attendance">
-                <div><dt>أيام الحضور</dt><dd>{selectedRow.attendance.attendanceDays.toLocaleString("ar-SA")}</dd></div>
+                <div><dt>أيام الحضور</dt><dd>{selectedRow.attendance.attendanceDays.toLocaleString("ar-SA-u-nu-latn")}</dd></div>
                 <div><dt>التأخير</dt><dd>{formatAttendanceHours(selectedRow.attendance.totalLateHours)}</dd></div>
                 <div><dt>نقص الساعات</dt><dd>{formatAttendanceHours(selectedRow.attendance.totalMissingHours)}</dd></div>
                 <div><dt>الساعات الزائدة</dt><dd>{formatAttendanceHours(selectedRow.attendance.totalExtraHours)}</dd></div>

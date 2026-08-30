@@ -6,7 +6,7 @@ export function packageDate(value: any) {
         ? value.seconds * 1000
         : Number(value || 0);
   return ms
-    ? new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(new Date(ms))
+    ? new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "medium" }).format(new Date(ms))
     : "بدون انتهاء";
 }
 

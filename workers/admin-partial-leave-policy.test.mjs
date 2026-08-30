@@ -60,8 +60,8 @@ class LeaveFakeD1 {
 
             if (normalized.startsWith("UPDATE employee_leaves SET policy_version = ?")) {
               const [policyVersion, balanceBucket, legalBasis, documentationStatus,
-                statutoryReviewRequired, deductFromBalance, affectsPayroll, updatedAt,
-                salonId, id] = params;
+                statutoryReviewRequired, deductFromBalance, affectsPayroll,
+                entitlementMinutesRequested, updatedAt, salonId, id] = params;
               const row = db.leaves.get(id);
               if (row && row.salon_id === salonId && row.status === "pending") {
                 Object.assign(row, {
@@ -72,6 +72,7 @@ class LeaveFakeD1 {
                   statutory_review_required: statutoryReviewRequired,
                   deduct_from_balance: deductFromBalance,
                   affects_payroll: affectsPayroll,
+                  entitlement_minutes_requested: entitlementMinutesRequested,
                   updated_at: updatedAt,
                 });
                 return { meta: { changes: 1 } };

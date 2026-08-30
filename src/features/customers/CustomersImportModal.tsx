@@ -156,9 +156,9 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
         </label>
         {preview.length ? (
           <section className="dsv2-table-card dsv2-customers-import-preview">
-            <header className="dsv2-card--padded"><div><h3 className="dsv2-section-title">معاينة البيانات</h3><p className="dsv2-section-caption">سيتم دمج {preview.length.toLocaleString("ar-SA")} عميلة اعتمادًا على رقم الجوال.</p></div></header>
+            <header className="dsv2-card--padded"><div><h3 className="dsv2-section-title">معاينة البيانات</h3><p className="dsv2-section-caption">سيتم دمج {preview.length.toLocaleString("ar-SA-u-nu-latn")} عميلة اعتمادًا على رقم الجوال.</p></div></header>
             <div className="dsv2-table-scroll"><table className="dsv2-table"><thead><tr><th>الاسم</th><th>الجوال</th><th>VIP</th><th>ملاحظة</th></tr></thead><tbody>{preview.slice(0, 80).map((row) => <tr key={row.digits}><td>{row.name}</td><td><bdi dir="ltr">{row.phone}</bdi></td><td>{row.vip ? "VIP" : "عادية"}</td><td>{row.note || "—"}</td></tr>)}</tbody></table></div>
-            {preview.length > 80 ? <p>تم عرض أول 80 صفًا من {preview.length.toLocaleString("ar-SA")}.</p> : null}
+            {preview.length > 80 ? <p>تم عرض أول 80 صفًا من {preview.length.toLocaleString("ar-SA-u-nu-latn")}.</p> : null}
           </section>
         ) : null}
       </div>

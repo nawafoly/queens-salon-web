@@ -1,3 +1,4 @@
+import { DashboardDateInputV2, DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -368,42 +369,15 @@ export default function EmployeePermissionRequestsPage({
             <div className="permission-form">
               <label>
                 <span>التاريخ</span>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }))
-                  }
-                />
+                <DashboardDateInputV2 value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value, })) } />
               </label>
               <label>
                 <span>وقت الخروج</span>
-                <input
-                  type="time"
-                  value={form.startTime}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      startTime: event.target.value,
-                    }))
-                  }
-                />
+                <DashboardTimeInputV2 value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value, })) } />
               </label>
               <label>
                 <span>العودة المتوقعة</span>
-                <input
-                  type="time"
-                  value={form.expectedReturnTime}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      expectedReturnTime: event.target.value,
-                    }))
-                  }
-                />
+                <DashboardTimeInputV2 value={form.expectedReturnTime} onChange={(event) => setForm((current) => ({ ...current, expectedReturnTime: event.target.value, })) } />
               </label>
               <label className="is-wide">
                 <span>سبب الاستئذان</span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { EmployeeScheduleTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
@@ -42,6 +42,12 @@ type ResolvedWorkingDay = {
   start: string;
   end: string;
 };
+
+function shiftTemplateIsActive(value: unknown) {
+  if (value === true || value === 1) return true;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
 
 function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkingDay>): ResolvedWorkingDay {
   const current = rows[day] || { enabled: true, start: "10:00", end: "22:00" };
@@ -90,28 +96,58 @@ export default function BookingSettingsSection({
 }: BookingSettingsSectionProps) {
   const [shiftTemplates, setShiftTemplates] = useState<CoreShiftTemplate[]>([]);
   const [shiftTemplatesLoading, setShiftTemplatesLoading] = useState(false);
+  const [shiftTemplatesError, setShiftTemplatesError] = useState("");
   const [operationalWeekBody, setOperationalWeekBody] = useState<HTMLElement | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  const shiftTemplatesRequestRef = useRef(0);
+
+  const loadShiftTemplates = useCallback(async () => {
+    const requestId = ++shiftTemplatesRequestRef.current;
+    setShiftTemplatesLoading(true);
+    setShiftTemplatesError("");
+
+    try {
+      const rows = await CoreHrService.listShiftTemplates({ active: "all" });
+      if (requestId !== shiftTemplatesRequestRef.current) return;
+
+      setShiftTemplates(
+        rows.filter((row) => shiftTemplateIsActive((row as { active?: unknown }).active))
+      );
+    } catch (error) {
+      if (requestId !== shiftTemplatesRequestRef.current) return;
+
+      console.warn("load shift templates for weekly schedule failed", error);
+      // SHIFT_TEMPLATE_HYDRATION_SAFETY_V1
+      // Keep the last known-good rows. A network/API failure is not the same
+      // thing as a canonical empty result.
+      setShiftTemplatesError(
+        "تعذر تحميل قوالب الشفتات من Malikat Core. سيتم إعادة المحاولة عند عودة الاتصال."
+      );
+    } finally {
+      if (requestId === shiftTemplatesRequestRef.current) {
+        setShiftTemplatesLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!isVisible) return;
-    let alive = true;
-    setShiftTemplatesLoading(true);
-    CoreHrService.listShiftTemplates({ active: "all" })
-      .then((rows) => {
-        if (alive) setShiftTemplates(rows.filter((row) => row.active === true || row.active === 1));
-      })
-      .catch((error) => {
-        console.warn("load shift templates for weekly schedule failed", error);
-        if (alive) setShiftTemplates([]);
-      })
-      .finally(() => {
-        if (alive) setShiftTemplatesLoading(false);
-      });
-    return () => {
-      alive = false;
+
+    void loadShiftTemplates();
+
+    const retry = () => {
+      void loadShiftTemplates();
     };
-  }, [isVisible]);
+
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+
+    return () => {
+      window.removeEventListener("online", retry);
+      window.removeEventListener("focus", retry);
+      shiftTemplatesRequestRef.current += 1;
+    };
+  }, [isVisible, loadShiftTemplates]);
 
   const templateByWindow = useMemo(() => {
     const rows = new Map<string, CoreShiftTemplate>();
@@ -211,6 +247,7 @@ export default function BookingSettingsSection({
         workingDays={workingDays}
         shiftTemplates={shiftTemplates}
         shiftTemplatesLoading={shiftTemplatesLoading}
+        shiftTemplatesError={shiftTemplatesError}
         attendanceZones={attendanceZones.map((zone) => ({
           id: zone.id,
           name: `${zone.name || zone.id}${zone.active ? "" : " - غير نشط"}${zone.radiusMeters ? ` - ${zone.radiusMeters} م` : ""}`,

@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
@@ -88,7 +89,7 @@ function initialForm(type: EmployeeRequestType): FormState {
 function formatDateTime(value: string | null | undefined) {
   const parsed = Date.parse(String(value || ""));
   if (!Number.isFinite(parsed)) return String(value || "—");
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     timeZone: "Asia/Riyadh",
     dateStyle: "medium",
     timeStyle: "short",
@@ -109,7 +110,7 @@ function readablePayload(payload: Record<string, unknown>) {
 }
 
 function formatPayloadValue(key: string, value: unknown) {
-  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA-u-nu-latn", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
   if (typeof value === "boolean") return value ? "نعم" : "لا";
   if (key === "leaveBalanceTreatment") return value === "not_deducted" ? "لا يتم الخصم" : String(value);
   if (key === "payrollTreatment") return value === "manual_addition" ? "إضافة مالية في مسير الراتب" : String(value);
@@ -181,9 +182,9 @@ function SelectField({ label, name, value, onChange, options }: {
   return (
     <label className="employee-request-field">
       <span>{label}</span>
-      <select name={name} value={value} onChange={(event) => onChange(name, event.target.value)}>
+      <DashboardSelectBridgeV2 name={name} value={value} onChange={(event) => onChange(name, event.target.value)}>
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
+      </DashboardSelectBridgeV2>
     </label>
   );
 }
@@ -588,7 +589,7 @@ export default function EmployeeRequestsPage({ session, onPortalChange }: Props)
   return (
     <div className="employee-requests-page">
       <header className="employee-requests-hero"><div><small>الخدمة الذاتية</small><h1>طلباتي</h1><p>أنشئ الطلب وتابع الاستلام والمراجعة والقرار والتنفيذ من مكان واحد.</p></div><button type="button" onClick={() => setSearchParams({ new: "attendance_correction" })}><FontAwesomeIcon icon={faPlus} /> طلب جديد</button></header>
-      <div className="employee-requests-filters"><span><FontAwesomeIcon icon={faFilter} /> تصفية</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as EmployeeRequestType | "")}><option value="">كل الأنواع</option>{REQUEST_TYPES.map((type) => <option value={type} key={type}>{EMPLOYEE_REQUEST_TYPE_LABELS[type]}</option>)}</select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as EmployeeRequestStatus | "")}><option value="">كل الحالات</option>{STATUS_OPTIONS.map((status) => <option value={status} key={status}>{EMPLOYEE_REQUEST_STATUS_LABELS[status]}</option>)}</select><button type="button" onClick={() => void load()}><FontAwesomeIcon icon={faRotate} /></button></div>
+      <div className="employee-requests-filters"><span><FontAwesomeIcon icon={faFilter} /> تصفية</span><DashboardSelectBridgeV2 value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as EmployeeRequestType | "")}><option value="">كل الأنواع</option>{REQUEST_TYPES.map((type) => <option value={type} key={type}>{EMPLOYEE_REQUEST_TYPE_LABELS[type]}</option>)}</DashboardSelectBridgeV2><DashboardSelectBridgeV2 value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as EmployeeRequestStatus | "")}><option value="">كل الحالات</option>{STATUS_OPTIONS.map((status) => <option value={status} key={status}>{EMPLOYEE_REQUEST_STATUS_LABELS[status]}</option>)}</DashboardSelectBridgeV2><button type="button" onClick={() => void load()}><FontAwesomeIcon icon={faRotate} /></button></div>
       {error ? <div className="employee-request-error">{error}</div> : null}
       {loading ? <div className="employee-requests-loading">جاري تحميل الطلبات...</div> : rows.length ? <div className="employee-requests-list">{rows.map((request) => <button type="button" className={`employee-request-card ${request.status === "cancelled" ? "is-closed" : ""}`} key={request.id} onClick={() => navigate(`/employee/requests/${request.id}`)}><span className="employee-request-card__icon"><FontAwesomeIcon icon={request.status === "completed" ? faCheckCircle : request.status === "cancelled" ? faXmark : faFileCircleCheck} /></span><div><small>{request.request_number}</small><strong>{request.title}</strong><p>{request.status === "cancelled" ? `تم إغلاق الطلب • ${formatDateTime(request.cancelled_at || request.updated_at)}` : `${formatDateTime(request.submitted_at)} • آخر تحديث ${formatDateTime(request.updated_at)}`}</p></div><span className={`employee-request-status is-${statusTone(request.status)}`}>{EMPLOYEE_REQUEST_STATUS_LABELS[request.status]}</span></button>)}</div> : <div className="employee-requests-empty"><FontAwesomeIcon icon={faCalendarDays} /><h2>لا توجد طلبات</h2><p>أنشئ أول طلب ليصل مباشرة إلى إدارة الموارد البشرية.</p></div>}
       {newType ? <RequestForm type={newType} employeeId={String(session.employeeId || session.uid)} employeeName={String(session.displayName || session.email || "الموظفة")} onClose={closeForm} onCreated={(request) => { setSuccess(request); closeForm(); void load(); void onPortalChange?.(); }} /> : null}

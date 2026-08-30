@@ -151,18 +151,18 @@ type EmployeeStatsSectionProps = {
 
 function formatNumber(value: unknown) {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
+  return Number.isFinite(number) ? number.toLocaleString("ar-SA-u-nu-latn") : "0";
 }
 
 function formatMoney(value: unknown) {
   const number = Number(value || 0);
-  return Number.isFinite(number) && number > 0 ? `${number.toLocaleString("ar-SA")} ر.س` : "غير محدد";
+  return Number.isFinite(number) && number > 0 ? `${number.toLocaleString("ar-SA-u-nu-latn")} ر.س` : "غير محدد";
 }
 
 function formatMoneyIncludingZero(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0
-    ? `${number.toLocaleString("ar-SA")} ر.س`
+    ? `${number.toLocaleString("ar-SA-u-nu-latn")} ر.س`
     : "غير محدد";
 }
 
@@ -492,7 +492,7 @@ export default function EmployeeStatsSection({
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-adjust-days" label="عدد الأيام">
-              <input
+              <input dir="ltr" lang="en"
                 id="employee-live-v2-adjust-days"
                 className="dsv2-input"
                 type="number"

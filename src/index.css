@@ -20076,3 +20076,25 @@ textarea.form-control {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* GLOBAL_NUMBER_INPUT_SPINNER_POLICY_V1 */
+
+/*
+ * Canonical numeric-field policy:
+ * keep semantic input[type="number"] behavior, validation and keyboard input,
+ * but remove browser-native stepper/spinner controls from the UI.
+ */
+
+/* Chrome, Edge, Safari, Opera */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}

@@ -521,7 +521,7 @@ const Offers = () => {
   const formatDateLabel = (value?: string) => {
     const iso = toISODate(value);
     if (!iso) return "بدون تاريخ محدد";
-    return new Date(`${iso}T00:00:00`).toLocaleDateString("ar-SA", {
+    return new Date(`${iso}T00:00:00`).toLocaleDateString("ar-SA-u-nu-latn", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -530,7 +530,7 @@ const Offers = () => {
 
   const formatDiscountLabel = (offer: UiOffer) => {
     if (offer.discountType === "percent") return `${offer.discountPercent}% خصم`;
-    return `${Number(offer.value || 0).toLocaleString("ar-SA")} ريال خصم`;
+    return `${Number(offer.value || 0).toLocaleString("ar-SA-u-nu-latn")} ريال خصم`;
   };
 
   return (
@@ -784,7 +784,7 @@ const Offers = () => {
                             <span className="discount-badge">
                               {Math.max(1, Number(p.sessionsCount || 1))} جلسات
                             </span>
-                            <span className="save-badge">{packageFinal.toLocaleString("ar-SA")} ريال</span>
+                            <span className="save-badge">{packageFinal.toLocaleString("ar-SA-u-nu-latn")} ريال</span>
                             {p.validityDays ? (
                               <span className="save-badge">
                                 صلاحية {p.validityDays} يوم

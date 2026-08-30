@@ -59,7 +59,7 @@ function toMillis(value: unknown) {
 function formatMessageTime(value: unknown, includeDate = true) {
   const ms = toMillis(value);
   if (!ms) return "الآن";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     hour: "numeric",
     minute: "2-digit",
     ...(includeDate ? { year: "numeric", month: "short", day: "numeric" } : {}),

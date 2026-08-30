@@ -25,9 +25,20 @@ type CoreApiRequestOptions = {
   body?: Record<string, unknown>;
   query?: Record<string, string | number | boolean | null | undefined>;
   timeoutMs?: number;
+  operationId?: string;
 };
 
 const CORE_API_CODE_MESSAGES: Record<string, string> = {
+  "core_api:idempotency_key_reused": "طھط¹ط°ط± ط¥ط¹ط§ط¯ط© طھظ†ظپظٹط° ط§ظ„ط¹ظ…ظ„ظٹط© ظ„ط£ظ† ظ…ط¹ط±ظ‘ظپظ‡ط§ ط§ط³طھظڈط®ط¯ظ… ظ„ط·ظ„ط¨ ظ…ط®طھظ„ظپ. ط­ط¯ظ‘ط« ط§ظ„ط¨ظٹط§ظ†ط§طھ ظˆط­ط§ظˆظ„ ظ…ظ† ط¬ط¯ظٹط¯.",
+  "core_api:idempotency_in_progress": "ط§ظ„ط¹ظ…ظ„ظٹط© ظ†ظپط³ظ‡ط§ ظ…ط§ ط²ط§ظ„طھ ظ‚ظٹط¯ ط§ظ„طھظ†ظپظٹط°. ط§ظ†طھط¸ط± ظ„ط­ط¸ط© ط«ظ… ط­ط¯ظ‘ط« ط§ظ„ط¨ظٹط§ظ†ط§طھ ظ‚ط¨ظ„ ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ط­ط§ظˆظ„ط©.",
+  "core_api:invalid_idempotency_key": "ظ…ط¹ط±ظ‘ظپ ط§ظ„ط¹ظ…ظ„ظٹط© ط؛ظٹط± طµط§ظ„ط­. ط£ط¹ط¯ ط§ظ„ظ…ط­ط§ظˆظ„ط©.",
+  "core_auth:tenant_mismatch": "الطلب يحاول الوصول إلى مساحة مؤسسة مختلفة. تم رفض العملية.",
+  "core_auth:tenant_context_required": "الطلب يحاول الوصول إلى مساحة مؤسسة مختلفة. تم رفض العملية.",
+  "core_hr:employee_changed": "تغيرت بيانات الموظفة من جهاز أو جلسة أخرى. تم إيقاف الحفظ لمنع الكتابة فوق التعديل الأحدث. أعد تحميل البيانات ثم راجع تعديلك.",
+  "core_hr:employee_write_precondition_required": "تعذر الحفظ لأن نسخة الموظفة التي تعدلها غير مؤكدة. أعد فتح ملف الموظفة قبل الحفظ.",
+  "core_api:offline": "غير متصل بالإنترنت. تم إيقاف الحفظ حتى عودة الاتصال.",
+  "core_api:network_unavailable": "تعذر الاتصال بالخدمة الأساسية. تحقق من الشبكة وحاول مرة أخرى.",
+  "core_api:write_outcome_unknown": "انقطع الاتصال أثناء الحفظ. نتيجة آخر عملية غير مؤكدة؛ لا تعد الحفظ قبل إعادة مزامنة البيانات.",
   "core_payroll:deduction_reason_required": "اكتب سبب الخصم أو قرار التأجيل قبل المتابعة.",
   "core_payroll:deduction_amount_required": "اكتب مبلغًا أكبر من صفر.",
   "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
@@ -41,6 +52,33 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_payroll:obligation_target_payroll_locked": "لا يمكن تعديل تحصيل شهر له مسير معتمد أو مدفوع.",
   "core_payroll:attendance_obligation_requires_canonical_path": "خصم الحضور التلقائي يجب إدارته من مسار تأجيل خصم الحضور في الرواتب.",
 };
+
+const CORE_WRITE_OUTCOME_UNKNOWN_EVENT = "queens:core-write-outcome-unknown";
+
+function isMutatingCoreMethod(method: CoreApiRequestOptions["method"]) {
+  return method !== "GET";
+}
+
+function browserDefinitelyOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function isTransportFailure(error: unknown) {
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error &&
+      /network|fetch|connection|load failed|failed to fetch/i.test(error.message))
+  );
+}
+
+function emitUnknownWriteOutcome(path: string, method: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(CORE_WRITE_OUTCOME_UNKNOWN_EVENT, {
+      detail: { path, method },
+    })
+  );
+}
 
 function localizedMessage(status: number, code: string, fallback: string): string {
   const specific = CORE_API_CODE_MESSAGES[code];
@@ -61,10 +99,20 @@ function localizedMessage(status: number, code: string, fallback: string): strin
     : "تعذر تنفيذ الطلب.";
 }
 
+// CORE_REQUEST_TRACE_V1
+function createCoreRequestId(): string {
+  return crypto.randomUUID();
+}
+
+function createCoreOperationId(): string {
+  return crypto.randomUUID();
+}
+
 async function requestOnce<T>(
   path: string,
   options: CoreApiRequestOptions,
-  forceTokenRefresh: boolean
+  forceTokenRefresh: boolean,
+  operationId: string
 ): Promise<T> {
   const baseUrl = requireCoreWorkerUrl();
   const url = new URL(`${baseUrl}${path.startsWith("/") ? path : `/${path}`}`);
@@ -82,16 +130,31 @@ async function requestOnce<T>(
   );
 
   try {
+    const method = options.method ?? "GET";
+    const requestId = createCoreRequestId();
+
+    // CORE_NETWORK_SAFETY_V1
+    // A request that is definitely offline must never pretend to be a normal
+    // validation/server failure. Writes are stopped before they leave the client.
+    if (browserDefinitelyOffline()) {
+      throw new CoreApiError(
+        0,
+        "core_api:offline",
+        localizedMessage(0, "core_api:offline", "")
+      );
+    }
+
     const currentUser = auth.currentUser;
     const token = currentUser
       ? await currentUser.getIdToken(forceTokenRefresh)
       : "";
-    const method = options.method ?? "GET";
 
     const response = await fetch(url.toString(), {
       method,
       signal: controller.signal,
       headers: {
+        "X-Request-Id": requestId,
+        ...(operationId ? { "Idempotency-Key": operationId } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(method !== "GET" && method !== "DELETE" ? { "Content-Type": "application/json" } : {}),
       },
@@ -120,13 +183,47 @@ async function requestOnce<T>(
 
     return (payload.data ?? payload) as T;
   } catch (error) {
+    if (error instanceof CoreApiError) {
+      throw error;
+    }
+
+    const method = options.method ?? "GET";
+    const mutating = isMutatingCoreMethod(method);
+
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (mutating) {
+        emitUnknownWriteOutcome(path, method);
+        throw new CoreApiError(
+          0,
+          "core_api:write_outcome_unknown",
+          localizedMessage(0, "core_api:write_outcome_unknown", "")
+        );
+      }
+
       throw new CoreApiError(
         408,
         "core_api:timeout",
         localizedMessage(408, "core_api:timeout", "")
       );
     }
+
+    if (isTransportFailure(error)) {
+      if (mutating) {
+        emitUnknownWriteOutcome(path, method);
+        throw new CoreApiError(
+          0,
+          "core_api:write_outcome_unknown",
+          localizedMessage(0, "core_api:write_outcome_unknown", "")
+        );
+      }
+
+      throw new CoreApiError(
+        0,
+        "core_api:network_unavailable",
+        localizedMessage(0, "core_api:network_unavailable", "")
+      );
+    }
+
     throw error;
   } finally {
     globalThis.clearTimeout(timeout);
@@ -137,15 +234,34 @@ export async function coreApiRequest<T>(
   path: string,
   options: CoreApiRequestOptions = {}
 ): Promise<T> {
+  const logicalMethod =
+    options.method ?? "GET";
+  const operationId =
+    logicalMethod === "GET"
+      ? ""
+      : (
+          options.operationId ||
+          createCoreOperationId()
+        );
   try {
-    return await requestOnce<T>(path, options, false);
+    return await requestOnce<T>(
+      path,
+      options,
+      false,
+      operationId
+    );
   } catch (error) {
     if (
       error instanceof CoreApiError &&
       error.status === 401 &&
       auth.currentUser
     ) {
-      return requestOnce<T>(path, options, true);
+      return requestOnce<T>(
+        path,
+        options,
+        true,
+        operationId
+      );
     }
     throw error;
   }

@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useState, type RefObject } from "react";
 
 import {
@@ -194,14 +195,14 @@ export type WorkHourOverridesEditorProps = {
 
 function formatNumber(value: unknown) {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
+  return Number.isFinite(number) ? number.toLocaleString("ar-SA-u-nu-latn") : "0";
 }
 
 function formatSignedHours(value: unknown) {
   const number = Number(value || 0);
   if (!Number.isFinite(number) || number === 0) return "0 ساعة";
   const sign = number > 0 ? "+" : "";
-  return `${sign}${number.toLocaleString("ar-SA")} ساعة`;
+  return `${sign}${number.toLocaleString("ar-SA-u-nu-latn")} ساعة`;
 }
 
 function formatWindowForPreview(start: string, end: string): string {
@@ -503,24 +504,10 @@ export default function WorkHourOverridesEditor({
           {editor.modalHourOverrideEnabled ? (
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
               <DashboardFieldV2 id="employee-live-v2-override-start" label="بداية الدوام">
-                <input
-                  id="employee-live-v2-override-start"
-                  className="dsv2-input"
-                  type="time"
-                  value={normalizeTimeHHMM(editor.modalHourOverrideStart) || "10:00"}
-                  disabled={busy}
-                  onChange={(event) => editor.setModalHourOverrideStart(event.target.value)}
-                />
+                <DashboardTimeInputV2 id="employee-live-v2-override-start" className="dsv2-input" value={normalizeTimeHHMM(editor.modalHourOverrideStart) || "10:00"} disabled={busy} onChange={(event) => editor.setModalHourOverrideStart(event.target.value)} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="employee-live-v2-override-end" label="نهاية الدوام">
-                <input
-                  id="employee-live-v2-override-end"
-                  className="dsv2-input"
-                  type="time"
-                  value={normalizeTimeHHMM(editor.modalHourOverrideEnd) || "22:00"}
-                  disabled={busy}
-                  onChange={(event) => editor.setModalHourOverrideEnd(event.target.value)}
-                />
+                <DashboardTimeInputV2 id="employee-live-v2-override-end" className="dsv2-input" value={normalizeTimeHHMM(editor.modalHourOverrideEnd) || "22:00"} disabled={busy} onChange={(event) => editor.setModalHourOverrideEnd(event.target.value)} />
               </DashboardFieldV2>
             </div>
           ) : null}

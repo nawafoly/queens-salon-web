@@ -104,7 +104,7 @@ function displayInitial(value: unknown) {
 function formatAttendanceDateLabel(dateKey: string) {
   const parsed = new Date(`${dateKey}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return dateKey;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -312,14 +312,14 @@ function formatAttendanceTime(value: unknown) {
   if (!raw) return "--:--";
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(parsed));
 }
 
 function formatTargetMoney(halalas: number | undefined | null) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 0,
@@ -327,7 +327,7 @@ function formatTargetMoney(halalas: number | undefined | null) {
 }
 
 function formatTargetPercent(value: number | undefined | null) {
-  return `${(Number(value || 0) * 100).toLocaleString("ar-SA", {
+  return `${(Number(value || 0) * 100).toLocaleString("ar-SA-u-nu-latn", {
     maximumFractionDigits: 1,
   })}%`;
 }
@@ -336,7 +336,7 @@ function formatTargetUpdatedAt(value: string | undefined | null) {
   if (!value) return "لم يحدث بعد";
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return String(value).slice(0, 10);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     hour: "2-digit",

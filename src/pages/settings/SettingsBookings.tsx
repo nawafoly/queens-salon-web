@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -806,7 +807,7 @@ export default function SettingsBookings() {
                 <label className="dsv2-field settings-bookings-v2-control-card">
                   <span className="dsv2-field__label">رسوم أدوات البديكير/المناكير</span>
                   <span className="settings-bookings-v2-money-input">
-                    <input
+                    <input dir="ltr" lang="en"
                       type="number"
                       className="dsv2-input"
                       value={String(maniPediToolsFee)}
@@ -875,24 +876,12 @@ export default function SettingsBookings() {
 
                         <label className="settings-bookings-v2-time-field">
                           <span>من</span>
-                          <input
-                            type="time"
-                            className="dsv2-input"
-                            value={dayHours.start}
-                            disabled={dayHours.enabled === false}
-                            onChange={(event) => updateBusinessDay(day, { start: event.target.value })}
-                          />
+                          <DashboardTimeInputV2 className="dsv2-input" value={dayHours.start} disabled={dayHours.enabled === false} onChange={(event) => updateBusinessDay(day, { start: event.target.value })} />
                         </label>
 
                         <label className="settings-bookings-v2-time-field">
                           <span>إلى</span>
-                          <input
-                            type="time"
-                            className="dsv2-input"
-                            value={dayHours.end}
-                            disabled={dayHours.enabled === false}
-                            onChange={(event) => updateBusinessDay(day, { end: event.target.value })}
-                          />
+                          <DashboardTimeInputV2 className="dsv2-input" value={dayHours.end} disabled={dayHours.enabled === false} onChange={(event) => updateBusinessDay(day, { end: event.target.value })} />
                         </label>
 
                         <div className="settings-bookings-v2-day__summary">
@@ -1025,25 +1014,13 @@ export default function SettingsBookings() {
 
                 <label className="dsv2-field">
                   <span className="dsv2-field__label">وقت البداية</span>
-                  <input
-                    className="dsv2-input"
-                    type="time"
-                    value={String(overrideDraft.start || "10:00")}
-                    disabled={overrideDraft.mode === "closed"}
-                    onChange={(event) => setOverrideDraft((prev) => ({ ...prev, start: event.target.value }))}
-                  />
+                  <DashboardTimeInputV2 className="dsv2-input" value={String(overrideDraft.start || "10:00")} disabled={overrideDraft.mode === "closed"} onChange={(event) => setOverrideDraft((prev) => ({ ...prev, start: event.target.value }))} />
                   <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.start || "10:00")}</span>
                 </label>
 
                 <label className="dsv2-field">
                   <span className="dsv2-field__label">وقت النهاية</span>
-                  <input
-                    className="dsv2-input"
-                    type="time"
-                    value={String(overrideDraft.end || "22:00")}
-                    disabled={overrideDraft.mode === "closed"}
-                    onChange={(event) => setOverrideDraft((prev) => ({ ...prev, end: event.target.value }))}
-                  />
+                  <DashboardTimeInputV2 className="dsv2-input" value={String(overrideDraft.end || "22:00")} disabled={overrideDraft.mode === "closed"} onChange={(event) => setOverrideDraft((prev) => ({ ...prev, end: event.target.value }))} />
                   <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.end || "22:00")}</span>
                 </label>
 

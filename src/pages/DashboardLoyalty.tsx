@@ -60,7 +60,7 @@ function formatDate(ts?: any) {
   if (!ts) return "-";
   try {
     const d = ts?.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString("ar-SA", {
+    return d.toLocaleDateString("ar-SA-u-nu-latn", {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -71,7 +71,7 @@ function formatDate(ts?: any) {
 }
 
 function formatNumber(value: number, maximumFractionDigits = 0) {
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits }).format(
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits }).format(
     Number.isFinite(value) ? value : 0
   );
 }
@@ -331,7 +331,7 @@ export default function DashboardLoyalty() {
           {settings.pointsMode === "amount" && (
             <label className="dsv2-field">
               <span className="dsv2-field__label">قيمة النقطة (كل كم ريال = نقطة)</span>
-              <input
+              <input dir="ltr" lang="en"
                 className="dsv2-input"
                 type="number"
                 value={settings.amountPointsStep}
@@ -347,7 +347,7 @@ export default function DashboardLoyalty() {
   
           <label className="dsv2-field">
             <span className="dsv2-field__label">فترة تقييم الولاء (بالأيام)</span>
-            <input
+            <input dir="ltr" lang="en"
               className="dsv2-input"
               type="number"
               value={settings.loyaltyWindowDays}
@@ -382,7 +382,7 @@ export default function DashboardLoyalty() {
   
           <label className="dsv2-field">
             <span className="dsv2-field__label">حد التأهل لـ VIP (Loyalty Score)</span>
-            <input
+            <input dir="ltr" lang="en"
               className="dsv2-input"
               type="number"
               value={settings.vipAutoThreshold}

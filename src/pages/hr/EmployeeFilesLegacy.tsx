@@ -62,7 +62,7 @@ function toMillis(value: unknown) {
 function formatDate(value: unknown) {
   const ms = toMillis(value);
   if (!ms) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "short",
     day: "numeric",

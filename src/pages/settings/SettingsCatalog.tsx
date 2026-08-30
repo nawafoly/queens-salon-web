@@ -1,3 +1,4 @@
+import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -51,7 +52,7 @@ function toMillisSafe(v: any) {
 function fmtTs(v: any) {
   const ms = toMillisSafe(v);
   if (!ms) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -61,7 +62,7 @@ function fmtTs(v: any) {
   }).format(new Date(ms));
 }
 function money(v: number) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     maximumFractionDigits: 2,
   }).format(Math.max(0, Number(v || 0)));
 }
@@ -1557,7 +1558,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
         <div className="settings-field">
           <label>التصنيف</label>
-          <select
+          <DashboardSelectBridgeV2
             className="settings-input"
             value={String(
               openedServiceModeInSection === "edit"
@@ -1584,7 +1585,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 {c.name}
               </option>
             ))}
-          </select>
+          </DashboardSelectBridgeV2>
         </div>
         <label className="scatalog-ref__check">
           <input
@@ -1606,7 +1607,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </label>
         <div className="settings-field">
           <label>السعر</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={0}
@@ -1630,7 +1631,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
         <div className="settings-field">
           <label>المدة (دقيقة)</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={5}
@@ -1657,7 +1658,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
         <div className="settings-field">
           <label>سعر الموسم</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={0}
@@ -1684,7 +1685,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     <div className="scatalog-ref__composer scatalog-ref__composer--service-inline">
       <b>إضافة خدمة</b>
 
-      <select
+      <DashboardSelectBridgeV2
         className="settings-input"
         value={newService.sectionId}
         onChange={(e) => {
@@ -1705,9 +1706,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             {s.name}
           </option>
         ))}
-      </select>
+      </DashboardSelectBridgeV2>
 
-      <select
+      <DashboardSelectBridgeV2
         className="settings-input"
         value={newService.categoryId}
         onChange={(e) =>
@@ -1720,7 +1721,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             {c.name}
           </option>
         ))}
-      </select>
+      </DashboardSelectBridgeV2>
 
       <input
         className="settings-input"
@@ -1734,7 +1735,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       <div className="scatalog-ref__inline-2">
         <div className="settings-field">
           <label>الوقت (دقيقة)</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={5}
@@ -1750,7 +1751,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>السعر</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={0}
@@ -1773,7 +1774,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
       <div className="settings-field">
         <label>سعر الموسم (اختياري)</label>
-        <input
+        <input dir="ltr" lang="en"
           className="settings-input"
           type="number"
           min={0}
@@ -1851,7 +1852,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>عدد الجلسات</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={1}
@@ -1864,7 +1865,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>السعر</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={0}
@@ -1875,7 +1876,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>مدة الصلاحية بالأيام</label>
-          <input
+          <input dir="ltr" lang="en"
             className="settings-input"
             type="number"
             min={1}
@@ -1892,17 +1893,17 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>ترتيب العرض</label>
-          <input className="settings-input" type="number" min={0} value={packageSortOrder} onChange={(e) => setPackageSortOrder(Number(e.target.value))} />
+          <input dir="ltr" lang="en" className="settings-input" type="number" min={0} value={packageSortOrder} onChange={(e) => setPackageSortOrder(Number(e.target.value))} />
         </div>
 
         <div className="settings-field">
           <label>تاريخ بداية الإتاحة</label>
-          <input className="settings-input" type="date" value={packageStartsAt} onChange={(e) => setPackageStartsAt(e.target.value)} />
+          <DashboardDateInputV2 className="settings-input" value={packageStartsAt} onChange={(e) => setPackageStartsAt(e.target.value)} />
         </div>
 
         <div className="settings-field">
           <label>تاريخ نهاية الإتاحة</label>
-          <input className="settings-input" type="date" value={packageEndsAt} onChange={(e) => setPackageEndsAt(e.target.value)} />
+          <DashboardDateInputV2 className="settings-input" value={packageEndsAt} onChange={(e) => setPackageEndsAt(e.target.value)} />
         </div>
 
         <div className="settings-field scatalog-package-details__name">
@@ -1912,10 +1913,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>إتاحة الباقة</label>
-          <select className="settings-input" value={packageAudienceScope} onChange={(e) => setPackageAudienceScope(e.target.value === "specific" ? "specific" : "all")}>
+          <DashboardSelectBridgeV2 className="settings-input" value={packageAudienceScope} onChange={(e) => setPackageAudienceScope(e.target.value === "specific" ? "specific" : "all")}>
             <option value="all">جميع العميلات</option>
             <option value="specific">عميلات محددات</option>
-          </select>
+          </DashboardSelectBridgeV2>
         </div>
 
         {packageAudienceScope === "specific" ? (
@@ -1954,7 +1955,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               onChange={(e) => setPackageServiceSearch(e.target.value)}
               placeholder="ابحث باسم الخدمة أو القسم أو التصنيف..."
             />
-            <select
+            <DashboardSelectBridgeV2
               className="settings-input"
               value={packageServiceSectionFilter}
               onChange={(e) => setPackageServiceSectionFilter(e.target.value)}
@@ -1965,7 +1966,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   {section.name}
                 </option>
               ))}
-            </select>
+            </DashboardSelectBridgeV2>
             <div className="scatalog-package-picker__mode">
               <button
                 type="button"
@@ -2486,7 +2487,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     : "بحث في الخدمات أو التصنيف..."
                 }
               />
-              <select
+              <DashboardSelectBridgeV2
                 className="settings-input"
                 value={statusFilter}
                 onChange={(e) =>
@@ -2496,9 +2497,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <option value="all">كل الحالات</option>
                 <option value="active">نشط</option>
                 <option value="inactive">غير نشط</option>
-              </select>
+              </DashboardSelectBridgeV2>
               {activeListMode === "services" ? (
-                <select
+                <DashboardSelectBridgeV2
                   className="settings-input"
                   value={serviceSectionFilter}
                   onChange={(e) => setServiceSectionFilter(e.target.value)}
@@ -2509,7 +2510,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       {section.name}
                     </option>
                   ))}
-                </select>
+                </DashboardSelectBridgeV2>
               ) : null}
             </div>
 
@@ -2548,7 +2549,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   }
                 />
                 <div className="scatalog-ref__inline-2">
-                  <input
+                  <input dir="ltr" lang="en"
                     className="settings-input"
                     type="number"
                     value={newSection.order}
@@ -2732,7 +2733,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>الترتيب</label>
-                            <input
+                            <input dir="ltr" lang="en"
                               className="settings-input"
                               type="number"
                               value={
@@ -2817,7 +2818,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                             <>
                               <div className="settings-field">
                                 <label>اختر تصنيف</label>
-                                <select
+                                <DashboardSelectBridgeV2
                                   className="settings-input"
                                   value={sectionServiceCategoryId}
                                   onChange={(e) =>
@@ -2831,7 +2832,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                                       {c.name}
                                     </option>
                                   ))}
-                                </select>
+                                </DashboardSelectBridgeV2>
                               </div>
 
                               {servicesInSelectedCategory.length ? (
@@ -2932,7 +2933,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                                     )
                                   }
                                 />
-                                <input
+                                <input dir="ltr" lang="en"
                                   className="settings-input"
                                   type="number"
                                   value={c.order}
@@ -3058,7 +3059,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>القسم</label>
-                            <select
+                            <DashboardSelectBridgeV2
                               className="settings-input"
                               value={String(
                                 mode === "edit"
@@ -3093,11 +3094,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                                   {s.name}
                                 </option>
                               ))}
-                            </select>
+                            </DashboardSelectBridgeV2>
                           </div>
                           <div className="settings-field">
                             <label>التصنيف</label>
-                            <select
+                            <DashboardSelectBridgeV2
                               className="settings-input"
                               value={String(
                                 mode === "edit"
@@ -3137,7 +3138,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                                     {c.name}
                                   </option>
                                 ))}
-                            </select>
+                            </DashboardSelectBridgeV2>
                           </div>
                           <label className="scatalog-ref__check">
                             <input
@@ -3164,7 +3165,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                         <div className="scatalog-ref__grid-2">
                           <div className="settings-field">
                             <label>السعر</label>
-                            <input
+                            <input dir="ltr" lang="en"
                               className="settings-input"
                               type="number"
                               min={0}
@@ -3191,7 +3192,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>المدة (دقيقة)</label>
-                            <input
+                            <input dir="ltr" lang="en"
                               className="settings-input"
                               type="number"
                               min={5}
@@ -3218,7 +3219,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>سعر الموسم</label>
-                            <input
+                            <input dir="ltr" lang="en"
                               className="settings-input"
                               type="number"
                               min={0}
@@ -3421,23 +3422,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           <div className="scatalog-ref__inline-2">
             <div className="settings-field">
               <label>من تاريخ</label>
-              <input
-                className="settings-input"
-                type="date"
-                value={seasonPricingFrom}
-                disabled={!seasonPricingEnabled}
-                onChange={(e) => setSeasonPricingFrom(e.target.value)}
-              />
+              <DashboardDateInputV2 className="settings-input" value={seasonPricingFrom} disabled={!seasonPricingEnabled} onChange={(e) => setSeasonPricingFrom(e.target.value)} />
             </div>
             <div className="settings-field">
               <label>إلى تاريخ</label>
-              <input
-                className="settings-input"
-                type="date"
-                value={seasonPricingTo}
-                disabled={!seasonPricingEnabled}
-                onChange={(e) => setSeasonPricingTo(e.target.value)}
-              />
+              <DashboardDateInputV2 className="settings-input" value={seasonPricingTo} disabled={!seasonPricingEnabled} onChange={(e) => setSeasonPricingTo(e.target.value)} />
             </div>
           </div>
           </SettingsSection>

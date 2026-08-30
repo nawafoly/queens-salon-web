@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -25,7 +26,7 @@ import {
 
 function money(value: unknown) {
   const amount = Number(value || 0);
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
@@ -35,7 +36,7 @@ function monthLabel(monthKey: string) {
   const normalized = cleanText(monthKey);
   if (!/^\d{4}-\d{2}$/.test(normalized)) return normalized || "—";
   const [year, month] = normalized.split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA", { year: "numeric", month: "long" }).format(new Date(year, month - 1, 1));
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { year: "numeric", month: "long" }).format(new Date(year, month - 1, 1));
 }
 
 type EmployeePayrollView = {
@@ -211,10 +212,10 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
           </div>
           <label className="employee-month-filter">
             <span>عرض الشهر</span>
-            <select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
+            <DashboardSelectBridgeV2 value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
               <option value="all">كل الأشهر</option>
               {monthOptions.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
-            </select>
+            </DashboardSelectBridgeV2>
           </label>
         </div>
 

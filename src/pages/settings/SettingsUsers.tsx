@@ -139,7 +139,7 @@ function formatDate(value: unknown) {
   if (!text) return "-";
   const date = new Date(text);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);

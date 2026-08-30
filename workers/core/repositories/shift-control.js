@@ -996,6 +996,40 @@ export async function syncWorkingHourScheduleExceptions(
       currentRows
     );
 
+  // WORKING_HOUR_SYNC_SEMANTIC_IDEMPOTENCY_V1
+  // If Core already equals the requested desired state, this is a safe replay
+  // of the same logical operation. Return success before the stale-expected
+  // check; divergent current state still goes through the concurrency guard.
+  if (
+    workingHourOverrideRowsEqual(
+      currentProjection,
+      desired
+    )
+  ) {
+    return {
+      employee_id:
+        employeeId,
+
+      changed:
+        false,
+
+      created_count:
+        0,
+
+      cancelled_count:
+        0,
+
+      rows:
+        currentRows,
+
+      overrides:
+        currentProjection,
+
+      idempotent_replay:
+        true,
+    };
+  }
+
   if (
     !workingHourOverrideRowsEqual(
       currentProjection,

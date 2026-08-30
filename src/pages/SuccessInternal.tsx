@@ -280,7 +280,7 @@ export default function SuccessInternal() {
   const createdAtSource = bookingInfo?.createdAt ?? firstItem?.createdAt ?? null;
   const createdAtEpoch = toEpoch(createdAtSource);
   const createdAtLabel = Number.isFinite(createdAtEpoch)
-    ? new Intl.DateTimeFormat("ar-SA", {
+    ? new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(createdAtEpoch))

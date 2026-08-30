@@ -548,6 +548,7 @@ export default function DashboardPayroll() {
     entry: PayrollEntryView;
     top: number;
     left: number;
+    placement: "above" | "below";
   } | null>(null);
   const [includeIncompleteExport, setIncludeIncompleteExport] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -595,10 +596,13 @@ export default function DashboardPayroll() {
     const edge = 12;
 
     const spaceBelow = window.innerHeight - rect.bottom;
-    const top =
-      spaceBelow >= estimatedHeight + gap
-        ? rect.bottom + gap
-        : Math.max(edge, rect.top - estimatedHeight - gap);
+    const spaceAbove = rect.top;
+    const placement: "above" | "below" =
+      spaceBelow >= estimatedHeight + gap || spaceBelow >= spaceAbove
+        ? "below"
+        : "above";
+
+    const top = placement === "below" ? rect.bottom + gap : rect.top - gap;
 
     const left = Math.max(
       edge,
@@ -608,7 +612,7 @@ export default function DashboardPayroll() {
       )
     );
 
-    setActionMenu({ entry, top, left });
+    setActionMenu({ entry, top, left, placement });
   };
 
   const load = async () => {
@@ -1429,7 +1433,7 @@ export default function DashboardPayroll() {
           </label>
           <label className="dsv2-field">
             <span className="dsv2-field__label">السنة</span>
-            <input
+            <input dir="ltr" lang="en"
               className="dsv2-input"
               type="number"
               min="2020"
@@ -1909,6 +1913,14 @@ export default function DashboardPayroll() {
                 style={{
                   top: actionMenu.top,
                   left: actionMenu.left,
+                  transform:
+                    actionMenu.placement === "above"
+                      ? "translateY(-100%)"
+                      : undefined,
+                  transformOrigin:
+                    actionMenu.placement === "above"
+                      ? "bottom right"
+                      : "top right",
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
               >
@@ -2127,7 +2139,7 @@ export default function DashboardPayroll() {
           onMouseDown={() => setPaymentControl(null)}
         >
           <aside
-            className="payroll-modal payroll-payment-control-modal"
+            className="payroll-modal payroll-payment-control-modal dsv2-workflow-reference"
             role="dialog"
             aria-modal="true"
             aria-label="إدارة تسجيل الدفع"
@@ -2253,7 +2265,7 @@ export default function DashboardPayroll() {
           onMouseDown={() => setLateApproval(null)}
         >
           <aside
-            className="payroll-modal payroll-late-approval-modal"
+            className="payroll-modal payroll-late-approval-modal dsv2-workflow-reference"
             role="dialog"
             aria-modal="true"
             aria-label="تسجيل اعتماد متأخر"
@@ -2425,7 +2437,7 @@ export default function DashboardPayroll() {
           onMouseDown={() => setApprovalConfirmation(null)}
         >
           <aside
-            className="payroll-modal payroll-adjustment-modal"
+            className="payroll-modal payroll-adjustment-modal dsv2-workflow-reference"
             role="dialog"
             aria-modal="true"
             aria-label="تأكيد اعتماد الراتب الجزئي"
@@ -2497,7 +2509,7 @@ export default function DashboardPayroll() {
           onMouseDown={() => setReopenDraft(null)}
         >
           <aside
-            className="payroll-modal payroll-adjustment-modal"
+            className="payroll-modal payroll-adjustment-modal dsv2-workflow-reference"
             role="dialog"
             aria-modal="true"
             aria-label="إعادة فتح الراتب"
@@ -2629,7 +2641,7 @@ export default function DashboardPayroll() {
             </label>
             <label>
               <span>المبلغ</span>
-              <input type="number" min="0" step="0.01" value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} />
+              <input dir="ltr" lang="en" type="number" min="0" step="0.01" value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} />
             </label>
             <label>
               <span>السبب</span>
@@ -2682,7 +2694,7 @@ function PayrollDetailsModal({
   const unclassifiedDeductionHalalas = payrollUnclassifiedDeductionsHalalas(entry);
   return createPortal(
     <div className="dashboard-v2 payroll-modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <aside className="payroll-modal payroll-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+      <aside className="payroll-modal payroll-detail-modal dsv2-workflow-reference dsv2-workflow-reference--wide" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <div>
             <span>{entry.payrollMonth}</span>
@@ -2860,16 +2872,7 @@ function PayrollDetailsModal({
           )}
         </section>
 
-        <section className="payroll-audit-list">
-          <h3>سجل مختصر</h3>
-          {(entry.auditLog || []).length ? (
-            entry.auditLog!.map((item, index) => (
-              <span key={`${item.action || "event"}:${index}`}>{String(item.action || "event")} · {String(item.at || "")}</span>
-            ))
-          ) : (
-            <span>تم الإنشاء كمسودة</span>
-          )}
-        </section>
+
       </aside>
     </div>,
     document.body

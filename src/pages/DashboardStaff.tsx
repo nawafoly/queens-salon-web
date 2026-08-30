@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // ✅ src/pages/DashboardStaff.tsx
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -682,7 +683,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
               placeholder="بحث: اسم العميلة / رقم / خدمة / تاريخ..."
             />
 
-            <select
+            <DashboardSelectBridgeV2
               className="dashstaff-input"
               value={dateQuick}
               onChange={(e) => setDateQuick(e.target.value as DateQuick)}
@@ -691,9 +692,9 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
               <option value="today">اليوم</option>
               <option value="tomorrow">بكرا</option>
               <option value="all">كل التواريخ</option>
-            </select>
+            </DashboardSelectBridgeV2>
 
-            <select
+            <DashboardSelectBridgeV2
               className="dashstaff-input"
               value={statusQuick}
               onChange={(e) => setStatusQuick(e.target.value as StatusQuick)}
@@ -703,7 +704,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
               <option value="confirmed">مؤكد</option>
               <option value="completed">مكتمل</option>
               <option value="cancelled">ملغي</option>
-            </select>
+            </DashboardSelectBridgeV2>
           </div>
 
           <div className="dashstaff-kpis">

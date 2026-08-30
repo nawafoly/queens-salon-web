@@ -15,6 +15,7 @@
 @import "./floating.css";
 @import "./select.css";
 @import "./date-picker.css";
+@import "./control-bridges.css";
 @import "./tables.css";
 @import "./modals.css";
 @import "./toasts.css";
@@ -75,6 +76,7 @@
 @import "./components/employee-attendance-card.css";
 @import "./pages/employee-notification-menu.css";
 @import "./pages/dashboard-mobile-more-groups.css";
+@import "./workflow-modal-reference.css";
 
 /* Final dashboard-wide structural contract: one browser vertical scroll. */
 @import "../DashboardScrollContract.css";

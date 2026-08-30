@@ -175,7 +175,7 @@ function safeMs(ts: any): number {
 function fmtDateTime(ms: number) {
   if (!ms) return "-";
   const d = new Date(ms);
-  return d.toLocaleString("ar-SA", {
+  return d.toLocaleString("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

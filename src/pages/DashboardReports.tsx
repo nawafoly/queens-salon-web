@@ -1,3 +1,4 @@
+import { DashboardMonthInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
@@ -610,7 +611,7 @@ export default function DashboardReports() {
           return {
             id: String(raw?.id || "").trim(),
             date: normalizeIsoDate(raw?.date, createdAtMs),
-            time: createdAtMs ? new Intl.DateTimeFormat("ar-SA", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAtMs)) : "",
+            time: createdAtMs ? new Intl.DateTimeFormat("ar-SA-u-nu-latn", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAtMs)) : "",
             amount: Number(raw?.amount ?? 0) || 0,
             method: normalizePaymentMethod(raw?.method),
             source: String(raw?.source || "").trim(),
@@ -1181,7 +1182,7 @@ export default function DashboardReports() {
 
   const lastSyncLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat("ar-SA", {
+      new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
         dateStyle: "short",
         timeStyle: "medium",
       }).format(new Date(lastSyncMs)),
@@ -1349,14 +1350,7 @@ export default function DashboardReports() {
           <div className="reports-v2__custom-range">
             <label>
               الشهر
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => {
-                  const next = String(e.target.value || "").trim();
-                  if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonth(next);
-                }}
-              />
+              <DashboardMonthInputV2 value={selectedMonth} onChange={(e) => { const next = String(e.target.value || "").trim(); if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonth(next); }} />
             </label>
           </div>
         )}
@@ -1377,7 +1371,7 @@ export default function DashboardReports() {
         <div className="reports-v2__custom-range">
           <label>
             طريقة الدفع
-            <select
+            <DashboardSelectBridgeV2
               value={incomeMethodFilter}
               onChange={(e) => setIncomeMethodFilter(e.target.value as PaymentMethod | "all")}
             >
@@ -1387,11 +1381,11 @@ export default function DashboardReports() {
               <option value="transfer">تحويل</option>
               <option value="mixed">مختلط</option>
               <option value="other">أخرى</option>
-            </select>
+            </DashboardSelectBridgeV2>
           </label>
           <label>
             المصدر
-            <select
+            <DashboardSelectBridgeV2
               value={incomeSourceFilter}
               onChange={(e) => setIncomeSourceFilter(e.target.value as IncomeSourceKind | "all")}
             >
@@ -1401,11 +1395,11 @@ export default function DashboardReports() {
               <option value="internal">داخلي</option>
               <option value="refund">استرجاع</option>
               <option value="other">دخل آخر</option>
-            </select>
+            </DashboardSelectBridgeV2>
           </label>
           <label>
             الحالة
-            <select
+            <DashboardSelectBridgeV2
               value={incomeStatusFilter}
               onChange={(e) => setIncomeStatusFilter(e.target.value as IncomeStatusFilter)}
             >
@@ -1413,7 +1407,7 @@ export default function DashboardReports() {
               <option value="active">نشط</option>
               <option value="refunded">مسترجع</option>
               <option value="voided">ملغي/Voided</option>
-            </select>
+            </DashboardSelectBridgeV2>
           </label>
         </div>
 

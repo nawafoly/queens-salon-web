@@ -29,7 +29,7 @@ type Props = {
 function formatDate(value: unknown) {
   const ms = Date.parse(String(value || ""));
   if (!Number.isFinite(ms)) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "short",
     day: "numeric",

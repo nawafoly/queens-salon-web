@@ -93,7 +93,7 @@ export function formatCustomerLastVisit(dateValue: unknown, timeValue?: unknown)
   const parsed = new Date(`${date}T${isoTime}`);
   if (Number.isNaN(parsed.getTime())) return [date, time].filter(Boolean).join(" · ");
 
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -106,7 +106,7 @@ export function formatCustomerCreatedAt(value: unknown): string {
   if (!raw) return EMPTY_VALUE_LABEL;
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -114,7 +114,7 @@ export function formatCustomerCreatedAt(value: unknown): string {
 }
 
 export function formatCustomerCount(value: number, fractionDigits = 0): string {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(Number.isFinite(value) ? value : 0);

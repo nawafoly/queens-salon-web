@@ -131,7 +131,7 @@ const Reviews: React.FC = () => {
       month: 'long' as const,
       day: 'numeric' as const
     };
-    return date.toLocaleDateString('ar-SA', options);
+    return date.toLocaleDateString('ar-SA-u-nu-latn', options);
   };
 
   return (

@@ -51,3 +51,44 @@ test("Dashboard V2 secondary copy uses shared readable semantic tokens", () => {
   assert.match(states, /\.dsv2-state__description[\s\S]*?color: var\(--dsv2-text-soft\)/);
   assert.match(employeeWorkspace, /--dsv2-ew-muted: var\(--dsv2-text-soft\)/);
 });
+
+test("same-employee save reload preserves canonical schedule exception baseline", () => {
+  const source = read("src/pages/DashboardEmployees.tsx");
+  assert.match(source, /EMPLOYEE_SAVE_CANONICAL_OVERRIDE_REBASE_V1/);
+
+  const openEditStart = source.indexOf("const openEdit =");
+  const switchStart = source.indexOf("const switchingScheduleEmployee", openEditStart);
+  const marker = source.indexOf("EMPLOYEE_SAVE_CANONICAL_OVERRIDE_REBASE_V1", switchStart);
+  const scheduleReset = source.indexOf("setModalScheduleEffectiveFrom(todayIso())", marker);
+
+  assert.ok(openEditStart >= 0);
+  assert.ok(switchStart > openEditStart);
+  assert.ok(marker > switchStart);
+  assert.ok(scheduleReset > marker);
+
+  const guardedRegion = source.slice(switchStart, scheduleReset);
+  assert.match(
+    guardedRegion,
+    /if \(switchingScheduleEmployee\)[\s\S]*EMPLOYEE_SAVE_CANONICAL_OVERRIDE_REBASE_V1[\s\S]*setModalCustomHourOverrides\(\s*\[\]\s*\)/
+  );
+});
+
+test("shift-template hydration distinguishes load failure from canonical empty state", () => {
+  const booking = read("src/pages/dashboardEmployees/BookingSettingsSection.tsx");
+  const live = read(
+    "src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx"
+  );
+
+  assert.match(booking, /SHIFT_TEMPLATE_HYDRATION_SAFETY_V1/);
+  assert.match(booking, /window\.addEventListener\("online", retry\)/);
+  assert.match(booking, /window\.addEventListener\("focus", retry\)/);
+  assert.match(booking, /shiftTemplatesError=\{shiftTemplatesError\}/);
+  assert.match(booking, /setShiftTemplatesError\(/);
+
+  assert.match(live, /shiftTemplatesError\?: string/);
+  assert.match(live, /description=\{shiftTemplatesError\}/);
+  assert.match(
+    live,
+    /shiftTemplatesError \? \([\s\S]*!shiftTemplatesLoading && !shiftTemplates\.length \? \(/
+  );
+});

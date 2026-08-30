@@ -27,7 +27,7 @@ function cleanText(value: unknown) {
 
 function formatNumber(value: unknown) {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
+  return Number.isFinite(number) ? number.toLocaleString("ar-SA-u-nu-latn") : "0";
 }
 
 function positivePayrollAmount(value: unknown) {
@@ -38,7 +38,7 @@ function positivePayrollAmount(value: unknown) {
 function formatPayrollMoney(value: unknown) {
   const amount = Number(value || 0);
   const safe = Number.isFinite(amount) ? amount : 0;
-  return `${safe.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
+  return `${safe.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ر.س`;
 }
 
 function safeMonthKey(value: string) {
@@ -124,7 +124,7 @@ function formatAttendanceTime(value: unknown) {
   if (/^\d{2}:\d{2}/.test(clean)) return clean.slice(0, 5);
   const date = new Date(clean);
   if (Number.isNaN(date.getTime())) return clean;
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
@@ -134,7 +134,7 @@ function formatAttendanceDate(value: unknown) {
   const clean = cleanText(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean || "-";
   const [year, month, day] = clean.split("-");
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -455,6 +455,7 @@ export type EmployeeScheduleTabLiveV2Props = {
   workingDays: WorkingDayLiveV2[];
   shiftTemplates: ScheduleShiftTemplateLiveV2[];
   shiftTemplatesLoading?: boolean;
+  shiftTemplatesError?: string;
   attendanceZones: Array<{ id: string; name?: string; label?: string }>;
   attendanceZonesLoading: boolean;
   selectedAttendanceZoneId: string;
@@ -477,6 +478,7 @@ export function EmployeeScheduleTabLiveV2({
   workingDays,
   shiftTemplates,
   shiftTemplatesLoading = false,
+  shiftTemplatesError = "",
   attendanceZones,
   attendanceZonesLoading,
   selectedAttendanceZoneId,
@@ -608,7 +610,13 @@ export function EmployeeScheduleTabLiveV2({
         description="لكل يوم: شفت من القوالب أو راحة أسبوعية."
         actions={<WorkspaceHelpButtonV2 label="شرح الأسبوع التشغيلي" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.operationalWeek)} />}
       >
-        {!shiftTemplatesLoading && !shiftTemplates.length ? (
+        {shiftTemplatesError ? (
+          <WorkspaceNoticeV2
+            title="تعذر تحميل قوالب الشفتات"
+            description={shiftTemplatesError}
+            tone="danger"
+          />
+        ) : !shiftTemplatesLoading && !shiftTemplates.length ? (
           <WorkspaceNoticeV2
             title="لا توجد قوالب شفتات"
             description="أنشئ قالب شفت واحدًا على الأقل من قسم قوالب الشفتات والاستثناءات الموجود أسفل هذه الصفحة، ثم ارجع لتوزيعه على أيام العمل."
@@ -1325,28 +1333,28 @@ export function EmployeePayrollTabLiveV2({
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
           <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الأساسي">
-            <input id="employee-live-v2-salary" className="dsv2-input" type="number" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-salary" className="dsv2-input" type="number" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-housing-allowance" label="بدل السكن">
-            <input id="employee-live-v2-housing-allowance" className="dsv2-input" type="number" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-housing-allowance" className="dsv2-input" type="number" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label="بدل النقل">
-            <input id="employee-live-v2-transportation-allowance" className="dsv2-input" type="number" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-transportation-allowance" className="dsv2-input" type="number" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-other-allowances" label="بدلات أخرى">
-            <input id="employee-live-v2-other-allowances" className="dsv2-input" type="number" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-other-allowances" className="dsv2-input" type="number" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-work-days" label="أيام العمل">
-            <input id="employee-live-v2-work-days" className="dsv2-input" type="number" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-work-days" className="dsv2-input" type="number" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-daily-hours" label="ساعات اليوم">
-            <input id="employee-live-v2-daily-hours" className="dsv2-input" type="number" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-daily-hours" className="dsv2-input" type="number" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-monthly-hours" label="ساعات الشهر">
-            <input id="employee-live-v2-monthly-hours" className="dsv2-input" type="number" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-monthly-hours" className="dsv2-input" type="number" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label="معامل الإضافي">
-            <input id="employee-live-v2-overtime-multiplier" className="dsv2-input" type="number" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
+            <input dir="ltr" lang="en" id="employee-live-v2-overtime-multiplier" className="dsv2-input" type="number" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2
             id="employee-live-v2-attendance-payroll-mode"
@@ -1501,7 +1509,7 @@ export function EmployeePayrollTabLiveV2({
           {gosiWageMode === "override" ? (
             <>
               <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label="أجر الاشتراك المعتمد">
-                <input
+                <input dir="ltr" lang="en"
                   id="employee-live-v2-gosi-wage-override"
                   className="dsv2-input"
                   type="number"

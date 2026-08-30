@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import { CoreComplianceService } from "../../services/CoreComplianceService";
@@ -363,7 +364,7 @@ export default function PayrollComplianceWorkspace({
           </p>
         </div>
         <div className="payroll-compliance-toolbar">
-          <select
+          <DashboardSelectBridgeV2
             className="dsv2-input"
             value={employeeId}
             onChange={(event) => setEmployeeId(event.target.value)}
@@ -373,7 +374,7 @@ export default function PayrollComplianceWorkspace({
                 {employee.name || employee.id}
               </option>
             ))}
-          </select>
+          </DashboardSelectBridgeV2>
           <button
             type="button"
             className="dsv2-btn dsv2-btn--secondary"
@@ -397,7 +398,7 @@ export default function PayrollComplianceWorkspace({
             <div className="payroll-compliance-form-grid">
               <label>
                 <span>نوع السجل</span>
-                <select
+                <DashboardSelectBridgeV2
                   className="dsv2-input"
                   value={targetKind}
                   onChange={(event) =>
@@ -406,11 +407,11 @@ export default function PayrollComplianceWorkspace({
                 >
                   <option value="obligation">التزام راتب</option>
                   <option value="recurring">خصم متكرر</option>
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
               <label>
                 <span>السجل</span>
-                <select
+                <DashboardSelectBridgeV2
                   className="dsv2-input"
                   value={targetId}
                   onChange={(event) => setTargetId(event.target.value)}
@@ -432,11 +433,11 @@ export default function PayrollComplianceWorkspace({
                   ) : (
                     <option value="">لا توجد سجلات</option>
                   )}
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
               <label>
                 <span>التصنيف</span>
-                <select
+                <DashboardSelectBridgeV2
                   className="dsv2-input"
                   value={deductionClass}
                   onChange={(event) => setDeductionClass(event.target.value)}
@@ -446,7 +447,7 @@ export default function PayrollComplianceWorkspace({
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
               <label>
                 <span>مرجع الإثبات</span>
@@ -479,7 +480,7 @@ export default function PayrollComplianceWorkspace({
               {deductionClass === "judicial_debt" ? (
                 <label>
                   <span>السقف القضائي %</span>
-                  <input
+                  <input dir="ltr" lang="en"
                     className="dsv2-input"
                     type="number"
                     min="1"
@@ -521,7 +522,7 @@ export default function PayrollComplianceWorkspace({
             <div className="payroll-compliance-form-grid">
               <label>
                 <span>السقف %</span>
-                <input
+                <input dir="ltr" lang="en"
                   className="dsv2-input"
                   type="number"
                   min="0"
@@ -624,7 +625,7 @@ export default function PayrollComplianceWorkspace({
             <div className="payroll-compliance-form-grid">
               <label>
                 <span>القسط</span>
-                <select
+                <DashboardSelectBridgeV2
                   className="dsv2-input"
                   value={installmentId}
                   onChange={(event) => setInstallmentId(event.target.value)}
@@ -648,7 +649,7 @@ export default function PayrollComplianceWorkspace({
                   ) ? (
                     <option value="">لا يوجد قسط قابل للتأجيل</option>
                   ) : null}
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
               <label>
                 <span>الشهر المستهدف</span>

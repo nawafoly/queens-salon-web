@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DashboardDatePickerV2,
@@ -1124,16 +1125,16 @@ export default function ShiftControlSection({
                 <input id="shift-template-code" className="dsv2-input" value={templateForm.code} onChange={(event) => setTemplateForm((current) => ({ ...current, code: event.target.value }))} disabled={!canManage || saving} placeholder="AM" />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-start" label="البداية">
-                <input id="shift-template-start" className="dsv2-input" type="time" value={templateForm.startTime} onChange={(event) => setTemplateForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving} />
+                <DashboardTimeInputV2 id="shift-template-start" className="dsv2-input" value={templateForm.startTime} onChange={(event) => setTemplateForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-end" label="النهاية">
-                <input id="shift-template-end" className="dsv2-input" type="time" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
+                <DashboardTimeInputV2 id="shift-template-end" className="dsv2-input" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-late" label="فترة سماح التأخير">
-                <input id="shift-template-late" className="dsv2-input" type="number" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
+                <input dir="ltr" lang="en" id="shift-template-late" className="dsv2-input" type="number" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-lock-after" label="إغلاق بصمة الحضور بعد">
-                <input id="shift-template-lock-after" className="dsv2-input" type="number" min={Number(templateForm.lateGraceMinutes || 0)} max="1440" value={templateForm.attendanceLockAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, attendanceLockAfterMinutes: event.target.value }))} disabled={!canManage || saving || !templateForm.attendanceLockEnabled} />
+                <input dir="ltr" lang="en" id="shift-template-lock-after" className="dsv2-input" type="number" min={Number(templateForm.lateGraceMinutes || 0)} max="1440" value={templateForm.attendanceLockAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, attendanceLockAfterMinutes: event.target.value }))} disabled={!canManage || saving || !templateForm.attendanceLockEnabled} />
               </DashboardFieldV2>
             </div>
             <WorkspaceNoticeV2
@@ -1180,10 +1181,10 @@ export default function ShiftControlSection({
                 <DashboardDatePickerV2 id="shift-exception-to" value={exceptionForm.dateTo} onChange={(value) => setExceptionForm((current) => ({ ...current, dateTo: value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-exception-start" label="بداية مخصصة">
-                <input id="shift-exception-start" className="dsv2-input" type="time" value={exceptionForm.startTime} onChange={(event) => setExceptionForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
+                <DashboardTimeInputV2 id="shift-exception-start" className="dsv2-input" value={exceptionForm.startTime} onChange={(event) => setExceptionForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-exception-end" label="نهاية مخصصة">
-                <input id="shift-exception-end" className="dsv2-input" type="time" value={exceptionForm.endTime} onChange={(event) => setExceptionForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
+                <DashboardTimeInputV2 id="shift-exception-end" className="dsv2-input" value={exceptionForm.endTime} onChange={(event) => setExceptionForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
             </div>
             <DashboardFieldV2 id="shift-exception-note" label="ملاحظة">

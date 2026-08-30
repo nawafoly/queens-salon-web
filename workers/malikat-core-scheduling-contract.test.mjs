@@ -1291,14 +1291,34 @@ test("Partner Portal operational day is a Malikat Core RPC projection only", () 
     );
   }
 
+  // DEV_LOCAL_CONFIG_CONTRACT_V2
+  // npm run dev now derives ignored local-only configs from the protected
+  // developer configs, then passes the generated paths through coreConfig /
+  // partnersConfig. Assert the current isolation contract instead of requiring
+  // the literal source config path inside each process block.
   assert.match(
     devScript,
-    /name:\s*"core-api"[\s\S]*wrangler\.core(?:\.dev)?\.jsonc/
+    /source:\s*"wrangler\.core\.dev\.jsonc"[\s\S]*generated:\s*"\.wrangler\.core\.local\.generated\.jsonc"/
   );
 
   assert.match(
     devScript,
-    /name:\s*"partners-api"[\s\S]*wrangler\.partners(?:\.dev)?\.jsonc/
+    /source:\s*"wrangler\.partners\.dev\.jsonc"[\s\S]*generated:\s*"\.wrangler\.partners\.local\.generated\.jsonc"/
+  );
+
+  assert.match(
+    devScript,
+    /const \[coreConfig, partnersConfig\] = generatedConfigs\.map\(createLocalOnlyConfig\)/
+  );
+
+  assert.match(
+    devScript,
+    /name:\s*"core-api"[\s\S]*"--config"[\s\S]*coreConfig/
+  );
+
+  assert.match(
+    devScript,
+    /name:\s*"partners-api"[\s\S]*"--config"[\s\S]*partnersConfig/
   );
 });
 

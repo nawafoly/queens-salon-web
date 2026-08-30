@@ -21,18 +21,18 @@ type FormProps = {
 
 function formatMoneyHalalas(value: unknown) {
   const amount = Number(value || 0) / 100;
-  return `${amount.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  return `${amount.toLocaleString("ar-SA-u-nu-latn", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
 }
 
 function formatNumber(value: unknown) {
   const number = Number(value || 0);
-  return number.toLocaleString("ar-SA", { maximumFractionDigits: 2 });
+  return number.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 });
 }
 
 function formatDateTime(value: unknown) {
   const parsed = Date.parse(String(value || ""));
   if (!Number.isFinite(parsed)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     timeZone: "Asia/Riyadh",
     dateStyle: "medium",
     timeStyle: "short",
@@ -94,7 +94,7 @@ export function ExceptionalFinancialPaymentRequestFormFields({
       <DocumentFieldGrid>
         <label className="employee-request-field">
           <span>عدد أيام الإجازة المطلوب تعويضها *</span>
-          <input
+          <input dir="ltr" lang="en"
             type="number"
             min="0.5"
             max="60"

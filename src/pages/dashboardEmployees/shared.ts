@@ -486,7 +486,7 @@ export function fmtIsoDate(v?: string) {
   const s = normalizeIsoDate(v);
   if (!s) return "-";
   const [y, m, d] = s.split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -646,7 +646,7 @@ export function toHijriMonthYearLabel(iso: string) {
   const parts = hijriPartsFromIso(iso);
   if (!parts) return "";
   const dt = new Date(`${normalizeIsoDate(iso)}T00:00:00Z`);
-  const monthName = new Intl.DateTimeFormat("ar-SA-u-ca-islamic", {
+  const monthName = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-nu-latn", {
     timeZone: "UTC",
     month: "long",
   }).format(dt);
@@ -925,7 +925,7 @@ export function countIsoDateRangeDays(from?: string, to?: string): number {
 export function formatArabicInteger(v: number): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0";
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 0 }).format(
     Math.max(0, Math.floor(n))
   );
 }

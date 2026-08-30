@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "./dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import {
   DashboardDatePickerV2,
@@ -275,22 +276,10 @@ export default function LeaveRequestModal({
         {isPartialLeave ? (
           <div className="leave-request-v2__date-grid leave-request-v2__time-grid">
             <DashboardFieldV2 id="leave-partial-start-v2" label="من الساعة" required>
-              <input
-                id="leave-partial-start-v2"
-                className="leave-request-v2__time-input"
-                type="time"
-                value={partialStartTime}
-                onChange={(event) => { setPartialStartTime(event.target.value); setErrors([]); }}
-              />
+              <DashboardTimeInputV2 id="leave-partial-start-v2" className="leave-request-v2__time-input" value={partialStartTime} onChange={(event) => { setPartialStartTime(event.target.value); setErrors([]); }} />
             </DashboardFieldV2>
             <DashboardFieldV2 id="leave-partial-end-v2" label="إلى الساعة" required>
-              <input
-                id="leave-partial-end-v2"
-                className="leave-request-v2__time-input"
-                type="time"
-                value={partialEndTime}
-                onChange={(event) => { setPartialEndTime(event.target.value); setErrors([]); }}
-              />
+              <DashboardTimeInputV2 id="leave-partial-end-v2" className="leave-request-v2__time-input" value={partialEndTime} onChange={(event) => { setPartialEndTime(event.target.value); setErrors([]); }} />
             </DashboardFieldV2>
           </div>
         ) : null}

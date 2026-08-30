@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { CoreSettingsService } from "../../services/CoreSettingsService";
@@ -665,12 +666,12 @@ export default function AdminPackageFlow(props: {
               </div>
               <label className="session-packages__field">
                 طريقة الدفع
-                <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as any)}>
+                <DashboardSelectBridgeV2 value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as any)}>
                   <option value="">اختاري</option>
                   <option value="cash">كاش</option>
                   <option value="card">شبكة</option>
                   <option value="transfer">تحويل</option>
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
             </div>
           ) : null}

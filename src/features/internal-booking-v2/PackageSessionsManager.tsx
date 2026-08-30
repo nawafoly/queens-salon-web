@@ -48,7 +48,7 @@ const EMPTY_DASHBOARD: PackageSessionDashboardResult = {
 function dateText(value: string) {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -58,7 +58,7 @@ function dateText(value: string) {
 function dateTimeText(value: string) {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -703,7 +703,7 @@ export default function PackageSessionsManager() {
             <div className="bk2-session-grant-grid bk2-session-adjust-fields">
               <label>
                 <span>عدد الجلسات *</span>
-                <input
+                <input dir="ltr" lang="en"
                   autoFocus
                   type="number"
                   min={1}
@@ -867,7 +867,7 @@ export default function PackageSessionsManager() {
 
             <label>
               <span>عدد الجلسات المراد إضافتها *</span>
-              <input
+              <input dir="ltr" lang="en"
                 type="number"
                 min={1}
                 max={1000}
