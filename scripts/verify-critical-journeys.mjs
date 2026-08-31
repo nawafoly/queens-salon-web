@@ -41,6 +41,14 @@ const journeys = [
     name: "employee termination safety",
     file: "workers/authority-destructive-safety.test.mjs",
   },
+  {
+    name: "booking offline safety",
+    file: "workers/booking-offline-ux-policy.test.mjs",
+  },
+  {
+    name: "internal booking client dedup",
+    file: "workers/internal-booking-client-dedup-ui.test.mjs",
+  },
 ];
 
 const missing = journeys.filter(
