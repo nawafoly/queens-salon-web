@@ -903,8 +903,8 @@ export async function approveAnnualLeave(
     actorField(actor, 'displayName');
 
   const metadata = JSON.stringify({
-    leaveStartDate: leave.start_date,
-    leaveEndDate: leave.end_date,
+    annualLeaveStartDate: leave.start_date,
+    annualLeaveEndDate: leave.end_date,
     entitlementAsOfDate: asOfDate,
     accruedSinceAnchorDays:
       state.accruedSinceAnchorDays,

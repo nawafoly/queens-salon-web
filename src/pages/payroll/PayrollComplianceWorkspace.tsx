@@ -6,7 +6,6 @@ import { CoreComplianceService } from "../../services/CoreComplianceService";
 import { CoreHrService } from "../../services/CoreHrService";
 import type { CoreHrEmployee } from "../../types/hrCoreApi";
 import { formatPayrollMoney } from "../../helpers/hr/payrollCalculations";
-import "../../styles/dashboard-v2/pages/payroll-compliance-workspace.css";
 
 type Props = {
   employees: CoreHrEmployee[];
