@@ -1,112 +1,112 @@
-.payroll-compliance-workspace {
+.dashboard-v2 .payroll-compliance-workspace {
   margin-top: 18px;
 }
 
-.payroll-compliance-head,
-.payroll-compliance-toolbar,
-.payroll-compliance-actions,
-.payroll-compliance-row {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-actions,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.payroll-compliance-head {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 16px;
 }
 
-.payroll-compliance-head h2 {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head h2 {
   margin: 8px 0 4px;
 }
 
-.payroll-compliance-head p {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head p {
   margin: 0;
   opacity: 0.75;
 }
 
-.payroll-compliance-toolbar {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar {
   min-width: min(100%, 360px);
 }
 
-.payroll-compliance-toolbar .dsv2-input {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar .dsv2-input {
   min-width: 220px;
 }
 
-.payroll-compliance-grid {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.payroll-compliance-card {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-card {
   border: 1px solid rgba(128, 128, 128, 0.2);
   border-radius: 16px;
   padding: 16px;
   min-width: 0;
 }
 
-.payroll-compliance-card h3 {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-card h3 {
   margin: 0 0 14px;
 }
 
-.payroll-compliance-form-grid {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
 
-.payroll-compliance-form-grid label,
-.payroll-compliance-single-field {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-form-grid label,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-single-field {
   display: grid;
   gap: 6px;
 }
 
-.payroll-compliance-form-grid .is-wide {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-form-grid .is-wide {
   grid-column: 1 / -1;
 }
 
-.payroll-compliance-list {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-list {
   display: grid;
   gap: 8px;
   margin-top: 12px;
 }
 
-.payroll-compliance-row {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-row {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid rgba(128, 128, 128, 0.16);
 }
 
-.payroll-compliance-row > div {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-row > div {
   display: grid;
   gap: 3px;
 }
 
-.payroll-compliance-row span,
-.payroll-compliance-kpi small {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-row span,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-kpi small {
   opacity: 0.72;
   font-size: 0.88rem;
 }
 
-.payroll-compliance-kpi {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-kpi {
   display: grid;
   gap: 5px;
   margin-bottom: 12px;
 }
 
-.payroll-compliance-actions {
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-actions {
   margin-top: 12px;
 }
 
-.payroll-period-lock-card {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-card {
   display: grid;
   gap: 14px;
 }
 
-.payroll-period-lock-state {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state {
   display: grid;
   gap: 4px;
   padding: 14px 16px;
@@ -114,26 +114,26 @@
   border-radius: 14px;
 }
 
-.payroll-period-lock-state strong {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state strong {
   font-size: 1.05rem;
 }
 
-.payroll-period-lock-state span {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state span {
   font-size: 0.86rem;
   opacity: 0.75;
 }
 
-.payroll-period-lock-state.is-locked {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state.is-locked {
   border-color: rgba(180, 55, 55, 0.28);
   background: rgba(180, 55, 55, 0.07);
 }
 
-.payroll-period-lock-state.is-open {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state.is-open {
   border-color: rgba(31, 132, 84, 0.28);
   background: rgba(31, 132, 84, 0.07);
 }
 
-.payroll-period-lock-range {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-range {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -141,38 +141,38 @@
   padding: 10px 0;
 }
 
-.payroll-period-lock-range strong {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-range strong {
   unicode-bidi: isolate;
 }
 
-.payroll-period-lock-card .payroll-compliance-actions button:disabled {
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-card .payroll-compliance-actions button:disabled {
   cursor: default;
   opacity: 0.62;
 }
 
 @media (max-width: 1050px) {
-  .payroll-compliance-grid {
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 700px) {
-  .payroll-compliance-head,
-  .payroll-compliance-toolbar {
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head,
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar {
     flex-direction: column;
     width: 100%;
   }
 
-  .payroll-compliance-toolbar .dsv2-input,
-  .payroll-compliance-toolbar .dsv2-btn {
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar .dsv2-input,
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-toolbar .dsv2-btn {
     width: 100%;
   }
 
-  .payroll-compliance-form-grid {
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-form-grid {
     grid-template-columns: 1fr;
   }
 
-  .payroll-compliance-form-grid .is-wide {
+  .dashboard-v2 .payroll-compliance-workspace .payroll-compliance-form-grid .is-wide {
     grid-column: auto;
   }
 }

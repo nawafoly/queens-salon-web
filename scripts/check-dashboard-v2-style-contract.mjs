@@ -253,8 +253,8 @@ if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(adminProfileSource)) {
 if (!/admin-profile-v2-page/.test(adminProfileSource)) {
   errors.push("DashboardAdminProfile.tsx is missing its isolated V2 page root.");
 }
-if (!/updateDoc/.test(adminProfileSource) || !/authChanged/.test(adminProfileSource)) {
-  errors.push("DashboardAdminProfile.tsx is missing its existing profile save/session refresh flow.");
+if (!/CoreAccountService\.update/.test(adminProfileSource) || !/authChanged/.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx is missing its Core profile save/session refresh flow.");
 }
 
 if (errors.length) {
