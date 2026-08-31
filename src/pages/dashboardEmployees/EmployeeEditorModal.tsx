@@ -21,6 +21,10 @@ import {
   type StaffPublicUi,
 } from "./shared";
 
+export type EmployeeSaveOptions = {
+  createLogin?: boolean;
+};
+
 export type EmployeeEditorModalProps = {
   isOpen: boolean;
   canManage: boolean;
@@ -38,7 +42,7 @@ export type EmployeeEditorModalProps = {
   hasUnsavedChanges?: boolean;
   canDelete?: boolean;
   onClose: () => void;
-  onSave: () => void | Promise<void>;
+  onSave: (options?: EmployeeSaveOptions) => void | Promise<void>;
   onDelete?: () => void;
   onCancelEdit?: () => void;
   onModalTabChange: (tab: EmployeeModalTab) => void;
@@ -156,7 +160,7 @@ export default function EmployeeEditorModal({
     });
 
     try {
-      await onSave();
+      await onSave({ createLogin });
     } finally {
       clearEmployeeOnboardingQueue();
     }
@@ -220,7 +224,7 @@ export default function EmployeeEditorModal({
       closeOnBackdrop={!busy}
       closeOnEscape={!busy}
       footer={footer}
-      className="employees-v2-editor"
+      className={`employees-v2-editor ${isCreateMode ? "employees-v2-editor--create" : "employees-v2-editor--edit"}`}
     >
       {!isCreateMode ? (
         <div className="employees-v2-editor__meta">
@@ -228,115 +232,17 @@ export default function EmployeeEditorModal({
           <span className="dsv2-badge">{specialtiesCount > 0 ? `${specialtiesCount} خدمة` : "بدون خدمات"}</span>
         </div>
       ) : (
-        <section className="employee-onboarding-account" aria-label="حساب الدخول">
-          <div className="employee-onboarding-account__head">
-            <div>
-              <span className="dsv2-badge dsv2-badge--gold">الخطوة الموحدة</span>
-              <h3>حساب الدخول</h3>
-              <p>سيتم إنشاء وربط حساب الدخول تلقائيًا مع الملف الوظيفي دون إدخال أي معرّف تقني.</p>
-            </div>
-            <label className="employee-onboarding-account__toggle">
-              <input
-                type="checkbox"
-                checked={createLogin}
-                disabled={!canProvisionAccount || busy}
-                onChange={(event) => {
-                  setCreateLogin(event.target.checked);
-                  setAccountError("");
-                }}
-              />
-              <span>إنشاء وتفعيل حساب دخول</span>
-            </label>
+        <section className="employees-v2-editor__create-intro" aria-label="عملية إضافة الموظفة">
+          <span className="dsv2-badge dsv2-badge--gold">عملية موحدة</span>
+          <div>
+            <strong>ملف الموظفة وحساب الدخول في مكان واحد</strong>
+            <p>أكملي الأقسام بالترتيب المناسب لك. النظام ينشئ ويربط حساب الدخول تلقائيًا بدون Firebase UID أو خطوات تقنية يدوية.</p>
           </div>
-
-          {!canProvisionAccount ? (
-            <p className="employee-onboarding-account__notice">
-              لا تملك صلاحية إنشاء حسابات دخول؛ سيتم إنشاء الملف الوظيفي فقط.
-            </p>
-          ) : null}
-
-          <div className="employee-onboarding-account__grid">
-            <DashboardFieldV2
-              id="employee-onboarding-email"
-              label="البريد الإلكتروني"
-              required={createLogin}
-              hint={createLogin ? "سيستخدم لتسجيل الدخول واستعادة كلمة المرور." : "اختياري إذا لم يتم إنشاء حساب دخول."}
-            >
-              <input
-                id="employee-onboarding-email"
-                className="dsv2-input"
-                type="email"
-                autoComplete="off"
-                value={accountEmail}
-                onChange={(event) => {
-                  setAccountEmail(event.target.value);
-                  setAccountError("");
-                }}
-                disabled={busy}
-                placeholder="name@example.com"
-              />
-            </DashboardFieldV2>
-
-            <DashboardFieldV2 id="employee-onboarding-phone" label="رقم الجوال">
-              <input
-                id="employee-onboarding-phone"
-                className="dsv2-input"
-                type="tel"
-                autoComplete="off"
-                value={accountPhone}
-                onChange={(event) => setAccountPhone(event.target.value)}
-                disabled={busy}
-                placeholder="+9665XXXXXXXX"
-              />
-            </DashboardFieldV2>
-
-            <DashboardFieldV2 id="employee-onboarding-role" label="الدور" required={createLogin}>
-              <DashboardSelectV2
-                value={accountRole}
-                options={ACCOUNT_ROLE_OPTIONS}
-                onChange={(value) => setAccountRole(value as EmployeeOnboardingRole)}
-                disabled={!createLogin || busy}
-              />
-            </DashboardFieldV2>
-
-            <DashboardFieldV2
-              id="employee-onboarding-password"
-              label="كلمة المرور المؤقتة"
-              required={createLogin}
-              hint="يمكن للموظفة تغييرها لاحقًا."
-            >
-              <div className="employee-onboarding-account__password">
-                <input
-                  id="employee-onboarding-password"
-                  className="dsv2-input"
-                  type="text"
-                  autoComplete="new-password"
-                  value={temporaryPassword}
-                  onChange={(event) => {
-                    setTemporaryPassword(event.target.value);
-                    setAccountError("");
-                  }}
-                  disabled={!createLogin || busy}
-                />
-                <button
-                  className="dsv2-btn dsv2-btn--secondary"
-                  type="button"
-                  disabled={!createLogin || busy}
-                  onClick={() => setTemporaryPassword(makeEmployeeTempPassword())}
-                >
-                  <FontAwesomeIcon icon={faArrowsRotate} />
-                  توليد
-                </button>
-              </div>
-            </DashboardFieldV2>
-          </div>
-
-          {accountError ? <p className="employee-onboarding-account__error">{accountError}</p> : null}
         </section>
       )}
 
       <nav className="employees-v2-editor__tabs" role="tablist" aria-label="أقسام ملف الموظفة">
-        {tabs.map((tab) => (
+        {tabs.map((tab, index) => (
           <button
             key={String(tab.key)}
             type="button"
@@ -345,6 +251,7 @@ export default function EmployeeEditorModal({
             onClick={tab.onClick}
             aria-selected={tab.active}
           >
+            {isCreateMode ? <span className="employees-v2-editor__tab-index" aria-hidden="true">{index + 1}</span> : null}
             {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : null}
             <span>{tab.label}</span>
           </button>
@@ -353,6 +260,114 @@ export default function EmployeeEditorModal({
 
       <fieldset className={`employees-v2-editor__fieldset ${!canManage ? "is-readonly" : ""}`} disabled={!canManage}>
         <div className="employees-v2-editor__content">{children}</div>
+
+        {isCreateMode && modalTab === "basic" ? (
+          <section className="employee-onboarding-account" aria-label="حساب الدخول">
+            <div className="employee-onboarding-account__head">
+              <div>
+                <span className="dsv2-badge dsv2-badge--gold">حساب الدخول</span>
+                <h3>تسجيل دخول الموظفة</h3>
+                <p>اختياري. عند تفعيله سيتم إنشاء الحساب وربطه بالملف الوظيفي تلقائيًا ضمن نفس عملية الحفظ.</p>
+              </div>
+              <label className="employee-onboarding-account__toggle">
+                <input
+                  type="checkbox"
+                  checked={createLogin}
+                  disabled={!canProvisionAccount || busy}
+                  onChange={(event) => {
+                    setCreateLogin(event.target.checked);
+                    setAccountError("");
+                  }}
+                />
+                <span>إنشاء وتفعيل حساب دخول</span>
+              </label>
+            </div>
+
+            {!canProvisionAccount ? (
+              <p className="employee-onboarding-account__notice">
+                لا تملك صلاحية إنشاء حسابات دخول؛ سيتم إنشاء الملف الوظيفي فقط.
+              </p>
+            ) : null}
+
+            <div className="employee-onboarding-account__grid">
+              <DashboardFieldV2
+                id="employee-onboarding-email"
+                label="البريد الإلكتروني"
+                required={createLogin}
+                hint={createLogin ? "سيستخدم لتسجيل الدخول واستعادة كلمة المرور." : "اختياري إذا لم يتم إنشاء حساب دخول."}
+              >
+                <input
+                  id="employee-onboarding-email"
+                  className="dsv2-input"
+                  type="email"
+                  autoComplete="off"
+                  value={accountEmail}
+                  onChange={(event) => {
+                    setAccountEmail(event.target.value);
+                    setAccountError("");
+                  }}
+                  disabled={busy}
+                  placeholder="name@example.com"
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="employee-onboarding-phone" label="رقم الجوال">
+                <input
+                  id="employee-onboarding-phone"
+                  className="dsv2-input"
+                  type="tel"
+                  autoComplete="off"
+                  value={accountPhone}
+                  onChange={(event) => setAccountPhone(event.target.value)}
+                  disabled={busy}
+                  placeholder="+9665XXXXXXXX"
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="employee-onboarding-role" label="الدور" required={createLogin}>
+                <DashboardSelectV2
+                  value={accountRole}
+                  options={ACCOUNT_ROLE_OPTIONS}
+                  onChange={(value) => setAccountRole(value as EmployeeOnboardingRole)}
+                  disabled={!createLogin || busy}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2
+                id="employee-onboarding-password"
+                label="كلمة المرور المؤقتة"
+                required={createLogin}
+                hint="يمكن للموظفة تغييرها لاحقًا."
+              >
+                <div className="employee-onboarding-account__password">
+                  <input
+                    id="employee-onboarding-password"
+                    className="dsv2-input"
+                    type="text"
+                    autoComplete="new-password"
+                    value={temporaryPassword}
+                    onChange={(event) => {
+                      setTemporaryPassword(event.target.value);
+                      setAccountError("");
+                    }}
+                    disabled={!createLogin || busy}
+                  />
+                  <button
+                    className="dsv2-btn dsv2-btn--secondary"
+                    type="button"
+                    disabled={!createLogin || busy}
+                    onClick={() => setTemporaryPassword(makeEmployeeTempPassword())}
+                  >
+                    <FontAwesomeIcon icon={faArrowsRotate} />
+                    توليد
+                  </button>
+                </div>
+              </DashboardFieldV2>
+            </div>
+
+            {accountError ? <p className="employee-onboarding-account__error">{accountError}</p> : null}
+          </section>
+        ) : null}
       </fieldset>
     </DashboardModalV2>
   );
