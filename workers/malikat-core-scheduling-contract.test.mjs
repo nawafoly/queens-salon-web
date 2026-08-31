@@ -844,10 +844,11 @@ test("DashboardEmployees working-hour override save is Core-only", () => {
       "utf8"
     );
 
+  const saveMatch =
+    /(?:^|\n)  const save = async \([^)]*\) => \{/.exec(source);
+
   const saveStart =
-    source.indexOf(
-      "  const save = async () => {"
-    );
+    saveMatch?.index ?? -1;
 
   const saveEnd =
     source.indexOf(
