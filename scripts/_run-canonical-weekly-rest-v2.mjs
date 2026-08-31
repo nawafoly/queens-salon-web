@@ -73,6 +73,25 @@ mustReplace(
   "attendance special-day one-line source shape"
 );
 
+const schedulingTestEditAnchor =
+  '  edit("workers/malikat-core-scheduling-contract.test.mjs", (text) => {\n    const testBlock = String.raw`';
+
+const schedulingTestEditReplacement =
+  '  edit("workers/malikat-core-scheduling-contract.test.mjs", (text) => {\n' +
+  '    text = replaceOnce(\n' +
+  '      text,\n' +
+  '      String.raw`\\s*assignments,\\s*employmentRows`,\n' +
+  '      String.raw`\\s*assignments,\\s*weeklyRestWorkAssignments,\\s*employmentRows`,\n' +
+  '      "legacy batch contract includes weekly-rest assignments"\n' +
+  '    );\n' +
+  '    const testBlock = String.raw`';
+
+mustReplace(
+  schedulingTestEditAnchor,
+  schedulingTestEditReplacement,
+  "legacy scheduling batch contract"
+);
+
 mustReplace(
   "  unlinkSync(SELF);",
   `  unlinkSync(SELF);\n  unlinkSync("${HELPER}");`,
