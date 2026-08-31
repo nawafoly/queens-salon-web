@@ -31,7 +31,13 @@ type LeaveRequestLike = {
   deleted?: unknown;
 };
 
-export type AttendanceSpecialDayKind = "leave" | "partial_leave" | "rest" | "weekly_off" | "exception_off";
+export type AttendanceSpecialDayKind =
+  | "leave"
+  | "partial_leave"
+  | "rest"
+  | "weekly_off"
+  | "weekly_rest_work"
+  | "exception_off";
 
 export type AttendanceSpecialDay = {
   date: string;
@@ -54,6 +60,7 @@ const AR_LEAVE = "\u0625\u062c\u0627\u0632\u0629";
 const SPECIAL_DAY_PRIORITY: Record<AttendanceSpecialDayKind, number> = {
   leave: 40,
   rest: 40,
+  weekly_rest_work: 38,
   exception_off: 30,
   weekly_off: 20,
   partial_leave: 15,

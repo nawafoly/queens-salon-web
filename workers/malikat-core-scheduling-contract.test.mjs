@@ -1184,7 +1184,7 @@ test("Partner Portal operational day is a Malikat Core RPC projection only", () 
 
   assert.match(
     shiftControl,
-    /const \[\s*exceptions,\s*weeklySchedules,\s*assignments,\s*employmentRows,?\s*\]\s*=\s*await Promise\.all\(/
+    /const \[\s*exceptions,\s*weeklySchedules,\s*assignments,\s*weeklyRestWorkAssignments,\s*employmentRows,?\s*\]\s*=\s*await Promise\.all\(/
   );
 
   assert.match(
@@ -1852,5 +1852,76 @@ test("Stage 2 canonical leave authority never mirrors operational leave into sta
   assert.doesNotMatch(
     coreStaffType,
     /leaveStartDate|leaveEndDate|leaveNote/
+  );
+});
+
+test("weekly-rest work uses the one canonical effective-shift resolver", () => {
+  const shiftCore = read("workers/core/repositories/shift-control.js");
+  const attendanceWorker = read("workers/attendance-worker.js");
+  const bookingPolicy = read("workers/core/repositories/booking-staff-policy.js");
+  const restCompliance = read("workers/core/repositories/rest-holiday-compliance.js");
+  const attendanceUi = read("src/pages/dashboardEmployees/AttendanceSection.tsx");
+  const attendanceCalendar = read("src/helpers/hr/attendanceCalendarData.ts");
+  const attendanceShiftResolver = read("src/helpers/hr/attendanceShiftResolver.ts");
+
+  assert.match(
+    shiftCore,
+    /employee_weekly_rest_work_assignments/,
+    "Canonical Core shift resolver must load weekly-rest work assignments"
+  );
+  assert.match(
+    shiftCore,
+    /source:\s*['"]weekly_rest_work_assignment['"]/,
+    "Canonical Core shift resolver must expose the weekly-rest work overlay"
+  );
+  assert.match(
+    restCompliance,
+    /source === ['"]weekly_rest_work_assignment['"]/,
+    "Weekly-rest compliance must preserve the original statutory rest fact"
+  );
+
+  assert.equal(
+    attendanceWorker.includes("weeklyRestAssignmentAsShift"),
+    false,
+    "Attendance must not own a second weekly-rest scheduling decision"
+  );
+  assert.equal(
+    bookingPolicy.includes("activeWeeklyRestWorkAssignment"),
+    false,
+    "Booking must not read weekly-rest work assignments outside the canonical resolver"
+  );
+  assert.equal(
+    bookingPolicy.includes("weeklyRestAssignmentShift"),
+    false,
+    "Booking must not reconstruct a weekly-rest work shift locally"
+  );
+
+  for (const label of [
+    "راحة أسبوعية",
+    "راحة أسبوعية مؤقتة",
+    "يوم راحة استثنائي",
+    "عمل استثنائي في يوم الراحة",
+  ]) {
+    assert.equal(
+      attendanceUi.includes(label),
+      true,
+      "Attendance must expose canonical label: " + label
+    );
+  }
+
+  assert.equal(
+    attendanceUi.includes("راحة / يوم استثنائي"),
+    false,
+    "Attendance must not merge weekly rest and generic exception into one label"
+  );
+  assert.equal(
+    attendanceCalendar.includes('"weekly_rest_work"'),
+    true,
+    "Attendance calendar must model weekly-rest work as a distinct operational day"
+  );
+  assert.equal(
+    attendanceShiftResolver.includes('source === "weekly_rest_work_assignment"'),
+    true,
+    "Attendance shift labels must understand the canonical weekly-rest work source"
   );
 });

@@ -161,7 +161,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status === "تأخير" || status === "ضمن مهلة التعويض" || status === "بصمة ناقصة" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
+  if (status === "تأخير" || status === "ضمن مهلة التعويض" || status === "بصمة ناقصة" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
@@ -179,6 +179,10 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   if (status === "خروج مبكر") return `خروج مبكر ${formatNumber(row?.earlyLeaveMinutes || 0)} دقيقة`;
   if (status === "راحة") return "راحة معتمدة";
   if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
+  if (status === "راحة أسبوعية") return "راحة أسبوعية حسب جدول الدوام";
+  if (status === "راحة أسبوعية مؤقتة") return "راحة أسبوعية منقولة مؤقتًا لهذا اليوم";
+  if (status === "يوم راحة استثنائي") return "يوم مغلق باستثناء معتمد";
+  if (status === "عمل استثنائي في يوم الراحة") return "تكليف عمل مع إبقاء أصل اليوم راحة أسبوعية";
   if (status === "راحة / يوم استثنائي") return "راحة بسبب استثناء اليوم";
   if (status.startsWith("استئذان")) return "استئذان معتمد — الفترة فقط محجوبة";
   if (status === "إجازة") return "إجازة معتمدة";
@@ -318,15 +322,17 @@ function buildAttendanceCalendar(
         );
 
       const status =
-        specialDay?.label ||
-        (
-          hasLeave
-            ? "\u0625\u062c\u0627\u0632\u0629"
-            : hasAbsence
-              ? "\u063a\u064a\u0627\u0628"
-              : rowStatus ||
-                "?"
-        );
+        specialDay?.kind === "weekly_rest_work" && rowStatus
+          ? rowStatus
+          : specialDay?.label ||
+            (
+              hasLeave
+                ? "\u0625\u062c\u0627\u0632\u0629"
+                : hasAbsence
+                  ? "\u063a\u064a\u0627\u0628"
+                  : rowStatus ||
+                    "?"
+            );
 
       return {
         date,

@@ -10,10 +10,6 @@ import {
   resolveEmployeeShift,
   resolveEmployeeShiftsBatch,
 } from './shift-control.js';
-import {
-  activeWeeklyRestWorkAssignment,
-} from './leave-rest-workflows.js';
-
 const INACTIVE_EMPLOYMENT_STATUSES = new Set([
   'inactive',
   'disabled',
@@ -57,22 +53,6 @@ function activeRecallIdsForDateFake(db, salonId, date) {
       .map((row) => cleanText(row.leave_id))
       .filter(Boolean)
   );
-}
-
-function weeklyRestAssignmentShift(assignment) {
-  if (!assignment) return null;
-  return {
-    source: 'weekly_rest_work_assignment',
-    source_id: cleanText(assignment.id),
-    active: 1,
-    exception_type: 'work',
-    start_time: cleanText(assignment.start_time),
-    end_time: cleanText(assignment.end_time),
-    template_start_time: cleanText(assignment.start_time),
-    template_end_time: cleanText(assignment.end_time),
-    attendance_lock_enabled: Number(assignment.attendance_lock_enabled || 0),
-    attendance_lock_after_minutes: Number(assignment.attendance_lock_after_minutes || 0),
-  };
 }
 
 async function approvedLeavesForDate(db, salonId, employeeId, date) {
@@ -422,8 +402,6 @@ export async function resolveStaffBookingDay(
     );
   }
 
-  // Approved employee_leaves is the only leave authority.
-  // Legacy mirrored leave fields are intentionally ignored.
   const leaves =
     await approvedLeavesForDate(
       db,
@@ -469,30 +447,15 @@ export async function resolveStaffBookingDay(
     );
   }
 
-  const [resolvedShift, weeklyRestAssignment] =
-    await Promise.all([
-      resolveEmployeeShift(
-        db,
-        salonId,
-        employeeId,
-        date
-      ).catch(
-        () => null
-      ),
-      activeWeeklyRestWorkAssignment(
-        db,
-        salonId,
-        employeeId,
-        date
-      ).catch(
-        () => null
-      ),
-    ]);
-
   const shift =
-    weeklyRestAssignmentShift(
-      weeklyRestAssignment
-    ) || resolvedShift;
+    await resolveEmployeeShift(
+      db,
+      salonId,
+      employeeId,
+      date
+    ).catch(
+      () => null
+    );
 
   return resolveStaffBookingDayFromFacts(
     staff,
@@ -541,7 +504,6 @@ export async function resolveStaffBookingDaysBatch(
 
   let leaves;
   let absences;
-  let weeklyRestAssignments;
 
   if (db?.__fakeD1) {
     const wanted =
@@ -562,40 +524,16 @@ export async function resolveStaffBookingDaysBatch(
         "employee_leaves"
       ).filter(
         (row) =>
-          row.salon_id ===
-            salonId &&
-          wanted.has(
-            cleanText(
-              row.employee_id
-            )
-          ) &&
-          cleanText(
-            row.status
-          ).toLowerCase() ===
-            "approved" &&
-          cleanText(
-            row.start_date
-          ) <= date &&
-          cleanText(
-            row.end_date
-          ) >= date &&
-          !recalledLeaveIds.has(
-            cleanText(row.id)
-          )
-      );
-
-    weeklyRestAssignments =
-      safeFakeRows(
-        db,
-        "employee_weekly_rest_work_assignments"
-      ).filter(
-        (row) =>
           row.salon_id === salonId &&
           wanted.has(
             cleanText(row.employee_id)
           ) &&
-          cleanText(row.rest_date) === date &&
-          cleanText(row.status).toLowerCase() === "assigned"
+          cleanText(row.status).toLowerCase() === "approved" &&
+          cleanText(row.start_date) <= date &&
+          cleanText(row.end_date) >= date &&
+          !recalledLeaveIds.has(
+            cleanText(row.id)
+          )
       );
 
     absences =
@@ -604,16 +542,11 @@ export async function resolveStaffBookingDaysBatch(
         "employee_absences"
       ).filter(
         (row) =>
-          row.salon_id ===
-            salonId &&
+          row.salon_id === salonId &&
           wanted.has(
-            cleanText(
-              row.employee_id
-            )
+            cleanText(row.employee_id)
           ) &&
-          cleanText(
-            row.date_key
-          ) === date
+          cleanText(row.date_key) === date
       );
   } else {
     const marks =
@@ -621,30 +554,22 @@ export async function resolveStaffBookingDaysBatch(
         employeeIds.length
       );
 
-    [
-      leaves,
-      absences,
-      weeklyRestAssignments,
-    ] =
+    [leaves, absences] =
       await Promise.all([
         dbAll(
           db,
-          `SELECT leave.* FROM employee_leaves leave
-            WHERE leave.salon_id = ?
-              AND leave.employee_id IN (${marks})
-              AND LOWER(leave.status) = 'approved'
-              AND leave.start_date <= ?
-              AND leave.end_date >= ?
-              AND NOT EXISTS (
-                SELECT 1 FROM employee_leave_recalls recall
-                 WHERE recall.salon_id = leave.salon_id
-                   AND recall.leave_id = leave.id
-                   AND recall.recall_date = ?
-                   AND recall.status = 'active'
-              )
-            ORDER BY
-              leave.employee_id,
-              leave.start_date DESC`,
+          'SELECT leave.* FROM employee_leaves leave ' +
+            'WHERE leave.salon_id = ? ' +
+            'AND leave.employee_id IN (' + marks + ') ' +
+            'AND LOWER(leave.status) = \'approved\' ' +
+            'AND leave.start_date <= ? AND leave.end_date >= ? ' +
+            'AND NOT EXISTS (' +
+              'SELECT 1 FROM employee_leave_recalls recall ' +
+              'WHERE recall.salon_id = leave.salon_id ' +
+              'AND recall.leave_id = leave.id ' +
+              'AND recall.recall_date = ? ' +
+              'AND recall.status = \'active\'' +
+            ') ORDER BY leave.employee_id, leave.start_date DESC',
           [
             salonId,
             ...employeeIds,
@@ -653,31 +578,13 @@ export async function resolveStaffBookingDaysBatch(
             date,
           ]
         ),
-
         dbAll(
           db,
-          `SELECT * FROM employee_absences
-            WHERE salon_id = ?
-              AND employee_id IN (${marks})
-              AND date_key = ?
-            ORDER BY
-              employee_id,
-              created_at DESC`,
-          [
-            salonId,
-            ...employeeIds,
-            date,
-          ]
-        ),
-
-        dbAll(
-          db,
-          `SELECT * FROM employee_weekly_rest_work_assignments
-            WHERE salon_id = ?
-              AND employee_id IN (${marks})
-              AND rest_date = ?
-              AND status = 'assigned'
-            ORDER BY employee_id, created_at DESC`,
+          'SELECT * FROM employee_absences ' +
+            'WHERE salon_id = ? ' +
+            'AND employee_id IN (' + marks + ') ' +
+            'AND date_key = ? ' +
+            'ORDER BY employee_id, created_at DESC',
           [
             salonId,
             ...employeeIds,
@@ -706,46 +613,15 @@ export async function resolveStaffBookingDaysBatch(
       cleanText(
         row.employee_id
       );
-
     const current =
       leavesByEmployee.get(
         employeeId
-      ) ||
-      [];
-
+      ) || [];
     current.push(row);
-
     leavesByEmployee.set(
       employeeId,
       current
     );
-  }
-
-  const weeklyRestAssignmentByEmployee =
-    new Map();
-
-  for (
-    const row of
-      Array.isArray(weeklyRestAssignments)
-        ? weeklyRestAssignments
-        : []
-  ) {
-    const employeeId =
-      cleanText(
-        row.employee_id
-      );
-
-    if (
-      employeeId &&
-      !weeklyRestAssignmentByEmployee.has(
-        employeeId
-      )
-    ) {
-      weeklyRestAssignmentByEmployee.set(
-        employeeId,
-        row
-      );
-    }
   }
 
   const absenceByEmployee =
@@ -756,7 +632,6 @@ export async function resolveStaffBookingDaysBatch(
       cleanText(
         row.employee_id
       );
-
     if (
       employeeId &&
       !absenceByEmployee.has(
@@ -780,9 +655,7 @@ export async function resolveStaffBookingDaysBatch(
       )
         .map(
           (row) => [
-            cleanText(
-              row?.employee_id
-            ),
+            cleanText(row?.employee_id),
             row,
           ]
         )
@@ -807,21 +680,13 @@ export async function resolveStaffBookingDaysBatch(
             date,
             leavesByEmployee.get(
               employeeId
-            ) ||
-              [],
+            ) || [],
             absenceByEmployee.get(
               employeeId
-            ) ||
-              null,
-            weeklyRestAssignmentShift(
-              weeklyRestAssignmentByEmployee.get(
-                employeeId
-              )
-            ) ||
-              shiftByEmployee.get(
-                employeeId
-              ) ||
-              null
+            ) || null,
+            shiftByEmployee.get(
+              employeeId
+            ) || null
           ),
       };
     }

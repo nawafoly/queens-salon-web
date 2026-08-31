@@ -1,7 +1,6 @@
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
   resolveAttendanceWorkAuthorization,
-  weeklyRestAssignmentAsShift,
 } from "./core/repositories/leave-rest-workflows.js";
 
 const ATTENDANCE_ALLOWED_ROLES = new Set([
@@ -316,17 +315,6 @@ async function resolveAttendanceCheckInPolicy({
       coreEmployeeId,
       dateKey: clock.dateKey,
       approvedLeaveId: authorization.approvedLeave.id || null,
-    };
-  }
-
-  if (authorization?.weeklyRestAssignment) {
-    const shift = weeklyRestAssignmentAsShift(authorization.weeklyRestAssignment);
-    return {
-      ...evaluateCheckInWindow({ type, now, shift }),
-      coreEmployeeId,
-      shift,
-      weeklyRestWorkAssignment: authorization.weeklyRestAssignment,
-      dateKey: clock.dateKey,
     };
   }
 
