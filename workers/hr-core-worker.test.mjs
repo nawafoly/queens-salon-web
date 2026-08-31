@@ -162,6 +162,7 @@ async function setup() {
     '0054_sa_disciplinary_fine_fund_custody.sql',
 
     '0055_attendance_deferral_recreate_after_cancel.sql',
+    '0057_leave_rest_workflows.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')

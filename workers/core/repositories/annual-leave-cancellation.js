@@ -58,6 +58,19 @@ export async function cancelApprovedAnnualLeave(
     'balanceAdjustmentId'
   );
 
+  const activeRecall = await dbFirst(
+    db,
+    `SELECT id FROM employee_leave_recalls
+      WHERE salon_id = ? AND leave_id = ? AND status = 'active' LIMIT 1`,
+    [salonId, leaveId]
+  );
+  if (activeRecall) {
+    throw new AppError(
+      409,
+      'core_annual_leave:active_recalls_must_be_cancelled_first'
+    );
+  }
+
   const original = await dbFirst(
     db,
     `SELECT *

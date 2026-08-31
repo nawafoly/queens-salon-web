@@ -1,4 +1,8 @@
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
+import {
+  resolveAttendanceWorkAuthorization,
+  weeklyRestAssignmentAsShift,
+} from "./core/repositories/leave-rest-workflows.js";
 
 const ATTENDANCE_ALLOWED_ROLES = new Set([
   "owner",
@@ -281,6 +285,48 @@ async function resolveAttendanceCheckInPolicy({
       result: "rejected",
       rejectionReason: "core_shift_resolution_unavailable",
       coreEmployeeId,
+    };
+  }
+
+  let authorization;
+  try {
+    authorization = await resolveAttendanceWorkAuthorization(
+      directoryDb,
+      salonId,
+      coreEmployeeId,
+      clock.dateKey
+    );
+  } catch (error) {
+    console.warn(
+      "[attendance] leave/rest authorization resolution failed",
+      error
+    );
+    return {
+      result: "rejected",
+      rejectionReason: "attendance_work_authorization_resolution_failed",
+      coreEmployeeId,
+      dateKey: clock.dateKey,
+    };
+  }
+
+  if (authorization?.approvedLeave) {
+    return {
+      result: "rejected",
+      rejectionReason: "approved_leave_day",
+      coreEmployeeId,
+      dateKey: clock.dateKey,
+      approvedLeaveId: authorization.approvedLeave.id || null,
+    };
+  }
+
+  if (authorization?.weeklyRestAssignment) {
+    const shift = weeklyRestAssignmentAsShift(authorization.weeklyRestAssignment);
+    return {
+      ...evaluateCheckInWindow({ type, now, shift }),
+      coreEmployeeId,
+      shift,
+      weeklyRestWorkAssignment: authorization.weeklyRestAssignment,
+      dateKey: clock.dateKey,
     };
   }
 
