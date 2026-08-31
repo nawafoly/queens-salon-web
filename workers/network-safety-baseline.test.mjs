@@ -30,6 +30,19 @@ test("global network banner distinguishes offline and unknown write outcomes", (
   assert.match(app, /<NetworkSafetyBanner \/>/);
 });
 
+test("ambiguous Core writes have a global canonical reconciliation failsafe", () => {
+  const banner = read("src/components/NetworkSafetyBanner.tsx");
+
+  assert.match(banner, /CORE_RECONCILIATION_FAILSAFE_V1/);
+  assert.match(banner, /unknownWriteOutcomeRef/);
+  assert.match(banner, /requestCanonicalReconciliation/);
+  assert.match(banner, /RECONCILIATION_FALLBACK_MS/);
+  assert.match(banner, /window\.location\.reload\(\)/);
+  assert.match(banner, /navigator\.onLine === false/);
+  assert.match(banner, /clearFallbackReload/);
+  assert.match(banner, /queens:core-reconciled/);
+});
+
 test("employee workspace re-fetches canonical schedule state after reconnect", () => {
   const source = read("src/pages/DashboardEmployees.tsx");
 
