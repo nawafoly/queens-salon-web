@@ -24,6 +24,10 @@ import {
   saveWorkZone,
   type WorkZone,
 } from "../../services/attendanceSettingsService";
+import {
+  deleteWorkZoneFromAttendanceWorker,
+  upsertWorkZoneInAttendanceWorker,
+} from "../../services/attendanceWorkerService";
 import "../../styles/dashboard-v2/dashboard-v2.css";
 
 type Props = {
@@ -349,6 +353,18 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     }));
   };
 
+  const syncZonesToAttendanceWorker = async (sourceZones: WorkZone[]) => {
+    const zonesById = new Map<string, WorkZone>();
+
+    sourceZones.forEach((zone) => {
+      if (zone.id) zonesById.set(zone.id, zone);
+    });
+
+    for (const zone of zonesById.values()) {
+      await upsertWorkZoneInAttendanceWorker(zone);
+    }
+  };
+
   const saveSettings = async () => {
     if (!hasAdminPower) return;
     setSaving(true);
@@ -361,12 +377,15 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
           ...zoneDraft,
           name: zoneDraft.name.trim() || "منطقة عمل جديدة",
         });
+        await upsertWorkZoneInAttendanceWorker(savedZone);
         latestZones = await listWorkZones();
         applyZonesResult(latestZones);
       } else if (!latestZones.length) {
         latestZones = await listWorkZones();
         applyZonesResult(latestZones);
       }
+
+      await syncZonesToAttendanceWorker(latestZones);
 
       const saved = await AppSettingsService.saveRemote(settings);
       setSettings(saved);
@@ -408,6 +427,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
         ...zoneDraft,
         name: zoneDraft.name.trim() || "منطقة عمل جديدة",
       });
+      await upsertWorkZoneInAttendanceWorker(savedZone);
       resetZoneDraft();
       applyZonesResult(await listWorkZones());
       setMessage("تم حفظ منطقة العمل.");
@@ -424,6 +444,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     setMessage("");
 
     try {
+      await deleteWorkZoneFromAttendanceWorker(id);
       await removeWorkZone(id);
       setZones((current) => current.filter((zone) => zone.id !== id));
       if (zoneDraft.id === id) resetZoneDraft();

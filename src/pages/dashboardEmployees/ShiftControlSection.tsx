@@ -824,12 +824,16 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
-      await CoreHrService.updateScheduleException(exception.id, {
-        status: "cancelled",
-        enabled: false,
-        note: "إلغاء من مساحة الموظفة V2",
-        allowLockedPeriodAdjustment,
-      });
+      await CoreHrService.updateScheduleException(
+        exception.id,
+        {
+          status: "cancelled",
+          enabled: false,
+          note: "إلغاء من مساحة الموظفة V2",
+          allowLockedPeriodAdjustment,
+        },
+        targetShiftEmployeeId
+      );
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {

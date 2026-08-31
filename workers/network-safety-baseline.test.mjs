@@ -3,56 +3,383 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const read = (path) =>
-  readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/g, "\n");
+const read = (file) =>
+  readFileSync(
+    resolve(process.cwd(), file),
+    "utf8"
+  ).replace(/\r\n/g, "\n");
 
-test("Core API blocks definite offline writes and classifies ambiguous writes", () => {
-  const source = read("src/services/coreApiClient.ts");
+test(
+  "Core API blocks definite offline writes and carries reconciliation identity",
+  () => {
+    const source = read(
+      "src/services/coreApiClient.ts"
+    );
 
-  assert.match(source, /CORE_NETWORK_SAFETY_V1/);
-  assert.match(source, /navigator\.onLine === false/);
-  assert.match(source, /core_api:offline/);
-  assert.match(source, /core_api:network_unavailable/);
-  assert.match(source, /core_api:write_outcome_unknown/);
-  assert.match(source, /emitUnknownWriteOutcome\(path, method\)/);
-  assert.match(source, /error\.status === 401/);
-});
+    assert.ok(
+      source.includes("CORE_NETWORK_SAFETY_V1")
+    );
+    assert.ok(
+      source.includes(
+        "navigator.onLine === false"
+      )
+    );
+    assert.ok(
+      source.includes("core_api:offline")
+    );
+    assert.ok(
+      source.includes(
+        "core_api:network_unavailable"
+      )
+    );
+    assert.ok(
+      source.includes(
+        "core_api:write_outcome_unknown"
+      )
+    );
 
-test("global network banner distinguishes offline and unknown write outcomes", () => {
-  const banner = read("src/components/NetworkSafetyBanner.tsx");
-  const app = read("src/App.tsx");
+    assert.ok(
+      source.includes(
+        "options.reconciliation?.employeeId"
+      )
+    );
 
-  assert.match(banner, /queens:core-write-outcome-unknown/);
-  assert.match(banner, /window\.addEventListener\("offline", onOffline\)/);
-  assert.match(banner, /window\.addEventListener\("online", onOnline\)/);
-  assert.match(banner, /queens:core-network-reconnected/);
-  assert.match(banner, /queens:core-reconciled/);
-  assert.match(app, /<NetworkSafetyBanner \/>/);
-});
+    assert.ok(
+      source.includes(
+        "options.body?.employeeId"
+      )
+    );
 
-test("ambiguous Core writes have a global canonical reconciliation failsafe", () => {
-  const banner = read("src/components/NetworkSafetyBanner.tsx");
+    assert.ok(
+      source.includes(
+        "emitUnknownWriteOutcome(path, method, operationId, options);"
+      )
+    );
 
-  assert.match(banner, /CORE_RECONCILIATION_FAILSAFE_V1/);
-  assert.match(banner, /unknownWriteOutcomeRef/);
-  assert.match(banner, /requestCanonicalReconciliation/);
-  assert.match(banner, /RECONCILIATION_FALLBACK_MS/);
-  assert.match(banner, /window\.location\.reload\(\)/);
-  assert.match(banner, /navigator\.onLine === false/);
-  assert.match(banner, /clearFallbackReload/);
-  assert.match(banner, /queens:core-reconciled/);
-});
+    assert.ok(
+      source.includes(
+        "...(employeeId ? { employeeId } : {})"
+      )
+    );
 
-test("employee workspace re-fetches canonical schedule state after reconnect", () => {
-  const source = read("src/pages/DashboardEmployees.tsx");
+    assert.ok(
+      source.includes(
+        "error.status === 401"
+      )
+    );
+  }
+);
 
-  assert.match(source, /EMPLOYEE_NETWORK_RECONCILIATION_V1/);
-  assert.match(source, /queens:core-network-reconnected/);
-  assert.match(source, /CoreHrService\.getEmployee\(employeeId\)/);
-  assert.match(
-    source,
-    /CoreHrService\.listScheduleExceptions\(\{ employeeId \}\)/
-  );
-  assert.match(source, /setCoreScheduleExceptionRows\(exceptionRows\)/);
-  assert.match(source, /queens:core-reconciled/);
-});
+test(
+  "global banner retains every ambiguous operation independently",
+  () => {
+    const banner = read(
+      "src/components/NetworkSafetyBanner.tsx"
+    );
+
+    const app = read(
+      "src/App.tsx"
+    );
+
+    assert.ok(
+      banner.includes(
+        "CORE_RECONCILIATION_FAILSAFE_V1"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "CORE_RECONCILIATION_CORRELATION_V1"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "CORE_RECONCILIATION_MULTI_PENDING_V1"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "new Map()"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.set("
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.delete(key)"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.size > 0"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "uncorrelatedUnknownWriteRef"
+      )
+    );
+
+    assert.equal(
+      banner.includes(
+        "pendingWriteRef.current = detail"
+      ),
+      false
+    );
+
+    assert.ok(
+      banner.includes(
+        "window.location.reload();"
+      )
+    );
+
+    assert.ok(
+      app.includes(
+        "<NetworkSafetyBanner />"
+      )
+    );
+  }
+);
+
+test(
+  "one exact acknowledgement cannot clear another pending ambiguous write",
+  () => {
+    const banner = read(
+      "src/components/NetworkSafetyBanner.tsx"
+    );
+
+    assert.ok(
+      banner.includes(
+        "writeOutcomeKey("
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "sameWriteOutcome("
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.get(key)"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.delete(key)"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "pendingWritesRef.current.size > 0"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "unknownWriteOutcomeRef.current = false"
+      )
+    );
+  }
+);
+
+test(
+  "employee reconciliation reloads the employee identified by the failed write",
+  () => {
+    const source = read(
+      "src/pages/DashboardEmployees.tsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "EMPLOYEE_NETWORK_RECONCILIATION_TARGET_V1"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "employeeId?: string"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "writeDetail.employeeId"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "const employeeId ="
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "CoreHrService.getEmployee("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "CoreHrService.listScheduleExceptions("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "cleanText(editId) === employeeId"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "selectedEmployeeStillMatches"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "reconciliationQueue"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "detail: writeDetail"
+      )
+    );
+  }
+);
+
+test(
+  "employee-domain mutations provide employee reconciliation scope when body does not",
+  () => {
+    const hr = read(
+      "src/services/CoreHrService.ts"
+    );
+
+    const shift = read(
+      "src/pages/dashboardEmployees/ShiftControlSection.tsx"
+    );
+
+    const tempWeeklyOff = read(
+      "src/services/temporaryWeeklyOffService.ts"
+    );
+
+    assert.ok(
+      hr.includes(
+        "employeeReconciliation("
+      )
+    );
+
+    assert.ok(
+      hr.includes(
+        "reconciliationEmployeeId?: string"
+      )
+    );
+
+    assert.ok(
+      hr.includes(
+        "reconciliation:"
+      )
+    );
+
+    assert.ok(
+      shift.includes(
+        "targetShiftEmployeeId"
+      )
+    );
+
+    assert.ok(
+      tempWeeklyOff.includes(
+        "fallbackEmployeeId"
+      )
+    );
+
+    assert.ok(
+      tempWeeklyOff.includes(
+        "row.employeeId"
+      )
+    );
+  }
+);
+
+test(
+  "employee workspace still refuses to acknowledge shift-template and shift-assignment domains",
+  () => {
+    const employees = read(
+      "src/pages/DashboardEmployees.tsx"
+    );
+
+    const shift = read(
+      "src/pages/dashboardEmployees/ShiftControlSection.tsx"
+    );
+
+    const banner = read(
+      "src/components/NetworkSafetyBanner.tsx"
+    );
+
+    assert.equal(
+      employees.includes(
+        '"/api/core/hr/shift-templates"'
+      ),
+      false
+    );
+
+    assert.equal(
+      employees.includes(
+        '"/api/core/hr/shift-assignments"'
+      ),
+      false
+    );
+
+    assert.ok(
+      shift.includes(
+        "CoreHrService.saveShiftTemplate"
+      )
+    );
+
+    assert.ok(
+      shift.includes(
+        "CoreHrService.createShiftAssignment"
+      )
+    );
+
+    assert.ok(
+      shift.includes(
+        "CoreHrService.updateShiftAssignment"
+      )
+    );
+
+    assert.ok(
+      shift.includes(
+        "CoreHrService.cancelShiftAssignment"
+      )
+    );
+
+    assert.ok(
+      banner.includes(
+        "window.location.reload();"
+      )
+    );
+  }
+);
