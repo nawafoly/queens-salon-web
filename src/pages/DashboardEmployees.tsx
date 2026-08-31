@@ -5880,6 +5880,12 @@ export default function DashboardEmployees() {
         "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0628\u0646\u062c\u0627\u062d"
       );
 
+      // Arm one baseline capture. The effect waits until saving=false and then
+      // records the fully rehydrated editor render exactly once.
+      setEmployeeProfileBaselineCaptureNonce(
+        (nonce) => nonce + 1
+      );
+
       employeeSaveDebug(
         "completed",
         {
@@ -7914,6 +7920,129 @@ const canonicalSchedules =
     payrollSettingsSaving,
   ]);
 
+  // EMPLOYEE_POST_SAVE_BASELINE_V3
+  // The generic dirty detector compares the live editor against several
+  // independently rehydrated sources. After a verified save those sources can
+  // settle in different renders, leaving a false-positive dirty state.
+  //
+  // Capture the *actual editor state* from the first clean render after a
+  // successful verified save. From then on, only a real user-visible editor
+  // change can make the profile dirty again.
+  const employeeProfileEditorFingerprint = useMemo(() => {
+    const normalizeServiceIds = (value: unknown) =>
+      canonicalizeSpecialties(value, serviceOptions)
+        .slice()
+        .sort((a, b) => a.localeCompare(b));
+
+    const schedule = WEEKDAY_OPTIONS.map((day) => {
+      const row = modalCustomWorkingHours?.[day.key];
+      const enabled = row?.enabled !== false;
+      return {
+        weekday: day.key,
+        enabled,
+        shiftTemplateId: enabled ? cleanText(row?.shiftTemplateId) : "",
+      };
+    });
+
+    const overrides = normalizeWorkingHourOverrides(
+      modalCustomHourOverrides
+    )
+      .map((row) => JSON.stringify(row))
+      .sort();
+
+    return JSON.stringify({
+      basic: {
+        name: cleanText(name),
+        active: !!active,
+        showOnAbout: !!showOnAbout,
+        showOnBooking: !!showOnBooking,
+        includeInEmployeeManagement: !!includeInEmployeeManagement,
+      },
+      profile: {
+        avatarUrl: cleanText(avatarUrl),
+        bio: cleanText(bio),
+        cvUrl: cleanText(cvUrl),
+        rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
+        reviewsCount: Math.floor(
+          safeNonNegativeNumber(reviewsCount, 0)
+        ),
+      },
+      services: {
+        specialties: normalizeServiceIds(specialties),
+      },
+      booking: {
+        employmentEndDate: normalizeLeaveUntil(employmentEndDate),
+        attendanceZoneId: cleanText(selectedAttendanceZoneId),
+      },
+      schedule,
+      overrides,
+    });
+  }, [
+    active,
+    avatarUrl,
+    bio,
+    cvUrl,
+    employmentEndDate,
+    includeInEmployeeManagement,
+    modalCustomHourOverrides,
+    modalCustomWorkingHours,
+    name,
+    rating,
+    reviewsCount,
+    selectedAttendanceZoneId,
+    serviceOptions,
+    showOnAbout,
+    showOnBooking,
+    specialties,
+  ]);
+
+  const [
+    employeeProfilePostSaveBaseline,
+    setEmployeeProfilePostSaveBaseline,
+  ] = useState<{
+    employeeId: string;
+    fingerprint: string;
+  } | null>(null);
+
+  const [
+    employeeProfileBaselineCaptureNonce,
+    setEmployeeProfileBaselineCaptureNonce,
+  ] = useState(0);
+
+  const employeeProfileBaselineProcessedRef =
+    useRef(0);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setEmployeeProfilePostSaveBaseline(null);
+      return;
+    }
+
+    if (
+      !employeeProfileBaselineCaptureNonce ||
+      employeeProfileBaselineProcessedRef.current ===
+        employeeProfileBaselineCaptureNonce ||
+      saving ||
+      !editingStaff
+    ) {
+      return;
+    }
+
+    employeeProfileBaselineProcessedRef.current =
+      employeeProfileBaselineCaptureNonce;
+
+    setEmployeeProfilePostSaveBaseline({
+      employeeId: cleanText(editingStaff.id),
+      fingerprint: employeeProfileEditorFingerprint,
+    });
+  }, [
+    editingStaff,
+    employeeProfileBaselineCaptureNonce,
+    employeeProfileEditorFingerprint,
+    isOpen,
+    saving,
+  ]);
+
   const employeeProfileHasUnsavedChanges = useMemo(() => {
     if (!editingStaff) return false;
 
@@ -7996,6 +8125,17 @@ const canonicalSchedules =
       },
     };
 
+    const postSaveBaselineMatchesEmployee =
+      employeeProfilePostSaveBaseline?.employeeId ===
+      cleanText(editingStaff.id);
+
+    if (postSaveBaselineMatchesEmployee) {
+      return (
+        employeeProfilePostSaveBaseline.fingerprint !==
+        employeeProfileEditorFingerprint
+      );
+    }
+
     return (
       JSON.stringify(saved) !==
         JSON.stringify(current) ||
@@ -8012,6 +8152,8 @@ const canonicalSchedules =
     coreScheduleLoadedEmployeeId,
     coreScheduleRows,
     employmentEndDate,
+    employeeProfileEditorFingerprint,
+    employeeProfilePostSaveBaseline,
     includeInEmployeeManagement,
     modalCustomHourOverrides,
     modalCustomWorkingHours,
@@ -9618,7 +9760,7 @@ const canonicalSchedules =
                 includeInEmployeeManagement={includeInEmployeeManagement}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
-                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("طŒ ")
+                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
                     : "لا توجد إجازة أسبوعية ثابتة."
                 }
                 onNameChange={setName}
