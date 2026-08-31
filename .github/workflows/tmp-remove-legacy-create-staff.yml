@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - fix/remove-legacy-d1-create-entry
+    paths:
+      - .github/workflows/tmp-remove-legacy-create-staff.yml
 
 permissions:
   contents: write
 
 jobs:
   cleanup:
-    if: ${{ !contains(github.event.head_commit.message, '[legacy-create-staff-cleanup]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Remove retired route without rewriting unrelated code
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -28,7 +30,7 @@ jobs:
               text = p.read_text(encoding="utf-8")
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"Expected exactly one match in {path}, found {count}: {old[:80]!r}")
+                  raise SystemExit(f"Expected exactly one match in {path}, found {count}")
               p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           replace_once(
@@ -59,14 +61,8 @@ jobs:
 ''',
           )
 
-          replace_once(
-              "src/pages/Dashboard.tsx",
-              '  "create-staff",\n',
-          )
-          replace_once(
-              "src/pages/Dashboard.tsx",
-              '  "create-staff": "إنشاء حساب موظفة",\n',
-          )
+          replace_once("src/pages/Dashboard.tsx", '  "create-staff",\n')
+          replace_once("src/pages/Dashboard.tsx", '  "create-staff": "إنشاء حساب موظفة",\n')
 
           for path in [
               Path("src/pages/hr/CreateStaffAccount.tsx"),
