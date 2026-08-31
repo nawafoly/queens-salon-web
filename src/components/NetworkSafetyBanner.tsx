@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const UNKNOWN_WRITE_EVENT = "queens:core-write-outcome-unknown";
 const RECONNECTED_EVENT = "queens:core-network-reconnected";
 const RECONCILED_EVENT = "queens:core-reconciled";
+
+const RECONCILIATION_FALLBACK_MS = 6000;
 
 export default function NetworkSafetyBanner() {
   const [online, setOnline] = useState(
@@ -10,14 +12,70 @@ export default function NetworkSafetyBanner() {
   );
   const [unknownWriteOutcome, setUnknownWriteOutcome] = useState(false);
 
+  const unknownWriteOutcomeRef = useRef(false);
+  const fallbackReloadTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
-    const onOffline = () => setOnline(false);
+    // CORE_RECONCILIATION_FAILSAFE_V1
+    // Give the active domain screen a chance to reconcile from Core.
+    // If no screen confirms reconciliation, reload the active route
+    // so uncertain client state cannot remain authoritative.
+    const clearFallbackReload = () => {
+      if (fallbackReloadTimerRef.current === null) return;
+
+      window.clearTimeout(fallbackReloadTimerRef.current);
+      fallbackReloadTimerRef.current = null;
+    };
+
+    const scheduleFallbackReload = () => {
+      clearFallbackReload();
+
+      fallbackReloadTimerRef.current = window.setTimeout(() => {
+        fallbackReloadTimerRef.current = null;
+
+        if (!unknownWriteOutcomeRef.current) return;
+        if (navigator.onLine === false) return;
+
+        window.location.reload();
+      }, RECONCILIATION_FALLBACK_MS);
+    };
+
+    const requestCanonicalReconciliation = () => {
+      window.dispatchEvent(new Event(RECONNECTED_EVENT));
+      scheduleFallbackReload();
+    };
+
+    const onOffline = () => {
+      setOnline(false);
+      clearFallbackReload();
+    };
+
     const onOnline = () => {
       setOnline(true);
+
+      // Preserve the existing reconnect contract for domain listeners.
       window.dispatchEvent(new Event(RECONNECTED_EVENT));
+
+      if (unknownWriteOutcomeRef.current) {
+        scheduleFallbackReload();
+      }
     };
-    const onUnknownWrite = () => setUnknownWriteOutcome(true);
-    const onReconciled = () => setUnknownWriteOutcome(false);
+
+    const onUnknownWrite = () => {
+      unknownWriteOutcomeRef.current = true;
+      setUnknownWriteOutcome(true);
+
+      // A transport failure can happen while navigator still reports online.
+      if (navigator.onLine !== false) {
+        requestCanonicalReconciliation();
+      }
+    };
+
+    const onReconciled = () => {
+      unknownWriteOutcomeRef.current = false;
+      setUnknownWriteOutcome(false);
+      clearFallbackReload();
+    };
 
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
@@ -25,6 +83,8 @@ export default function NetworkSafetyBanner() {
     window.addEventListener(RECONCILED_EVENT, onReconciled);
 
     return () => {
+      clearFallbackReload();
+
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("online", onOnline);
       window.removeEventListener(UNKNOWN_WRITE_EVENT, onUnknownWrite);
@@ -35,7 +95,7 @@ export default function NetworkSafetyBanner() {
   if (online && !unknownWriteOutcome) return null;
 
   const message = online
-    ? "عاد الاتصال، لكن نتيجة آخر حفظ غير مؤكدة. جارٍ إعادة مزامنة البيانات من Core."
+    ? "نتيجة آخر حفظ غير مؤكدة. جارٍ إعادة مزامنة البيانات من Core قبل اعتماد الحالة الحالية."
     : "لا يوجد اتصال بالإنترنت — الحفظ متوقف حتى عودة الاتصال.";
 
   return (
