@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -807,8 +808,7 @@ export default function SettingsBookings() {
                 <label className="dsv2-field settings-bookings-v2-control-card">
                   <span className="dsv2-field__label">رسوم أدوات البديكير/المناكير</span>
                   <span className="settings-bookings-v2-money-input">
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       className="dsv2-input"
                       value={String(maniPediToolsFee)}
                       min={0}

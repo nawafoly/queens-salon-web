@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2, DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
@@ -2999,9 +3000,8 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           />
         </button>
 
-        <input
+        <DashboardTimeInputV2
           ref={timeInputRef}
-          type="time"
           className="bk-edit-picker-native-input"
           value={time}
           onChange={(event) =>
@@ -3120,8 +3120,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           السعر النهائي
         </div>
 
-        <input dir="ltr" lang="en"
-          type="number"
+        <DashboardNumberInputV2
           min={0}
           step="0.01"
           className="bk-input"
@@ -3168,8 +3167,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
               مبلغ الكاش
             </div>
 
-            <input dir="ltr" lang="en"
-              type="number"
+            <DashboardNumberInputV2
               min={0}
               step="0.01"
               className="bk-input"
@@ -3189,8 +3187,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
               مبلغ الشبكة
             </div>
 
-            <input dir="ltr" lang="en"
-              type="number"
+            <DashboardNumberInputV2
               min={0}
               step="0.01"
               className="bk-input"
@@ -3230,8 +3227,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             مبلغ العربون
           </div>
 
-          <input dir="ltr" lang="en"
-            type="number"
+          <DashboardNumberInputV2
             min={0}
             step="0.01"
             className="bk-input"
@@ -8065,8 +8061,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="bk-refund-form">
               <label>
                 <div className="bk-field-label">مبلغ الاسترجاع</div>
-                <input dir="ltr" lang="en"
-                  type="number"
+                <DashboardNumberInputV2
                   className="bk-input"
                   value={refundDraft.amount}
                   onChange={(e) => setRefundDraft((p) => ({ ...p, amount: e.target.value }))}
@@ -8249,8 +8244,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <div className="bk-mixed-payment-box">
                   <label>
                     <div className="bk-field-label">مبلغ الكاش</div>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       step="0.01"
                       className="bk-input"
@@ -8263,8 +8257,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   </label>
                   <label>
                     <div className="bk-field-label">مبلغ الشبكة</div>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       step="0.01"
                       className="bk-input"
@@ -8295,8 +8288,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               {confirmDraft.paymentMode === "partial" && confirmDraft.paymentMethod !== "mixed" ? (
                 <label>
                   <div className="bk-field-label">مبلغ العربون</div>
-                  <input dir="ltr" lang="en"
-                    type="number"
+                  <DashboardNumberInputV2
                     min={0}
                     step="0.01"
                     className="bk-input"

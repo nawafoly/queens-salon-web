@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 
 
 // ✅ src/pages/DashboardIncome.tsx
@@ -1386,7 +1387,7 @@ function DashboardIncomeContent() {
             <DashboardDatePickerV2 id="income-v2-add-date" value={date} onChange={setDate} required clearable={false} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="income-v2-add-amount" label="المبلغ (ر.س)" required>
-            <input dir="ltr" lang="en" id="income-v2-add-amount" className="dsv2-input" type="number" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            <DashboardNumberInputV2 id="income-v2-add-amount" className="dsv2-input" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="income-v2-add-method" label="طريقة السداد" required>
             <DashboardSelectV2 id="income-v2-add-method" options={INCOME_METHOD_OPTIONS} value={method} onChange={(value) => setMethod(value as PaymentMethod)} />
@@ -1434,14 +1435,14 @@ function DashboardIncomeContent() {
           {editCanAdjustPayment ? (
             <>
               <DashboardFieldV2 id="income-v2-edit-total" label="إجمالي الحجز (ر.س)" required>
-                <input dir="ltr" lang="en" id="income-v2-edit-total" className="dsv2-input" type="number" min="0" step="0.01" value={editBookingTotal} onChange={(event) => setEditBookingTotal(event.target.value)} disabled={loading} />
+                <DashboardNumberInputV2 id="income-v2-edit-total" className="dsv2-input" min="0" step="0.01" value={editBookingTotal} onChange={(event) => setEditBookingTotal(event.target.value)} disabled={loading} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="income-v2-edit-payment-type" label="نوع الدفع" required>
                 <DashboardSelectV2 id="income-v2-edit-payment-type" options={BOOKING_PAYMENT_TYPE_OPTIONS} value={editPaymentType} onChange={(value) => setEditPaymentType(value as BookingPaymentType)} disabled={loading} />
               </DashboardFieldV2>
               {editPaymentType === "partial" ? (
                 <DashboardFieldV2 id="income-v2-edit-paid" label="المبلغ المدفوع (ر.س)" required>
-                  <input dir="ltr" lang="en" id="income-v2-edit-paid" className="dsv2-input" type="number" min="0" step="0.01" value={editPaidAmount} onChange={(event) => setEditPaidAmount(event.target.value)} disabled={loading} />
+                  <DashboardNumberInputV2 id="income-v2-edit-paid" className="dsv2-input" min="0" step="0.01" value={editPaidAmount} onChange={(event) => setEditPaidAmount(event.target.value)} disabled={loading} />
                 </DashboardFieldV2>
               ) : null}
               <div className="income-v2-edit-summary income-v2-field--wide">
@@ -1455,7 +1456,7 @@ function DashboardIncomeContent() {
             </>
           ) : (
             <DashboardFieldV2 id="income-v2-edit-amount" label="المبلغ الجديد (ر.س)" required>
-              <input dir="ltr" lang="en" id="income-v2-edit-amount" className="dsv2-input" type="number" min="0" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} disabled={loading} />
+              <DashboardNumberInputV2 id="income-v2-edit-amount" className="dsv2-input" min="0" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} disabled={loading} />
             </DashboardFieldV2>
           )}
         </div>

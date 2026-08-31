@@ -54,3 +54,6 @@ export {
   DashboardTimeInputV2,
 } from "./DashboardNativeControlBridgeV2";
 export type { DashboardSelectBridgeV2Props } from "./DashboardNativeControlBridgeV2";
+
+export { default as DashboardNumberInputV2 } from "./DashboardNumberInputV2";
+export type { DashboardNumberInputV2Props } from "./DashboardNumberInputV2";

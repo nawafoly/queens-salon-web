@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardMonthInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -667,7 +668,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <>
                     <label className="employee-request-action-field">
                       <span>المبلغ الموافق عليه بالريال</span>
-                      <input dir="ltr" lang="en" type="number" min="1" step="0.01" value={dialog.approvedAmount} onChange={(event) => setDialog({ ...dialog, approvedAmount: event.target.value })} />
+                      <DashboardNumberInputV2 min="1" step="0.01" value={dialog.approvedAmount} onChange={(event) => setDialog({ ...dialog, approvedAmount: event.target.value })} />
                     </label>
                     <label className="employee-request-action-field">
                       <span>مرجع عملية الصرف</span>
@@ -712,7 +713,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                 {selected.request_type === "overtime" ? (
                   <label className="employee-request-action-field">
                     <span>عدد الدقائق المعتمدة</span>
-                    <input dir="ltr" lang="en" type="number" min="1" step="1" value={dialog.approvedMinutes} onChange={(event) => setDialog({ ...dialog, approvedMinutes: event.target.value })} />
+                    <DashboardNumberInputV2 min="1" step="1" value={dialog.approvedMinutes} onChange={(event) => setDialog({ ...dialog, approvedMinutes: event.target.value })} />
                   </label>
                 ) : null}
                 {selected.request_type === "resignation" ? (

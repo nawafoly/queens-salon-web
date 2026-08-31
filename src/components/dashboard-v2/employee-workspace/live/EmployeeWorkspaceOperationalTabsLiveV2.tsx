@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
 import { useState } from "react";
 import type { AttendanceSpecialDay } from "../../../../helpers/hr/attendanceCalendarData";
 
@@ -1333,28 +1334,28 @@ export function EmployeePayrollTabLiveV2({
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
           <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الأساسي">
-            <input dir="ltr" lang="en" id="employee-live-v2-salary" className="dsv2-input" type="number" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-salary" className="dsv2-input" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-housing-allowance" label="بدل السكن">
-            <input dir="ltr" lang="en" id="employee-live-v2-housing-allowance" className="dsv2-input" type="number" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-housing-allowance" className="dsv2-input" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label="بدل النقل">
-            <input dir="ltr" lang="en" id="employee-live-v2-transportation-allowance" className="dsv2-input" type="number" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-transportation-allowance" className="dsv2-input" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-other-allowances" label="بدلات أخرى">
-            <input dir="ltr" lang="en" id="employee-live-v2-other-allowances" className="dsv2-input" type="number" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-other-allowances" className="dsv2-input" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-work-days" label="أيام العمل">
-            <input dir="ltr" lang="en" id="employee-live-v2-work-days" className="dsv2-input" type="number" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-work-days" className="dsv2-input" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-daily-hours" label="ساعات اليوم">
-            <input dir="ltr" lang="en" id="employee-live-v2-daily-hours" className="dsv2-input" type="number" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-daily-hours" className="dsv2-input" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-monthly-hours" label="ساعات الشهر">
-            <input dir="ltr" lang="en" id="employee-live-v2-monthly-hours" className="dsv2-input" type="number" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-monthly-hours" className="dsv2-input" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label="معامل الإضافي">
-            <input dir="ltr" lang="en" id="employee-live-v2-overtime-multiplier" className="dsv2-input" type="number" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
+            <DashboardNumberInputV2 id="employee-live-v2-overtime-multiplier" className="dsv2-input" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2
             id="employee-live-v2-attendance-payroll-mode"
@@ -1509,10 +1510,9 @@ export function EmployeePayrollTabLiveV2({
           {gosiWageMode === "override" ? (
             <>
               <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label="أجر الاشتراك المعتمد">
-                <input dir="ltr" lang="en"
+                <DashboardNumberInputV2
                   id="employee-live-v2-gosi-wage-override"
                   className="dsv2-input"
-                  type="number"
                   min="0"
                   value={gosiContributoryWageOverride}
                   disabled={readOnly}

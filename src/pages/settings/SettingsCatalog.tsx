@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1607,9 +1608,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </label>
         <div className="settings-field">
           <label>السعر</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={0}
             value={
               openedServiceModeInSection === "edit"
@@ -1631,9 +1631,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
         <div className="settings-field">
           <label>المدة (دقيقة)</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={5}
             value={
               openedServiceModeInSection === "edit"
@@ -1658,9 +1657,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
         <div className="settings-field">
           <label>سعر الموسم</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={0}
             value={
               (openedServiceModeInSection === "edit"
@@ -1735,9 +1733,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       <div className="scatalog-ref__inline-2">
         <div className="settings-field">
           <label>الوقت (دقيقة)</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={5}
             value={newService.durationMin}
             onChange={(e) =>
@@ -1751,9 +1748,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>السعر</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={0}
             value={newService.price}
             onChange={(e) =>
@@ -1774,9 +1770,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
       <div className="settings-field">
         <label>سعر الموسم (اختياري)</label>
-        <input dir="ltr" lang="en"
+        <DashboardNumberInputV2
           className="settings-input"
-          type="number"
           min={0}
           value={newService.seasonPrice ?? ""}
           onChange={(e) => {
@@ -1852,9 +1847,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>عدد الجلسات</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={1}
             value={packageSessionsCount}
             onChange={(e) =>
@@ -1865,9 +1859,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>السعر</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={0}
             value={packagePrice}
             onChange={(e) => setPackagePrice(Number(e.target.value))}
@@ -1876,9 +1869,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>مدة الصلاحية بالأيام</label>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="settings-input"
-            type="number"
             min={1}
             placeholder="بدون انتهاء"
             value={packageValidityDays}
@@ -1893,7 +1885,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
         <div className="settings-field">
           <label>ترتيب العرض</label>
-          <input dir="ltr" lang="en" className="settings-input" type="number" min={0} value={packageSortOrder} onChange={(e) => setPackageSortOrder(Number(e.target.value))} />
+          <DashboardNumberInputV2 className="settings-input" min={0} value={packageSortOrder} onChange={(e) => setPackageSortOrder(Number(e.target.value))} />
         </div>
 
         <div className="settings-field">
@@ -2549,9 +2541,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   }
                 />
                 <div className="scatalog-ref__inline-2">
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     className="settings-input"
-                    type="number"
                     value={newSection.order}
                     onChange={(e) =>
                       setNewSection((p) => ({
@@ -2733,9 +2724,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>الترتيب</label>
-                            <input dir="ltr" lang="en"
+                            <DashboardNumberInputV2
                               className="settings-input"
-                              type="number"
                               value={
                                 mode === "edit"
                                   ? sectionDraft?.order ?? 0
@@ -2933,9 +2923,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                                     )
                                   }
                                 />
-                                <input dir="ltr" lang="en"
+                                <DashboardNumberInputV2
                                   className="settings-input"
-                                  type="number"
                                   value={c.order}
                                   disabled={mode !== "edit"}
                                   onChange={(e) =>
@@ -3165,9 +3154,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                         <div className="scatalog-ref__grid-2">
                           <div className="settings-field">
                             <label>السعر</label>
-                            <input dir="ltr" lang="en"
+                            <DashboardNumberInputV2
                               className="settings-input"
-                              type="number"
                               min={0}
                               value={
                                 mode === "edit"
@@ -3192,9 +3180,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>المدة (دقيقة)</label>
-                            <input dir="ltr" lang="en"
+                            <DashboardNumberInputV2
                               className="settings-input"
-                              type="number"
                               min={5}
                               value={
                                 mode === "edit"
@@ -3219,9 +3206,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           </div>
                           <div className="settings-field">
                             <label>سعر الموسم</label>
-                            <input dir="ltr" lang="en"
+                            <DashboardNumberInputV2
                               className="settings-input"
-                              type="number"
                               min={0}
                               value={
                                 (mode === "edit"

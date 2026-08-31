@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 // src/pages/DashboardOffers.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -1736,8 +1737,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="pkgm__field package-editor__commercial-field is-price">
                     <label>سعر الباقة</label>
                     <div className="package-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         value={packageDraft.price}
                         onChange={(e) =>
@@ -1754,8 +1754,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="pkgm__field package-editor__commercial-field">
                     <label>عدد الجلسات</label>
                     <div className="package-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={1}
                         value={packageDraft.sessionsCount}
                         onChange={(e) =>
@@ -1775,8 +1774,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="pkgm__field package-editor__commercial-field">
                     <label>مدة الصلاحية</label>
                     <div className="package-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={1}
                         value={packageDraft.validityDays}
                         onChange={(e) =>
@@ -1795,8 +1793,7 @@ const DashboardOffers: React.FC = () => {
 
                   <div className="pkgm__field package-editor__commercial-field">
                     <label>ترتيب الظهور</label>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       value={packageDraft.sortOrder}
                       onChange={(e) =>
@@ -2485,8 +2482,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__field offer-editor__commercial-field is-primary">
                     <label>قيمة الخصم <em>مطلوب</em></label>
                     <div className="offer-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         max={form.discountType === "percent" ? 100 : undefined}
                         step="0.01"
@@ -2500,8 +2496,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__field offer-editor__commercial-field">
                     <label>السعر قبل الخصم</label>
                     <div className="offer-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         step="0.01"
                         value={form.priceBefore}
@@ -2514,8 +2509,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__field offer-editor__commercial-field">
                     <label>السعر بعد الخصم</label>
                     <div className="offer-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         step="0.01"
                         value={form.priceAfter}
@@ -2527,8 +2521,7 @@ const DashboardOffers: React.FC = () => {
 
                   <div className="offer-editor__field offer-editor__commercial-field">
                     <label>ترتيب الظهور</label>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       value={form.sortOrder}
                       onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value) }))}
@@ -2557,8 +2550,7 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__limits-grid">
                   <div className="offer-editor__field">
                     <label>إجمالي مرات الاستخدام</label>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       value={form.usageLimit}
                       onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
@@ -2567,8 +2559,7 @@ const DashboardOffers: React.FC = () => {
                   </div>
                   <div className="offer-editor__field">
                     <label>الحد لكل عميلة</label>
-                    <input dir="ltr" lang="en"
-                      type="number"
+                    <DashboardNumberInputV2
                       min={0}
                       value={form.perClientLimit}
                       onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
@@ -2578,8 +2569,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__field">
                     <label>الحد الأدنى للطلب</label>
                     <div className="offer-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         step="0.01"
                         value={form.minOrder}
@@ -2591,8 +2581,7 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__field">
                     <label>الحد الأعلى للخصم</label>
                     <div className="offer-editor__input-suffix">
-                      <input dir="ltr" lang="en"
-                        type="number"
+                      <DashboardNumberInputV2
                         min={0}
                         step="0.01"
                         value={form.maxDiscount}
@@ -2877,8 +2866,7 @@ const DashboardOffers: React.FC = () => {
                                       <td>{step.titleSnapshot || service?.name || step.serviceId}</td>
                                       <td>
                                         <div className="offer-editor__input-suffix">
-                                          <input dir="ltr" lang="en"
-                                            type="number"
+                                          <DashboardNumberInputV2
                                             min={0}
                                             value={Math.max(0, Number(step.gapAfterMin || 0))}
                                             onChange={(e) => updateSequenceStepGap(step.serviceId, Number(e.target.value || 0))}

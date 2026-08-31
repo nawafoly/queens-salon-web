@@ -2413,3 +2413,133 @@ body > .dashboard-v2.payroll-modal-backdrop
     border-radius: 20px 20px 0 0;
   }
 }
+
+/* PAYROLL_READINESS_DSV2_REFERENCE_V2
+ * Dashboard V2 reference refinement:
+ * - six readiness cards stay visually balanced on wide dashboards
+ * - shared surface/border/radius/spacing tokens only
+ * - no payroll semantics or data presentation changes
+ */
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-overview {
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-head {
+  align-items: flex-start;
+  padding:
+    var(--dsv2-space-5)
+    var(--dsv2-space-5)
+    var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-head > div:first-child {
+  display: grid;
+  gap: var(--dsv2-space-1);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-source {
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, var(--dsv2-space-4));
+  padding: var(--dsv2-space-4) var(--dsv2-space-5) var(--dsv2-space-5);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card {
+  min-width: 0;
+  min-height: 132px;
+  align-content: start;
+  gap: var(--dsv2-space-2);
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card::before {
+  inset-block: var(--dsv2-space-4);
+  width: 3px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > span {
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > strong {
+  margin-top: auto;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > small {
+  min-height: 2.9em;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-ready,
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-exempt {
+  border-color: var(--dsv2-green-border);
+  background:
+    linear-gradient(
+      180deg,
+      var(--dsv2-surface) 0%,
+      var(--dsv2-green-soft) 170%
+    );
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-setup {
+  border-color: var(--dsv2-burgundy-border);
+  background:
+    linear-gradient(
+      180deg,
+      var(--dsv2-surface) 0%,
+      var(--dsv2-burgundy-soft) 170%
+    );
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-attendance {
+  border-color: var(--dsv2-border-gold);
+  background:
+    linear-gradient(
+      180deg,
+      var(--dsv2-surface) 0%,
+      var(--dsv2-gold-soft) 170%
+    );
+}
+
+@media (max-width: 1399.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-overview-head {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-overview-source {
+    justify-content: flex-start;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--dsv2-space-3);
+    padding: var(--dsv2-space-3) var(--dsv2-space-4) var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-card {
+    min-height: 116px;
+  }
+}
+
+@media (max-width: 479.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}

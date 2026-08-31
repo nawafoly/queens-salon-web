@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -432,9 +433,8 @@ export default function DashboardEmployeeTargets() {
       <section className="dsv2-card dsv2-card--padded dsv2-targets-toolbar" aria-label="فترة التارقت">
         <label className="dsv2-field">
           <span className="dsv2-field__label">السنة</span>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="dsv2-input"
-            type="number"
             value={year}
             onChange={(event) => setYear(Number(event.target.value) || initial.year)}
           />

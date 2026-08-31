@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
 import { useMemo, useState } from "react";
 import EmployeeAvatar from "../../../EmployeeAvatar";
 import {
@@ -238,27 +239,23 @@ export function EmployeeProfileTabLiveV2({
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-rating" label="تقييم العرض">
-              <input lang="en"
+              <DashboardNumberInputV2
                 id="employee-live-v2-rating"
                 className="dsv2-input"
-                type="number"
                 min="0"
                 max="5"
                 step="0.1"
-                dir="ltr"
                 value={rating}
                 disabled={readOnly}
                 onChange={(event) => onRatingChange(event.target.value)}
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-reviews" label="عدد التقييمات">
-              <input lang="en"
+              <DashboardNumberInputV2
                 id="employee-live-v2-reviews"
                 className="dsv2-input"
-                type="number"
                 min="0"
                 step="1"
-                dir="ltr"
                 value={reviewsCount}
                 disabled={readOnly}
                 onChange={(event) => onReviewsCountChange(event.target.value)}

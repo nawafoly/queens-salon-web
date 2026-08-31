@@ -182,7 +182,7 @@ export default function ClientPackagesPanel(props: {
   async function cancel(pkg: ClientPackage) {
     const reason = window.prompt("ط³ط¨ط¨ ط¥ظ„ط؛ط§ط، ط§ظ„ط¨ط§ظ‚ط©");
     if (!reason?.trim()) return;
-    if (!window.confirm(`طھط£ظƒظٹط¯ ط¥ظ„ط؛ط§ط، ${pkg.packageNameSnapshot}طں`)) return;
+    if (!window.confirm(`طھط£ظƒظٹط¯ ط¥ظ„ط؛ط§ط، ${pkg.packageNameSnapshot}؟`)) return;
     setBusy(true);
     try {
       await PackageOperationsService.cancel(String(pkg.id), reason);
@@ -241,7 +241,7 @@ export default function ClientPackagesPanel(props: {
   if (!clientId) {
     return (
       <div className="session-packages__error">
-        ظ„ط§ ظٹظˆط¬ط¯ clientId ط«ط§ط¨طھ ظ„ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپط› ظ„ط§ ظٹظ…ظƒظ† ط¹ط±ط¶ ط§ظ„ط±طµظٹط¯ ط¨ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰
+        ظ„ط§ ظٹظˆط¬ط¯ clientId ط«ط§ط¨طھ ظ„ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپ؛ ظ„ط§ ظٹظ…ظƒظ† ط¹ط±ط¶ ط§ظ„ط±طµظٹط¯ ط¨ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰
         ط§ظ„ظ‡ط§طھظپ ظپظ‚ط·.
       </div>
     );
@@ -305,7 +305,7 @@ export default function ClientPackagesPanel(props: {
             ط§ظ„ط®ط¯ظ…ط§طھ:{" "}
             {pkg.allowedServiceIdsSnapshot
               .map((id) => services[id] || id)
-              .join("طŒ ")}
+              .join("، ")}
           </p>
 
           <details>

@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -663,10 +664,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
         <div className="settings-attendance-v2-accuracy">
           <DashboardFieldV2 id="attendance-max-accuracy" label="أقصى دقة مسموحة للموقع بالمتر">
-            <input dir="ltr" lang="en"
+            <DashboardNumberInputV2
               id="attendance-max-accuracy"
               className="dsv2-input"
-              type="number"
               min={10}
               step={5}
               value={attendance.maxLocationAccuracyMeters}
@@ -817,9 +817,8 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     <header><div><strong>حجم النطاق</strong><small>يتحدث على الخريطة فورًا</small></div><span>{zoneDraft.radiusMeters} م</span></header>
                     <label className="settings-attendance-v2-radius-input">
                       <span>نصف القطر بالمتر</span>
-                      <input dir="ltr" lang="en"
+                      <DashboardNumberInputV2
                         className="dsv2-input"
-                        type="number"
                         min={MIN_RADIUS_METERS}
                         max={MAX_RADIUS_METERS}
                         step={1}
@@ -894,10 +893,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
               <summary>الإعدادات المتقدمة والإحداثيات اليدوية</summary>
               <div className="settings-attendance-v2-advanced__grid">
                 <DashboardFieldV2 id="attendance-zone-lat" label="خط العرض lat">
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     id="attendance-zone-lat"
                     className="dsv2-input"
-                    type="number"
                     step="0.0000001"
                     value={zoneDraft.lat}
                     disabled={!hasAdminPower}
@@ -905,10 +903,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                   />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id="attendance-zone-lng" label="خط الطول lng">
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     id="attendance-zone-lng"
                     className="dsv2-input"
-                    type="number"
                     step="0.0000001"
                     value={zoneDraft.lng}
                     disabled={!hasAdminPower}
@@ -916,10 +913,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                   />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id="attendance-zone-radius" label="نصف القطر بالمتر">
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     id="attendance-zone-radius"
                     className="dsv2-input"
-                    type="number"
                     min={MIN_RADIUS_METERS}
                     max={MAX_RADIUS_METERS}
                     value={zoneDraft.radiusMeters}

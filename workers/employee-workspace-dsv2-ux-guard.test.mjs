@@ -92,3 +92,15 @@ test("shift-template hydration distinguishes load failure from canonical empty s
     /shiftTemplatesError \? \([\s\S]*!shiftTemplatesLoading && !shiftTemplates\.length \? \(/
   );
 });
+
+test("post-save editor fingerprint baseline clears false dirty state", () => {
+  const source = read("src/pages/DashboardEmployees.tsx");
+  assert.match(source, /EMPLOYEE_POST_SAVE_BASELINE_V3/);
+  assert.match(source, /employeeProfileEditorFingerprint/);
+  assert.match(source, /employeeProfilePostSaveBaseline/);
+  assert.match(source, /setEmployeeProfileBaselineCaptureNonce/);
+  assert.match(
+    source,
+    /postSaveBaselineMatchesEmployee[\s\S]*employeeProfilePostSaveBaseline\.fingerprint !==[\s\S]*employeeProfileEditorFingerprint/
+  );
+});
