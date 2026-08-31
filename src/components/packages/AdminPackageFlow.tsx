@@ -430,12 +430,12 @@ export default function AdminPackageFlow(props: {
 
   async function createClientProfile() {
     if (!clientName || !clientPhone) {
-      setError("ط£ط¯ط®ظ„ظٹ ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط© ظˆط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط£ظˆظ„ظ‹ط§.");
+      setError("أدخلي اسم العميلة ورقم الجوال أولًا.");
       return;
     }
     const normalizedPhone = normalizePhone(clientPhone);
     if (!normalizedPhone) {
-      setError("ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط؛ظٹط± طµط§ظ„ط­.");
+      setError("رقم الجوال غير صالح.");
       return;
     }
 
@@ -456,7 +456,7 @@ export default function AdminPackageFlow(props: {
 
       if (exactMatches.length > 1) {
         setError(
-          "ظٹظˆط¬ط¯ ط£ظƒط«ط± ظ…ظ† ظ…ظ„ظپ ط¹ظ…ظٹظ„ط© ط¨ظ†ظپط³ ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط¯ط§ط®ظ„ Core D1. ط§ظپطھط­ظٹ طھظ‚ط±ظٹط± طھط¯ظ‚ظٹظ‚ ط§ظ„ظ‡ظˆظٹط§طھ ط£ظˆظ„ظ‹ط§."
+          "يوجد أكثر من ملف عميلة بنفس رقم الجوال داخل Core D1. افتحي تقرير تدقيق الهويات أولًا."
         );
         return;
       }
@@ -494,7 +494,7 @@ export default function AdminPackageFlow(props: {
       setError(
         cause instanceof Error
           ? cause.message
-          : "طھط¹ط°ط± ط¥ظ†ط´ط§ط، ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„ط© ط¯ط§ط®ظ„ Core D1."
+          : "تعذر إنشاء ملف العميلة داخل Core D1."
       );
     } finally {
       setLoading(false);

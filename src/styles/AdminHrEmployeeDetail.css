@@ -4518,9 +4518,9 @@
 
   color: #8b97aa !important;
 
-  font-size: 0.55rem !important;
+  font-size: 0.625rem !important;
   font-weight: 900 !important;
-  line-height: 1;
+  line-height: 1.2 !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
@@ -5675,6 +5675,8 @@
   .staff-payroll-form
   select {
   text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr

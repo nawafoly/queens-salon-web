@@ -213,7 +213,7 @@ export default function PayrollComplianceWorkspace({
       setLocks(lockRows as any[]);
     } catch (loadError: any) {
       if (!selectionIsCurrent()) return;
-      setError(text(loadError?.message || "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط£ط¯ظˆط§طھ ط§ظ„ط§ظ…طھط«ط§ظ„."));
+      setError(text(loadError?.message || "تعذر تحميل أدوات الامتثال."));
     } finally {
       if (selectionIsCurrent()) {
         setLoading(false);

@@ -266,7 +266,7 @@
 .partner-portal-team-list em { color: #7b8491; font-size: .7rem; font-style: normal; font-weight: 850; }
 .partner-portal-team-list em.is-active { color: #167c49; }
 .partner-portal-card--permissions ul { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; }
-.partner-portal-card--permissions li { padding: 12px; border-radius: 11px; color: #8b94a2; background: #f3f5f7; font-size: .78rem; font-weight: 850; }
+.partner-portal-card--permissions li { padding: 12px; border-radius: 11px; color: #5f6b7a; background: #f3f5f7; font-size: .78rem; font-weight: 850; }
 .partner-portal-card--permissions li.is-enabled { color: #075b36; background: #eaf8f1; }
 .partner-portal-muted { color: #7c8798; }
 .partner-portal-footer { box-sizing: border-box; margin-top: 16px; padding: 13px 16px; border-radius: 13px; color: #5f6a7b; background: rgba(255,255,255,.75); font-size: .78rem; font-weight: 800; }

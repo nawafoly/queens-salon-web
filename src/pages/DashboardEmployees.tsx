@@ -6014,7 +6014,7 @@ const canonicalSchedules =
         setErrorMsg(
           toFirestoreErrorMessage(
             e,
-            "طھط¹ط°ط± ط­ظپط¸ ط§ظ„ظ…ظˆط¸ظپط©."
+            "تعذر حفظ الموظفة."
           )
         );
       }
