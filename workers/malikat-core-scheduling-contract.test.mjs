@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 
@@ -846,7 +846,7 @@ test("DashboardEmployees working-hour override save is Core-only", () => {
 
   const saveStart =
     source.indexOf(
-      "  const save = async () => {"
+      "  const save = async"
     );
 
   const saveEnd =
