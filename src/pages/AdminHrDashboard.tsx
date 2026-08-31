@@ -41,7 +41,6 @@ import { usePermissions } from "../security/PermissionContext";
 import type { AppPermission } from "../helpers/permissions";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
-import CreateStaffAccountPage from "./hr/CreateStaffAccount";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import AdminEmployeeRequestsPage from "./hr/AdminEmployeeRequests";
@@ -901,11 +900,6 @@ function HrOverview({
                 <FontAwesomeIcon icon={faUsers} />
                 <strong>إدارة الموظفات</strong>
                 <span>الملف الوظيفي والحضور والرواتب والإجازات والخدمات.</span>
-              </button>
-              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>
-                <FontAwesomeIcon icon={faPlus} />
-                <strong>إنشاء حساب</strong>
-                <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>
               </button>
               <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/messages")}>
                 <FontAwesomeIcon icon={faEnvelope} />
@@ -1772,14 +1766,6 @@ export default function AdminHrDashboard({
             <Route path="messages" element={<PermissionRoute permission="messages.manage"><EmployeeMessagesPage session={session} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="employees.files.view"><EmployeeFilesPage session={session} /></PermissionRoute>} />
             <Route path="users" element={<Navigate to="/dashboard/settings/users" replace />} />
-            <Route
-              path="create-staff"
-              element={
-                <PermissionRoute allOf={["admin_accounts.manage", "employees.create"]}>
-                  <CreateStaffAccountPage session={session} />
-                </PermissionRoute>
-              }
-            />
             <Route path="*" element={<Navigate to={adminLandingPath} replace />} />
           </Routes>
         </section>
