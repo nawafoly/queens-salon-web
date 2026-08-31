@@ -10,6 +10,7 @@ type CoreWriteOutcomeDetail = {
   path: string;
   method: string;
   operationId: string;
+  employeeId?: string;
 };
 
 function readWriteOutcomeDetail(
@@ -31,6 +32,8 @@ function readWriteOutcomeDetail(
     String(detail.method || "").trim().toUpperCase();
   const operationId =
     String(detail.operationId || "").trim();
+  const employeeId =
+    String(detail.employeeId || "").trim();
 
   if (!path || !method || !operationId) {
     return null;
@@ -40,6 +43,7 @@ function readWriteOutcomeDetail(
     path,
     method,
     operationId,
+    ...(employeeId ? { employeeId } : {}),
   };
 }
 
@@ -52,6 +56,16 @@ function sameWriteOutcome(
     pending.method === reconciled.method &&
     pending.operationId === reconciled.operationId
   );
+}
+
+function writeOutcomeKey(
+  detail: CoreWriteOutcomeDetail
+) {
+  return [
+    detail.method,
+    detail.path,
+    detail.operationId,
+  ].join("\u0000");
 }
 
 export default function NetworkSafetyBanner() {
@@ -69,8 +83,13 @@ export default function NetworkSafetyBanner() {
   const unknownWriteOutcomeRef =
     useRef(false);
 
-  const pendingWriteRef =
-    useRef<CoreWriteOutcomeDetail | null>(null);
+  const pendingWritesRef =
+    useRef<Map<string, CoreWriteOutcomeDetail>>(
+      new Map()
+    );
+
+  const uncorrelatedUnknownWriteRef =
+    useRef(false);
 
   const fallbackReloadTimerRef =
     useRef<number | null>(null);
@@ -78,11 +97,12 @@ export default function NetworkSafetyBanner() {
   useEffect(() => {
     // CORE_RECONCILIATION_FAILSAFE_V1
     // CORE_RECONCILIATION_CORRELATION_V1
+    // CORE_RECONCILIATION_MULTI_PENDING_V1
     //
-    // Only the domain that reconciles the exact ambiguous
-    // logical operation may clear uncertainty.
-    // Unrelated acknowledgements are ignored and the
-    // canonical reload fallback remains armed.
+    // Every ambiguous logical operation remains pending
+    // independently. An acknowledgement may clear only
+    // its exact operation. The banner and canonical reload
+    // fallback stay active until no uncertain write remains.
 
     const clearFallbackReload = () => {
       if (
@@ -117,23 +137,15 @@ export default function NetworkSafetyBanner() {
         }, RECONCILIATION_FALLBACK_MS);
     };
 
-    const requestCanonicalReconciliation = (
-      detail: CoreWriteOutcomeDetail | null
+    const dispatchCanonicalReconciliation = (
+      detail: CoreWriteOutcomeDetail
     ) => {
-      if (detail) {
-        window.dispatchEvent(
-          new CustomEvent(
-            RECONNECTED_EVENT,
-            { detail }
-          )
-        );
-      } else {
-        window.dispatchEvent(
-          new Event(RECONNECTED_EVENT)
-        );
-      }
-
-      scheduleFallbackReload();
+      window.dispatchEvent(
+        new CustomEvent(
+          RECONNECTED_EVENT,
+          { detail }
+        )
+      );
     };
 
     const onOffline = () => {
@@ -145,12 +157,16 @@ export default function NetworkSafetyBanner() {
       setOnline(true);
 
       const pending =
-        pendingWriteRef.current;
-
-      if (pending) {
-        requestCanonicalReconciliation(
-          pending
+        Array.from(
+          pendingWritesRef.current.values()
         );
+
+      if (pending.length > 0) {
+        for (const detail of pending) {
+          dispatchCanonicalReconciliation(detail);
+        }
+
+        scheduleFallbackReload();
         return;
       }
 
@@ -171,32 +187,54 @@ export default function NetworkSafetyBanner() {
       const detail =
         readWriteOutcomeDetail(event);
 
-      pendingWriteRef.current = detail;
-      unknownWriteOutcomeRef.current = true;
+      if (detail) {
+        pendingWritesRef.current.set(
+          writeOutcomeKey(detail),
+          detail
+        );
+      } else {
+        // Invalid or legacy unknown-write events can never be
+        // safely acknowledged. Keep the fail-safe armed until
+        // a canonical page reload resets client state.
+        uncorrelatedUnknownWriteRef.current = true;
+      }
 
+      unknownWriteOutcomeRef.current = true;
       setUnknownWriteOutcome(true);
 
       // Transport failure may happen while the browser
       // still reports that connectivity exists.
       if (navigator.onLine !== false) {
-        requestCanonicalReconciliation(
-          detail
-        );
+        if (detail) {
+          dispatchCanonicalReconciliation(detail);
+        } else {
+          window.dispatchEvent(
+            new Event(RECONNECTED_EVENT)
+          );
+        }
+
+        scheduleFallbackReload();
       }
     };
 
     const onReconciled = (
       event: Event
     ) => {
-      const pending =
-        pendingWriteRef.current;
-
       const detail =
         readWriteOutcomeDetail(event);
 
+      if (!detail) {
+        return;
+      }
+
+      const key =
+        writeOutcomeKey(detail);
+
+      const pending =
+        pendingWritesRef.current.get(key);
+
       if (
         !pending ||
-        !detail ||
         !sameWriteOutcome(
           pending,
           detail
@@ -205,9 +243,16 @@ export default function NetworkSafetyBanner() {
         return;
       }
 
-      pendingWriteRef.current = null;
-      unknownWriteOutcomeRef.current = false;
+      pendingWritesRef.current.delete(key);
 
+      if (
+        pendingWritesRef.current.size > 0 ||
+        uncorrelatedUnknownWriteRef.current
+      ) {
+        return;
+      }
+
+      unknownWriteOutcomeRef.current = false;
       setUnknownWriteOutcome(false);
       clearFallbackReload();
     };

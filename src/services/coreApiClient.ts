@@ -26,6 +26,9 @@ type CoreApiRequestOptions = {
   query?: Record<string, string | number | boolean | null | undefined>;
   timeoutMs?: number;
   operationId?: string;
+  reconciliation?: {
+    employeeId?: string;
+  };
 };
 
 const CORE_API_CODE_MESSAGES: Record<string, string> = {
@@ -74,12 +77,25 @@ function isTransportFailure(error: unknown) {
 function emitUnknownWriteOutcome(
   path: string,
   method: string,
-  operationId: string
+  operationId: string,
+  options: CoreApiRequestOptions
 ) {
   if (typeof window === "undefined") return;
+
+  const employeeId = String(
+    options.reconciliation?.employeeId ||
+    options.body?.employeeId ||
+    ""
+  ).trim();
+
   window.dispatchEvent(
     new CustomEvent(CORE_WRITE_OUTCOME_UNKNOWN_EVENT, {
-      detail: { path, method, operationId },
+      detail: {
+        path,
+        method,
+        operationId,
+        ...(employeeId ? { employeeId } : {}),
+      },
     })
   );
 }
@@ -196,7 +212,7 @@ async function requestOnce<T>(
 
     if (error instanceof DOMException && error.name === "AbortError") {
       if (mutating) {
-        emitUnknownWriteOutcome(path, method, operationId);
+        emitUnknownWriteOutcome(path, method, operationId, options);
         throw new CoreApiError(
           0,
           "core_api:write_outcome_unknown",
@@ -213,7 +229,7 @@ async function requestOnce<T>(
 
     if (isTransportFailure(error)) {
       if (mutating) {
-        emitUnknownWriteOutcome(path, method, operationId);
+        emitUnknownWriteOutcome(path, method, operationId, options);
         throw new CoreApiError(
           0,
           "core_api:write_outcome_unknown",

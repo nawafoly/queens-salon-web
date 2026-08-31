@@ -34,6 +34,11 @@ function camel<T>(row: Record<string, unknown>): T {
   return out as T;
 }
 
+function employeeReconciliation(employeeId: unknown) {
+  const value = String(employeeId || "").trim();
+  return value ? { employeeId: value } : undefined;
+}
+
 type CoreResolvedShiftRangeResult = {
   dateFrom: string;
   dateTo: string;
@@ -208,19 +213,51 @@ export const CoreHrService = {
     const id = String(input.id || "").trim();
     const hrInput: Record<string, unknown> = { ...input };
 
-    const row = await coreApiRequest<Record<string, unknown>>(id ? `/api/core/hr/employees/${encodeURIComponent(id)}` : "/api/core/hr/employees", { method: id ? "PATCH" : "POST", body: hrInput });
+    const reconciliationEmployeeId = String(
+      input.id ||
+      input.employeeId ||
+      input.firebaseUid ||
+      ""
+    ).trim();
+
+    const row = await coreApiRequest<Record<string, unknown>>(
+      id
+        ? `/api/core/hr/employees/${encodeURIComponent(id)}`
+        : "/api/core/hr/employees",
+      {
+        method: id ? "PATCH" : "POST",
+        body: hrInput,
+        reconciliation:
+          employeeReconciliation(
+            reconciliationEmployeeId
+          ),
+      }
+    );
     return camel<CoreHrEmployee>(row);
   },
   async offboardEmployee(employeeId: string, input: { endDate: string; reason: string }) {
     const row = await coreApiRequest<Record<string, unknown>>(
       `/api/core/hr/employees/${encodeURIComponent(employeeId)}/offboard`,
-      { method: "POST", body: input }
+      {
+        method: "POST",
+        body: input,
+        reconciliation:
+          employeeReconciliation(employeeId),
+      }
     );
     invalidateResolvedShiftRangeCache(employeeId);
     return camel<Record<string, unknown>>(row);
   },
   async replaceSchedules(employeeId: string, schedules: CoreHrSchedule[]) {
-    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/schedules`, { method: "PUT", body: { schedules } });
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/schedules`,
+      {
+        method: "PUT",
+        body: { schedules },
+        reconciliation:
+          employeeReconciliation(employeeId),
+      }
+    );
     invalidateResolvedShiftRangeCache(employeeId);
     return camel<CoreHrEmployee>(row);
   },
@@ -266,9 +303,33 @@ export const CoreHrService = {
     invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
     return row;
   },
-  async updateScheduleException(id: string, input: Record<string, unknown>) {
-    const row = camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
-    invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
+  async updateScheduleException(
+    id: string,
+    input: Record<string, unknown>,
+    reconciliationEmployeeId?: string
+  ) {
+    const employeeId = String(
+      reconciliationEmployeeId ||
+      input.employeeId ||
+      ""
+    ).trim();
+
+    const row = camel<CoreScheduleException>(
+      await coreApiRequest<Record<string, unknown>>(
+        `/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          body: input,
+          reconciliation:
+            employeeReconciliation(employeeId),
+        }
+      )
+    );
+
+    invalidateResolvedShiftRangeCache(
+      String(row.employeeId || employeeId || "")
+    );
+
     return row;
   },
 

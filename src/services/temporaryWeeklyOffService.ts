@@ -59,15 +59,29 @@ function toCoreRows(rows: unknown[]) {
   return rows.map((row) => row as Record<string, unknown>);
 }
 
-async function cancelCoreExceptions(rows: Array<Record<string, unknown>>) {
+async function cancelCoreExceptions(
+  rows: Array<Record<string, unknown>>,
+  fallbackEmployeeId = ""
+) {
   for (const row of rows) {
     const id = cleanText(row.id);
     if (!id) continue;
-    await CoreHrService.updateScheduleException(id, {
-      status: "cancelled",
-      enabled: false,
-      note: `${cleanText(row.note)} [CANCELLED_TEMP_WEEKLY_OFF]`.trim(),
-    });
+
+    const employeeId = cleanText(
+      row.employeeId ||
+      row.employee_id ||
+      fallbackEmployeeId
+    );
+
+    await CoreHrService.updateScheduleException(
+      id,
+      {
+        status: "cancelled",
+        enabled: false,
+        note: `${cleanText(row.note)} [CANCELLED_TEMP_WEEKLY_OFF]`.trim(),
+      },
+      employeeId
+    );
   }
 }
 
@@ -180,16 +194,23 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
     // Best effort rollback for rows created by this attempt. Existing rows are
     // not cancelled until all replacements are successfully created.
     for (const id of createdIds) {
-      await CoreHrService.updateScheduleException(id, {
-        status: "cancelled",
-        enabled: false,
-        note: `${input.token} ROLLBACK_TEMP_WEEKLY_OFF`,
-      }).catch(() => undefined);
+      await CoreHrService.updateScheduleException(
+        id,
+        {
+          status: "cancelled",
+          enabled: false,
+          note: `${input.token} ROLLBACK_TEMP_WEEKLY_OFF`,
+        },
+        employeeId
+      ).catch(() => undefined);
     }
     throw error;
   }
 
-  await cancelCoreExceptions(previousTemporary);
+  await cancelCoreExceptions(
+    previousTemporary,
+    employeeId
+  );
 
   return {
     employeeId,
@@ -207,7 +228,10 @@ export async function removeTemporaryWeeklyOff(input: RemoveTemporaryWeeklyOffIn
     isApprovedException(row) && cleanText(row.note).startsWith(input.token)
   );
 
-  await cancelCoreExceptions(matching);
+  await cancelCoreExceptions(
+    matching,
+    employeeId
+  );
 
   return {
     employeeId,

@@ -6107,13 +6107,20 @@ const canonicalSchedules =
 
   useEffect(() => {
     let cancelled = false;
-    let inFlight = false;
+    let reconciliationQueue =
+      Promise.resolve();
 
     // EMPLOYEE_NETWORK_RECONCILIATION_CORRELATION_V1
+    // EMPLOYEE_NETWORK_RECONCILIATION_TARGET_V1
+    //
+    // A correlated acknowledgement must be based on the
+    // employee affected by the failed write, not whichever
+    // employee happens to be selected after reconnect.
     type ReconciliationWriteDetail = {
       path: string;
       method: string;
       operationId: string;
+      employeeId?: string;
     };
 
     const readReconciliationWriteDetail = (
@@ -6135,6 +6142,8 @@ const canonicalSchedules =
         cleanText(detail.method).toUpperCase();
       const operationId =
         cleanText(detail.operationId);
+      const employeeId =
+        cleanText(detail.employeeId);
 
       if (
         !path ||
@@ -6148,6 +6157,7 @@ const canonicalSchedules =
         path,
         method,
         operationId,
+        ...(employeeId ? { employeeId } : {}),
       };
     };
 
@@ -6170,72 +6180,127 @@ const canonicalSchedules =
     ) => {
       if (
         writeDetail &&
-        !isEmployeeReconciliationPath(
-          writeDetail.path
+        (
+          !isEmployeeReconciliationPath(
+            writeDetail.path
+          ) ||
+          !cleanText(
+            writeDetail.employeeId
+          )
         )
       ) {
+        // Never acknowledge a correlated employee-domain
+        // mutation unless its affected employee is known.
+        // The global fail-safe reload remains armed.
         return;
       }
+
       if (
-        inFlight ||
-        (typeof navigator !== "undefined" && navigator.onLine === false)
+        typeof navigator !== "undefined" &&
+        navigator.onLine === false
       ) {
         return;
       }
 
-      inFlight = true;
+      const employeeId =
+        writeDetail
+          ? cleanText(
+              writeDetail.employeeId
+            )
+          : cleanText(editId);
 
       try {
         // EMPLOYEE_NETWORK_RECONCILIATION_V1
-        // Reconnect always re-establishes Core as authority before another save.
+        // Reconnect always re-establishes Core as authority
+        // before another save.
         await load();
 
-        const employeeId = cleanText(editId);
         if (employeeId) {
-          const [coreEmployee, exceptionRows] = await Promise.all([
-            CoreHrService.getEmployee(employeeId),
-            CoreHrService.listScheduleExceptions({ employeeId }),
+          const [
+            coreEmployee,
+            exceptionRows,
+          ] = await Promise.all([
+            CoreHrService.getEmployee(
+              employeeId
+            ),
+            CoreHrService.listScheduleExceptions(
+              { employeeId }
+            ),
           ]);
 
           if (cancelled) return;
 
-          // EMPLOYEE_NETWORK_RECONCILIATION_V1_REVISION
-          coreEmployeeUpdatedAtBaselineRef.current =
-            cleanText(
-              (coreEmployee as any)?.updatedAt ||
-              (coreEmployee as any)?.updated_at
+          // Only mutate the visible editor if it still shows
+          // the same employee that was canonically reloaded.
+          // A write for employee A may be verified while B is
+          // currently selected, without replacing B's UI.
+          const selectedEmployeeStillMatches =
+            cleanText(editId) === employeeId;
+
+          if (selectedEmployeeStillMatches) {
+            // EMPLOYEE_NETWORK_RECONCILIATION_V1_REVISION
+            coreEmployeeUpdatedAtBaselineRef.current =
+              cleanText(
+                (coreEmployee as any)?.updatedAt ||
+                (coreEmployee as any)?.updated_at
+              );
+
+            const schedules =
+              Array.isArray(
+                coreEmployee.schedules
+              )
+                ? coreEmployee.schedules
+                : [];
+
+            const workingRows =
+              resolveCoreScheduleEditorRows(
+                schedules,
+                todayIso()
+              );
+
+            setCoreScheduleRows(schedules);
+            setCoreScheduleExceptionRows(
+              exceptionRows
             );
-
-          const schedules = Array.isArray(coreEmployee.schedules)
-            ? coreEmployee.schedules
-            : [];
-
-          const workingRows = resolveCoreScheduleEditorRows(
-            schedules,
-            todayIso()
-          );
-
-          setCoreScheduleRows(schedules);
-          setCoreScheduleExceptionRows(exceptionRows);
-          setCoreScheduleLoadedEmployeeId(employeeId);
-          setCoreScheduleVersionCount(countCoreScheduleVersions(schedules));
-          setModalUseCustomWorkingHours(true);
-          setModalCustomWorkingHours(workingRows);
-          setModalExceptionalLeaveWeekdays(
-            WEEKDAY_OPTIONS
-              .filter((day) => workingRows[day.key]?.enabled === false)
-              .map((day) => day.key)
-          );
-          setModalCustomHourOverrides(
-            projectCoreScheduleExceptionsToOverrides(exceptionRows)
-          );
-          setCoreScheduleError("");
-          setCoreScheduleLoading(false);
+            setCoreScheduleLoadedEmployeeId(
+              employeeId
+            );
+            setCoreScheduleVersionCount(
+              countCoreScheduleVersions(
+                schedules
+              )
+            );
+            setModalUseCustomWorkingHours(true);
+            setModalCustomWorkingHours(
+              workingRows
+            );
+            setModalExceptionalLeaveWeekdays(
+              WEEKDAY_OPTIONS
+                .filter(
+                  (day) =>
+                    workingRows[
+                      day.key
+                    ]?.enabled === false
+                )
+                .map((day) => day.key)
+            );
+            setModalCustomHourOverrides(
+              projectCoreScheduleExceptionsToOverrides(
+                exceptionRows
+              )
+            );
+            setCoreScheduleError("");
+            setCoreScheduleLoading(false);
+          }
         }
 
         if (!cancelled) {
-          CoreHrService.invalidateResolvedShiftRangeCache();
-          setCoreResolvedTodayRefreshVersion((version) => version + 1);
+          CoreHrService
+            .invalidateResolvedShiftRangeCache();
+
+          setCoreResolvedTodayRefreshVersion(
+            (version) => version + 1
+          );
 
           if (writeDetail) {
             window.dispatchEvent(
@@ -6255,19 +6320,28 @@ const canonicalSchedules =
             error
           );
         }
-      } finally {
-        inFlight = false;
       }
     };
 
     const handleReconnect = (
       event: Event
     ) => {
-      void reconcileCanonicalEmployeeState(
+      const writeDetail =
         readReconciliationWriteDetail(
           event
-        )
-      );
+        );
+
+      // Multiple ambiguous writes may reconnect together.
+      // Serialize canonical reads so one in-flight operation
+      // never causes another reconciliation request to be
+      // silently discarded.
+      reconciliationQueue =
+        reconciliationQueue.then(
+          () =>
+            reconcileCanonicalEmployeeState(
+              writeDetail
+            )
+        );
     };
 
     window.addEventListener(
@@ -6277,6 +6351,7 @@ const canonicalSchedules =
 
     return () => {
       cancelled = true;
+
       window.removeEventListener(
         "queens:core-network-reconnected",
         handleReconnect
