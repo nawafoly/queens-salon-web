@@ -66,7 +66,6 @@ const DASHBOARD_HR_SECTIONS = new Set([
   "recruitment-applications",
   "messages",
   "files",
-  "create-staff",
 ]);
 
 const DASHBOARD_HR_TITLES: Record<string, string> = {
@@ -77,7 +76,6 @@ const DASHBOARD_HR_TITLES: Record<string, string> = {
   "recruitment-applications": "طلبات التوظيف",
   messages: "الرسائل الداخلية",
   files: "ملفات الموظفات",
-  "create-staff": "إنشاء حساب موظفة",
 };
 
 
