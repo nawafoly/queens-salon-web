@@ -35,6 +35,43 @@
   pointer-events: none;
 }
 
+.dashboard-v2 .dsv2-time-v2--12h {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: var(--dsv2-space-2, 8px);
+}
+
+.dashboard-v2 .dsv2-time-v2--12h .dsv2-time-v2__input {
+  padding-inline-end: var(--dsv2-space-3, 12px);
+}
+
+.dashboard-v2 .dsv2-time-v2__period {
+  width: 64px;
+  min-width: 0;
+  min-height: var(--dsv2-control-height, 44px);
+  padding: 0 var(--dsv2-space-3, 12px);
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-time-v2__period:focus-visible {
+  outline: 2px solid rgba(var(--dsv2-gold-rgb), 0.28);
+  outline-offset: 2px;
+  border-color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-time-v2__period:disabled {
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+  cursor: not-allowed;
+}
+
 .dashboard-v2 .dsv2-month-v2__trigger {
   display: flex;
   width: 100%;
