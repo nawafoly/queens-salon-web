@@ -26,6 +26,19 @@ jobs:
       - name: Apply surgical patch
         run: python scripts/apply-employee-create-success-ux.py
 
+      - name: Remove technical identifier copy from create UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/pages/dashboardEmployees/EmployeeEditorModal.tsx")
+          text = path.read_text(encoding="utf-8")
+          old = "النظام ينشئ ويربط حساب الدخول تلقائيًا بدون Firebase UID أو خطوات تقنية يدوية."
+          new = "النظام ينشئ ويربط حساب الدخول تلقائيًا بدون أي معرّفات أو خطوات تقنية يدوية."
+          if old not in text:
+              raise SystemExit("Expected create intro copy was not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Install dependencies
         run: npm ci
 
