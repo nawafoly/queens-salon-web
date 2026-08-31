@@ -193,7 +193,132 @@
 .bk2-new-client-actions .is-primary { border:1px solid var(--bk2-maroon); background:var(--bk2-maroon); color:#fff; }
 .bk2-new-client-actions .is-secondary { border:1px solid #d8dde7; background:#fff; color:#4d5565; }
 .bk2-new-client-actions button:disabled { opacity:.6; cursor:not-allowed; }
+.bk2-client-identity-check { display:flex; align-items:center; gap:11px; margin-top:14px; padding:13px 14px; border:1px solid #dfe4eb; border-radius:12px; background:#fbfcfd; color:#4e596c; }
+.bk2-client-identity-check div { display:grid; gap:3px; }
+.bk2-client-identity-check strong { font-size:.84rem; color:#283143; }
+.bk2-client-identity-check small { color:#7a8495; line-height:1.5; }
+.bk2-client-identity-dot { width:10px; height:10px; flex:0 0 10px; border-radius:50%; background:#9aa3b1; box-shadow:0 0 0 4px rgba(154,163,177,.14); }
+.bk2-client-identity-check.is-loading .bk2-client-identity-dot { background:#8b001f; box-shadow:0 0 0 4px rgba(139,0,31,.1); animation:bk2-client-check-pulse 1s ease-in-out infinite; }
+.bk2-client-identity-check.is-clear { border-color:#bfe4cf; background:#f4fcf7; }
+.bk2-client-identity-check.is-clear .bk2-client-identity-dot { background:#178150; box-shadow:0 0 0 4px rgba(23,129,80,.1); }
+.bk2-client-identity-check.is-error { border-color:#efbcc7; background:#fff6f8; }
+.bk2-client-identity-check.is-error strong { color:#9a1736; }
+@keyframes bk2-client-check-pulse { 50% { transform:scale(.72); opacity:.55; } }
+.bk2-existing-client-match {
+  display:grid;
+  grid-template-columns:50px minmax(0,1fr);
+  gap:14px;
+  align-items:start;
+  margin-top:16px;
+  padding:16px;
+  border:1px solid #b9dfca;
+  border-radius:15px;
+  background:linear-gradient(180deg,#f7fdf9 0%,#f1faf5 100%);
+  box-shadow:0 8px 22px rgba(22,117,72,.06);
+  direction:rtl;
+  text-align:right;
+}
+.bk2-existing-client-icon {
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  border-radius:14px;
+  background:#dff4e8;
+  color:#116b43;
+  font-size:1.05rem;
+}
+.bk2-existing-client-content {
+  min-width:0;
+  display:grid;
+  gap:10px;
+}
+.bk2-existing-client-heading {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.bk2-existing-client-heading > div {
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+.bk2-existing-client-kicker {
+  color:#178150;
+  font-size:.72rem;
+  font-weight:900;
+}
+.bk2-existing-client-heading strong {
+  color:#182331;
+  font-size:1rem;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+.bk2-existing-client-status {
+  flex:0 0 auto;
+  padding:5px 9px;
+  border:1px solid #cfe8d9;
+  border-radius:999px;
+  background:#fff;
+  color:#17754a;
+  font-size:.7rem;
+  font-weight:900;
+  white-space:nowrap;
+}
+.bk2-existing-client-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.bk2-existing-client-meta > span {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+  padding:5px 10px;
+  border:1px solid #dbe9e1;
+  border-radius:9px;
+  background:rgba(255,255,255,.82);
+  color:#263446;
+  font-size:.78rem;
+  font-weight:850;
+}
+.bk2-existing-client-meta small {
+  color:#718096;
+  font-size:.68rem;
+  font-weight:800;
+}
+.bk2-existing-client-meta bdi {
+  font-variant-numeric:tabular-nums;
+  unicode-bidi:isolate;
+}
+.bk2-existing-client-content > p {
+  margin:0;
+  color:#526273;
+  font-size:.79rem;
+  line-height:1.65;
+}
+.bk2-existing-client-name-warning {
+  padding:9px 11px;
+  border:1px solid #ead7aa;
+  border-radius:10px;
+  background:#fffaf0;
+  color:#7a5716;
+  font-size:.75rem;
+  font-weight:800;
+  line-height:1.6;
+}
+.bk2-new-client-grid input:disabled { background:#f3f5f7; color:#8a93a2; cursor:not-allowed; }
 .bk2-time-picker button.is-conflicting, .bk2-time-picker button:disabled { opacity:.38; text-decoration:line-through; cursor:not-allowed; background:#f1f2f5; color:#7d8490; }
+@media (max-width: 620px) {
+  .bk2-existing-client-match { grid-template-columns:40px minmax(0,1fr); padding:13px; gap:11px; }
+  .bk2-existing-client-icon { width:38px; height:38px; border-radius:11px; }
+  .bk2-existing-client-heading { display:grid; }
+  .bk2-existing-client-status { justify-self:start; }
+  .bk2-existing-client-meta { display:grid; grid-template-columns:1fr; }
+  .bk2-existing-client-meta > span { width:100%; box-sizing:border-box; justify-content:space-between; }
+}
 @media (max-width: 700px) { .bk2-new-client-grid { grid-template-columns:1fr; } .bk2-new-client-grid label.is-wide { grid-column:auto; } .bk2-new-client-actions { flex-direction:column; } }
 
 .bk2-busy-intervals{display:grid;gap:6px;margin-bottom:4px}.bk2-busy-intervals p{margin:0;padding:9px 11px;border:1px solid #f0c5cf;background:#fff6f8;border-radius:10px;color:#7f1730;font-size:13px;line-height:1.5}.bk2-busy-intervals p strong{color:#640019}.bk2-busy-intervals p span{display:block;color:#8b6670;font-size:12px;margin-top:2px}

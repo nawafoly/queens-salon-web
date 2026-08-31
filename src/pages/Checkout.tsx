@@ -354,6 +354,16 @@ export default function Checkout() {
 
     setIsSubmitting(true);
     try {
+      // CHECKOUT_DEFINITE_OFFLINE_GATE_V1
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        openModal({
+          title: "لا يوجد اتصال بالإنترنت",
+          message: "أعيدي الاتصال بالإنترنت ثم حاولي تأكيد الحجز. لم يتم إنشاء الحجز.",
+          variant: "danger",
+        });
+        return;
+      }
+
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
       const bookingStatus: BookingStatus = "pending";
 
@@ -489,15 +499,35 @@ export default function Checkout() {
         return;
       }
 
-      const code = String(e?.code || "");
-      const msg = String(e?.message || "");
+      const code = String(e?.code || "").toLowerCase();
+      const msg = String(e?.message || "").trim();
+
+      // CHECKOUT_CORE_CONNECTIVITY_UX_V1
+      if (
+        code === "core_api:offline" ||
+        code === "core_api:network_unavailable" ||
+        code === "core_api:timeout"
+      ) {
+        openModal({
+          title: "تعذر الاتصال أثناء تأكيد الحجز",
+          message: "تعذر الوصول إلى الخدمة الأساسية. لم يتم إنشاء الحجز. أعيدي الاتصال بالإنترنت ثم حاولي مرة أخرى.",
+          variant: "danger",
+        });
+        return;
+      }
+
+      if (code === "core_api:write_outcome_unknown") {
+        openModal({
+          title: "نتيجة الحجز غير مؤكدة",
+          message: "انقطع الاتصال أثناء حفظ الحجز. لا تعيدي تأكيد الحجز الآن. أعيدي الاتصال أولًا ثم تحققي من حجوزاتك قبل أي محاولة جديدة.",
+          variant: "danger",
+        });
+        return;
+      }
 
       openModal({
         title: "تعذر حفظ الحجز",
-        message:
-          `خطأ الحجز:\n` +
-          `code: ${code || "—"}\n` +
-          `message: ${msg || "—"}`,
+        message: msg || "تعذر إكمال الحجز من الخدمة الأساسية. حاولي مرة أخرى بعد قليل.",
         variant: "danger",
       });
     } finally {
