@@ -71,11 +71,15 @@ function isTransportFailure(error: unknown) {
   );
 }
 
-function emitUnknownWriteOutcome(path: string, method: string) {
+function emitUnknownWriteOutcome(
+  path: string,
+  method: string,
+  operationId: string
+) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent(CORE_WRITE_OUTCOME_UNKNOWN_EVENT, {
-      detail: { path, method },
+      detail: { path, method, operationId },
     })
   );
 }
@@ -192,7 +196,7 @@ async function requestOnce<T>(
 
     if (error instanceof DOMException && error.name === "AbortError") {
       if (mutating) {
-        emitUnknownWriteOutcome(path, method);
+        emitUnknownWriteOutcome(path, method, operationId);
         throw new CoreApiError(
           0,
           "core_api:write_outcome_unknown",
@@ -209,7 +213,7 @@ async function requestOnce<T>(
 
     if (isTransportFailure(error)) {
       if (mutating) {
-        emitUnknownWriteOutcome(path, method);
+        emitUnknownWriteOutcome(path, method, operationId);
         throw new CoreApiError(
           0,
           "core_api:write_outcome_unknown",

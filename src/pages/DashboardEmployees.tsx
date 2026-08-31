@@ -6109,7 +6109,73 @@ const canonicalSchedules =
     let cancelled = false;
     let inFlight = false;
 
-    const reconcileCanonicalEmployeeState = async () => {
+    // EMPLOYEE_NETWORK_RECONCILIATION_CORRELATION_V1
+    type ReconciliationWriteDetail = {
+      path: string;
+      method: string;
+      operationId: string;
+    };
+
+    const readReconciliationWriteDetail = (
+      event: Event
+    ): ReconciliationWriteDetail | null => {
+      if (
+        !(event instanceof CustomEvent) ||
+        !event.detail ||
+        typeof event.detail !== "object"
+      ) {
+        return null;
+      }
+
+      const detail =
+        event.detail as Partial<ReconciliationWriteDetail>;
+
+      const path = cleanText(detail.path);
+      const method =
+        cleanText(detail.method).toUpperCase();
+      const operationId =
+        cleanText(detail.operationId);
+
+      if (
+        !path ||
+        !method ||
+        !operationId
+      ) {
+        return null;
+      }
+
+      return {
+        path,
+        method,
+        operationId,
+      };
+    };
+
+    const isEmployeeReconciliationPath = (
+      path: string
+    ) =>
+      path === "/api/core/hr/employees" ||
+      path.startsWith(
+        "/api/core/hr/employees/"
+      ) ||
+      path ===
+        "/api/core/hr/schedule-exceptions" ||
+      path.startsWith(
+        "/api/core/hr/schedule-exceptions/"
+      );
+
+    const reconcileCanonicalEmployeeState = async (
+      writeDetail:
+        ReconciliationWriteDetail | null = null
+    ) => {
+      if (
+        writeDetail &&
+        !isEmployeeReconciliationPath(
+          writeDetail.path
+        )
+      ) {
+        return;
+      }
       if (
         inFlight ||
         (typeof navigator !== "undefined" && navigator.onLine === false)
@@ -6170,7 +6236,17 @@ const canonicalSchedules =
         if (!cancelled) {
           CoreHrService.invalidateResolvedShiftRangeCache();
           setCoreResolvedTodayRefreshVersion((version) => version + 1);
-          window.dispatchEvent(new Event("queens:core-reconciled"));
+
+          if (writeDetail) {
+            window.dispatchEvent(
+              new CustomEvent(
+                "queens:core-reconciled",
+                {
+                  detail: writeDetail,
+                }
+              )
+            );
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -6184,8 +6260,14 @@ const canonicalSchedules =
       }
     };
 
-    const handleReconnect = () => {
-      void reconcileCanonicalEmployeeState();
+    const handleReconnect = (
+      event: Event
+    ) => {
+      void reconcileCanonicalEmployeeState(
+        readReconciliationWriteDetail(
+          event
+        )
+      );
     };
 
     window.addEventListener(

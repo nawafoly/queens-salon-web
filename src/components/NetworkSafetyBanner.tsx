@@ -6,42 +6,133 @@ const RECONCILED_EVENT = "queens:core-reconciled";
 
 const RECONCILIATION_FALLBACK_MS = 6000;
 
+type CoreWriteOutcomeDetail = {
+  path: string;
+  method: string;
+  operationId: string;
+};
+
+function readWriteOutcomeDetail(
+  event: Event
+): CoreWriteOutcomeDetail | null {
+  if (
+    !(event instanceof CustomEvent) ||
+    !event.detail ||
+    typeof event.detail !== "object"
+  ) {
+    return null;
+  }
+
+  const detail =
+    event.detail as Partial<CoreWriteOutcomeDetail>;
+
+  const path = String(detail.path || "").trim();
+  const method =
+    String(detail.method || "").trim().toUpperCase();
+  const operationId =
+    String(detail.operationId || "").trim();
+
+  if (!path || !method || !operationId) {
+    return null;
+  }
+
+  return {
+    path,
+    method,
+    operationId,
+  };
+}
+
+function sameWriteOutcome(
+  pending: CoreWriteOutcomeDetail,
+  reconciled: CoreWriteOutcomeDetail
+) {
+  return (
+    pending.path === reconciled.path &&
+    pending.method === reconciled.method &&
+    pending.operationId === reconciled.operationId
+  );
+}
+
 export default function NetworkSafetyBanner() {
   const [online, setOnline] = useState(
-    () => typeof navigator === "undefined" || navigator.onLine !== false
+    () =>
+      typeof navigator === "undefined" ||
+      navigator.onLine !== false
   );
-  const [unknownWriteOutcome, setUnknownWriteOutcome] = useState(false);
 
-  const unknownWriteOutcomeRef = useRef(false);
-  const fallbackReloadTimerRef = useRef<number | null>(null);
+  const [
+    unknownWriteOutcome,
+    setUnknownWriteOutcome,
+  ] = useState(false);
+
+  const unknownWriteOutcomeRef =
+    useRef(false);
+
+  const pendingWriteRef =
+    useRef<CoreWriteOutcomeDetail | null>(null);
+
+  const fallbackReloadTimerRef =
+    useRef<number | null>(null);
 
   useEffect(() => {
     // CORE_RECONCILIATION_FAILSAFE_V1
-    // Give the active domain screen a chance to reconcile from Core.
-    // If no screen confirms reconciliation, reload the active route
-    // so uncertain client state cannot remain authoritative.
-    const clearFallbackReload = () => {
-      if (fallbackReloadTimerRef.current === null) return;
+    // CORE_RECONCILIATION_CORRELATION_V1
+    //
+    // Only the domain that reconciles the exact ambiguous
+    // logical operation may clear uncertainty.
+    // Unrelated acknowledgements are ignored and the
+    // canonical reload fallback remains armed.
 
-      window.clearTimeout(fallbackReloadTimerRef.current);
+    const clearFallbackReload = () => {
+      if (
+        fallbackReloadTimerRef.current === null
+      ) {
+        return;
+      }
+
+      window.clearTimeout(
+        fallbackReloadTimerRef.current
+      );
+
       fallbackReloadTimerRef.current = null;
     };
 
     const scheduleFallbackReload = () => {
       clearFallbackReload();
 
-      fallbackReloadTimerRef.current = window.setTimeout(() => {
-        fallbackReloadTimerRef.current = null;
+      fallbackReloadTimerRef.current =
+        window.setTimeout(() => {
+          fallbackReloadTimerRef.current = null;
 
-        if (!unknownWriteOutcomeRef.current) return;
-        if (navigator.onLine === false) return;
+          if (!unknownWriteOutcomeRef.current) {
+            return;
+          }
 
-        window.location.reload();
-      }, RECONCILIATION_FALLBACK_MS);
+          if (navigator.onLine === false) {
+            return;
+          }
+
+          window.location.reload();
+        }, RECONCILIATION_FALLBACK_MS);
     };
 
-    const requestCanonicalReconciliation = () => {
-      window.dispatchEvent(new Event(RECONNECTED_EVENT));
+    const requestCanonicalReconciliation = (
+      detail: CoreWriteOutcomeDetail | null
+    ) => {
+      if (detail) {
+        window.dispatchEvent(
+          new CustomEvent(
+            RECONNECTED_EVENT,
+            { detail }
+          )
+        );
+      } else {
+        window.dispatchEvent(
+          new Event(RECONNECTED_EVENT)
+        );
+      }
+
       scheduleFallbackReload();
     };
 
@@ -53,46 +144,125 @@ export default function NetworkSafetyBanner() {
     const onOnline = () => {
       setOnline(true);
 
-      // Preserve the existing reconnect contract for domain listeners.
-      window.dispatchEvent(new Event(RECONNECTED_EVENT));
+      const pending =
+        pendingWriteRef.current;
 
-      if (unknownWriteOutcomeRef.current) {
+      if (pending) {
+        requestCanonicalReconciliation(
+          pending
+        );
+        return;
+      }
+
+      window.dispatchEvent(
+        new Event(RECONNECTED_EVENT)
+      );
+
+      if (
+        unknownWriteOutcomeRef.current
+      ) {
         scheduleFallbackReload();
       }
     };
 
-    const onUnknownWrite = () => {
+    const onUnknownWrite = (
+      event: Event
+    ) => {
+      const detail =
+        readWriteOutcomeDetail(event);
+
+      pendingWriteRef.current = detail;
       unknownWriteOutcomeRef.current = true;
+
       setUnknownWriteOutcome(true);
 
-      // A transport failure can happen while navigator still reports online.
+      // Transport failure may happen while the browser
+      // still reports that connectivity exists.
       if (navigator.onLine !== false) {
-        requestCanonicalReconciliation();
+        requestCanonicalReconciliation(
+          detail
+        );
       }
     };
 
-    const onReconciled = () => {
+    const onReconciled = (
+      event: Event
+    ) => {
+      const pending =
+        pendingWriteRef.current;
+
+      const detail =
+        readWriteOutcomeDetail(event);
+
+      if (
+        !pending ||
+        !detail ||
+        !sameWriteOutcome(
+          pending,
+          detail
+        )
+      ) {
+        return;
+      }
+
+      pendingWriteRef.current = null;
       unknownWriteOutcomeRef.current = false;
+
       setUnknownWriteOutcome(false);
       clearFallbackReload();
     };
 
-    window.addEventListener("offline", onOffline);
-    window.addEventListener("online", onOnline);
-    window.addEventListener(UNKNOWN_WRITE_EVENT, onUnknownWrite);
-    window.addEventListener(RECONCILED_EVENT, onReconciled);
+    window.addEventListener(
+      "offline",
+      onOffline
+    );
+
+    window.addEventListener(
+      "online",
+      onOnline
+    );
+
+    window.addEventListener(
+      UNKNOWN_WRITE_EVENT,
+      onUnknownWrite
+    );
+
+    window.addEventListener(
+      RECONCILED_EVENT,
+      onReconciled
+    );
 
     return () => {
       clearFallbackReload();
 
-      window.removeEventListener("offline", onOffline);
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener(UNKNOWN_WRITE_EVENT, onUnknownWrite);
-      window.removeEventListener(RECONCILED_EVENT, onReconciled);
+      window.removeEventListener(
+        "offline",
+        onOffline
+      );
+
+      window.removeEventListener(
+        "online",
+        onOnline
+      );
+
+      window.removeEventListener(
+        UNKNOWN_WRITE_EVENT,
+        onUnknownWrite
+      );
+
+      window.removeEventListener(
+        RECONCILED_EVENT,
+        onReconciled
+      );
     };
   }, []);
 
-  if (online && !unknownWriteOutcome) return null;
+  if (
+    online &&
+    !unknownWriteOutcome
+  ) {
+    return null;
+  }
 
   const message = online
     ? "نتيجة آخر حفظ غير مؤكدة. جارٍ إعادة مزامنة البيانات من Core قبل اعتماد الحالة الحالية."
@@ -102,7 +272,11 @@ export default function NetworkSafetyBanner() {
     <div
       role="status"
       aria-live="assertive"
-      data-network-safety-state={online ? "write-outcome-unknown" : "offline"}
+      data-network-safety-state={
+        online
+          ? "write-outcome-unknown"
+          : "offline"
+      }
       style={{
         position: "fixed",
         insetInline: 0,
@@ -111,9 +285,12 @@ export default function NetworkSafetyBanner() {
         padding: "10px 16px",
         textAlign: "center",
         fontWeight: 700,
-        background: online ? "#5a4200" : "#6b1d1d",
+        background: online
+          ? "#5a4200"
+          : "#6b1d1d",
         color: "#fff",
-        boxShadow: "0 2px 12px rgba(0,0,0,.2)",
+        boxShadow:
+          "0 2px 12px rgba(0,0,0,.2)",
       }}
     >
       {message}
