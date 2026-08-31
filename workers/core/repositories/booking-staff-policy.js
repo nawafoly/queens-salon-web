@@ -10,6 +10,9 @@ import {
   resolveEmployeeShift,
   resolveEmployeeShiftsBatch,
 } from './shift-control.js';
+import {
+  activeWeeklyRestWorkAssignment,
+} from './leave-rest-workflows.js';
 
 const INACTIVE_EMPLOYMENT_STATUSES = new Set([
   'inactive',
@@ -43,24 +46,65 @@ function staffIsActiveForBooking(staff) {
   return Number(staff?.active) === 1 && statuses.every((status) => !INACTIVE_EMPLOYMENT_STATUSES.has(status));
 }
 
+function activeRecallIdsForDateFake(db, salonId, date) {
+  return new Set(
+    safeFakeRows(db, 'employee_leave_recalls')
+      .filter((row) =>
+        row.salon_id === salonId &&
+        cleanText(row.recall_date) === date &&
+        cleanText(row.status).toLowerCase() === 'active'
+      )
+      .map((row) => cleanText(row.leave_id))
+      .filter(Boolean)
+  );
+}
+
+function weeklyRestAssignmentShift(assignment) {
+  if (!assignment) return null;
+  return {
+    source: 'weekly_rest_work_assignment',
+    source_id: cleanText(assignment.id),
+    active: 1,
+    exception_type: 'work',
+    start_time: cleanText(assignment.start_time),
+    end_time: cleanText(assignment.end_time),
+    template_start_time: cleanText(assignment.start_time),
+    template_end_time: cleanText(assignment.end_time),
+    attendance_lock_enabled: Number(assignment.attendance_lock_enabled || 0),
+    attendance_lock_after_minutes: Number(assignment.attendance_lock_after_minutes || 0),
+  };
+}
+
 async function approvedLeavesForDate(db, salonId, employeeId, date) {
   if (db?.__fakeD1) {
+    const recalledLeaveIds = activeRecallIdsForDateFake(db, salonId, date);
     return safeFakeRows(db, 'employee_leaves').filter((row) =>
       row.salon_id === salonId &&
       cleanText(row.employee_id) === employeeId &&
       cleanText(row.status).toLowerCase() === 'approved' &&
       cleanText(row.start_date) <= date &&
-      cleanText(row.end_date) >= date
+      cleanText(row.end_date) >= date &&
+      !recalledLeaveIds.has(cleanText(row.id))
     );
   }
 
   return dbAll(
     db,
-    `SELECT * FROM employee_leaves
-      WHERE salon_id = ? AND employee_id = ? AND LOWER(status) = 'approved'
-        AND start_date <= ? AND end_date >= ?
-      ORDER BY start_date DESC`,
-    [salonId, employeeId, date, date]
+    `SELECT leave.* FROM employee_leaves leave
+      WHERE leave.salon_id = ?
+        AND leave.employee_id = ?
+        AND LOWER(leave.status) = 'approved'
+        AND leave.start_date <= ?
+        AND leave.end_date >= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM employee_leave_recalls recall
+           WHERE recall.salon_id = leave.salon_id
+             AND recall.leave_id = leave.id
+             AND recall.recall_date = ?
+             AND recall.status = 'active'
+        )
+      ORDER BY leave.start_date DESC`,
+    [salonId, employeeId, date, date, date]
   );
 }
 
@@ -425,15 +469,30 @@ export async function resolveStaffBookingDay(
     );
   }
 
+  const [resolvedShift, weeklyRestAssignment] =
+    await Promise.all([
+      resolveEmployeeShift(
+        db,
+        salonId,
+        employeeId,
+        date
+      ).catch(
+        () => null
+      ),
+      activeWeeklyRestWorkAssignment(
+        db,
+        salonId,
+        employeeId,
+        date
+      ).catch(
+        () => null
+      ),
+    ]);
+
   const shift =
-    await resolveEmployeeShift(
-      db,
-      salonId,
-      employeeId,
-      date
-    ).catch(
-      () => null
-    );
+    weeklyRestAssignmentShift(
+      weeklyRestAssignment
+    ) || resolvedShift;
 
   return resolveStaffBookingDayFromFacts(
     staff,
@@ -482,11 +541,19 @@ export async function resolveStaffBookingDaysBatch(
 
   let leaves;
   let absences;
+  let weeklyRestAssignments;
 
   if (db?.__fakeD1) {
     const wanted =
       new Set(
         employeeIds
+      );
+
+    const recalledLeaveIds =
+      activeRecallIdsForDateFake(
+        db,
+        salonId,
+        date
       );
 
     leaves =
@@ -511,7 +578,24 @@ export async function resolveStaffBookingDaysBatch(
           ) <= date &&
           cleanText(
             row.end_date
-          ) >= date
+          ) >= date &&
+          !recalledLeaveIds.has(
+            cleanText(row.id)
+          )
+      );
+
+    weeklyRestAssignments =
+      safeFakeRows(
+        db,
+        "employee_weekly_rest_work_assignments"
+      ).filter(
+        (row) =>
+          row.salon_id === salonId &&
+          wanted.has(
+            cleanText(row.employee_id)
+          ) &&
+          cleanText(row.rest_date) === date &&
+          cleanText(row.status).toLowerCase() === "assigned"
       );
 
     absences =
@@ -540,22 +624,31 @@ export async function resolveStaffBookingDaysBatch(
     [
       leaves,
       absences,
+      weeklyRestAssignments,
     ] =
       await Promise.all([
         dbAll(
           db,
-          `SELECT * FROM employee_leaves
-            WHERE salon_id = ?
-              AND employee_id IN (${marks})
-              AND LOWER(status) = 'approved'
-              AND start_date <= ?
-              AND end_date >= ?
+          `SELECT leave.* FROM employee_leaves leave
+            WHERE leave.salon_id = ?
+              AND leave.employee_id IN (${marks})
+              AND LOWER(leave.status) = 'approved'
+              AND leave.start_date <= ?
+              AND leave.end_date >= ?
+              AND NOT EXISTS (
+                SELECT 1 FROM employee_leave_recalls recall
+                 WHERE recall.salon_id = leave.salon_id
+                   AND recall.leave_id = leave.id
+                   AND recall.recall_date = ?
+                   AND recall.status = 'active'
+              )
             ORDER BY
-              employee_id,
-              start_date DESC`,
+              leave.employee_id,
+              leave.start_date DESC`,
           [
             salonId,
             ...employeeIds,
+            date,
             date,
             date,
           ]
@@ -570,6 +663,21 @@ export async function resolveStaffBookingDaysBatch(
             ORDER BY
               employee_id,
               created_at DESC`,
+          [
+            salonId,
+            ...employeeIds,
+            date,
+          ]
+        ),
+
+        dbAll(
+          db,
+          `SELECT * FROM employee_weekly_rest_work_assignments
+            WHERE salon_id = ?
+              AND employee_id IN (${marks})
+              AND rest_date = ?
+              AND status = 'assigned'
+            ORDER BY employee_id, created_at DESC`,
           [
             salonId,
             ...employeeIds,
@@ -611,6 +719,33 @@ export async function resolveStaffBookingDaysBatch(
       employeeId,
       current
     );
+  }
+
+  const weeklyRestAssignmentByEmployee =
+    new Map();
+
+  for (
+    const row of
+      Array.isArray(weeklyRestAssignments)
+        ? weeklyRestAssignments
+        : []
+  ) {
+    const employeeId =
+      cleanText(
+        row.employee_id
+      );
+
+    if (
+      employeeId &&
+      !weeklyRestAssignmentByEmployee.has(
+        employeeId
+      )
+    ) {
+      weeklyRestAssignmentByEmployee.set(
+        employeeId,
+        row
+      );
+    }
   }
 
   const absenceByEmployee =
@@ -678,9 +813,14 @@ export async function resolveStaffBookingDaysBatch(
               employeeId
             ) ||
               null,
-            shiftByEmployee.get(
-              employeeId
+            weeklyRestAssignmentShift(
+              weeklyRestAssignmentByEmployee.get(
+                employeeId
+              )
             ) ||
+              shiftByEmployee.get(
+                employeeId
+              ) ||
               null
           ),
       };

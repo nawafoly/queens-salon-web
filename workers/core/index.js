@@ -110,6 +110,16 @@ import {
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
 import {
+  cancelAnnualLeaveRecall,
+  cancelWeeklyRestWorkAssignment,
+  createAnnualLeaveRecall,
+  createWeeklyRestWorkAssignment,
+  getLeaveRestOverview,
+  listAnnualLeaveRecalls,
+  listWeeklyRestWorkAssignments,
+  reconcileAssignedWeeklyRestWork,
+} from './repositories/leave-rest-workflows.js';
+import {
   adjustLeaveBalance,
   getLeaveBalanceState,
   reverseLeaveBalanceAdjustment,
@@ -174,7 +184,6 @@ import {
   createPublicHolidayWorkAssignment,
   ensureFixedSaudiPublicHolidays,
   reconcilePublicHolidayWorkDate,
-  reconcileWeeklyRestDate,
   verifySaudiEidHolidayPeriod,
 } from './repositories/holiday-calendar-compliance.js';
 import {
@@ -539,6 +548,14 @@ function match(url, method) {
   if (permissionAction && method === "POST") {
     return { name: `permission:${permissionAction[2]}`, id: permissionAction[1] };
   }
+  const leaveRecallCancel = /^\/api\/core\/hr\/leaves\/([^/]+)\/recalls\/([^/]+)\/cancel$/.exec(path);
+  if (leaveRecallCancel && method === "POST") {
+    return { name: "leave:recall-cancel", id: leaveRecallCancel[1], recallId: leaveRecallCancel[2] };
+  }
+  const leaveRecalls = /^\/api\/core\/hr\/leaves\/([^/]+)\/recalls$/.exec(path);
+  if (leaveRecalls && ["GET", "POST"].includes(method)) {
+    return { name: "leave:recalls", id: leaveRecalls[1] };
+  }
   const leaveDecision = /^\/api\/core\/hr\/leaves\/([^/]+)\/(approve|reject)$/.exec(path);
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
   const leaveBalanceEntry = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/entries\/([^/]+)$/.exec(path);
@@ -661,6 +678,13 @@ function match(url, method) {
   if (path === "/api/core/hr/public-holidays/eid-periods" && method === "POST") return { name: "public-holidays:eid-period" };
   if (path === "/api/core/hr/public-holiday-work-assignments" && method === "POST") return { name: "public-holiday-work:assign" };
   if (path === "/api/core/hr/public-holiday-work/reconcile" && method === "POST") return { name: "public-holiday-work:reconcile" };
+  const weeklyRestWorkCancel = /^\/api\/core\/hr\/weekly-rest\/work-assignments\/([^/]+)\/cancel$/.exec(path);
+  if (weeklyRestWorkCancel && method === "POST") return { name: "weekly-rest:work-cancel", id: weeklyRestWorkCancel[1] };
+  if (path === "/api/core/hr/weekly-rest/work-assignments" && ["GET", "POST"].includes(method)) {
+    return { name: "weekly-rest:work-assignments" };
+  }
+  const leaveRestOverview = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-rest-overview$/.exec(path);
+  if (leaveRestOverview && method === "GET") return { name: "leave-rest:overview", id: leaveRestOverview[1] };
   if (path === "/api/core/hr/weekly-rest/reconcile" && method === "POST") return { name: "weekly-rest:reconcile" };
   const payrollRecurringDeduction = /^\/api\/core\/hr\/payroll-recurring-deductions\/([^/]+)$/.exec(path);
   if (payrollRecurringDeduction) {
@@ -1860,6 +1884,17 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
 
       break;
+    case "leave:recalls":
+      requirePermission(ctx, "attendance.leaves.manage");
+      if (method === "GET") {
+        return listAnnualLeaveRecalls(db, ctx.salonId, { leaveId: route.id });
+      }
+      return createAnnualLeaveRecall(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "leave:recall-cancel":
+      requirePermission(ctx, "attendance.leaves.manage");
+      return cancelAnnualLeaveRecall(db, ctx.salonId, route.id, route.recallId, body, actorInfo);
+
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
       return decideLeave(db, ctx.salonId, route.id, { ...body, status: "approved" }, actorInfo);
@@ -2053,10 +2088,33 @@ async function dispatch(ctx, route, method, body, query, env) {
         env.ATTENDANCE_DB || null
       );
 
+    case "weekly-rest:work-assignments":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
+      if (method === "GET") {
+        return listWeeklyRestWorkAssignments(db, ctx.salonId, query);
+      }
+      return createWeeklyRestWorkAssignment(db, ctx.salonId, body, actorInfo);
+
+    case "weekly-rest:work-cancel":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
+      return cancelWeeklyRestWorkAssignment(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "leave-rest:overview":
+      requireAnyPermission(ctx, [
+        "attendance.view",
+        "attendance.leaves.manage",
+        "employees.schedule.manage",
+        "payroll.view",
+        "payroll.manage",
+      ]);
+      return getLeaveRestOverview(db, ctx.salonId, route.id);
+
     case "weekly-rest:reconcile":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requireAnyPermission(ctx, ["employees.schedule.manage", "payroll.manage"]);
-      return reconcileWeeklyRestDate(
+      return reconcileAssignedWeeklyRestWork(
         db,
         ctx.salonId,
         body.employeeId || body.employee_id,
