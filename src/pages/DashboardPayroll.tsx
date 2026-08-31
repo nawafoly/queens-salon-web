@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1433,9 +1434,8 @@ export default function DashboardPayroll() {
           </label>
           <label className="dsv2-field">
             <span className="dsv2-field__label">السنة</span>
-            <input dir="ltr" lang="en"
+            <DashboardNumberInputV2
               className="dsv2-input"
-              type="number"
               min="2020"
               max="2100"
               value={year}
@@ -2349,13 +2349,10 @@ export default function DashboardPayroll() {
               <label>
                 <span>المبلغ المعتمد فعليًا</span>
                 <div className="payroll-late-approval-amount-wrap">
-                  <input
+                  <DashboardNumberInputV2
                     className="dsv2-input payroll-late-approval-amount"
-                    type="number"
                     min="0"
                     step="0.01"
-                    dir="ltr"
-                    lang="en"
                     inputMode="decimal"
                     value={lateApproval.approvedAmountRiyals}
                     onChange={(event) =>
@@ -2641,7 +2638,7 @@ export default function DashboardPayroll() {
             </label>
             <label>
               <span>المبلغ</span>
-              <input dir="ltr" lang="en" type="number" min="0" step="0.01" value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} />
+              <DashboardNumberInputV2 min="0" step="0.01" value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} />
             </label>
             <label>
               <span>السبب</span>

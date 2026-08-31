@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   DashboardDatePickerV2,
@@ -1039,7 +1040,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                     <input className="dsv2-input" value={newSection.name} onChange={(event) => setNewSection((previous) => ({ ...previous, name: event.target.value }))} />
                   </Field>
                   <Field label="الترتيب">
-                    <input dir="ltr" lang="en" className="dsv2-input" type="number" value={newSection.order} onChange={(event) => setNewSection((previous) => ({ ...previous, order: Number(event.target.value || 0) }))} />
+                    <DashboardNumberInputV2 className="dsv2-input" value={newSection.order} onChange={(event) => setNewSection((previous) => ({ ...previous, order: Number(event.target.value || 0) }))} />
                   </Field>
                 </div>
                 <ToggleCard checked={newSection.active} label="القسم نشط" hint="يظهر ضمن الكتالوج عند التفعيل." onChange={(active) => setNewSection((previous) => ({ ...previous, active }))} />
@@ -1077,13 +1078,13 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                     <input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} />
                   </Field>
                   <Field label="المدة (دقيقة)">
-                    <input dir="ltr" lang="en" className="dsv2-input" type="number" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} />
+                    <DashboardNumberInputV2 className="dsv2-input" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} />
                   </Field>
                   <Field label="السعر">
-                    <input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} />
+                    <DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} />
                   </Field>
                   <Field label="سعر الموسم">
-                    <input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} />
+                    <DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} />
                   </Field>
                 </div>
                 <ToggleCard checked={newService.active} label="الخدمة نشطة" hint="تكون متاحة للعرض والحجز." onChange={(active) => setNewService((previous) => ({ ...previous, active }))} />
@@ -1155,10 +1156,10 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
           <div className="settings-catalog-v2-form-grid settings-catalog-v2-form-grid--packages">
             <Field label="اسم الباقة" wide><input className="dsv2-input" value={packageName} onChange={(event) => setPackageName(event.target.value)} placeholder="مثال: استشوار 10 جلسات" /></Field>
             <Field label="الوصف" wide><textarea className="dsv2-input settings-catalog-v2-textarea" rows={3} value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} /></Field>
-            <Field label="عدد الجلسات"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={1} value={packageSessionsCount} onChange={(event) => setPackageSessionsCount(Number(event.target.value))} /></Field>
-            <Field label="السعر"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={packagePrice} onChange={(event) => setPackagePrice(Number(event.target.value))} /></Field>
-            <Field label="مدة الصلاحية بالأيام"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={1} value={packageValidityDays} onChange={(event) => setPackageValidityDays(event.target.value)} placeholder="بدون انتهاء" /></Field>
-            <Field label="ترتيب العرض"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={packageSortOrder} onChange={(event) => setPackageSortOrder(Number(event.target.value))} /></Field>
+            <Field label="عدد الجلسات"><DashboardNumberInputV2 className="dsv2-input" min={1} value={packageSessionsCount} onChange={(event) => setPackageSessionsCount(Number(event.target.value))} /></Field>
+            <Field label="السعر"><DashboardNumberInputV2 className="dsv2-input" min={0} value={packagePrice} onChange={(event) => setPackagePrice(Number(event.target.value))} /></Field>
+            <Field label="مدة الصلاحية بالأيام"><DashboardNumberInputV2 className="dsv2-input" min={1} value={packageValidityDays} onChange={(event) => setPackageValidityDays(event.target.value)} placeholder="بدون انتهاء" /></Field>
+            <Field label="ترتيب العرض"><DashboardNumberInputV2 className="dsv2-input" min={0} value={packageSortOrder} onChange={(event) => setPackageSortOrder(Number(event.target.value))} /></Field>
             <Field label="رابط صورة الباقة" wide><input className="dsv2-input" value={packageImageUrl} onChange={(event) => setPackageImageUrl(event.target.value)} placeholder="https://..." /></Field>
             <Field label="بداية الإتاحة"><DashboardDatePickerV2 value={packageStartsAt} onChange={setPackageStartsAt} /></Field>
             <Field label="نهاية الإتاحة"><DashboardDatePickerV2 value={packageEndsAt} onChange={setPackageEndsAt} /></Field>
@@ -1321,7 +1322,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                 {activeTab === "overview" ? (
                   <div className="settings-catalog-v2-form-grid">
                     <Field label="اسم القسم"><input className="dsv2-input" value={(mode === "edit" ? sectionDraft?.name : selectedSectionLive.name) || ""} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, name: event.target.value } : previous)} /></Field>
-                    <Field label="الترتيب"><input dir="ltr" lang="en" className="dsv2-input" type="number" value={mode === "edit" ? sectionDraft?.order ?? 0 : selectedSectionLive.order} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, order: Number(event.target.value || 0) } : previous)} /></Field>
+                    <Field label="الترتيب"><DashboardNumberInputV2 className="dsv2-input" value={mode === "edit" ? sectionDraft?.order ?? 0 : selectedSectionLive.order} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, order: Number(event.target.value || 0) } : previous)} /></Field>
                     <Field label="ID"><input className="dsv2-input" value={selectedSectionLive.id} disabled /></Field>
                     <ToggleCard checked={mode === "edit" ? sectionDraft?.active !== false : selectedSectionLive.active !== false} label="القسم نشط" hint="حالة ظهور القسم داخل الكتالوج." disabled={mode !== "edit"} onChange={(active) => setSectionDraft((previous) => previous ? { ...previous, active } : previous)} />
                   </div>
@@ -1338,7 +1339,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                       <article key={category.id} className={`settings-catalog-v2-category-card ${activeCategoryId === category.id ? "is-active" : ""}`}>
                         <div className="settings-catalog-v2-category-card__fields">
                           <input className="dsv2-input" value={category.name} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, name: event.target.value } : row))} />
-                          <input dir="ltr" lang="en" className="dsv2-input settings-catalog-v2-category-order" type="number" value={category.order} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, order: Number(event.target.value || 0) } : row))} />
+                          <DashboardNumberInputV2 className="dsv2-input settings-catalog-v2-category-order" value={category.order} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, order: Number(event.target.value || 0) } : row))} />
                           <button type="button" className={`dsv2-btn dsv2-btn--sm ${category.active ? "dsv2-btn--success" : "dsv2-btn--secondary"}`} disabled={mode !== "edit"} aria-pressed={category.active} onClick={() => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, active: !row.active } : row))}>{category.active ? "نشط" : "معطل"}</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setActiveCategoryId(category.id); setOpenedServiceId(null); }}>الخدمات ({services.filter((service) => service.categoryId === category.id).length})</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => void saveCategory(category)}>حفظ</button>
@@ -1358,9 +1359,9 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                           <div className="settings-catalog-v2-composer">
                             <div className="settings-catalog-v2-form-grid">
                               <Field label="اسم الخدمة" wide><input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} /></Field>
-                              <Field label="المدة (دقيقة)"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} /></Field>
-                              <Field label="السعر"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} /></Field>
-                              <Field label="سعر الموسم"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} /></Field>
+                              <Field label="المدة (دقيقة)"><DashboardNumberInputV2 className="dsv2-input" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} /></Field>
+                              <Field label="السعر"><DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} /></Field>
+                              <Field label="سعر الموسم"><DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} /></Field>
                             </div>
                             <ToggleCard checked={newService.active} label="الخدمة نشطة" hint="تكون متاحة للعرض والحجز بعد الإنشاء." onChange={(active) => setNewService((previous) => ({ ...previous, active }))} />
                             <div className="settings-catalog-v2-panel-actions">
@@ -1408,9 +1409,9 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                                   onChange={(categoryId) => setOpenedServiceDraft((previous) => previous ? { ...previous, categoryId, sectionId: String(categoryById.get(categoryId)?.sectionId || previous.sectionId) } : previous)}
                                 />
                               </Field>
-                              <Field label="السعر"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={openedServiceDraft.price} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, price: parseNumberInput(event.target.value, previous.price) } : previous)} /></Field>
-                              <Field label="المدة"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={5} value={openedServiceDraft.durationMin} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
-                              <Field label="سعر الموسم"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={openedServiceDraft.seasonPrice ?? ""} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
+                              <Field label="السعر"><DashboardNumberInputV2 className="dsv2-input" min={0} value={openedServiceDraft.price} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, price: parseNumberInput(event.target.value, previous.price) } : previous)} /></Field>
+                              <Field label="المدة"><DashboardNumberInputV2 className="dsv2-input" min={5} value={openedServiceDraft.durationMin} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
+                              <Field label="سعر الموسم"><DashboardNumberInputV2 className="dsv2-input" min={0} value={openedServiceDraft.seasonPrice ?? ""} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
                               <ToggleCard checked={openedServiceDraft.active !== false} label="الخدمة نشطة" hint="يمكن تغيير حالة الخدمة مع بقية بياناتها." disabled={openedServiceMode !== "edit"} onChange={(active) => setOpenedServiceDraft((previous) => previous ? { ...previous, active } : previous)} />
                             </div>
                           </div>
@@ -1461,9 +1462,9 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
 
                 {activeTab === "pricing" ? (
                   <div className="settings-catalog-v2-form-grid">
-                    <Field label="السعر"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={mode === "edit" ? serviceDraft?.price ?? 0 : selectedServiceLive.price} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, price: parseNumberInput(event.target.value, previous.price) } : previous)} /></Field>
-                    <Field label="المدة (دقيقة)"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
-                    <Field label="سعر الموسم"><input dir="ltr" lang="en" className="dsv2-input" type="number" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
+                    <Field label="السعر"><DashboardNumberInputV2 className="dsv2-input" min={0} value={mode === "edit" ? serviceDraft?.price ?? 0 : selectedServiceLive.price} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, price: parseNumberInput(event.target.value, previous.price) } : previous)} /></Field>
+                    <Field label="المدة (دقيقة)"><DashboardNumberInputV2 className="dsv2-input" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
+                    <Field label="سعر الموسم"><DashboardNumberInputV2 className="dsv2-input" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
                   </div>
                 ) : null}
 

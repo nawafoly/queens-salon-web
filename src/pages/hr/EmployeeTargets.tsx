@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -195,7 +196,7 @@ export default function EmployeeTargetsPage() {
       <div className="employee-target-month-switcher">
         <label>
           <span>السنة</span>
-          <input dir="ltr" lang="en" type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
+          <DashboardNumberInputV2 value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
         </label>
         <label>
           <span>شهر الراتب</span>

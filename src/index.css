@@ -8839,7 +8839,7 @@ textarea.form-control {
 
 /* =========================
    Booking 4-Step UX Refresh
-   ظ†ظپط³ ط§ظ„ط£ظ„ظˆط§ظ†طŒ ط¨ظ†ظٹط© ط£ظˆط¶ط­ ظ„ظ„ط®ط·ظˆط§طھ 1-4
+   ظ†ظپط³ ط§ظ„ط£ظ„ظˆط§ظ†، ط¨ظ†ظٹط© ط£ظˆط¶ط­ ظ„ظ„ط®ط·ظˆط§طھ 1-4
 ========================= */
 .booking-page .booking-step-focus {
   border-radius: 22px;
@@ -20097,4 +20097,28 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   appearance: textfield;
   -moz-appearance: textfield;
+}
+
+/* GLOBAL_PLACEHOLDER_CONTRAST_POLICY_V1
+ * Canonical site-wide placeholder contrast.
+ * Placeholder text must remain legible on light surfaces and must not inherit
+ * white/faint text from surrounding legacy or page-specific styles.
+ */
+:root {
+  --ui-placeholder-color: var(--dsv2-muted, #667085);
+  --ui-placeholder-disabled-color: #98a2b3;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ui-placeholder-color) !important;
+  -webkit-text-fill-color: var(--ui-placeholder-color) !important;
+  opacity: 1 !important;
+}
+
+input:disabled::placeholder,
+textarea:disabled::placeholder {
+  color: var(--ui-placeholder-disabled-color) !important;
+  -webkit-text-fill-color: var(--ui-placeholder-disabled-color) !important;
+  opacity: 1 !important;
 }

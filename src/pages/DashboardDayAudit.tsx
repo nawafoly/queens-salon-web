@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -788,9 +789,8 @@ export default function DashboardDayAudit() {
           <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
             <span>مبلغ الكاش الموجود</span>
             <div className="day-audit-v2-amount-control">
-              <input dir="ltr" lang="en"
+              <DashboardNumberInputV2
                 id="day-audit-manual-cash"
-                type="number"
                 inputMode="decimal"
                 min={0}
                 placeholder="0.00"

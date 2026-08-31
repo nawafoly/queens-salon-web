@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import {
   DashboardDatePickerV2,
   DashboardFieldV2,
@@ -492,10 +493,9 @@ export default function EmployeeStatsSection({
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-adjust-days" label="عدد الأيام">
-              <input dir="ltr" lang="en"
+              <DashboardNumberInputV2
                 id="employee-live-v2-adjust-days"
                 className="dsv2-input"
-                type="number"
                 min="0"
                 step="1"
                 value={leave.leaveAdjustDays}

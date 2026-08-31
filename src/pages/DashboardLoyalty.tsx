@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -331,9 +332,8 @@ export default function DashboardLoyalty() {
           {settings.pointsMode === "amount" && (
             <label className="dsv2-field">
               <span className="dsv2-field__label">قيمة النقطة (كل كم ريال = نقطة)</span>
-              <input dir="ltr" lang="en"
+              <DashboardNumberInputV2
                 className="dsv2-input"
-                type="number"
                 value={settings.amountPointsStep}
                 onChange={(e) =>
                   setSettings((s) => ({
@@ -347,9 +347,8 @@ export default function DashboardLoyalty() {
   
           <label className="dsv2-field">
             <span className="dsv2-field__label">فترة تقييم الولاء (بالأيام)</span>
-            <input dir="ltr" lang="en"
+            <DashboardNumberInputV2
               className="dsv2-input"
-              type="number"
               value={settings.loyaltyWindowDays}
               onChange={(e) =>
                 setSettings((s) => ({
@@ -382,9 +381,8 @@ export default function DashboardLoyalty() {
   
           <label className="dsv2-field">
             <span className="dsv2-field__label">حد التأهل لـ VIP (Loyalty Score)</span>
-            <input dir="ltr" lang="en"
+            <DashboardNumberInputV2
               className="dsv2-input"
-              type="number"
               value={settings.vipAutoThreshold}
               onChange={(e) =>
                 setSettings((s) => ({

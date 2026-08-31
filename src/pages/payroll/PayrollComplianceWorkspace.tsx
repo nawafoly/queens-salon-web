@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
@@ -514,9 +515,8 @@ export default function PayrollComplianceWorkspace({
               {deductionClass === "judicial_debt" ? (
                 <label>
                   <span>السقف القضائي %</span>
-                  <input dir="ltr" lang="en"
+                  <DashboardNumberInputV2
                     className="dsv2-input"
-                    type="number"
                     min="1"
                     max="100"
                     step="0.01"
@@ -556,9 +556,8 @@ export default function PayrollComplianceWorkspace({
             <div className="payroll-compliance-form-grid">
               <label>
                 <span>السقف %</span>
-                <input dir="ltr" lang="en"
+                <DashboardNumberInputV2
                   className="dsv2-input"
-                  type="number"
                   min="0"
                   max="100"
                   step="0.01"

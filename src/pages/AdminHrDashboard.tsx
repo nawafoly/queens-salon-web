@@ -1,3 +1,4 @@
+import { DashboardMonthInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import "../styles/AdminHrMobileShell.css";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1109,10 +1110,9 @@ function HrOverview({
               </DashboardFieldV2>
 
               <DashboardFieldV2 id="hr-overview-payroll-month" label="الشهر">
-                <input dir="ltr" lang="en"
+                <DashboardMonthInputV2
                   id="hr-overview-payroll-month"
                   className="dsv2-input"
-                  type="month"
                   value={payrollForm.payrollMonth}
                   disabled={payrollLoading}
                   onChange={(event) => {

@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   FiActivity,
@@ -703,9 +704,8 @@ export default function PackageSessionsManager() {
             <div className="bk2-session-grant-grid bk2-session-adjust-fields">
               <label>
                 <span>عدد الجلسات *</span>
-                <input dir="ltr" lang="en"
+                <DashboardNumberInputV2
                   autoFocus
-                  type="number"
                   min={1}
                   max={1000}
                   value={adjustForm.sessionsCount}
@@ -867,8 +867,7 @@ export default function PackageSessionsManager() {
 
             <label>
               <span>عدد الجلسات المراد إضافتها *</span>
-              <input dir="ltr" lang="en"
-                type="number"
+              <DashboardNumberInputV2
                 min={1}
                 max={1000}
                 value={grantForm.sessionsCount}

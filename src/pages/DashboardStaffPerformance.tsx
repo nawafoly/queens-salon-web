@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -231,9 +232,8 @@ export default function DashboardStaffPerformance() {
       <section className="dsv2-card dsv2-card--padded dsv2-staff-performance-toolbar" aria-label="فلاتر أداء الموظفات">
         <label className="dsv2-field">
           <span className="dsv2-field__label">السنة</span>
-          <input dir="ltr" lang="en"
+          <DashboardNumberInputV2
             className="dsv2-input"
-            type="number"
             value={year}
             min={2020}
             max={2100}

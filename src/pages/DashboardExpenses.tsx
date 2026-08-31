@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -1321,7 +1322,7 @@ const DashboardExpenses: React.FC = () => {
             <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={category} onChange={setCategory} disabled={loading} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="expenses-v2-add-amount" label="المبلغ (ر.س)" required>
-            <input dir="ltr" lang="en" id="expenses-v2-add-amount" className="dsv2-input" type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+            <DashboardNumberInputV2 id="expenses-v2-add-amount" className="dsv2-input" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </DashboardFieldV2>
           <DashboardFieldV2 id="expenses-v2-add-date" label="التاريخ" required>
             <DashboardDatePickerV2 id="expenses-v2-add-date" value={date} onChange={setDate} required clearable={false} />
@@ -1365,7 +1366,7 @@ const DashboardExpenses: React.FC = () => {
             <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="expenses-v2-edit-amount" label="المبلغ (ر.س)" required>
-            <input dir="ltr" lang="en" id="expenses-v2-edit-amount" className="dsv2-input" type="number" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((prev) => ({ ...prev, amount: event.target.value }))} />
+            <DashboardNumberInputV2 id="expenses-v2-edit-amount" className="dsv2-input" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((prev) => ({ ...prev, amount: event.target.value }))} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="expenses-v2-edit-date" label="التاريخ" required>
             <DashboardDatePickerV2 id="expenses-v2-edit-date" value={editForm.date} onChange={(value) => setEditForm((prev) => ({ ...prev, date: value }))} required clearable={false} />

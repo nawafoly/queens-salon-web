@@ -156,3 +156,40 @@ input[type="number"][lang="en"] {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* DASHBOARD_NUMBER_INPUT_V2_POLICY
+ * Visible Dashboard numbers are text-backed so Chromium/Windows cannot
+ * substitute Arabic-Indic glyphs for controlled numeric values.
+ */
+.dashboard-v2 .dsv2-number-v2 {
+  direction: ltr !important;
+  unicode-bidi: isolate;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-fill-color: currentColor;
+}
+
+.dashboard-v2 .dsv2-number-v2::-webkit-outer-spin-button,
+.dashboard-v2 .dsv2-number-v2::-webkit-inner-spin-button {
+  display: none;
+}
+
+/* DASHBOARD_V2_PLACEHOLDER_CONTRAST_V1
+ * Dashboard V2 placeholder/read-only visual contract.
+ */
+.dashboard-v2 .dsv2-input::placeholder,
+.dashboard-v2 .dsv2-textarea::placeholder,
+.dashboard-v2 .dsv2-number-v2::placeholder,
+.dashboard-v2 .dsv2-time-v2__input::placeholder,
+.dashboard-v2 .dsv2-native-bridge-v2 input::placeholder,
+.dashboard-v2 .dsv2-native-bridge-v2 textarea::placeholder {
+  color: var(--dsv2-muted, var(--ui-placeholder-color)) !important;
+  -webkit-text-fill-color: var(--dsv2-muted, var(--ui-placeholder-color)) !important;
+  opacity: 1 !important;
+}
+
+.dashboard-v2 [data-placeholder="true"] {
+  color: var(--dsv2-muted, var(--ui-placeholder-color)) !important;
+  -webkit-text-fill-color: var(--dsv2-muted, var(--ui-placeholder-color)) !important;
+  opacity: 1 !important;
+}

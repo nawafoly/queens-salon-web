@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1131,10 +1132,10 @@ export default function ShiftControlSection({
                 <DashboardTimeInputV2 id="shift-template-end" className="dsv2-input" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-late" label="فترة سماح التأخير">
-                <input dir="ltr" lang="en" id="shift-template-late" className="dsv2-input" type="number" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
+                <DashboardNumberInputV2 id="shift-template-late" className="dsv2-input" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-lock-after" label="إغلاق بصمة الحضور بعد">
-                <input dir="ltr" lang="en" id="shift-template-lock-after" className="dsv2-input" type="number" min={Number(templateForm.lateGraceMinutes || 0)} max="1440" value={templateForm.attendanceLockAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, attendanceLockAfterMinutes: event.target.value }))} disabled={!canManage || saving || !templateForm.attendanceLockEnabled} />
+                <DashboardNumberInputV2 id="shift-template-lock-after" className="dsv2-input" min={Number(templateForm.lateGraceMinutes || 0)} max="1440" value={templateForm.attendanceLockAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, attendanceLockAfterMinutes: event.target.value }))} disabled={!canManage || saving || !templateForm.attendanceLockEnabled} />
               </DashboardFieldV2>
             </div>
             <WorkspaceNoticeV2

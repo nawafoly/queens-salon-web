@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../dashboard-v2/DashboardNumberInputV2";
 import type {
   EmployeeRequest,
   EmployeeRequestEvent,
@@ -94,8 +95,7 @@ export function ExceptionalFinancialPaymentRequestFormFields({
       <DocumentFieldGrid>
         <label className="employee-request-field">
           <span>عدد أيام الإجازة المطلوب تعويضها *</span>
-          <input dir="ltr" lang="en"
-            type="number"
+          <DashboardNumberInputV2
             min="0.5"
             max="60"
             step="0.5"

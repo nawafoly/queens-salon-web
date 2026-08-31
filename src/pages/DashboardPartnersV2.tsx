@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -1868,21 +1869,21 @@ export default function DashboardPartnersV2() {
             {(contractForm.billingModel === "fixed_rent" || contractForm.billingModel === "hybrid") ? (
               <label className="partners-v2-field">
                 <span>الإيجار الثابت بالريال *</span>
-                <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.01" value={contractForm.fixedRentAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, fixedRentAmount: event.target.value }))} placeholder="مثال: 1500" required />
+                <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.01" value={contractForm.fixedRentAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, fixedRentAmount: event.target.value }))} placeholder="مثال: 1500" required />
               </label>
             ) : null}
 
             {contractForm.billingModel === "hourly" ? (
               <label className="partners-v2-field">
                 <span>سعر الساعة بالريال *</span>
-                <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.01" value={contractForm.hourlyRate} onChange={(event) => setContractForm((prev) => ({ ...prev, hourlyRate: event.target.value }))} required />
+                <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.01" value={contractForm.hourlyRate} onChange={(event) => setContractForm((prev) => ({ ...prev, hourlyRate: event.target.value }))} required />
               </label>
             ) : null}
 
             {contractForm.billingModel === "daily" ? (
               <label className="partners-v2-field">
                 <span>سعر اليوم بالريال *</span>
-                <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.01" value={contractForm.dailyRate} onChange={(event) => setContractForm((prev) => ({ ...prev, dailyRate: event.target.value }))} required />
+                <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.01" value={contractForm.dailyRate} onChange={(event) => setContractForm((prev) => ({ ...prev, dailyRate: event.target.value }))} required />
               </label>
             ) : null}
 
@@ -1890,11 +1891,11 @@ export default function DashboardPartnersV2() {
               <>
                 <label className="partners-v2-field">
                   <span>نسبة الشريكة % *</span>
-                  <div className="partners-v2-input-icon"><FontAwesomeIcon icon={faPercent} /><input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" max="100" step="0.01" value={contractForm.partnerSharePercent} onChange={(event) => updatePartnerShare(event.target.value)} required /></div>
+                  <div className="partners-v2-input-icon"><FontAwesomeIcon icon={faPercent} /><DashboardNumberInputV2 className="dsv2-input" min="0" max="100" step="0.01" value={contractForm.partnerSharePercent} onChange={(event) => updatePartnerShare(event.target.value)} required /></div>
                 </label>
                 <label className="partners-v2-field">
                   <span>نسبة ملكات % *</span>
-                  <div className="partners-v2-input-icon"><FontAwesomeIcon icon={faPercent} /><input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" max="100" step="0.01" value={contractForm.salonSharePercent} onChange={(event) => setContractForm((prev) => ({ ...prev, salonSharePercent: event.target.value }))} required /></div>
+                  <div className="partners-v2-input-icon"><FontAwesomeIcon icon={faPercent} /><DashboardNumberInputV2 className="dsv2-input" min="0" max="100" step="0.01" value={contractForm.salonSharePercent} onChange={(event) => setContractForm((prev) => ({ ...prev, salonSharePercent: event.target.value }))} required /></div>
                 </label>
                 <label className="partners-v2-field">
                   <span>أساس احتساب النسبة</span>
@@ -1902,18 +1903,18 @@ export default function DashboardPartnersV2() {
                 </label>
                 <label className="partners-v2-field">
                   <span>الحد الأدنى لحصة ملكات</span>
-                  <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.01" value={contractForm.minimumSalonShareAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, minimumSalonShareAmount: event.target.value }))} placeholder="اختياري" />
+                  <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.01" value={contractForm.minimumSalonShareAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, minimumSalonShareAmount: event.target.value }))} placeholder="اختياري" />
                 </label>
               </>
             ) : null}
 
             <label className="partners-v2-field">
               <span>مبلغ التأمين</span>
-              <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.01" value={contractForm.depositAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, depositAmount: event.target.value }))} placeholder="اختياري" />
+              <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.01" value={contractForm.depositAmount} onChange={(event) => setContractForm((prev) => ({ ...prev, depositAmount: event.target.value }))} placeholder="اختياري" />
             </label>
             <label className="partners-v2-field">
               <span>يوم الاستحقاق الشهري</span>
-              <input dir="ltr" lang="en" className="dsv2-input" type="number" min="1" max="28" step="1" value={contractForm.paymentDueDay} onChange={(event) => setContractForm((prev) => ({ ...prev, paymentDueDay: event.target.value }))} />
+              <DashboardNumberInputV2 className="dsv2-input" min="1" max="28" step="1" value={contractForm.paymentDueDay} onChange={(event) => setContractForm((prev) => ({ ...prev, paymentDueDay: event.target.value }))} />
             </label>
 
             <div className="partners-v2-form-section partners-v2-field--wide">
@@ -1923,11 +1924,11 @@ export default function DashboardPartnersV2() {
 
             <label className="partners-v2-field">
               <span>الرصيد الشهري بالساعات</span>
-              <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.5" value={contractForm.timeOffMonthlyHours} onChange={(event) => setContractForm((prev) => ({ ...prev, timeOffMonthlyHours: event.target.value }))} />
+              <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.5" value={contractForm.timeOffMonthlyHours} onChange={(event) => setContractForm((prev) => ({ ...prev, timeOffMonthlyHours: event.target.value }))} />
             </label>
             <label className="partners-v2-field">
               <span>الحد الأقصى خلال 14 يومًا</span>
-              <input dir="ltr" lang="en" className="dsv2-input" type="number" min="0" step="0.5" value={contractForm.timeOffMaxHoursPerRolling14Days} onChange={(event) => setContractForm((prev) => ({ ...prev, timeOffMaxHoursPerRolling14Days: event.target.value }))} />
+              <DashboardNumberInputV2 className="dsv2-input" min="0" step="0.5" value={contractForm.timeOffMaxHoursPerRolling14Days} onChange={(event) => setContractForm((prev) => ({ ...prev, timeOffMaxHoursPerRolling14Days: event.target.value }))} />
             </label>
             <label className="partners-v2-field partners-v2-field--wide">
               <span>ملاحظات العقد</span>

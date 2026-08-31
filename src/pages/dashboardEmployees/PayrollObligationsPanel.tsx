@@ -1,3 +1,4 @@
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardMonthInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -381,7 +382,7 @@ export default function PayrollObligationsPanel({
             <DashboardSelectV2 id="payroll-recurring-kind" value={recurringKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setRecurringKind} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-amount" label="المبلغ الشهري (ر.س)">
-            <input dir="ltr" lang="en" id="payroll-recurring-amount" className="dsv2-input" type="number" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
+            <DashboardNumberInputV2 id="payroll-recurring-amount" className="dsv2-input" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-start" label="شهر البداية">
             <DashboardMonthInputV2 id="payroll-recurring-start" className="dsv2-input" value={recurringStartMonth} disabled={readOnly} onChange={(event) => setRecurringStartMonth(event.target.value)} />
@@ -466,10 +467,9 @@ export default function PayrollObligationsPanel({
             <DashboardSelectV2 id="payroll-obligation-kind" value={obligationKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setObligationKind} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-obligation-amount" label="إجمالي المبلغ (ر.س)">
-            <input dir="ltr" lang="en"
+            <DashboardNumberInputV2
               id="payroll-obligation-amount"
               className="dsv2-input"
-              type="number"
               min="0"
               step="0.01"
               value={obligationAmount}
@@ -537,10 +537,9 @@ export default function PayrollObligationsPanel({
           <div className="dsv2-ew-stack">
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
               <DashboardFieldV2 id="payroll-installment-count" label="عدد الأقساط">
-                <input dir="ltr" lang="en"
+                <DashboardNumberInputV2
                   id="payroll-installment-count"
                   className="dsv2-input"
-                  type="number"
                   min="1"
                   max="24"
                   value={installmentDrafts.length}
@@ -596,7 +595,7 @@ export default function PayrollObligationsPanel({
                   <DashboardMonthInputV2 id={`payroll-installment-month-${index}`} className="dsv2-input" value={draft.targetPayrollMonth} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, targetPayrollMonth: event.target.value } : row))} />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id={`payroll-installment-amount-${index}`} label="مبلغ القسط (ر.س)">
-                  <input dir="ltr" lang="en" id={`payroll-installment-amount-${index}`} className="dsv2-input" type="number" min="0" step="0.01" value={draft.amount} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
+                  <DashboardNumberInputV2 id={`payroll-installment-amount-${index}`} className="dsv2-input" min="0" step="0.01" value={draft.amount} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
                 </DashboardFieldV2>
                 <div className="dsv2-field">
                   <span className="dsv2-field__label">إجراء</span>
