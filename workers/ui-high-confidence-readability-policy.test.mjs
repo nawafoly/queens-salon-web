@@ -25,6 +25,20 @@ function rules(file, selector) {
   return out;
 }
 
+function mediaRules(file, mediaParams, selector) {
+  const full = path.join(root, file);
+  const css = fs.readFileSync(full, "utf8");
+  const ast = postcss.parse(css, { from: full });
+  const out = [];
+  ast.walkAtRules("media", (atRule) => {
+    if (norm(atRule.params) !== norm(mediaParams)) return;
+    atRule.walkRules((rule) => {
+      if (norm(rule.selector) === norm(selector)) out.push(rule);
+    });
+  });
+  return out;
+}
+
 function val(rule, prop) {
   const hits = [];
   rule.walkDecls(prop, (decl) => hits.push(decl));
@@ -111,6 +125,43 @@ test("employee portal attendance labels use the readable floor", () => {
       )
     );
   }
+});
+
+test("employee portal attendance mobile cells expand for readable wrapped statuses", () => {
+  const file = "src/styles/dashboard-v2/components/employee-attendance-month-status.css";
+  const media = "(max-width: 720px)";
+  const daySelector =
+    ".dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page " +
+    ".attendance-month--employee-portal-v2 .attendance-month__day";
+  const labelSelector =
+    ".dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page " +
+      ".attendance-month--employee-portal-v2 .attendance-month__primary-status-label, " +
+    ".dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page " +
+      ".attendance-month--employee-portal-v2 .attendance-month__exception-label";
+
+  const dayRules = mediaRules(file, media, daySelector);
+  assert.ok(
+    dayRules.some((rule) =>
+      has(rule, {
+        "min-height": "64px",
+        "aspect-ratio": "auto",
+      })
+    )
+  );
+
+  const labelRules = mediaRules(file, media, labelSelector);
+  assert.ok(
+    labelRules.some((rule) =>
+      has(rule, {
+        "width": "100%",
+        "max-width": "100%",
+        "min-width": "0",
+        "white-space": "normal",
+        "text-align": "center",
+        "overflow-wrap": "anywhere",
+      })
+    )
+  );
 });
 
 test("intentional today micro-label remains unchanged", () => {
