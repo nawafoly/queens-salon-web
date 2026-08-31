@@ -176,3 +176,24 @@
     grid-column: auto;
   }
 }
+
+/* PAYROLL_COMPLIANCE_TEXT_CONTRAST_V1
+ * Dashboard V2 text contrast contract:
+ * secondary copy must use canonical text tokens instead of inherited color +
+ * opacity, so light surfaces never receive white/faint text.
+ */
+.dashboard-v2 .payroll-compliance-workspace {
+  color: var(--dsv2-text);
+}
+
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-head p {
+  color: var(--dsv2-text-soft);
+  opacity: 1;
+}
+
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-row span,
+.dashboard-v2 .payroll-compliance-workspace .payroll-compliance-kpi small,
+.dashboard-v2 .payroll-compliance-workspace .payroll-period-lock-state span {
+  color: var(--dsv2-muted);
+  opacity: 1;
+}
