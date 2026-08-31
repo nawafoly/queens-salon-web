@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+// Final cutover guard: employee onboarding has one active entry point only.
 const root = process.cwd();
 const adminHrPath = path.join(root, "src/pages/AdminHrDashboard.tsx");
 const dashboardPath = path.join(root, "src/pages/Dashboard.tsx");
