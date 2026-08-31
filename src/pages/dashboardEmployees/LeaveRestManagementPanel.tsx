@@ -58,6 +58,29 @@ function statusLabel(value: unknown) {
   return clean(value) || "غير محدد";
 }
 
+function formatTime12Hour(value: unknown) {
+  const raw = clean(value);
+  const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!match) return raw || "—";
+
+  const hour24 = Number(match[1]);
+  const minute = Number(match[2]);
+  if (
+    !Number.isInteger(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23 ||
+    !Number.isInteger(minute) ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return raw;
+  }
+
+  const hour12 = hour24 % 12 || 12;
+  const period = hour24 >= 12 ? "م" : "ص";
+  return `${hour12}:${match[2]} ${period}`;
+}
+
 function humanError(error: unknown) {
   const raw =
     error instanceof Error
@@ -496,6 +519,7 @@ export default function LeaveRestManagementPanel({
               <DashboardTimePickerV2
                 id="employee-live-v2-weekly-rest-work-start"
                 value={restStartTime}
+                clock="12h"
                 disabled={readOnly || saving}
                 onChange={setRestStartTime}
               />
@@ -508,6 +532,7 @@ export default function LeaveRestManagementPanel({
               <DashboardTimePickerV2
                 id="employee-live-v2-weekly-rest-work-end"
                 value={restEndTime}
+                clock="12h"
                 disabled={readOnly || saving}
                 onChange={setRestEndTime}
               />
@@ -598,7 +623,7 @@ export default function LeaveRestManagementPanel({
                 fmtIsoDate(
                   assignment.restDate
                 ),
-                `${assignment.startTime || "—"} – ${assignment.endTime || "—"}`,
+                `${formatTime12Hour(assignment.startTime)} – ${formatTime12Hour(assignment.endTime)}`,
                 <WorkspaceStatusBadgeV2
                   key={`${assignment.id}-status`}
                   tone={
