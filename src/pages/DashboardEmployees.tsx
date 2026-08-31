@@ -1708,6 +1708,12 @@ export default function DashboardEmployees() {
   const [saveMessage, setSaveMessage] = useState("");
   const busy = loading || saving;
 
+  useEffect(() => {
+    if (!saveMessage) return;
+    const timer = window.setTimeout(() => setSaveMessage(""), 7000);
+    return () => window.clearTimeout(timer);
+  }, [saveMessage]);
+
   const [statsLoading, setStatsLoading] = useState(false);
   const modalHourOverrideHijriPickerRef = useRef<HTMLDivElement>(null);
   const [bookingStats, setBookingStats] =
@@ -5104,8 +5110,10 @@ export default function DashboardEmployees() {
     };
   }, [editId]);
 
-  const save = async () => {
+  const save = async (options?: { createLogin?: boolean }) => {
     if (!ensureCanManage()) return;
+    const isCreatingEmployee = !editId;
+    const createdLogin = isCreatingEmployee && options?.createLogin === true;
     const cleanName = name.trim();
     const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
     const effectiveShowOnBooking = specialtiesFixed.length > 0 ? !!showOnBooking : false;
@@ -5814,14 +5822,11 @@ export default function DashboardEmployees() {
         email: cleanText(payload.email).toLowerCase(),
         name: cleanText(payload.name).toLowerCase(),
       };
-      setSelectedEmployeeId(targetEmployeeId);
-      setEditId(targetEmployeeId);
-      setIsOpen(true);
-      setMode("edit");
-      if (!editId) {
-        setActiveTab("basic");
-        setModalTab("basic");
-        navigate(`/dashboard/employees/${encodeURIComponent(targetEmployeeId)}/basic`);
+      if (!isCreatingEmployee) {
+        setSelectedEmployeeId(targetEmployeeId);
+        setEditId(targetEmployeeId);
+        setIsOpen(true);
+        setMode("edit");
       }
 
       if (previousEditSnapshot && editingStaff) {
@@ -5867,24 +5872,37 @@ export default function DashboardEmployees() {
         expectedSaveSnapshot,
         rehydratedSaveSnapshot
       );
-      openEdit(reloadedEmployee, false);
-      setActiveTab(activeTabBeforeReload);
-      setModalTab(
-        ["basic", "profile", "services", "booking"].includes(activeTabBeforeReload)
-          ? (activeTabBeforeReload as EmployeeModalTab)
-          : modalTabBeforeReload
-      );
-      selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
-      window.dispatchEvent(new Event("queens:staff-updated"));
-      setSaveMessage(
-        "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0628\u0646\u062c\u0627\u062d"
-      );
+      if (isCreatingEmployee) {
+        selectedEmployeeIdentityRef.current = null;
+        setSelectedEmployeeId(null);
+        setEditId(null);
+        setIsOpen(false);
+        setMode("edit");
+        resetForm();
+        navigate("/dashboard/employees", { replace: true });
+        setSaveMessage(
+          createdLogin
+            ? "تم إنشاء الموظفة وحساب الدخول وربطهما بنجاح."
+            : "تم إنشاء الموظفة بنجاح."
+        );
+      } else {
+        openEdit(reloadedEmployee, false);
+        setActiveTab(activeTabBeforeReload);
+        setModalTab(
+          ["basic", "profile", "services", "booking"].includes(activeTabBeforeReload)
+            ? (activeTabBeforeReload as EmployeeModalTab)
+            : modalTabBeforeReload
+        );
+        selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
+        setSaveMessage("تم حفظ التغييرات بنجاح.");
 
-      // Arm one baseline capture. The effect waits until saving=false and then
-      // records the fully rehydrated editor render exactly once.
-      setEmployeeProfileBaselineCaptureNonce(
-        (nonce) => nonce + 1
-      );
+        // Arm one baseline capture. The effect waits until saving=false and then
+        // records the fully rehydrated editor render exactly once.
+        setEmployeeProfileBaselineCaptureNonce(
+          (nonce) => nonce + 1
+        );
+      }
+      window.dispatchEvent(new Event("queens:staff-updated"));
 
       employeeSaveDebug(
         "completed",
@@ -9152,6 +9170,7 @@ const canonicalSchedules =
       setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
       return;
     }
+    setSaveMessage("");
     resetForm();
     setSelectedEmployeeId(null);
     setMode("edit");
@@ -9340,8 +9359,13 @@ const canonicalSchedules =
         ) : null}
 
         {saveMessage ? (
-          <div className="employees-v2-alert employees-v2-alert--success" role="status">
-            {saveMessage}
+          <div
+            className="employees-v2-alert employees-v2-alert--success"
+            role="status"
+            aria-live="polite"
+          >
+            <strong className="employees-v2-alert__title">تمت العملية بنجاح</strong>
+            <span>{saveMessage}</span>
           </div>
         ) : null}
 
