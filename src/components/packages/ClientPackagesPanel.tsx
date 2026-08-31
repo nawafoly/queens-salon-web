@@ -11,13 +11,13 @@ import { packageDate, printPackageDocument } from "./packageFormat";
 import "../../styles/SessionPackages.css";
 
 const labels: Record<string, string> = {
-  purchase: "ط´ط±ط§ط،",
-  reserve: "ط­ط¬ط²",
-  consume: "ط§ط³طھط®ط¯ط§ظ…",
-  restore: "ط¥ظ„ط؛ط§ط، ظˆط§ط³طھط±ط¬ط§ط¹",
-  cancel: "ط¥ظ„ط؛ط§ط، ط¨ط§ظ‚ط©",
-  admin_adjustment: "طھط¹ط¯ظٹظ„ ط¥ط¯ط§ط±ظٹ",
-  admin_restore: "ط§ط³طھط±ط¬ط§ط¹ ط¥ط¯ط§ط±ظٹ",
+  purchase: "شراء",
+  reserve: "حجز",
+  consume: "استخدام",
+  restore: "إلغاء واسترجاع",
+  cancel: "إلغاء باقة",
+  admin_adjustment: "تعديل إداري",
+  admin_restore: "استرجاع إداري",
 };
 
 type LinkedBooking = {
@@ -36,7 +36,7 @@ function text(value: unknown): string {
 
 function halalasToMoney(value: unknown): string {
   const amount = Number(value ?? 0);
-  return `${(Number.isFinite(amount) ? amount / 100 : 0).toFixed(2)} ط±.ط³`;
+  return `${(Number.isFinite(amount) ? amount / 100 : 0).toFixed(2)} ر.س`;
 }
 
 export default function ClientPackagesPanel(props: {
@@ -146,8 +146,8 @@ export default function ClientPackagesPanel(props: {
       setBookings(bookingGroups);
     } catch (cause) {
       const message =
-        cause instanceof Error ? cause.message : "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط¨ط§ظ‚ط§طھ ظˆط§ظ„ط¬ظ„ط³ط§طھ.";
-      setError(message || "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط¨ط§ظ‚ط§طھ ظˆط§ظ„ط¬ظ„ط³ط§طھ.");
+        cause instanceof Error ? cause.message : "تعذر تحميل الباقات والجلسات.";
+      setError(message || "تعذر تحميل الباقات والجلسات.");
     } finally {
       setBusy(false);
     }
@@ -159,13 +159,13 @@ export default function ClientPackagesPanel(props: {
 
   async function adjust(pkg: ClientPackage) {
     const raw = window.prompt(
-      "ط¹ط¯ط¯ ط§ظ„ط¬ظ„ط³ط§طھ ط§ظ„ظ…ط±ط§ط¯ ط¥ط¶ط§ظپطھظ‡ط§ ط£ظˆ ط®طµظ…ظ‡ط§ (ظ…ط«ط§ظ„: 1 ط£ظˆ -1)"
+      "عدد الجلسات المراد إضافتها أو خصمها (مثال: 1 أو -1)"
     );
     if (raw === null) return;
     const delta = Number(raw);
-    const reason = window.prompt("ط³ط¨ط¨ ط§ظ„طھط¹ط¯ظٹظ„ ط§ظ„ط¥ط¯ط§ط±ظٹ") || "";
+    const reason = window.prompt("سبب التعديل الإداري") || "";
     if (!Number.isInteger(delta) || !delta || !reason.trim()) {
-      setError("ظٹظ„ط²ظ… ط¥ط¯ط®ط§ظ„ ط¹ط¯ط¯ طµط­ظٹط­ ظˆط³ط¨ط¨ ظˆط§ط¶ط­.");
+      setError("يلزم إدخال عدد صحيح وسبب واضح.");
       return;
     }
     setBusy(true);
@@ -173,29 +173,29 @@ export default function ClientPackagesPanel(props: {
       await PackageOperationsService.adjust(String(pkg.id), delta, reason);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "طھط¹ط°ط± طھط¹ط¯ظٹظ„ ط§ظ„ط±طµظٹط¯.");
+      setError(cause instanceof Error ? cause.message : "تعذر تعديل الرصيد.");
     } finally {
       setBusy(false);
     }
   }
 
   async function cancel(pkg: ClientPackage) {
-    const reason = window.prompt("ط³ط¨ط¨ ط¥ظ„ط؛ط§ط، ط§ظ„ط¨ط§ظ‚ط©");
+    const reason = window.prompt("سبب إلغاء الباقة");
     if (!reason?.trim()) return;
-    if (!window.confirm(`طھط£ظƒظٹط¯ ط¥ظ„ط؛ط§ط، ${pkg.packageNameSnapshot}؟`)) return;
+    if (!window.confirm(`تأكيد إلغاء ${pkg.packageNameSnapshot}؟`)) return;
     setBusy(true);
     try {
       await PackageOperationsService.cancel(String(pkg.id), reason);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط¨ط§ظ‚ط©.");
+      setError(cause instanceof Error ? cause.message : "تعذر إلغاء الباقة.");
     } finally {
       setBusy(false);
     }
   }
 
   async function restore(booking: LinkedBooking) {
-    const reason = window.prompt("ط³ط¨ط¨ ط§ط³طھط±ط¬ط§ط¹ ط§ظ„ط¬ظ„ط³ط© ط§ظ„ظ…ط³طھط®ط¯ظ…ط©");
+    const reason = window.prompt("سبب استرجاع الجلسة المستخدمة");
     if (!reason?.trim()) return;
     setBusy(true);
     try {
@@ -203,7 +203,7 @@ export default function ClientPackagesPanel(props: {
       await load();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "طھط¹ط°ط± ط§ط³طھط±ط¬ط§ط¹ ط§ظ„ط¬ظ„ط³ط©."
+        cause instanceof Error ? cause.message : "تعذر استرجاع الجلسة."
       );
     } finally {
       setBusy(false);
@@ -213,27 +213,27 @@ export default function ClientPackagesPanel(props: {
   async function invoice(pkg: ClientPackage) {
     const invoiceId = text(pkg.invoiceId || pkg.invoiceDocumentId);
     if (!invoiceId) {
-      setError("ظ„ط§ ظٹظˆط¬ط¯ ظ…ط±ط¬ط¹ ظپط§طھظˆط±ط© ظ„ظ‡ط°ظ‡ ط§ظ„ط¨ط§ظ‚ط©.");
+      setError("لا يوجد مرجع فاتورة لهذه الباقة.");
       return;
     }
     try {
       const invoiceRow = await CoreInvoiceService.get(invoiceId);
       printPackageDocument(
-        `ظپط§طھظˆط±ط© ${invoiceRow.invoiceNumber || invoiceId}`,
-        `<b>ط§ظ„ط¨ط§ظ‚ط©:</b> ${pkg.packageNameSnapshot}<br>` +
-          `<b>ط§ظ„ط¬ظ„ط³ط§طھ:</b> ${pkg.totalSessions}<br>` +
-          `<b>ظ‚ط¨ظ„ ط§ظ„ط®طµظ…:</b> ${halalasToMoney(invoiceRow.subtotalHalalas)}<br>` +
-          `<b>ط§ظ„ط®طµظ…:</b> ${halalasToMoney(invoiceRow.discountHalalas)}<br>` +
-          `<b>ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ:</b> ${halalasToMoney(invoiceRow.totalHalalas)}<br>` +
-          `<b>ط§ظ„ظ…ط¯ظپظˆط¹:</b> ${halalasToMoney(invoiceRow.paidHalalas)}<br>` +
-          `<b>ط§ظ„ط­ط§ظ„ط©:</b> ${invoiceRow.status || "â€”"}<br>` +
-          `<b>طھط§ط±ظٹط® ط§ظ„ط§ظ†طھظ‡ط§ط،:</b> ${packageDate(pkg.expiresAt)}`
+        `فاتورة ${invoiceRow.invoiceNumber || invoiceId}`,
+        `<b>الباقة:</b> ${pkg.packageNameSnapshot}<br>` +
+          `<b>الجلسات:</b> ${pkg.totalSessions}<br>` +
+          `<b>قبل الخصم:</b> ${halalasToMoney(invoiceRow.subtotalHalalas)}<br>` +
+          `<b>الخصم:</b> ${halalasToMoney(invoiceRow.discountHalalas)}<br>` +
+          `<b>الإجمالي:</b> ${halalasToMoney(invoiceRow.totalHalalas)}<br>` +
+          `<b>المدفوع:</b> ${halalasToMoney(invoiceRow.paidHalalas)}<br>` +
+          `<b>الحالة:</b> ${invoiceRow.status || "—"}<br>` +
+          `<b>تاريخ الانتهاء:</b> ${packageDate(pkg.expiresAt)}`
       );
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط§ظ„ظپط§طھظˆط±ط© ط§ظ„ط£طµظ„ظٹط© ظپظٹ Core D1."
+          : "تعذر العثور على الفاتورة الأصلية في Core D1."
       );
     }
   }
@@ -241,29 +241,29 @@ export default function ClientPackagesPanel(props: {
   if (!clientId) {
     return (
       <div className="session-packages__error">
-        ظ„ط§ ظٹظˆط¬ط¯ clientId ط«ط§ط¨طھ ظ„ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپ؛ ظ„ط§ ظٹظ…ظƒظ† ط¹ط±ط¶ ط§ظ„ط±طµظٹط¯ ط¨ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰
-        ط§ظ„ظ‡ط§طھظپ ظپظ‚ط·.
+        لا يوجد clientId ثابت لهذا الملف؛ لا يمكن عرض الرصيد بالاعتماد على
+        الهاتف فقط.
       </div>
     );
   }
 
   return (
-    <section className="session-packages" aria-label="ط§ظ„ط¨ط§ظ‚ط§طھ ظˆط§ظ„ط¬ظ„ط³ط§طھ">
+    <section className="session-packages" aria-label="الباقات والجلسات">
       <div className="session-packages__head">
-        <h3>ط§ظ„ط¨ط§ظ‚ط§طھ ظˆط§ظ„ط¬ظ„ط³ط§طھ</h3>
+        <h3>الباقات والجلسات</h3>
         <button
           type="button"
           className="session-packages__button secondary"
           onClick={() => void load()}
           disabled={busy}
         >
-          طھط­ط¯ظٹط«
+          تحديث
         </button>
       </div>
 
       {error ? <div className="session-packages__error">{error}</div> : null}
       {!busy && !packages.length ? (
-        <div className="session-packages__card">ظ„ط§ طھظˆط¬ط¯ ط¨ط§ظ‚ط§طھ ظ…ط³ط¬ظ„ط©.</div>
+        <div className="session-packages__card">لا توجد باقات مسجلة.</div>
       ) : null}
 
       {packages.map((pkg) => (
@@ -272,37 +272,37 @@ export default function ClientPackagesPanel(props: {
             <div>
               <strong>{pkg.packageNameSnapshot}</strong>
               <span className="session-packages__muted">
-                ط§ظ„ط­ط§ظ„ط©: {pkg.status}
+                الحالة: {pkg.status}
               </span>
             </div>
-            <span>ظپط§طھظˆط±ط©: {pkg.invoiceNumber || pkg.invoiceId || "â€”"}</span>
+            <span>فاتورة: {pkg.invoiceNumber || pkg.invoiceId || "—"}</span>
           </div>
 
           <div className="session-packages__stats">
             <div className="session-packages__stat">
-              <small>ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ</small>
+              <small>الإجمالي</small>
               <strong>{pkg.totalSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>ط§ظ„ظ…طھط¨ظ‚ظٹ</small>
+              <small>المتبقي</small>
               <strong>{pkg.remainingSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>ط§ظ„ظ…ط­ط¬ظˆط²</small>
+              <small>المحجوز</small>
               <strong>{pkg.reservedSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>ط§ظ„ظ…ط³طھط®ط¯ظ…</small>
+              <small>المستخدم</small>
               <strong>{pkg.usedSessions}</strong>
             </div>
           </div>
 
           <p className="session-packages__muted">
-            ط§ظ„ط´ط±ط§ط،: {packageDate(pkg.purchasedAt)} آ· ط§ظ„ط§ظ†طھظ‡ط§ط،:{" "}
+            الشراء: {packageDate(pkg.purchasedAt)} · الانتهاء:{" "}
             {packageDate(pkg.expiresAt)}
           </p>
           <p>
-            ط§ظ„ط®ط¯ظ…ط§طھ:{" "}
+            الخدمات:{" "}
             {pkg.allowedServiceIdsSnapshot
               .map((id) => services[id] || id)
               .join("، ")}
@@ -310,32 +310,32 @@ export default function ClientPackagesPanel(props: {
 
           <details>
             <summary>
-              ط³ط¬ظ„ ط§ظ„ط­ط±ظƒط§طھ ({transactions[String(pkg.id)]?.length || 0})
+              سجل الحركات ({transactions[String(pkg.id)]?.length || 0})
             </summary>
             {(transactions[String(pkg.id)] || []).map((transaction) => (
               <div key={transaction.id}>
                 {labels[transaction.type] || transaction.type}:{" "}
-                {transaction.remainingBefore} â†گ {transaction.remainingAfter}{" "}
-                {transaction.reason ? `آ· ${transaction.reason}` : ""}
+                {transaction.remainingBefore} ← {transaction.remainingAfter}{" "}
+                {transaction.reason ? `· ${transaction.reason}` : ""}
               </div>
             ))}
           </details>
 
           <details>
             <summary>
-              ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…ط±طھط¨ط·ط© ({bookings[String(pkg.id)]?.length || 0})
+              الحجوزات المرتبطة ({bookings[String(pkg.id)]?.length || 0})
             </summary>
             {(bookings[String(pkg.id)] || []).map((booking) => (
               <div key={`${booking.id}_${booking.serviceName}`}>
-                {booking.publicId} آ· {booking.serviceName} آ· {booking.date}{" "}
-                {booking.time} آ· {booking.status}{" "}
+                {booking.publicId} · {booking.serviceName} · {booking.date}{" "}
+                {booking.time} · {booking.status}{" "}
                 {props.canManage &&
                 booking.packageRedemptionState === "consumed" ? (
                   <button
                     type="button"
                     onClick={() => void restore(booking)}
                   >
-                    ط§ط³طھط±ط¬ط§ط¹ ط¬ظ„ط³ط©
+                    استرجاع جلسة
                   </button>
                 ) : null}
               </div>
@@ -348,7 +348,7 @@ export default function ClientPackagesPanel(props: {
               className="session-packages__button secondary"
               onClick={() => void invoice(pkg)}
             >
-              ظپطھط­ ط§ظ„ظپط§طھظˆط±ط© ط§ظ„ط£طµظ„ظٹط©
+              فتح الفاتورة الأصلية
             </button>
             {props.canManage ? (
               <>
@@ -358,7 +358,7 @@ export default function ClientPackagesPanel(props: {
                   onClick={() => void adjust(pkg)}
                   disabled={busy}
                 >
-                  طھط¹ط¯ظٹظ„ ط§ظ„ط±طµظٹط¯
+                  تعديل الرصيد
                 </button>
                 <button
                   type="button"
@@ -366,7 +366,7 @@ export default function ClientPackagesPanel(props: {
                   onClick={() => void cancel(pkg)}
                   disabled={busy || pkg.status === "cancelled"}
                 >
-                  ط¥ظ„ط؛ط§ط، ط§ظ„ط¨ط§ظ‚ط©
+                  إلغاء الباقة
                 </button>
               </>
             ) : null}

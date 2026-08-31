@@ -18557,6 +18557,7 @@ border-radius: 0 !important;
 outline: 0;
 background: transparent !important;
 box-shadow: none !important;
+color: #334155;
 }
 
 :is(.hr-shell.madan-admin-shell, .employee-portal) .hr-ops-field {
@@ -24854,7 +24855,7 @@ body.scatalog-modal-open {
 
 .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button.is-active span {
   background: #c79223;
-  color: #fff;
+  color: #101828;
 }
 
 .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__content {

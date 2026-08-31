@@ -83,24 +83,42 @@
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__primary-status-label {
   display: inline-flex;
-  min-height: 16px;
+  min-height: 18px !important;
   align-items: center;
   justify-content: center;
   padding-inline: 5px;
   color: var(--employee-attendance-day-accent);
-  font-size: 0.48rem;
+  font-size: 0.625rem !important;
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.1 !important;
 }
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__exception-label {
   display: inline-flex;
-  min-height: 16px;
+  min-height: 18px !important;
   align-items: center;
   justify-content: center;
   padding-inline: 5px;
   border-radius: 999px;
   background: #e0f2fe;
   color: #0369a1;
-  font-size: 0.48rem;
+  font-size: 0.625rem !important;
   font-weight: 950;
+  line-height: 1.1 !important;
+}
+
+@media (max-width: 720px) {
+  .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day {
+    min-height: 64px !important;
+    aspect-ratio: auto !important;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__primary-status-label,
+  .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__exception-label {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
 }

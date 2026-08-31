@@ -4873,7 +4873,7 @@ textarea {
 .bs-admin-tools { margin-top: 20px; padding-top: 15px; border-top: 1px dashed rgba(0, 0, 0, 0.1); }
 .bs-admin-flags { display: flex; gap: 8px; margin-bottom: 12px; justify-content: center; }
 .flag { font-size: 0.7rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; }
-.flag.pending { background: #fff3e0; color: #ef6c00; }
+.flag.pending { background: #fff3e0; color: #b54708; }
 .flag.hide { background: #f5f5f5; color: #757575; }
 .flag.ok { background: #e8f5e9; color: #2e7d32; }
 
@@ -6023,8 +6023,8 @@ textarea {
 ========================================================= */
 /* =========================
    Booking.css (FULL) - MALIKAT SALON
-   âœ… Unified Inputs + Unified Dropdown (dash-select + bk-field) scoped to .booking-page
-   âœ… Using Official Palette
+   ✅ Unified Inputs + Unified Dropdown (dash-select + bk-field) scoped to .booking-page
+   ✅ Using Official Palette
 ========================= */
 
 .booking-page {
@@ -6033,7 +6033,7 @@ textarea {
   padding: 40px 0 18px 0;
   font-family: "Tajawal", sans-serif;
 
-  /* âœ… Booking is LIGHT but uses QS semantic tokens */
+  /* ✅ Booking is LIGHT but uses QS semantic tokens */
   color-scheme: light;
 
   --qs-bg: #ffffff;
@@ -6049,10 +6049,10 @@ textarea {
 
   --qs-focus: 0 0 0 0.18rem rgba(64, 1, 13, 0.16);
 
-  /* âœ… Flat, soft background aligned with site palette */
+  /* ✅ Flat, soft background aligned with site palette */
   background: var(--qs-offwhite);
 
-  /* âœ… Firefox scrollbar base */
+  /* ✅ Firefox scrollbar base */
   scrollbar-width: thin;
   scrollbar-color: rgba(64, 1, 13, 0.55) rgba(255, 255, 255, 0.55);
 }
@@ -6092,7 +6092,7 @@ textarea {
 }
 
 /* =========================
-   âœ… Unified InputGroup Shell
+   ✅ Unified InputGroup Shell
 ========================= */
 .booking-form .input-group {
   background: rgba(245, 245, 244, 0.95);
@@ -6102,7 +6102,7 @@ textarea {
   box-shadow: 0 8px 24px rgba(13, 13, 13, 0.05);
 }
 
-/* ظ†ظ„ط؛ظٹ ط­ط¯ظˆط¯ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط¯ط§ط®ظ„ظٹط© ظ„ط£ظ†ظ‡ط§ طµط§ط±طھ ط¹ظ„ظ‰ ط§ظ„ط؛ظ„ط§ظپ */
+/* نلغي حدود العناصر الداخلية لأنها صارت على الغلاف */
 .booking-form .input-group .form-control,
 .booking-form .input-group .form-select {
   border: 0 !important;
@@ -6118,7 +6118,7 @@ textarea {
   color: rgba(81, 86, 89, 0.7);
 }
 
-/* ط§ظ„ط£ظٹظ‚ظˆظ†ط© ط¯ط§ط®ظ„ ظ†ظپط³ ط§ظ„ط¥ط·ط§ط± */
+/* الأيقونة داخل نفس الإطار */
 .booking-form .input-group .input-group-text {
   background: transparent !important;
   border: 0 !important;
@@ -6131,7 +6131,7 @@ textarea {
   height: 46px;
 }
 
-/* ط®ط· ظپط§طµظ„ ط¨ط³ظٹط· ط¨ظٹظ† ط§ظ„ط£ظٹظ‚ظˆظ†ط© ظˆط§ظ„ط­ظ‚ظ„ */
+/* خط فاصل بسيط بين الأيقونة والحقل */
 .booking-form .input-group .input-group-text {
   border-left: 1px solid rgba(13, 13, 13, 0.08);
 }
@@ -6140,7 +6140,7 @@ textarea {
   border-right: 1px solid rgba(13, 13, 13, 0.08);
 }
 
-/* Focus ط¹ظ„ظ‰ ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ظƒط§ظ…ظ„ط© */
+/* Focus على المجموعة كاملة */
 .booking-form .input-group:focus-within {
   border-color: rgba(64, 1, 13, 0.45);
   box-shadow: 0 0 0 0.18rem rgba(64, 1, 13, 0.16);
@@ -6148,7 +6148,7 @@ textarea {
 }
 
 /* =========================
-   âœ… Base Inputs / Textarea (ط®ط§ط±ط¬ input-group)
+   ✅ Base Inputs / Textarea (خارج input-group)
 ========================= */
 .booking-page .form-control {
   border-radius: 0.8rem !important;
@@ -6303,7 +6303,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Unified Select (Booking)
+   ✅ Unified Select (Booking)
 ========================= */
 .booking-page .bk-field {
   position: relative;
@@ -6410,7 +6410,7 @@ textarea.form-control {
 }
 
 /* =========================
-   ط²ط± ط§ظ„ط­ط¬ط²
+   زر الحجز
 ========================= */
 .btn-primary,
 .booking-btn {
@@ -6436,7 +6436,7 @@ textarea.form-control {
   box-shadow: 0 18px 42px rgba(64, 1, 13, 0.22);
 }
 
-/* طµظ†ط¯ظˆظ‚ ط§ظ„ط³ط¹ط± */
+/* صندوق السعر */
 .booking-price-box {
   background: rgba(245, 245, 244, 0.92);
   border: 1px solid rgba(13, 13, 13, 0.1);
@@ -6464,7 +6464,7 @@ textarea.form-control {
 }
 
 /* =========================
-   ظ†ط§ظپط°ط© ظ†ط¬ط§ط­ ط§ظ„ط­ط¬ط²
+   نافذة نجاح الحجز
 ========================= */
 .booking-success-modal {
   position: fixed;
@@ -6786,7 +6786,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Premium Scrollbar (Queens)
+   ✅ Premium Scrollbar (Queens)
 ========================= */
 .booking-page ::-webkit-scrollbar {
   width: 10px;
@@ -6968,7 +6968,7 @@ textarea.form-control {
   }
 }
 
-/* ط²ط± ط±ظ…ط§ط¯ظٹ (ظ†ط³ط® / ط­ط¬ط² ط¬ط¯ظٹط¯) */
+/* زر رمادي (نسخ / حجز جديد) */
 .booking-page .btn-gray {
   color: #2f2f2f !important;
   font-weight: 700;
@@ -6980,7 +6980,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Coupon Buttons (Apply / Remove)
+   ✅ Coupon Buttons (Apply / Remove)
 ========================= */
 .booking-page .bk-coupon-actions {
   align-items: stretch;
@@ -7318,26 +7318,26 @@ textarea.form-control {
   text-align: center;
 }
 
-/* ظ…ظ‡ظ… ظ„ط¨ط¹ط¶ ط§ظ„ظ…طھطµظپط­ط§طھ: ط®ظٹط§ط±ط§طھ ط§ظ„ط³ظ„ظƒطھ */
+/* مهم لبعض المتصفحات: خيارات السلكت */
 .booking-page select option,
 .booking-page select optgroup {
   color: #0d0d0d !important;
 }
 
-/* âœ… Fix: muted text ظٹط¸ظ‡ط± ط¹ظ„ظ‰ طµظپط­ط© Booking ط§ظ„ط¨ظٹط¶ط§ط، */
+/* ✅ Fix: muted text يظهر على صفحة Booking البيضاء */
 .booking-page .text-muted,
 .booking-page .small,
 .booking-page .form-text {
   color: rgba(13, 13, 13, 0.62) !important;
 }
 
-/* âœ… ط£ط­ظٹط§ظ†ظ‹ط§ Bootstrap ظٹط³ظˆظٹ muted ظ„ظ„ظ€ span ط¯ط§ط®ظ„ summary ظˆط؛ظٹط±ظ‡ط§ */
+/* ✅ أحيانًا Bootstrap يسوي muted للـ span داخل summary وغيرها */
 .booking-page .booking-summary .text-muted,
 .booking-page .booking-summary .small {
   color: rgba(13, 13, 13, 0.62) !important;
 }
 
-/* âœ… Time grid chips (Green available start times) */
+/* ✅ Time grid chips (Green available start times) */
 .bk-time-windows {
   display: grid;
   gap: 12px;
@@ -7725,7 +7725,7 @@ textarea.form-control {
   min-height: 22px;
   padding: 0 8px;
   border-radius: 999px;
-  background: #22c55e;
+  background: #15803d;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
   font-size: 0.75rem;
@@ -8097,7 +8097,7 @@ textarea.form-control {
 .booking-page .service-price {
   font-size: 13px;
   font-weight: 600;
-  color: #6e7372; /* ط±ظ…ط§ط¯ظٹ ط®ظپظٹظپ */
+  color: #6e7372; /* رمادي خفيف */
 }
 
 .booking-page .service-duration {
@@ -8141,7 +8141,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Sequential Booking Styles
+   ✅ Sequential Booking Styles
 ========================= */
 .bk-time-chip.is-sequential-suggested {
   background: #e6f4ea !important;
@@ -8839,7 +8839,7 @@ textarea.form-control {
 
 /* =========================
    Booking 4-Step UX Refresh
-   ظ†ظپط³ ط§ظ„ط£ظ„ظˆط§ظ†، ط¨ظ†ظٹط© ط£ظˆط¶ط­ ظ„ظ„ط®ط·ظˆط§طھ 1-4
+   نفس الألوان، بنية أوضح للخطوات 1-4
 ========================= */
 .booking-page .booking-step-focus {
   border-radius: 22px;
@@ -10920,8 +10920,8 @@ textarea.form-control {
   box-shadow: var(--bk-shadow);
 }
 
-/* booking-internal ط¯ط§ط®ظ„ ط§ظ„ط¯ط§ط´ط¨ظˆط±ط¯: ط®ظ„ظ‘ظٹ ط³ظƒط±ظˆظ„ ظˆط§ط­ط¯ ظ„ظ„طµظپط­ط© ظپظ‚ط· */
-/* ط­ظ„ ط¬ط°ط±ظٹ ظ„ظ…ط³ط§ط± ط§ظ„ط­ط¬ط² ط§ظ„ط¯ط§ط®ظ„ظٹ: ط³ظƒط±ظˆظ„ ظˆط§ط­ط¯ ظپظ‚ط· (ط³ظƒط±ظˆظ„ ط§ظ„طµظپط­ط©) */
+/* booking-internal داخل الداشبورد: خلّي سكرول واحد للصفحة فقط */
+/* حل جذري لمسار الحجز الداخلي: سكرول واحد فقط (سكرول الصفحة) */
 .dashboard-skin.is-booking-internal-route {
   box-sizing: border-box;
   height: auto !important;
@@ -13820,7 +13820,7 @@ textarea.form-control {
 ========================================================= */
 /* ================================
     Checkout.css (Scoped) - MALIKAT SALON
-    âœ… ظƒظ„ ط§ظ„طھظ†ط³ظٹظ‚ط§طھ ط¯ط§ط®ظ„ .checkout-page
+    ✅ كل التنسيقات داخل .checkout-page
   ================================== */
 
   .checkout-page {
@@ -13928,10 +13928,10 @@ textarea.form-control {
 /* src/styles/Success.css */
 /* =========================================
    Success.css - MALIKAT SALON
-   WHITE / OFF-WHITE VERSION âœ…
-   âœ… Scoped ط¯ط§ط®ظ„ .success-page ظپظ‚ط·
-   âœ… Off-white glass (not pure white)
-   âœ… Burgundy as accent only
+   WHITE / OFF-WHITE VERSION ✅
+   ✅ Scoped داخل .success-page فقط
+   ✅ Off-white glass (not pure white)
+   ✅ Burgundy as accent only
 ========================================= */
 
 .success-page {
@@ -13943,10 +13943,10 @@ textarea.form-control {
   --qs-burgundy: #40010D;
   --qs-offwhite: #F5F5F4;
 
-  /* âœ… Alias for your wording */
+  /* ✅ Alias for your wording */
   --qs-wine: #40010D;
 
-  /* âœ… Green (confirm) */
+  /* ✅ Green (confirm) */
   --qs-green: #22c55e;
 
   /* Text */
@@ -14189,7 +14189,7 @@ textarea.form-control {
   padding: 16px;
 }
 
-/* âœ… Separator ط¨ظٹظ† ط­ط¬ظˆط²ط§طھ ظ…طھط¹ط¯ط¯ط© */
+/* ✅ Separator بين حجوزات متعددة */
 .success-sep {
   height: 1px;
   width: 100%;
@@ -14339,7 +14339,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Actions Layout (STRONG FIX)
+   ✅ Actions Layout (STRONG FIX)
 ========================= */
 
 .success-page .detail-row--full {
@@ -14430,7 +14430,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Copy / WhatsApp Buttons (STRONG FIX)
+   ✅ Copy / WhatsApp Buttons (STRONG FIX)
 ========================= */
 
 .success-page .success-copy-actions {
@@ -14492,7 +14492,7 @@ textarea.form-control {
   );
 }
 
-/* âœ… WhatsApp GREEN (main CTA) */
+/* ✅ WhatsApp GREEN (main CTA) */
 .success-page .success-copy-btn.is-green{
   border: 0;
   color: #fff;
@@ -14512,7 +14512,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Policy Block
+   ✅ Policy Block
 ========================= */
 
 .success-policy{
@@ -14577,7 +14577,7 @@ textarea.form-control {
 }
 
 /* =========================
-   âœ… Alerts / Toast
+   ✅ Alerts / Toast
 ========================= */
 
 .success-alert {
@@ -14633,7 +14633,7 @@ textarea.form-control {
 
 /* ===== Status ===== */
 
-/* âœ… PENDING: ظˆط§ط¶ط­ ط¬ط¯ظ‹ط§ ط¥ظ†ظ‡ ط¨ط§ظ„ط§ظ†طھط¸ط§ط± */
+/* ✅ PENDING: واضح جدًا إنه بالانتظار */
 .status-pill.pending{
   background: rgba(245, 158, 11, 0.18);          /* amber */
   color: #92400e;                                 /* deep amber */
@@ -14642,16 +14642,16 @@ textarea.form-control {
   position: relative;
 }
 
-/* ظ„ظ…ط¹ط© ط®ظپظٹظپط© + ط£ظٹظ‚ظˆظ†ط© */
+/* لمعة خفيفة + أيقونة */
 .status-pill.pending::before{
-  content: "âڈ³";
+  content: "⏳";
   margin-left: 8px; /* RTL */
   font-size: 14px;
   line-height: 1;
   opacity: 0.95;
 }
 
-/* âœ… ط§ط®طھظٹط§ط±ظٹ: ظٹظ‡طھط²/ظٹظ†ط¨ط¶ ط¨ط´ظƒظ„ ظ…ط­طھط±ظ… (ط®ظپظٹظپ ط¬ط¯ظ‹ط§) */
+/* ✅ اختياري: يهتز/ينبض بشكل محترم (خفيف جدًا) */
 .status-pill.pending{
   animation: qs-pendingPulse 1.6s ease-in-out infinite;
 }
@@ -16372,20 +16372,20 @@ textarea.form-control {
 
 /* =========================
    FIX: Login Contrast + Vars (Scoped)
-   ط¯ط§ط®ظ„ .login-page ظپظ‚ط·
+   داخل .login-page فقط
 ========================= */
 
 .login-page{
-  /* ظ„ظˆ ط§ظ„ظ…طھط؛ظٹط±ط§طھ ظ…ظˆ ظ…ط¹ط±ظپط©, ظ‡ظ†ط§ ظ†ط¶ظ…ظ† ظ‚ظٹظ… ط«ط§ط¨طھط© */
-  --text-color: #111827;          /* ط¯ط§ظƒظ† ظˆط§ط¶ط­ */
-  --primary-color: #253140;       /* ط®ظ…ط±ظٹ Queens */
-  --secondary-color: #1f2a38;     /* ط£ط؛ظ…ظ‚ ظ„ظ„ظ‡ظپط± */
+  /* لو المتغيرات مو معرفة, هنا نضمن قيم ثابتة */
+  --text-color: #111827;          /* داكن واضح */
+  --primary-color: #253140;       /* خمري Queens */
+  --secondary-color: #1f2a38;     /* أغمق للهفر */
   --gray: #f5f5f4;                /* off-white */
 
   color: var(--text-color);
 }
 
-/* ط§ظ„ط¹ظ†ط§ظˆظٹظ† ظˆط§ظ„ظ†طµظˆطµ */
+/* العناوين والنصوص */
 .login-title,
 .login-subtitle,
 .login-footer{
@@ -16397,12 +16397,12 @@ textarea.form-control {
   opacity: 0.75;
 }
 
-/* ط§ظ„ظ„ظˆظ‚ظˆ ظƒط§ظ† ط¨ط§ظ‡طھ */
+/* اللوقو كان باهت */
 .login-logo-img{
   opacity: 0.95;
 }
 
-/* ط§ظ„ط­ظ‚ظˆظ„: ظƒط§ظ† ط¹ظ†ط¯ظƒ border ط£ط³ظˆط¯ 1.0 ظ‚ظˆظٹ + ط®ظ„ظپظٹط© ط±ظ…ط§ط¯ظٹط© */
+/* الحقول: كان عندك border أسود 1.0 قوي + خلفية رمادية */
 .form-control-login{
   border: 1px solid rgba(13,13,13,0.14);
   background-color: rgba(245,245,244,0.92);
@@ -16413,14 +16413,14 @@ textarea.form-control {
   color: rgba(17,24,39,0.50);
 }
 
-/* ط§ظ„ظپظˆظƒط³ */
+/* الفوكس */
 .form-control-login:focus{
   outline: none;
   border-color: rgba(37,49,64,0.35);
   box-shadow: 0 0 0 4px rgba(37,49,64,0.10);
 }
 
-/* ط²ط± ط¥ط¸ظ‡ط§ط±/ط¥ط®ظپط§ط، ط§ظ„ط¨ط§ط³ظˆط±ط¯ */
+/* زر إظهار/إخفاء الباسورد */
 .password-toggle{
   color: rgba(17,24,39,0.75);
 }
@@ -16428,7 +16428,7 @@ textarea.form-control {
   color: rgba(37,49,64,0.85);
 }
 
-/* ط²ط± طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ */
+/* زر تسجيل الدخول */
 .login-btn{
   background-color: var(--primary-color);
   color: #fff;
@@ -16438,13 +16438,13 @@ textarea.form-control {
   background-color: var(--secondary-color);
 }
 
-/* ط±ظˆط§ط¨ط· */
+/* روابط */
 .register-link,
 .back-home-link{
   color: #253140;
 }
 
-/* forgot password ظˆط¶ظˆط­ ط£ظپط¶ظ„ */
+/* forgot password وضوح أفضل */
 .forgot-password-link{
   color: #253140;
 }
@@ -16670,12 +16670,12 @@ textarea.form-control {
   margin: 0;
   display: flex;
   justify-content: center;
-  overflow-x: hidden; /* ظ…ظ†ط¹ ط§ظ„طھظ…ط±ظٹط± ط§ظ„ط£ظپظ‚ظٹ ظ†ظ‡ط§ط¦ظٹط§ظ‹ */
+  overflow-x: hidden; /* منع التمرير الأفقي نهائياً */
 }
 
 .p-wrapper {
   width: 100%;
-  max-width: 500px; /* طھط­ط³ظٹظ† ط§ظ„ط¹ط±ط¶ ظ„ظ„ط¬ظˆط§ظ„ */
+  max-width: 500px; /* تحسين العرض للجوال */
   padding: 20px 20px 110px;
   display: flex;
   flex-direction: column;
@@ -16721,8 +16721,8 @@ textarea.form-control {
   color: var(--qs-ink);
 }
 
-.p-icon-settings::before { content: "âڑ™ï¸ڈ"; font-size: 1.2rem; }
-.p-icon-back::before { content: "â‍”"; font-size: 1.2rem; display: inline-block; transform: scaleX(-1); }
+.p-icon-settings::before { content: "⚙️"; font-size: 1.2rem; }
+.p-icon-back::before { content: "➔"; font-size: 1.2rem; display: inline-block; transform: scaleX(-1); }
 
 /* Profile Hero Section */
 .p-profile-hero {
@@ -17293,7 +17293,7 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 100%; /* ط¶ظ…ط§ظ† ط¹ط¯ظ… ط§ظ„ط®ط±ظˆط¬ ط¹ظ† ط§ظ„ط­ط§ظˆظٹط© */
+  width: 100%; /* ضمان عدم الخروج عن الحاوية */
 }
 
 .p-list-item-modern {
@@ -17304,8 +17304,8 @@ textarea.form-control {
   align-items: center;
   gap: 12px;
   box-shadow: var(--qs-soft-shadow);
-  width: 100%; /* ط¶ظ…ط§ظ† ط§ظ„ط¹ط±ط¶ ط§ظ„ظƒط§ظ…ظ„ */
-  box-sizing: border-box; /* ط¶ظ…ط§ظ† ط§ظ„ط­ط³ط§ط¨ ط§ظ„طµط­ظٹط­ ظ„ظ„ط­ظˆط§ظپ */
+  width: 100%; /* ضمان العرض الكامل */
+  box-sizing: border-box; /* ضمان الحساب الصحيح للحواف */
 }
 
 .p-list-icon {
@@ -17325,7 +17325,7 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0; /* ظ…ظ‡ظ… ظ„ظ…ظ†ط¹ طھظ…ط¯ط¯ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ظ…ط±ظ†ط© */
+  min-width: 0; /* مهم لمنع تمدد العناصر المرنة */
 }
 
 .p-list-row-top {
@@ -17339,7 +17339,7 @@ textarea.form-control {
   font-size: 0.9rem;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis; /* ظ‚طµ ط§ظ„ظ†طµ ط§ظ„ط·ظˆظٹظ„ */
+  text-overflow: ellipsis; /* قص النص الطويل */
 }
 
 .p-list-status {
@@ -17406,7 +17406,7 @@ textarea.form-control {
   backdrop-filter: blur(5px);
   display: flex;
   justify-content: center;
-  align-items: flex-end; /* ظٹط¸ظ‡ط± ظ…ظ† ط§ظ„ط£ط³ظپظ„ ظ„ظ„ط¬ظˆط§ظ„ */
+  align-items: flex-end; /* يظهر من الأسفل للجوال */
   z-index: 2000;
 }
 
@@ -17621,15 +17621,15 @@ textarea.form-control {
   }
 }
 
-/* âœ… Profile: make date picker icon black (Chrome/Edge/Safari) */
-/* (ط§ط®طھظٹط§ط±ظٹ) ظ„ظˆ ط¹ظ†ط¯ظƒ ط«ظٹظ…ط§طھ طھط­ط· appearance ط؛ط±ظٹط¨ط© */
+/* ✅ Profile: make date picker icon black (Chrome/Edge/Safari) */
+/* (اختياري) لو عندك ثيمات تحط appearance غريبة */
 .p-root input[type="date"] {
   color-scheme: light;
 }
 
-/* âœ… Close X color */
+/* ✅ Close X color */
 .p-close-modal {
-  color: #0d0d0d;          /* ط£ط³ظˆط¯ */
+  color: #0d0d0d;          /* أسود */
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -17637,7 +17637,7 @@ textarea.form-control {
   line-height: 1;
 }
 
-/* ظ„ظˆ ط¹ظ†ط¯ظƒ hover */
+/* لو عندك hover */
 .p-close-modal:hover {
   opacity: 0.8;
 }
@@ -18150,7 +18150,7 @@ textarea.form-control {
    Clean / Centered / RTL-friendly
 ========================= */
 
-/* ط®ظ„ظپظٹط© ظ†ط¸ظٹظپط© */
+/* خلفية نظيفة */
 .lb-root {
   min-height: 100vh;
   display: flex;
@@ -18160,12 +18160,12 @@ textarea.form-control {
   padding: 22px 16px;
   background: #656c73;
 
-  /* ظ…ط¸ظ‡ط± ط£ظ†ط¹ظ… */
+  /* مظهر أنعم */
   position: relative;
   overflow: hidden;
 }
 
-/* ظ„ظ…ط³ط© ط®ظپظٹظپط© ط¬ط¯ط§ظ‹ (ط§ط®طھظٹط§ط±ظٹ) */
+/* لمسة خفيفة جداً (اختياري) */
 .lb-root::before {
   content: "";
   position: absolute;
@@ -18176,9 +18176,9 @@ textarea.form-control {
   pointer-events: none;
 }
 
-/* ط§ظ„ظ…ط­طھظˆظ‰ */
+/* المحتوى */
 .lb-content {
-  position: relative; /* ظپظˆظ‚ ط§ظ„ط®ظ„ظپظٹط© */
+  position: relative; /* فوق الخلفية */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -18187,39 +18187,39 @@ textarea.form-control {
   text-align: center;
   direction: rtl;
 
-  /* ظٹظ…ظ†ط¹ طھظ…ط¯ط¯ ظ…ط¨ط§ظ„ط؛ ظپظٹظ‡ */
+  /* يمنع تمدد مبالغ فيه */
   max-width: 520px;
   width: 100%;
 }
 
-/* ط§ظ„ط´ط¹ط§ط± */
+/* الشعار */
 .lb-logo {
   width: 160px;
   max-width: 72vw;
   height: auto;
   object-fit: contain;
 
-  /* ط«ط¨ط§طھ ط£ظپط¶ظ„ */
+  /* ثبات أفضل */
   display: block;
   filter: drop-shadow(0 10px 22px rgba(0,0,0,0.10));
 
   animation: lbFade 1.4s ease-in-out infinite alternate;
 }
 
-/* ط§ظ„ظ†طµ */
+/* النص */
 .lb-text {
   font-size: 14px;
   font-weight: 700;
   color: #f5f7fa;
   letter-spacing: 0.2px;
 
-  /* ظٹظ…ظ†ط¹ ط§ظ„ط³ط·ط± ط§ظ„ط·ظˆظٹظ„ ظٹظƒط³ط± ط§ظ„طھطµظ…ظٹظ… */
+  /* يمنع السطر الطويل يكسر التصميم */
   line-height: 1.6;
   padding: 0 6px;
   max-width: 420px;
 }
 
-/* ظˆط¶ط¹ طµط؛ظٹط± */
+/* وضع صغير */
 .lb-root.is-small {
   min-height: 200px;
   padding: 18px 14px;
@@ -18234,7 +18234,7 @@ textarea.form-control {
   font-size: 13px;
 }
 
-/* طھط­ط³ظٹظ† ظ„ظ„ط¬ظˆط§ظ„ */
+/* تحسين للجوال */
 @media (max-width: 480px) {
   .lb-content {
     gap: 14px;
@@ -18250,13 +18250,13 @@ textarea.form-control {
   }
 }
 
-/* ط­ط±ظƒط© ظ‡ط§ط¯ط¦ط© */
+/* حركة هادئة */
 @keyframes lbFade {
   from { opacity: 0.65; transform: translateY(2px); }
   to   { opacity: 1;    transform: translateY(0); }
 }
 
-/* ط§ط­طھط±ط§ظ… طھظ‚ظ„ظٹظ„ ط§ظ„ط­ط±ظƒط© */
+/* احترام تقليل الحركة */
 @media (prefers-reduced-motion: reduce) {
   .lb-logo {
     animation: none;
@@ -18267,7 +18267,7 @@ textarea.form-control {
 /* =========================================================
    Loading and chatbot
 ========================================================= */
-/* âœ… src/styles/ChatBot.css */
+/* ✅ src/styles/ChatBot.css */
 /* MALIKAT SALON ChatBot (Black Glass) - scoped */
 
 .chatbot{
@@ -18418,17 +18418,17 @@ textarea.form-control {
 }
 
 .chatbot-page .chatbot-action::before{
-  content: "âں، ";
+  content: "⟡ ";
   opacity: .85;
 }
 
 .chatbot-page .chatbot-hint::before{
-  content: "â€¢ ";
+  content: "• ";
   opacity: .75;
 }
 
 .chatbot-page .chatbot-quick::before{
-  content: "â—ˆ ";
+  content: "◈ ";
   opacity: .85;
 }
 

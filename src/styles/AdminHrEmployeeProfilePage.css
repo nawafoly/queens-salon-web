@@ -3392,7 +3392,7 @@
 }
 
 .employee-profile-page .emp-hours-status input:checked + span::before {
-  content: "âœ“";
+  content: "✓";
   background: #16986c;
 }
 

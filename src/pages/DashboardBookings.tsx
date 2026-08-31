@@ -4255,7 +4255,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       updatedByUid: currentUid || null,
       updatedByEmail: currentEmail || null,
       updatedByName: actorName || null,
-      label: actorName || "â€”",
+      label: actorName || "—",
     };
   }, [authUser.displayName, authUser.email, userNamesByUid]);
   const touchLastUpdate = useCallback((bookingId: string, atMs = Date.now()) => {

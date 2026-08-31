@@ -640,12 +640,14 @@
 
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
 .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__selected-summary strong {
-  max-height: 50px !important;
   overflow: hidden !important;
   color: #344054 !important;
   font-size: 0.67rem !important;
   font-weight: 750 !important;
   line-height: 1.65 !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 3 !important;
 }
 
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route

@@ -9,7 +9,7 @@
 }
 
 /* =========================
-   âœ… Loading
+   ✅ Loading
 ========================= */
 .dashboard-skin .dashboard-loading {
   min-height: 70vh;
@@ -51,7 +51,7 @@
 }
 
 /* =========================
-   âœ… Forms inside dashboard (Bootstrap inputs)
+   ✅ Forms inside dashboard (Bootstrap inputs)
 ========================= */
 .dashboard-skin .form-control,
 .dashboard-skin .form-select {
@@ -73,14 +73,14 @@
 }
 
 /* =========================================================
-   âœ…âœ… UNIFIED Dashboard Components (NO DUPLICATION)
+   ✅✅ UNIFIED Dashboard Components (NO DUPLICATION)
    - dash-card
    - dash-field label
    - dash-input / dash-textarea (base)
    - pills / chips base (includes staff-pill/staff-chip)
 ========================================================= */
 
-/* âœ… Card base (used everywhere) */
+/* ✅ Card base (used everywhere) */
 /* Card primitive aliases: scoped to current dashboard cleanup pages only. */
 
 
@@ -95,7 +95,7 @@
   margin: 12px 0;
 }
 
-/* âœ… Field label base */
+/* ✅ Field label base */
 .dashboard-skin .dash-field label {
   display: block;
   margin-bottom: 6px;
@@ -103,7 +103,7 @@
   color: var(--text-strong);
 }
 
-/* âœ… Unified Input / Textarea base */
+/* ✅ Unified Input / Textarea base */
 .dashboard-skin .dash-input,
 .dashboard-skin .dash-textarea {
   width: 100%;
@@ -132,7 +132,7 @@
 
 
 
-/* âœ… Pills base (global) + support existing staff-pill without touching TSX */
+/* ✅ Pills base (global) + support existing staff-pill without touching TSX */
 .dashboard-skin .dashboard-pill,
 .dashboard-skin  .staff-pill,
 .dashboard-skin :where(.income-page .dash-pill, .exp-page .dash-pill, .offers-page .dash-pill) {
@@ -151,7 +151,7 @@
   white-space: nowrap !important;
 }
 
-/* âœ… Chips base (global) + support existing staff-chip without touching TSX */
+/* ✅ Chips base (global) + support existing staff-chip without touching TSX */
 .dashboard-skin .dashboard-chip,
 .dashboard-skin  .staff-chip {
   padding: 7px 10px !important;
@@ -334,7 +334,7 @@
 }
 
 /* =========================
-   âœ… Custom Dropdown: Clients Sort
+   ✅ Custom Dropdown: Clients Sort
 ========================= */
 .dashboard-skin .cl-sort-wrap {
   position: relative;
@@ -362,7 +362,7 @@
 }
 
 /* =========================
-   âœ… Select (Unified) - Queens
+   ✅ Select (Unified) - Queens
 ========================= */
 .dashboard-skin .dash-select {
   width: 100%;
@@ -416,14 +416,14 @@
   box-shadow: none !important;
 }
 
-/* arrow helper (ط§ط®طھظٹط§ط±ظٹ) */
+/* arrow helper (اختياري) */
 
 
 
 
 
 
-/* âœ… Small select helper */
+/* ✅ Small select helper */
 .dashboard-skin .dash-select--sm {
   min-height: 38px;
   border-radius: 12px;
@@ -432,7 +432,7 @@
 }
 
 /* =========================
-   âœ… Custom Dropdown (Unified / Scoped)
+   ✅ Custom Dropdown (Unified / Scoped)
 ========================= */
 .dashboard-skin .dash-dd-wrap {
   position: relative;
@@ -515,7 +515,7 @@
 }
 
 /* =========================
-   âœ… Clients form helpers (scoped)
+   ✅ Clients form helpers (scoped)
 ========================= */
 .dashboard-skin .clients-page .cl-form {
   display: flex;
@@ -556,7 +556,7 @@
   border-radius: 16px;
 }
 
-/* ط²ط± ط§ظ„ط±ط¦ظٹط³ظٹط© (ظپط®ظ…) */
+/* زر الرئيسية (فخم) */
 .dashboard-skin .sidebar-footer .exp-btn.home {
   background: linear-gradient(
     135deg,
@@ -577,7 +577,7 @@
   );
 }
 
-/* ط²ط± HR */
+/* زر HR */
 .dashboard-skin .sidebar-footer .exp-btn.hr {
   background: linear-gradient(135deg, rgba(255, 232, 168, 0.18), rgba(243, 182, 31, 0.28));
   border-color: rgba(243, 182, 31, 0.26);
@@ -590,7 +590,7 @@
   background: linear-gradient(135deg, rgba(255, 232, 168, 0.24), rgba(243, 182, 31, 0.34));
 }
 
-/* ط²ط± ط§ظ„ط®ط±ظˆط¬ (ط®ط·ط± ظˆط§ط¶ط­) */
+/* زر الخروج (خطر واضح) */
 .dashboard-skin .sidebar-footer .exp-btn.logout {
   background: rgba(239, 68, 68, 0.10);
   border-color: rgba(239, 68, 68, 0.22);
@@ -1271,7 +1271,7 @@
 
 /* =========================================================
    Overview Experience Refresh v4
-   ظٹط¸ظ‡ط± ط§ظ„طھط؛ظٹظٹط± ط¨ظˆط¶ظˆط­ ظپظٹ طµظپط­ط© "ظ†ط¸ط±ط© ط¹ط§ظ…ط©".
+   يظهر التغيير بوضوح في صفحة "نظرة عامة".
 ========================================================= */
 .dashboard-skin .overview-page {
   --ov-card-radius: 24px;
@@ -1480,7 +1480,7 @@
 ========================================================= */
 
 /* ===================================================================
-   âœ… DashboardBookings.css - Scoped & Refined
+   ✅ DashboardBookings.css - Scoped & Refined
    - Scoped to .bk-page-wrapper and .bk-modal
    - Optimized for all screen sizes (Mobile, Tablet, Desktop)
    =================================================================== */
@@ -1882,7 +1882,7 @@
 
 
 /* ===================================================================
-   â­گâ­گâ­گ MODAL STYLES (Scoped to .bk-modal) â­گâ­گâ­گ
+   ⭐⭐⭐ MODAL STYLES (Scoped to .bk-modal) ⭐⭐⭐
    =================================================================== */
 
 
@@ -2154,7 +2154,7 @@
 
 /* =========================================================
    Bookings Experience Refresh v4
-   ظٹظˆط¶ط­ ط§ظ„طµظپط­ط© ظˆظٹظ‚ظ„ظ„ ط§ظ„ط¥ط­ط³ط§ط³ ط¨ط£ظ†ظ‡ط§ ظ‚ط§ط¦ظ…ط© طھظ†ط¨ظٹظ‡ط§طھ ط·ظˆظٹظ„ط© ظپظ‚ط·.
+   يوضح الصفحة ويقلل الإحساس بأنها قائمة تنبيهات طويلة فقط.
 ========================================================= */
 
 
@@ -2238,8 +2238,8 @@
 
 /* ================================
    DashboardClients.css (SCOPED)
-   âœ… ظƒظ„ ط§ظ„طھظ†ط³ظٹظ‚ط§طھ ط¯ط§ط®ظ„ .clients-page ظپظ‚ط·
-   âœ… ظٹط¹طھظ…ط¯ ط¹ظ„ظ‰ DashboardModals.css ظ„ظ„ظ…ظˆط¯ط§ظ„ (dash-modal / overlay)
+   ✅ كل التنسيقات داخل .clients-page فقط
+   ✅ يعتمد على DashboardModals.css للمودال (dash-modal / overlay)
 ================================== */
 
 .clients-page {
@@ -2270,7 +2270,7 @@
   color: #0D0D0D;
 }
 
-/* Section spacing (ط¨ط¯ظ„ inline marginBottom) */
+/* Section spacing (بدل inline marginBottom) */
 .clients-page .cl-section {
   margin-bottom: 12px;
 }
@@ -2314,7 +2314,7 @@
   width: 100%;
 }
 
-/* Error card (ط¨ط¯ظ„ inline styles) */
+/* Error card (بدل inline styles) */
 .clients-page .cl-errorCard {
   border-color: #ffd6d6;
   background: #fff5f5;
@@ -2335,24 +2335,24 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap; /* ط¨ط§ظ„ظ…ظˆط¨ط§ظٹظ„ ظٹظ†ط²ظ„ظˆظ† طھط­طھ */
+  flex-wrap: wrap; /* بالموبايل ينزلون تحت */
   width: 100%;
 }
 
-/* ط§ظ„ط§ظ†ط¨طھ ظ‡ظˆ ط§ظ„ظ„ظٹ ظٹطھظ…ط¯ط¯ */
+/* الانبت هو اللي يتمدد */
 .clients-page .cl-form .cl-input {
   flex: 1;
   min-width: 180px;
 }
 
-/* âœ… ط§ظ„ط³ظ„ظƒطھ ظ„ط§ ظٹطھظ…ط¯ط¯ */
+/* ✅ السلكت لا يتمدد */
 .clients-page .cl-form .cl-sort {
   flex: 0 0 auto;
   width: 180px;
   max-width: 220px;
 }
 
-/* ط²ط± ط§ظ„طھطµط¯ظٹط± */
+/* زر التصدير */
 .clients-page .reports-btn {
   min-height: var(--dash-button-min-height, 40px);
   border-radius: var(--dash-button-radius, 12px);
@@ -2394,8 +2394,8 @@
   justify-content: center;
 }
 
-/* Input (ظٹط¯ط¹ظ… input ظ…ط¨ط§ط´ط±ط© + ظٹط¯ط¹ظ… .cl-input) */
-/* Input (ظٹط¯ط¹ظ… input ظ…ط¨ط§ط´ط±ط© + ظٹط¯ط¹ظ… .cl-input) */
+/* Input (يدعم input مباشرة + يدعم .cl-input) */
+/* Input (يدعم input مباشرة + يدعم .cl-input) */
 .clients-page .cl-form input,
 .clients-page .cl-form .cl-input {
   border: var(--cl-control-border);
@@ -2408,7 +2408,7 @@
   text-align: right;
   direction: rtl;
 
-  /* âœ… Fix: ظ„ط§ ظٹط£ط®ط° ظ„ظˆظ† ط؛ط§ظ…ظ‚ ظ…ظ† ط³طھط§ظٹظ„ ط¹ط§ظ… */
+  /* ✅ Fix: لا يأخذ لون غامق من ستايل عام */
   background: #fff;
   color: #0D0D0D;
   caret-color: #0D0D0D;
@@ -2644,7 +2644,7 @@
   font-weight: 900;
 }
 
-/* Pill unified (ظ†ظپط³ ط±ظˆط­ income/reports) */
+/* Pill unified (نفس روح income/reports) */
 .clients-page .dash-pill {
   display: inline-flex;
   align-items: center;
@@ -2741,7 +2741,7 @@
   background: #e5f4ea;
 }
 
-/* Modal header/body (ظ†طھط±ظƒ ط§ظ„ط´ظƒظ„ ط§ظ„ط£ط³ط§ط³ظٹ ظ„ظ„ظ…ظˆط¯ط§ظ„ ظ…ظ† DashboardModals.css) */
+/* Modal header/body (نترك الشكل الأساسي للمودال من DashboardModals.css) */
 .clients-page .cl-modalHeader {
   display: flex;
   justify-content: space-between;
@@ -2777,7 +2777,7 @@
   display: none;
 }
 
-/* ط¯ط§ط®ظ„ ظ…ظˆط¯ط§ظ„ ط§ظ„ط³ط¬ظ„: ط§ظپطھط±ط§ط¶ظٹظ‹ط§ ظ„ظ„ظ…ظˆط¨ط§ظٹظ„ ظ†ط¸ظ‡ط± ط§ظ„ط¨ط·ط§ظ‚ط§طھ ظپظ‚ط· */
+/* داخل مودال السجل: افتراضيًا للموبايل نظهر البطاقات فقط */
 .cl-modal-mobile-bookings {
   display: block;
 }
@@ -3032,7 +3032,7 @@
   }
 }
 
-/* ظپظٹ ط§ظ„ط¯ظٹط³ظƒطھظˆط¨: ظ†ط¸ظ‡ط± ط§ظ„ط¬ط¯ظˆظ„ ظˆظ†ط®ظپظٹ ط§ظ„ط¨ط·ط§ظ‚ط§طھ */
+/* في الديسكتوب: نظهر الجدول ونخفي البطاقات */
 @media (min-width: 901px) {
   .cl-record-modal .cl-modal-table-wrap {
     display: block;
@@ -3043,7 +3043,7 @@
   }
 }
 
-/* ===== Modal (portal ط®ط§ط±ط¬ .clients-page) ===== */
+/* ===== Modal (portal خارج .clients-page) ===== */
 .cl-record-modal .cl-modalHeader {
   display: flex;
   align-items: center;
@@ -3400,7 +3400,7 @@
 ========================================================= */
 
 /* ===================================================================
-   âœ… DashboardEmployees.css - Scoped & Refined
+   ✅ DashboardEmployees.css - Scoped & Refined
    - Scoped to .emp-page-wrapper and .emp-modal
    - Prevent affecting other pages
    =================================================================== */
@@ -4182,7 +4182,7 @@
 }
 
 /* ===================================================================
-   â­گâ­گâ­گ MODAL STYLES (Scoped to .emp-modal) â­گâ­گâ­گ
+   ⭐⭐⭐ MODAL STYLES (Scoped to .emp-modal) ⭐⭐⭐
    =================================================================== */
 
 .emp-modal .modal-head {
@@ -7895,7 +7895,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 /* ================================================================
-   Employee sections â€” corporate form UX
+   Employee sections — corporate form UX
    ================================================================ */
 
 .emp-modal .emp-section-header {
@@ -9675,14 +9675,14 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 /* =========================
    Dashboard Staff (FINAL - Unified Queens)
    File: src/styles/DashboardStaff.css
-   âœ… Scoped ط¯ط§ط®ظ„ .dashstaff-page ظپظ‚ط·
+   ✅ Scoped داخل .dashstaff-page فقط
 ========================= */
 
 .dashstaff-page{
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto;
 
-  /* âœ… طھظˆط­ظٹط¯ ط£ظ„ظˆط§ظ†/ط³طھط§ظٹظ„ ط¯ط§ط®ظ„ طµظپط­ط© ط§ظ„ظ…ظˆط¸ظپط© */
+  /* ✅ توحيد ألوان/ستايل داخل صفحة الموظفة */
   --ds-bg: var(--dash-bg-2, #F5F5F4);                 /* off-white */
   --ds-surface: var(--dash-panel-bg, rgba(255,255,255,.92));
   --ds-border: var(--dash-border, rgba(13,13,13,.10));
@@ -9699,7 +9699,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   padding: 14px 0 40px;
 }
 
-/* âœ… ط®ظ„ظپظٹط© ط®ظپظٹظپط© + ظ†ظ‚ط´ (ظپط®ظ… ظ…ط«ظ„ ط§ظ„ظ„ظٹ ط³ظˆظٹظ†ط§ظ‡) */
+/* ✅ خلفية خفيفة + نقش (فخم مثل اللي سويناه) */
 .dashstaff-page::before{
   content:"";
   position: fixed;
@@ -9715,7 +9715,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   opacity: 1;
 }
 
-/* ظ†ظ‚ط´ ظ†ظ‚ط§ط· ط®ظپظٹظپ */
+/* نقش نقاط خفيف */
 .dashstaff-page::after{
   content:"";
   position: fixed;
@@ -9886,7 +9886,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   overflow: hidden;
 }
 
-/* ظ„ظ…ط¹ط© ط®ظپظٹظپط© */
+/* لمعة خفيفة */
 .dashstaff-page .dashstaff-card::after{
   content:"";
   position:absolute;
@@ -10059,24 +10059,24 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 /* =========================
-   âœ… Mobile polish (DashboardStaff)
+   ✅ Mobile polish (DashboardStaff)
    Add at END of DashboardStaff.css
 ========================= */
 
-/* 1) ظ†ط®ظپظپ ط¹ط±ط¶ ط§ظ„ظƒظˆظ†طھظٹظ†ط± + padding ط¨ط§ظ„ط¬ظˆط§ظ„ */
+/* 1) نخفف عرض الكونتينر + padding بالجوال */
 @media (max-width: 600px){
   .dashstaff-page{
     width: calc(100% - 18px);
     padding: 10px 0 26px;
   }
 
-  /* ط§ظ„ط®ظ„ظپظٹط©: ط®ظپظپ ط§ظ„ظ†ظ‚ط´ ط´ظˆظٹ ط¹ط´ط§ظ† ظ…ط§ ظٹط²ط­ظ… */
+  /* الخلفية: خفف النقش شوي عشان ما يزحم */
   .dashstaff-page::after{ opacity: .38; }
 }
 
-/* 2) ط¬ظˆط§ظ„ طµط؛ظٹط±: ظ†ط±طھط¨ ط§ظ„ظ‡ظٹط¯ط± ظˆط§ظ„ظپظ„ط§طھط± ظˆط§ظ„ظƒط±ظˆطھ */
+/* 2) جوال صغير: نرتب الهيدر والفلاتر والكروت */
 @media (max-width: 520px){
-  /* Header ظٹطµظٹط± ط³طھط§ظƒ */
+  /* Header يصير ستاك */
   .dashstaff-page .dashstaff-header{
     flex-direction: column;
     align-items: stretch;
@@ -10089,7 +10089,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     line-height: 1.3;
   }
 
-  /* ط¹ط¯ط§ط¯/ط¨ط§ط¯ط¬ط§طھ: ط®ظ„ظٹظ‡ط§ طھظ…ط³ظƒ ط¹ط±ط¶ظ‡ط§ ظˆطھطھظˆط²ط¹ */
+  /* عداد/بادجات: خليها تمسك عرضها وتتوزع */
   .dashstaff-page .dashstaff-sub{
     gap: 8px;
   }
@@ -10098,7 +10098,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     font-size: 12px;
   }
 
-  /* Filters: ظƒظ„ظ‡ط§ 100% ظˆط¨ظ€ ط§ط±طھظپط§ط¹ ظ…ط±ظٹط­ */
+  /* Filters: كلها 100% وبـ ارتفاع مريح */
   .dashstaff-page .dashstaff-filters{
     margin-top: 10px;
     gap: 8px;
@@ -10114,20 +10114,20 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     gap: 6px;
   }
 
-  /* List spacing ط£ظ‚ظ„ */
+  /* List spacing أقل */
   .dashstaff-page .dashstaff-list{
     margin-top: 12px;
     gap: 10px;
   }
 
-  /* Card: ط®ظپظپ ط§ظ„ط¸ظ„ + padding */
+  /* Card: خفف الظل + padding */
   .dashstaff-page .dashstaff-card{
     padding: 12px;
     border-radius: 16px;
     box-shadow: 0 10px 24px rgba(13,13,13,.08);
   }
 
-  /* Row top: ط®ظ„ظ‡ ظٹظ„ظپ ط¨ط´ظƒظ„ ظ†ط¸ظٹظپ */
+  /* Row top: خله يلف بشكل نظيف */
   .dashstaff-page .dashstaff-row.top{
     align-items: flex-start;
     gap: 8px;
@@ -10141,13 +10141,13 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     font-size: 12px;
   }
 
-  /* Status ط£طµط؛ط± ط´ظˆظٹ */
+  /* Status أصغر شوي */
   .dashstaff-page .dashstaff-status{
     font-size: 11.5px;
     padding: 5px 9px;
   }
 
-  /* Actions: ط®ظ„ظٹ ط§ظ„ط£ط²ط±ط§ط± طھط§ط®ط° ط³ط·ط±ظٹظ† ط¨ط´ظƒظ„ ظ…ط±طھط¨ */
+  /* Actions: خلي الأزرار تاخذ سطرين بشكل مرتب */
   .dashstaff-page .dashstaff-actions{
     gap: 8px;
   }
@@ -10158,11 +10158,11 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     border-radius: 999px;
   }
 
-  /* âœ… ظ„ظ…ط³ط© ظ…ظ‡ظ…ط© ظ„ظ„ط¬ظˆط§ظ„: ظ‚ظ„ظ„ hover ظ„ط£ظ† ط§ظ„ط¬ظˆط§ظ„ ظ…ط§ ظٹط­طھط§ط¬ظ‡ */
+  /* ✅ لمسة مهمة للجوال: قلل hover لأن الجوال ما يحتاجه */
   .dashstaff-page .dashstaff-card:hover::after{ opacity: 0; }
 }
 
-/* 3) ط¬ظˆط§ظ„ط§طھ ط£طµط؛ط± ط¬ط¯ظ‹ط§ */
+/* 3) جوالات أصغر جدًا */
 @media (max-width: 380px){
   .dashstaff-page{ width: calc(100% - 14px); }
   .dashstaff-page .dashstaff-count{ width: 100%; text-align: center; }
@@ -10171,7 +10171,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 /* =========================================================
    Staff Portal Experience Refresh v4
-   طµظپط­ط© ط§ظ„ظ…ظˆط¸ظپط§طھ ط¨ظ†ظپط³ ظ†ط¸ط§ظ… ط§ظ„ط¯ط§ط´ط¨ظˆط±ط¯ ط§ظ„ط¬ط¯ظٹط¯.
+   صفحة الموظفات بنفس نظام الداشبورد الجديد.
 ========================================================= */
 .dashstaff-page {
   width: 100% !important;
@@ -12215,14 +12215,14 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     box-shadow 0.18s ease;
 }
 
-/* ط§ظ„ط­ط§ظ„ط© ط§ظ„ط¹ط§ط¯ظٹط©: ظ„ط§ ظٹظˆط¬ط¯ طھظ†ط¨ظٹظ‡ */
+/* الحالة العادية: لا يوجد تنبيه */
 .hr-entry-tile.is-idle {
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(15, 23, 42, 0.42);
   box-shadow: none;
 }
 
-/* ط§ظ„ط­ط§ظ„ط© ط§ظ„ظ†ط´ط·ط©: ظٹظˆط¬ط¯ طھظ†ط¨ظٹظ‡ */
+/* الحالة النشطة: يوجد تنبيه */
 .hr-entry-tile.is-active {
   border: 1px solid rgba(244, 180, 0, 0.72);
   background: rgba(244, 180, 0, 0.08);
@@ -13993,7 +13993,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   border-radius: 999px;
   padding: 0 18px;
   background: #fff;
-  color: #94a3b8;
+  color: #475569;
   font-style: normal;
   font-weight: 900;
 }
@@ -17148,25 +17148,25 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 /* Keep key columns on one line for readability */
 .exp-table th:nth-child(1),
-.exp-table td:nth-child(1), /* ط§ظ„طھط§ط±ظٹط® */
+.exp-table td:nth-child(1), /* التاريخ */
 .exp-table th:nth-child(2),
-.exp-table td:nth-child(2), /* ط§ظ„ظ†ظˆط¹ */
+.exp-table td:nth-child(2), /* النوع */
 .exp-table th:nth-child(4),
-.exp-table td:nth-child(4), /* ط§ظ„ظ…ظˆط¸ظپط© */
+.exp-table td:nth-child(4), /* الموظفة */
 .exp-table th:nth-child(5),
-.exp-table td:nth-child(5), /* ط§ظ„ظ…ط¨ظ„ط؛ */
+.exp-table td:nth-child(5), /* المبلغ */
 .exp-table th:nth-child(6),
-.exp-table td:nth-child(6), /* ط§ظ„ظ…طµط¯ط± */
+.exp-table td:nth-child(6), /* المصدر */
 .exp-table th:nth-child(8),
-.exp-table td:nth-child(8)  /* ط¥ط¬ط±ط§ط، */ {
+.exp-table td:nth-child(8)  /* إجراء */ {
   white-space: nowrap;
 }
 
 /* Allow long text only where needed */
 .exp-table th:nth-child(3),
-.exp-table td:nth-child(3), /* ط§ظ„ظˆطµظپ */
+.exp-table td:nth-child(3), /* الوصف */
 .exp-table th:nth-child(7),
-.exp-table td:nth-child(7)  /* ظ…ظ„ط§ط­ط¸ط§طھ */ {
+.exp-table td:nth-child(7)  /* ملاحظات */ {
   white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
@@ -17443,9 +17443,9 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 /* =========================
    Dashboard Offers (Polished) - Queens WHITE
    File: src/styles/DashboardOffers.css
-   âœ… NO dash-pill base styles ظ‡ظ†ط§
-   âœ… ظٹط¹طھظ…ط¯ ط¹ظ„ظ‰ DashboardSkin.css ظ„ظ„ط£ط²ط±ط§ط±
-   âœ… ط«ظٹظ… ظ…ظ„ظƒط§طھ ط§ظ„ط£ط¨ظٹط¶ + ط§ظ„ط®ظ…ط±ظٹ (#40010D) ط¨ط¯ظˆظ† ط¨ظ†ظپط³ط¬ظٹ
+   ✅ NO dash-pill base styles هنا
+   ✅ يعتمد على DashboardSkin.css للأزرار
+   ✅ ثيم ملكات الأبيض + الخمري (#40010D) بدون بنفسجي
 ========================= */
 
 .dashboard-skin .offers-page{
@@ -17472,7 +17472,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   overflow-x: hidden;
   font-family: "Tajawal", sans-serif;
 
-  /* MALIKAT SALON â€“ White theme (NO beige) */
+  /* MALIKAT SALON – White theme (NO beige) */
   background:
     radial-gradient(
       900px 520px at 15% 18%,
@@ -17495,11 +17495,11 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   box-sizing: border-box;
 }
 
-/* âœ… ط£ظ‡ظ… ط¥طµظ„ط§ط­: طھطµط؛ظٹط± checkbox + ط«ظٹظ… ظ…ظ„ظƒط§طھ */
+/* ✅ أهم إصلاح: تصغير checkbox + ثيم ملكات */
 .dashboard-skin .offers-page input[type="checkbox"] {
   width: 16px !important;
   height: 16px !important;
-  accent-color: #40010D !important; /* âœ… ط¨ط¯ظ„ ط§ظ„ط¨ظ†ظپط³ط¬ظٹ */
+  accent-color: #40010D !important; /* ✅ بدل البنفسجي */
   cursor: pointer;
 }
 
@@ -17651,7 +17651,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   position: sticky;
   top: 0;
 
-  /* âœ… ظ‡ظٹط¯ط± ط®ظپظٹظپ ط®ظ…ط±ظٹ ط¨ط¯ظ„ ط§ظ„ط¨ظ†ظپط³ط¬ظٹ */
+  /* ✅ هيدر خفيف خمري بدل البنفسجي */
   background: rgba(64, 1, 13, 0.06);
   border-bottom: 1px solid rgba(64, 1, 13, 0.14);
 
@@ -17675,7 +17675,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .offers-table tbody tr:hover td {
-  /* âœ… hover ط®ظپظٹظپ ط®ظ…ط±ظٹ */
+  /* ✅ hover خفيف خمري */
   background: rgba(64, 1, 13, 0.035);
 }
 
@@ -17867,8 +17867,8 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   }
 }
 
-/* âœ… ظ„ظ…ط³ط© ظپظ‚ط·: dash-pill ط¯ط§ط®ظ„ Offers (ط¨ط¯ظˆظ† ظ„ظ…ط³ ط£ط³ط§ط³ ط§ظ„ط²ط± ظپظٹ Skin)
-   âڑ ï¸ڈ ظƒط§ظ† ط¨ظ†ظپط³ط¬ظٹ: طµط§ط± "ط®ظ…ط±ظٹ ظ…ظ„ظƒط§طھ" */
+/* ✅ لمسة فقط: dash-pill داخل Offers (بدون لمس أساس الزر في Skin)
+   ⚠️ كان بنفسجي: صار "خمري ملكات" */
 .dashboard-skin .offers-page .dash-pill {
   display: inline-flex;
   align-items: center;
@@ -17911,7 +17911,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   color: #40010D;
 }
 
-/* âœ… ط£ظ„ظˆط§ظ† toggle ظپظ‚ط· (ط¨ط¯ظˆظ† ظ„ظ…ط³ ط£ط³ط§ط³ ط§ظ„ط²ط±) */
+/* ✅ ألوان toggle فقط (بدون لمس أساس الزر) */
 .dashboard-skin .dash-pill.dash-pill-warning {
   background: rgba(255, 193, 7, 0.14);
   border: 1px solid rgba(255, 193, 7, 0.30);
@@ -17944,7 +17944,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   overflow: hidden;
 }
 
-/* Header fixed ط¯ط§ط®ظ„ ط§ظ„ظ…ظˆط¯ط§ظ„ */
+/* Header fixed داخل المودال */
 .of-modal-head {
   position: sticky;
   top: 0;
@@ -17987,11 +17987,11 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 .offers-modal .dash-pill.dash-pill-primary {
   background: #40010D;
   border-color: #40010D;
-  color: #111827;
+  color: #ffffff;
 }
 
 .offers-modal .dash-pill.dash-pill-primary svg {
-  color: #111827;
+  color: #ffffff;
 }
 
 .offers-modal .dash-pill.dash-pill-primary:hover {
@@ -18097,7 +18097,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   color: #515659;
 }
 
-/* Body scroll ظˆط§ط­ط¯ */
+/* Body scroll واحد */
 .of-form {
   padding: 14px;
   overflow: auto;
@@ -18334,7 +18334,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   font-weight: 900;
 }
 
-/* âœ… طھظˆط³ظٹط· checkbox ط¯ط§ط®ظ„ ط¬ط¯ظˆظ„ ط§ظ„ط®ط¯ظ…ط§طھ */
+/* ✅ توسيط checkbox داخل جدول الخدمات */
 .of-services-table td:first-child,
 .of-services-table th:first-child {
   text-align: center;
@@ -18369,7 +18369,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   padding: 9px 12px;
   border-radius: 14px;
 
-  /* âœ… ط®ظ…ط±ظٹ ط¨ط¯ظ„ ط§ظ„ط¨ظ†ظپط³ط¬ظٹ */
+  /* ✅ خمري بدل البنفسجي */
   background: rgba(64, 1, 13, 0.06);
   border: 1px solid rgba(64, 1, 13, 0.16);
 
@@ -18499,7 +18499,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   }
 }
 
-/* âœ… ط³ط·ط± checkbox + ط§ظ„ظ†طµ */
+/* ✅ سطر checkbox + النص */
 .of-checkline {
   display: flex;
   align-items: center;
@@ -18519,7 +18519,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   justify-self: start;
 }
 
-/* âœ… ط®ظ„ظٹ طµظپ ط§ظ„ظƒظˆط¯ ظ…ط±ظ† ظˆظ…ط§ ظٹظ‚طµ */
+/* ✅ خلي صف الكود مرن وما يقص */
 .of-field-inline {
   display: flex;
   gap: 10px;
@@ -18536,7 +18536,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   white-space: nowrap;
 }
 
-/* âœ… iOS tap highlight */
+/* ✅ iOS tap highlight */
 .dashboard-skin .offers-page .dash-pill {
   -webkit-tap-highlight-color: transparent;
 }
@@ -18547,7 +18547,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 .offers-modal,
 .offers-modal * {
-  color: #111827; /* ظˆط§ط¶ط­ */
+  color: #111827; /* واضح */
 }
 
 .offers-modal label,
@@ -18557,7 +18557,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   opacity: 1;
 }
 
-/* âœ… ظƒط§ظ† ط¨ظ†ظپط³ط¬ظٹ: طµط§ط± ط®ظ…ط±ظٹ */
+/* ✅ كان بنفسجي: صار خمري */
 .dashboard-skin .offers-page .dash-pill {
   color: #40010D;
   font-weight: 800;
@@ -18627,19 +18627,19 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 
 /* =========================
-   âœ… Mobile/Tablet: Table -> Cards (No horizontal scroll)
+   ✅ Mobile/Tablet: Table -> Cards (No horizontal scroll)
 ========================= */
 @media (max-width: 900px) {
-  /* ظ„ط§ ظ†ط¨ظٹ ط£ظٹ ط³ط­ط¨ ط£ظپظ‚ظٹ */
+  /* لا نبي أي سحب أفقي */
   .offers-table-card { overflow: visible; }
   .dashboard-skin .offers-page .table-responsive { overflow: visible !important; }
 
-  /* ظ†ط®ظپظٹ header ظپظٹ ط§ظ„ط¬ظˆط§ظ„ */
+  /* نخفي header في الجوال */
   .offers-table thead {
     display: none;
   }
 
-  /* ظ†ط®ظ„ظٹ ط§ظ„ط¬ط¯ظˆظ„ "ظƒط±ظˆطھ" */
+  /* نخلي الجدول "كروت" */
   .offers-table,
   .offers-table tbody,
   .offers-table tr,
@@ -18652,7 +18652,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     min-width: 0 !important;
   }
 
-  /* ظƒظ„ طµظپ = ظƒط±طھ */
+  /* كل صف = كرت */
   .offers-table tbody tr {
     background: rgba(255,255,255,0.96);
     border: 1px solid rgba(13, 13, 13, 0.08);
@@ -18662,7 +18662,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     box-shadow: 0 10px 26px rgba(13, 13, 13, 0.05);
   }
 
-  /* ظƒظ„ ط®ظ„ظٹط© طھطµظٹط± "ط³ط·ط±ظٹظ†": ط¹ظ†ظˆط§ظ† + ظ‚ظٹظ…ط© */
+  /* كل خلية تصير "سطرين": عنوان + قيمة */
   .offers-table tbody td {
     border: none !important;
     padding: 8px 0 !important;
@@ -18679,21 +18679,21 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     margin-bottom: 4px;
   }
 
-  /* ظ…ظƒط§ظ† ط§ظ„ط£ط²ط±ط§ط± */
-  .offers-table tbody td[data-label="طھط­ظƒظ…"] {
+  /* مكان الأزرار */
+  .offers-table tbody td[data-label="تحكم"] {
     padding-top: 10px !important;
     border-top: 1px solid rgba(13, 13, 13, 0.08) !important;
     margin-top: 8px;
   }
 
-  /* طµظˆط± ط£طµط؛ط± */
+  /* صور أصغر */
   .of-img {
     width: 56px;
     height: 56px;
     border-radius: 14px;
   }
 
-  /* ط²ط±ط§ط± ط§ظ„طھط­ظƒظ… ط¨ط§ظ„ط¬ظˆط§ظ„ طھطµظٹط± طھط­طھ ط¨ط¹ط¶ */
+  /* زرار التحكم بالجوال تصير تحت بعض */
   .of-actions {
     justify-content: stretch;
   }
@@ -18705,12 +18705,12 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 
 /* =========================
-   âœ… Mobile Luxury Cards (DashboardOffers)
-   ظ‡ط¯ظپظ‡ط§: ظپط®ط§ظ…ط© + ط±ط§ط­ط© ط¹ظٹظ† + طھط±طھظٹط¨
+   ✅ Mobile Luxury Cards (DashboardOffers)
+   هدفها: فخامة + راحة عين + ترتيب
 ========================= */
 @media (max-width: 900px) {
 
-  /* ط§ظ„ظƒط±طھ ظ†ظپط³ظ‡ */
+  /* الكرت نفسه */
   .offers-table tbody tr{
     background: rgba(255,255,255,0.96);
     border: 1px solid rgba(13, 13, 13, 0.08);
@@ -18726,7 +18726,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     position: relative;
   }
 
-  /* ظ„ظ…ط³ط© ط®ظ…ط±ظٹ ط®ظپظٹظپط© ط£ط¹ظ„ظ‰ ط§ظ„ظƒط±طھ */
+  /* لمسة خمري خفيفة أعلى الكرت */
   .offers-table tbody tr::before{
     content:"";
     position: absolute;
@@ -18740,25 +18740,25 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     );
   }
 
-  /* ظƒظ„ ط³ط·ط±: ط¹ظ†ظˆط§ظ† | ظ‚ظٹظ…ط© */
+  /* كل سطر: عنوان | قيمة */
   .offers-table tbody td{
     border: none !important;
     padding: 11px 0 !important;
     white-space: normal !important;
 
     display: grid;
-    grid-template-columns: 104px 1fr; /* ط¹ظ†ظˆط§ظ† ط«ط§ط¨طھ */
+    grid-template-columns: 104px 1fr; /* عنوان ثابت */
     gap: 14px;
 
     align-items: center;
   }
 
-  /* ظپط§طµظ„ ظ†ط§ط¹ظ… ط¨ظٹظ† ط§ظ„طµظپظˆظپ */
+  /* فاصل ناعم بين الصفوف */
   .offers-table tbody td + td{
     border-top: 1px solid rgba(13, 13, 13, 0.06) !important;
   }
 
-  /* ط¹ظ†ظˆط§ظ† ط§ظ„ط­ظ‚ظ„ */
+  /* عنوان الحقل */
   .offers-table tbody td::before{
     content: attr(data-label);
     display: block;
@@ -18770,18 +18770,18 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     line-height: 1.25;
   }
 
-  /* ط§ظ„ظ‚ظٹظ…ط© */
+  /* القيمة */
   .offers-table tbody td > *{
     min-width: 0;
   }
 
-  /* ظ†طµظˆطµ ط·ظˆظٹظ„ط© (ط§ظ„ط¹ظ†ظˆط§ظ†/ط§ظ„ظƒظˆط¯) */
-  .offers-table tbody td[data-label="ط§ظ„ط¹ظ†ظˆط§ظ†"],
-  .offers-table tbody td[data-label="ط§ظ„ظƒظˆط¯"]{
+  /* نصوص طويلة (العنوان/الكود) */
+  .offers-table tbody td[data-label="العنوان"],
+  .offers-table tbody td[data-label="الكود"]{
     word-break: break-word;
   }
 
-  /* âœ… ط®ظ„ظٹط© ط§ظ„طµظˆط±ط© */
+  /* ✅ خلية الصورة */
   .offers-table tbody td.of-cell-image{
     grid-template-columns: 1fr;
     align-items: center;
@@ -18809,13 +18809,13 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     border-top: 0 !important;
   }
 
-  .offers-table tbody td[data-label="ط§ظ„ط¹ظ†ظˆط§ظ†"] > * {
+  .offers-table tbody td[data-label="العنوان"] > * {
     font-weight: 900;
     line-height: 1.45;
   }
 
-  /* ظƒظˆط¯ ط§ظ„ط¹ط±ط¶ ظƒط¨ط§ط¯ط¬ ط£ظ†ط¸ظپ */
-  .offers-table tbody td[data-label="ط§ظ„ظƒظˆط¯"] > * {
+  /* كود العرض كبادج أنظف */
+  .offers-table tbody td[data-label="الكود"] > * {
     display: inline-flex;
     align-items: center;
     width: fit-content;
@@ -18829,23 +18829,23 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     font-size: 12px;
   }
 
-  /* âœ… ط³طھط§ظٹظ„ â€œظ‚ظٹظ…ط©â€‌ ظ…ظˆط­ظ‘ط¯ (ظٹظ„ظ‚ط· ط§ظ„ظ†طµ/ط³ط¨ط§ظ†/ط²ط±) */
+  /* MALIKAT: unified value styling for text, spans, and buttons. */
   .offers-table tbody td{
     color: #0D0D0D;
     font-weight: 700;
   }
 
-  /* âœ… ط¨ط§ط¯ط¬ط§طھ طھظ„ظ‚ط§ط¦ظٹط© ظ„ط¨ط¹ط¶ ط§ظ„ط­ظ‚ظˆظ„ (ظ†ط؛ظ„ظپ ط¨طµط±ظٹظ‹ط§ ط§ظ„ظ‚ظٹظ…ط©) */
-  .offers-table tbody td[data-label="ط§ظ„ط®طµظ…"],
-  .offers-table tbody td[data-label="ط§ظ„ط­ط§ظ„ط©"],
-  .offers-table tbody td[data-label="ط§ظ„ظ†ط·ط§ظ‚"]{
+  /* ✅ بادجات تلقائية لبعض الحقول (نغلف بصريًا القيمة) */
+  .offers-table tbody td[data-label="الخصم"],
+  .offers-table tbody td[data-label="الحالة"],
+  .offers-table tbody td[data-label="النطاق"]{
     align-items: start;
   }
 
-  /* ظ†ط®ظ„ظٹ ط§ظ„ظ‚ظٹظ…ط© ط¯ط§ط®ظ„ ظ‡ط§ظ„ط­ظ‚ظˆظ„ طھط´ط¨ظ‡ badge */
-  .offers-table tbody td[data-label="ط§ظ„ط®طµظ…"] > *,
-  .offers-table tbody td[data-label="ط§ظ„ط­ط§ظ„ط©"] > *,
-  .offers-table tbody td[data-label="ط§ظ„ظ†ط·ط§ظ‚"] > *{
+  /* نخلي القيمة داخل هالحقول تشبه badge */
+  .offers-table tbody td[data-label="الخصم"] > *,
+  .offers-table tbody td[data-label="الحالة"] > *,
+  .offers-table tbody td[data-label="النطاق"] > *{
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -18865,31 +18865,31 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     line-height: 1.2;
   }
 
-  /* âœ… â€œط§ظ„ط§ط³طھط®ط¯ط§ظ…â€‌ ط®ظ„ظٹظ‡ ط±ظ‚ظ… ط£ظˆط¶ط­ */
-  .offers-table tbody td[data-label="ط§ظ„ط§ط³طھط®ط¯ط§ظ…"]{
+  /* MALIKAT: keep usage display numeric and visually clear. */
+  .offers-table tbody td[data-label="الاستخدام"]{
     font-weight: 900;
   }
 
-  /* âœ… ط³ط·ط± ط§ظ„طھط­ظƒظ…: ط¹ظ†ظˆط§ظ† ظپظˆظ‚ ط«ظ… ط£ط²ط±ط§ط± */
-  .offers-table tbody td[data-label="طھط­ظƒظ…"]{
+  /* ✅ سطر التحكم: عنوان فوق ثم أزرار */
+  .offers-table tbody td[data-label="تحكم"]{
     display: block;
     padding-top: 12px !important;
     margin-top: 10px;
     border-top: 1px solid rgba(13, 13, 13, 0.08) !important;
   }
 
-  .offers-table tbody td[data-label="طھط­ظƒظ…"]::before{
+  .offers-table tbody td[data-label="تحكم"]::before{
     display: block;
     margin-bottom: 10px;
   }
 
-  .offers-table tbody td[data-label="طھط­ظƒظ…"] .of-actions{
+  .offers-table tbody td[data-label="تحكم"] .of-actions{
     display: grid;
     gap: 10px;
   }
 
-  /* ط£ط²ط±ط§ط± ط§ظ„طھط­ظƒظ… ظپط®ظ…ط© ط¨ط§ظ„ط¬ظˆط§ظ„ */
-  .offers-table tbody td[data-label="طھط­ظƒظ…"] .dash-pill{
+  /* أزرار التحكم فخمة بالجوال */
+  .offers-table tbody td[data-label="تحكم"] .dash-pill{
     width: 100%;
     justify-content: center;
     padding: 11px 12px;
@@ -18897,7 +18897,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     font-weight: 900;
   }
 
-  /* ظ„ظ…ط³ط© hover ظ„ط·ظٹظپط© */
+  /* لمسة hover لطيفة */
   .offers-table tbody tr:active{
     transform: scale(0.997);
   }
@@ -19570,7 +19570,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 /* =========================
    DashboardLoyalty.css
    MALIKAT SALON
-   âœ… Scoped to .loyalty-page (NO global dashboard overrides)
+   ✅ Scoped to .loyalty-page (NO global dashboard overrides)
    - Works with DashboardSkin.css
    - Responsive + modern
 ========================= */
@@ -19825,7 +19825,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
   .loyalty-page .dash-table .points-badge {
     background: #fff8e1;
-    color: #f57c00;
+    color: #9a3412;
     padding: 4px 10px;
     border-radius: 20px;
     font-weight: 800;
@@ -21344,7 +21344,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .dashboard-tv-booking-id::before {
-  content: "ط±ظ‚ظ… ط§ظ„ط­ط¬ط²";
+  content: "رقم الحجز";
   font-size: 1rem;
   color: #000;
   font-weight: 800;
@@ -21974,10 +21974,10 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 ========================================================= */
 
 /* =========================================
-   Dashboard Settings (Queens / Glass) âœ… FINAL
+   Dashboard Settings (Queens / Glass) ✅ FINAL
    File: src/styles/DashboardSettings.css
-   ط§ظ„ظ‡ط¯ظپ: ط´ظƒظ„ ط«ط§ط¨طھ + Responsive + ط¨ط¯ظˆظ† طھط¹ط§ط±ط¶
-   âœ… Scoped ط¯ط§ط®ظ„ .dashboard-skin
+   الهدف: شكل ثابت + Responsive + بدون تعارض
+   ✅ Scoped داخل .dashboard-skin
 ========================================= */
 
 .dashboard-skin .settings-page {
@@ -21998,7 +21998,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 
 
-/* âœ… Header */
+/* ✅ Header */
 .dashboard-skin .settings-header {
   display: flex;
   align-items: flex-end;
@@ -22044,7 +22044,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   color: rgba(58, 47, 68, 0.88);
 }
 
-/* âœ… Tabs */
+/* ✅ Tabs */
 .dashboard-skin .settings-tabs {
   display: flex;
   gap: 10px;
@@ -22052,7 +22052,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   margin: 10px 0 16px;
 }
 
-/* âœ… Card Glass */
+/* ✅ Card Glass */
 .dashboard-skin .settings-card {
   --dash-card-bg: rgba(255, 255, 255, 0.62);
   --dash-card-border: 1px solid rgba(255, 255, 255, 0.65);
@@ -22062,10 +22062,10 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   max-width: 100%;
-  overflow: hidden; /* ظٹظ…ظ†ط¹ ط®ط±ظˆط¬ ط¹ظ†ط§طµط± ط¹ظ„ظ‰ ط§ظ„ظ…ظˆط¨ط§ظٹظ„ */
+  overflow: hidden; /* يمنع خروج عناصر على الموبايل */
 }
 
-/* âœ… Card spacing ط¯ط§ط®ظ„ ط§ظ„طµظپط­ط© */
+/* ✅ Card spacing داخل الصفحة */
 .dashboard-skin .settings-card + .settings-card {
   margin-top: 14px;
 }
@@ -22078,7 +22078,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   line-height: 1.2;
 }
 
-/* âœ… Grid */
+/* ✅ Grid */
 .dashboard-skin .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -22092,7 +22092,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 
-/* âœ… Field */
+/* ✅ Field */
 .dashboard-skin .settings-field label {
   display: block;
   margin-bottom: 6px;
@@ -22101,7 +22101,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   font-size: 13px;
 }
 
-/* âœ… Input (Unified / Glass) */
+/* ✅ Input (Unified / Glass) */
 .dashboard-skin .settings-input {
   max-width: 100%;
   min-height: 44px;
@@ -22131,7 +22131,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   background-repeat:no-repeat;
   background-size:6px 6px, 6px 6px;
 
-  /* âœ… ط§ظ„ط³ظ‡ظ… ط¹ظ„ظ‰ ظ†ظ‡ط§ظٹط© ط§ظ„ط³ط·ط± (ظٹظ…ظٹظ† ظپظٹ LTR ظˆظٹط³ط§ط± ظپظٹ RTL) */
+  /* ✅ السهم على نهاية السطر (يمين في LTR ويسار في RTL) */
   background-position:
     calc(100% - 16px) 50%,
     calc(100% - 10px) 50%;
@@ -22170,7 +22170,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   pointer-events: none !important;
 }
 
-/* âœ… Lists */
+/* ✅ Lists */
 .dashboard-skin .settings-list {
   display: grid;
   gap: 10px;
@@ -22197,19 +22197,19 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   font-size: 14px;
   line-height: 1.6;
 
-  /* âœ… ظٹظ…ظ†ط¹ ط§ظ„ظ†طµ ط§ظ„ط·ظˆظٹظ„ ظٹظƒط³ط± ط§ظ„طھطµظ…ظٹظ… */
+  /* ✅ يمنع النص الطويل يكسر التصميم */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* âœ… ط¥ط°ط§ طھط¨ط؛ظ‰ ط§ظ„ظ†طµ ظٹظ„ظپ ظپظٹ ط¨ط¹ط¶ ط§ظ„طµظپظˆظپ ط§ط³طھط®ط¯ظ… ظ‡ط°ط§ class ظپظٹ HTML */
+/* ✅ إذا تبغى النص يلف في بعض الصفوف استخدم هذا class في HTML */
 .dashboard-skin .settings-row.is-multiline span {
   white-space: normal;
 }
 
-/* âœ… Checkbox (ط´ظƒظ„ ط£ظ†ظٹظ‚ + ظٹظ…ظ†ط¹ ط§ظ„ط£ط­ظ…ط±) */
+/* ✅ Checkbox (شكل أنيق + يمنع الأحمر) */
 .dashboard-skin .settings-check {
   width: 18px;
   height: 18px;
@@ -22218,7 +22218,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   flex: 0 0 auto;
 }
 
-/* âœ… Note / Footnote */
+/* ✅ Note / Footnote */
 .dashboard-skin .settings-note {
   margin-top: 10px;
   font-weight: 800;
@@ -22242,7 +22242,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 /* =========================
-   Settings Alerts / Messages âœ… Scoped
+   Settings Alerts / Messages ✅ Scoped
 ========================= */
 
 .dashboard-skin .settings-alert {
@@ -22281,7 +22281,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 /* =========================
-   Table tweaks âœ… safe on mobile
+   Table tweaks ✅ safe on mobile
 ========================= */
 
 .dashboard-skin .table-responsive {
@@ -22294,7 +22294,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 .dashboard-skin .ov-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 680px; /* ظٹط³ظ…ط­ ط¨ط§ظ„طھظ…ط±ظٹط± ط¨ط§ظ„ظ…ظˆط¨ط§ظٹظ„ ط¨ط¯ظ„ ظ…ط§ ظٹظƒط³ط± */
+  min-width: 680px; /* يسمح بالتمرير بالموبايل بدل ما يكسر */
 }
 
 .dashboard-skin .ov-table th {
@@ -22312,14 +22312,14 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   vertical-align: middle;
 }
 
-/* âœ… inputs ط¯ط§ط®ظ„ ط§ظ„ط¬ط¯ظˆظ„ ظ…ط§ طھط®ط±ط¬ */
+/* ✅ inputs داخل الجدول ما تخرج */
 .dashboard-skin .ov-table .settings-input {
   min-height: 40px;
   border-radius: 12px;
 }
 
 /* =========================
-   Responsive âœ…
+   Responsive ✅
 ========================= */
 
 @media (max-width: 720px) {
@@ -22340,7 +22340,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     font-size: 24px;
   }
 
-  /* âœ… طµظپظˆظپ ط§ظ„ظ„ظٹط³طھ طھظ†ط²ظ„ طھط­طھ ط¨ط¹ط¶ */
+  /* ✅ صفوف الليست تنزل تحت بعض */
   .dashboard-skin .settings-row {
     flex-wrap: wrap;
     align-items: flex-start;
@@ -23329,8 +23329,8 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 /* =========================================
-   âœ… Users & Roles Section (ط¯ط§ط®ظ„ Settings)
-   ظٹط³طھط®ط¯ظ… ظ†ظپط³ Glass Theme
+   ✅ Users & Roles Section (داخل Settings)
+   يستخدم نفس Glass Theme
 ========================================= */
 
 .dashboard-skin .ur-grid {
@@ -23374,7 +23374,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   justify-content: flex-end;
 }
 
-/* âœ… Pills */
+/* ✅ Pills */
 .dashboard-skin .ur-pill {
   display: inline-flex;
   align-items: center;
@@ -23408,7 +23408,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   color: #991b1b;
 }
 
-/* âœ… Row card list */
+/* ✅ Row card list */
 .dashboard-skin .ur-list {
   display: grid;
   gap: 10px;
@@ -23471,7 +23471,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   justify-content: flex-end;
 }
 
-/* âœ… Button small helpers (ظ„ظˆ dash-btn ظ…ظˆط¬ظˆط¯ ظ…ظ† DashboardSkin ظ…ظ…طھط§ط²) */
+/* ✅ Button small helpers (لو dash-btn موجود من DashboardSkin ممتاز) */
 .dashboard-skin .ur-btn {
   border-radius: 12px;
   padding: 9px 10px;
@@ -23479,7 +23479,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   font-size: 13px;
 }
 
-/* âœ… Responsive */
+/* ✅ Responsive */
 @media (max-width: 860px) {
   .dashboard-skin .ur-row {
     grid-template-columns: 1fr 1fr;
@@ -23500,7 +23500,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   }
 }
 
-/* âœ… طھط­ط³ظٹظ† ط¸ظ‡ظˆط± ط§ظ„ط£ط±ظ‚ط§ظ… ط¯ط§ط®ظ„ ط­ظ‚ظˆظ„ ط§ظ„ط¥ط¯ط®ط§ظ„ */
+/* ✅ تحسين ظهور الأرقام داخل حقول الإدخال */
 .dashboard-skin .settings-input.is-num {
   direction: ltr;
   text-align: center;
@@ -23508,7 +23508,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   letter-spacing: 0.2px;
 }
 
-/* ظ„ظˆ ط¹ظ†ط¯ظƒ ط­ظ‚ظˆظ„ ط±ظ‚ظ…ظٹط© طµط؛ظٹط±ط© (طھط±طھظٹط¨/ظ…ط¯ط©) */
+/* لو عندك حقول رقمية صغيرة (ترتيب/مدة) */
 .dashboard-skin .settings-input.is-num.is-small {
   max-width: 90px;
   padding-inline: 10px;
@@ -28891,9 +28891,9 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
    Dashboard Modals (SAFE SCOPED)
    File: src/styles/DashboardModals.css
 
-   âœ… Scoped: affects ONLY modal overlays/boxes
-   âœ… No global overrides to pages
-   âœ… No double scroll:
+   ✅ Scoped: affects ONLY modal overlays/boxes
+   ✅ No global overrides to pages
+   ✅ No double scroll:
       - overlay can scroll if content tall
       - modal body scrolls internally
 ========================= */
@@ -28911,7 +28911,7 @@ body:has(.dashboard-skin) .modal-overlay,
   background: var(--dash-modal-overlay-bg, rgba(10, 10, 12, 0.55));
   backdrop-filter: blur(6px);
 
-  /* âœ… allow page-safe scrolling when needed */
+  /* ✅ allow page-safe scrolling when needed */
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -28930,7 +28930,7 @@ body:has(.dashboard-skin) .modal-overlay,
   animation: modalFade 0.18s ease-out;
 }
 
-/* âœ… Mobile: align to top to avoid center jump */
+/* ✅ Mobile: align to top to avoid center jump */
 @media (max-width: 700px) {
   body:has(.dashboard-skin) .modal-overlay,
   .dash-modal-overlay {
@@ -28962,7 +28962,7 @@ body:has(.dashboard-skin) .modal-box,
   transform: translateY(10px) scale(0.985);
   animation: modalUp 0.22s ease-out forwards;
 
-  /* âœ… readability inside modal only */
+  /* ✅ readability inside modal only */
   color: #0D0D0D;
   text-align: right;
 }
@@ -29123,7 +29123,7 @@ body:has(.dashboard-skin) .modal-actions .btn-cancel:hover {
 }
 
 /* =========================
-   âœ… SAFE: form controls ONLY inside modals
+   ✅ SAFE: form controls ONLY inside modals
    (No global .form-control changes)
 ========================= */
 body:has(.dashboard-skin) .modal-box input,
@@ -29212,7 +29212,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   color: #0D0D0D;
 }
 
-/* ظ†ط®ظ„ظٹ ط§ظ„ظ‡ظٹط¯ط± ط£ظپط®ظ… */
+/* نخلي الهيدر أفخم */
 .dash-modal.booking-details-modal .dash-modal-header{
   background: linear-gradient(180deg, rgba(255,255,255,0.75), rgba(245,245,244,0.55));
   border-bottom: 1px solid rgba(13,13,13,0.10);
@@ -29224,16 +29224,16 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   margin: 0;
 }
 
-/* ط¬ط³ظ… ط§ظ„ظ…ظˆط¯ط§ظ„ scroll ط¯ط§ط®ظ„ظٹ */
+/* جسم المودال scroll داخلي */
 .dash-modal.booking-details-modal .dash-modal-body{
   padding: 14px;
   max-height: calc(min(86vh, 820px) - 62px);
   overflow: auto;
 }
 
-/* طµظپ ط§ظ„ط£ط²ط±ط§ط± ط§ظ„ط¹ظ„ظˆظٹ */
-/* âœ… Top actions inside booking details modal */
-/* âœ… Actions row inside booking details modal */
+/* صف الأزرار العلوي */
+/* ✅ Top actions inside booking details modal */
+/* ✅ Actions row inside booking details modal */
 .booking-details-modal .bdm-actions-row{
   display: flex;
   align-items: center;
@@ -29241,7 +29241,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   gap: 10px;
   flex-wrap: wrap;
 
-  /* âœ… ظٹط®ظ„ظٹظ‡ "ط¯ط§ط®ظ„" ط§ظ„ظ…ظˆط¯ط§ظ„ ظƒظƒط±طھ طµط؛ظٹط± */
+  /* ✅ يخليه "داخل" المودال ككرت صغير */
   padding: 10px;
   margin: 0 0 12px 0;
 
@@ -29249,7 +29249,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   border: 1px solid rgba(13,13,13,0.10);
   border-radius: 16px;
 
-  /* âœ… ظٹط¨ظ‚ظ‰ ظپظˆظ‚ ط¯ط§ط®ظ„ ط§ظ„ظ…ظˆط¯ط§ظ„ ط£ط«ظ†ط§ط، ط§ظ„ط³ظƒط±ظˆظ„ */
+  /* ✅ يبقى فوق داخل المودال أثناء السكرول */
   position: sticky;
   top: 0;
   z-index: 5;
@@ -29257,7 +29257,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   backdrop-filter: blur(10px);
 }
 
-/* âœ… ظ†ظپط³ ظ‚ظٹط§ط³ ظˆط´ظƒظ„ ط§ظ„ط£ط²ط±ط§ط± */
+/* ✅ نفس قياس وشكل الأزرار */
 .booking-details-modal .bdm-actions-row .reports-btn,
 .booking-details-modal .bdm-actions-row .dash-select{
   height: 38px;
@@ -29266,12 +29266,12 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   font-weight: 900;
 }
 
-/* âœ… ظ…ظ‡ظ…: ط§ظ„ط¯ط±ظˆط¨ ط¯ط§ظˆظ† ظٹطھط«ط¨طھ ط¯ط§ط®ظ„ ط§ظ„ظ…ظˆط¯ط§ظ„ */
+/* ✅ مهم: الدروب داون يتثبت داخل المودال */
 .booking-details-modal .bdm-actions-row .dash-dd-wrap{
   position: relative;
 }
 
-/* âœ… ط§ظ„ظ‚ط§ط¦ظ…ط© ظ„ط§ طھط·ظ„ط¹ ط¨ط±ط§ + طھظƒظˆظ† ظٹظ…ظٹظ† */
+/* ✅ القائمة لا تطلع برا + تكون يمين */
 .booking-details-modal .bdm-actions-row .dash-dd-menu{
   right: 0;
   left: auto;
@@ -29279,7 +29279,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   z-index: 20;
 }
 
-/* âœ… ظ…ظˆط¨ط§ظٹظ„: ط®ظ„ظ‡ظ† ظٹطµظٹط±ظ† ظ…طھط³ط§ظˆظٹط§طھ */
+/* ✅ موبايل: خلهن يصيرن متساويات */
 @media (max-width: 720px){
   .booking-details-modal .bdm-actions-row{
     gap: 8px;
@@ -29294,7 +29294,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
 
 
 
-/* ط¨ط±ظˆظپط§ظٹظ„ ط§ظ„ظ…ظٹطھط§: 3 ظ…ط±ط¨ط¹ط§طھ */
+/* بروفايل الميتا: 3 مربعات */
 .booking-details-modal .bdm-meta-row{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -29330,7 +29330,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   font-size: 12px;
 }
 
-/* ظ‚ط§ط¦ظ…ط© ط§ظ„ط®ط¯ظ…ط§طھ */
+/* قائمة الخدمات */
 .booking-details-modal .bdm-service-pill{
   padding: 10px 14px;
   border-radius: 16px;
@@ -29355,13 +29355,13 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   box-shadow: 0 8px 18px rgba(13,13,13,0.08);
 }
 
-/* طھط­ط³ظٹظ† ظƒط±طھ ط§ظ„ظ…ظ„ط§ط­ط¸ط© */
+/* تحسين كرت الملاحظة */
 
 
-/* طھط­ط³ظٹظ† ط§ظ„ط´ط¨ظƒط© ط§ظ„ظ„ظٹ ط¹ظ†ط¯ظƒ bk-details-grid (ظ„ظˆ ظ…ظˆط¬ظˆط¯ط© ظپظٹ CSS) */
+/* تحسين الشبكة اللي عندك bk-details-grid (لو موجودة في CSS) */
 
 
-/* ظ…ظˆط¨ط§ظٹظ„ */
+/* موبايل */
 @media (max-width: 720px){
   .booking-details-modal .bdm-meta-row{
     grid-template-columns: 1fr;

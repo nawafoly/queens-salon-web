@@ -1226,8 +1226,8 @@
   .hr-shell.madan-admin-shell.hr-shell--employees
   .employees-page
   .emp-staff-kpi b {
-    font-size: 8px !important;
-    line-height: 1 !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
   }
 
   .hr-shell.madan-admin-shell.hr-shell--employees
@@ -1609,7 +1609,7 @@
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
-    font-size: 8px !important;
+    font-size: 10px !important;
   }
 
   .hr-shell--employees .emp-page-wrapper .emp-staff-kpi {
@@ -1629,8 +1629,8 @@
 
   .hr-shell--employees .emp-page-wrapper .emp-staff-kpi span,
   .hr-shell--employees .emp-page-wrapper .emp-staff-kpi b {
-    font-size: 8px !important;
-    line-height: 1 !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
   }
 
   .hr-shell--employees .emp-page-wrapper .emp-list-state {
