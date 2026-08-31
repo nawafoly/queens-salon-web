@@ -95,6 +95,12 @@ mustReplace(
 );
 
 mustReplace(
+  '    return text.trimEnd() + testBlock + "\\n";',
+  '    return (text.trimEnd() + testBlock).trimEnd() + "\\n";',
+  "contract test EOF hygiene"
+);
+
+mustReplace(
   "  unlinkSync(SELF);",
   `  unlinkSync(SELF);\n  unlinkSync("${HELPER}");`,
   "remove temporary runners"
