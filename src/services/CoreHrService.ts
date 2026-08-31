@@ -118,6 +118,60 @@ export type CoreMyEmployeeProfileUpdate = {
   bio?: string | null;
 };
 
+export type CoreAnnualLeaveRecall = {
+  id: string;
+  leaveId: string;
+  employeeId: string;
+  recallDate: string;
+  recalledDays: number;
+  reason: string;
+  status: "active" | "cancelled" | string;
+  balanceLedgerEntryId?: string | null;
+  reversalLedgerEntryId?: string | null;
+  createdAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+};
+
+export type CoreWeeklyRestWorkAssignment = {
+  id: string;
+  employeeId: string;
+  restDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+  status: "assigned" | "completed" | "cancelled" | string;
+  createdAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+};
+
+export type CoreLeaveRestOverview = {
+  employeeId: string;
+  annualLeave: Record<string, unknown> & {
+    availableDays?: number;
+    accruedDays?: number;
+    usedDays?: number;
+    reviewRequired?: boolean;
+    reviewReason?: string | null;
+  };
+  annualLeaveRecalls: CoreAnnualLeaveRecall[];
+  weeklyRest: {
+    dueMinutes: number;
+    dueDays: number;
+    assignments: CoreWeeklyRestWorkAssignment[];
+    events: Array<Record<string, unknown>>;
+  };
+};
+
+function camelRecord(
+  value: unknown
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return camel<Record<string, unknown>>(value as Record<string, unknown>);
+}
+
 export const CoreHrService = {
   async listEmployees(query: { search?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/employees", { query });
@@ -646,6 +700,162 @@ export const CoreHrService = {
     const action = status === "approved" ? "approve" : "reject";
     return camel<CoreLeave>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/leaves/${encodeURIComponent(id)}/${action}`, { method: "POST", body: { hrNote } }));
   },
+
+  async getLeaveRestOverview(employeeId: string): Promise<CoreLeaveRestOverview> {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-rest-overview`
+    );
+    const weeklyRestRaw = (
+      payload.weekly_rest ||
+      payload.weeklyRest ||
+      {}
+    ) as Record<string, unknown>;
+    const recallsRaw = (
+      payload.annual_leave_recalls ||
+      payload.annualLeaveRecalls ||
+      []
+    ) as unknown[];
+    const assignmentsRaw = (
+      weeklyRestRaw.assignments ||
+      []
+    ) as unknown[];
+    const eventsRaw = (
+      weeklyRestRaw.events ||
+      []
+    ) as unknown[];
+
+    return {
+      employeeId: String(
+        payload.employee_id ||
+        payload.employeeId ||
+        employeeId
+      ),
+      annualLeave: camelRecord(
+        payload.annual_leave ||
+        payload.annualLeave
+      ) as CoreLeaveRestOverview["annualLeave"],
+      annualLeaveRecalls: recallsRaw
+        .filter((row) => row && typeof row === "object")
+        .map((row) =>
+          camel<CoreAnnualLeaveRecall>(
+            row as Record<string, unknown>
+          )
+        ),
+      weeklyRest: {
+        dueMinutes: Number(
+          weeklyRestRaw.due_minutes ??
+          weeklyRestRaw.dueMinutes ??
+          0
+        ),
+        dueDays: Number(
+          weeklyRestRaw.due_days ??
+          weeklyRestRaw.dueDays ??
+          0
+        ),
+        assignments: assignmentsRaw
+          .filter((row) => row && typeof row === "object")
+          .map((row) =>
+            camel<CoreWeeklyRestWorkAssignment>(
+              row as Record<string, unknown>
+            )
+          ),
+        events: eventsRaw
+          .filter((row) => row && typeof row === "object")
+          .map((row) =>
+            camelRecord(row)
+          ),
+      },
+    };
+  },
+
+  async createAnnualLeaveRecall(
+    leaveId: string,
+    input: {
+      recallDate: string;
+      reason: string;
+    }
+  ) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/leaves/${encodeURIComponent(leaveId)}/recalls`,
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+    return {
+      recall: camel<CoreAnnualLeaveRecall>(
+        (payload.recall || {}) as Record<string, unknown>
+      ),
+      state: camelRecord(payload.state),
+      idempotent: payload.idempotent === true,
+    };
+  },
+
+  async cancelAnnualLeaveRecall(
+    leaveId: string,
+    recallId: string,
+    reason: string
+  ) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/leaves/${encodeURIComponent(leaveId)}/recalls/${encodeURIComponent(recallId)}/cancel`,
+      {
+        method: "POST",
+        body: { reason },
+      }
+    );
+    return {
+      recall: camel<CoreAnnualLeaveRecall>(
+        (payload.recall || {}) as Record<string, unknown>
+      ),
+      state: camelRecord(payload.state),
+      idempotent: payload.idempotent === true,
+    };
+  },
+
+  async createWeeklyRestWorkAssignment(input: {
+    employeeId: string;
+    restDate: string;
+    startTime: string;
+    endTime: string;
+    reason: string;
+  }) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/weekly-rest/work-assignments",
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+    invalidateResolvedShiftRangeCache(input.employeeId);
+    return {
+      assignment: camel<CoreWeeklyRestWorkAssignment>(
+        (payload.assignment || {}) as Record<string, unknown>
+      ),
+      idempotent: payload.idempotent === true,
+    };
+  },
+
+  async cancelWeeklyRestWorkAssignment(
+    assignmentId: string,
+    employeeId: string,
+    reason: string
+  ) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/weekly-rest/work-assignments/${encodeURIComponent(assignmentId)}/cancel`,
+      {
+        method: "POST",
+        body: { reason },
+      }
+    );
+    invalidateResolvedShiftRangeCache(employeeId);
+    return {
+      assignment: camel<CoreWeeklyRestWorkAssignment>(
+        (payload.assignment || {}) as Record<string, unknown>
+      ),
+      idempotent: payload.idempotent === true,
+    };
+  },
+
   async getMyLeaveBalance() {
     return coreApiRequest<CoreMyLeaveBalanceState>(
       "/api/core/hr/employee-portal/leave-balance"

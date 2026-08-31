@@ -21,6 +21,7 @@ import {
   type WeekdayKey,
 } from "./shared";
 import PayrollObligationsPanel from "./PayrollObligationsPanel";
+import LeaveRestManagementPanel from "./LeaveRestManagementPanel";
 import {
   getLeaveEntryActionType,
   getLeaveEntryBalanceAfter,
@@ -410,11 +411,21 @@ export default function EmployeeStatsSection({
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
-        title="الإجازات"
-        description="إدارة رصيد الإجازات والحالة الحالية وسجل الحركات من واجهة V2."
+        title="الإجازات والراحة"
+        description="مرجع واحد للإجازة السنوية والراحة الأسبوعية والراحة التعويضية والاستدعاءات التشغيلية."
         badge={<WorkspaceStatusBadgeV2 tone={leave.modalOnLeave ? "gold" : "success"}>{leaveStatusLabel}</WorkspaceStatusBadgeV2>}
       />
 
+      <LeaveRestManagementPanel
+        employeeId={employeeId}
+        readOnly={readOnlyLeave}
+        weeklyRestWeekdays={leave.modalExceptionalLeaveWeekdays}
+      />
+
+      <WorkspaceCardV2
+        title="تفاصيل الإجازة والرصيد السنوي"
+        description="التفاصيل الإدارية الحالية تبقى هنا منفصلة عن الراحة الأسبوعية والتعويضية."
+      >
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="الرصيد الحالي" value={leaveBalanceLabel} tone="success" />
         <WorkspaceMetricV2 label="الحالة" value={leaveStatusLabel} tone={leave.modalOnLeave ? "gold" : "success"} />
@@ -423,6 +434,7 @@ export default function EmployeeStatsSection({
         <WorkspaceMetricV2 label="نوع الإجازة" value={leave.modalOnLeave ? leaveTypeLabel(leave.modalLeaveType) : "غير محددة"} />
         <WorkspaceMetricV2 label="سجل الحركات" value={sortedLeaveEntries.length} />
       </div>
+      </WorkspaceCardV2>
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2 title="حالة الإجازة الحالية" description="الإجازات هنا معتمدة ومرتبطة بالحضور والراتب.">
@@ -521,18 +533,6 @@ export default function EmployeeStatsSection({
           </div>
         </WorkspaceCardV2>
       </div>
-
-      <WorkspaceNoticeV2
-        title="الراحة الأسبوعية لا تُخصم من رصيد الإجازات"
-        description={
-          leave.modalExceptionalLeaveWeekdays.length
-            ? `الأيام الحالية: ${leave.modalExceptionalLeaveWeekdays
-                .map((key) => WEEKDAY_OPTIONS.find((day) => day.key === key)?.label || key)
-                .join("، ")}. يتم تعديلها من تبويب جدول الدوام.`
-            : "لا توجد أيام راحة أسبوعية محددة. يتم ضبطها من تبويب جدول الدوام."
-        }
-        tone="neutral"
-      />
 
       <WorkspaceCardV2 title="سجل حركات الإجازات" description="آخر 12 حركة محفوظة.">
         <WorkspaceTableV2
