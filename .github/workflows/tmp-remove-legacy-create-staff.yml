@@ -38,28 +38,28 @@ jobs:
               'import CreateStaffAccountPage from "./hr/CreateStaffAccount";\n',
           )
 
-          replace_once(
-              "src/pages/AdminHrDashboard.tsx",
-              '''              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>
-                <FontAwesomeIcon icon={faPlus} />
-                <strong>إنشاء حساب</strong>
-                <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>
-              </button>
-''',
-          )
+          old_button = "\n".join([
+              '              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>',
+              '                <FontAwesomeIcon icon={faPlus} />',
+              '                <strong>إنشاء حساب</strong>',
+              '                <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>',
+              '              </button>',
+              '',
+          ])
+          replace_once("src/pages/AdminHrDashboard.tsx", old_button)
 
-          replace_once(
-              "src/pages/AdminHrDashboard.tsx",
-              '''            <Route
-              path="create-staff"
-              element={
-                <PermissionRoute allOf={["admin_accounts.manage", "employees.create"]}>
-                  <CreateStaffAccountPage session={session} />
-                </PermissionRoute>
-              }
-            />
-''',
-          )
+          old_route = "\n".join([
+              '            <Route',
+              '              path="create-staff"',
+              '              element={',
+              '                <PermissionRoute allOf={["admin_accounts.manage", "employees.create"]}>',
+              '                  <CreateStaffAccountPage session={session} />',
+              '                </PermissionRoute>',
+              '              }',
+              '            />',
+              '',
+          ])
+          replace_once("src/pages/AdminHrDashboard.tsx", old_route)
 
           replace_once("src/pages/Dashboard.tsx", '  "create-staff",\n')
           replace_once("src/pages/Dashboard.tsx", '  "create-staff": "إنشاء حساب موظفة",\n')
