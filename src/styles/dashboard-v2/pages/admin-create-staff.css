@@ -1,6 +1,6 @@
 /* =========================================================
    Malikat Dashboard V2 — create staff
-   Scope: /dashboard/create-staff via CreateStaffAccountV2.
+   Scope: legacy create-staff styles + unified employee onboarding.
 ========================================================= */
 
 .dashboard-v2.admin-create-staff-v2-page {
@@ -213,6 +213,130 @@
   border-top: 1px solid var(--dsv2-divider);
 }
 
+/* Canonical employee onboarding. The old create-staff navigation entry is
+   intentionally hidden; the route itself redirects for saved bookmarks. */
+a[href="/dashboard/create-staff"] {
+  display: none;
+}
+
+.dashboard-v2 .employee-onboarding-account {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-space-5);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-onboarding-account__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .employee-onboarding-account__head > div {
+  display: grid;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-onboarding-account__head h3,
+.dashboard-v2 .employee-onboarding-account__head p,
+.dashboard-v2 .employee-onboarding-account__notice,
+.dashboard-v2 .employee-onboarding-account__error {
+  margin: 0;
+}
+
+.dashboard-v2 .employee-onboarding-account__head h3 {
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-onboarding-account__head p,
+.dashboard-v2 .employee-onboarding-account__notice {
+  color: var(--dsv2-muted);
+  font-size: 0.7rem;
+  font-weight: 720;
+  line-height: 1.7;
+}
+
+.dashboard-v2 .employee-onboarding-account__toggle {
+  display: flex;
+  min-height: var(--dsv2-control-height);
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface);
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dashboard-v2 .employee-onboarding-account__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .employee-onboarding-account__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-field-gap);
+}
+
+.dashboard-v2 .employee-onboarding-account__password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-onboarding-account__notice {
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .employee-onboarding-account__error {
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-danger-border, var(--dsv2-border));
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-danger, var(--dsv2-text));
+  background: var(--dsv2-danger-soft, var(--dsv2-surface-soft));
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.settings-users-v2-route {
+  display: grid;
+  gap: var(--dsv2-section-gap);
+}
+
+.settings-users-v2-route__canonical-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-5);
+  padding: var(--dsv2-card-padding);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.settings-users-v2-route__canonical-head > div {
+  display: grid;
+  gap: var(--dsv2-space-2);
+}
+
+.settings-users-v2-route > .dsv2-page > .dsv2-page-head {
+  display: none;
+}
+
 @media (max-width: 1100px) {
   .dashboard-v2 .admin-create-staff-v2-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -235,6 +359,11 @@
     min-width: 0;
     width: 100%;
   }
+
+  .dashboard-v2 .employee-onboarding-account__head,
+  .settings-users-v2-route__canonical-head {
+    display: grid;
+  }
 }
 
 @media (max-width: 560px) {
@@ -242,7 +371,8 @@
     padding: var(--dsv2-space-4);
   }
 
-  .dashboard-v2 .admin-create-staff-v2-form {
+  .dashboard-v2 .admin-create-staff-v2-form,
+  .dashboard-v2 .employee-onboarding-account__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -250,12 +380,15 @@
     grid-column: auto;
   }
 
-  .dashboard-v2 .admin-create-staff-v2-password-row {
+  .dashboard-v2 .admin-create-staff-v2-password-row,
+  .dashboard-v2 .employee-onboarding-account__password {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard-v2 .admin-create-staff-v2-password-row .dsv2-btn,
-  .dashboard-v2 .admin-create-staff-v2-card__actions .dsv2-btn {
+  .dashboard-v2 .admin-create-staff-v2-card__actions .dsv2-btn,
+  .dashboard-v2 .employee-onboarding-account__password .dsv2-btn,
+  .settings-users-v2-route__canonical-head .dsv2-btn {
     width: 100%;
   }
 
