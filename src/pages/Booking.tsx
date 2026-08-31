@@ -6547,8 +6547,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               slotStepMin,
             });
             return ok ? null : { item: it, reason: "time" as const };
-          } catch {
-            return { item: it, reason: "core" as const };
+          } catch (error) {
+            return { item: it, reason: "core" as const, error };
           }
         })
       )
@@ -6556,7 +6556,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     if (authoritativeStaffViolation) {
       const failedItem = authoritativeStaffViolation.item;
-      const isStaffFailure = authoritativeStaffViolation.reason === "staff";
+      const failureReason = authoritativeStaffViolation.reason;
+
+      // BOOKING_CORE_PREFLIGHT_ERROR_CLASSIFICATION_V1
+      // A failed Core verification is not evidence that the slot became invalid.
+      if (failureReason === "core") {
+        const error = (authoritativeStaffViolation as any)?.error;
+        const code = String(error?.code || "").toLowerCase();
+        const connectivityFailure =
+          code === "core_api:offline" ||
+          code === "core_api:network_unavailable" ||
+          code === "core_api:timeout";
+
+        openModal({
+          title: "تعذر التحقق من توفر الموعد",
+          message: connectivityFailure
+            ? "تعذر التحقق من توفر الموعد بسبب انقطاع الاتصال. لم يتم إنشاء الحجز. أعيدي الاتصال بالإنترنت ثم حاولي مرة أخرى."
+            : "تعذر التحقق من توفر الموعد من الخدمة الأساسية. لم يتم إنشاء الحجز. حاولي مرة أخرى بعد قليل.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      const isStaffFailure = failureReason === "staff";
       openModal({
         title: isStaffFailure ? "الموظفة غير متاحة للحجز" : "الوقت لم يعد متاحًا",
         message: isStaffFailure

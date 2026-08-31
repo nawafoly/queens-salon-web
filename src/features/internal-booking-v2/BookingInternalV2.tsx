@@ -382,6 +382,11 @@ export default function BookingInternalV2() {
   const [newClientEmail, setNewClientEmail] = useState("");
   const [creatingClient, setCreatingClient] = useState(false);
   const [newClientError, setNewClientError] = useState("");
+  // CLIENT_PHONE_DEDUP_UI_V1
+  const [existingClientMatch, setExistingClientMatch] = useState<ClientCandidate | null>(null);
+  const [existingClientChecking, setExistingClientChecking] = useState(false);
+  const [existingClientLookupError, setExistingClientLookupError] = useState("");
+  const newClientLookupSeq = useRef(0);
 
   const [sections, setSections] = useState<CatalogSection[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
@@ -429,38 +434,118 @@ export default function BookingInternalV2() {
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
 
+  const candidateFromCoreRow = useCallback((raw: any, fallbackSource = "core_d1"): ClientCandidate => ({
+    id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
+    name: String(raw?.name || raw?.fullName || raw?.clientName || "بدون اسم").trim(),
+    phone: phone10Digits(raw?.phone || raw?.mobile || raw?.clientPhone || raw?.phoneNormalized || raw?.phone_normalized || ""),
+    publicId: String(raw?.publicId || raw?.public_id || raw?.trackPublicId || raw?.mk || "").trim() || undefined,
+    source: String(raw?.source || fallbackSource),
+    visits: Math.max(0, Number(raw?.visits || raw?.usedCount || 0)) || undefined,
+    sessions: Math.max(0, Number(raw?.sessions || raw?.remainingSessions || 0)) || undefined,
+  }), []);
+
+  const findExistingClientByPhone = useCallback(async (rawPhone: string) => {
+    const phone = phone10Digits(rawPhone);
+    if (phone.length !== 10) return null;
+    const rows = await resolveCoreBookingDataSource().searchClients(phone);
+    const exact = (Array.isArray(rows) ? rows : []).find((row: any) =>
+      phone10Digits(row?.phone || row?.mobile || row?.clientPhone || row?.phoneNormalized || row?.phone_normalized || "") === phone
+    );
+    return exact ? candidateFromCoreRow(exact, "core_d1") : null;
+  }, [candidateFromCoreRow]);
+
+  const chooseClientForBooking = useCallback((candidate: ClientCandidate, message: string) => {
+    setSelectedClient(candidate);
+    setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+    markQuickClientUsage(candidate);
+    setShowNewClient(false);
+    setNewClientName("");
+    setNewClientPhone("");
+    setNewClientEmail("");
+    setExistingClientMatch(null);
+    setExistingClientLookupError("");
+    setNewClientError("");
+    setClientMessage(message);
+  }, []);
+
+  useEffect(() => {
+    const phone = phone10Digits(newClientPhone);
+    const lookupSeq = ++newClientLookupSeq.current;
+
+    if (!showNewClient || phone.length !== 10) {
+      setExistingClientMatch(null);
+      setExistingClientChecking(false);
+      setExistingClientLookupError("");
+      return;
+    }
+
+    setExistingClientChecking(true);
+    setExistingClientLookupError("");
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const match = await findExistingClientByPhone(phone);
+          if (lookupSeq !== newClientLookupSeq.current) return;
+          setExistingClientMatch(match);
+        } catch (error) {
+          console.error("[BookingInternalV2] client phone dedup lookup failed", error);
+          if (lookupSeq !== newClientLookupSeq.current) return;
+          setExistingClientMatch(null);
+          setExistingClientLookupError("تعذر التحقق من رقم الجوال. لن يتم إنشاء سجل جديد قبل نجاح التحقق.");
+        } finally {
+          if (lookupSeq === newClientLookupSeq.current) setExistingClientChecking(false);
+        }
+      })();
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [showNewClient, newClientPhone, findExistingClientByPhone]);
+
   const createNewClient = useCallback(async () => {
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
     if (name.length < 2) { setNewClientError("اكتبي اسم العميلة كاملًا."); return; }
     if (!phone || phone.length !== 10) { setNewClientError("أدخلي رقم جوال سعودي صحيح من 10 أرقام."); return; }
+
     setCreatingClient(true);
+    setExistingClientChecking(true);
+    setExistingClientLookupError("");
     setNewClientError("");
+
     try {
+      // Re-check immediately before CREATE. The preview lookup is UX only;
+      // this gate is the authoritative client-side duplicate stop.
+      const existing = await findExistingClientByPhone(phone);
+      if (existing) {
+        setExistingClientMatch(existing);
+        setClientMessage("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة.");
+        return;
+      }
+
       const created: any = await resolveCoreBookingDataSource().createClient({
         name,
         phone,
         email: email || undefined,
       });
-      const candidate: ClientCandidate = {
-        id: String(created?.id || `client:${makeLocalId()}`),
-        name: String(created?.name || created?.fullName || name),
-        phone: phone10Digits(created?.phone || created?.mobile || phone),
-        publicId: String(created?.publicId || created?.mk || "").trim() || undefined,
-        source: String(created?.source || "client_profile"),
-      };
-      setSelectedClient(candidate);
-      setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
-      markQuickClientUsage(candidate);
-      setShowNewClient(false);
-      setNewClientName(""); setNewClientPhone(""); setNewClientEmail("");
-      setClientMessage("تمت إضافة العميلة واختيارها للحجز.");
-    } catch (error) {
-      console.error("[BookingInternalV2] client create failed", error);
-      setNewClientError("تعذر إضافة العميلة. تحققي من الاتصال ثم حاولي مرة أخرى.");
-    } finally { setCreatingClient(false); }
-  }, [newClientName, newClientPhone, newClientEmail]);
+      const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
+      chooseClientForBooking(candidate, "تم اختيار العميلة للحجز بنجاح.");
+    } catch (error: any) {
+      console.error("[BookingInternalV2] client create/dedup check failed", error);
+      const code = String(error?.code || "").toLowerCase();
+      if (code === "core_api:offline" || code === "core_api:network_unavailable" || code === "core_api:timeout") {
+        setNewClientError("غير متصل بالإنترنت. لم يتم إنشاء العميلة. أعيدي الاتصال ثم حاولي مرة أخرى.");
+      } else if (code === "core_api:write_outcome_unknown") {
+        setNewClientError("انقطع الاتصال أثناء حفظ العميلة. النتيجة غير مؤكدة؛ أعيدي الاتصال وابحثي برقم الجوال قبل إعادة المحاولة.");
+      } else {
+        setNewClientError("تعذر التحقق من رقم الجوال أو حفظ العميلة. حاولي مرة أخرى.");
+      }
+    } finally {
+      setExistingClientChecking(false);
+      setCreatingClient(false);
+    }
+  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
@@ -1199,6 +1284,14 @@ export default function BookingInternalV2() {
         setScheduleMessage("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة.");
         setSubmitError("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر.");
         setStep(3);
+      } else if (
+        code === "core_api:offline" ||
+        code === "core_api:network_unavailable" ||
+        code === "core_api:timeout"
+      ) {
+        setSubmitError("غير متصل بالإنترنت. لم يتم إنشاء الحجز. أعيدي الاتصال ثم حاولي مرة أخرى.");
+      } else if (code === "core_api:write_outcome_unknown") {
+        setSubmitError("انقطع الاتصال أثناء حفظ الحجز. نتيجة العملية غير مؤكدة؛ لا تعيدي الحفظ. أعيدي الاتصال وافتحي صفحة الحجوزات للتحقق أولًا.");
       } else {
         setSubmitError(`تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
       }
@@ -1319,17 +1412,80 @@ export default function BookingInternalV2() {
                     ))}
                   </div>
                   <div className="bk2-divider"><span>أو</span></div>
-                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); }}><FiPlus />إضافة عميلة جديدة</button>
+                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />إضافة عميلة جديدة</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>إضافة عميلة جديدة</strong><small>سيتم حفظها في مصدر البيانات الحالي واختيارها مباشرة.</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>إضافة عميلة جديدة</strong><small>سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
-                        <label><span>اسم العميلة *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="مثال: رانيا الحربي" /></label>
-                        <label><span>رقم الجوال *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10))} placeholder="05xxxxxxxx" /></label>
-                        <label className="is-wide"><span>البريد الإلكتروني (اختياري)</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" /></label>
+                        <label><span>اسم العميلة *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="مثال: رانيا الحربي" disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>رقم الجوال *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
+                        <label className="is-wide"><span>البريد الإلكتروني (اختياري)</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
                       </div>
+
+                      {existingClientChecking ? (
+                        <div className="bk2-client-identity-check is-loading" role="status">
+                          <span className="bk2-client-identity-dot" />
+                          <div><strong>جاري التحقق من رقم الجوال...</strong><small>نتأكد أن العميلة غير مسجلة مسبقًا.</small></div>
+                        </div>
+                      ) : existingClientMatch ? (
+                        <div className="bk2-existing-client-match" role="status">
+                          <div className="bk2-existing-client-icon" aria-hidden="true">
+                            <FiUser />
+                          </div>
+                          <div className="bk2-existing-client-content">
+                            <div className="bk2-existing-client-heading">
+                              <div>
+                                <span className="bk2-existing-client-kicker">تم العثور على عميلة مسجلة</span>
+                                <strong><bdi dir="auto">{existingClientMatch.name}</bdi></strong>
+                              </div>
+                              <span className="bk2-existing-client-status">سجل موجود</span>
+                            </div>
+                            <div className="bk2-existing-client-meta">
+                              <span><small>رقم الجوال</small><bdi dir="ltr">{existingClientMatch.phone}</bdi></span>
+                              {existingClientMatch.publicId ? <span><small>رقم العضوية</small><bdi dir="ltr">{existingClientMatch.publicId}</bdi></span> : null}
+                            </div>
+                            <p>لن يتم إنشاء سجل جديد. اختاري العميلة الموجودة للمتابعة بالحجز.</p>
+                            {newClientName.trim() && normalizeSearchText(newClientName) !== normalizeSearchText(existingClientMatch.name) ? (
+                              <div className="bk2-existing-client-name-warning">
+                                الاسم الذي كتبتيه مختلف عن الاسم المسجل؛ لن نستبدل بيانات العميلة تلقائيًا.
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : existingClientLookupError ? (
+                        <div className="bk2-client-identity-check is-error" role="alert">
+                          <div><strong>تعذر التحقق من رقم الجوال</strong><small>{existingClientLookupError}</small></div>
+                        </div>
+                      ) : phone10Digits(newClientPhone).length === 10 ? (
+                        <div className="bk2-client-identity-check is-clear" role="status">
+                          <span className="bk2-client-identity-dot" />
+                          <div><strong>رقم الجوال غير مسجل حاليًا</strong><small>يمكن إنشاء عميلة جديدة بهذا الرقم.</small></div>
+                        </div>
+                      ) : null}
+
                       {newClientError ? <p className="bk2-inline-warning">{newClientError}</p> : null}
-                      <div className="bk2-new-client-actions"><button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>إلغاء</button><button type="button" className="is-primary" onClick={() => void createNewClient()} disabled={creatingClient}>{creatingClient ? "جاري الحفظ..." : "حفظ واختيار العميلة"}</button></div>
+                      <div className="bk2-new-client-actions">
+                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>إلغاء</button>
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() => existingClientMatch
+                            ? chooseClientForBooking(existingClientMatch, "تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد.")
+                            : void createNewClient()
+                          }
+                          disabled={creatingClient || existingClientChecking}
+                        >
+                          {creatingClient
+                            ? "جاري الحفظ..."
+                            : existingClientChecking
+                              ? "جاري التحقق..."
+                              : existingClientMatch
+                                ? "اختيار العميلة الموجودة"
+                                : existingClientLookupError
+                                  ? "إعادة التحقق والحفظ"
+                                  : "حفظ واختيار العميلة"}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                   <div className="bk2-tip"><span>i</span><div><strong>نصيحة</strong><p>استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.</p></div></div>
