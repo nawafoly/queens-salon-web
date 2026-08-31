@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const RUNNER = "scripts/_apply-canonical-weekly-rest-effective-shift.mjs";
 const HELPER = "scripts/_run-canonical-weekly-rest-v2.mjs";
+const POLICY_TEST = "workers/leave-rest-workflows-policy.test.mjs";
 
 let source = readFileSync(RUNNER, "utf8").replace(/\r\n/g, "\n");
 
@@ -48,9 +49,10 @@ mustReplace(
 mustReplace(
   'if (netFiles.length !== 1 || netFiles[0] !== SELF) {',
   `if (
-    netFiles.length !== 2 ||
+    netFiles.length !== 3 ||
     !netFiles.includes(SELF) ||
-    !netFiles.includes("${HELPER}")
+    !netFiles.includes("${HELPER}") ||
+    !netFiles.includes("${POLICY_TEST}")
   ) {`,
   "pre-patch branch diff gate"
 );
