@@ -49,6 +49,31 @@ function numberLabel(value: unknown, suffix = "") {
   return `${number.toLocaleString("ar-SA-u-nu-latn")}${suffix}`;
 }
 
+function annualReviewReasonLabel(value: unknown) {
+  const reason = clean(value);
+  if (reason === "service_start_date_required") {
+    return "تاريخ بداية الخدمة غير محدد";
+  }
+  if (reason === "service_start_date_invalid") {
+    return "تاريخ بداية الخدمة غير صالح";
+  }
+  if (reason === "opening_balance_required") {
+    return "يحتاج رصيدًا افتتاحيًا قبل اعتماده";
+  }
+  if (reason === "as_of_before_service_start") {
+    return "تاريخ الحساب قبل بداية الخدمة";
+  }
+  return reason || "يحتاج مراجعة من الموارد البشرية";
+}
+
+function annualBalanceValue(
+  value: unknown,
+  reviewRequired = false
+) {
+  if (reviewRequired) return "يحتاج مراجعة";
+  return numberLabel(value, " يوم");
+}
+
 function statusLabel(value: unknown) {
   const status = clean(value).toLowerCase();
   if (status === "active") return "فعال";
@@ -220,8 +245,48 @@ export default function LeaveRestManagementPanel({
           .join("، ")
       : "غير محددة";
 
+  const annualLeave =
+    overview?.annualLeave || {};
+  const annualReviewRequired =
+    Boolean(annualLeave.reviewRequired);
+  const annualReviewDescription =
+    annualReviewRequired
+      ? `الرصيد يحتاج مراجعة — ${annualReviewReasonLabel(
+          annualLeave.reviewReason
+        )}`
+      : "";
   const annualAvailable =
-    overview?.annualLeave.availableDays;
+    annualLeave.availableDays;
+  const nearbyApprovedAnnualLeaves =
+    approvedAnnualLeaves
+      .slice()
+      .sort((left, right) => {
+        const leftCovers = leaveCoversDate(left, recallDate);
+        const rightCovers = leaveCoversDate(right, recallDate);
+        if (leftCovers !== rightCovers) return leftCovers ? -1 : 1;
+        const recallMs = Date.parse(`${recallDate}T00:00:00Z`);
+        const leftMs = Date.parse(`${clean(left.startDate)}T00:00:00Z`);
+        const rightMs = Date.parse(`${clean(right.startDate)}T00:00:00Z`);
+        const leftDistance = Number.isFinite(leftMs) && Number.isFinite(recallMs)
+          ? Math.abs(leftMs - recallMs)
+          : Number.MAX_SAFE_INTEGER;
+        const rightDistance = Number.isFinite(rightMs) && Number.isFinite(recallMs)
+          ? Math.abs(rightMs - recallMs)
+          : Number.MAX_SAFE_INTEGER;
+        return leftDistance - rightDistance;
+      })
+      .slice(0, 3);
+  const nearbyApprovedAnnualLeavesDescription =
+    nearbyApprovedAnnualLeaves.length
+      ? `الإجازات السنوية المعتمدة الحالية/القريبة: ${nearbyApprovedAnnualLeaves
+          .map(
+            (leave) =>
+              `${fmtIsoDate(leave.startDate)} إلى ${fmtIsoDate(
+                leave.endDate
+              )}`
+          )
+          .join("، ")}.`
+      : "لا توجد إجازات سنوية معتمدة كاملة لهذا الموظف في القائمة الحالية.";
 
   const submitRecall = async () => {
     if (!recallLeave) {
@@ -353,13 +418,17 @@ export default function LeaveRestManagementPanel({
           value={
             loading
               ? "جاري التحميل..."
-              : numberLabel(
+              : annualBalanceValue(
                   annualAvailable,
-                  " يوم"
+                  annualReviewRequired
                 )
           }
-          note="الرصيد المتاح"
-          tone="success"
+          note={
+            annualReviewRequired
+              ? annualReviewReasonLabel(annualLeave.reviewReason)
+              : "الرصيد المتاح"
+          }
+          tone={annualReviewRequired ? "gold" : "success"}
         />
         <WorkspaceMetricV2
           label="الراحة الأسبوعية"
@@ -403,10 +472,118 @@ export default function LeaveRestManagementPanel({
         />
       ) : null}
 
+      {annualReviewRequired ? (
+        <WorkspaceNoticeV2
+          title="الرصيد يحتاج مراجعة"
+          description={annualReviewDescription}
+          tone="gold"
+        />
+      ) : null}
+
+      <WorkspaceCardV2
+        title="تفصيل رصيد الإجازة السنوية"
+        description="يعرض الاستحقاق، المكتسب، الافتتاحي، المستخدم، والمسترجع قبل احتساب الرصيد المتاح."
+      >
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2
+            label="الاستحقاق السنوي"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(annualLeave.annualEntitlementDays, " يوم")
+            }
+          />
+          <WorkspaceMetricV2
+            label="المكتسب حتى اليوم"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(
+                    annualLeave.earnedCurrentServiceYearDays ??
+                      annualLeave.accruedDays,
+                    " يوم"
+                  )
+            }
+          />
+          <WorkspaceMetricV2
+            label="الرصيد الافتتاحي"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : annualReviewRequired &&
+                    annualLeave.reviewReason === "opening_balance_required"
+                  ? "مطلوب"
+                  : numberLabel(annualLeave.openingBalanceDays ?? 0, " يوم")
+            }
+            tone={
+              annualReviewRequired &&
+              annualLeave.reviewReason === "opening_balance_required"
+                ? "gold"
+                : "neutral"
+            }
+          />
+          <WorkspaceMetricV2
+            label="المستخدم"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(annualLeave.usedDays ?? 0, " يوم")
+            }
+          />
+          <WorkspaceMetricV2
+            label="المعاد/المسترجع"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(annualLeave.reversedDays ?? 0, " يوم")
+            }
+          />
+          <WorkspaceMetricV2
+            label="الرصيد المتاح"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : annualBalanceValue(
+                    annualLeave.availableDays,
+                    annualReviewRequired
+                  )
+            }
+            note={
+              annualReviewRequired
+                ? annualReviewReasonLabel(annualLeave.reviewReason)
+                : undefined
+            }
+            tone={annualReviewRequired ? "gold" : "success"}
+          />
+          <WorkspaceMetricV2
+            label="بداية سنة الخدمة"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : annualLeave.serviceYearStart
+                  ? fmtIsoDate(String(annualLeave.serviceYearStart))
+                  : annualLeave.startDate
+                    ? fmtIsoDate(String(annualLeave.startDate))
+                    : "غير محددة"
+            }
+          />
+          <WorkspaceMetricV2
+            label="نهاية سنة الخدمة"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : annualLeave.serviceYearEnd
+                  ? fmtIsoDate(String(annualLeave.serviceYearEnd))
+                  : "غير محددة"
+            }
+          />
+        </div>
+      </WorkspaceCardV2>
+
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2
           title="استدعاء من الإجازة السنوية"
-          description="يُعاد اليوم المستدعى إلى الرصيد السنوي، وتبقى بقية الإجازة كما هي."
+          description="هذه العملية ليست لإضافة رصيد إجازة. تستخدم فقط عند استدعاء موظفة أثناء إجازة سنوية معتمدة قائمة."
         >
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             <DashboardFieldV2
@@ -454,7 +631,7 @@ export default function LeaveRestManagementPanel({
                   )} إلى ${fmtIsoDate(
                     recallLeave.endDate
                   )}. سيتم استرجاع يوم واحد فقط.`
-                : "اختر تاريخًا داخل إجازة سنوية معتمدة."
+                : `اختر تاريخًا داخل إجازة سنوية معتمدة. ${nearbyApprovedAnnualLeavesDescription}`
             }
             tone={
               recallLeave

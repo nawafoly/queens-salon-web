@@ -127,6 +127,97 @@ async function resolveCoreEmployeeId(directoryDb, salonId, requester, employeeRe
   return normalizeText(row?.id);
 }
 
+function parseCoreAllowedZoneIds(value) {
+  if (Array.isArray(value)) return uniqueStrings(value);
+  return uniqueStrings(safeJsonArray(value));
+}
+
+async function readCoreAttendanceEmployment(directoryDb, salonId, coreEmployeeId) {
+  if (!directoryDb || !coreEmployeeId) return null;
+  return directoryDb
+    .prepare(
+      `SELECT employee_id, allowed_zone_ids_json
+         FROM employee_employment
+        WHERE salon_id = ? AND employee_id = ?
+        LIMIT 1`
+    )
+    .bind(salonId, coreEmployeeId)
+    .first();
+}
+
+export async function resolveAttendanceZoneAssignment({
+  directoryDb,
+  salonId,
+  requester,
+  requestedEmployeeId = "",
+  employeeResolution = {},
+  legacyEmployeeData = {},
+  legacyUserData = {},
+}) {
+  const legacyAllowedZoneIds = pickAllowedZoneIds(
+    legacyEmployeeData,
+    legacyUserData
+  );
+  const fallback = {
+    ok: true,
+    source: "legacy",
+    coreEmployeeId: "",
+    coreEmployeeUid: "",
+    allowedZoneIds: legacyAllowedZoneIds,
+    legacyAllowedZoneIds,
+    legacyUsed: true,
+    message: "",
+  };
+
+  if (!directoryDb) return fallback;
+
+  const coreIdentity = await resolveCanonicalAttendanceIdentity(
+    directoryDb,
+    salonId,
+    {
+      employeeUid: requester?.uid,
+      employeeDocId:
+        normalizeText(requestedEmployeeId) ||
+        normalizeText(employeeResolution?.employeeDocId),
+      identityIds: employeeResolution?.identityIds,
+    }
+  );
+
+  if (coreIdentity.ok === false) {
+    if (coreIdentity.message === "attendance_employee_identity_not_found") {
+      return fallback;
+    }
+    return {
+      ...fallback,
+      ok: false,
+      source: "core",
+      allowedZoneIds: [],
+      legacyUsed: false,
+      message: coreIdentity.message || "attendance_employee_identity_mismatch",
+    };
+  }
+
+  const coreEmployeeId = normalizeText(coreIdentity.employeeDocId);
+  const employment = await readCoreAttendanceEmployment(
+    directoryDb,
+    salonId,
+    coreEmployeeId
+  );
+
+  if (!employment) return fallback;
+
+  return {
+    ok: true,
+    source: "core",
+    coreEmployeeId,
+    coreEmployeeUid: normalizeText(coreIdentity.employeeUid),
+    allowedZoneIds: parseCoreAllowedZoneIds(employment.allowed_zone_ids_json),
+    legacyAllowedZoneIds,
+    legacyUsed: false,
+    message: "",
+  };
+}
+
 export async function resolveCanonicalAttendanceIdentity(directoryDb, salonId, input = {}) {
   const requestedEmployeeUid = normalizeText(input?.employeeUid);
   const requestedEmployeeDocId = normalizeText(input?.employeeDocId);
@@ -2735,17 +2826,8 @@ async function recordAttendance({
     queryFirestoreDocuments,
   });
   const linkedEmployeeId = employeeResolution.linkedEmployeeId;
-  const employeeDocId = employeeResolution.employeeDocId;
+  let employeeDocId = employeeResolution.employeeDocId;
   const employeeData = employeeResolution.employeeData || {};
-
-  if (
-    !requestedEmployeeMatchesResolution(
-      requestedEmployeeId,
-      employeeResolution
-    )
-  ) {
-    return json(403, { ok: false, message: "attendance_employee_mismatch" });
-  }
 
   if (
     !ATTENDANCE_ALLOWED_ROLES.has(requester.runtime?.role) &&
@@ -2756,7 +2838,48 @@ async function recordAttendance({
     return json(403, { ok: false, message: "attendance_not_enabled" });
   }
 
-  const employeeAllowedZoneIds = pickAllowedZoneIds(employeeData, userData);
+  const zoneAssignment = await resolveAttendanceZoneAssignment({
+    directoryDb,
+    salonId,
+    requester,
+    requestedEmployeeId,
+    employeeResolution,
+    legacyEmployeeData: employeeData,
+    legacyUserData: userData,
+  });
+  if (zoneAssignment.ok === false) {
+    return json(403, {
+      ok: false,
+      message: zoneAssignment.message || "attendance_employee_identity_mismatch",
+    });
+  }
+
+  if (zoneAssignment.coreEmployeeId) {
+    employeeDocId = zoneAssignment.coreEmployeeId;
+  }
+
+  const canonicalEmployeeResolution = {
+    ...employeeResolution,
+    employeeDocId,
+    identityIds: uniqueTextValues([
+      ...(Array.isArray(employeeResolution.identityIds)
+        ? employeeResolution.identityIds
+        : []),
+      zoneAssignment.coreEmployeeId,
+      zoneAssignment.coreEmployeeUid,
+    ]),
+  };
+
+  if (
+    !requestedEmployeeMatchesResolution(
+      requestedEmployeeId,
+      canonicalEmployeeResolution
+    )
+  ) {
+    return json(403, { ok: false, message: "attendance_employee_mismatch" });
+  }
+
+  const employeeAllowedZoneIds = zoneAssignment.allowedZoneIds;
   const allowedZoneIds =
     requestedAttendanceZoneId &&
     employeeAllowedZoneIds.includes(requestedAttendanceZoneId)
@@ -2793,10 +2916,11 @@ async function recordAttendance({
     requestedEmployeeId,
     linkedEmployeeId,
     employeeDocId,
-    employeeFound: Boolean(employeeResolution.employeeFound),
+    employeeFound: Boolean(employeeResolution.employeeFound || zoneAssignment.coreEmployeeId),
     allowedZoneIds,
     requestedAttendanceZoneId,
     employeeAllowedZoneIds,
+    zoneAssignment,
     zoneResolution,
     zoneCheck,
     location,
@@ -2812,7 +2936,7 @@ async function recordAttendance({
     directoryDb,
     salonId,
     requester,
-    employeeResolution,
+    employeeResolution: canonicalEmployeeResolution,
     type,
     now,
   });
@@ -3482,7 +3606,7 @@ async function readLastSuccessfulDeviceId(db, employeeUid) {
   return normalizeText(row?.device_id) || null;
 }
 
-async function resolveZones(db, allowedZoneIds, options = {}) {
+export async function resolveZones(db, allowedZoneIds, options = {}) {
   if (!allowedZoneIds.length)
     return {
       zones: [],
@@ -4133,6 +4257,7 @@ function buildAttendanceDebug({
   allowedZoneIds,
   requestedAttendanceZoneId,
   employeeAllowedZoneIds,
+  zoneAssignment,
   zoneResolution,
   zoneCheck,
   location,
@@ -4157,6 +4282,10 @@ function buildAttendanceDebug({
     zones: {
       allowedZoneIds,
       employeeAllowedZoneIds: employeeAllowedZoneIds || allowedZoneIds,
+      assignmentSource: zoneAssignment?.source || null,
+      coreEmployeeId: zoneAssignment?.coreEmployeeId || null,
+      legacyUsed: Boolean(zoneAssignment?.legacyUsed),
+      legacyAllowedZoneIds: zoneAssignment?.legacyAllowedZoneIds || [],
       requestedAttendanceZoneId: requestedAttendanceZoneId || null,
       allowedZoneIdsCount: allowedZoneIds.length,
       resolutionError: zoneResolution.error || null,

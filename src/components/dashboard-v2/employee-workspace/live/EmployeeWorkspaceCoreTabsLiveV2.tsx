@@ -2,6 +2,7 @@ import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
 import { useMemo, useState } from "react";
 import EmployeeAvatar from "../../../EmployeeAvatar";
 import {
+  DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
 } from "../../index";
@@ -21,12 +22,14 @@ export type EmployeeBasicTabLiveV2Props = {
   showOnAbout: boolean;
   showOnBooking: boolean;
   includeInEmployeeManagement: boolean;
+  employmentStartDate: string;
   weeklyOffLabel: string;
   onNameChange: (value: string) => void;
   onActiveChange: (value: boolean) => void;
   onShowOnAboutChange: (value: boolean) => void;
   onShowOnBookingChange: (value: boolean) => void;
   onIncludeInEmployeeManagementChange: (value: boolean) => void;
+  onEmploymentStartDateChange: (value: string) => void;
 };
 
 export function EmployeeBasicTabLiveV2({
@@ -36,12 +39,14 @@ export function EmployeeBasicTabLiveV2({
   showOnAbout,
   showOnBooking,
   includeInEmployeeManagement,
+  employmentStartDate,
   weeklyOffLabel,
   onNameChange,
   onActiveChange,
   onShowOnAboutChange,
   onShowOnBookingChange,
   onIncludeInEmployeeManagementChange,
+  onEmploymentStartDateChange,
 }: EmployeeBasicTabLiveV2Props) {
   const completeness = [name.trim(), weeklyOffLabel.trim()].filter(Boolean).length === 2 ? 100 : 75;
 
@@ -63,6 +68,16 @@ export function EmployeeBasicTabLiveV2({
               disabled={readOnly}
               autoComplete="off"
               onChange={(event) => onNameChange(event.target.value)}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="employee-live-v2-service-start-date" label="بداية سنة الخدمة">
+            <DashboardDatePickerV2
+              id="employee-live-v2-service-start-date"
+              value={employmentStartDate}
+              disabled={readOnly}
+              clearable
+              onChange={onEmploymentStartDateChange}
             />
           </DashboardFieldV2>
 

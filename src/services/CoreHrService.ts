@@ -156,8 +156,15 @@ export type CoreLeaveRestOverview = {
   employeeId: string;
   annualLeave: Record<string, unknown> & {
     availableDays?: number;
-    accruedDays?: number;
+    annualEntitlementDays?: number;
+    earnedCurrentServiceYearDays?: number;
+    openingBalanceDays?: number;
     usedDays?: number;
+    reversedDays?: number;
+    serviceYearStart?: string | null;
+    serviceYearEnd?: string | null;
+    startDate?: string | null;
+    accruedDays?: number;
     reviewRequired?: boolean;
     reviewReason?: string | null;
   };

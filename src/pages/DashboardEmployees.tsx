@@ -1021,6 +1021,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     rating: pickEditableNumber("rating"),
     reviewsCount: Math.floor(pickEditableNumber("reviewsCount")),
     specialties: pickEditableArray("specialties", normalizeSpecialties),
+    employmentStartDate: pickEditableText("employmentStartDate"),
     employmentEndDate: pickEditableText("employmentEndDate"),
 
     allowedAttendanceZoneId: pickEditableText("allowedAttendanceZoneId"),
@@ -1197,6 +1198,14 @@ function overlayCoreEmployeeMasterFields(
               employment.employmentEndDate
           )
         : normalizeLeaveUntil(row.employmentEndDate),
+    employmentStartDate:
+      hasEmploymentField("start_date") ||
+      hasEmploymentField("startDate")
+        ? normalizeLeaveUntil(
+            employment.start_date ??
+              employment.startDate
+          )
+        : normalizeLeaveUntil(row.employmentStartDate),
   };
 }
 
@@ -1543,6 +1552,7 @@ function buildEmployeeSaveVerificationSnapshot(
     rating: Math.min(5, safeNonNegativeNumber(staff.rating, 0)),
     reviewsCount: Math.floor(safeNonNegativeNumber(staff.reviewsCount ?? staff.reviewCount, 0)),
     specialties: employeeVerificationSpecialties(staff.specialties, serviceOptions),
+    employmentStartDate: normalizeLeaveUntil(staff.employmentStartDate),
     employmentEndDate: normalizeLeaveUntil(staff.employmentEndDate),
     attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
     allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
@@ -1575,6 +1585,7 @@ function buildExpectedCoreEmployeeMasterVerificationSnapshot(
     reviewsCount: Math.floor(
       safeNonNegativeNumber(staff.reviewsCount ?? staff.reviewCount, 0)
     ),
+    employmentStartDate: normalizeLeaveUntil(staff.employmentStartDate),
     employmentEndDate: normalizeLeaveUntil(staff.employmentEndDate),
   };
 }
@@ -1624,6 +1635,10 @@ function buildCoreEmployeeMasterVerificationSnapshot(
     ),
     rating: Math.min(5, safeNonNegativeNumber(core.rating, 0)),
     reviewsCount: Math.floor(safeNonNegativeNumber(core.reviewsCount, 0)),
+    employmentStartDate: normalizeLeaveUntil(
+      employment.start_date ??
+        employment.startDate
+    ),
     employmentEndDate: normalizeLeaveUntil(
       employment.end_date ??
         employment.endDate ??
@@ -1764,6 +1779,7 @@ export default function DashboardEmployees() {
   const [leaveModalDate, setLeaveModalDate] = useState("");
   const [leaveModalDefaultType, setLeaveModalDefaultType] = useState("emergency");
   const [leaveModalEmployeeName, setLeaveModalEmployeeName] = useState("");
+  const [employmentStartDate, setEmploymentStartDate] = useState("");
   const [employmentEndDate, setEmploymentEndDate] = useState("");
   const [offboardingEmployee, setOffboardingEmployee] = useState<StaffPublicUi | null>(null);
   const [offboardingEndDate, setOffboardingEndDate] = useState("");
@@ -3281,6 +3297,7 @@ export default function DashboardEmployees() {
     setModalLeaveUntil("");
     setModalLeaveType("annual");
     setModalLeaveNote("");
+    setEmploymentStartDate("");
     setEmploymentEndDate("");
     setSelectedAttendanceZoneId("");
     setModalExceptionalLeaveWeekdays([]);
@@ -3383,6 +3400,7 @@ export default function DashboardEmployees() {
     setModalLeaveUntil(initialLeaveUntil);
     setModalLeaveType(normalizeManagedLeaveType((x as any).leaveType));
     setModalLeaveNote(String((x as any).leaveNote || ""));
+    setEmploymentStartDate(normalizeLeaveUntil((x as any).employmentStartDate));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
     const switchingScheduleEmployee =
@@ -4157,6 +4175,7 @@ export default function DashboardEmployees() {
               specialties.length > 0
                 ? combined?.showOnBooking !== false
                 : false,
+            employmentStartDate: normalizeLeaveUntil(combined?.employmentStartDate),
             employmentEndDate: normalizeLeaveUntil(combined?.employmentEndDate),
             onLeave: !!combined?.onLeave,
             leaveStartDate: normalizeLeaveUntil(
@@ -4294,6 +4313,7 @@ export default function DashboardEmployees() {
               partnerId: cleanText(employment.partner_id ?? employment.partnerId),
               partnerMemberId: cleanText(employment.partner_member_id ?? employment.partnerMemberId),
               contractId: cleanText(employment.contract_id ?? employment.contractId),
+              employmentStartDate: cleanText(employment.start_date ?? employment.startDate),
               employmentEndDate: cleanText(employment.end_date ?? employment.endDate),
               allowedZoneIds: coreEmployeeMasterTextArray(
                 employment.allowed_zone_ids_json ?? employment.allowedZoneIds
@@ -5155,6 +5175,7 @@ export default function DashboardEmployees() {
     const previousEditSnapshot = editId
       ? {
           active: !!editingStaff?.active,
+          employmentStartDate: normalizeLeaveUntil((editingStaff as any)?.employmentStartDate),
           employmentEndDate: normalizeLeaveUntil((editingStaff as any)?.employmentEndDate),
         }
       : null;
@@ -5285,6 +5306,7 @@ export default function DashboardEmployees() {
     setSaving(true);
     setErrorMsg("");
     setSaveMessage("");
+    const normalizedEmploymentStartDate = normalizeLeaveUntil(employmentStartDate);
     const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const generatedEmployeeId = !editId
@@ -5380,6 +5402,7 @@ export default function DashboardEmployees() {
       active: !!active,
       showOnAbout: !!showOnAbout,
       showOnBooking: effectiveShowOnBooking,
+      employmentStartDate: normalizedEmploymentStartDate,
       employmentEndDate: normalizedEmploymentEndDate,
       // Leave lifecycle is intentionally excluded from the employee profile save.
       // It is owned by Core employee_requests -> employee_leaves.
@@ -5514,6 +5537,9 @@ export default function DashboardEmployees() {
 
           contractId:
             cleanText(payload.contractId),
+
+          startDate:
+            normalizeLeaveUntil(payload.employmentStartDate),
 
           employmentEndDate:
             normalizeLeaveUntil(payload.employmentEndDate),
@@ -5832,6 +5858,7 @@ export default function DashboardEmployees() {
       if (previousEditSnapshot && editingStaff) {
         const employmentChanged =
           previousEditSnapshot.active !== !!active ||
+          previousEditSnapshot.employmentStartDate !== normalizedEmploymentStartDate ||
           previousEditSnapshot.employmentEndDate !== normalizedEmploymentEndDate;
 
         if (employmentChanged) {
@@ -8146,6 +8173,7 @@ const canonicalSchedules =
         specialties: normalizeServiceIds(specialties),
       },
       booking: {
+        employmentStartDate: normalizeLeaveUntil(employmentStartDate),
         employmentEndDate: normalizeLeaveUntil(employmentEndDate),
         attendanceZoneId: cleanText(selectedAttendanceZoneId),
       },
@@ -8158,6 +8186,7 @@ const canonicalSchedules =
     bio,
     cvUrl,
     employmentEndDate,
+    employmentStartDate,
     includeInEmployeeManagement,
     modalCustomHourOverrides,
     modalCustomWorkingHours,
@@ -8271,6 +8300,7 @@ const canonicalSchedules =
         specialties: normalizeServiceIds(editingStaff.specialties),
       },
       booking: {
+        employmentStartDate: normalizeLeaveUntil((editingStaff as any).employmentStartDate),
         employmentEndDate: normalizeLeaveUntil((editingStaff as any).employmentEndDate),
         attendanceZoneId: resolveAttendanceZoneId(editingStaff),
       },
@@ -8295,6 +8325,7 @@ const canonicalSchedules =
         specialties: normalizeServiceIds(specialties),
       },
       booking: {
+        employmentStartDate: normalizeLeaveUntil(employmentStartDate),
         employmentEndDate: normalizeLeaveUntil(employmentEndDate),
         attendanceZoneId: cleanText(selectedAttendanceZoneId),
       },
@@ -8327,6 +8358,7 @@ const canonicalSchedules =
     coreScheduleLoadedEmployeeId,
     coreScheduleRows,
     employmentEndDate,
+    employmentStartDate,
     employeeProfileEditorFingerprint,
     employeeProfilePostSaveBaseline,
     includeInEmployeeManagement,
@@ -9939,6 +9971,7 @@ const canonicalSchedules =
                 showOnAbout={showOnAbout}
                 showOnBooking={showOnBooking}
                 includeInEmployeeManagement={includeInEmployeeManagement}
+                employmentStartDate={employmentStartDate}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
                     ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
@@ -9949,6 +9982,7 @@ const canonicalSchedules =
                 onShowOnAboutChange={setShowOnAbout}
                 onShowOnBookingChange={setShowOnBooking}
                 onIncludeInEmployeeManagementChange={setIncludeInEmployeeManagement}
+                onEmploymentStartDateChange={setEmploymentStartDate}
               />
               <BookingSettingsSection
                 isVisible={(!editingStaff && modalTab === "booking") || (!!editingStaff && activeTab === "booking")}

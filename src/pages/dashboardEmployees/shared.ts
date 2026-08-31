@@ -104,6 +104,7 @@ export type StaffPublicDoc = {
   name: string;
   active: boolean;
   employmentEndDate?: string;
+  employmentStartDate?: string;
   showOnAbout: boolean;
   showOnBooking: boolean;
   onLeave?: boolean;

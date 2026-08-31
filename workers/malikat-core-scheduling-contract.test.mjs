@@ -1811,6 +1811,12 @@ test("Stage 2 canonical leave authority never mirrors operational leave into sta
     /bookingStaff:\s*\{/
   );
 
+  assert.match(
+    employeeMasterSave,
+    /employment:\s*\{[\s\S]*startDate:\s*[\s\S]*payload\.employmentStartDate/,
+    "Dashboard employee master save must persist service start date through Core employment"
+  );
+
   assert.doesNotMatch(
     employeeMasterSave,
     /leaveStartDate\s*:|leaveEndDate\s*:|leaveNote\s*:/
