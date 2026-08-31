@@ -19,6 +19,8 @@ test("critical journey gate covers every operational integrity business journey"
     "payroll approval",
     "payroll payment and reversal",
     "employee termination safety",
+    "booking offline safety",
+    "internal booking client dedup",
   ];
 
   for (const journey of required) {
