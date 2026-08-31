@@ -12,6 +12,12 @@ export default function SettingsUsersV2(props: SettingsUsersV2Props) {
 
   return (
     <div className="settings-users-v2-route">
+      <style>{`
+        .settings-users-v2-route > .dsv2-page > .dsv2-page-head {
+          display: none;
+        }
+      `}</style>
+
       <section className="settings-users-v2-route__canonical-head">
         <div>
           <span className="dsv2-badge dsv2-badge--gold">إدارة الوصول</span>
