@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { normalizeWesternDigits } from "../../helpers/displayLocalePolicy";
 
 export type DashboardTimePickerV2Props = {
@@ -97,10 +97,7 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
     ? normalizeCommittedTime(String(value ?? ""))
     : internalValue;
 
-  const initial12 = useMemo(
-    () => to12HourParts(current || normalizedDefault),
-    []
-  );
+  const initial12 = to12HourParts(current || normalizedDefault);
   const [draft12, setDraft12] = useState(initial12.draft);
   const [period12, setPeriod12] = useState<TimePeriod>(initial12.period);
 
