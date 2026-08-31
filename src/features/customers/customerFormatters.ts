@@ -3,8 +3,81 @@ import type { CustomerSource } from "./customerTypes";
 export const UNNAMED_CUSTOMER_LABEL = "عميلة بدون اسم";
 export const EMPTY_VALUE_LABEL = "—";
 
+/* CUSTOMER_TEXT_ENCODING_POLICY_V1
+ * Repairs high-confidence legacy Arabic text that was UTF-8 bytes decoded as
+ * Windows-1256. Normal Arabic is returned unchanged.
+ */
+let customerCp1256Reverse: Map<string, number> | null = null;
+
+function getCustomerCp1256Reverse(): Map<string, number> {
+  if (customerCp1256Reverse) return customerCp1256Reverse;
+
+  const map = new Map<string, number>();
+  const decoder = new TextDecoder("windows-1256");
+
+  for (let byte = 0; byte <= 255; byte += 1) {
+    const char = decoder.decode(Uint8Array.of(byte));
+    if (char && char !== "\uFFFD" && !map.has(char)) {
+      map.set(char, byte);
+    }
+  }
+
+  customerCp1256Reverse = map;
+  return map;
+}
+
+function customerMojibakeScore(value: string): number {
+  const denseMarkers = (value.match(/[طظ][^\s]/gu) || []).length;
+  const artifacts = (
+    value.match(/[€‚ƒ„…†‡ˆ‰‹Œ‘’“”•–—™›œ¢£¤¥¦§©«¬®°±²³µ¶»¼½¾]/gu) || []
+  ).length;
+  return denseMarkers + artifacts * 2;
+}
+
+function customerArabicLetterCount(value: string): number {
+  return (value.match(/[\u0600-\u06FF]/gu) || []).length;
+}
+
+export function repairCustomerDisplayText(value: unknown): string {
+  const raw = String(value ?? "");
+  if (!raw || customerMojibakeScore(raw) < 2) return raw;
+
+  const reverse = getCustomerCp1256Reverse();
+  const bytes: number[] = [];
+
+  for (const char of raw) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint !== undefined && codePoint <= 0x7f) {
+      bytes.push(codePoint);
+      continue;
+    }
+
+    const byte = reverse.get(char);
+    if (byte === undefined) return raw;
+    bytes.push(byte);
+  }
+
+  try {
+    const repaired = new TextDecoder("utf-8", { fatal: true }).decode(
+      new Uint8Array(bytes)
+    );
+
+    if (
+      repaired === raw ||
+      customerArabicLetterCount(repaired) < 2 ||
+      customerMojibakeScore(repaired) >= customerMojibakeScore(raw)
+    ) {
+      return raw;
+    }
+
+    return repaired;
+  } catch {
+    return raw;
+  }
+}
+
 function cleanText(value: unknown): string {
-  return String(value ?? "").trim();
+  return repairCustomerDisplayText(value).trim();
 }
 
 function normalizedToken(value: string): string {

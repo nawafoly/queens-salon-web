@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiEdit3, FiRefreshCw } from "react-icons/fi";
 import { DashboardModalV2 } from "../../components/dashboard-v2";
+import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
 import { CoreClientService, type CoreClientOverview } from "../../services/CoreClientService";
@@ -13,6 +14,7 @@ import {
   isCustomerActive,
   normalizeCustomerName,
   normalizeSaudiCustomerPhone,
+  repairCustomerDisplayText,
   UNNAMED_CUSTOMER_LABEL,
 } from "./customerFormatters";
 import type { CustomerRow } from "./customerTypes";
@@ -305,11 +307,7 @@ export default function CustomerRecordModal({
             <span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>{getCustomerStatusLabel(customer.status)}</span>
             {customer.vip ? <span className="dsv2-badge dsv2-badge--gold">VIP</span> : null}
           </div>
-          {canManage && customer.clientId ? (
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={beginEditing} disabled={editing || editSaving}>
-              <FiEdit3 /> تعديل البيانات
-            </button>
-          ) : null}
+
         </div>
         <section className="dsv2-card dsv2-card--padded dsv2-customers-client-data" aria-labelledby="customer-data-title">
           <header className="dsv2-section-head">
@@ -385,13 +383,13 @@ export default function CustomerRecordModal({
                       </div>
                       <div className="dsv2-customers-record-list">
                         {overview.loyalty.transactions.slice(0, 5).map((transaction) => (
-                          <div key={transaction.id}><span>{transaction.reason || transaction.type}</span><b className={transaction.points < 0 ? "is-negative" : "is-positive"}>{transaction.points > 0 ? "+" : ""}{plainNumber(transaction.points)}</b></div>
+                          <div key={transaction.id}><span>{repairCustomerDisplayText(transaction.reason || transaction.type)}</span><b className={transaction.points < 0 ? "is-negative" : "is-positive"}>{transaction.points > 0 ? "+" : ""}{plainNumber(transaction.points)}</b></div>
                         ))}
                         {!overview.loyalty.transactions.length ? <p>لا توجد حركات نقاط.</p> : null}
                       </div>
                       {canManage ? (
                         <div className="dsv2-customers-loyalty-adjust">
-                          <input dir="ltr" lang="en" className="dsv2-input" type="number" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
+                          <DashboardNumberInputV2 className="dsv2-input" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
                           <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder="سبب التعديل" aria-label="سبب تعديل النقاط" />
                           <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? "جارٍ الحفظ" : "تسجيل الحركة"}</button>
                         </div>
@@ -409,7 +407,7 @@ export default function CustomerRecordModal({
                     <section>
                       <h4>العروض المستخدمة</h4>
                       <div className="dsv2-customers-record-list">
-                        {overview.offersUsed.map((offer, index) => <div key={String(offer.id || offer.code || index)}><span>{offer.title}</span><b>{formatDateTime(offer.usedAt)}</b></div>)}
+                        {overview.offersUsed.map((offer, index) => <div key={String(offer.id || offer.code || index)}><span>{repairCustomerDisplayText(offer.title)}</span><b>{formatDateTime(offer.usedAt)}</b></div>)}
                         {!overview.offersUsed.length ? <p>لم تُستخدم عروض مسجلة.</p> : null}
                       </div>
                     </section>
@@ -418,7 +416,7 @@ export default function CustomerRecordModal({
               ) : null}
         </section>
 
-        {customer.importedNote ? <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card"><h3 className="dsv2-section-title">ملاحظة من ملف العميلة</h3><p>{customer.importedNote}</p></section> : null}
+        {customer.importedNote ? <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card"><h3 className="dsv2-section-title">ملاحظة من ملف العميلة</h3><p>{repairCustomerDisplayText(customer.importedNote)}</p></section> : null}
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card">
           <h3 className="dsv2-section-title">ملاحظات إدارية داخلية</h3>
