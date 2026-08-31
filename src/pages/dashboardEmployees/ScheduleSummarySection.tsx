@@ -14,7 +14,7 @@ type ScheduleSummarySectionProps = {
 };
 
 function formatUpdatedTime(nowTick: number): string {
-  return new Date(nowTick).toLocaleTimeString("ar-SA", {
+  return new Date(nowTick).toLocaleTimeString("ar-SA-u-nu-latn", {
     hour: "2-digit",
     minute: "2-digit",
   });

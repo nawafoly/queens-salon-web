@@ -67,12 +67,12 @@ function halalasToRiyals(value: unknown) {
 
 function ratingLabel(row: StaffPerformanceRow) {
   if (row.averageRating == null) return "غير متوفر";
-  return `${row.averageRating.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} (${row.ratingCount.toLocaleString("ar-SA")})`;
+  return `${row.averageRating.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} (${row.ratingCount.toLocaleString("ar-SA-u-nu-latn")})`;
 }
 
 function commitmentLabel(row: StaffPerformanceRow) {
   if (row.attendance.commitmentPercent == null) return "غير متوفر";
-  return `${Math.round(row.attendance.commitmentPercent).toLocaleString("ar-SA")}%`;
+  return `${Math.round(row.attendance.commitmentPercent).toLocaleString("ar-SA-u-nu-latn")}%`;
 }
 
 function optionalMoney(value: number | null) {
@@ -110,7 +110,7 @@ function performanceRows(rows: StaffPerformanceRow[]): StaffPerformanceReportRow
     attributedRevenue: halalasToRiyals(row.attributedRevenueHalalas),
     averageServiceValue: optionalMoney(row.averageServiceValueHalalas),
     averageBookingValue: optionalMoney(row.averageBookingValueHalalas),
-    cancellationsNoShows: `${row.cancellations.toLocaleString("ar-SA")} / ${row.noShows.toLocaleString("ar-SA")}`,
+    cancellationsNoShows: `${row.cancellations.toLocaleString("ar-SA-u-nu-latn")} / ${row.noShows.toLocaleString("ar-SA-u-nu-latn")}`,
     averageRating: ratingLabel(row),
     attendanceCommitment: commitmentLabel(row),
     performanceScore: row.performanceScore,

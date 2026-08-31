@@ -82,7 +82,7 @@ function pad2(value: number) {
 
 function monthLabel(monthKey: string) {
   const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     calendar: "gregory",
     month: "long",
   }).format(new Date(Date.UTC(year, month - 1, 1)));
@@ -90,7 +90,7 @@ function monthLabel(monthKey: string) {
 
 function monthYearLabel(monthKey: string) {
   const [year] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
 }
 
 function daysInMonth(monthKey: string) {
@@ -133,7 +133,7 @@ function formatHours(value: number) {
 function fullDateLabel(dateKey: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) return dateKey;
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     timeZone: "Asia/Riyadh",
     calendar: "gregory",
     weekday: "long",
@@ -506,7 +506,7 @@ export default function AttendanceMonthView({
     .sort((left, right) => right - left);
   const newestPickerYear = pickerYears[0] ?? currentYear;
   const oldestPickerYear = pickerYears[pickerYears.length - 1] ?? selectedYear;
-  const pickerYearLabel = new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(pickerYear);
+  const pickerYearLabel = new Intl.NumberFormat("ar-SA-u-nu-latn", { useGrouping: false }).format(pickerYear);
   const pickerMonths = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1;
     const key = `${pickerYear}-${pad2(month)}`;

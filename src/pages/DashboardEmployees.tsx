@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardEmployees.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -78,6 +79,7 @@ import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
 import {
   DashboardConfirmV2,
+  DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardModalV2,
 } from "../components/dashboard-v2";
@@ -1815,6 +1817,10 @@ export default function DashboardEmployees() {
     coreScheduleVersionCount,
     setCoreScheduleVersionCount,
   ] = useState(0);
+
+  // Canonical employee master revision used for optimistic concurrency.
+  const coreEmployeeUpdatedAtBaselineRef =
+    useRef("");
   const [
     coreResolvedTodayByEmployeeId,
     setCoreResolvedTodayByEmployeeId,
@@ -3278,6 +3284,7 @@ export default function DashboardEmployees() {
     setModalScheduleEffectiveFrom(todayIso());
     setModalScheduleChangeReason("");
 
+    coreEmployeeUpdatedAtBaselineRef.current = "";
     setCoreScheduleRows([]);
     setCoreScheduleExceptionRows([]);
     setCoreScheduleLoadedEmployeeId("");
@@ -3377,6 +3384,7 @@ export default function DashboardEmployees() {
       cleanText(x.id);
 
     if (switchingScheduleEmployee) {
+      coreEmployeeUpdatedAtBaselineRef.current = "";
       setCoreScheduleRows([]);
       setCoreScheduleLoadedEmployeeId("");
       setCoreScheduleError("");
@@ -3389,11 +3397,15 @@ export default function DashboardEmployees() {
       setModalCustomWorkingHours(
         emptyCoreScheduleEditorRows()
       );
-    }
 
-    setModalCustomHourOverrides(
-      []
-    );
+      // EMPLOYEE_SAVE_CANONICAL_OVERRIDE_REBASE_V1
+      // Clear exception editor state only when changing employees.
+      // Re-opening the same employee after a successful save must preserve
+      // the canonical Core exception baseline that was just rehydrated.
+      setModalCustomHourOverrides(
+        []
+      );
+    }
 
     setModalScheduleEffectiveFrom(todayIso());
     setModalScheduleChangeReason("");
@@ -3589,6 +3601,13 @@ export default function DashboardEmployees() {
         if (cancelled) {
           return;
         }
+
+        // EMPLOYEE_CANONICAL_REVISION_BASELINE_V1
+        coreEmployeeUpdatedAtBaselineRef.current =
+          cleanText(
+            (employee as any)?.updatedAt ||
+            (employee as any)?.updated_at
+          );
 
         const schedules =
           Array.isArray(
@@ -5299,7 +5318,20 @@ export default function DashboardEmployees() {
       coreScheduleLoadedEmployeeId ===
         targetEmployeeId;
 
-    if (!coreExceptionBaselineReady) {
+    const coreEmployeeMasterBaselineReady =
+      !editId ||
+      (
+        coreScheduleLoadedEmployeeId ===
+          targetEmployeeId &&
+        Boolean(
+          coreEmployeeUpdatedAtBaselineRef.current
+        )
+      );
+
+    if (
+      !coreExceptionBaselineReady ||
+      !coreEmployeeMasterBaselineReady
+    ) {
       setErrorMsg(
         "Canonical schedule exceptions are not loaded for this employee. Reload the employee and try again."
       );
@@ -5384,10 +5416,32 @@ export default function DashboardEmployees() {
     );
     const expectedCoreEmployeeMasterSnapshot =
       buildExpectedCoreEmployeeMasterVerificationSnapshot(payload);
+    // EMPLOYEE_CONTROLLED_SAVE_V1
+    // The UI save spans multiple Core commands. Track each committed stage so
+    // a later failure can never be presented as a clean all-or-nothing failure.
+    const employeeSaveOperationId = crypto.randomUUID();
+    let employeeSaveStage:
+      | "not_started"
+      | "employee_master"
+      | "working_hour_exceptions"
+      | "schedules"
+      | "verified" = "not_started";
+    let employeeMasterCommitted = false;
+    let workingHourExceptionsCommitted = false;
+    let schedulesCommitted = false;
+
     try {
       await CoreHrService.saveEmployee({
         id:
           targetEmployeeId,
+
+        enforceConcurrency:
+          Boolean(editId),
+
+        expectedUpdatedAt:
+          editId
+            ? coreEmployeeUpdatedAtBaselineRef.current
+            : undefined,
 
         name:
           cleanName,
@@ -5540,6 +5594,9 @@ export default function DashboardEmployees() {
         },
       });
 
+      employeeMasterCommitted = true;
+      employeeSaveStage = "employee_master";
+
       if (workingHourOverridesChanged) {
         const workingHourSync =
           await CoreHrService
@@ -5561,6 +5618,9 @@ export default function DashboardEmployees() {
                   })
                 ),
             });
+
+        workingHourExceptionsCommitted = true;
+        employeeSaveStage = "working_hour_exceptions";
 
         employeeSaveDebug(
           "core working-hour exceptions sync success",
@@ -5640,6 +5700,8 @@ export default function DashboardEmployees() {
               }
             )
           );
+        schedulesCommitted = true;
+        employeeSaveStage = "schedules";
       }
 
 
@@ -5658,6 +5720,8 @@ export default function DashboardEmployees() {
         expectedCoreEmployeeMasterSnapshot,
         persistedCoreEmployeeMasterSnapshot
       );
+      employeeSaveStage = "verified";
+
       employeeSaveDebug(
         "core employee master verify success",
         { employeeId: targetEmployeeId }
@@ -5670,6 +5734,12 @@ export default function DashboardEmployees() {
               targetEmployeeId,
           });
 
+      coreEmployeeUpdatedAtBaselineRef.current =
+        cleanText(
+          (refreshedCoreEmployee as any)?.updatedAt ||
+          (refreshedCoreEmployee as any)?.updated_at
+        );
+
       const refreshedCoreSchedules =
         Array.isArray(
           refreshedCoreEmployee
@@ -5681,6 +5751,18 @@ export default function DashboardEmployees() {
 
       setCoreScheduleRows(
         refreshedCoreSchedules
+      );
+
+      // EMPLOYEE_SAVE_DIRTY_BASELINE_FIX_V1
+      // Rehydrate the editor from the canonical rows that were just verified.
+      // Without this, the savebar can remain dirty after a successful save
+      // because modalCustomWorkingHours still represents the pre-save editor
+      // projection while coreScheduleRows already represents the persisted one.
+      setModalCustomWorkingHours(
+        resolveCoreScheduleEditorRows(
+          refreshedCoreSchedules,
+          todayIso()
+        )
       );
 
       setCoreScheduleExceptionRows(
@@ -5809,14 +5891,127 @@ export default function DashboardEmployees() {
         }
       );
     } catch (e) {
+      const errorCode = cleanText((e as any)?.code);
+      const ambiguousWrite =
+        errorCode === "core_api:write_outcome_unknown";
+
+      const partialOrAmbiguousSave =
+        ambiguousWrite ||
+        employeeMasterCommitted ||
+        workingHourExceptionsCommitted ||
+        schedulesCommitted;
+
       console.error("save employee profile failed", {
         employeeId: targetEmployeeId,
         editingSource: (editingStaff as any)?.source || null,
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
         authority: "core_d1",
+        operationId: employeeSaveOperationId,
+        stage: employeeSaveStage,
+        employeeMasterCommitted,
+        workingHourExceptionsCommitted,
+        schedulesCommitted,
+        ambiguousWrite,
       }, e);
+
       setSaveMessage("");
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
+
+      if (partialOrAmbiguousSave) {
+        let reconciled = false;
+
+        if (
+          typeof navigator === "undefined" ||
+          navigator.onLine !== false
+        ) {
+          try {
+            const [canonicalEmployee, canonicalExceptions] =
+              await Promise.all([
+                CoreHrService.getEmployee(targetEmployeeId),
+                CoreHrService.listScheduleExceptions({
+                  employeeId: targetEmployeeId,
+                }),
+              ]);
+
+                        // EMPLOYEE_PARTIAL_RECONCILIATION_REVISION_V1
+            coreEmployeeUpdatedAtBaselineRef.current =
+              cleanText(
+                (canonicalEmployee as any)?.updatedAt ||
+                (canonicalEmployee as any)?.updated_at
+              );
+
+const canonicalSchedules =
+              Array.isArray(canonicalEmployee.schedules)
+                ? canonicalEmployee.schedules
+                : [];
+
+            const canonicalWorkingRows =
+              resolveCoreScheduleEditorRows(
+                canonicalSchedules,
+                todayIso()
+              );
+
+            setCoreScheduleRows(canonicalSchedules);
+            setCoreScheduleExceptionRows(canonicalExceptions);
+            setCoreScheduleLoadedEmployeeId(targetEmployeeId);
+            setCoreScheduleVersionCount(
+              countCoreScheduleVersions(canonicalSchedules)
+            );
+            setModalUseCustomWorkingHours(true);
+            setModalCustomWorkingHours(canonicalWorkingRows);
+            setModalExceptionalLeaveWeekdays(
+              WEEKDAY_OPTIONS
+                .filter(
+                  (day) =>
+                    canonicalWorkingRows[day.key]?.enabled === false
+                )
+                .map((day) => day.key)
+            );
+            setModalCustomHourOverrides(
+              projectCoreScheduleExceptionsToOverrides(
+                canonicalExceptions
+              )
+            );
+            setCoreScheduleError("");
+            setCoreScheduleLoading(false);
+
+            CoreHrService.invalidateResolvedShiftRangeCache(
+              targetEmployeeId
+            );
+            setCoreResolvedTodayRefreshVersion(
+              (version) => version + 1
+            );
+
+            window.dispatchEvent(
+              new Event("queens:core-reconciled")
+            );
+
+            reconciled = true;
+          } catch (reconcileError) {
+            console.warn(
+              "employee partial-save reconciliation failed",
+              {
+                employeeId: targetEmployeeId,
+                operationId: employeeSaveOperationId,
+                stage: employeeSaveStage,
+              },
+              reconcileError
+            );
+          }
+        }
+
+        setErrorMsg(
+          reconciled
+            ? "حدث توقف أثناء الحفظ بعد تنفيذ جزء من العملية. تمت إعادة قراءة الحالة الفعلية من Core. راجع البيانات قبل الحفظ مرة أخرى."
+            : "توقف الحفظ في منتصف العملية وتعذر التحقق من الحالة النهائية. لا تعد الحفظ حتى تعود الشبكة وتتم إعادة المزامنة."
+        );
+      } else {
+        setErrorMsg(
+          toFirestoreErrorMessage(
+            e,
+            "طھط¹ط°ط± ط­ظپط¸ ط§ظ„ظ…ظˆط¸ظپط©."
+          )
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -5903,6 +6098,103 @@ export default function DashboardEmployees() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    const reconcileCanonicalEmployeeState = async () => {
+      if (
+        inFlight ||
+        (typeof navigator !== "undefined" && navigator.onLine === false)
+      ) {
+        return;
+      }
+
+      inFlight = true;
+
+      try {
+        // EMPLOYEE_NETWORK_RECONCILIATION_V1
+        // Reconnect always re-establishes Core as authority before another save.
+        await load();
+
+        const employeeId = cleanText(editId);
+        if (employeeId) {
+          const [coreEmployee, exceptionRows] = await Promise.all([
+            CoreHrService.getEmployee(employeeId),
+            CoreHrService.listScheduleExceptions({ employeeId }),
+          ]);
+
+          if (cancelled) return;
+
+          // EMPLOYEE_NETWORK_RECONCILIATION_V1_REVISION
+          coreEmployeeUpdatedAtBaselineRef.current =
+            cleanText(
+              (coreEmployee as any)?.updatedAt ||
+              (coreEmployee as any)?.updated_at
+            );
+
+          const schedules = Array.isArray(coreEmployee.schedules)
+            ? coreEmployee.schedules
+            : [];
+
+          const workingRows = resolveCoreScheduleEditorRows(
+            schedules,
+            todayIso()
+          );
+
+          setCoreScheduleRows(schedules);
+          setCoreScheduleExceptionRows(exceptionRows);
+          setCoreScheduleLoadedEmployeeId(employeeId);
+          setCoreScheduleVersionCount(countCoreScheduleVersions(schedules));
+          setModalUseCustomWorkingHours(true);
+          setModalCustomWorkingHours(workingRows);
+          setModalExceptionalLeaveWeekdays(
+            WEEKDAY_OPTIONS
+              .filter((day) => workingRows[day.key]?.enabled === false)
+              .map((day) => day.key)
+          );
+          setModalCustomHourOverrides(
+            projectCoreScheduleExceptionsToOverrides(exceptionRows)
+          );
+          setCoreScheduleError("");
+          setCoreScheduleLoading(false);
+        }
+
+        if (!cancelled) {
+          CoreHrService.invalidateResolvedShiftRangeCache();
+          setCoreResolvedTodayRefreshVersion((version) => version + 1);
+          window.dispatchEvent(new Event("queens:core-reconciled"));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn(
+            "employee canonical reconnect reconciliation failed",
+            error
+          );
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const handleReconnect = () => {
+      void reconcileCanonicalEmployeeState();
+    };
+
+    window.addEventListener(
+      "queens:core-network-reconnected",
+      handleReconnect
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "queens:core-network-reconnected",
+        handleReconnect
+      );
+    };
+  }, [editId, load]);
 
   const filtered = useMemo(() => {
     let rows = [...list];
@@ -9164,7 +9456,7 @@ export default function DashboardEmployees() {
                 closeOnEscape={!saving}
                 footer={
                   <>
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeOffboardingModal} disabled={saving}>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-workflow-reference" onClick={closeOffboardingModal} disabled={saving}>
                       إلغاء
                     </button>
                     <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => void submitOffboarding()} disabled={saving}>
@@ -9175,14 +9467,14 @@ export default function DashboardEmployees() {
               >
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2">
                   <DashboardFieldV2 id="employee-offboarding-end-date" label="آخر يوم عمل" required>
-                    <input
+                    <DashboardDatePickerV2
                       id="employee-offboarding-end-date"
-                      className="dsv2-input"
-                      type="date"
-                      max={todayIso()}
                       value={offboardingEndDate}
-                      onChange={(event) => setOffboardingEndDate(event.target.value)}
+                      max={todayIso()}
+                      placeholder="اختر آخر يوم عمل"
+                      clearable={false}
                       disabled={saving}
+                      onChange={setOffboardingEndDate}
                     />
                   </DashboardFieldV2>
                   <DashboardFieldV2
@@ -9261,26 +9553,7 @@ export default function DashboardEmployees() {
                     hint="اختاري ساعة ودقيقة الحضور فقط."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
-                      <input
-                        id="employee-attendance-edit-check-in"
-                        className="dsv2-input"
-                        type="time"
-                        dir="ltr"
-                        step={300}
-                        value={
-                          attendanceEditCheckIn
-                            ? attendanceEditCheckIn.slice(11, 16)
-                            : ""
-                        }
-                        onChange={(event) =>
-                          setAttendanceEditCheckIn(
-                            event.target.value
-                              ? `${attendanceEditDate}T${event.target.value}`
-                              : ""
-                          )
-                        }
-                        disabled={saving}
-                      />
+                      <DashboardTimeInputV2 id="employee-attendance-edit-check-in" className="dsv2-input" step={300} value={ attendanceEditCheckIn ? attendanceEditCheckIn.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckIn( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
 
                       {attendanceEditCheckIn && canDeleteAttendance ? (
                         <button
@@ -9301,26 +9574,7 @@ export default function DashboardEmployees() {
                     hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
-                      <input
-                        id="employee-attendance-edit-check-out"
-                        className="dsv2-input"
-                        type="time"
-                        dir="ltr"
-                        step={300}
-                        value={
-                          attendanceEditCheckOut
-                            ? attendanceEditCheckOut.slice(11, 16)
-                            : ""
-                        }
-                        onChange={(event) =>
-                          setAttendanceEditCheckOut(
-                            event.target.value
-                              ? `${attendanceEditDate}T${event.target.value}`
-                              : ""
-                          )
-                        }
-                        disabled={saving}
-                      />
+                      <DashboardTimeInputV2 id="employee-attendance-edit-check-out" className="dsv2-input" step={300} value={ attendanceEditCheckOut ? attendanceEditCheckOut.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckOut( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
 
                       {attendanceEditCheckOut && canDeleteAttendance ? (
                         <button

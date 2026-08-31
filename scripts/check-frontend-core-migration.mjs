@@ -382,7 +382,21 @@ const requiredChecks = [
   },
   {
     file: "workers/core/repositories/employee-requests.js",
-    required: [/cancelExecutedLeaveRequest/, /execution_reversed/, /decideLeave\(/],
+    required: [
+      /employee-requests-legacy\.js/,
+      /requireExplicitSaLeaveType/,
+      /assertLeaveRequestDecisionAllowed/,
+      /executeStatutoryOvertimeRequest/,
+    ],
+  },
+  {
+    file: "workers/core/repositories/employee-requests-legacy.js",
+    required: [
+      /cancelExecutedLeaveRequest/,
+      /execution_reversed/,
+      /decideLeave\(/,
+      /existingLeaveStatus !== 'approved'/,
+    ],
   },
   {
     file: "src/pages/hr/shared.ts",

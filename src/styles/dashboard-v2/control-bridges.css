@@ -1,0 +1,158 @@
+/* Dashboard V2 canonical compatibility controls */
+
+.dashboard-v2 .dsv2-native-bridge-v2,
+.dashboard-v2 .dsv2-time-v2,
+.dashboard-v2 .dsv2-month-v2 {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-native-bridge-v2 > .dsv2-select-v2,
+.dashboard-v2 .dsv2-native-bridge-v2 > .dsv2-date-v2 {
+  width: 100%;
+}
+
+.dashboard-v2 .dsv2-time-v2 {
+  position: relative;
+}
+
+.dashboard-v2 .dsv2-time-v2__input {
+  width: 100%;
+  min-width: 0;
+  padding-inline-end: 42px;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-time-v2__icon {
+  position: absolute;
+  inset-inline-end: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dsv2-muted);
+  pointer-events: none;
+}
+
+.dashboard-v2 .dsv2-month-v2__trigger {
+  display: flex;
+  width: 100%;
+  min-height: var(--dsv2-control-height, 44px);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3, 12px);
+  padding: 0 var(--dsv2-space-4, 16px);
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-month-v2__trigger:focus-visible {
+  outline: 2px solid rgba(var(--dsv2-gold-rgb), 0.28);
+  outline-offset: 2px;
+  border-color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-month-v2__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-month-v2__value[data-placeholder="true"] {
+  color: var(--dsv2-muted);
+  font-weight: 700;
+}
+
+.dashboard-v2 .dsv2-month-v2__icon {
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2 .dsv2-month-v2__panel {
+  position: fixed;
+  z-index: 2147483500;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-lg);
+}
+
+.dashboard-v2 .dsv2-month-v2__header {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-v2 .dsv2-month-v2__header strong {
+  text-align: center;
+  color: var(--dsv2-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-month-v2__header button,
+.dashboard-v2 .dsv2-month-v2__footer button {
+  min-height: 36px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-sm);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface-soft);
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-month-v2__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dashboard-v2 .dsv2-month-v2__grid > button {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  gap: 2px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-sm);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-month-v2__grid > button[data-selected="true"] {
+  border-color: var(--dsv2-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-month-v2__grid > button:disabled {
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dashboard-v2 .dsv2-month-v2__grid small {
+  color: var(--dsv2-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-month-v2__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Every native number input that remains must render Latin digits consistently. */
+input[type="number"][lang="en"] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

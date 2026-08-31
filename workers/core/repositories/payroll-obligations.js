@@ -1124,3 +1124,96 @@ export async function payrollObligationPaidStatements(db, salonId, entry, paidAt
   }
   return statements;
 }
+
+
+export async function payrollObligationPaymentReversalStatements(
+  db,
+  salonId,
+  entry,
+  reversedAt = nowIso()
+) {
+  const payrollEntryId = cleanText(entry?.id);
+  if (!payrollEntryId) {
+    throw new AppError(400, 'core_payroll:payment_reversal_entry_required');
+  }
+
+  const rows = await dbAll(
+    db,
+    `SELECT
+       i.id,
+       i.obligation_id,
+       i.amount_halalas,
+       i.status,
+       i.applied_payroll_entry_id,
+       o.employee_id,
+       o.original_amount_halalas,
+       o.remaining_amount_halalas,
+       o.status AS obligation_status
+     FROM employee_payroll_obligation_installments i
+     JOIN employee_payroll_obligations o
+       ON o.salon_id = i.salon_id
+      AND o.id = i.obligation_id
+    WHERE i.salon_id = ?
+      AND i.applied_payroll_entry_id = ?
+      AND i.status = 'applied'`,
+    [salonId, payrollEntryId]
+  );
+
+  if (!rows.length) return [];
+
+  for (const row of rows) {
+    if (cleanText(row.employee_id) !== cleanText(entry.employee_id)) {
+      throw new AppError(409, 'core_payroll:payment_reversal_obligation_employee_mismatch');
+    }
+    if (cleanText(row.obligation_status) === 'cancelled') {
+      throw new AppError(409, 'core_payroll:payment_reversal_obligation_cancelled');
+    }
+  }
+
+  const byObligation = new Map();
+  for (const row of rows) {
+    byObligation.set(
+      row.obligation_id,
+      (byObligation.get(row.obligation_id) || 0) + money(row.amount_halalas)
+    );
+  }
+
+  const statements = rows.map((row) => ({
+    sql: `UPDATE employee_payroll_obligation_installments
+             SET status = 'scheduled',
+                 applied_payroll_entry_id = NULL,
+                 applied_at = NULL,
+                 updated_at = ?
+           WHERE salon_id = ?
+             AND id = ?
+             AND status = 'applied'
+             AND applied_payroll_entry_id = ?`,
+    params: [reversedAt, salonId, row.id, payrollEntryId],
+  }));
+
+  for (const [obligationId, amountHalalas] of byObligation.entries()) {
+    statements.push({
+      sql: `UPDATE employee_payroll_obligations
+               SET remaining_amount_halalas =
+                     MIN(original_amount_halalas, remaining_amount_halalas + ?),
+                   status = CASE
+                     WHEN remaining_amount_halalas + ? >= original_amount_halalas
+                       THEN 'scheduled'
+                     ELSE 'partially_settled'
+                   END,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status <> 'cancelled'`,
+      params: [
+        amountHalalas,
+        amountHalalas,
+        reversedAt,
+        salonId,
+        obligationId,
+      ],
+    });
+  }
+
+  return statements;
+}

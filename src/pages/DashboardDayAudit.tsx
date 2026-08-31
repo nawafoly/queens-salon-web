@@ -51,12 +51,12 @@ type DayAuditPrintPayload = {
   printedAtLabel: string;
 };
 
-const MONEY_FORMATTER = new Intl.NumberFormat("ar-SA", {
+const MONEY_FORMATTER = new Intl.NumberFormat("ar-SA-u-nu-latn", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ar-SA", {
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
   dateStyle: "medium",
   timeStyle: "short",
 });
@@ -392,7 +392,7 @@ export default function DashboardDayAudit() {
     const m = todayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return todayKey;
     const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return new Intl.DateTimeFormat("ar-SA", { dateStyle: "short" }).format(dt);
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "short" }).format(dt);
   }, [todayKey]);
 
   const applyDateSelection = (rawDate: string) => {
@@ -788,7 +788,7 @@ export default function DashboardDayAudit() {
           <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
             <span>مبلغ الكاش الموجود</span>
             <div className="day-audit-v2-amount-control">
-              <input
+              <input dir="ltr" lang="en"
                 id="day-audit-manual-cash"
                 type="number"
                 inputMode="decimal"

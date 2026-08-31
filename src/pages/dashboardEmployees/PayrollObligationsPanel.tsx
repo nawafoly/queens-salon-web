@@ -1,3 +1,4 @@
+import { DashboardMonthInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
 import {
   DashboardFieldV2,
@@ -58,7 +59,7 @@ function fromHalalas(value: unknown) {
 }
 
 function money(value: unknown) {
-  return `${fromHalalas(value).toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
+  return `${fromHalalas(value).toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ر.س`;
 }
 
 function deductionKindLabel(value: unknown) {
@@ -380,13 +381,13 @@ export default function PayrollObligationsPanel({
             <DashboardSelectV2 id="payroll-recurring-kind" value={recurringKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setRecurringKind} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-amount" label="المبلغ الشهري (ر.س)">
-            <input id="payroll-recurring-amount" className="dsv2-input" type="number" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
+            <input dir="ltr" lang="en" id="payroll-recurring-amount" className="dsv2-input" type="number" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-start" label="شهر البداية">
-            <input id="payroll-recurring-start" className="dsv2-input" type="month" value={recurringStartMonth} disabled={readOnly} onChange={(event) => setRecurringStartMonth(event.target.value)} />
+            <DashboardMonthInputV2 id="payroll-recurring-start" className="dsv2-input" value={recurringStartMonth} disabled={readOnly} onChange={(event) => setRecurringStartMonth(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-end" label="شهر النهاية — اختياري">
-            <input id="payroll-recurring-end" className="dsv2-input" type="month" value={recurringEndMonth} disabled={readOnly} onChange={(event) => setRecurringEndMonth(event.target.value)} />
+            <DashboardMonthInputV2 id="payroll-recurring-end" className="dsv2-input" value={recurringEndMonth} disabled={readOnly} onChange={(event) => setRecurringEndMonth(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-reason" label="السبب / الأساس">
             <input id="payroll-recurring-reason" className="dsv2-input" value={recurringReason} disabled={readOnly} onChange={(event) => setRecurringReason(event.target.value)} placeholder="لماذا يوجد هذا الخصم؟" />
@@ -465,7 +466,7 @@ export default function PayrollObligationsPanel({
             <DashboardSelectV2 id="payroll-obligation-kind" value={obligationKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setObligationKind} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-obligation-amount" label="إجمالي المبلغ (ر.س)">
-            <input
+            <input dir="ltr" lang="en"
               id="payroll-obligation-amount"
               className="dsv2-input"
               type="number"
@@ -489,26 +490,7 @@ export default function PayrollObligationsPanel({
             />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-obligation-original-month" label="شهر نشوء الالتزام">
-            <input
-              id="payroll-obligation-original-month"
-              className="dsv2-input"
-              type="month"
-              value={obligationOriginalMonth}
-              disabled={readOnly}
-              onChange={(event) => {
-                const nextMonth = event.target.value;
-                setObligationOriginalMonth(nextMonth);
-                if (collectionMode === "installments") {
-                  setInstallmentDrafts((rows) =>
-                    buildEvenInstallments(
-                      nextMonth || month,
-                      toHalalas(obligationAmount),
-                      rows.length || 1
-                    )
-                  );
-                }
-              }}
-            />
+            <DashboardMonthInputV2 id="payroll-obligation-original-month" className="dsv2-input" value={obligationOriginalMonth} disabled={readOnly} onChange={(event) => { const nextMonth = event.target.value; setObligationOriginalMonth(nextMonth); if (collectionMode === "installments") { setInstallmentDrafts((rows) => buildEvenInstallments( nextMonth || month, toHalalas(obligationAmount), rows.length || 1 ) ); } }} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-obligation-mode" label="طريقة التحصيل">
             <DashboardSelectV2
@@ -537,7 +519,7 @@ export default function PayrollObligationsPanel({
           </DashboardFieldV2>
           {collectionMode === "defer" ? (
             <DashboardFieldV2 id="payroll-obligation-target-month" label="شهر التحصيل الجديد">
-              <input id="payroll-obligation-target-month" className="dsv2-input" type="month" value={deferredTargetMonth} disabled={readOnly} onChange={(event) => setDeferredTargetMonth(event.target.value)} />
+              <DashboardMonthInputV2 id="payroll-obligation-target-month" className="dsv2-input" value={deferredTargetMonth} disabled={readOnly} onChange={(event) => setDeferredTargetMonth(event.target.value)} />
             </DashboardFieldV2>
           ) : null}
           <DashboardFieldV2
@@ -555,7 +537,7 @@ export default function PayrollObligationsPanel({
           <div className="dsv2-ew-stack">
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
               <DashboardFieldV2 id="payroll-installment-count" label="عدد الأقساط">
-                <input
+                <input dir="ltr" lang="en"
                   id="payroll-installment-count"
                   className="dsv2-input"
                   type="number"
@@ -611,10 +593,10 @@ export default function PayrollObligationsPanel({
             {installmentDrafts.map((draft, index) => (
               <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3" key={`installment-${index}`}>
                 <DashboardFieldV2 id={`payroll-installment-month-${index}`} label={`شهر القسط ${index + 1}`}>
-                  <input id={`payroll-installment-month-${index}`} className="dsv2-input" type="month" value={draft.targetPayrollMonth} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, targetPayrollMonth: event.target.value } : row))} />
+                  <DashboardMonthInputV2 id={`payroll-installment-month-${index}`} className="dsv2-input" value={draft.targetPayrollMonth} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, targetPayrollMonth: event.target.value } : row))} />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id={`payroll-installment-amount-${index}`} label="مبلغ القسط (ر.س)">
-                  <input id={`payroll-installment-amount-${index}`} className="dsv2-input" type="number" min="0" step="0.01" value={draft.amount} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
+                  <input dir="ltr" lang="en" id={`payroll-installment-amount-${index}`} className="dsv2-input" type="number" min="0" step="0.01" value={draft.amount} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
                 </DashboardFieldV2>
                 <div className="dsv2-field">
                   <span className="dsv2-field__label">إجراء</span>
@@ -688,7 +670,7 @@ export default function PayrollObligationsPanel({
             />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-defer-target" label="شهر التحصيل الجديد">
-            <input id="payroll-defer-target" className="dsv2-input" type="month" value={deferToMonth} disabled={readOnly} onChange={(event) => setDeferToMonth(event.target.value)} />
+            <DashboardMonthInputV2 id="payroll-defer-target" className="dsv2-input" value={deferToMonth} disabled={readOnly} onChange={(event) => setDeferToMonth(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-defer-reason" label="سبب التأجيل">
             <input id="payroll-defer-reason" className="dsv2-input" value={deferReason} disabled={readOnly} onChange={(event) => setDeferReason(event.target.value)} placeholder="مثال: ظرف الموظفة — بموافقة الإدارة" />

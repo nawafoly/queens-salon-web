@@ -1,0 +1,1082 @@
+/* =========================================================
+   Dashboard V2 — Workflow Modal Reference
+   One visual contract for operational/financial workflow dialogs.
+   Applies to DashboardModalV2 and the remaining payroll portal shell
+   while payroll markup is incrementally migrated.
+========================================================= */
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference {
+  width: min(100%, 640px);
+  max-height: min(90dvh, 860px);
+  border: 1px solid var(--dsv2-border, rgba(16, 24, 40, 0.12));
+  border-radius: var(--dsv2-radius-xl, 22px);
+  color: var(--dsv2-text, #172033);
+  background: var(--dsv2-surface, #fff);
+  box-shadow: var(--dsv2-shadow-lg, 0 24px 70px rgba(16, 24, 40, 0.18));
+}
+
+/* The legacy payroll shell must stop defining its own outer geometry. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference {
+  padding: 0 !important;
+  overflow: auto;
+}
+
+/* Header */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__head,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header {
+  position: relative;
+  top: auto;
+  z-index: 2;
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4, 16px);
+  padding: 20px 24px;
+  border-block-start: 3px solid var(--dsv2-dialog-accent, var(--dsv2-black, #101828));
+  border-block-end: 1px solid var(--dsv2-divider, rgba(16, 24, 40, 0.08));
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: none;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__heading,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__eyebrow,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header span {
+  margin: 0;
+  color: var(--dsv2-dialog-accent, var(--dsv2-muted, #667085));
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__title,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header h2 {
+  margin: 0;
+  color: var(--dsv2-text, #172033);
+  font-size: clamp(1rem, 1.7vw, 1.18rem);
+  font-weight: 950;
+  line-height: 1.4;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__description,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header p {
+  margin: 0;
+  color: var(--dsv2-muted, #667085);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+/* One close-button shape everywhere. */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__close,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header > button {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dsv2-border, rgba(16, 24, 40, 0.12));
+  border-radius: 13px !important;
+  color: var(--dsv2-muted, #667085);
+  background: var(--dsv2-surface-soft, #f8fafc);
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__close:hover,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > header > button:hover:not(:disabled) {
+  border-color: var(--dsv2-burgundy-border, rgba(128, 28, 52, 0.28));
+  color: var(--dsv2-burgundy, #7b1f36);
+  background: var(--dsv2-burgundy-soft, #fff6f7);
+}
+
+/* Body rhythm */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__body {
+  padding: 24px;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  > :not(header):not(footer) {
+  margin-inline: 24px;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  > header
+  + :not(footer) {
+  margin-top: 24px;
+}
+
+/* Shared field rhythm without replacing each field component. */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference :where(label),
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference :where(label) {
+  color: var(--dsv2-text-soft, #344054);
+  font-size: 0.73rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference :where(textarea),
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference :where(textarea) {
+  border-radius: var(--dsv2-radius-md, 12px);
+}
+
+/* Warning/info blocks keep their semantic color but use one geometry. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference .payroll-alert {
+  border-radius: var(--dsv2-radius-md, 12px);
+  padding: 14px 16px;
+}
+
+/* Footer */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__foot,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 72px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 14px 24px;
+  border-block-start: 1px solid var(--dsv2-divider, rgba(16, 24, 40, 0.08));
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__foot {
+  margin-top: 0;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__foot .dsv2-btn,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > footer button {
+  min-width: 118px;
+  min-height: 42px;
+  border-radius: var(--dsv2-radius-md, 12px);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+/* The primary action is visually identical across the payroll adapter. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference > footer .is-primary {
+  border-color: var(--dsv2-black, #101828);
+  color: #fff;
+  background: var(--dsv2-black, #101828);
+}
+
+/* Keep the reference usable on mobile. */
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-modal.dsv2-workflow-reference,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference {
+    width: 100%;
+    max-height: 92dvh;
+    border-inline: 0;
+    border-block-end: 0;
+    border-radius: var(--dsv2-radius-xl, 22px) var(--dsv2-radius-xl, 22px) 0 0;
+  }
+
+  .dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__head,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference > header {
+    min-height: 76px;
+    padding: 16px;
+  }
+
+  .dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__body {
+    padding: 16px;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference
+    > :not(header):not(footer) {
+    margin-inline: 16px;
+  }
+
+  .dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__foot,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference > footer {
+    padding: 14px 16px;
+  }
+
+  .dashboard-v2 .dsv2-modal.dsv2-workflow-reference .dsv2-dialog__foot .dsv2-btn,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference > footer button {
+    flex: 1 1 140px;
+  }
+}
+
+
+/* WORKFLOW_MODAL_TEXT_CONTRAST_V1 */
+
+/*
+ * Portal-safe text contrast.
+ * The payroll workflow dialogs still contain legacy inner markup, so the
+ * central workflow reference owns readable form + semantic-note typography.
+ */
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference :where(input, textarea),
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference :where(input, textarea) {
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  caret-color: #172033;
+  opacity: 1 !important;
+}
+
+.dashboard-v2 .dsv2-modal.dsv2-workflow-reference :where(input, textarea)::placeholder,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference :where(input, textarea)::placeholder {
+  color: #667085 !important;
+  -webkit-text-fill-color: #667085 !important;
+  opacity: 1 !important;
+}
+
+/* Warning copy must stay readable on the pale gold surface. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  :where(.payroll-payment-control-note.is-warning, .payroll-alert.is-warning) {
+  color: #765b16 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  :where(.payroll-payment-control-note.is-warning, .payroll-alert.is-warning)
+  :where(p, small, strong, span, svg) {
+  color: #765b16 !important;
+  -webkit-text-fill-color: #765b16 !important;
+  opacity: 1 !important;
+}
+
+/* Neutral informational notes use the shared readable muted tone. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  :where(
+    .payroll-payment-control-note:not(.is-warning),
+    .payroll-late-approval-note:not(.is-warning),
+    .payroll-late-approval-audit
+  ) {
+  color: #475467 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  :where(
+    .payroll-payment-control-note:not(.is-warning),
+    .payroll-late-approval-note:not(.is-warning),
+    .payroll-late-approval-audit
+  )
+  :where(p, small, strong, span, svg) {
+  color: #475467 !important;
+  -webkit-text-fill-color: #475467 !important;
+  opacity: 1 !important;
+}
+
+
+/* WORKFLOW_MODAL_WIDE_DETAIL_V1 */
+
+/*
+ * Wide variant for information-dense read-only workflow details.
+ * It keeps the exact same modal shell contract while allowing the
+ * payroll detail grid to breathe without becoming a separate design.
+ */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference.dsv2-workflow-reference--wide {
+  width: min(1120px, calc(100vw - 48px));
+  max-height: min(92dvh, 920px);
+}
+
+/* Preserve the shared header while letting the detail actions live beside it. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide > header {
+  align-items: flex-start;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 68%;
+}
+
+/* Header action buttons use the same control geometry, but remain compact. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions
+  > button {
+  min-height: 40px;
+  border-radius: var(--dsv2-radius-md, 12px);
+}
+
+/* The last action is the close control; give it the shared close-button shape. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions
+  > button:last-child {
+  width: 40px;
+  min-width: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border-radius: 13px;
+  color: var(--dsv2-muted, #667085);
+  background: var(--dsv2-surface-soft, #f8fafc);
+}
+
+/*
+ * The base reference adds body rhythm to direct children.
+ * For this wide read-only layout we normalize the existing detail blocks
+ * instead of stacking old page margins on top of the shared shell.
+ */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > :not(header):not(footer) {
+  margin-inline: 24px;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-detail-grid {
+  gap: 16px;
+  padding: 0;
+  margin-top: 20px;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-alert {
+  margin-top: 18px;
+  padding: 13px 15px;
+  border-radius: var(--dsv2-radius-md, 12px);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-net-panel,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-adjustment-list,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-audit-list {
+  margin-inline: 24px;
+}
+
+/* Keep all detail text on the shared readable contrast scale. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  :where(h3, dt, dd, strong, span, small, p) {
+  opacity: 1;
+}
+
+/* Mobile keeps the same reference and becomes a bottom sheet, not another design. */
+@media (max-width: 767.98px) {
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference.dsv2-workflow-reference--wide {
+    width: 100%;
+    max-height: 94dvh;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide > header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    > header
+    .payroll-modal-actions {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    > :not(header):not(footer),
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    > .payroll-net-panel,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    > .payroll-adjustment-list,
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    > .payroll-audit-list {
+    margin-inline: 16px;
+  }
+}
+
+
+/* WORKFLOW_MODAL_DETAIL_CONTENT_REFERENCE_V1 */
+
+/* =========================================================
+   Payroll Detail Content — shared inner reference
+   Keeps the wide payroll detail view on the same Dashboard V2
+   visual language as the workflow modal shell.
+========================================================= */
+
+/* Header toolbar --------------------------------------------------------- */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions
+  :where(button, .payroll-action-link) {
+  min-height: 40px;
+  padding-inline: 13px;
+  border: 1px solid var(--dsv2-border, #d8dfe8);
+  border-radius: var(--dsv2-radius-md, 12px);
+  color: var(--dsv2-text, #172033);
+  background: var(--dsv2-surface, #fff);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.045);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header
+  .payroll-modal-actions
+  :where(button, .payroll-action-link):hover:not(:disabled) {
+  border-color: var(--dsv2-border-gold, #d5bd78);
+  background: var(--dsv2-gold-softer, #fbf6e8);
+}
+
+/* Semantic notices ------------------------------------------------------- */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-alert {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsv2-border-gold, #d5bd78);
+  border-radius: var(--dsv2-radius-md, 12px);
+  color: #765b16;
+  background: var(--dsv2-gold-softer, #fbf6e8);
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.75;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-alert
+  > svg {
+  margin-top: 2px;
+  color: #8a6818;
+  font-size: 1rem;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-alert
+  :where(strong, p, small, span) {
+  color: #765b16 !important;
+  -webkit-text-fill-color: #765b16 !important;
+  opacity: 1 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > .payroll-alert strong {
+  font-weight: 950;
+}
+
+/* Detail cards ----------------------------------------------------------- */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid {
+  align-items: stretch;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  > section,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-audit-list {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--dsv2-border, #d8dfe8);
+  border-radius: var(--dsv2-radius-lg, 18px);
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.025);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  :where(
+    .payroll-detail-grid > section,
+    .payroll-adjustment-list,
+    .payroll-audit-list
+  )
+  > h3 {
+  margin: 0 0 12px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--dsv2-divider, #e6eaf0);
+  color: var(--dsv2-text, #172033);
+  font-size: 0.84rem;
+  font-weight: 950;
+  line-height: 1.45;
+}
+
+/* Key / value rows ------------------------------------------------------- */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dl
+  > div {
+  display: grid;
+  grid-template-columns: minmax(145px, 44%) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--dsv2-divider, #e6eaf0);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dl
+  > div:last-child {
+  border-bottom: 0;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dt {
+  min-width: 0;
+  color: var(--dsv2-muted, #667085);
+  font-size: 0.69rem;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--dsv2-text, #172033);
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.55;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Financial values and raw numeric values should remain visually stable. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dd:where([dir="ltr"]),
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  strong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Financial summary ------------------------------------------------------ */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--dsv2-border-gold, #d5bd78);
+  border-radius: var(--dsv2-radius-lg, 18px);
+  background: var(--dsv2-gold-softer, #fbf6e8);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  > div {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 4px;
+  min-height: 76px;
+  padding: 11px 12px;
+  border: 1px solid rgba(199, 161, 74, 0.18);
+  border-radius: var(--dsv2-radius-md, 12px);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  span {
+  color: var(--dsv2-muted, #667085);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  strong {
+  color: var(--dsv2-text, #172033);
+  font-size: 0.82rem;
+  font-weight: 950;
+  line-height: 1.45;
+}
+
+/* Lists / audit entries -------------------------------------------------- */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  :where(.payroll-adjustment-list, .payroll-audit-list)
+  article,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-audit-list
+  > span {
+  border-color: var(--dsv2-divider, #e6eaf0);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-audit-list
+  > span {
+  color: var(--dsv2-text-soft, #344054);
+  background: #fff;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+/* Responsive ------------------------------------------------------------- */
+@media (max-width: 900px) {
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-net-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-detail-grid
+    dl
+    > div {
+    grid-template-columns: minmax(115px, 42%) minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-net-panel {
+    grid-template-columns: 1fr;
+  }
+
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-detail-grid
+    dl
+    > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    align-items: start;
+  }
+}
+
+
+/* WORKFLOW_MODAL_DAILY_ITEMS_REFINEMENT_V1 */
+
+/* =========================================================
+   Payroll Detail — Daily Items empty state refinement
+   Better readability + cleaner empty state on the same
+   shared workflow reference.
+========================================================= */
+
+/* Give the daily items card a cleaner, calmer surface. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list {
+  background: #ffffff;
+}
+
+/* Daily items rows stay visually light but more deliberate. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  article {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--dsv2-divider, #e6eaf0);
+}
+
+/* Empty state: no more pale unreadable ghost text. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  > span {
+  display: grid;
+  place-items: center;
+  min-height: 108px;
+  margin-top: 6px;
+  padding: 20px 18px;
+  border: 1px dashed #d8dfe8;
+  border-radius: 16px;
+  color: #475467 !important;
+  -webkit-text-fill-color: #475467 !important;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(255, 255, 255, 1) 100%);
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1.8;
+  text-align: center;
+  opacity: 1 !important;
+}
+
+/* If the empty-state text contains nested nodes, keep them readable too. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  > span
+  :where(strong, small, p, em) {
+  color: #475467 !important;
+  -webkit-text-fill-color: #475467 !important;
+  opacity: 1 !important;
+}
+
+/* Make the card title a little cleaner and less cramped. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  > h3 {
+  margin-bottom: 14px;
+}
+
+
+/* WORKFLOW_MODAL_ALL_DETAIL_CARDS_V1 */
+
+/* =========================================================
+   Payroll Detail — all inner cards use one visual reference
+========================================================= */
+
+/* One card surface for every detail section. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid > section,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list {
+  border: 1px solid #d8dfe8 !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.035) !important;
+}
+
+/* Shared heading treatment across all cards. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  :where(.payroll-detail-grid > section, .payroll-adjustment-list)
+  > h3 {
+  margin: 0 0 14px !important;
+  padding: 0 0 12px !important;
+  border-bottom: 1px solid #e6eaf0 !important;
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  font-size: 0.86rem !important;
+  font-weight: 950 !important;
+  line-height: 1.45 !important;
+  opacity: 1 !important;
+}
+
+/* All key/value labels and values must be readable. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dt {
+  color: #667085 !important;
+  -webkit-text-fill-color: #667085 !important;
+  opacity: 1 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  dd {
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  opacity: 1 !important;
+}
+
+/* General text inside all detail cards. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  :where(.payroll-detail-grid > section, .payroll-adjustment-list)
+  :where(p, strong, span, small) {
+  opacity: 1 !important;
+}
+
+/* Manual-item rows. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  article
+  strong {
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  font-weight: 900 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  article
+  > span {
+  color: #344054 !important;
+  -webkit-text-fill-color: #344054 !important;
+  font-weight: 900 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  article
+  small {
+  color: #667085 !important;
+  -webkit-text-fill-color: #667085 !important;
+}
+
+/* Correct empty state: actual markup is a direct <p>, not <span>. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-adjustment-list
+  > p {
+  display: grid !important;
+  place-items: center !important;
+  min-height: 92px !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  border: 1px dashed #cfd7e3 !important;
+  border-radius: 14px !important;
+  color: #475467 !important;
+  -webkit-text-fill-color: #475467 !important;
+  background: #f8fafc !important;
+  font-size: 0.74rem !important;
+  font-weight: 850 !important;
+  line-height: 1.7 !important;
+  text-align: center !important;
+  opacity: 1 !important;
+}
+
+/* Attendance note chips use the same readable neutral reference. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-attendance-note-list
+  > span {
+  border: 1px solid #e6eaf0 !important;
+  border-radius: 12px !important;
+  color: #344054 !important;
+  -webkit-text-fill-color: #344054 !important;
+  background: #f8fafc !important;
+  font-weight: 750 !important;
+  opacity: 1 !important;
+}
+
+/* Action buttons inside entitlement/deduction cards. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-detail-grid
+  > section
+  > button {
+  min-height: 40px !important;
+  margin-top: 14px !important;
+  padding-inline: 14px !important;
+  border: 1px solid #d8dfe8 !important;
+  border-radius: 12px !important;
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  background: #ffffff !important;
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+}
+
+/* Financial summary cards share the same geometry but preserve the dark net card. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  > div:not(.is-net) {
+  border: 1px solid #e3d7b0 !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  > div:not(.is-net)
+  span {
+  color: #667085 !important;
+  -webkit-text-fill-color: #667085 !important;
+  opacity: 1 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  > div:not(.is-net)
+  strong {
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  opacity: 1 !important;
+}
+
+/* Explicitly preserve readable white-on-dark only for net total. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  .is-net
+  :where(span, strong) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+
+/* WORKFLOW_MODAL_NUMERIC_ENGLISH_AND_SPACING_V1 */
+
+/* Payroll detail spacing + English-style numeric presentation */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel {
+  margin-top: 22px !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  .payroll-net-panel
+  strong {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 767.98px) {
+  body > .dashboard-v2.payroll-modal-backdrop
+    .payroll-modal.dsv2-workflow-reference--wide
+    .payroll-net-panel {
+    margin-top: 18px !important;
+  }
+}
+
+
+/* WORKFLOW_MODAL_STICKY_HEADER_V1 */
+
+/* =========================================================
+   Shared workflow modal scrolling contract
+   The shell owns scrolling; the header always remains visible.
+   Any current/future modal using dsv2-workflow-reference inherits it.
+========================================================= */
+
+.dashboard-v2
+  .dsv2-modal.dsv2-workflow-reference
+  .dsv2-dialog__head,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  > header {
+  position: sticky !important;
+  inset-block-start: 0 !important;
+  top: 0 !important;
+  z-index: 50 !important;
+  flex: 0 0 auto;
+  background: #ffffff !important;
+  isolation: isolate;
+}
+
+/* Prevent content/alerts from visually bleeding through the fixed header. */
+.dashboard-v2
+  .dsv2-modal.dsv2-workflow-reference
+  .dsv2-dialog__head::after,
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference
+  > header::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: -1px;
+  height: 1px;
+  background: var(--dsv2-divider, #e6eaf0);
+  pointer-events: none;
+}
+
+/* The wide detail modal uses the exact same sticky-header contract. */
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-modal.dsv2-workflow-reference--wide
+  > header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 50 !important;
+}

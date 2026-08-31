@@ -569,7 +569,7 @@ export function riyalsToHalalas(value: unknown) {
 }
 
 export function formatPayrollMoney(value: unknown) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 2,

@@ -148,7 +148,7 @@ function formatLongDate(value: unknown) {
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
   try {
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -164,7 +164,7 @@ function formatRequestNotificationTime(value: unknown) {
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
   try {
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       timeZone: "Asia/Riyadh",
       month: "short",
       day: "numeric",
@@ -189,7 +189,7 @@ function formatAttendanceTime(value: unknown) {
   if (!raw) return "-";
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Asia/Riyadh",
@@ -353,14 +353,14 @@ function getRosterEmployeeUid(item: DirectoryEmployee) {
 }
 
 function formatMoney(value: unknown) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 }
 
 function formatHours(value: unknown) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
@@ -1109,7 +1109,7 @@ function HrOverview({
               </DashboardFieldV2>
 
               <DashboardFieldV2 id="hr-overview-payroll-month" label="الشهر">
-                <input
+                <input dir="ltr" lang="en"
                   id="hr-overview-payroll-month"
                   className="dsv2-input"
                   type="month"

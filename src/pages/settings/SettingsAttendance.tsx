@@ -663,7 +663,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
         <div className="settings-attendance-v2-accuracy">
           <DashboardFieldV2 id="attendance-max-accuracy" label="أقصى دقة مسموحة للموقع بالمتر">
-            <input
+            <input dir="ltr" lang="en"
               id="attendance-max-accuracy"
               className="dsv2-input"
               type="number"
@@ -817,7 +817,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     <header><div><strong>حجم النطاق</strong><small>يتحدث على الخريطة فورًا</small></div><span>{zoneDraft.radiusMeters} م</span></header>
                     <label className="settings-attendance-v2-radius-input">
                       <span>نصف القطر بالمتر</span>
-                      <input
+                      <input dir="ltr" lang="en"
                         className="dsv2-input"
                         type="number"
                         min={MIN_RADIUS_METERS}
@@ -894,7 +894,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
               <summary>الإعدادات المتقدمة والإحداثيات اليدوية</summary>
               <div className="settings-attendance-v2-advanced__grid">
                 <DashboardFieldV2 id="attendance-zone-lat" label="خط العرض lat">
-                  <input
+                  <input dir="ltr" lang="en"
                     id="attendance-zone-lat"
                     className="dsv2-input"
                     type="number"
@@ -905,7 +905,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                   />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id="attendance-zone-lng" label="خط الطول lng">
-                  <input
+                  <input dir="ltr" lang="en"
                     id="attendance-zone-lng"
                     className="dsv2-input"
                     type="number"
@@ -916,7 +916,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                   />
                 </DashboardFieldV2>
                 <DashboardFieldV2 id="attendance-zone-radius" label="نصف القطر بالمتر">
-                  <input
+                  <input dir="ltr" lang="en"
                     id="attendance-zone-radius"
                     className="dsv2-input"
                     type="number"

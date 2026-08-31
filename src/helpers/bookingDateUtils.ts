@@ -196,7 +196,7 @@ export function toHijriMonthYearLabel(iso: string) {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "";
   return d
-    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura-nu-latn", {
       month: "long",
       year: "numeric",
     })

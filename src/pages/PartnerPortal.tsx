@@ -65,7 +65,7 @@ function formatDate(value?: string) {
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat("ar-SA", {
+    : new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
         year: "numeric",
         month: "short",
         day: "numeric",

@@ -273,7 +273,7 @@ function getDeviceInfo() {
         : "",
     timeZone:
       typeof Intl !== "undefined"
-        ? Intl.DateTimeFormat().resolvedOptions()
+        ? Intl.DateTimeFormat("ar-SA-u-nu-latn").resolvedOptions()
             .timeZone || ""
         : "",
     appVariant: cleanText((import.meta as any).env?.VITE_APP_VARIANT || "web"),

@@ -1,3 +1,4 @@
+import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -339,21 +340,21 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
             <div className="employee-sheet-form">
               <label>
                 <span>نوع الإجازة</span>
-                <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as EmployeeLeaveRequest["type"] }))}>
+                <DashboardSelectBridgeV2 value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as EmployeeLeaveRequest["type"] }))}>
                   <option value="annual">سنوية</option>
                   <option value="sick">مرضية</option>
                   <option value="emergency">طارئة</option>
                   <option value="unpaid">بدون راتب</option>
                   <option value="other">أخرى</option>
-                </select>
+                </DashboardSelectBridgeV2>
               </label>
               <label>
                 <span>من تاريخ</span>
-                <input type="date" value={form.fromDate} onChange={(event) => setForm((current) => ({ ...current, fromDate: event.target.value }))} />
+                <DashboardDateInputV2 value={form.fromDate} onChange={(event) => setForm((current) => ({ ...current, fromDate: event.target.value }))} />
               </label>
               <label>
                 <span>إلى تاريخ</span>
-                <input type="date" value={form.toDate} onChange={(event) => setForm((current) => ({ ...current, toDate: event.target.value }))} />
+                <DashboardDateInputV2 value={form.toDate} onChange={(event) => setForm((current) => ({ ...current, toDate: event.target.value }))} />
               </label>
               <label className="is-wide">
                 <span>ملاحظة</span>

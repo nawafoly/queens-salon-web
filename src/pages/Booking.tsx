@@ -7709,13 +7709,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const date = new Date(`${iso}T00:00:00`);
       const weekday = Number.isNaN(date.getTime())
         ? ""
-        : date.toLocaleDateString("ar-SA", { weekday: "short" });
+        : date.toLocaleDateString("ar-SA-u-nu-latn", { weekday: "short" });
       const day = Number.isNaN(date.getTime())
         ? ""
-        : date.toLocaleDateString("ar-SA", { day: "numeric" });
+        : date.toLocaleDateString("ar-SA-u-nu-latn", { day: "numeric" });
       const month = Number.isNaN(date.getTime())
         ? ""
-        : date.toLocaleDateString("ar-SA", { month: "short" });
+        : date.toLocaleDateString("ar-SA-u-nu-latn", { month: "short" });
       return {
         iso,
         weekday,
@@ -8611,11 +8611,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                 </span>
                               </div>
                               {calendarViewMode === "gregorian" && (
-                                <input
+                                <input dir="ltr"
                                   ref={dateRef}
                                   key={`bookingDatePicker-${calendarViewMode}`}
                                   type="date"
-                                  lang="ar-SA-u-ca-gregory"
+                                  lang="en"
                                   className="booking-date-shell__native booking-date-input"
                                   id="bookingDate"
                                   value={bookingDate}

@@ -1,3 +1,4 @@
+import { DashboardMonthInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -187,7 +188,7 @@ const ACTION_DIALOG_COPY: Record<ActionDialogKind, { title: string; description:
 function formatDateTime(value: string | null | undefined) {
   const parsed = Date.parse(String(value || ""));
   if (!Number.isFinite(parsed)) return String(value || "—");
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     timeZone: "Asia/Riyadh",
     dateStyle: "medium",
     timeStyle: "short",
@@ -211,7 +212,7 @@ function roleLabel(role: EmployeeRequestAssignee["role"]) {
 
 function formatPayloadValue(key: string, value: unknown) {
   if (typeof value === "boolean") return value ? "نعم" : "لا";
-  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA-u-nu-latn", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
   if (key === "leaveBalanceTreatment" && value === "deduct_on_execution") return "يُخصم من رصيد الإجازة عند التنفيذ";
   if (key === "leaveBalanceTreatment" && value === "not_deducted") return "لا يتم الخصم";
   if (key === "payrollTreatment" && value === "manual_addition") return "إضافة مالية في مسير الراتب";
@@ -666,7 +667,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <>
                     <label className="employee-request-action-field">
                       <span>المبلغ الموافق عليه بالريال</span>
-                      <input type="number" min="1" step="0.01" value={dialog.approvedAmount} onChange={(event) => setDialog({ ...dialog, approvedAmount: event.target.value })} />
+                      <input dir="ltr" lang="en" type="number" min="1" step="0.01" value={dialog.approvedAmount} onChange={(event) => setDialog({ ...dialog, approvedAmount: event.target.value })} />
                     </label>
                     <label className="employee-request-action-field">
                       <span>مرجع عملية الصرف</span>
@@ -674,7 +675,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                     </label>
                     <label className="employee-request-action-field">
                       <span>أول شهر استقطاع</span>
-                      <input type="month" value={dialog.firstDeductionMonth} onChange={(event) => setDialog({ ...dialog, firstDeductionMonth: event.target.value })} />
+                      <DashboardMonthInputV2 value={dialog.firstDeductionMonth} onChange={(event) => setDialog({ ...dialog, firstDeductionMonth: event.target.value })} />
                     </label>
                   </>
                 ) : null}
@@ -690,16 +691,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                     </label>
                     <label className="employee-request-action-field">
                       <span>شهر المسير</span>
-                      <input
-                        type="month"
-                        value={dialog.payrollMonth}
-                        onChange={(event) =>
-                          setDialog({
-                            ...dialog,
-                            payrollMonth: event.target.value,
-                          })
-                        }
-                      />
+                      <DashboardMonthInputV2 value={dialog.payrollMonth} onChange={(event) => setDialog({ ...dialog, payrollMonth: event.target.value, }) } />
                     </label>
                     <div className="employee-request-action-confirmation">
                       <span>
@@ -720,7 +712,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                 {selected.request_type === "overtime" ? (
                   <label className="employee-request-action-field">
                     <span>عدد الدقائق المعتمدة</span>
-                    <input type="number" min="1" step="1" value={dialog.approvedMinutes} onChange={(event) => setDialog({ ...dialog, approvedMinutes: event.target.value })} />
+                    <input dir="ltr" lang="en" type="number" min="1" step="1" value={dialog.approvedMinutes} onChange={(event) => setDialog({ ...dialog, approvedMinutes: event.target.value })} />
                   </label>
                 ) : null}
                 {selected.request_type === "resignation" ? (

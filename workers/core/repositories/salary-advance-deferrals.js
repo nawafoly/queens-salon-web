@@ -11,6 +11,7 @@
 
 import {
   cleanText,
+  dbAll,
   dbBatch,
   dbFirst,
   generatedId,
@@ -482,6 +483,54 @@ function assertProjectionPersisted(actual, preview, code) {
   ) {
     throw new AppError(500, code);
   }
+}
+
+export async function listSalaryAdvanceInstallments(
+  db,
+  salonIdValue,
+  filters = {}
+) {
+  const salonId = requiredId(salonIdValue, 'salonId');
+  const employeeId = requiredId(
+    filters.employeeId || filters.employee_id,
+    'employeeId'
+  );
+  const rawPayrollMonth = optionalText(
+    filters.payrollMonth || filters.payroll_month
+  );
+  const payrollMonth = rawPayrollMonth
+    ? payrollMonthValue(rawPayrollMonth, 'payroll_month')
+    : null;
+
+  const params = [salonId, employeeId];
+  let payrollMonthClause = '';
+  if (payrollMonth) {
+    payrollMonthClause = ' AND sai.payroll_month = ?';
+    params.push(payrollMonth);
+  }
+
+  const rows = await dbAll(
+    db,
+    `SELECT sai.*,
+            sa.employee_id,
+            sa.payment_status,
+            sa.first_deduction_month
+       FROM salary_advance_installments sai
+       JOIN salary_advances sa
+         ON sa.salon_id = sai.salon_id
+        AND sa.id = sai.advance_id
+      WHERE sai.salon_id = ?
+        AND sa.employee_id = ?${payrollMonthClause}
+      ORDER BY sai.payroll_month, sai.installment_number, sai.id`,
+    params
+  );
+
+  return rows.map((row) => ({
+    ...installmentDto(row),
+    employeeId: row.employee_id,
+    paymentStatus: row.payment_status || null,
+    firstDeductionMonth: row.first_deduction_month || null,
+  }));
 }
 
 export async function deferSalaryAdvanceInstallment(

@@ -29,6 +29,17 @@ function requestMetadata(request) {
 export async function getAuthContext(request, env, options = {}) {
   const db = requireDb(env);
   const salonId = cleanText(options.salonId || env.SALON_ID || 'main');
+
+  // AUTH_CONTEXT_TENANT_FENCE_V1
+  // Every account, permission and employee-link lookup below is scoped by this
+  // resolved tenant. Do not permit an empty tenant authority.
+  if (!salonId) {
+    throw new AppError(
+      403,
+      'core_auth:tenant_context_required'
+    );
+  }
+
   const idToken = bearerToken(request);
 
   if (!idToken) {

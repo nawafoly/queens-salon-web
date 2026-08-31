@@ -1,3 +1,4 @@
+import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -26,7 +27,7 @@ function currentPayrollParts() {
 }
 
 function formatMoney(halalas: number | undefined | null) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 0,
@@ -34,7 +35,7 @@ function formatMoney(halalas: number | undefined | null) {
 }
 
 function formatPercent(value: number | undefined | null) {
-  return `${(Number(value || 0) * 100).toLocaleString("ar-SA", {
+  return `${(Number(value || 0) * 100).toLocaleString("ar-SA-u-nu-latn", {
     maximumFractionDigits: 1,
   })}%`;
 }
@@ -43,7 +44,7 @@ function formatDate(value: string | undefined | null) {
   if (!value) return "—";
   const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -54,7 +55,7 @@ function formatDateTime(value: string | undefined | null) {
   if (!value) return "—";
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return formatDate(value);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -194,15 +195,15 @@ export default function EmployeeTargetsPage() {
       <div className="employee-target-month-switcher">
         <label>
           <span>السنة</span>
-          <input type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
+          <input dir="ltr" lang="en" type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
         </label>
         <label>
           <span>شهر الراتب</span>
-          <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
+          <DashboardSelectBridgeV2 value={month} onChange={(event) => setMonth(Number(event.target.value))}>
             {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
               <option key={value} value={value}>{String(value).padStart(2, "0")}</option>
             ))}
-          </select>
+          </DashboardSelectBridgeV2>
         </label>
         <div>
           <FiCalendar />

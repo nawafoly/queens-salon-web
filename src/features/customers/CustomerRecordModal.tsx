@@ -55,7 +55,7 @@ function formatDateTime(value: unknown): string {
   if (!raw) return "لا يوجد نشاط";
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString("ar-SA-u-ca-gregory", {
+  return date.toLocaleString("ar-SA-u-ca-gregory-nu-latn", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -391,7 +391,7 @@ export default function CustomerRecordModal({
                       </div>
                       {canManage ? (
                         <div className="dsv2-customers-loyalty-adjust">
-                          <input className="dsv2-input" type="number" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
+                          <input dir="ltr" lang="en" className="dsv2-input" type="number" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
                           <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder="سبب التعديل" aria-label="سبب تعديل النقاط" />
                           <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? "جارٍ الحفظ" : "تسجيل الحركة"}</button>
                         </div>

@@ -175,6 +175,34 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     'SELECT * FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
     [salonId, id]
   );
+
+  // EMPLOYEE_OPTIMISTIC_CONCURRENCY_V1
+  // Dashboard writes opt into a canonical updated_at precondition.
+  // Compatibility callers remain unchanged until they migrate to this contract.
+  const enforceConcurrency =
+    existing &&
+    (
+      data.enforceConcurrency === true ||
+      data.enforce_concurrency === true ||
+      data.enforceConcurrency === 1 ||
+      data.enforce_concurrency === 1
+    );
+
+  const expectedUpdatedAt =
+    optionalText(
+      data.expectedUpdatedAt ??
+        data.expected_updated_at
+    ) || null;
+
+  if (
+    enforceConcurrency &&
+    !expectedUpdatedAt
+  ) {
+    throw new AppError(
+      409,
+      'core_hr:employee_write_precondition_required'
+    );
+  }
   const existingEmployment = existing
     ? await employmentFor(db, salonId, id)
     : null;
@@ -570,7 +598,7 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     }
   }
 
-  await dbBatch(db, [
+  const writeResults = await dbBatch(db, [
     {
       sql: `INSERT INTO employee_profiles
         (id, salon_id, firebase_uid, name, email, phone_normalized, avatar_file_id, avatar_url, bio, cv_url,
@@ -583,8 +611,13 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         show_on_about = excluded.show_on_about,
         include_in_employee_management = excluded.include_in_employee_management,
         rating = excluded.rating, reviews_count = excluded.reviews_count,
-        status = excluded.status, updated_at = excluded.updated_at`,
-      params: Object.values(profile),
+        status = excluded.status, updated_at = excluded.updated_at
+       WHERE ? = 0 OR employee_profiles.updated_at = ?`,
+      params: [
+        ...Object.values(profile),
+        enforceConcurrency ? 1 : 0,
+        expectedUpdatedAt || '',
+      ],
     },
     {
       sql: `INSERT INTO employee_employment
@@ -631,8 +664,19 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         employment_status = excluded.employment_status, employee_code = excluded.employee_code,
         fingerprint_number = excluded.fingerprint_number, admin_notes = excluded.admin_notes,
         updated_by_uid = excluded.updated_by_uid, updated_by_email = excluded.updated_by_email,
-        updated_at = excluded.updated_at`,
-      params: Object.values(employment),
+        updated_at = excluded.updated_at
+       WHERE ? = 0 OR EXISTS (
+         SELECT 1
+           FROM employee_profiles AS concurrency_profile
+          WHERE concurrency_profile.salon_id = excluded.salon_id
+            AND concurrency_profile.id = excluded.employee_id
+            AND concurrency_profile.updated_at = ?
+       )`,
+      params: [
+        ...Object.values(employment),
+        enforceConcurrency ? 1 : 0,
+        now,
+      ],
     },
     {
       sql: `INSERT INTO staff
@@ -641,10 +685,36 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
        ON CONFLICT(id) DO UPDATE SET
         firebase_uid = excluded.firebase_uid, name = excluded.name, phone_normalized = excluded.phone_normalized,
         active = excluded.active, employment_status = excluded.employment_status, avatar_url = excluded.avatar_url,
-        show_on_booking = excluded.show_on_booking, specialties_json = excluded.specialties_json, updated_at = excluded.updated_at`,
-      params: Object.values(staff),
+        show_on_booking = excluded.show_on_booking, specialties_json = excluded.specialties_json, updated_at = excluded.updated_at
+       WHERE ? = 0 OR EXISTS (
+         SELECT 1
+           FROM employee_profiles AS concurrency_profile
+          WHERE concurrency_profile.salon_id = excluded.salon_id
+            AND concurrency_profile.id = excluded.id
+            AND concurrency_profile.updated_at = ?
+       )`,
+      params: [
+        ...Object.values(staff),
+        enforceConcurrency ? 1 : 0,
+        now,
+      ],
     },
   ]);
+
+  if (
+    enforceConcurrency &&
+    Number(
+      writeResults?.[0]?.meta?.changes ??
+        writeResults?.[0]?.changes ??
+        0
+    ) < 1
+  ) {
+    throw new AppError(
+      409,
+      'core_hr:employee_changed'
+    );
+  }
+
   return getHrEmployee(db, salonId, id);
 }
 

@@ -423,7 +423,7 @@ function formatDateTimeAr(v: any): string {
   const ms = toMillisSafe(v);
   if (!ms) return "—";
   try {
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -1988,7 +1988,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     );
   }
 
-  const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat("ar-SA", {
+  const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     timeStyle: "medium",
   }).format(new Date(topbarNowMs))}`;
   const dashboardHeaderTitle = isTvQueuePage

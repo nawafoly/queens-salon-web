@@ -1,3 +1,4 @@
+import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -578,19 +579,7 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
           </DashboardFieldV2>
 
           <DashboardFieldV2 id="admin-permission-start-time" label="وقت الخروج" required>
-            <input
-              id="admin-permission-start-time"
-              className="dsv2-input"
-              type="time"
-              value={form.startTime}
-              disabled={saving}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  startTime: event.target.value,
-                }))
-              }
-            />
+            <DashboardTimeInputV2 id="admin-permission-start-time" className="dsv2-input" value={form.startTime} disabled={saving} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value, })) } />
           </DashboardFieldV2>
 
           <DashboardFieldV2
@@ -598,19 +587,7 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
             label="العودة المتوقعة"
             required
           >
-            <input
-              id="admin-permission-return-time"
-              className="dsv2-input"
-              type="time"
-              value={form.expectedReturnTime}
-              disabled={saving}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  expectedReturnTime: event.target.value,
-                }))
-              }
-            />
+            <DashboardTimeInputV2 id="admin-permission-return-time" className="dsv2-input" value={form.expectedReturnTime} disabled={saving} onChange={(event) => setForm((current) => ({ ...current, expectedReturnTime: event.target.value, })) } />
           </DashboardFieldV2>
 
           <DashboardFieldV2 id="admin-permission-financial" label="الأثر المالي">

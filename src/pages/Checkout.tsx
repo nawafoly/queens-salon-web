@@ -611,7 +611,7 @@ export default function Checkout() {
 
         <div className="checkout-total">
           <FontAwesomeIcon icon={faMoneyBill} />
-          <span>{Number(view.total ?? 0).toLocaleString()} ريال</span>
+          <span>{Number(view.total ?? 0).toLocaleString("ar-SA-u-nu-latn")} ريال</span>
         </div>
 
         <button

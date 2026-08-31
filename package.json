@@ -61,7 +61,25 @@
     "check:dashboard-recruitment-v2": "node scripts/check-dashboard-recruitment-v2.mjs",
     "check:dashboard-messages-v2": "node scripts/check-dashboard-messages-v2.mjs",
     "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs && node scripts/check-booking-internal-v2-style.mjs && node scripts/check-booking-internal-contract.mjs",
-    "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs"
+    "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",
+    "verify:operational-integrity:p0": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs && npm run build",
+    "test:network-safety": "node --test workers/network-safety-baseline.test.mjs",
+    "verify:operational-integrity:p1": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs && npm run build",
+    "test:controlled-save-integrity": "node --test workers/employee-controlled-save-integrity.test.mjs",
+    "verify:operational-integrity:p2": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs && npm run build",
+    "test:concurrency-idempotency": "node --test workers/employee-concurrency-idempotency.test.mjs",
+    "verify:operational-integrity:p3": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs workers/employee-concurrency-idempotency.test.mjs workers/malikat-core-scheduling-contract.test.mjs && npm run build",
+    "test:authority-destructive-safety": "node --test workers/authority-destructive-safety.test.mjs",
+    "verify:operational-integrity:p4": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs workers/employee-concurrency-idempotency.test.mjs workers/authority-destructive-safety.test.mjs workers/malikat-core-scheduling-contract.test.mjs && npm run build",
+    "test:migration-safety": "node scripts/verify-core-migration-safety.mjs",
+    "verify:operational-integrity:p5": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs workers/employee-concurrency-idempotency.test.mjs workers/authority-destructive-safety.test.mjs workers/database-migration-safety.test.mjs workers/malikat-core-scheduling-contract.test.mjs && node scripts/verify-core-migration-safety.mjs && npm run build",
+    "test:backup-restore": "node scripts/verify-core-backup-restore.mjs",
+    "verify:operational-integrity:p6": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs workers/employee-concurrency-idempotency.test.mjs workers/authority-destructive-safety.test.mjs workers/database-migration-safety.test.mjs workers/backup-restore-baseline.test.mjs workers/malikat-core-scheduling-contract.test.mjs && node scripts/verify-core-migration-safety.mjs && node scripts/verify-core-backup-restore.mjs && npm run build",
+    "test:request-observability-idempotency": "node --test workers/request-observability-idempotency.test.mjs",
+    "verify:operational-integrity:p7": "node --test workers/employee-workspace-dsv2-ux-guard.test.mjs workers/network-safety-baseline.test.mjs workers/employee-controlled-save-integrity.test.mjs workers/employee-concurrency-idempotency.test.mjs workers/authority-destructive-safety.test.mjs workers/database-migration-safety.test.mjs workers/backup-restore-baseline.test.mjs workers/request-observability-idempotency.test.mjs workers/malikat-core-scheduling-contract.test.mjs && node scripts/verify-core-migration-safety.mjs && node scripts/verify-core-backup-restore.mjs && npm run build",
+    "test:critical-journeys": "node scripts/verify-critical-journeys.mjs",
+    "verify:operational-integrity:p8": "npm run verify:operational-integrity:p7 && npm run test:critical-journeys && node --test workers/final-operational-integrity-gate.test.mjs",
+    "verify:operational-integrity": "npm run verify:operational-integrity:p8"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
@@ -102,7 +120,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.3.1",
-    "wrangler": "^4.122.0"
+    "wrangler": "4.127.1"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.3.1"

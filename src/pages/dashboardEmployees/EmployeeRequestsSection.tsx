@@ -60,7 +60,7 @@ function formatDate(value: unknown) {
   const raw = cleanText(value);
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     const [year, month, day] = raw.split("-");
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       year: "numeric",
       month: "long",
       day: "2-digit",
@@ -68,7 +68,7 @@ function formatDate(value: unknown) {
   }
   const ms = toMillis(value);
   if (!ms) return raw || "-";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "long",
     day: "2-digit",
@@ -78,7 +78,7 @@ function formatDate(value: unknown) {
 function formatDateTime(value: unknown) {
   const ms = toMillis(value);
   if (!ms) return "لم يسجل بعد";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     month: "long",
     day: "2-digit",
     hour: "2-digit",

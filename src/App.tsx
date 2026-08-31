@@ -11,6 +11,7 @@ import Footer from "./components/Footer";
 import WelcomeModal from "./components/WelcomeModal";
 import ChatBot from "./components/ChatBot";
 import LoadingBrand from "./components/LoadingBrand";
+import NetworkSafetyBanner from "./components/NetworkSafetyBanner";
 import PublicAppShell from "./components/PublicAppShell";
 import AccessDenied from "./components/AccessDenied";
 import { PermissionProvider } from "./security/PermissionContext";
@@ -935,6 +936,7 @@ const App: React.FC = () => {
       permissionVersion={permissionSource.permissionVersion}
     >
       <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
+      <NetworkSafetyBanner />
       {showPublicAppShell ? (
         <PublicAppShell
           header={

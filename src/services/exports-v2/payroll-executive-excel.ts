@@ -181,7 +181,7 @@ function monthYearLabel(report: ExportV2Report<Record<string, ExportV2Value>>) {
   if (!source) return report.period;
   const date = new Date(`${source}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return report.period;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -487,7 +487,7 @@ function buildUnifiedPayrollSheet(report: ExportV2Report<Record<string, ExportV2
       const isGeneratedAt = rowNumber === 5 && groupIndex === 2;
       const isDate = (rowNumber === 5 && groupIndex < 2) || (rowNumber === 6 && groupIndex === 1 && /^\d{4}-\d{2}-\d{2}$/.test(String(value)));
       const generatedText = isGeneratedAt && Number.isFinite(new Date(String(value)).getTime())
-        ? new Date(String(value)).toLocaleString("ar-SA-u-ca-gregory")
+        ? new Date(String(value)).toLocaleString("ar-SA-u-ca-gregory-nu-latn")
         : value;
       const numericValue = isDate ? excelSerial(value) : generatedText;
       addMergedToExistingRow(row, rowNumber, group.vs, group.ve, numericValue, isDate ? S.dateValue : S.metaValue);
@@ -784,7 +784,7 @@ function buildMobilePayrollSheet(report: ExportV2Report<Record<string, ExportV2V
     7,
     "تاريخ الإنشاء",
     Number.isFinite(new Date(String(report.generatedAt)).getTime())
-      ? new Date(String(report.generatedAt)).toLocaleDateString("ar-SA-u-ca-gregory")
+      ? new Date(String(report.generatedAt)).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")
       : report.generatedAt,
     "السجلات",
     report.rows.length,

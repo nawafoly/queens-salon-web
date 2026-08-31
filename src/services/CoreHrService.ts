@@ -764,6 +764,30 @@ export const CoreHrService = {
       }>(row)
     );
   },
+  async listSalaryAdvanceInstallments(
+    query: { employeeId: string; payrollMonth?: string }
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/salary-advance-installments",
+      { query }
+    );
+    return rows.map((row) =>
+      camel<{
+        id: string;
+        advanceId: string;
+        employeeId: string;
+        installmentNumber: number;
+        payrollMonth: string;
+        amountHalalas: number;
+        status: string;
+        payrollEntryId: string | null;
+        deductedAt: string | null;
+        updatedAt: string | null;
+        paymentStatus: string | null;
+        firstDeductionMonth: string | null;
+      }>(row)
+    );
+  },
   async listPayrollRecurringDeductions(
     query: { employeeId?: string; status?: string } = {}
   ) {
@@ -912,8 +936,29 @@ export const CoreHrService = {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/approve`, { method: "POST" });
     return camel<CorePayrollEntry>(row);
   },
+  async recordLatePayrollApproval(
+    id: string,
+    input: {
+      approvalDate: string;
+      approvedNetHalalas: number;
+      reason: string;
+    }
+  ) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-entries/${encodeURIComponent(id)}/late-approve`,
+      { method: "POST", body: input }
+    );
+    return camel<CorePayrollEntry>(row);
+  },
   async markPayrollEntryPaid(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/paid`, { method: "POST" });
+    return camel<CorePayrollEntry>(row);
+  },
+  async reversePayrollEntryPayment(id: string, input: { reason: string }) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-entries/${encodeURIComponent(id)}/unpay`,
+      { method: "POST", body: input }
+    );
     return camel<CorePayrollEntry>(row);
   },
   async reopenPayrollEntry(id: string, input: { reason: string; status?: "draft" | "reviewed" }) {

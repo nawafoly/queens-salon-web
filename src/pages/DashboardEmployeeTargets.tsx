@@ -50,7 +50,7 @@ function currentPayrollParts() {
 
 function formatMoney(halalas: number | undefined | null) {
   const amount = Number(halalas || 0) / 100;
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 0,
@@ -432,7 +432,7 @@ export default function DashboardEmployeeTargets() {
       <section className="dsv2-card dsv2-card--padded dsv2-targets-toolbar" aria-label="فترة التارقت">
         <label className="dsv2-field">
           <span className="dsv2-field__label">السنة</span>
-          <input
+          <input dir="ltr" lang="en"
             className="dsv2-input"
             type="number"
             value={year}

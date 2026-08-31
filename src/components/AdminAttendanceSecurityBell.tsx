@@ -39,7 +39,7 @@ function formatNotificationTime(value: unknown) {
   const parsed = eventMillis(value);
   if (!parsed) return "";
   try {
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       timeZone: "Asia/Riyadh",
       month: "short",
       day: "numeric",

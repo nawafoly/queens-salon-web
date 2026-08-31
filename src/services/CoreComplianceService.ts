@@ -51,6 +51,16 @@ export const CoreComplianceService = {
     return rows.map((row) => camel<CorePayrollDeductionClassificationEvent>(row));
   },
 
+  async listPayrollDeductionCourtOverrides(
+    query: { employeeId?: string; payrollMonth?: string; status?: string } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-deduction-overrides",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollDeductionCourtOverride>(row));
+  },
+
   async createPayrollDeductionCourtOverride(input: {
     employeeId: string;
     payrollMonth: string;

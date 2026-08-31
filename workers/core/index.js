@@ -13,6 +13,14 @@ import {
 import { AppError, normalizeError } from './errors.js';
 import { getAuthContext } from './auth-context.js';
 import {
+  abandonIdempotentOperation,
+  beginIdempotentOperation,
+  completeIdempotentOperation,
+  normalizeOperationId,
+  requestFingerprint,
+  shouldUseIdempotency,
+} from './idempotency.js';
+import {
   createClient,
   getClient,
   listClients,
@@ -118,6 +126,7 @@ import {
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   approvePayrollEntry,
+  recordLatePayrollApproval,
   deferAttendanceDeduction,
   getPayrollEntry,
   listPayrollEntries,
@@ -126,6 +135,7 @@ import {
   listPayrollCarryoverAdjustments,
   reconcilePayrollCarryoversBatch,
   markPayrollEntryPaid,
+  reversePayrollEntryPayment,
   previewPayrollEntry,
   reopenPayrollEntry,
   togglePayrollOvertime,
@@ -147,6 +157,7 @@ import {
   classifyPayrollObligationDeduction,
   classifyRecurringPayrollDeduction,
   listPayrollDeductionClassificationEvents,
+  listPayrollDeductionCourtOverrides,
   savePayrollDeductionCourtOverride,
 } from './repositories/payroll-deduction-compliance.js';
 import {
@@ -168,6 +179,7 @@ import {
 } from './repositories/holiday-calendar-compliance.js';
 import {
   deferSalaryAdvanceInstallment,
+  listSalaryAdvanceInstallments,
 } from './repositories/salary-advance-deferrals.js';
 import {
   createTargetAdjustment,
@@ -298,7 +310,8 @@ function allowedOrigins(env) {
 function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Request-Id, Idempotency-Key",
+    "Access-Control-Expose-Headers": "X-Request-Id",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -329,8 +342,33 @@ async function readJson(request) {
 }
 
 function salonId(data, env) {
+  // CORE_TENANT_AUTHORITY_V1
+  // The Worker deployment/binding selects the tenant. Request data is never
+  // allowed to escape that tenant boundary.
+  const configuredSalonId =
+    cleanText(env.SALON_ID);
+
+  const requestedSalonId =
+    cleanText(
+      data?.salonId ??
+        data?.salon_id
+    );
+
+  if (
+    configuredSalonId &&
+    requestedSalonId &&
+    requestedSalonId !== configuredSalonId
+  ) {
+    throw new AppError(
+      403,
+      "core_auth:tenant_mismatch"
+    );
+  }
+
   return requiredId(
-    data?.salonId || env.SALON_ID || "main",
+    configuredSalonId ||
+      requestedSalonId ||
+      "main",
     "salonId"
   );
 }
@@ -594,6 +632,12 @@ function match(url, method) {
   ) {
     return { name: "payroll-advance-deductions" };
   }
+  if (
+    path === "/api/core/hr/salary-advance-installments" &&
+    method === "GET"
+  ) {
+    return { name: "salary-advance-installments" };
+  }
   if (path === "/api/core/hr/payroll-obligations/deductions" && method === "GET") {
     return { name: "payroll-obligation-deductions" };
   }
@@ -604,6 +648,7 @@ function match(url, method) {
   if (path === "/api/core/hr/payroll-deduction-classification-events" && method === "GET") return { name: "payroll-deduction-classification-events" };
   const payrollDeductionOverrideCancel = /^\/api\/core\/hr\/payroll-deduction-overrides\/([^/]+)\/cancel$/.exec(path);
   if (payrollDeductionOverrideCancel && method === "POST") return { name: "payroll-deduction-override:cancel", id: payrollDeductionOverrideCancel[1] };
+  if (path === "/api/core/hr/payroll-deduction-overrides" && method === "GET") return { name: "payroll-deduction-overrides" };
   if (path === "/api/core/hr/payroll-deduction-overrides" && method === "POST") return { name: "payroll-deduction-override:create" };
   const disciplinaryCaseCancel = /^\/api\/core\/hr\/disciplinary-cases\/([^/]+)\/cancel$/.exec(path);
   if (disciplinaryCaseCancel && method === "POST") return { name: "disciplinary-case:cancel", id: disciplinaryCaseCancel[1] };
@@ -641,7 +686,7 @@ function match(url, method) {
   }
   if (path === "/api/core/hr/payroll-carryovers" && method === "GET") return { name: "payroll-carryovers" };
   if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
-  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
+  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|late-approve|paid|unpay|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   if (path === "/api/core/hr/employee-targets/mine" && method === "GET") return { name: "employee-targets:mine" };
   if (path === "/api/core/hr/employee-targets/rebuild" && method === "POST") return { name: "employee-targets:rebuild" };
@@ -1926,6 +1971,10 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollAdvanceDeductions(db, ctx.salonId, query);
 
+    case "salary-advance-installments":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listSalaryAdvanceInstallments(db, ctx.salonId, query);
+
     case "payroll-obligation:classification":
       requirePermission(ctx, "payroll.manage");
       return classifyPayrollObligationDeduction(db, ctx.salonId, route.id, body, actorInfo);
@@ -1937,6 +1986,10 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-deduction-classification-events":
       requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
       return listPayrollDeductionClassificationEvents(db, ctx.salonId, query);
+
+    case "payroll-deduction-overrides":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollDeductionCourtOverrides(db, ctx.salonId, query);
 
     case "payroll-deduction-override:create":
       requirePermission(ctx, "payroll.manage");
@@ -2104,6 +2157,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
+    case "payroll-entry:late-approve":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      if (method === "POST") {
+        return recordLatePayrollApproval(
+          db,
+          ctx.salonId,
+          route.id,
+          body,
+          actorInfo
+        );
+      }
+      break;
+
     case "payroll-entry:reopen":
       requirePermission(ctx, "payroll.manage");
       requireRole(ctx.role, ADMIN_ROLES);
@@ -2113,6 +2180,20 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-entry:paid":
       requirePermission(ctx, "payroll.manage");
       if (method === "POST") return markPayrollEntryPaid(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "payroll-entry:unpay":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, PAYROLL_MANAGEMENT_ROLES);
+      if (method === "POST") {
+        return reversePayrollEntryPayment(
+          db,
+          ctx.salonId,
+          route.id,
+          body,
+          actorInfo
+        );
+      }
       break;
 
     case "employee-targets":
@@ -2303,19 +2384,266 @@ export async function handleRequest(request, env) {
   return jsonResponse(request, env, 200, { ok: true, data });
 }
 
+// CORE_REQUEST_OBSERVABILITY_V1
+function normalizeRequestId(value) {
+  const requestId = cleanText(value);
+
+  if (
+    requestId &&
+    requestId.length <= 128 &&
+    /^[A-Za-z0-9._:-]+$/.test(requestId)
+  ) {
+    return requestId;
+  }
+
+  return crypto.randomUUID();
+}
+
+function requestWithTraceHeaders(
+  request,
+  requestId
+) {
+  const headers = new Headers(request.headers);
+  headers.set("X-Request-Id", requestId);
+
+  return new Request(request, { headers });
+}
+
+function responseWithRequestId(
+  response,
+  requestId
+) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", requestId);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function structuredRequestLog(fields) {
+  console.log(
+    JSON.stringify({
+      event: "core_request_completed",
+      ...fields,
+    })
+  );
+}
+
 export default {
   async fetch(request, env) {
+    const startedAt = Date.now();
+    const requestId = normalizeRequestId(
+      request.headers.get("X-Request-Id")
+    );
+    const rawOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+    const operationId =
+      rawOperationId
+        ? normalizeOperationId(rawOperationId)
+        : "";
+    const tracedRequest = requestWithTraceHeaders(
+      request,
+      requestId
+    );
+    const method = String(
+      tracedRequest.method || "GET"
+    ).toUpperCase();
+    const url = new URL(tracedRequest.url);
+    // IDEMPOTENCY_CONFIGURED_TENANT_FENCE_V1
+    // The generic replay ledger is only active when the Worker deployment
+    // provides an explicit tenant authority. Never collapse an unconfigured
+    // compatibility request into the shared "main" ledger namespace.
+    const tenantId =
+      cleanText(env.SALON_ID);
+
+    let response;
+    let fingerprint = "";
+    let idempotencyActive = false;
+    let replayed = false;
+
     try {
-      return await handleRequest(request, env);
+      if (rawOperationId && !operationId) {
+        throw new AppError(
+          400,
+          "core_api:invalid_idempotency_key"
+        );
+      }
+
+      if (
+        tenantId &&
+        shouldUseIdempotency(
+          tracedRequest,
+          operationId
+        )
+      ) {
+        fingerprint =
+          await requestFingerprint(
+            tracedRequest
+          );
+
+        const gate =
+          await beginIdempotentOperation(
+            requireDb(env),
+            tenantId || null,
+            operationId,
+            fingerprint,
+            requestId
+          );
+
+        if (gate.action === "conflict") {
+          throw new AppError(
+            409,
+            "core_api:idempotency_key_reused"
+          );
+        }
+
+        if (gate.action === "in_progress") {
+          throw new AppError(
+            409,
+            "core_api:idempotency_in_progress"
+          );
+        }
+
+        if (gate.action === "replay") {
+          replayed = true;
+
+          let payload;
+
+          try {
+            payload = JSON.parse(
+              gate.responseBody
+            );
+          } catch {
+            payload = {
+              ok: false,
+              error:
+                "core_api:idempotency_replay_invalid",
+            };
+          }
+
+          response = jsonResponse(
+            tracedRequest,
+            env,
+            gate.status,
+            payload
+          );
+        } else {
+          idempotencyActive = true;
+        }
+      }
+
+      if (!response) {
+        try {
+          response =
+            await handleRequest(
+              tracedRequest,
+              env
+            );
+        } catch (error) {
+          const normalized =
+            normalizeError(error);
+
+          response = jsonResponse(
+            tracedRequest,
+            env,
+            normalized.status,
+            {
+              ok: false,
+              error: normalized.code,
+              message: normalized.message,
+              ...(normalized.details !== undefined
+                ? {
+                    details:
+                      normalized.details,
+                  }
+                : {}),
+            }
+          );
+        }
+      }
+
+      if (
+        idempotencyActive &&
+        operationId &&
+        fingerprint
+      ) {
+        if (response.status === 401) {
+          await abandonIdempotentOperation(
+            requireDb(env),
+            tenantId,
+            operationId,
+            fingerprint
+          );
+        } else {
+          const contentType =
+            cleanText(
+              response.headers.get(
+                "Content-Type"
+              )
+            ).toLowerCase();
+
+          if (
+            contentType.includes(
+              "application/json"
+            )
+          ) {
+            await completeIdempotentOperation(
+              requireDb(env),
+              tenantId,
+              operationId,
+              fingerprint,
+              requestId,
+              response.status,
+              await response.clone().text()
+            );
+          }
+        }
+      }
     } catch (error) {
-      const normalized = normalizeError(error);
-      return jsonResponse(request, env, normalized.status, {
-        ok: false,
-        error: normalized.code,
-        message: normalized.message,
-        ...(normalized.details !== undefined ? { details: normalized.details } : {}),
-      });
+      const normalized =
+        normalizeError(error);
+
+      response = jsonResponse(
+        tracedRequest,
+        env,
+        normalized.status,
+        {
+          ok: false,
+          error: normalized.code,
+          message: normalized.message,
+          ...(normalized.details !== undefined
+            ? {
+                details:
+                  normalized.details,
+              }
+            : {}),
+        }
+      );
     }
+
+    const finalResponse =
+      responseWithRequestId(
+        response,
+        requestId
+      );
+
+    structuredRequestLog({
+      requestId,
+      operationId: operationId || null,
+      tenantId,
+      method,
+      path: url.pathname,
+      status: finalResponse.status,
+      durationMs:
+        Date.now() - startedAt,
+      replayed,
+    });
+
+    return finalResponse;
   },
   async scheduled(event, env, ctx) {
     const salonId = cleanText(env.SALON_ID) || "main";

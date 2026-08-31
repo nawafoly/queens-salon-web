@@ -33,7 +33,7 @@ export function formatNotificationTime(value: unknown) {
   if (abs < 86_400_000) return rtf.format(-Math.round(diff / 3_600_000), "hour");
   if (abs < 7 * 86_400_000) return rtf.format(-Math.round(diff / 86_400_000), "day");
 
-  return new Intl.DateTimeFormat("ar-SA", {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "short",
     day: "numeric",

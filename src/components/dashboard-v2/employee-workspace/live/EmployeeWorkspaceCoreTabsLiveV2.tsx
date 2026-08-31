@@ -238,7 +238,7 @@ export function EmployeeProfileTabLiveV2({
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-rating" label="تقييم العرض">
-              <input
+              <input lang="en"
                 id="employee-live-v2-rating"
                 className="dsv2-input"
                 type="number"
@@ -252,7 +252,7 @@ export function EmployeeProfileTabLiveV2({
               />
             </DashboardFieldV2>
             <DashboardFieldV2 id="employee-live-v2-reviews" label="عدد التقييمات">
-              <input
+              <input lang="en"
                 id="employee-live-v2-reviews"
                 className="dsv2-input"
                 type="number"
@@ -460,8 +460,8 @@ export function EmployeeServicesTabLiveV2({
                       <span className="dsv2-ew-service-card__category">{serviceSectionLabel(service, sectionOptions)}</span>
                       <strong>{service.label}</strong>
                       <small>
-                        {Number(service.durationMin || 0) > 0 ? `${Number(service.durationMin).toLocaleString("ar-SA")} دقيقة` : "مدة غير محددة"}
-                        {Number(service.price || 0) > 0 ? ` · ${Number(service.price).toLocaleString("ar-SA")} ر.س` : ""}
+                        {Number(service.durationMin || 0) > 0 ? `${Number(service.durationMin).toLocaleString("ar-SA-u-nu-latn")} دقيقة` : "مدة غير محددة"}
+                        {Number(service.price || 0) > 0 ? ` · ${Number(service.price).toLocaleString("ar-SA-u-nu-latn")} ر.س` : ""}
                       </small>
                     </div>
                     <button

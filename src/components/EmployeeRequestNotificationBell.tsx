@@ -24,7 +24,7 @@ function formatNotificationTime(value: unknown) {
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
   try {
-    return new Intl.DateTimeFormat("ar-SA", {
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       timeZone: "Asia/Riyadh",
       month: "short",
       day: "numeric",

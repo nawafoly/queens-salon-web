@@ -5,7 +5,7 @@ import { phone10Digits } from "./bookingTextUtils";
 export function formatQuickClientLastUsed(lastUsedAt: number): string {
   if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) return "";
   try {
-    return new Intl.DateTimeFormat("ar-SA", { day: "2-digit", month: "2-digit" }).format(
+    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { day: "2-digit", month: "2-digit" }).format(
       new Date(lastUsedAt)
     );
   } catch {

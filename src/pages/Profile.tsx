@@ -1186,7 +1186,7 @@ const Profile: React.FC = () => {
               </div>
               <div className="p-input-group-modern">
                 <label className="p-label-with-icon"><LuCalendarRange /> تاريخ الميلاد</label>
-                <input type="date" value={editForm.birthdate} onChange={(e) => setEditForm((p) => ({ ...p, birthdate: e.target.value }))} />
+                <input dir="ltr" lang="en" type="date" value={editForm.birthdate} onChange={(e) => setEditForm((p) => ({ ...p, birthdate: e.target.value }))} />
               </div>
             </div>
             <div className="p-modal-footer-modern">

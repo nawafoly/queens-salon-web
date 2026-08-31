@@ -374,7 +374,7 @@ export default function DashboardQueueTv() {
   const upcomingCount = todayQueue.length - currentCount;
   const nowDate = new Date(nowMs);
   const nowTime24 = `${String(nowDate.getHours()).padStart(2, "0")}:${String(nowDate.getMinutes()).padStart(2, "0")}`;
-  const todayLabel = nowDate.toLocaleDateString("ar-SA", {
+  const todayLabel = nowDate.toLocaleDateString("ar-SA-u-nu-latn", {
     weekday: "long",
     year: "numeric",
     month: "long",

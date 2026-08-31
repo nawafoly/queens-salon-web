@@ -674,7 +674,7 @@ const Login: React.FC = () => {
                   <FontAwesomeIcon icon={faCalendarAlt} className="label-icon" />
                   تاريخ الميلاد
                 </label>
-                <input
+                <input dir="ltr" lang="en"
                   type="date"
                   name="birthdate"
                   className="form-control-login"
