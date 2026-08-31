@@ -26,10 +26,14 @@ test("attendance blocks approved full-day leave unless recall removes that date"
   );
 });
 
-test("weekly-rest assignment authorizes punch without replacing the weekly-rest schedule", () => {
+test("weekly-rest assignment is authorized by the canonical effective shift without replacing the weekly-rest schedule", () => {
   const attendance = source("./attendance-worker.js");
   const workflows = source("./core/repositories/leave-rest-workflows.js");
-  assert.match(attendance, /weeklyRestAssignmentAsShift/);
+  const shiftControl = source("./core/repositories/shift-control.js");
+  assert.match(attendance, /resolveEmployeeShift/);
+  assert.doesNotMatch(attendance, /weeklyRestAssignmentAsShift/);
+  assert.match(shiftControl, /employee_weekly_rest_work_assignments/);
+  assert.match(shiftControl, /weekly_rest_work_assignment/);
   assert.match(workflows, /isExplicitWeeklyRestShift/);
   assert.match(workflows, /source: 'weekly_rest_work_assignment'/);
   assert.doesNotMatch(workflows, /createScheduleException/);
