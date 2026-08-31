@@ -1576,7 +1576,7 @@ function inactiveShiftResult(employeeId, date) {
   };
 }
 
-export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateValue) {
+async function resolveEmployeeBaseShift(db, salonId, employeeIdValue, dateValue) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const date = dateKey(dateValue, 'date');
   const employeeState = await dbFirst(
@@ -1678,6 +1678,155 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
   return assignment
     ? { source: 'assignment', date, ...assignment }
     : { source: 'none', date, employee_id: employeeId };
+}
+
+
+async function activeWeeklyRestWorkAssignmentForShift(
+  db,
+  salonId,
+  employeeId,
+  date
+) {
+  if (
+    db?.__fakeD1 &&
+    typeof db.rows === 'function'
+  ) {
+    try {
+      return (
+        db.rows(
+          'employee_weekly_rest_work_assignments'
+        )
+          .filter(
+            (row) =>
+              row.salon_id === salonId &&
+              cleanText(row.employee_id) === employeeId &&
+              cleanText(row.rest_date) === date &&
+              cleanText(row.status).toLowerCase() === 'assigned'
+          )
+          .slice()
+          .sort(
+            (left, right) =>
+              cleanText(right.created_at).localeCompare(
+                cleanText(left.created_at)
+              )
+          )[0] || null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  return dbFirst(
+    db,
+    'SELECT * FROM employee_weekly_rest_work_assignments ' +
+      'WHERE salon_id=? AND employee_id=? AND rest_date=? AND status=\'assigned\' ' +
+      'ORDER BY created_at DESC LIMIT 1',
+    [salonId, employeeId, date]
+  );
+}
+
+function weeklyRestWorkAssignmentResolvedShift(
+  assignment,
+  baseShift,
+  date
+) {
+  if (!assignment) return baseShift;
+
+  return {
+    ...(baseShift || {}),
+    source: 'weekly_rest_work_assignment',
+    source_id: cleanText(assignment.id) || null,
+    id: cleanText(assignment.id) || null,
+    assignment_id: cleanText(assignment.id) || null,
+    weekly_rest_work_assignment_id:
+      cleanText(assignment.id) || null,
+    employee_id:
+      cleanText(assignment.employee_id) ||
+      cleanText(baseShift?.employee_id) ||
+      null,
+    date,
+    active: 1,
+    operational: baseShift?.operational ?? true,
+    exception_type: 'work',
+    shift_name: 'عمل استثنائي في يوم الراحة',
+    start_time: cleanText(assignment.start_time) || null,
+    end_time: cleanText(assignment.end_time) || null,
+    template_start_time:
+      cleanText(assignment.start_time) || null,
+    template_end_time:
+      cleanText(assignment.end_time) || null,
+    late_grace_minutes:
+      Number(baseShift?.late_grace_minutes || 0),
+    early_leave_grace_minutes: 0,
+    attendance_lock_enabled:
+      Number(assignment.attendance_lock_enabled || 0),
+    attendance_lock_after_minutes:
+      Number(assignment.attendance_lock_after_minutes || 0),
+    break_minutes:
+      Number(baseShift?.break_minutes || 0),
+    overtime_after_minutes:
+      Number(baseShift?.overtime_after_minutes || 0),
+    reason:
+      cleanText(assignment.reason) || null,
+    schedule_snapshot_json:
+      assignment.schedule_snapshot_json || null,
+    weekly_rest_origin_is_explicit: 1,
+    weekly_rest_base_source:
+      cleanText(baseShift?.source) || null,
+    weekly_rest_base_exception_type:
+      cleanText(
+        baseShift?.exception_type ||
+        baseShift?.exceptionType
+      ) || null,
+    weekly_rest_base_active:
+      baseShift?.active ?? null,
+    weekly_rest_base_note:
+      cleanText(baseShift?.note) || null,
+  };
+}
+
+export async function resolveEmployeeShift(
+  db,
+  salonId,
+  employeeIdValue,
+  dateValue
+) {
+  const employeeId =
+    requiredId(
+      employeeIdValue,
+      'employeeId'
+    );
+  const date =
+    dateKey(
+      dateValue,
+      'date'
+    );
+
+  const baseShift =
+    await resolveEmployeeBaseShift(
+      db,
+      salonId,
+      employeeId,
+      date
+    );
+
+  if (baseShift?.operational === false) {
+    return baseShift;
+  }
+
+  const weeklyRestWorkAssignment =
+    await activeWeeklyRestWorkAssignmentForShift(
+      db,
+      salonId,
+      employeeId,
+      date
+    );
+
+  return weeklyRestWorkAssignmentResolvedShift(
+    weeklyRestWorkAssignment,
+    baseShift,
+    date
+  );
 }
 
 
@@ -2040,6 +2189,7 @@ export async function resolveEmployeeShiftsBatch(
     exceptions,
     weeklySchedules,
     assignments,
+    weeklyRestWorkAssignments,
     employmentRows,
   ] =
     await Promise.all([
@@ -2150,6 +2300,20 @@ export async function resolveEmployeeShiftsBatch(
       ),
       dbAll(
         db,
+        'SELECT * FROM employee_weekly_rest_work_assignments ' +
+          'WHERE salon_id=? AND employee_id IN (' + marks + ') ' +
+          'AND rest_date>=? AND rest_date<=? AND status=\'assigned\' ' +
+          'ORDER BY employee_id, rest_date, created_at DESC',
+        [
+          salonId,
+          ...employeeIds,
+          dateFrom,
+          dateTo,
+        ]
+      ),
+
+      dbAll(
+        db,
         `SELECT employee_id,
                 MAX(has_profile) AS has_profile,
                 MAX(has_employment) AS has_employment,
@@ -2194,6 +2358,10 @@ export async function resolveEmployeeShiftsBatch(
     rowsByEmployeeId(
       assignments
     );
+  const weeklyRestWorkByEmployee =
+    rowsByEmployeeId(
+      weeklyRestWorkAssignments
+    );
   const employmentByEmployee = new Map(
     employmentRows.map((row) => [cleanText(row.employee_id), row])
   );
@@ -2222,6 +2390,12 @@ export async function resolveEmployeeShiftsBatch(
       ) ||
       [];
 
+    const weeklyRestWorkRows =
+      weeklyRestWorkByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
     for (
       let offset = 0;
       offset < daysCount;
@@ -2239,13 +2413,27 @@ export async function resolveEmployeeShiftsBatch(
         continue;
       }
 
-      rows.push(
+      const baseShift =
         resolveEmployeeShiftFromBatchFacts(
           employeeId,
           date,
           exceptionRows,
           weeklyRows,
           assignmentRows
+        );
+
+      const weeklyRestWorkAssignment =
+        weeklyRestWorkRows.find(
+          (row) =>
+            cleanText(row.rest_date) === date &&
+            cleanText(row.status).toLowerCase() === 'assigned'
+        ) || null;
+
+      rows.push(
+        weeklyRestWorkAssignmentResolvedShift(
+          weeklyRestWorkAssignment,
+          baseShift,
+          date
         )
       );
     }

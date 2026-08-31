@@ -20,7 +20,11 @@ import { SCHEDULE_EXCEPTION_CHANGED_EVENT } from "./shiftExceptionRestore";
 
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
-const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
+const LABEL_WEEKLY_OFF = "راحة أسبوعية";
+const LABEL_TEMP_WEEKLY_OFF = "راحة أسبوعية مؤقتة";
+const LABEL_EXCEPTION_OFF = "يوم راحة استثنائي";
+const LABEL_WEEKLY_REST_WORK = "عمل استثنائي في يوم الراحة";
+const TEMP_WEEKLY_OFF_MARKER = "[temp_weekly_off:";
 const TEMP_WEEKLY_OFF_SYNC_EVENT = "queens:temporary-weekly-off-updated";
 
 type TemporaryWeeklyOffSyncDetail = {
@@ -78,6 +82,7 @@ function isCoreEmployeeIdentifier(value: unknown) {
 function resolvedShiftRank(row?: CoreResolvedShift | null) {
   const source = cleanText(row?.source).toLowerCase();
   const exceptionType = cleanText(row?.exceptionType || row?.exception_type).toLowerCase();
+  if (source === "weekly_rest_work_assignment") return 6;
   if (source === "exception" && exceptionType === "off") return 5;
   if (source === "exception") return 4;
   if (source === "assignment") return 3;
@@ -178,9 +183,72 @@ function isResolvedShiftOff(value?: Record<string, unknown> | CoreResolvedShift 
   return cleanText((row as Record<string, unknown>).exceptionType || (row as Record<string, unknown>).exception_type).toLowerCase() === "off";
 }
 
+function resolvedShiftSpecialDay(
+  date: string,
+  shift?: CoreResolvedShift | null
+): AttendanceSpecialDay | null {
+  const row = (shift || {}) as Record<string, unknown>;
+  const source = cleanText(row.source).toLowerCase();
+  const sourceId = cleanText(
+    row.weeklyRestWorkAssignmentId ||
+    row.weekly_rest_work_assignment_id ||
+    row.assignmentId ||
+    row.assignment_id ||
+    row.sourceId ||
+    row.source_id ||
+    row.id
+  );
+
+  if (source === "weekly_rest_work_assignment") {
+    return {
+      date,
+      kind: "weekly_rest_work",
+      label: LABEL_WEEKLY_REST_WORK,
+      source: "تكليف يوم الراحة",
+      sourceId,
+    };
+  }
+
+  if (!isResolvedShiftOff(shift)) return null;
+
+  if (source === "weekly_schedule") {
+    return {
+      date,
+      kind: "weekly_off",
+      label: LABEL_WEEKLY_OFF,
+      source: "جدول الدوام الأسبوعي",
+      sourceId,
+    };
+  }
+
+  if (
+    source === "exception" &&
+    cleanText(row.note)
+      .toLowerCase()
+      .startsWith(TEMP_WEEKLY_OFF_MARKER)
+  ) {
+    return {
+      date,
+      kind: "weekly_off",
+      label: LABEL_TEMP_WEEKLY_OFF,
+      source: "نقل مؤقت للراحة الأسبوعية",
+      sourceId,
+    };
+  }
+
+  return {
+    date,
+    kind: "exception_off",
+    label: LABEL_EXCEPTION_OFF,
+    source: "استثناء يومي معتمد",
+    sourceId,
+  };
+}
+
 function specialDayPriority(day?: AttendanceSpecialDay | null) {
   if (!day) return 0;
   if (day.kind === "leave" || day.kind === "rest") return 40;
+  if (day.kind === "weekly_rest_work") return 38;
   if (day.kind === "weekly_off") return 35;
   if (day.kind === "exception_off") return 30;
   if (day.kind === "partial_leave") return 20;
@@ -251,6 +319,15 @@ function coreShiftInfo(dateKey: string, resolvedShift?: CoreResolvedShift | null
   const exceptionType = cleanText(resolvedShift.exceptionType || resolvedShift.exception_type).toLowerCase();
   const { startTime, endTime } = readCoreShiftWindow(resolvedShift);
   const shiftName = cleanText(resolvedShift.shiftName || resolvedShift.shift_name);
+  if (source === "weekly_rest_work_assignment") {
+    return {
+      sourceLabel: "تكليف يوم الراحة",
+      sourceDetail: LABEL_WEEKLY_REST_WORK,
+      timeLabel: windowLabel(startTime, endTime),
+      statusLabel: activeStatusForWindow(dateKey, startTime, endTime),
+      tone: "gold",
+    };
+  }
   if (source === "exception") {
     if (exceptionType === "off") {
       return {
@@ -318,7 +395,8 @@ function resolveSelectedShiftInfo(input: {
 
   if (
     specialDay &&
-    specialDay.kind !== "partial_leave"
+    specialDay.kind !== "partial_leave" &&
+    specialDay.kind !== "weekly_rest_work"
   ) {
     return {
       sourceLabel:
@@ -1184,13 +1262,9 @@ export default function AttendanceSection({
 
   const resolvedCoreSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
     return Object.entries(coreResolvedShiftsByDate).flatMap(([date, shift]) => {
-      if (!date || !isResolvedShiftOff(shift)) return [];
-      return [{
-        date,
-        kind: "exception_off" as const,
-        label: LABEL_EXCEPTION_OFF,
-        source: "core_exception_off",
-      }];
+      if (!date) return [];
+      const specialDay = resolvedShiftSpecialDay(date, shift);
+      return specialDay ? [specialDay] : [];
     });
   }, [coreResolvedShiftsByDate]);
 

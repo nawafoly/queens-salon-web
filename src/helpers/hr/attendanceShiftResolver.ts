@@ -147,6 +147,9 @@ export function attendanceResolvedShiftSourceLabel(row?: CoreResolvedShift | nul
   ).toLowerCase();
   if (!source) return "غير موجود";
   if (source === "none") return "Core: لا يوجد شفت";
+  if (source === "weekly_rest_work_assignment") {
+    return "عمل استثنائي في يوم الراحة";
+  }
   if (source === "exception") {
     if (exceptionType === "off") return "استثناء: يوم راحة";
     if (exceptionType === "custom") return "استثناء: وقت مخصص";

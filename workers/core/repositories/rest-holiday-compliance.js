@@ -160,6 +160,14 @@ export function isExplicitWeeklyRestShift(shift) {
   ).toLowerCase();
 
   if (
+    source === 'weekly_rest_work_assignment'
+  ) {
+    return Number(
+      shift?.weekly_rest_origin_is_explicit || 0
+    ) === 1;
+  }
+
+  if (
     source === 'exception' &&
     exceptionType === 'off'
   ) {
