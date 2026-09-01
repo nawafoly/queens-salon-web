@@ -32,6 +32,9 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
+      - name: Internal auth identity reconciliation
+        run: node --test workers/internal-auth-identity-reconciliation.test.mjs
+
       - name: Operational integrity final gate
         run: npm run verify:operational-integrity
 
