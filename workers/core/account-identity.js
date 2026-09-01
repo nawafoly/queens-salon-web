@@ -55,15 +55,30 @@ export async function resolveAccountForVerifiedIdentity(
   // Compare-and-swap prevents two concurrent identity repairs from blindly
   // overwriting each other. If another request already repaired to this UID,
   // the read below returns that canonical row.
-  const result = await dbRun(
-    db,
-    `UPDATE app_users
-        SET firebase_uid = ?, updated_at = ?
-      WHERE salon_id = ?
-        AND id = ?
-        AND COALESCE(firebase_uid, '') = ?`,
-    [uid, now, salonId, candidate.id, previousUid]
-  );
+  let result;
+  try {
+    result = await dbRun(
+      db,
+      `UPDATE app_users
+          SET firebase_uid = ?, updated_at = ?
+        WHERE salon_id = ?
+          AND id = ?
+          AND COALESCE(firebase_uid, '') = ?`,
+      [uid, now, salonId, candidate.id, previousUid]
+    );
+  } catch (error) {
+    // Identity self-healing is a best-effort write. A verified, unique email
+    // match is already sufficient to resolve the canonical Core account for
+    // this request, so a D1 write failure must not turn authentication into a
+    // platform-wide 500. Keep the stale UID visible for a later repair and log
+    // the operational failure without exposing token data.
+    console.warn('[core-auth] identity reconciliation write failed; using verified email match', {
+      salonId,
+      accountId: candidate.id,
+      message: cleanText(error?.message || error),
+    });
+    return candidate;
+  }
 
   const repaired = await getAccountByFirebaseUid(db, salonId, uid);
   if (!repaired) return null;
