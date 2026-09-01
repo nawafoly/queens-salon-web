@@ -27,9 +27,14 @@ test("configured Core tenant cannot be overridden by request data", () => {
 
 test("authenticated account and employee-link authority stays tenant scoped", () => {
   const auth = read("workers/core/auth-context.js");
+  const identity = read("workers/core/account-identity.js");
 
   assert.match(auth, /AUTH_CONTEXT_TENANT_FENCE_V1/);
-  assert.match(auth, /getAccountByFirebaseUid\(db, salonId, identity\.uid\)/);
+  assert.match(auth, /resolveAccountForVerifiedIdentity\(/);
+  assert.match(identity, /getAccountByFirebaseUid\(db, salonId, uid\)/);
+  assert.match(identity, /WHERE salon_id = \?/);
+  assert.match(identity, /\[salonId, email\]/);
+  assert.match(identity, /WHERE salon_id = \?\s*\n\s*AND id = \?/);
   assert.match(auth, /getEffectivePermissions\(db, salonId, account\)/);
   assert.match(auth, /getActiveEmployeeLink\(db, salonId, account\.id\)/);
   assert.match(auth, /salonId,/);

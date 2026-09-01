@@ -1,9 +1,9 @@
 import { verifyFirebaseIdToken } from '../packages/auth.js';
 import { cleanText, requireDb } from './d1.js';
 import { AppError } from './errors.js';
+import { resolveAccountForVerifiedIdentity } from './account-identity.js';
 import {
   assertAccountCanAuthenticate,
-  getAccountByFirebaseUid,
   getActiveEmployeeLink,
   getEffectivePermissions,
   serializeAuthMe,
@@ -40,6 +40,7 @@ export async function getAuthContext(request, env, options = {}) {
     );
   }
 
+  const requestMeta = requestMetadata(request);
   const idToken = bearerToken(request);
 
   if (!idToken) {
@@ -54,7 +55,7 @@ export async function getAuthContext(request, env, options = {}) {
         salonId,
         coreDb: db,
         guestAccess: true,
-        requestMeta: requestMetadata(request),
+        requestMeta,
       };
     }
     throw new AppError(401, 'core_auth:login_required');
@@ -64,7 +65,12 @@ export async function getAuthContext(request, env, options = {}) {
   if (!projectId) throw new AppError(503, 'core_auth:project_not_configured');
 
   const identity = await verifyFirebaseIdToken(idToken, projectId, env);
-  const account = await getAccountByFirebaseUid(db, salonId, identity.uid);
+  const account = await resolveAccountForVerifiedIdentity(
+    db,
+    salonId,
+    identity,
+    requestMeta
+  );
 
   if (!account) {
     if (options.allowPublicFallback) {
@@ -78,7 +84,7 @@ export async function getAuthContext(request, env, options = {}) {
         salonId,
         coreDb: db,
         guestAccess: true,
-        requestMeta: requestMetadata(request),
+        requestMeta,
       };
     }
     throw new AppError(403, 'ACCOUNT_NOT_PROVISIONED');
@@ -103,7 +109,7 @@ export async function getAuthContext(request, env, options = {}) {
     salonId,
     coreDb: db,
     guestAccess: false,
-    requestMeta: requestMetadata(request),
+    requestMeta,
   };
 }
 
