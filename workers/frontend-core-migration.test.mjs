@@ -796,3 +796,19 @@ test("public booking staff loading is Core-only and cannot keep a stale spinner"
   assert.match(source, /setStaffDisplayById\(next\)/);
   assert.doesNotMatch(source, /staff_public|firebase\/firestore/);
 });
+
+test("production dashboards refresh Core data from application events instead of fixed polling", () => {
+  const sources = [
+    "src/pages/DashboardBookings.tsx",
+    "src/pages/DashboardReports.tsx",
+    "src/pages/AdminHrDashboard.tsx",
+    "src/components/AdminUnifiedNotificationBell.tsx",
+    "src/components/EmployeeRequestNotificationBell.tsx",
+    "src/components/AdminAttendanceSecurityBell.tsx",
+  ].map((path) => readFileSync(path, "utf8"));
+
+  for (const source of sources) {
+    assert.doesNotMatch(source, /setInterval\(/);
+    assert.match(source, /visibilitychange/);
+  }
+});
