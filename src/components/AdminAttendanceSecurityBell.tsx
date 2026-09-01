@@ -11,7 +11,6 @@ import {
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
 
-const POLL_INTERVAL_MS = 15_000;
 const OUTSIDE_ZONE_BURST_WINDOW_MS = 10 * 60_000;
 const OUTSIDE_ZONE_BURST_THRESHOLD = 3;
 
@@ -234,9 +233,19 @@ export default function AdminAttendanceSecurityBell() {
 
   useEffect(() => {
     if (!allowed) return;
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+    return () => {
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
   }, [allowed, refresh]);
 
   useEffect(() => {

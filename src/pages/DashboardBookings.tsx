@@ -4325,8 +4325,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   useEffect(() => {
     let active = true;
     let firstLoad = true;
+    let requestInFlight = false;
 
     const loadCoreBookings = async () => {
+      if (!active || requestInFlight) return;
+      requestInFlight = true;
       if (firstLoad) setLoading(true);
       try {
         const data = (await CoreBookingService.list()).map(coreBookingToLegacy);
@@ -4339,20 +4342,26 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         console.error("[DashboardBookings] Core booking load failed", loadError);
         setError("تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى.");
       } finally {
+        requestInFlight = false;
         if (active) setLoading(false);
         firstLoad = false;
       }
     };
 
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void loadCoreBookings();
+    };
+
     void loadCoreBookings();
-    const timer = window.setInterval(() => void loadCoreBookings(), 8_000);
-    const handleFocus = () => void loadCoreBookings();
-    window.addEventListener("focus", handleFocus);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
       active = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [bookingsRefreshKey]);
 

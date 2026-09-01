@@ -347,32 +347,63 @@ export async function listBookings(db, salonId, query = {}) {
 
   if (!rows.length) return [];
 
-  // Avoid the previous N+1 read pattern (up to four D1 queries per booking).
-  // Dashboard lists are hydrated in a bounded number of batch reads instead.
-  const bookingIds = rows.map((row) => row.id);
-  const idChunks = [];
-  for (let index = 0; index < bookingIds.length; index += 80) {
-    idChunks.push(bookingIds.slice(index, index + 80));
-  }
+  // Hydrate only rows referenced by this page. Reading whole tenant tables here caused
+  // D1 row-read amplification as client and invoice history grew.
+  const chunk = (values) => {
+    const groups = [];
+    for (let index = 0; index < values.length; index += 80) {
+      groups.push(values.slice(index, index + 80));
+    }
+    return groups;
+  };
+  const bookingIds = rows.map((row) => cleanText(row.id)).filter(Boolean);
+  const clientIds = [...new Set(rows.map((row) => cleanText(row.client_id)).filter(Boolean))];
+  const staffIds = [...new Set(rows.map((row) => cleanText(row.staff_id)).filter(Boolean))];
+  const bookingIdChunks = chunk(bookingIds);
+  const clientIdChunks = chunk(clientIds);
+  const staffIdChunks = chunk(staffIds);
 
-  const [clients, staffRows, invoices, itemGroups] = await Promise.all([
-    dbAll(db, "SELECT * FROM clients WHERE salon_id = ? ORDER BY created_at DESC", [salonId]),
-    dbAll(db, "SELECT * FROM staff WHERE salon_id = ? ORDER BY created_at DESC", [salonId]),
-    dbAll(
-      db,
-      "SELECT * FROM invoices WHERE salon_id = ? ORDER BY issued_at DESC, created_at DESC, id DESC",
-      [salonId]
-    ),
+  const [clientGroups, staffGroups, invoiceGroups, itemGroups] = await Promise.all([
     Promise.all(
-      idChunks.map((ids) =>
+      clientIdChunks.map((ids) =>
         dbAll(
           db,
-          `SELECT * FROM booking_items WHERE booking_id IN (${placeholders(ids.length)}) ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id`,
-          ids
+          `SELECT * FROM clients WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+    Promise.all(
+      staffIdChunks.map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM staff WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+    Promise.all(
+      bookingIdChunks.map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM invoices WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)}) ORDER BY issued_at DESC, created_at DESC, id DESC`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+    Promise.all(
+      bookingIdChunks.map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)}) ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id`,
+          [salonId, ...ids]
         )
       )
     ),
   ]);
+  const clients = clientGroups.flat();
+  const staffRows = staffGroups.flat();
+  const invoices = invoiceGroups.flat();
 
   const clientsById = new Map(clients.map((row) => [cleanText(row.id), row]));
   const staffById = new Map(staffRows.map((row) => [cleanText(row.id), row]));

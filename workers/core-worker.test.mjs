@@ -19,6 +19,7 @@ class FakeD1 {
     this.__fakeD1 = true;
     this.failBatchOnSqlIncludes = "";
     this.allQueryCount = 0;
+    this.allQueries = [];
     this.tables = Object.fromEntries([
       "clients",
       "client_aliases",
@@ -230,6 +231,7 @@ class FakeD1 {
   async all(sql, params = []) {
     this.allQueryCount += 1;
     const normalized = sql.replace(/\s+/g, " ").trim();
+    this.allQueries.push({ sql: normalized, params: [...params] });
 
     if (normalized.includes("FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t")) {
       const [salonId, employeeId, dateFrom, dateTo] = params;
@@ -513,6 +515,13 @@ class FakeD1 {
         .filter((row) => row.salon_id === salonId && row.firebase_uid === uid)
         .slice(0, 2);
     }
+    if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id IN (")) {
+      const [salonId, ...ids] = params;
+      const requestedIds = new Set(ids.map(String));
+      return this.rows("clients").filter(
+        (row) => row.salon_id === salonId && requestedIds.has(String(row.id))
+      );
+    }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("clients").filter((row) => row.salon_id === salonId);
@@ -534,6 +543,13 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM staff WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("staff", salonId, id) ? [this.find("staff", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM staff WHERE salon_id = ? AND id IN (")) {
+      const [salonId, ...ids] = params;
+      const requestedIds = new Set(ids.map(String));
+      return this.rows("staff").filter(
+        (row) => row.salon_id === salonId && requestedIds.has(String(row.id))
+      );
     }
     if (normalized.startsWith("SELECT * FROM staff WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
@@ -985,6 +1001,13 @@ class FakeD1 {
         (!normalized.includes("deleted_at IS NULL") || !row.deleted_at)
       );
     }
+    if (normalized.startsWith("SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (")) {
+      const [salonId, ...ids] = params;
+      const bookingIds = new Set(ids.map(String));
+      return this.rows("booking_items").filter(
+        (row) => row.salon_id === salonId && bookingIds.has(String(row.booking_id))
+      );
+    }
     if (normalized.startsWith("SELECT * FROM booking_items WHERE booking_id IN (")) {
       const bookingIds = new Set(params.map(String));
       return this.rows("booking_items").filter((row) => bookingIds.has(String(row.booking_id)));
@@ -996,6 +1019,13 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM invoices WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("invoices", salonId, id) ? [this.find("invoices", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM invoices WHERE salon_id = ? AND booking_id IN (")) {
+      const [salonId, ...ids] = params;
+      const bookingIds = new Set(ids.map(String));
+      return this.rows("invoices").filter(
+        (row) => row.salon_id === salonId && bookingIds.has(String(row.booking_id))
+      );
     }
     if (normalized.startsWith("SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ?")) {
       const [salonId, bookingId] = params;
@@ -3074,9 +3104,11 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
   }
 
   const before = fake.allQueryCount;
+  const queryLogStart = fake.allQueries.length;
   const response = await worker.fetch(request("/api/core/bookings"), env(fake));
   const body = await json(response);
   const reads = fake.allQueryCount - before;
+  const bookingQueries = fake.allQueries.slice(queryLogStart).map((entry) => entry.sql);
 
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(body.data.length, 150);
@@ -3084,6 +3116,26 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
   assert.equal(body.data[0].staff_name, "Staff A");
   assert.equal(body.data[0].items.length, 1);
   assert.ok(reads <= 12, `expected bounded reads, received ${reads}`);
+  assert.ok(
+    bookingQueries.some((sql) => sql.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id IN (")),
+    "booking hydration must scope client reads to referenced client ids"
+  );
+  assert.ok(
+    bookingQueries.some((sql) => sql.startsWith("SELECT * FROM invoices WHERE salon_id = ? AND booking_id IN (")),
+    "booking hydration must scope invoice reads to referenced booking ids"
+  );
+  assert.ok(
+    bookingQueries.some((sql) => sql.startsWith("SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (")),
+    "booking item hydration must preserve the tenant fence"
+  );
+  assert.ok(
+    !bookingQueries.some((sql) => sql.startsWith("SELECT * FROM clients WHERE salon_id = ? ORDER BY")),
+    "booking hydration must not scan the tenant client table"
+  );
+  assert.ok(
+    !bookingQueries.some((sql) => sql.startsWith("SELECT * FROM invoices WHERE salon_id = ? ORDER BY")),
+    "booking hydration must not scan the tenant invoice table"
+  );
 });
 
 

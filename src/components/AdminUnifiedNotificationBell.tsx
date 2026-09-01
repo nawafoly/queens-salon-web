@@ -18,8 +18,6 @@ import {
 import "../styles/EmployeeRequests.css";
 import "../styles/EmployeeRequestNotificationBell.css";
 
-const POLL_INTERVAL_MS = 15_000;
-
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -100,13 +98,21 @@ export default function AdminUnifiedNotificationBell() {
 
   useEffect(() => {
     if (!allowed) return;
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
     const handleChanged = () => void refresh();
+
+    void refresh();
     window.addEventListener("employee-request-notifications-changed", handleChanged);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("employee-request-notifications-changed", handleChanged);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [allowed, refresh]);
 

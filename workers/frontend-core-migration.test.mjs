@@ -211,7 +211,10 @@ test("dashboard bookings uses Core D1 without an operational Firestore switch", 
   assert.doesNotMatch(watchBlock, /getDataSourceFlags|watchFirestoreBookings/);
 
   assert.match(dashboard, /CoreBookingService\.list\(\)/);
-  assert.match(dashboard, /setInterval\(\(\) => void loadCoreBookings\(\), 8_000\)/);
+  assert.match(dashboard, /requestInFlight/);
+  assert.match(dashboard, /visibilitychange/);
+  assert.match(dashboard, /addEventListener\("focus", refreshWhenActive\)/);
+  assert.doesNotMatch(dashboard, /setInterval\([\s\S]{0,80}loadCoreBookings/);
   assert.doesNotMatch(dashboard, /watchAllBookings|getDataSourceFlags|firebase\/firestore/);
   assert.match(dashboard, /تحديث البيانات/);
 });
@@ -329,6 +332,9 @@ test("dashboard reports read finance and payroll from explicit Malikat Core sour
   assert.match(reports, /CoreHrService\.listPayrollEntries\(\)/);
   assert.match(reports, /generatePayrollEntriesForMonths/);
   assert.match(reports, /projectCorePayrollEntriesToFinancialRows/);
+  assert.match(reports, /refreshInFlight/);
+  assert.match(reports, /visibilitychange/);
+  assert.doesNotMatch(reports, /setInterval\([\s\S]{0,80}refreshFinancialData/);
 
   assert.doesNotMatch(reports, /CoreHrService\.listEmployees\(\)/);
   assert.doesNotMatch(reports, /CoreSettingsService/);
@@ -789,4 +795,20 @@ test("public booking staff loading is Core-only and cannot keep a stale spinner"
   assert.doesNotMatch(source, /finally\s*\{\s*if \(!cancelled\)\s*\{\s*setStaffLoadingByService/);
   assert.match(source, /setStaffDisplayById\(next\)/);
   assert.doesNotMatch(source, /staff_public|firebase\/firestore/);
+});
+
+test("production dashboards refresh Core data from application events instead of fixed polling", () => {
+  const sources = [
+    "src/pages/DashboardBookings.tsx",
+    "src/pages/DashboardReports.tsx",
+    "src/pages/AdminHrDashboard.tsx",
+    "src/components/AdminUnifiedNotificationBell.tsx",
+    "src/components/EmployeeRequestNotificationBell.tsx",
+    "src/components/AdminAttendanceSecurityBell.tsx",
+  ].map((path) => readFileSync(path, "utf8"));
+
+  for (const source of sources) {
+    assert.doesNotMatch(source, /setInterval\(/);
+    assert.match(source, /visibilitychange/);
+  }
 });
