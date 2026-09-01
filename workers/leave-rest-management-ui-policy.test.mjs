@@ -77,7 +77,10 @@ test("annual leave balance UI renders canonical Core balance components", () => 
   }
 
   assert.match(panel, /label="الاستحقاق السنوي"/);
-  assert.match(panel, /label="المكتسب حتى اليوم"/);
+  assert.doesNotMatch(panel, /label="المكتسب حتى اليوم"/);
+  assert.match(panel, /title="معلومة احتسابية"/);
+  assert.match(panel, /الاستحقاق النظري المتراكم حسب تاريخ الخدمة/);
+  assert.match(panel, /لا تمثل الرصيد المتبقي ولا تُضاف فوق الرصيد الافتتاحي المعتمد/);
   assert.match(panel, /label="الرصيد الافتتاحي"/);
   assert.match(panel, /label="المستخدم"/);
   assert.match(panel, /label="المعاد\/المسترجع"/);
@@ -218,11 +221,21 @@ test("annual leave opening balance uses the canonical audited Core path", () => 
 
   assert.match(
     panel,
-    /أدخل الرصيد المتاح فعليًا في تاريخ السريان/
+    /label="الرصيد المتبقي المعتمد"/
   );
 
   assert.match(
     panel,
-    /لا تدخل الإجازات القديمة مرة أخرى/
+    /إذا كان السجل السابق غير مكتمل فلا تخمّن الرصيد/
+  );
+
+  assert.match(
+    panel,
+    /إذا لم تعرف ما تم استخدامه سابقًا فلا تدخل رقمًا تقديريًا/
+  );
+
+  assert.match(
+    panel,
+    /اعتماد الرصيد المتبقي/
   );
 });

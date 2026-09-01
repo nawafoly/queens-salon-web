@@ -700,7 +700,7 @@ export default function LeaveRestManagementPanel({
 
       <WorkspaceCardV2
         title="تفصيل رصيد الإجازة السنوية"
-        description="يعرض الاستحقاق، المكتسب، الافتتاحي، المستخدم، والمسترجع قبل احتساب الرصيد المتاح."
+        description="يفصل بين الاستحقاق السنوي النظامي وبين الرصيد المتبقي المعتمد فعليًا للموظفة."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
@@ -776,18 +776,7 @@ export default function LeaveRestManagementPanel({
                 : numberLabel(annualLeave.annualEntitlementDays, " يوم")
             }
           />
-          <WorkspaceMetricV2
-            label="المكتسب حتى اليوم"
-            value={
-              loading
-                ? "جاري التحميل..."
-                : numberLabel(
-                    annualLeave.earnedCurrentServiceYearDays ??
-                      annualLeave.accruedDays,
-                    " يوم"
-                  )
-            }
-          />
+
           <WorkspaceMetricV2
             label="الرصيد الافتتاحي"
             value={
@@ -861,16 +850,30 @@ export default function LeaveRestManagementPanel({
             }
           />
         </div>
+
+        <WorkspaceNoticeV2
+          title="معلومة احتسابية"
+          description={
+            loading
+              ? "جاري تحميل تفاصيل الاحتساب..."
+              : `الاستحقاق النظري المتراكم حسب تاريخ الخدمة: ${numberLabel(
+                  annualLeave.earnedCurrentServiceYearDays ??
+                    annualLeave.accruedDays,
+                  " يوم"
+                )}. هذه المعلومة لا تمثل الرصيد المتبقي ولا تُضاف فوق الرصيد الافتتاحي المعتمد.`
+          }
+          tone="neutral"
+        />
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
         title="الرصيد الافتتاحي / تسوية بدء النظام"
-        description="يستخدم عند إدخال الرصيد الفعلي للموظفة عند بدء استخدام النظام، بعد احتساب ما سبق من استحقاقات وإجازات."
+        description="سجل هنا فقط الرصيد المتبقي الذي تم اعتماده فعليًا عند بدء النظام. إذا كان السجل السابق غير مكتمل فلا تخمّن الرصيد."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-days"
-            label="الرصيد الفعلي"
+            label="الرصيد المتبقي المعتمد"
           >
             <input
               id="employee-live-v2-opening-balance-days"
@@ -882,7 +885,7 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 hasOpeningBalance
               }
-              placeholder="مثال: 9 أو 9.5"
+              placeholder="مثال: 21 أو 15.5"
               onChange={(event) =>
                 setOpeningBalanceDays(
                   event.target.value
@@ -942,7 +945,7 @@ export default function LeaveRestManagementPanel({
           description={
             hasOpeningBalance
               ? "يوجد رصيد افتتاحي مسجل في السجل الموحد. الحركات والاستحقاقات التالية تستمر من خلال Core."
-              : "أدخل الرصيد المتاح فعليًا في تاريخ السريان. لا تدخل الإجازات القديمة مرة أخرى لأنها يجب أن تكون محسوبة ضمن هذا الرقم."
+              : "أدخل فقط الرصيد المتبقي الذي اعتمدته الموارد البشرية في تاريخ السريان. إذا لم تعرف ما تم استخدامه سابقًا فلا تدخل رقمًا تقديريًا واترك الرصيد بحالة مراجعة حتى تتم التسوية."
           }
           tone={
             hasOpeningBalance
@@ -967,7 +970,7 @@ export default function LeaveRestManagementPanel({
             void submitOpeningBalance()
           }
         >
-          تسجيل الرصيد الافتتاحي
+          اعتماد الرصيد المتبقي
         </button>
       </WorkspaceCardV2>
 
