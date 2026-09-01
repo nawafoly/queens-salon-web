@@ -67,13 +67,21 @@ export default function EmployeeRequestNotificationBell({ enabled = true, classN
 
   useEffect(() => {
     if (!allowed) return;
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
     const handleChanged = () => void refresh();
+
+    void refresh();
     window.addEventListener("employee-request-notifications-changed", handleChanged);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("employee-request-notifications-changed", handleChanged);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [allowed, refresh]);
 
