@@ -836,6 +836,24 @@ export const CoreHrService = {
     };
   },
 
+  async setAnnualLeaveOpeningBalance(
+    employeeId: string,
+    input: {
+      days: number;
+      effectiveDate: string;
+      reason: string;
+      operationId: string;
+    }
+  ) {
+    return coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-balance/opening-balance`,
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+  },
+
   async createAnnualLeaveRecall(
     leaveId: string,
     input: {

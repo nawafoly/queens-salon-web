@@ -122,3 +122,107 @@ test("Core annual recall remains blocked outside the approved leave range", () =
   assert.match(workflow, /recallDate < cleanText\(leave\.start_date\) \|\| recallDate > cleanText\(leave\.end_date\)/);
   assert.match(workflow, /future_recall_not_supported/);
 });
+test("annual leave service start keeps Core as the single source of truth", () => {
+  const panel = source("../src/pages/dashboardEmployees/LeaveRestManagementPanel.tsx");
+
+  assert.match(
+    panel,
+    /employment\.start_date\s*\?\?\s*employment\.startDate/
+  );
+
+  assert.match(
+    panel,
+    /employment\.social_insurance_effective_from\s*\?\?\s*employment\.socialInsuranceEffectiveFrom/
+  );
+
+  assert.match(
+    panel,
+    /persistedStartDate\s*\|\|\s*insuranceDate/
+  );
+
+  assert.match(
+    panel,
+    /CoreHrService\.saveEmployee\(\{[\s\S]*employment:\s*\{[\s\S]*startDate:\s*serviceStartDate/
+  );
+
+  assert.match(
+    panel,
+    /مقترح من تاريخ سريان التصنيف — غير محفوظ/
+  );
+
+  assert.match(
+    panel,
+    /مطابق لتاريخ سريان التصنيف/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /calculateAnnualLeaveAccrual/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /\b21\s*(?:يوم|days?)\b|\b30\s*(?:يوم|days?)\b/
+  );
+});
+
+test("annual leave opening balance uses the canonical audited Core path", () => {
+  const service = source("../src/services/CoreHrService.ts");
+  const panel = source("../src/pages/dashboardEmployees/LeaveRestManagementPanel.tsx");
+  const core = source("../workers/core/index.js");
+
+  assert.match(
+    service,
+    /leave-balance\/opening-balance/
+  );
+
+  assert.match(
+    core,
+    /hr-employee:annual-leave-opening-balance/
+  );
+
+  assert.match(
+    core,
+    /setAnnualLeaveOpeningBalance/
+  );
+
+  assert.match(
+    core,
+    /attendance\.leaves\.manage/
+  );
+
+  assert.match(
+    panel,
+    /CoreHrService[\s\S]*\.setAnnualLeaveOpeningBalance/
+  );
+
+  assert.match(
+    panel,
+    /Boolean\(\s*annualLeave\.openingBalance\s*\)/
+  );
+
+  assert.match(
+    panel,
+    /openingBalanceOperationIdRef/
+  );
+
+  assert.match(
+    panel,
+    /crypto\.randomUUID\(\)/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /Date\.now\(\)/
+  );
+
+  assert.match(
+    panel,
+    /أدخل الرصيد المتاح فعليًا في تاريخ السريان/
+  );
+
+  assert.match(
+    panel,
+    /لا تدخل الإجازات القديمة مرة أخرى/
+  );
+});

@@ -126,6 +126,9 @@ import {
   setLeaveEntitlementDate,
 } from './repositories/leave-balance.js';
 import {
+  setAnnualLeaveOpeningBalance,
+} from './repositories/annual-leave.js';
+import {
   createPermissionRequest,
   decidePermissionRequest,
   listPermissionRequests,
@@ -564,6 +567,14 @@ function match(url, method) {
       name: "hr-employee:leave-balance-entry",
       id: leaveBalanceEntry[1],
       entryId: leaveBalanceEntry[2],
+    };
+  }
+
+  const annualLeaveOpeningBalance = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/opening-balance$/.exec(path);
+  if (annualLeaveOpeningBalance && method === "POST") {
+    return {
+      name: "hr-employee:annual-leave-opening-balance",
+      id: annualLeaveOpeningBalance[1],
     };
   }
 
@@ -1677,6 +1688,19 @@ async function dispatch(ctx, route, method, body, query, env) {
         ctx.salonId,
         route.id,
         query
+      );
+
+    case "hr-employee:annual-leave-opening-balance":
+      requirePermission(
+        ctx,
+        "attendance.leaves.manage"
+      );
+      return setAnnualLeaveOpeningBalance(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo
       );
 
     case "hr-employee:leave-balance-adjustment": {

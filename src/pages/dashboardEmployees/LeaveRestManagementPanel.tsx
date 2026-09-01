@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DashboardDatePickerV2,
   DashboardFieldV2,
@@ -127,6 +127,18 @@ function humanError(error: unknown) {
   if (raw.includes("future_recall_not_supported")) {
     return "الاستدعاء يسجل لليوم الحالي أو لتاريخ سابق فقط.";
   }
+  if (raw.includes("opening_reason_required")) {
+    return "سبب تسوية الرصيد الافتتاحي مطلوب.";
+  }
+  if (raw.includes("opening_balance_already_exists")) {
+    return "تم تسجيل رصيد افتتاحي سابقًا لهذه الموظفة.";
+  }
+  if (raw.includes("opening_before_service_start")) {
+    return "تاريخ سريان الرصيد لا يمكن أن يسبق تاريخ بداية الخدمة.";
+  }
+  if (raw.includes("opening_effective_date_in_future")) {
+    return "تاريخ سريان الرصيد لا يمكن أن يكون في المستقبل.";
+  }
   if (raw.includes("reason_required")) {
     return "السبب مطلوب.";
   }
@@ -160,6 +172,42 @@ export default function LeaveRestManagementPanel({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  // ANNUAL_LEAVE_SERVICE_START_GOSI_BRIDGE_V1
+  // GOSI is an initial suggestion only.
+  // employee_employment.start_date is canonical.
+  const [
+    persistedServiceStartDate,
+    setPersistedServiceStartDate,
+  ] = useState("");
+
+  const [
+    gosiEffectiveDate,
+    setGosiEffectiveDate,
+  ] = useState("");
+
+  const [
+    serviceStartDate,
+    setServiceStartDate,
+  ] = useState("");
+
+  const [
+    openingBalanceDays,
+    setOpeningBalanceDays,
+  ] = useState("");
+
+  const [
+    openingBalanceEffectiveDate,
+    setOpeningBalanceEffectiveDate,
+  ] = useState(today);
+
+  const [
+    openingBalanceReason,
+    setOpeningBalanceReason,
+  ] = useState("");
+
+  const openingBalanceOperationIdRef =
+    useRef("");
+
   const [recallDate, setRecallDate] =
     useState(today);
   const [recallReason, setRecallReason] =
@@ -179,16 +227,51 @@ export default function LeaveRestManagementPanel({
     setLoading(true);
     setMessage("");
     try {
-      const [nextOverview, leaves] =
-        await Promise.all([
-          CoreHrService.getLeaveRestOverview(
-            employeeId
-          ),
-          CoreHrService.listLeaves({
-            employeeId,
-            status: "approved",
-          }),
-        ]);
+      const [
+        nextOverview,
+        leaves,
+        employee,
+      ] = await Promise.all([
+        CoreHrService.getLeaveRestOverview(
+          employeeId
+        ),
+        CoreHrService.listLeaves({
+          employeeId,
+          status: "approved",
+        }),
+        CoreHrService.getEmployee(
+          employeeId
+        ),
+      ]);
+
+      const employment =
+        (employee.employment || {}) as Record<
+          string,
+          unknown
+        >;
+
+      const persistedStartDate = clean(
+        employment.start_date ??
+        employment.startDate
+      );
+
+      const insuranceDate = clean(
+        employment.social_insurance_effective_from ??
+        employment.socialInsuranceEffectiveFrom
+      );
+
+      setPersistedServiceStartDate(
+        persistedStartDate
+      );
+
+      setGosiEffectiveDate(
+        insuranceDate
+      );
+
+      setServiceStartDate(
+        persistedStartDate ||
+        insuranceDate
+      );
 
       setOverview(nextOverview);
       setApprovedAnnualLeaves(
@@ -257,6 +340,25 @@ export default function LeaveRestManagementPanel({
       : "";
   const annualAvailable =
     annualLeave.availableDays;
+
+  const hasOpeningBalance =
+    Boolean(
+      annualLeave.openingBalance
+    );
+
+  const serviceStartSourceLabel =
+    persistedServiceStartDate
+      ? gosiEffectiveDate &&
+        persistedServiceStartDate ===
+          gosiEffectiveDate
+        ? "مطابق لتاريخ سريان التصنيف"
+        : gosiEffectiveDate
+          ? "معدل من الموارد البشرية"
+          : "من ملف الموظفة"
+      : gosiEffectiveDate
+        ? "مقترح من تاريخ سريان التصنيف — غير محفوظ"
+        : "غير محدد";
+
   const nearbyApprovedAnnualLeaves =
     approvedAnnualLeaves
       .slice()
@@ -287,6 +389,122 @@ export default function LeaveRestManagementPanel({
           )
           .join("، ")}.`
       : "لا توجد إجازات سنوية معتمدة كاملة لهذا الموظف في القائمة الحالية.";
+
+  const saveServiceStartDate =
+    async () => {
+      if (!serviceStartDate) {
+        setMessage(
+          "حدد تاريخ بداية الخدمة."
+        );
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+
+      try {
+        await CoreHrService.saveEmployee({
+          id: employeeId,
+          employment: {
+            startDate:
+              serviceStartDate,
+          },
+        });
+
+        await load();
+
+        setMessage(
+          "تم حفظ تاريخ بداية الخدمة وأصبح المرجع الموحد لحساب الإجازة السنوية."
+        );
+      } catch (error) {
+        setMessage(
+          humanError(error)
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
+
+  const submitOpeningBalance =
+    async () => {
+      if (!persistedServiceStartDate) {
+        setMessage(
+          "احفظ تاريخ بداية الخدمة أولًا."
+        );
+        return;
+      }
+
+      const days =
+        Number(openingBalanceDays);
+
+      if (
+        !Number.isFinite(days) ||
+        days < 0
+      ) {
+        setMessage(
+          "أدخل رصيدًا افتتاحيًا صالحًا."
+        );
+        return;
+      }
+
+      if (
+        !openingBalanceEffectiveDate
+      ) {
+        setMessage(
+          "حدد تاريخ سريان الرصيد."
+        );
+        return;
+      }
+
+      if (
+        !openingBalanceReason.trim()
+      ) {
+        setMessage(
+          "اكتب سبب التسوية."
+        );
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+
+      try {
+        if (!openingBalanceOperationIdRef.current) {
+          openingBalanceOperationIdRef.current =
+            `annual-opening-${employeeId}-${crypto.randomUUID()}`;
+        }
+
+        await CoreHrService
+          .setAnnualLeaveOpeningBalance(
+            employeeId,
+            {
+              days,
+              effectiveDate:
+                openingBalanceEffectiveDate,
+              reason:
+                openingBalanceReason.trim(),
+              operationId:
+                openingBalanceOperationIdRef.current,
+            }
+          );
+
+        setOpeningBalanceDays("");
+        setOpeningBalanceReason("");
+        openingBalanceOperationIdRef.current = "";
+
+        await load();
+
+        setMessage(
+          "تم تسجيل الرصيد الافتتاحي في السجل الموحد للإجازة السنوية."
+        );
+      } catch (error) {
+        setMessage(
+          humanError(error)
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
 
   const submitRecall = async () => {
     if (!recallLeave) {
@@ -484,6 +702,71 @@ export default function LeaveRestManagementPanel({
         title="تفصيل رصيد الإجازة السنوية"
         description="يعرض الاستحقاق، المكتسب، الافتتاحي، المستخدم، والمسترجع قبل احتساب الرصيد المتاح."
       >
+        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+          <DashboardFieldV2
+            id="employee-live-v2-service-start-date"
+            label="تاريخ بداية الخدمة"
+          >
+            <DashboardDatePickerV2
+              id="employee-live-v2-service-start-date"
+              value={serviceStartDate}
+              max={today}
+              disabled={readOnly || saving}
+              onChange={setServiceStartDate}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-service-start-source"
+            label="حالة المرجع"
+          >
+            <input
+              id="employee-live-v2-service-start-source"
+              className="dsv2-input"
+              value={serviceStartSourceLabel}
+              readOnly
+            />
+          </DashboardFieldV2>
+        </div>
+
+        <WorkspaceNoticeV2
+          title={
+            !persistedServiceStartDate &&
+            gosiEffectiveDate
+              ? "اقتراح أولي من التأمينات"
+              : "مرجع احتساب الإجازة"
+          }
+          description={
+            !persistedServiceStartDate &&
+            gosiEffectiveDate
+              ? "تم اقتراح تاريخ سريان التصنيف لأن تاريخ بداية الخدمة غير محفوظ. احفظ التاريخ لتثبيته كمرجع الإجازة السنوية."
+              : "الحساب يعتمد على تاريخ بداية الخدمة المحفوظ في Core. تعديل هذا التاريخ لا يغيّر تاريخ سريان التصنيف في التأمينات."
+          }
+          tone={
+            !persistedServiceStartDate &&
+            gosiEffectiveDate
+              ? "gold"
+              : "neutral"
+          }
+        />
+
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--secondary"
+          disabled={
+            readOnly ||
+            saving ||
+            !serviceStartDate ||
+            serviceStartDate ===
+              persistedServiceStartDate
+          }
+          onClick={() =>
+            void saveServiceStartDate()
+          }
+        >
+          حفظ تاريخ بداية الخدمة
+        </button>
+
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
             label="الاستحقاق السنوي"
@@ -578,6 +861,114 @@ export default function LeaveRestManagementPanel({
             }
           />
         </div>
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="الرصيد الافتتاحي / تسوية بدء النظام"
+        description="يستخدم عند إدخال الرصيد الفعلي للموظفة عند بدء استخدام النظام، بعد احتساب ما سبق من استحقاقات وإجازات."
+      >
+        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+          <DashboardFieldV2
+            id="employee-live-v2-opening-balance-days"
+            label="الرصيد الفعلي"
+          >
+            <input
+              id="employee-live-v2-opening-balance-days"
+              className="dsv2-input"
+              inputMode="decimal"
+              value={openingBalanceDays}
+              disabled={
+                readOnly ||
+                saving ||
+                hasOpeningBalance
+              }
+              placeholder="مثال: 9 أو 9.5"
+              onChange={(event) =>
+                setOpeningBalanceDays(
+                  event.target.value
+                )
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-opening-balance-effective-date"
+            label="تاريخ سريان الرصيد"
+          >
+            <DashboardDatePickerV2
+              id="employee-live-v2-opening-balance-effective-date"
+              value={openingBalanceEffectiveDate}
+              max={today}
+              disabled={
+                readOnly ||
+                saving ||
+                hasOpeningBalance
+              }
+              onChange={
+                setOpeningBalanceEffectiveDate
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-opening-balance-reason"
+            label="سبب التسوية"
+          >
+            <input
+              id="employee-live-v2-opening-balance-reason"
+              className="dsv2-input"
+              value={openingBalanceReason}
+              disabled={
+                readOnly ||
+                saving ||
+                hasOpeningBalance
+              }
+              placeholder="مثال: الرصيد الفعلي عند بدء النظام"
+              onChange={(event) =>
+                setOpeningBalanceReason(
+                  event.target.value
+                )
+              }
+            />
+          </DashboardFieldV2>
+        </div>
+
+        <WorkspaceNoticeV2
+          title={
+            hasOpeningBalance
+              ? "الرصيد الافتتاحي مثبت"
+              : "تسوية انتقالية"
+          }
+          description={
+            hasOpeningBalance
+              ? "يوجد رصيد افتتاحي مسجل في السجل الموحد. الحركات والاستحقاقات التالية تستمر من خلال Core."
+              : "أدخل الرصيد المتاح فعليًا في تاريخ السريان. لا تدخل الإجازات القديمة مرة أخرى لأنها يجب أن تكون محسوبة ضمن هذا الرقم."
+          }
+          tone={
+            hasOpeningBalance
+              ? "success"
+              : "neutral"
+          }
+        />
+
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--success"
+          disabled={
+            readOnly ||
+            saving ||
+            hasOpeningBalance ||
+            !persistedServiceStartDate ||
+            openingBalanceDays === "" ||
+            !openingBalanceEffectiveDate ||
+            !openingBalanceReason.trim()
+          }
+          onClick={() =>
+            void submitOpeningBalance()
+          }
+        >
+          تسجيل الرصيد الافتتاحي
+        </button>
       </WorkspaceCardV2>
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
