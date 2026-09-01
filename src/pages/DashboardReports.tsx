@@ -541,6 +541,7 @@ export default function DashboardReports() {
     let incomeReady = false;
     let expensesReady = false;
     let payrollReady = false;
+    let refreshInFlight: Promise<void> | null = null;
     setLoading(true);
     setLoadErr("");
 
@@ -657,12 +658,24 @@ export default function DashboardReports() {
     };
 
     const refreshFinancialData = () => {
-      void loadBookingsData();
-      void loadIncomeData();
-      void loadExpensesData();
+      if (!active || refreshInFlight) return refreshInFlight;
+      refreshInFlight = Promise.all([
+        loadBookingsData(),
+        loadIncomeData(),
+        loadExpensesData(),
+      ]).then(() => undefined).finally(() => {
+        refreshInFlight = null;
+      });
+      return refreshInFlight;
     };
-    refreshFinancialData();
-    const refreshTimer = globalThis.setInterval(refreshFinancialData, 12_000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refreshFinancialData();
+    };
+
+    void refreshFinancialData();
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     const loadPayrollEntriesData = async () => {
       try {
@@ -681,7 +694,9 @@ export default function DashboardReports() {
 
     return () => {
       active = false;
-      globalThis.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, []);
 
