@@ -1187,11 +1187,18 @@ export default function AdminHrDashboard({
         if (!disposed) setPendingPermissionCount(0);
       }
     };
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refreshPermissionCount();
+    };
     void refreshPermissionCount();
-    const timer = window.setInterval(() => void refreshPermissionCount(), 30_000);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [session.uid]);
 
@@ -1216,13 +1223,21 @@ export default function AdminHrDashboard({
   }, [hasPermission, session.uid]);
 
   useEffect(() => {
-    void refreshRequestNotifications();
-    const timer = window.setInterval(() => void refreshRequestNotifications(), 30_000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void refreshRequestNotifications();
+    };
     const handleNotificationsChanged = () => void refreshRequestNotifications();
+
+    void refreshRequestNotifications();
     window.addEventListener("employee-request-notifications-changed", handleNotificationsChanged);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("employee-request-notifications-changed", handleNotificationsChanged);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [refreshRequestNotifications]);
 
