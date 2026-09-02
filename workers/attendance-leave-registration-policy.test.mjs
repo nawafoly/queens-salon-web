@@ -14,6 +14,10 @@ const dashboardEmployeesSource = readFileSync(
   new URL("../src/pages/DashboardEmployees.tsx", import.meta.url),
   "utf8"
 );
+const leaveRequestModalSource = readFileSync(
+  new URL("../src/components/LeaveRequestModal.tsx", import.meta.url),
+  "utf8"
+);
 
 test("an absent day without punches is not blocked from leave registration", () => {
   assert.match(
@@ -40,6 +44,17 @@ test("the attendance-day handler blocks real punches but opens the leave modal o
   assert.match(dashboardEmployeesSource, /setLeaveModalDate\(date\);/);
   assert.match(dashboardEmployeesSource, /setLeaveModalDefaultType\("emergency"\);/);
   assert.match(dashboardEmployeesSource, /setLeaveModalOpen\(true\);/);
+});
+
+test("leave modal resets stale leave type to the requested default every time it opens", () => {
+  assert.match(
+    leaveRequestModalSource,
+    /if \(!open\) return;[\s\S]*?setType\(defaultType\);[\s\S]*?setFromDate\(initialDate \|\| ""\);/
+  );
+  assert.match(
+    leaveRequestModalSource,
+    /\}, \[defaultType, initialDate, open\]\);/
+  );
 });
 
 test("submitting the leave modal approves through the canonical leave decision and verifies Core state", () => {

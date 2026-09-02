@@ -86,6 +86,7 @@ export default function LeaveRequestModal({
 
   useEffect(() => {
     if (!open) return;
+    setType(defaultType);
     setFromDate(initialDate || "");
     setToDate(initialDate || "");
     setDurationKind("full_day");
@@ -94,7 +95,7 @@ export default function LeaveRequestModal({
     setNote("");
     setErrors([]);
     setSubmitting(false);
-  }, [initialDate, open]);
+  }, [defaultType, initialDate, open]);
 
   useEffect(() => {
     if (isPartialLeave || isOtherLeaveType) {
