@@ -21,10 +21,24 @@ test('leave request requires an explicit type and never defaults to annual', () 
   );
 });
 
-test('legacy emergency and unknown request types are routed to HR review', () => {
+test('emergency is canonical company policy while unknown types route to HR review', () => {
   assert.equal(
     requireExplicitSaLeaveType({ leaveType: 'emergency' }).leaveType,
-    'other_hr_review'
+    'emergency'
+  );
+  assert.equal(
+    leaveDecisionRuntime(
+      { leave_type: 'emergency', status: 'pending' },
+      'approved'
+    ),
+    'annual_approve'
+  );
+  assert.equal(
+    leaveDecisionRuntime(
+      { leave_type: 'emergency', status: 'approved' },
+      'rejected'
+    ),
+    'annual_cancel'
   );
   assert.equal(
     requireExplicitSaLeaveType({ leaveType: 'made_up_type' }).leaveType,

@@ -7,6 +7,7 @@ import {
 export const SA_LEAVE_TYPES = Object.freeze({
   annual: 'annual',
   sick: 'sick',
+  emergency: 'emergency',
   unpaid: 'unpaid',
   marriage: 'marriage',
   bereavementSpouseAscendantDescendant: 'bereavement_spouse_ascendant_descendant',
@@ -104,7 +105,7 @@ function annualEntitlementForServiceYear(serviceYear, contractualDays) {
 export function normalizeSaLeaveType(value) {
   const type = cleanText(value);
   if (KNOWN_LEAVE_TYPES.has(type)) return type;
-  if (type === 'emergency' || type === 'other' || type === 'general' || !type) {
+  if (type === 'other' || type === 'general' || !type) {
     return SA_LEAVE_TYPES.otherHrReview;
   }
   return SA_LEAVE_TYPES.otherHrReview;
@@ -119,7 +120,9 @@ export function getSaLeaveTypePolicy(value) {
     leaveType,
     policyVersion: SA_LABOR_POLICY_VERSION,
     reviewRequired,
-    deductAnnualBalance: leaveType === SA_LEAVE_TYPES.annual,
+    deductAnnualBalance:
+      leaveType === SA_LEAVE_TYPES.annual ||
+      leaveType === SA_LEAVE_TYPES.emergency,
     affectsPayroll: leaveType === SA_LEAVE_TYPES.unpaid,
     entitlementBucket: null,
     documentationRequired: false,
@@ -128,6 +131,8 @@ export function getSaLeaveTypePolicy(value) {
 
   switch (leaveType) {
     case SA_LEAVE_TYPES.annual:
+      return { ...base, entitlementBucket: 'annual' };
+    case SA_LEAVE_TYPES.emergency:
       return { ...base, entitlementBucket: 'annual' };
     case SA_LEAVE_TYPES.sick:
       return { ...base, entitlementBucket: 'sick_year', documentationRequired: true };

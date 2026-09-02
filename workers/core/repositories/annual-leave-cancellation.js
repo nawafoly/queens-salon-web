@@ -42,7 +42,9 @@ export async function cancelApprovedAnnualLeave(
   actor = {}
 ) {
   if (
-    cleanText(leave?.leave_type).toLowerCase() !== 'annual' ||
+    !['annual', 'emergency'].includes(
+      cleanText(leave?.leave_type).toLowerCase()
+    ) ||
     cleanText(leave?.status).toLowerCase() !== 'approved'
   ) {
     throw new AppError(
@@ -226,7 +228,7 @@ export async function cancelApprovedAnnualLeave(
                 AND approved_leave.id = ?
                 AND approved_leave.employee_id = ?
                 AND approved_leave.status = 'approved'
-                AND approved_leave.leave_type = 'annual'
+                AND approved_leave.leave_type IN ('annual', 'emergency')
                 AND approved_leave.balance_adjustment_id = ?
            )
            AND NOT EXISTS (
@@ -343,7 +345,7 @@ export async function cancelApprovedAnnualLeave(
          WHERE salon_id = ?
            AND id = ?
            AND status = 'approved'
-           AND leave_type = 'annual'
+           AND leave_type IN ('annual', 'emergency')
            AND balance_adjustment_id = ?
            AND EXISTS (
              SELECT 1

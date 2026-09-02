@@ -50,7 +50,12 @@ test("submitting the leave modal approves through the canonical leave decision a
 
   assert.match(
     dashboardEmployeesSource,
-    /await CoreHrService\.listLeaves\(\{[\s\S]*?employeeId: selectedEmployeeId,[\s\S]*?\}\);/
+    /const canonicalResult\s*=\s*await decideCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical,[\s\S]*?"approved"[\s\S]*?\);/
+  );
+
+  assert.match(
+    dashboardEmployeesSource,
+    /requestForCanonical\s*=\s*canonicalResult\.request;[\s\S]*?coreLeaveId\s*=\s*canonicalResult\.coreLeave\.id;[\s\S]*?canonicalApprovalCommitted\s*=\s*true;/
   );
 
   assert.doesNotMatch(
@@ -61,5 +66,36 @@ test("submitting the leave modal approves through the canonical leave decision a
   assert.match(
     dashboardEmployeesSource,
     /description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب"/
+  );
+});
+
+
+test("leave retry reuses an active Core request and rollback refreshes its version", () => {
+  assert.match(
+    dashboardEmployeesSource,
+    /\["pending", "approved"\]\.includes\([\s\S]*?cleanText\(request\.status\)\.toLowerCase\(\)/
+  );
+
+  assert.match(
+    dashboardEmployeesSource,
+    /await refreshCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical[\s\S]*?\);[\s\S]*?await decideCanonicalEmployeeLeaveRequest\([\s\S]*?rollbackRequest,[\s\S]*?"cancelled"/
+  );
+});
+
+
+test("post-commit UI refresh cannot roll back an approved canonical leave", () => {
+  assert.match(
+    dashboardEmployeesSource,
+    /canonicalApprovalCommitted\s*=\s*true;[\s\S]*?canonical leave post-commit refresh failed/
+  );
+
+  assert.match(
+    dashboardEmployeesSource,
+    /if \(\s*!canonicalApprovalCommitted\s*&&\s*createdRequestId\s*&&\s*requestForCanonical\s*\)/
+  );
+
+  assert.doesNotMatch(
+    dashboardEmployeesSource,
+    /Fail closed: after canonical approval the linked Core[\s\S]*?CoreHrService\.listLeaves/
   );
 });

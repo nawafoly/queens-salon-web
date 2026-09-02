@@ -780,8 +780,9 @@ export async function approveAnnualLeave(
   actor = {}
 ) {
   if (
-    cleanText(leave?.leave_type).toLowerCase() !==
-      'annual' ||
+    !['annual', 'emergency'].includes(
+      cleanText(leave?.leave_type).toLowerCase()
+    ) ||
     cleanText(leave?.status).toLowerCase() !==
       'pending'
   ) {
@@ -937,7 +938,7 @@ export async function approveAnnualLeave(
                 AND pending_leave.id = ?
                 AND pending_leave.employee_id = ?
                 AND pending_leave.status = 'pending'
-                AND pending_leave.leave_type = 'annual'
+                AND pending_leave.leave_type IN ('annual', 'emergency')
            )
            AND NOT EXISTS (
              SELECT 1
@@ -1026,7 +1027,7 @@ export async function approveAnnualLeave(
           AND employment.leave_balance_last_entry_id = ?
           AND pending_leave.id = ?
           AND pending_leave.status = 'pending'
-          AND pending_leave.leave_type = 'annual'
+          AND pending_leave.leave_type IN ('annual', 'emergency')
       `,
       params: [
         adjustmentId,

@@ -1,6 +1,7 @@
 import { CoreHrService } from "./CoreHrService";
 import {
   employeeRequestAction,
+  getEmployeeRequest,
   type EmployeeRequest,
 } from "./employeeRequests";
 import type { EmployeeLeaveRequest } from "./employeeHub";
@@ -63,6 +64,18 @@ function updateRequestState(
     updatedAt: row.updated_at,
     reviewedAt: row.approved_at || row.rejected_at || base.reviewedAt,
   };
+}
+
+export async function refreshCanonicalEmployeeLeaveRequest(
+  request: EmployeeLeaveRequest
+) {
+  const requestId = cleanText(request.id);
+  if (!requestId) {
+    throw new Error("employee_leave_request_id_required");
+  }
+
+  const row = await getEmployeeRequest(requestId);
+  return updateRequestState(request, row);
 }
 
 async function act(

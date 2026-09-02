@@ -1,6 +1,7 @@
 export const SA_LEAVE_TYPES: Readonly<{
   annual: 'annual';
   sick: 'sick';
+  emergency: 'emergency';
   unpaid: 'unpaid';
   marriage: 'marriage';
   bereavementSpouseAscendantDescendant: 'bereavement_spouse_ascendant_descendant';

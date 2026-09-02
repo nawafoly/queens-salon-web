@@ -58,6 +58,7 @@ const SENSITIVE_FAMILY_TYPES = new Set([
 
 const CANONICAL_APPROVAL_TYPES = new Set([
   SA_LEAVE_TYPES.annual,
+  SA_LEAVE_TYPES.emergency,
   SA_LEAVE_TYPES.sick,
   SA_LEAVE_TYPES.overtimeCompTimeUse,
   SA_LEAVE_TYPES.weeklyRestSubstituteUse,
@@ -88,6 +89,8 @@ function legalBasisForLeaveType(leaveType) {
   switch (leaveType) {
     case SA_LEAVE_TYPES.annual:
       return 'SA_LABOR_ARTICLE_109';
+    case SA_LEAVE_TYPES.emergency:
+      return 'COMPANY_POLICY_ANNUAL_BALANCE';
     case SA_LEAVE_TYPES.sick:
       return 'SA_LABOR_ARTICLE_117';
     case SA_LEAVE_TYPES.unpaid:
@@ -220,7 +223,10 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
   }
 
   if (status === 'approved') {
-    if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_approve';
+    if (
+      leaveType === SA_LEAVE_TYPES.annual ||
+      leaveType === SA_LEAVE_TYPES.emergency
+    ) return 'annual_approve';
     if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_approve';
     if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
       return 'time_entitlement_approve';
@@ -240,7 +246,10 @@ export function leaveDecisionRuntime(leave, requestedStatus) {
   }
 
   if (currentStatus === 'approved') {
-    if (leaveType === SA_LEAVE_TYPES.annual) return 'annual_cancel';
+    if (
+      leaveType === SA_LEAVE_TYPES.annual ||
+      leaveType === SA_LEAVE_TYPES.emergency
+    ) return 'annual_cancel';
     if (leaveType === SA_LEAVE_TYPES.sick) return 'sick_cancel';
     if (ENTITLEMENT_CONSUMPTION_TYPES.has(leaveType)) {
       return 'time_entitlement_cancel';
@@ -362,11 +371,20 @@ export async function decideLeave(
 
   switch (runtime) {
     case 'annual_approve': {
-      const overlap = await annualLeavePublicHolidayExtension(
-        db,
-        salonId,
-        leave
-      );
+      const overlap =
+        normalizeSaLeaveType(leave.leave_type) === SA_LEAVE_TYPES.annual
+          ? await annualLeavePublicHolidayExtension(
+              db,
+              salonId,
+              leave
+            )
+          : {
+              leave,
+              originalEndDate: leave.end_date,
+              effectiveEndDate: leave.end_date,
+              overlapDays: 0,
+              holidays: [],
+            };
       const approved = await approveAnnualLeave(
         db,
         salonId,

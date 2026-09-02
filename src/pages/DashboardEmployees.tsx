@@ -57,7 +57,10 @@ import {
   listEmployeeLeaveRequests,
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
-import { decideCanonicalEmployeeLeaveRequest } from "../services/canonicalEmployeeLeaveRequests";
+import {
+  decideCanonicalEmployeeLeaveRequest,
+  refreshCanonicalEmployeeLeaveRequest,
+} from "../services/canonicalEmployeeLeaveRequests";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import { archiveEmployee } from "../services/employeeLifecycleService";
 import { CoreAccountService } from "../services/CoreAccountService";
@@ -2869,6 +2872,7 @@ export default function DashboardEmployees() {
     let coreLeaveId = "";
     let createdRequestId = "";
     let requestForCanonical: EmployeeLeaveRequest | null = null;
+    let canonicalApprovalCommitted = false;
     try {
       const existingRequests = selectedEmployeeLeaveRequests.length
         ? selectedEmployeeLeaveRequests
@@ -2876,7 +2880,9 @@ export default function DashboardEmployees() {
             leaveRequestMatchesProfile(request, employeeProfile, attendanceIdentity.allIds)
           );
       const matchingRequest = existingRequests.find((request) =>
-        cleanText(request.status).toLowerCase() === "approved" &&
+        ["pending", "approved"].includes(
+          cleanText(request.status).toLowerCase()
+        ) &&
         normalizeLeaveUntil(request.fromDate) === fromDate &&
         normalizeLeaveUntil(request.toDate) === toDate &&
         normalizeManagedLeaveType(request.type) === leaveType &&
@@ -2927,7 +2933,8 @@ export default function DashboardEmployees() {
         employeeId: employeeIdLocal,
       };
 
-      await decideCanonicalEmployeeLeaveRequest(
+      const canonicalResult =
+        await decideCanonicalEmployeeLeaveRequest(
         requestForCanonical,
         "approved",
         {
@@ -2942,31 +2949,20 @@ export default function DashboardEmployees() {
         }
       );
 
-      // Fail closed: after canonical approval the linked Core
-      // operational record MUST exist and be approved.
-      const existingCoreLeaves =
-        await CoreHrService.listLeaves({
-          employeeId: selectedEmployeeId,
-        });
+      // The canonical service already verifies the linked
+      // operational Core leave before returning success.
+      requestForCanonical =
+        canonicalResult.request;
 
-      const matchingCoreLeave =
-        existingCoreLeaves.find(
-          (leave) =>
-            cleanText(leave.requestId) ===
-              requestId &&
-            cleanText(
-              leave.status
-            ).toLowerCase() === "approved"
-        );
-
-      if (!matchingCoreLeave) {
+      if (!canonicalResult.coreLeave) {
         throw new Error(
           "employee_leave_core_approval_missing"
         );
       }
 
       coreLeaveId =
-        matchingCoreLeave.id;
+        canonicalResult.coreLeave.id;
+      canonicalApprovalCommitted = true;
       // Core employee_leaves is the only operational leave source.
       // Do not mirror full-day or partial leave state into Firestore staff/profile rows.
       if (!isPartialLeave) {
@@ -2976,8 +2972,23 @@ export default function DashboardEmployees() {
         setModalLeaveType(leaveType);
         setModalLeaveNote(cleanText(payload.note));
       }
-      await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
-      window.dispatchEvent(new Event("queens:staff-updated"));
+      try {
+        await Promise.all([
+          load(),
+          loadSelectedEmployeeAttendance({
+            force: true,
+          }),
+        ]);
+      } catch (refreshError) {
+        console.warn(
+          "canonical leave post-commit refresh failed",
+          refreshError
+        );
+      }
+
+      window.dispatchEvent(
+        new Event("queens:staff-updated")
+      );
 
       void writeAuditLog({
         action: "leave_approved",
@@ -3007,12 +3018,18 @@ export default function DashboardEmployees() {
       });
     } catch (error) {
       if (
+        !canonicalApprovalCommitted &&
         createdRequestId &&
         requestForCanonical
       ) {
         try {
+          const rollbackRequest =
+            await refreshCanonicalEmployeeLeaveRequest(
+              requestForCanonical
+            );
+
           await decideCanonicalEmployeeLeaveRequest(
-            requestForCanonical,
+            rollbackRequest,
             "cancelled",
             {
               reviewerUid: authUser.uid,

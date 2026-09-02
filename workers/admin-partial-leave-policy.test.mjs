@@ -151,7 +151,7 @@ test("admin partial unpaid leave persists its time range and never becomes a ful
   assert.equal(db.staff.get("staff-1").leave_start_date, null);
 });
 
-test("legacy emergency is normalized to HR review and cannot be silently approved", async () => {
+test("emergency leave is canonical company policy backed by annual balance", async () => {
   const db = new LeaveFakeD1();
   const leave = await createLeave(db, "main", {
     id: "emergency-1",
@@ -162,19 +162,12 @@ test("legacy emergency is normalized to HR review and cannot be silently approve
     daysCount: 1,
   });
 
-  assert.equal(leave.leave_type, "other_hr_review");
-  assert.equal(Number(leave.deduct_from_balance), 0);
-  assert.equal(Number(leave.statutory_review_required), 1);
+  assert.equal(leave.leave_type, "emergency");
+  assert.equal(Number(leave.deduct_from_balance), 1);
+  assert.equal(Number(leave.statutory_review_required), 0);
   assert.equal(
     leaveDecisionRuntime(leave, "approved"),
-    "hr_review_block"
-  );
-
-  await assert.rejects(
-    () => decideLeave(db, "main", leave.id, { status: "approved" }, { uid: "admin-1" }),
-    (error) =>
-      error instanceof AppError &&
-      error.code === "core_leave:hr_review_resolution_required"
+    "annual_approve"
   );
   assert.equal(db.staffMirrorWrites, 0);
 });
