@@ -1,0 +1,48 @@
+name: Apply D1 Finance Read Scope
+
+on:
+  push:
+    branches:
+      - perf/d1-read-scope-stage1-finance
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply scoped finance reads
+        run: python scripts/apply-d1-finance-read-scope.py
+
+      - name: Install
+        run: npm ci
+
+      - name: Focused finance read-scope contract
+        run: node --test workers/d1-finance-read-scope.test.mjs
+
+      - name: Fixed polling guard
+        run: node scripts/check-fixed-interval-polling.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit scoped finance reads
+        shell: bash
+        run: |
+          git rm scripts/apply-d1-finance-read-scope.py .github/workflows/apply-d1-finance-read-scope.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workers/core/repositories/finance.js workers/core/repositories/refunds.js workers/core/index.js src/services/CoreFinanceService.ts src/services/CoreRefundService.ts src/services/CoreIncomeService.ts src/pages/DashboardDayAudit.tsx migrations/core/0058_finance_read_scope_indexes.sql workers/d1-finance-read-scope.test.mjs .github/workflows/operational-integrity-hardening.yml
+          git commit -m "perf: scope day-audit finance reads"
+          git push origin HEAD:${{ github.ref_name }}
