@@ -110,6 +110,10 @@ export type ClientPortalSnapshot = {
   generatedAt: string;
 };
 
+const CLIENT_PORTAL_SNAPSHOT_TTL_MS = 90_000;
+let cachedPortalSnapshot: { value: ClientPortalSnapshot; fetchedAt: number } | null = null;
+let portalSnapshotRequest: Promise<ClientPortalSnapshot> | null = null;
+
 function text(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -245,10 +249,34 @@ function mapSnapshot(raw: Record<string, unknown>): ClientPortalSnapshot {
   };
 }
 
+function canUseCachedPortalSnapshot() {
+  if (!cachedPortalSnapshot) return false;
+  const pageIsInactive =
+    typeof document !== "undefined" && document.visibilityState !== "visible";
+  const browserIsOffline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  if (pageIsInactive || browserIsOffline) return true;
+  return Date.now() - cachedPortalSnapshot.fetchedAt < CLIENT_PORTAL_SNAPSHOT_TTL_MS;
+}
+
 export const ClientPortalService = {
   async snapshot(): Promise<ClientPortalSnapshot> {
-    const raw = await coreApiRequest<Record<string, unknown>>("/api/core/client/portal");
-    return mapSnapshot(raw);
+    if (canUseCachedPortalSnapshot() && cachedPortalSnapshot) {
+      return cachedPortalSnapshot.value;
+    }
+    if (portalSnapshotRequest) return portalSnapshotRequest;
+
+    portalSnapshotRequest = coreApiRequest<Record<string, unknown>>("/api/core/client/portal")
+      .then((raw) => mapSnapshot(raw))
+      .then((snapshot) => {
+        cachedPortalSnapshot = { value: snapshot, fetchedAt: Date.now() };
+        return snapshot;
+      })
+      .finally(() => {
+        portalSnapshotRequest = null;
+      });
+
+    return portalSnapshotRequest;
   },
 
   async patchProfile(input: { name?: string; phone?: string; email?: string }): Promise<ClientPortalProfile> {
@@ -256,6 +284,17 @@ export const ClientPortalService = {
       method: "PATCH",
       body: input,
     });
-    return mapProfile(raw);
+    const profile = mapProfile(raw);
+    if (cachedPortalSnapshot) {
+      cachedPortalSnapshot = {
+        value: { ...cachedPortalSnapshot.value, profile },
+        fetchedAt: Date.now(),
+      };
+    }
+    return profile;
+  },
+
+  invalidateSnapshot() {
+    cachedPortalSnapshot = null;
   },
 };
