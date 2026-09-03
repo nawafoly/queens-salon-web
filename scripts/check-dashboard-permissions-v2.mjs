@@ -39,13 +39,20 @@ rejectText(
 );
 rejectText(page, "<select", "Native select remains in the admin permissions page.");
 rejectText(page, 'type="date"', "Native date input remains in the admin permissions page.");
+rejectText(
+  page,
+  "window.setInterval(() => void load(), 15_000)",
+  "Admin permissions must not restore fixed-interval polling."
+);
 
 for (const guard of [
   "listEmployeeDirectory",
   "listEmployeePermissionRequests(300)",
   "createPermissionRequest",
   "reviewPermissionRequest",
-  "window.setInterval(() => void load(), 15_000)",
+  'window.addEventListener("focus", refreshWhenActive)',
+  'window.addEventListener("online", refreshWhenActive)',
+  'document.addEventListener("visibilitychange", refreshWhenActive)',
   "expected <= start",
   'source: "admin_direct"',
   'status: "out"',
