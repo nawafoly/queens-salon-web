@@ -27,8 +27,11 @@ jobs:
       - name: Polling guard
         run: node scripts/check-fixed-interval-polling.mjs
 
-      - name: Frontend Core migration contract
-        run: node --test workers/frontend-core-migration.test.mjs
+      - name: Polling migration contracts
+        run: >-
+          node --test
+          --test-name-pattern="dashboard bookings uses Core D1 without an operational Firestore switch|production dashboards refresh Core data from application events instead of fixed polling"
+          workers/frontend-core-migration.test.mjs
 
       - name: Build
         run: npm run build
