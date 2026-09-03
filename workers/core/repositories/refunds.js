@@ -30,6 +30,7 @@ function refundDateScope(rawDate) {
     throw new AppError(400, 'core_refund:invalid_date');
   }
   return {
+    date,
     start: startDate.toISOString(),
     end: new Date(startDate.getTime() + 86_400_000).toISOString(),
   };
@@ -54,8 +55,8 @@ export async function listRefunds(db, salonId, query = {}) {
   }
   const date = refundDateScope(query.date);
   if (date) {
-    where.push('refunded_at >= ? AND refunded_at < ?');
-    params.push(date.start, date.end);
+    where.push('(refunded_at = ? OR (refunded_at >= ? AND refunded_at < ?))');
+    params.push(date.date, date.start, date.end);
   }
   return dbAll(db, `SELECT * FROM refunds WHERE ${where.join(' AND ')} ORDER BY refunded_at DESC LIMIT 500`, params);
 }

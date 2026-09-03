@@ -64,9 +64,9 @@ export async function listIncome(db, salonId, query = {}) {
   const occurredRows = await dbAll(
     db,
     `SELECT * FROM income_entries
-      WHERE salon_id = ? AND occurred_at >= ? AND occurred_at < ?
+      WHERE salon_id = ? AND (occurred_at = ? OR (occurred_at >= ? AND occurred_at < ?))
       ORDER BY occurred_at DESC LIMIT 500`,
-    [salonId, scope.start, scope.end]
+    [salonId, scope.date, scope.start, scope.end]
   );
   const bookingRows = await dbAll(
     db,
