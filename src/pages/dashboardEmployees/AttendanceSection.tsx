@@ -1268,6 +1268,44 @@ export default function AttendanceSection({
     });
   }, [coreResolvedShiftsByDate]);
 
+  const scheduledWorkDateKeys =
+    useMemo(
+      () =>
+        Object.entries(
+          coreResolvedShiftsByDate
+        )
+          .flatMap(
+            ([date, shift]) => {
+              if (
+                !date ||
+                !shift
+              ) {
+                return [];
+              }
+
+              const resolved =
+                resolveAttendanceShiftForDate({
+                  dateKey: date,
+                  coreResolvedShift: shift,
+                });
+
+              if (
+                resolved.source !==
+                  "core_resolved_shift" ||
+                resolved.isOff
+              ) {
+                return [];
+              }
+
+              return [date];
+            }
+          )
+          .sort((a, b) =>
+            a.localeCompare(b)
+          ),
+      [coreResolvedShiftsByDate]
+    );
+
   const approvedLeaveDateKeys =
     useMemo(
       () =>
@@ -1482,6 +1520,7 @@ export default function AttendanceSection({
         selectedDate={selectedDate}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
         absenceDateKeys={coreAbsenceDateKeys}
+        scheduledWorkDateKeys={scheduledWorkDateKeys}
         specialDays={mergedSpecialDays}
         effectiveShiftInfo={effectiveShiftInfo}
         canEdit={canEdit}

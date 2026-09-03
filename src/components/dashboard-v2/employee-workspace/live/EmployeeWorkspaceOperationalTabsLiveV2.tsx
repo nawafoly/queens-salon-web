@@ -217,10 +217,14 @@ function buildAttendanceCalendar(
   rows: EmployeeAttendanceRowLiveV2[],
   approvedLeaveDateKeys: readonly string[],
   absenceDateKeys: readonly string[],
+  scheduledWorkDateKeys: readonly string[],
   specialDays: readonly AttendanceSpecialDay[] = []
 ): AttendanceCalendarDayLiveV2[] {
   const normalized =
     safeMonthKey(monthKey);
+
+  const todayKey =
+    getLocalDateKey();
 
   const year =
     Number(
@@ -249,6 +253,13 @@ function buildAttendanceCalendar(
   const absenceDates =
     new Set(
       absenceDateKeys
+        .map(cleanText)
+        .filter(Boolean)
+    );
+
+  const workDates =
+    new Set(
+      scheduledWorkDateKeys
         .map(cleanText)
         .filter(Boolean)
     );
@@ -323,6 +334,17 @@ function buildAttendanceCalendar(
           row?.checkOutAtClient
         );
 
+      const hasPunch =
+        Boolean(
+          checkIn ||
+          checkOut
+        );
+
+      const hasScheduledWork =
+        workDates.has(
+          date
+        );
+
       const hasLeave =
         leaveDates.has(
           date
@@ -343,17 +365,57 @@ function buildAttendanceCalendar(
           row
         );
 
-      const status =
-        specialDay?.kind === "weekly_rest_work" && rowStatus
+      const reliableRowStatus =
+        rowStatus &&
+        (
+          hasPunch ||
+          [
+            "غياب",
+            "إجازة",
+            "بصمة ناقصة",
+            "ضمن مهلة التعويض",
+            "تأخير",
+            "خروج مبكر",
+          ].includes(
+            rowStatus
+          )
+        )
           ? rowStatus
+          : "";
+
+      const isPastScheduledNoPunch =
+        hasScheduledWork &&
+        date < todayKey &&
+        !hasPunch &&
+        !hasLeave &&
+        !hasAbsence &&
+        (
+          !specialDay ||
+          specialDay.kind ===
+            "weekly_rest_work"
+        );
+
+      const status =
+        specialDay?.kind === "weekly_rest_work"
+          ? reliableRowStatus ||
+            (
+              hasAbsence ||
+              isPastScheduledNoPunch
+                ? "\u063a\u064a\u0627\u0628"
+                : specialDay.label
+            )
           : specialDay?.label ||
             (
               hasLeave
                 ? "\u0625\u062c\u0627\u0632\u0629"
                 : hasAbsence
                   ? "\u063a\u064a\u0627\u0628"
-                  : rowStatus ||
-                    "غير مصنف"
+                  : reliableRowStatus ||
+                    (
+                      isPastScheduledNoPunch
+                        ? "\u063a\u064a\u0627\u0628"
+                        : "غير مصنف"
+                    )
             );
 
       return {
@@ -754,6 +816,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   selectedDate: string;
   approvedLeaveDateKeys?: string[];
   absenceDateKeys?: string[];
+  scheduledWorkDateKeys?: string[];
   specialDays?: AttendanceSpecialDay[];
   effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
   canEdit: boolean;
@@ -778,6 +841,7 @@ export function EmployeeAttendanceTabLiveV2({
   selectedDate,
   approvedLeaveDateKeys = [],
   absenceDateKeys = [],
+  scheduledWorkDateKeys = [],
   specialDays = [],
   effectiveShiftInfo = null,
   canEdit,
@@ -817,6 +881,21 @@ export function EmployeeAttendanceTabLiveV2({
           )
     );
 
+  const canInferScheduledAbsence =
+    !loading &&
+    !cleanText(error);
+
+  const monthScheduledWorkDates =
+    canInferScheduledAbsence
+      ? scheduledWorkDateKeys.filter(
+          (date) =>
+            cleanText(date)
+              .startsWith(
+                normalizedMonth
+              )
+        )
+      : [];
+
   const monthSpecialDays =
     specialDays.filter(
       (day) =>
@@ -833,6 +912,7 @@ export function EmployeeAttendanceTabLiveV2({
       normalizedRows,
       monthLeaveDates,
       monthAbsenceDates,
+      monthScheduledWorkDates,
       monthSpecialDays
     );
 
@@ -856,7 +936,11 @@ export function EmployeeAttendanceTabLiveV2({
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
-  const loadedDataCount = normalizedRows.length + monthLeaveDates.length + monthSpecialDays.length;
+  const loadedDataCount =
+    normalizedRows.length +
+    monthLeaveDates.length +
+    monthScheduledWorkDates.length +
+    monthSpecialDays.length;
   const viewState: "loading" | "error" | "empty" | "data" = loading && !loadedDataCount
     ? "loading"
     : cleanText(error) && !loadedDataCount
