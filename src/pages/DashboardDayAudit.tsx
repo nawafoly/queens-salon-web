@@ -327,7 +327,7 @@ export default function DashboardDayAudit() {
 
   useEffect(() => {
     let active = true;
-    let timer: number | null = null;
+    let inFlight: Promise<void> | null = null;
 
     const loadCoreAuditData = async () => {
       try {
@@ -381,11 +381,26 @@ export default function DashboardDayAudit() {
       }
     };
 
-    void loadCoreAuditData();
-    timer = window.setInterval(() => void loadCoreAuditData(), 30_000);
+    const refreshWhenActive = () => {
+      if (!active || document.visibilityState === "hidden" || inFlight) return;
+      inFlight = loadCoreAuditData().finally(() => {
+        inFlight = null;
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshWhenActive();
+    };
+
+    refreshWhenActive();
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       active = false;
-      if (timer !== null) window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [todayKey]);
 
