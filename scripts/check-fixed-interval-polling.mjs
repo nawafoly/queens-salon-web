@@ -12,30 +12,6 @@ const BASELINE = [
     note: "UI clock only; no network or database read.",
   },
   {
-    path: "src/pages/DashboardPending.tsx",
-    marker: "setInterval(() => void refresh(), 5000)",
-    kind: "data-polling-debt",
-    note: "Account activation status polling.",
-  },
-  {
-    path: "src/pages/Profile.tsx",
-    marker: "setInterval(() => void loadPortal(true), 30_000)",
-    kind: "data-polling-debt",
-    note: "Client portal polling.",
-  },
-  {
-    path: "src/pages/Dashboard.tsx",
-    marker: "setInterval(load, 60_000)",
-    kind: "data-polling-debt",
-    note: "Missing expense-note count polling.",
-  },
-  {
-    path: "src/pages/Dashboard.tsx",
-    marker: "setInterval(tick, 5 * 60_000)",
-    kind: "data-polling-debt",
-    note: "Booking auto-close scan.",
-  },
-  {
     path: "src/pages/Dashboard.tsx",
     marker: "setInterval(() => setTopbarNowMs(Date.now()), 1000)",
     kind: "local-only",
@@ -48,12 +24,6 @@ const BASELINE = [
     note: "Queue clock/countdown only; no network or database read.",
   },
   {
-    path: "src/pages/DashboardQueueTv.tsx",
-    marker: "setInterval(() => void loadBookings(), QUEUE_REFRESH_MS)",
-    kind: "data-polling-debt",
-    note: "Queue booking refresh polling.",
-  },
-  {
     path: "src/pages/DashboardDayAudit.tsx",
     marker: "setTodayLimitKey(todayISO())",
     kind: "local-only",
@@ -64,24 +34,6 @@ const BASELINE = [
     marker: "setInterval(() => setNowTick(Date.now()), 60_000)",
     kind: "local-only",
     note: "UI time tick only; no network or database read.",
-  },
-  {
-    path: "src/pages/hr/AdminPermissionRequests.tsx",
-    marker: "setInterval(() => void load(), 15_000)",
-    kind: "data-polling-debt",
-    note: "Permission requests and employee directory polling.",
-  },
-  {
-    path: "src/services/firestoreBookings.ts",
-    marker: "setInterval(loadCore, 8_000)",
-    kind: "data-polling-debt",
-    note: "Core booking watcher polling.",
-  },
-  {
-    path: "src/services/firestoreBookings.ts",
-    marker: "setInterval(load, 12_000)",
-    kind: "data-polling-debt",
-    note: "Employee booking watcher polling.",
   },
 ];
 

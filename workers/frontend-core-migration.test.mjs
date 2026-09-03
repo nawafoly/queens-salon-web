@@ -207,8 +207,19 @@ test("dashboard bookings uses Core D1 without an operational Firestore switch", 
   const watchEnd = service.indexOf("export async function listUserBookings", watchStart);
   const watchBlock = service.slice(watchStart, watchEnd);
   assert.match(watchBlock, /const rows = await listCoreBookings\(scope\)/);
-  assert.match(watchBlock, /setInterval\(loadCore,\s*8_000\)/);
+  assert.match(watchBlock, /visibilitychange/);
+  assert.match(watchBlock, /addEventListener\("focus", refreshWhenActive\)/);
+  assert.match(watchBlock, /addEventListener\("online", refreshWhenActive\)/);
+  assert.doesNotMatch(watchBlock, /setInterval\(/);
   assert.doesNotMatch(watchBlock, /getDataSourceFlags|watchFirestoreBookings/);
+
+  const employeeWatchStart = service.indexOf("export function watchEmployeeBookings");
+  const employeeWatchEnd = service.indexOf("/* =========================\n   UPDATE", employeeWatchStart);
+  const employeeWatchBlock = service.slice(employeeWatchStart, employeeWatchEnd);
+  assert.match(employeeWatchBlock, /visibilitychange/);
+  assert.match(employeeWatchBlock, /addEventListener\("focus", refreshWhenActive\)/);
+  assert.match(employeeWatchBlock, /addEventListener\("online", refreshWhenActive\)/);
+  assert.doesNotMatch(employeeWatchBlock, /setInterval\(/);
 
   assert.match(dashboard, /CoreBookingService\.list\(\)/);
   assert.match(dashboard, /requestInFlight/);

@@ -12,7 +12,9 @@ import "../styles/dashboard-v2/dashboard-v2.css";
 
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;
 const MAX_PROMO_VIDEOS = 12;
-const QUEUE_REFRESH_MS = 8_000;
+const QUEUE_REFRESH_ACTIVE_MS = 8_000;
+const QUEUE_REFRESH_IDLE_MS = 20_000;
+const QUEUE_REFRESH_MAX_MS = 60_000;
 
 const copy = {
   dash: "\u2014",
@@ -291,10 +293,38 @@ export default function DashboardQueueTv() {
     let active = true;
     let firstLoad = true;
     let inFlight = false;
+    let refreshTimer: number | null = null;
+    let unchangedStreak = 0;
+    let failureStreak = 0;
+    let lastSignature = "";
 
-    const loadBookings = async () => {
-      if (inFlight) return;
+    const clearRefreshTimer = () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
+    };
+
+    const nextSuccessDelay = () => {
+      if (unchangedStreak >= 8) return QUEUE_REFRESH_MAX_MS;
+      if (unchangedStreak >= 3) return QUEUE_REFRESH_IDLE_MS;
+      return QUEUE_REFRESH_ACTIVE_MS;
+    };
+
+    const scheduleNext = (delayMs: number) => {
+      clearRefreshTimer();
+      if (!active || document.visibilityState === "hidden") return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void loadBookings("timer");
+      }, delayMs);
+    };
+
+    const loadBookings = async (source: "initial" | "timer" | "event") => {
+      if (!active || inFlight) return;
+      if (source === "timer" && document.visibilityState === "hidden") return;
       inFlight = true;
+      let failed = false;
       if (firstLoad) {
         setLoading(true);
         setError("");
@@ -306,9 +336,17 @@ export default function DashboardQueueTv() {
           .map((row) => queueBookingFromDoc(row, todayKey))
           .filter((b) => !["cancelled", "canceled", "rejected"].includes(b.status))
           .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+        const signature = next
+          .map((b) => [b.id, b.status, b.date, b.time, b.employeeName, b.clientName].join("~"))
+          .join("|");
+        unchangedStreak = signature === lastSignature ? Math.min(unchangedStreak + 1, 20) : 0;
+        lastSignature = signature;
+        failureStreak = 0;
         setBookings(next);
         setError("");
       } catch (loadError) {
+        failed = true;
+        failureStreak = Math.min(failureStreak + 1, 4);
         if (!active) return;
         console.error("[DashboardQueueTv] Booking load failed", loadError);
         setError(copy.loadError);
@@ -317,23 +355,38 @@ export default function DashboardQueueTv() {
         if (!active) return;
         setLoading(false);
         firstLoad = false;
+        const delay = failed
+          ? Math.min(QUEUE_REFRESH_MAX_MS, 15_000 * (2 ** Math.max(0, failureStreak - 1)))
+          : nextSuccessDelay();
+        scheduleNext(delay);
       }
     };
 
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadBookings();
+    const refreshWhenActive = () => {
+      if (!active || inFlight || document.visibilityState === "hidden") return;
+      clearRefreshTimer();
+      unchangedStreak = 0;
+      void loadBookings("event");
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshWhenActive();
+      } else {
+        clearRefreshTimer();
+      }
     };
 
-    void loadBookings();
-    const timer = window.setInterval(() => void loadBookings(), QUEUE_REFRESH_MS);
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    void loadBookings("initial");
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       active = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refreshWhenVisible);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      clearRefreshTimer();
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [todayKey]);
 
@@ -399,7 +452,7 @@ export default function DashboardQueueTv() {
             <strong dir="ltr">{formatTime12(nowTime24)}</strong>
             <small>{todayLabel}</small>
           </div>
-          <span className="dsv2-badge dsv2-badge--success">تحديث تلقائي كل 8 ثوانٍ</span>
+          <span className="dsv2-badge dsv2-badge--success">تحديث ذكي تلقائي</span>
         </div>
       </section>
 

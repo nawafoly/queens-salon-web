@@ -505,15 +505,22 @@ const Profile: React.FC = () => {
       }
     };
 
-    void loadPortal(false);
-    const interval = window.setInterval(() => void loadPortal(true), 30_000);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void loadPortal(true);
+    const refreshWhenActive = () => {
+      if (!alive || document.visibilityState === "hidden") return;
+      void loadPortal(true);
     };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshWhenActive();
+    };
+
+    void loadPortal(false);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       alive = false;
-      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [profileMode, firebaseUid, firebaseUser]);
