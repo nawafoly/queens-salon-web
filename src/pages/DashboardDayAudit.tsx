@@ -327,9 +327,16 @@ export default function DashboardDayAudit() {
 
   useEffect(() => {
     let active = true;
-    let timer: number | null = null;
+    let inFlight = false;
 
     const loadCoreAuditData = async () => {
+      if (!active || inFlight) return;
+      if (
+        document.visibilityState !== "visible" ||
+        (typeof navigator !== "undefined" && navigator.onLine === false)
+      ) return;
+
+      inFlight = true;
       try {
         const [bookings, incomeRows] = await Promise.all([
           CoreBookingService.list({ date: todayKey }),
@@ -372,20 +379,31 @@ export default function DashboardDayAudit() {
         });
         setRevenueLive({ total, cash, card, transfer });
         setLoadedDateKey(todayKey);
+        setErrorText("");
       } catch (error) {
         console.error("Core day audit load failed:", error);
         if (active) {
           setErrorText("تعذر تحميل جرد اليوم من Core.");
           setLoadedDateKey(todayKey);
         }
+      } finally {
+        inFlight = false;
       }
     };
 
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void loadCoreAuditData();
+    };
+
     void loadCoreAuditData();
-    timer = window.setInterval(() => void loadCoreAuditData(), 30_000);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
       active = false;
-      if (timer !== null) window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, [todayKey]);
 
