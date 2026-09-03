@@ -21,6 +21,21 @@ function invoiceStatus(total, paid) {
   return 'partial';
 }
 
+function refundDateScope(rawDate) {
+  const date = cleanText(rawDate);
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new AppError(400, 'core_refund:invalid_date');
+  const startDate = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(startDate.getTime()) || startDate.toISOString().slice(0, 10) !== date) {
+    throw new AppError(400, 'core_refund:invalid_date');
+  }
+  return {
+    date,
+    start: startDate.toISOString(),
+    end: new Date(startDate.getTime() + 86_400_000).toISOString(),
+  };
+}
+
 export async function getRefund(db, salonId, id) {
   const row = await dbFirst(db, 'SELECT * FROM refunds WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, requiredId(id)]);
   if (!row) throw new AppError(404, 'core_refund:not_found');
@@ -37,6 +52,11 @@ export async function listRefunds(db, salonId, query = {}) {
   if (optionalText(query.paymentId || query.payment_id)) {
     where.push('payment_id = ?');
     params.push(cleanText(query.paymentId || query.payment_id));
+  }
+  const date = refundDateScope(query.date);
+  if (date) {
+    where.push('(refunded_at = ? OR (refunded_at >= ? AND refunded_at < ?))');
+    params.push(date.date, date.start, date.end);
   }
   return dbAll(db, `SELECT * FROM refunds WHERE ${where.join(' AND ')} ORDER BY refunded_at DESC LIMIT 500`, params);
 }

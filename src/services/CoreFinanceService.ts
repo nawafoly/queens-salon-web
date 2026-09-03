@@ -9,9 +9,10 @@ import type {
 } from "../types/coreApi";
 
 export const CoreFinanceService = {
-  async listIncome(): Promise<CoreIncomeEntry[]> {
+  async listIncome(query: { date?: string } = {}): Promise<CoreIncomeEntry[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
-      "/api/core/income"
+      "/api/core/income",
+      { query }
     );
     return rows.map(mapCoreIncome);
   },

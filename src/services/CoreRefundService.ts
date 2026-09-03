@@ -25,7 +25,7 @@ function mapRefund(row: Record<string, unknown>): CoreRefund {
 }
 
 export const CoreRefundService = {
-  async list(query: { bookingId?: string; paymentId?: string } = {}): Promise<CoreRefund[]> {
+  async list(query: { bookingId?: string; paymentId?: string; date?: string } = {}): Promise<CoreRefund[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/refunds", { query });
     return rows.map(mapRefund);
   },
