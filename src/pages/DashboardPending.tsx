@@ -11,6 +11,8 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 type AdminRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending";
 type PendingPageMode = "pending" | "disabled";
 
+const STATUS_REFRESH_DELAYS_MS = [5_000, 10_000, 20_000, 30_000, 60_000] as const;
+
 function normalizeAdminRole(raw: any): AdminRole {
   const r = String(raw || "").toLowerCase().trim();
   if (r === "owner") return "owner";
@@ -50,10 +52,42 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
   useEffect(() => {
     let active = true;
     let timer: number | null = null;
+    let refreshAttempt = 0;
+    let requestInFlight = false;
     let unsubscribeAuth: (() => void) | null = null;
 
+    const clearScheduledRefresh = () => {
+      if (timer === null) return;
+      window.clearTimeout(timer);
+      timer = null;
+    };
+
+    const canRefreshNow = () =>
+      active &&
+      document.visibilityState === "visible" &&
+      (typeof navigator === "undefined" || navigator.onLine !== false);
+
+    const scheduleNextRefresh = () => {
+      clearScheduledRefresh();
+      if (!canRefreshNow()) return;
+
+      const baseDelay = STATUS_REFRESH_DELAYS_MS[
+        Math.min(refreshAttempt, STATUS_REFRESH_DELAYS_MS.length - 1)
+      ];
+      const jitteredDelay = Math.round(baseDelay * (0.85 + Math.random() * 0.3));
+
+      timer = window.setTimeout(() => {
+        timer = null;
+        refreshAttempt += 1;
+        void refresh();
+      }, jitteredDelay);
+    };
+
     const refresh = async () => {
-      if (!auth.currentUser || !active) return;
+      if (!auth.currentUser || !canRefreshNow() || requestInFlight) return;
+      requestInFlight = true;
+      let keepWatching = true;
+
       try {
         const result = await CoreAccountService.me();
         if (!active) return;
@@ -63,6 +97,7 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
 
         if (status === "disabled" || status === "deleted") {
           if (!isDisabledMode) {
+            keepWatching = false;
             navigate("/account-disabled", { replace: true });
             return;
           }
@@ -76,6 +111,7 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
 
         if (status === "pending" || role === "pending") {
           if (isDisabledMode) {
+            keepWatching = false;
             navigate("/dashboard-pending", { replace: true });
             return;
           }
@@ -83,6 +119,7 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
           return;
         }
 
+        keepWatching = false;
         localStorage.setItem("userRole", role);
         localStorage.setItem("userUid", account.firebaseUid || auth.currentUser.uid);
         if (account.displayName) localStorage.setItem("userName", account.displayName);
@@ -102,19 +139,38 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
         if (!active) return;
         console.error("Core account status check failed:", error);
         setStatusText("تعذر التحقق من حالة الحساب من Core الآن. حاول تحديث الصفحة.");
+      } finally {
+        requestInFlight = false;
+        if (active && keepWatching) scheduleNextRefresh();
       }
+    };
+
+    const refreshWhenActive = () => {
+      if (!canRefreshNow()) {
+        clearScheduledRefresh();
+        return;
+      }
+      refreshAttempt = 0;
+      clearScheduledRefresh();
+      void refresh();
     };
 
     unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (!user || !active) return;
+      refreshAttempt = 0;
       void refresh();
-      if (timer !== null) window.clearInterval(timer);
-      timer = window.setInterval(() => void refresh(), 5000);
     });
+
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
       active = false;
-      if (timer !== null) window.clearInterval(timer);
+      clearScheduledRefresh();
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
       unsubscribeAuth?.();
     };
   }, [isDisabledMode, navigate]);
