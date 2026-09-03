@@ -383,3 +383,47 @@ test(
     );
   }
 );
+
+test(
+  "Core GET requests coalesce while an identical read is already in flight",
+  () => {
+    const source = read("src/services/coreApiClient.ts");
+
+    assert.ok(source.includes("inFlightGetRequests"));
+    assert.ok(source.includes("coreGetRequestKey"));
+    assert.ok(source.includes("const existing = inFlightGetRequests.get(requestKey)"));
+    assert.ok(source.includes("inFlightGetRequests.delete(requestKey)"));
+    assert.ok(source.includes('logicalMethod !== "GET"'));
+  }
+);
+
+test(
+  "Core settings reads use a bounded cache and one in-flight request per key",
+  () => {
+    const source = read("src/services/CoreSettingsService.ts");
+
+    assert.ok(source.includes("SETTINGS_READ_TTL_MS = 60_000"));
+    assert.ok(source.includes("settingCache"));
+    assert.ok(source.includes("settingRequests"));
+    assert.ok(source.includes("readFreshCachedSetting"));
+    assert.ok(source.includes("cacheSetting(normalizedKey, saved)"));
+    assert.ok(source.includes("invalidate(key?: string)"));
+  }
+);
+
+test(
+  "pending account status uses adaptive visible-only refresh instead of a fixed interval",
+  () => {
+    const source = read("src/pages/DashboardPending.tsx");
+
+    assert.equal(source.includes("setInterval("), false);
+    assert.ok(source.includes("STATUS_REFRESH_DELAYS_MS"));
+    assert.ok(source.includes("window.setTimeout"));
+    assert.ok(source.includes("Math.random()"));
+    assert.ok(source.includes('document.visibilityState === "visible"'));
+    assert.ok(source.includes("navigator.onLine !== false"));
+    assert.ok(source.includes("requestInFlight"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+  }
+);
