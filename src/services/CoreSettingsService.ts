@@ -20,10 +20,19 @@ type CachedSetting = {
 const settingCache = new Map<string, CachedSetting>();
 const settingRequests = new Map<string, Promise<CoreSetting<unknown> | null>>();
 
-function readFreshCachedSetting<T>(key: string): CoreSetting<T> | null | undefined {
+function cacheCanServeStale() {
+  const pageIsInactive =
+    typeof document !== "undefined" && document.visibilityState !== "visible";
+  const browserIsOffline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  return pageIsInactive || browserIsOffline;
+}
+
+function readCachedSetting<T>(key: string): CoreSetting<T> | null | undefined {
   const cached = settingCache.get(key);
   if (!cached) return undefined;
-  if (Date.now() - cached.fetchedAt >= SETTINGS_READ_TTL_MS) return undefined;
+  const isFresh = Date.now() - cached.fetchedAt < SETTINGS_READ_TTL_MS;
+  if (!isFresh && !cacheCanServeStale()) return undefined;
   return cached.value as CoreSetting<T> | null;
 }
 
@@ -40,7 +49,7 @@ export const CoreSettingsService = {
   },
   get<T>(key: string): Promise<CoreSetting<T> | null> {
     const normalizedKey = String(key || "").trim();
-    const cached = readFreshCachedSetting<T>(normalizedKey);
+    const cached = readCachedSetting<T>(normalizedKey);
     if (cached !== undefined) return Promise.resolve(cached);
 
     const existing = settingRequests.get(normalizedKey);
