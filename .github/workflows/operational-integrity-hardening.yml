@@ -29,6 +29,9 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Fixed interval polling guard
+        run: node scripts/check-fixed-interval-polling.mjs
+
       - name: Dependency audit
         run: npm audit --audit-level=high
 
