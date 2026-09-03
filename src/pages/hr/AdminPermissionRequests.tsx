@@ -189,9 +189,26 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
   }, []);
 
   useEffect(() => {
+    let lastRefreshAt = Date.now();
     void load();
-    const timer = window.setInterval(() => void load(), 15_000);
-    return () => window.clearInterval(timer);
+
+    const refreshWhenActive = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastRefreshAt < 1_000) return;
+      lastRefreshAt = now;
+      void load();
+    };
+
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -517,7 +534,6 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
           </div>
         )}
       </section>
-
       <DashboardModalV2
         open={formOpen}
         onClose={() => setFormOpen(false)}
