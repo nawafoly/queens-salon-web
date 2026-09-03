@@ -11,14 +11,74 @@ export type CoreSetting<T = unknown> = {
   value: T;
 };
 
+const SETTINGS_READ_TTL_MS = 60_000;
+type CachedSetting = {
+  value: CoreSetting<unknown> | null;
+  fetchedAt: number;
+};
+
+const settingCache = new Map<string, CachedSetting>();
+const settingRequests = new Map<string, Promise<CoreSetting<unknown> | null>>();
+
+function readFreshCachedSetting<T>(key: string): CoreSetting<T> | null | undefined {
+  const cached = settingCache.get(key);
+  if (!cached) return undefined;
+  if (Date.now() - cached.fetchedAt >= SETTINGS_READ_TTL_MS) return undefined;
+  return cached.value as CoreSetting<T> | null;
+}
+
+function cacheSetting<T>(key: string, value: CoreSetting<T> | null) {
+  settingCache.set(key, {
+    value: value as CoreSetting<unknown> | null,
+    fetchedAt: Date.now(),
+  });
+}
+
 export const CoreSettingsService = {
   list(prefix?: string) {
     return coreApiRequest<CoreSetting[]>("/api/core/settings", { query: { prefix } });
   },
-  get<T>(key: string) {
-    return coreApiRequest<CoreSetting<T> | null>(`/api/core/settings/${encodeURIComponent(key)}`);
+  get<T>(key: string): Promise<CoreSetting<T> | null> {
+    const normalizedKey = String(key || "").trim();
+    const cached = readFreshCachedSetting<T>(normalizedKey);
+    if (cached !== undefined) return Promise.resolve(cached);
+
+    const existing = settingRequests.get(normalizedKey);
+    if (existing) return existing as Promise<CoreSetting<T> | null>;
+
+    const request = coreApiRequest<CoreSetting<T> | null>(
+      `/api/core/settings/${encodeURIComponent(normalizedKey)}`
+    )
+      .then((value) => {
+        cacheSetting(normalizedKey, value);
+        return value;
+      })
+      .finally(() => {
+        settingRequests.delete(normalizedKey);
+      });
+
+    settingRequests.set(
+      normalizedKey,
+      request as Promise<CoreSetting<unknown> | null>
+    );
+    return request;
   },
   save<T>(key: string, value: T, visibility: "public" | "private" = "private") {
-    return coreApiRequest<CoreSetting<T>>(`/api/core/settings/${encodeURIComponent(key)}`, { method: "PATCH", body: { value, visibility } });
+    const normalizedKey = String(key || "").trim();
+    return coreApiRequest<CoreSetting<T>>(
+      `/api/core/settings/${encodeURIComponent(normalizedKey)}`,
+      { method: "PATCH", body: { value, visibility } }
+    ).then((saved) => {
+      cacheSetting(normalizedKey, saved);
+      return saved;
+    });
+  },
+  invalidate(key?: string) {
+    const normalizedKey = String(key || "").trim();
+    if (normalizedKey) {
+      settingCache.delete(normalizedKey);
+      return;
+    }
+    settingCache.clear();
   },
 };
