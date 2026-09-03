@@ -11,6 +11,8 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 type AdminRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending";
 type PendingPageMode = "pending" | "disabled";
 
+const ACCOUNT_STATUS_RETRY_DELAYS_MS = [5_000, 10_000, 20_000, 30_000, 60_000] as const;
+
 function normalizeAdminRole(raw: any): AdminRole {
   const r = String(raw || "").toLowerCase().trim();
   if (r === "owner") return "owner";
@@ -49,11 +51,20 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
 
   useEffect(() => {
     let active = true;
-    let timer: number | null = null;
+    let retryTimer: number | null = null;
+    let retryIndex = 0;
+    let refreshInFlight = false;
     let unsubscribeAuth: (() => void) | null = null;
 
+    const clearRetryTimer = () => {
+      if (retryTimer === null) return;
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+
     const refresh = async () => {
-      if (!auth.currentUser || !active) return;
+      if (!auth.currentUser || !active || refreshInFlight) return;
+      refreshInFlight = true;
       try {
         const result = await CoreAccountService.me();
         if (!active) return;
@@ -102,19 +113,60 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
         if (!active) return;
         console.error("Core account status check failed:", error);
         setStatusText("تعذر التحقق من حالة الحساب من Core الآن. حاول تحديث الصفحة.");
+      } finally {
+        refreshInFlight = false;
       }
     };
 
+    const scheduleNextRefresh = () => {
+      clearRetryTimer();
+      if (!active || !auth.currentUser || document.visibilityState !== "visible") return;
+
+      const delay = ACCOUNT_STATUS_RETRY_DELAYS_MS[
+        Math.min(retryIndex, ACCOUNT_STATUS_RETRY_DELAYS_MS.length - 1)
+      ];
+
+      retryTimer = window.setTimeout(async () => {
+        retryTimer = null;
+        if (!active || document.visibilityState !== "visible") return;
+        await refresh();
+        retryIndex = Math.min(retryIndex + 1, ACCOUNT_STATUS_RETRY_DELAYS_MS.length - 1);
+        scheduleNextRefresh();
+      }, delay);
+    };
+
+    const refreshNow = () => {
+      if (!active || !auth.currentUser) return;
+      retryIndex = 0;
+      clearRetryTimer();
+      void refresh().finally(() => {
+        if (active) scheduleNextRefresh();
+      });
+    };
+
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") refreshNow();
+      else clearRetryTimer();
+    };
+
     unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (!user || !active) return;
-      void refresh();
-      if (timer !== null) window.clearInterval(timer);
-      timer = window.setInterval(() => void refresh(), 5000);
+      if (!user || !active) {
+        clearRetryTimer();
+        return;
+      }
+      refreshNow();
     });
+
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
       active = false;
-      if (timer !== null) window.clearInterval(timer);
+      clearRetryTimer();
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
       unsubscribeAuth?.();
     };
   }, [isDisabledMode, navigate]);
