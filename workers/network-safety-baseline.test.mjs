@@ -383,3 +383,107 @@ test(
     );
   }
 );
+
+test(
+  "Core GET requests coalesce while an identical read is already in flight",
+  () => {
+    const source = read("src/services/coreApiClient.ts");
+
+    assert.ok(source.includes("inFlightGetRequests"));
+    assert.ok(source.includes("coreGetRequestKey"));
+    assert.ok(source.includes("const existing = inFlightGetRequests.get(requestKey)"));
+    assert.ok(source.includes("inFlightGetRequests.delete(requestKey)"));
+    assert.ok(source.includes('logicalMethod !== "GET"'));
+    assert.ok(source.includes("const timeoutMs = options.timeoutMs ?? 15_000"));
+  }
+);
+
+test(
+  "Core settings reads use bounded cache, single-flight, and stale cache while inactive",
+  () => {
+    const source = read("src/services/CoreSettingsService.ts");
+
+    assert.ok(source.includes("SETTINGS_READ_TTL_MS = 60_000"));
+    assert.ok(source.includes("settingCache"));
+    assert.ok(source.includes("settingRequests"));
+    assert.ok(source.includes("readCachedSetting"));
+    assert.ok(source.includes("cacheCanServeStale"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
+    assert.ok(source.includes("cacheSetting(normalizedKey, saved)"));
+    assert.ok(source.includes("invalidate(key?: string)"));
+  }
+);
+
+test(
+  "client portal snapshots are bounded and never refresh a cached hidden tab",
+  () => {
+    const source = read("src/services/ClientPortalService.ts");
+
+    assert.ok(source.includes("CLIENT_PORTAL_SNAPSHOT_TTL_MS = 90_000"));
+    assert.ok(source.includes("cachedPortalSnapshot"));
+    assert.ok(source.includes("portalSnapshotRequest"));
+    assert.ok(source.includes("canUseCachedPortalSnapshot"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
+    assert.ok(source.includes("invalidateSnapshot()"));
+  }
+);
+
+test(
+  "pending account status uses adaptive visible-only refresh instead of a fixed interval",
+  () => {
+    const source = read("src/pages/DashboardPending.tsx");
+
+    assert.equal(source.includes("setInterval("), false);
+    assert.ok(source.includes("STATUS_REFRESH_DELAYS_MS"));
+    assert.ok(source.includes("window.setTimeout"));
+    assert.ok(source.includes("Math.random()"));
+    assert.ok(source.includes('document.visibilityState === "visible"'));
+    assert.ok(source.includes("navigator.onLine !== false"));
+    assert.ok(source.includes("requestInFlight"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+  }
+);
+
+test(
+  "TV queue uses adaptive visible-only network refresh while keeping its local clock",
+  () => {
+    const source = read("src/pages/DashboardQueueTv.tsx");
+
+    assert.equal(
+      source.includes("setInterval(() => void loadBookings()"),
+      false
+    );
+    assert.ok(source.includes("QUEUE_REFRESH_DELAYS_MS = [8_000, 15_000, 30_000]"));
+    assert.ok(source.includes("window.setTimeout"));
+    assert.ok(source.includes("Math.random()"));
+    assert.ok(source.includes('document.visibilityState === "visible"'));
+    assert.ok(source.includes("navigator.onLine !== false"));
+    assert.ok(source.includes("inFlight"));
+    assert.ok(source.includes("lastSignature"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+    assert.ok(source.includes("setNowMs(now.getTime())"));
+  }
+);
+
+test(
+  "day audit never re-queries bookings and income on a fixed timer",
+  () => {
+    const source = read("src/pages/DashboardDayAudit.tsx");
+
+    assert.equal(
+      source.includes("setInterval(() => void loadCoreAuditData()"),
+      false
+    );
+    assert.ok(source.includes("let inFlight = false"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+    assert.ok(source.includes('document.addEventListener("visibilitychange", refreshWhenActive)'));
+    assert.ok(source.includes("setTodayLimitKey(todayISO())"));
+  }
+);
