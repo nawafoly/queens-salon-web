@@ -399,16 +399,34 @@ test(
 );
 
 test(
-  "Core settings reads use a bounded cache and one in-flight request per key",
+  "Core settings reads use bounded cache, single-flight, and stale cache while inactive",
   () => {
     const source = read("src/services/CoreSettingsService.ts");
 
     assert.ok(source.includes("SETTINGS_READ_TTL_MS = 60_000"));
     assert.ok(source.includes("settingCache"));
     assert.ok(source.includes("settingRequests"));
-    assert.ok(source.includes("readFreshCachedSetting"));
+    assert.ok(source.includes("readCachedSetting"));
+    assert.ok(source.includes("cacheCanServeStale"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
     assert.ok(source.includes("cacheSetting(normalizedKey, saved)"));
     assert.ok(source.includes("invalidate(key?: string)"));
+  }
+);
+
+test(
+  "client portal snapshots are bounded and never refresh a cached hidden tab",
+  () => {
+    const source = read("src/services/ClientPortalService.ts");
+
+    assert.ok(source.includes("CLIENT_PORTAL_SNAPSHOT_TTL_MS = 90_000"));
+    assert.ok(source.includes("cachedPortalSnapshot"));
+    assert.ok(source.includes("portalSnapshotRequest"));
+    assert.ok(source.includes("canUseCachedPortalSnapshot"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
+    assert.ok(source.includes("invalidateSnapshot()"));
   }
 );
 
