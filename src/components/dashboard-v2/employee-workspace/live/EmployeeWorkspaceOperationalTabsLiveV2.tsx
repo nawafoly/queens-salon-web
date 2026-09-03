@@ -190,6 +190,28 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   return "لا توجد بيانات";
 }
 
+function attendanceCalendarTimeLabel(input: {
+  status: string;
+  specialDay?: AttendanceSpecialDay;
+  checkIn: string;
+  checkOut: string;
+}) {
+  const punchLabel = [input.checkIn, input.checkOut]
+    .filter(Boolean)
+    .join(" – ");
+
+  if (punchLabel) return punchLabel;
+
+  const specialKind = input.specialDay?.kind;
+  if (specialKind === "leave") return "إجازة معتمدة — لا تتطلب بصمة";
+  if (specialKind === "rest") return "راحة معتمدة — لا تتطلب بصمة";
+  if (specialKind === "weekly_off") return "راحة أسبوعية — لا تتطلب بصمة";
+  if (specialKind === "exception_off") return "يوم مغلق — لا تتطلب بصمة";
+  if (input.status === "غياب") return "لم تسجل بصمة دخول أو خروج";
+  if (input.status === "غير مصنف") return "لا توجد بيانات بصمة أو حالة معتمدة";
+
+  return "لا توجد بيانات بصمة";
+}
 function buildAttendanceCalendar(
   monthKey: string,
   rows: EmployeeAttendanceRowLiveV2[],
@@ -331,7 +353,7 @@ function buildAttendanceCalendar(
                 : hasAbsence
                   ? "\u063a\u064a\u0627\u0628"
                   : rowStatus ||
-                    "?"
+                    "غير مصنف"
             );
 
       return {
@@ -341,13 +363,12 @@ function buildAttendanceCalendar(
         specialDay,
         status,
         timeLabel:
-          [
+          attendanceCalendarTimeLabel({
+            status,
+            specialDay,
             checkIn,
             checkOut,
-          ]
-            .filter(Boolean)
-            .join(" ? ") ||
-          "\u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u0635\u0645\u0629",
+          }),
       };
     }
   );
