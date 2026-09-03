@@ -1133,7 +1133,7 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "income":
       if (method === "GET") {
-        return listIncome(db, ctx.salonId);
+        return listIncome(db, ctx.salonId, query);
       }
       if (method === "POST") {
         return createIncome(db, ctx.salonId, body, actorInfo);

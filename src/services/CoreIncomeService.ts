@@ -94,12 +94,10 @@ function legacyIncomeToCore(item: IncomeItem) {
  * - يحاول orderBy(createdAt desc)
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
-export async function listAllIncomeCore(): Promise<IncomeItem[]> {
-  const [incomeRows, refundRows] = await Promise.all([
-    CoreFinanceService.listIncome(),
-    CoreRefundService.list(),
-  ]);
-
+function mergeCoreIncomeRows(
+  incomeRows: import("../types/coreApi").CoreIncomeEntry[],
+  refundRows: import("../types/coreApi").CoreRefund[]
+): IncomeItem[] {
   const income = incomeRows.map(coreIncomeToLegacy);
   const existingIds = new Set(income.map((item) => String(item.id || "").trim()));
   const refunds = refundRows
@@ -110,6 +108,23 @@ export async function listAllIncomeCore(): Promise<IncomeItem[]> {
   return [...income, ...refunds].sort(
     (a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
   );
+}
+
+export async function listAllIncomeCore(): Promise<IncomeItem[]> {
+  const [incomeRows, refundRows] = await Promise.all([
+    CoreFinanceService.listIncome(),
+    CoreRefundService.list(),
+  ]);
+  return mergeCoreIncomeRows(incomeRows, refundRows);
+}
+
+export async function listIncomeForDateCore(date: string): Promise<IncomeItem[]> {
+  const dateKey = String(date || "").trim();
+  const [incomeRows, refundRows] = await Promise.all([
+    CoreFinanceService.listIncome({ date: dateKey }),
+    CoreRefundService.list({ date: dateKey }),
+  ]);
+  return mergeCoreIncomeRows(incomeRows, refundRows);
 }
 
 /** Core-only income write used by D1 dashboard surfaces. */
