@@ -1,0 +1,47 @@
+name: Apply D1 Finance Legacy Booking Link
+
+on:
+  push:
+    branches:
+      - perf/d1-read-scope-stage1-finance
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply legacy booking-link compatibility
+        run: python scripts/apply-d1-finance-legacy-booking-link.py
+
+      - name: Install
+        run: npm ci
+
+      - name: Focused finance read-scope contract
+        run: node --test workers/d1-finance-read-scope.test.mjs
+
+      - name: Fixed polling guard
+        run: node scripts/check-fixed-interval-polling.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit compatibility fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workers/core/repositories/finance.js workers/d1-finance-read-scope.test.mjs
+          git commit -m "fix: preserve legacy booking-linked income"
+          git push origin HEAD:${{ github.ref_name }}
