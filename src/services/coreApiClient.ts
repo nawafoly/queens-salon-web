@@ -136,7 +136,8 @@ function coreGetRequestKey(path: string, options: CoreApiRequestOptions) {
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join("&");
   const uid = String(auth.currentUser?.uid || "anonymous");
-  return `${uid}:${path}${query ? `?${query}` : ""}`;
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  return `${uid}:${timeoutMs}:${path}${query ? `?${query}` : ""}`;
 }
 
 async function requestOnce<T>(
