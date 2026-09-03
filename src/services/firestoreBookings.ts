@@ -1760,7 +1760,7 @@ export async function listBookings(scope?: BookingReadScope): Promise<BookingDoc
 }
 
 
-/** Core D1 polling watcher for all bookings. */
+/** Core D1 compatibility watcher without fixed-interval polling. */
 export function watchAllBookings(
   onData: (rows: BookingDocWithId[]) => void,
   onError?: (err: unknown) => void,
@@ -1780,9 +1780,24 @@ export function watchAllBookings(
       loading = false;
     }
   };
+  const refreshWhenActive = () => {
+    if (stopped || document.visibilityState === "hidden") return;
+    void loadCore();
+  };
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") refreshWhenActive();
+  };
+
   void loadCore();
-  const timer = globalThis.setInterval(loadCore, 8_000);
-  return () => { stopped = true; globalThis.clearInterval(timer); };
+  window.addEventListener("focus", refreshWhenActive);
+  window.addEventListener("online", refreshWhenActive);
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    stopped = true;
+    window.removeEventListener("focus", refreshWhenActive);
+    window.removeEventListener("online", refreshWhenActive);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 }
 
 export async function listUserBookings(userId: string) {
@@ -1818,13 +1833,36 @@ export function watchEmployeeBookings(
   onError?: (err: unknown) => void
 ) {
   let stopped = false;
+  let loading = false;
   const load = async () => {
-    try { if (!stopped) onData(await listEmployeeBookings(employeeIdOrUid, employeeName)); }
-    catch (error) { if (!stopped) onError?.(error); }
+    if (stopped || loading) return;
+    loading = true;
+    try {
+      if (!stopped) onData(await listEmployeeBookings(employeeIdOrUid, employeeName));
+    } catch (error) {
+      if (!stopped) onError?.(error);
+    } finally {
+      loading = false;
+    }
   };
+  const refreshWhenActive = () => {
+    if (stopped || document.visibilityState === "hidden") return;
+    void load();
+  };
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") refreshWhenActive();
+  };
+
   void load();
-  const timer = globalThis.setInterval(load, 12_000);
-  return () => { stopped = true; globalThis.clearInterval(timer); };
+  window.addEventListener("focus", refreshWhenActive);
+  window.addEventListener("online", refreshWhenActive);
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    stopped = true;
+    window.removeEventListener("focus", refreshWhenActive);
+    window.removeEventListener("online", refreshWhenActive);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 }
 
 /* =========================
