@@ -60,12 +60,6 @@ const BASELINE = [
     note: "Local day-boundary clock only; no network or database read.",
   },
   {
-    path: "src/pages/DashboardDayAudit.tsx",
-    marker: "setInterval(() => void loadCoreAuditData(), 30_000)",
-    kind: "data-polling-debt",
-    note: "Day audit Core refresh polling.",
-  },
-  {
     path: "src/pages/DashboardEmployees.tsx",
     marker: "setInterval(() => setNowTick(Date.now()), 60_000)",
     kind: "local-only",
