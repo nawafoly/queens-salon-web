@@ -394,6 +394,7 @@ test(
     assert.ok(source.includes("const existing = inFlightGetRequests.get(requestKey)"));
     assert.ok(source.includes("inFlightGetRequests.delete(requestKey)"));
     assert.ok(source.includes('logicalMethod !== "GET"'));
+    assert.ok(source.includes("const timeoutMs = options.timeoutMs ?? 15_000"));
   }
 );
 
@@ -425,5 +426,46 @@ test(
     assert.ok(source.includes("requestInFlight"));
     assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
     assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+  }
+);
+
+test(
+  "TV queue uses adaptive visible-only network refresh while keeping its local clock",
+  () => {
+    const source = read("src/pages/DashboardQueueTv.tsx");
+
+    assert.equal(
+      source.includes("setInterval(() => void loadBookings()"),
+      false
+    );
+    assert.ok(source.includes("QUEUE_REFRESH_DELAYS_MS = [8_000, 15_000, 30_000]"));
+    assert.ok(source.includes("window.setTimeout"));
+    assert.ok(source.includes("Math.random()"));
+    assert.ok(source.includes('document.visibilityState === "visible"'));
+    assert.ok(source.includes("navigator.onLine !== false"));
+    assert.ok(source.includes("inFlight"));
+    assert.ok(source.includes("lastSignature"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+    assert.ok(source.includes("setNowMs(now.getTime())"));
+  }
+);
+
+test(
+  "day audit never re-queries bookings and income on a fixed timer",
+  () => {
+    const source = read("src/pages/DashboardDayAudit.tsx");
+
+    assert.equal(
+      source.includes("setInterval(() => void loadCoreAuditData()"),
+      false
+    );
+    assert.ok(source.includes("let inFlight = false"));
+    assert.ok(source.includes('document.visibilityState !== "visible"'));
+    assert.ok(source.includes("navigator.onLine === false"));
+    assert.ok(source.includes('window.addEventListener("focus", refreshWhenActive)'));
+    assert.ok(source.includes('window.addEventListener("online", refreshWhenActive)'));
+    assert.ok(source.includes('document.addEventListener("visibilitychange", refreshWhenActive)'));
+    assert.ok(source.includes("setTodayLimitKey(todayISO())"));
   }
 );
