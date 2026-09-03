@@ -542,6 +542,44 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     expectedCarryoverDeductionHalalas
   );
 
+  // The target payroll must consume pending Core carryovers automatically.
+  // Browser/UI code must not reconstruct or manually inject financial carryovers.
+  const targetPayroll = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-carryover-target-2026-09',
+    employeeId: 'emp-1',
+    payrollMonth: '2026-09',
+    skipTargetBonus: true,
+  }, actor);
+
+  const targetCarryoverDeductions = JSON.parse(
+    targetPayroll.deductions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  assert.equal(targetCarryoverDeductions.length, 1);
+  assert.equal(
+    targetCarryoverDeductions[0].sourceId,
+    carryovers[0].id
+  );
+  assert.equal(
+    Number(targetCarryoverDeductions[0].amountHalalas),
+    expectedCarryoverDeductionHalalas
+  );
+  assert.equal(
+    Number(targetPayroll.manual_deductions_halalas),
+    expectedCarryoverDeductionHalalas
+  );
+
+  const carryoversAfterTargetDraft =
+    await listPayrollCarryoverAdjustments(db, 'main', {
+      employeeId: 'emp-1',
+      targetPayrollMonth: '2026-09',
+      status: 'pending',
+    });
+
+  assert.equal(carryoversAfterTargetDraft.length, 1);
+  assert.equal(carryoversAfterTargetDraft[0].status, 'pending');
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
   assert.equal(paidPayroll.status, 'paid');
 });
