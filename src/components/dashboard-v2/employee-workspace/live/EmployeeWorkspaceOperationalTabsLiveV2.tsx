@@ -392,11 +392,14 @@ function buildAttendanceCalendar(
         (
           !specialDay ||
           specialDay.kind ===
-            "weekly_rest_work"
+            "weekly_rest_work" ||
+          specialDay.kind ===
+            "partial_leave"
         );
 
       const status =
-        specialDay?.kind === "weekly_rest_work"
+        specialDay?.kind === "weekly_rest_work" ||
+        specialDay?.kind === "partial_leave"
           ? reliableRowStatus ||
             (
               hasAbsence ||

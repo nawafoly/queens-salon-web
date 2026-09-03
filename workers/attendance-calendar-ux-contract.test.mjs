@@ -41,6 +41,14 @@ test("past resolved Core workdays without punches are inferred as absence", () =
   assert.match(source, /!loading[\s\S]*!cleanText\(error\)/);
   assert.match(source, /canInferScheduledAbsence[\s\S]*scheduledWorkDateKeys\.filter/);
   assert.match(source, /const isPastScheduledNoPunch/);
+  assert.match(
+    source,
+    /!specialDay \|\|[\s\S]*"weekly_rest_work" \|\|[\s\S]*"partial_leave"/
+  );
+  assert.match(
+    source,
+    /specialDay\?\.kind === "weekly_rest_work" \|\|[\s\S]*specialDay\?\.kind === "partial_leave"[\s\S]*\? reliableRowStatus/
+  );
   assert.match(source, /hasScheduledWork/);
   assert.match(source, /date < todayKey/);
   assert.match(source, /!hasPunch/);
