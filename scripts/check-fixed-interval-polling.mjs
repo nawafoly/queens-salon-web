@@ -18,12 +18,6 @@ const BASELINE = [
     note: "Account activation status polling.",
   },
   {
-    path: "src/pages/Profile.tsx",
-    marker: "setInterval(() => void loadPortal(true), 30_000)",
-    kind: "data-polling-debt",
-    note: "Client portal polling.",
-  },
-  {
     path: "src/pages/Dashboard.tsx",
     marker: "setInterval(load, 60_000)",
     kind: "data-polling-debt",
