@@ -37,6 +37,12 @@ type RevenueBreakdown = {
   card: number;
   transfer: number;
 };
+
+type AuditRevenueSnapshot = {
+  bookingDates: Record<string, string>;
+  revenue: RevenueBreakdown;
+};
+
 type BookingPaymentType = "full" | "partial";
 
 type DayAuditPrintPayload = {
@@ -292,6 +298,51 @@ function saveLockMap(next: Record<string, LockSnapshot>) {
   localStorage.setItem(LOCK_KEY, JSON.stringify(next));
 }
 
+async function fetchAuditRevenueSnapshot(dateKey: string): Promise<AuditRevenueSnapshot> {
+  const [bookings, incomeRows] = await Promise.all([
+    CoreBookingService.list({ date: dateKey }),
+    listAllIncomeCore(),
+  ]);
+
+  const bookingDates: Record<string, string> = {};
+  for (const booking of bookings) {
+    const date = String(booking.bookingDate || "").slice(0, 10);
+    if (booking.id && date) bookingDates[booking.id] = date;
+  }
+
+  let total = 0;
+  let cash = 0;
+  let card = 0;
+  let transfer = 0;
+  const dedupRows = new Map<string, { amount: number; method: PaymentChannel; sortMs: number }>();
+  for (const x of incomeRows as any[]) {
+    if (!isBookingIncomeRow(x)) continue;
+    if (isVoidedIncomeStatus(x?.status)) continue;
+    const docId = String(x?.id || "").trim();
+    const source = normalizeIncomeSource(x?.source);
+    const bookingId = resolveIncomeBookingId(x, docId);
+    const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDates[bookingId] : "";
+    if (resolveIncomeDateForAudit(x, bookingDate) !== dateKey) continue;
+    const amount = Math.round(toNum(x?.amount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const method = normalizeAuditPaymentMethod(x?.method ?? x?.paymentMethod, x?.note);
+    const identity = resolveIncomeAuditIdentity(x, docId, amount);
+    const sortMs = Math.max(toMillisSafe(x?.updatedAt), toMillisSafe(x?.createdAt));
+    const previous = dedupRows.get(identity);
+    if (!previous || sortMs >= previous.sortMs) dedupRows.set(identity, { amount, method, sortMs });
+  }
+  dedupRows.forEach((row) => {
+    if (row.method === "cash") { cash += row.amount; total += row.amount; }
+    else if (row.method === "card") { card += row.amount; total += row.amount; }
+    else transfer += row.amount;
+  });
+
+  return {
+    bookingDates,
+    revenue: { total, cash, card, transfer },
+  };
+}
+
 export default function DashboardDayAudit() {
   const [todayKey, setTodayKey] = useState(() => todayISO());
   const [todayLimitKey, setTodayLimitKey] = useState(() => todayISO());
@@ -307,6 +358,7 @@ export default function DashboardDayAudit() {
   const [errorText, setErrorText] = useState("");
   const [lockMap, setLockMap] = useState<Record<string, LockSnapshot>>(() => loadLockMap());
   const pendingPrintPopupRef = useRef<Window | null>(null);
+  const lockInFlightRef = useRef(false);
 
   const lock = lockMap[todayKey] || null;
   const bookingsRevenue = lock ? lock.bookingsRevenue : revenueLive.total;
@@ -331,46 +383,10 @@ export default function DashboardDayAudit() {
 
     const loadCoreAuditData = async () => {
       try {
-        const [bookings, incomeRows] = await Promise.all([
-          CoreBookingService.list({ date: todayKey }),
-          listAllIncomeCore(),
-        ]);
+        const snapshot = await fetchAuditRevenueSnapshot(todayKey);
         if (!active) return;
-
-        const bookingDates: Record<string, string> = {};
-        for (const booking of bookings) {
-          const date = String(booking.bookingDate || "").slice(0, 10);
-          if (booking.id && date) bookingDates[booking.id] = date;
-        }
-        setBookingDateById(bookingDates);
-
-        let total = 0;
-        let cash = 0;
-        let card = 0;
-        let transfer = 0;
-        const dedupRows = new Map<string, { amount: number; method: PaymentChannel; sortMs: number }>();
-        for (const x of incomeRows as any[]) {
-          if (!isBookingIncomeRow(x)) continue;
-          if (isVoidedIncomeStatus(x?.status)) continue;
-          const docId = String(x?.id || "").trim();
-          const source = normalizeIncomeSource(x?.source);
-          const bookingId = resolveIncomeBookingId(x, docId);
-          const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDates[bookingId] : "";
-          if (resolveIncomeDateForAudit(x, bookingDate) !== todayKey) continue;
-          const amount = Math.round(toNum(x?.amount) * 100) / 100;
-          if (!Number.isFinite(amount) || amount === 0) continue;
-          const method = normalizeAuditPaymentMethod(x?.method ?? x?.paymentMethod, x?.note);
-          const identity = resolveIncomeAuditIdentity(x, docId, amount);
-          const sortMs = Math.max(toMillisSafe(x?.updatedAt), toMillisSafe(x?.createdAt));
-          const previous = dedupRows.get(identity);
-          if (!previous || sortMs >= previous.sortMs) dedupRows.set(identity, { amount, method, sortMs });
-        }
-        dedupRows.forEach((row) => {
-          if (row.method === "cash") { cash += row.amount; total += row.amount; }
-          else if (row.method === "card") { card += row.amount; total += row.amount; }
-          else transfer += row.amount;
-        });
-        setRevenueLive({ total, cash, card, transfer });
+        setBookingDateById(snapshot.bookingDates);
+        setRevenueLive(snapshot.revenue);
         setLoadedDateKey(todayKey);
       } catch (error) {
         console.error("Core day audit load failed:", error);
@@ -656,8 +672,8 @@ export default function DashboardDayAudit() {
     }
   };
 
-  const printAndLock = () => {
-    if (lock) return;
+  const printAndLock = async () => {
+    if (lock || lockInFlightRef.current) return;
 
     const manual = toNum(manualCashInput || 0);
     if (manual < 0) {
@@ -665,35 +681,49 @@ export default function DashboardDayAudit() {
       return;
     }
 
+    lockInFlightRef.current = true;
     setErrorText("");
-    const nextLock: LockSnapshot = {
-      date: todayKey,
-      manualCash: manual,
-      bookingsRevenue: revenueLive.total,
-      cashRevenue: revenueLive.cash,
-      cardRevenue: revenueLive.card,
-      transferRevenue: revenueLive.transfer,
-      diff: manual - revenueLive.cash,
-      lockedAt: Date.now(),
-    };
-    const nextMap = { ...lockMap, [todayKey]: nextLock };
-    setLockMap(nextMap);
-    saveLockMap(nextMap);
+    try {
+      const snapshot = await fetchAuditRevenueSnapshot(todayKey);
+      setBookingDateById(snapshot.bookingDates);
+      setRevenueLive(snapshot.revenue);
+      setLoadedDateKey(todayKey);
 
-    const payload: DayAuditPrintPayload = {
-      dateLabel,
-      totalRevenue: nextLock.bookingsRevenue,
-      cashRevenue: toNum(nextLock.cashRevenue),
-      cardRevenue: toNum(nextLock.cardRevenue),
-      transferRevenue: toNum(nextLock.transferRevenue),
-      manualCash: nextLock.manualCash,
-      diff: nextLock.diff,
-      isLocked: true,
-      lockTimeLabel: formatLockedAt(nextLock.lockedAt),
-      printedAtLabel: DATE_TIME_FORMATTER.format(new Date()),
-    };
-    if (!openAuditPrintPopup(payload)) {
-      setErrorText("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة.");
+      const nextLock: LockSnapshot = {
+        date: todayKey,
+        manualCash: manual,
+        bookingsRevenue: snapshot.revenue.total,
+        cashRevenue: snapshot.revenue.cash,
+        cardRevenue: snapshot.revenue.card,
+        transferRevenue: snapshot.revenue.transfer,
+        diff: manual - snapshot.revenue.cash,
+        lockedAt: Date.now(),
+      };
+      const nextMap = { ...lockMap, [todayKey]: nextLock };
+      setLockMap(nextMap);
+      saveLockMap(nextMap);
+
+      const payload: DayAuditPrintPayload = {
+        dateLabel,
+        totalRevenue: nextLock.bookingsRevenue,
+        cashRevenue: toNum(nextLock.cashRevenue),
+        cardRevenue: toNum(nextLock.cardRevenue),
+        transferRevenue: toNum(nextLock.transferRevenue),
+        manualCash: nextLock.manualCash,
+        diff: nextLock.diff,
+        isLocked: true,
+        lockTimeLabel: formatLockedAt(nextLock.lockedAt),
+        printedAtLabel: DATE_TIME_FORMATTER.format(new Date()),
+      };
+      if (!openAuditPrintPopup(payload)) {
+        setErrorText("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة.");
+      }
+    } catch (error) {
+      console.error("Core day audit pre-lock refresh failed:", error);
+      closePendingAuditPrintPopup();
+      setErrorText("تعذر تحديث بيانات الجرد قبل الإقفال. لم يتم إقفال اليوم.");
+    } finally {
+      lockInFlightRef.current = false;
     }
   };
 
