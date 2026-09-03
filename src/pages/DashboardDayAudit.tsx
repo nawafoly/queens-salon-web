@@ -13,7 +13,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { DashboardDatePickerV2, DashboardSkeletonV2 } from "../components/dashboard-v2";
 import { CoreBookingService } from "../services/CoreBookingService";
-import { listAllIncomeCore } from "../services/CoreIncomeService";
+import { listIncomeForDateCore } from "../services/CoreIncomeService";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
 const LOCK_KEY = "dashboard_day_audit_lock_v1";
@@ -301,7 +301,7 @@ function saveLockMap(next: Record<string, LockSnapshot>) {
 async function fetchAuditRevenueSnapshot(dateKey: string): Promise<AuditRevenueSnapshot> {
   const [bookings, incomeRows] = await Promise.all([
     CoreBookingService.list({ date: dateKey }),
-    listAllIncomeCore(),
+    listIncomeForDateCore(dateKey),
   ]);
 
   const bookingDates: Record<string, string> = {};

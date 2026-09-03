@@ -94,7 +94,6 @@ import { DashboardService } from "../helpers/dashboardService";
 
 import {
   listAllBookings as listAllBookingsFS,
-  updateBookingStatus as updateBookingStatusFS,
   type BookingDocWithId,
 } from "../services/firestoreBookings";
 
@@ -122,7 +121,6 @@ import { isStaffOperationallyActiveForDate } from "../helpers/staffOperationalSt
 import { normalizeTimeToHHMM, timeToMinutes } from "../helpers/timeContract";
 import {
   formatLocalDateISO,
-  weekdayKeyFromISODate,
   type DashboardWeekdayKey,
 } from "../helpers/dashboardDateUtils";
 import {
@@ -1323,7 +1321,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // ✅ Badge المصروفات بدون ملاحظات (AdminPower only)
+  // Badge المصروفات بدون ملاحظات: event/focus-driven without fixed polling.
   useEffect(() => {
     if (!userInfo) return;
 
@@ -1333,22 +1331,43 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     let alive = true;
+    let inFlight = false;
+    let lastRefreshAt = 0;
 
-    const load = async () => {
+    const load = async (force = false) => {
+      if (!alive || inFlight) return;
+      const now = Date.now();
+      if (!force && now - lastRefreshAt < 1_000) return;
+      inFlight = true;
       try {
         const n = await countMonthlyExpensesMissingNotesCore();
         if (alive) setMissingExpenseNotesCount(Number(n || 0));
       } catch {
         if (alive) setMissingExpenseNotesCount(0);
+      } finally {
+        inFlight = false;
+        lastRefreshAt = Date.now();
       }
     };
 
-    load();
-    const t = window.setInterval(load, 60_000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "hidden") return;
+      void load();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshWhenActive();
+    };
+
+    void load(true);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       alive = false;
-      window.clearInterval(t);
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [hasPermission, userInfo?.role]);
 
@@ -1475,211 +1494,40 @@ const Dashboard: React.FC<DashboardProps> = ({
     return () => unsub();
   }, [navigate]);
 
-  // ✅ Auto Job (Client-side): كل 5 دقائق
-  // - confirmed -> completed (لا يفك slots)
-  // ملاحظة: إلغاء pending تلقائيًا يتم من السيرفر (Cloud Function) فقط
-  // لتجنب الإلغاء الخاطئ بسبب ساعة/منطقة جهاز المتصفح.
-  // ✅ حماية: يشتغل Owner/Admin فقط
-  // ✅ يعتمد على وقت التقفيلة الفعلي (اليومي + الاستثناءات) مع مهلة إضافية قبل قلب اليوم
+  // Dashboard refreshes when the operator returns to an active window.
   useEffect(() => {
-    if (!userInfo) return;
+    if (!userInfo?.role || isHrWorkspacePage) return;
 
-    const canRun = userInfo.role === "owner" || userInfo.role === "admin";
-    if (!canRun) return;
+    const role = userInfo.role;
+    let disposed = false;
+    let refreshInFlight = false;
+    let lastRefreshAt = 0;
 
-    const role = userInfo.role; // ✅ ثبت الدور هنا عشان TS ما يقول userInfo ممكن null
-    const businessHoursMap = (settings as any)?.booking?.businessHours || {};
-    const bookingHourOverrides = Array.isArray((settings as any)?.booking?.bookingHourOverrides)
-      ? ((settings as any).booking.bookingHourOverrides as BookingHourOverride[])
-      : [];
-    const configuredGrace = Number((settings as any)?.booking?.autoCloseGraceMin);
-    const autoCloseGraceMin =
-      Number.isFinite(configuredGrace) && configuredGrace >= 0
-        ? Math.trunc(configuredGrace)
-        : 30;
-
-    let alive = true;
-    let running = false;
-
-    const parseHHMM = (time: string) => {
-      const m = String(time || "").trim().match(/^(\d{1,2}):(\d{2})$/);
-      if (!m) return null;
-      const hh = Number(m[1]);
-      const mm = Number(m[2]);
-      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-      return { hh, mm, totalMin: hh * 60 + mm };
-    };
-
-    const parseISODate = (dateStr: string) => {
-      const m = String(dateStr || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (!m) return null;
-      const y = Number(m[1]);
-      const mo = Number(m[2]);
-      const d = Number(m[3]);
-      if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
-      return { y, mo, d };
-    };
-
-    const resolveWeekdayFromISO = (dateStr: string): WeekdayKey | null => {
-      const p = parseISODate(dateStr);
-      if (!p) return null;
-      const dt = new Date(p.y, Math.max(0, p.mo - 1), p.d);
-      return weekdayKeyFromISODate(dateStr);
-    };
-
-    const safeTimeHHMM = (timeStr: string, fallback: string): string => {
-      const t = parseHHMM(timeStr);
-      if (!t) return fallback;
-      return `${String(t.hh).padStart(2, "0")}:${String(t.mm).padStart(2, "0")}`;
-    };
-
-    const normalizeWeekdayList = (raw: any): WeekdayKey[] => {
-      if (!Array.isArray(raw)) return [];
-      const valid = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
-      const out: WeekdayKey[] = [];
-      raw.forEach((x) => {
-        const day = String(x || "").trim().toLowerCase() as WeekdayKey;
-        if (valid.has(day) && !out.includes(day)) out.push(day);
+    const refreshWhenActive = () => {
+      if (disposed || refreshInFlight || document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastRefreshAt < 1_500) return;
+      lastRefreshAt = now;
+      refreshInFlight = true;
+      void refreshDashboard(role, { silent: true }).finally(() => {
+        refreshInFlight = false;
       });
-      return out;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshWhenActive();
     };
 
-    const resolveDaySettings = (dateStr: string) => {
-      const dayKey = resolveWeekdayFromISO(dateStr) || "sat";
-      const dayCfg = (businessHoursMap as any)?.[dayKey] || {};
-
-      let enabled = dayCfg?.enabled !== false;
-      let openTime = safeTimeHHMM(String(dayCfg?.start || ""), "10:00");
-      let closeTime = safeTimeHHMM(String(dayCfg?.end || ""), "22:00");
-
-      for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
-        const ov = bookingHourOverrides[i] || {};
-        const rawFrom = String(ov?.fromDate || "").trim();
-        const rawTo = String(ov?.toDate || "").trim();
-        if (!parseISODate(rawFrom) || !parseISODate(rawTo)) continue;
-        const fromDate = rawFrom <= rawTo ? rawFrom : rawTo;
-        const toDate = rawFrom <= rawTo ? rawTo : rawFrom;
-        if (dateStr < fromDate || dateStr > toDate) continue;
-
-        const includeWeekdays = normalizeWeekdayList(ov?.includeWeekdays);
-        if (includeWeekdays.length > 0 && !includeWeekdays.includes(dayKey)) continue;
-
-        const blockedWeekdays = normalizeWeekdayList(ov?.blockedWeekdays);
-        const mode = String(ov?.mode || "hours").trim().toLowerCase();
-        if (blockedWeekdays.includes(dayKey) || mode === "closed") {
-          enabled = false;
-        } else {
-          enabled = true;
-          openTime = safeTimeHHMM(String(ov?.start || ""), openTime);
-          closeTime = safeTimeHHMM(String(ov?.end || ""), closeTime);
-        }
-        break;
-      }
-
-      const open = parseHHMM(openTime);
-      const close = parseHHMM(closeTime);
-      const isOvernight = !!open && !!close && open.totalMin > close.totalMin;
-      return {
-        enabled,
-        openTime,
-        closeTime,
-        closeMin: close?.totalMin ?? null,
-        isOvernight,
-      };
-    };
-
-    // ✅ ليلية-aware:
-    // - الحجز يظل business-date كما هو
-    // - لكن لو اليوم Overnight (start > end) والوقت بعد منتصف الليل (< end) نحسبه اليوم التالي فعليًا
-    const toEffectiveDateStart = (
-      dateStr: string,
-      timeStr: string,
-      daySettings: ReturnType<typeof resolveDaySettings>
-    ) => {
-      const p = parseISODate(dateStr);
-      const t = parseHHMM(timeStr);
-      if (!p || !t) return null;
-
-      const start = new Date(p.y, Math.max(0, p.mo - 1), p.d, t.hh, t.mm, 0, 0);
-      if (daySettings.isOvernight && daySettings.closeMin !== null && t.totalMin < daySettings.closeMin) {
-        start.setDate(start.getDate() + 1);
-      }
-
-      return start;
-    };
-
-    const buildCloseGateDate = (
-      dateStr: string,
-      daySettings: ReturnType<typeof resolveDaySettings>
-    ) => {
-      const p = parseISODate(dateStr);
-      const close = parseHHMM(daySettings.closeTime);
-      if (!p || !close) return null;
-
-      const closeAt = new Date(p.y, Math.max(0, p.mo - 1), p.d, close.hh, close.mm, 0, 0);
-      if (daySettings.isOvernight) closeAt.setDate(closeAt.getDate() + 1);
-      closeAt.setMinutes(closeAt.getMinutes() + autoCloseGraceMin);
-      return closeAt;
-    };
-
-    async function tick() {
-      if (!alive) return;
-      if (running) return;
-      running = true;
-
-      try {
-        const rows = await listAllBookingsFS();
-        const nowMs = Date.now();
-
-        for (const b of rows) {
-          if (!b?.date || !b?.time) continue;
-
-          const st = String(b.status || "pending");
-          if (st !== "pending" && st !== "confirmed") continue;
-
-          const daySettings = resolveDaySettings(String(b.date || ""));
-          const start = toEffectiveDateStart(String(b.date || ""), String(b.time || ""), daySettings);
-          if (!start) continue;
-
-          // ✅ SAFE duration (بدون كراش)
-          const duration =
-            Number(b?.serviceSnapshot?.durationAtBooking ?? b?.durationMin ?? 0) || 60;
-          const bufferMin = Number(b?.bufferMinAtBooking ?? 0);
-          const safeBuffer = Number.isFinite(bufferMin) ? Math.max(0, Math.trunc(bufferMin)) : 0;
-
-          const end = new Date(start.getTime() + (duration + safeBuffer) * 60_000);
-          const closeGate = buildCloseGateDate(String(b.date || ""), daySettings);
-          const readyAtMs = Math.max(end.getTime(), closeGate?.getTime() || 0);
-
-          if (nowMs < readyAtMs) continue;
-
-          // Business rule (manual completion only):
-          // confirmed bookings stay confirmed until staff marks them completed manually.
-          if (st === "confirmed") continue;
-        }
-
-        await refreshDashboard(role); // ✅ بدل userInfo.role
-      } catch (e) {
-        console.error("[AUTO] tick error:", e);
-      } finally {
-        running = false;
-      }
-    }
-
-    tick();
-    const id = window.setInterval(tick, 5 * 60_000);
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      alive = false;
-      window.clearInterval(id);
+      disposed = true;
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [
-    userInfo?.role,
-    settings.booking?.businessHours,
-    settings.booking?.bookingHourOverrides,
-    settings.booking?.autoCloseGraceMin,
-  ]);
+  }, [userInfo?.role, isHrWorkspacePage]);
 
   useEffect(() => {
     if (!hasExternalAuthBootstrap) return;

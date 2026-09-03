@@ -43,8 +43,59 @@ function jsonObject(value) {
   }
 }
 
-export async function listIncome(db, salonId) {
-  return dbAll(db, 'SELECT * FROM income_entries WHERE salon_id = ? ORDER BY occurred_at DESC LIMIT 500', [salonId]);
+function dateScope(rawDate) {
+  const date = cleanText(rawDate);
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new AppError(400, 'core_finance:invalid_date');
+  const startDate = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(startDate.getTime()) || startDate.toISOString().slice(0, 10) !== date) {
+    throw new AppError(400, 'core_finance:invalid_date');
+  }
+  const endDate = new Date(startDate.getTime() + 86_400_000);
+  return { date, start: startDate.toISOString(), end: endDate.toISOString() };
+}
+
+export async function listIncome(db, salonId, query = {}) {
+  const scope = dateScope(query.date);
+  if (!scope) {
+    return dbAll(db, 'SELECT * FROM income_entries WHERE salon_id = ? ORDER BY occurred_at DESC LIMIT 500', [salonId]);
+  }
+
+  const occurredRows = await dbAll(
+    db,
+    `SELECT * FROM income_entries
+      WHERE salon_id = ? AND (occurred_at = ? OR (occurred_at >= ? AND occurred_at < ?))
+      ORDER BY occurred_at DESC LIMIT 500`,
+    [salonId, scope.date, scope.start, scope.end]
+  );
+  const bookingRows = await dbAll(
+    db,
+    `SELECT i.*
+       FROM bookings b
+       JOIN income_entries i
+         ON i.salon_id = b.salon_id AND i.booking_id = b.id
+      WHERE b.salon_id = ? AND b.booking_date = ? AND b.deleted_at IS NULL
+      ORDER BY i.occurred_at DESC LIMIT 500`,
+    [salonId, scope.date]
+  );
+  const legacyBookingRows = await dbAll(
+    db,
+    `SELECT i.*
+       FROM bookings b
+       JOIN income_entries i
+         ON i.salon_id = b.salon_id AND i.id = b.id
+      WHERE b.salon_id = ? AND b.booking_date = ? AND b.deleted_at IS NULL
+        AND (i.booking_id IS NULL OR TRIM(i.booking_id) = '')
+        AND LOWER(TRIM(COALESCE(i.source, ''))) IN ('booking', 'invoice', 'حجز', 'فاتورة')
+      ORDER BY i.occurred_at DESC LIMIT 500`,
+    [salonId, scope.date]
+  );
+
+  const byId = new Map();
+  for (const row of [...occurredRows, ...bookingRows, ...legacyBookingRows]) byId.set(cleanText(row?.id), row);
+  return [...byId.values()]
+    .sort((a, b) => cleanText(b?.occurred_at).localeCompare(cleanText(a?.occurred_at)))
+    .slice(0, 500);
 }
 
 export async function getIncome(db, salonId, id) {
