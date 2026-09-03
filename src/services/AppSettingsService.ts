@@ -492,6 +492,86 @@ function cacheRead(): AppSettings | null {
   }
 }
 
+type SettingsSubscriber = (settings: AppSettings) => void;
+
+const SETTINGS_REVALIDATE_AFTER_MS = 30_000;
+const SETTINGS_ACTIVE_EVENT_DEDUPE_MS = 1_000;
+const settingsSubscribers = new Set<SettingsSubscriber>();
+let settingsSnapshot: AppSettings | null = null;
+let settingsRefreshInFlight: Promise<AppSettings> | null = null;
+let settingsListenersInstalled = false;
+let lastSettingsRefreshAt = 0;
+let lastSettingsActiveRefreshRequestAt = 0;
+
+function publishSettings(settings: AppSettings) {
+  settingsSnapshot = settings;
+  for (const subscriber of settingsSubscribers) {
+    subscriber(settings);
+  }
+}
+
+function reportSettingsSubscriptionError(error: unknown) {
+  console.error("Core D1 settings subscription failed closed:", error);
+  globalThis.setTimeout(() => {
+    throw error;
+  }, 0);
+}
+
+async function readRemoteSettingsShared(): Promise<AppSettings> {
+  if (settingsRefreshInFlight) return settingsRefreshInFlight;
+
+  settingsRefreshInFlight = (async () => {
+    const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
+    if (!setting) {
+      throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
+    }
+    const remote = sanitize(setting.value);
+    cacheWrite(remote);
+    settingsSnapshot = remote;
+    lastSettingsRefreshAt = Date.now();
+    return remote;
+  })().finally(() => {
+    settingsRefreshInFlight = null;
+  });
+
+  return settingsRefreshInFlight;
+}
+
+function refreshSettingsSubscribers(force = false) {
+  if (!settingsSubscribers.size) return;
+  if (!force && settingsSnapshot && Date.now() - lastSettingsRefreshAt < SETTINGS_REVALIDATE_AFTER_MS) {
+    return;
+  }
+
+  void readRemoteSettingsShared()
+    .then((remote) => publishSettings(remote))
+    .catch(reportSettingsSubscriptionError);
+}
+
+function refreshSettingsWhenActive() {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  const now = Date.now();
+  if (now - lastSettingsActiveRefreshRequestAt < SETTINGS_ACTIVE_EVENT_DEDUPE_MS) return;
+  lastSettingsActiveRefreshRequestAt = now;
+  refreshSettingsSubscribers(true);
+}
+
+function installSettingsRefreshListeners() {
+  if (settingsListenersInstalled || typeof window === "undefined" || typeof document === "undefined") return;
+  settingsListenersInstalled = true;
+  window.addEventListener("focus", refreshSettingsWhenActive);
+  window.addEventListener("online", refreshSettingsWhenActive);
+  document.addEventListener("visibilitychange", refreshSettingsWhenActive);
+}
+
+function removeSettingsRefreshListenersIfIdle() {
+  if (!settingsListenersInstalled || settingsSubscribers.size || typeof window === "undefined" || typeof document === "undefined") return;
+  settingsListenersInstalled = false;
+  window.removeEventListener("focus", refreshSettingsWhenActive);
+  window.removeEventListener("online", refreshSettingsWhenActive);
+  document.removeEventListener("visibilitychange", refreshSettingsWhenActive);
+}
+
 /** ✅ إنشاء salons/main/settings/app مرة واحدة لو غير موجود */
 
 
@@ -507,36 +587,23 @@ export const AppSettingsService = {
   },
 
   async fetchRemote(): Promise<AppSettings> {
-    const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
-    if (!setting) {
-      throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
-    }
-    const remote = sanitize(setting.value);
-    cacheWrite(remote);
-    return remote;
+    return readRemoteSettingsShared();
   },
 
-  subscribe(cb: (settings: AppSettings) => void) {
-    let active = true;
-    const load = async () => {
-      const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
-      if (!setting) throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
-      const remote = sanitize(setting.value);
-      cacheWrite(remote);
-      if (active) cb(remote);
-    };
-    const run = () => {
-      void load().catch((error) => {
-        console.error("Core D1 settings subscription failed closed:", error);
-        // No Firestore/cache fallback. Surface the failure to the application.
-        globalThis.setTimeout(() => { throw error; }, 0);
-      });
-    };
-    run();
-    const timer = globalThis.setInterval(run, 60_000);
+  subscribe(cb: SettingsSubscriber) {
+    settingsSubscribers.add(cb);
+    installSettingsRefreshListeners();
+
+    if (settingsSnapshot) {
+      cb(settingsSnapshot);
+      refreshSettingsSubscribers(false);
+    } else {
+      refreshSettingsSubscribers(true);
+    }
+
     return () => {
-      active = false;
-      globalThis.clearInterval(timer);
+      settingsSubscribers.delete(cb);
+      removeSettingsRefreshListenersIfIdle();
     };
   },
 
@@ -547,6 +614,9 @@ export const AppSettingsService = {
     });
     await CoreSettingsService.save(DOC_PATH.id, payload, "public");
     cacheWrite(payload);
+    settingsSnapshot = payload;
+    lastSettingsRefreshAt = Date.now();
+    publishSettings(payload);
     return payload;
   },
 };
