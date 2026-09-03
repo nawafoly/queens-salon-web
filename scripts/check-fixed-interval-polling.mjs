@@ -36,6 +36,12 @@ const BASELINE = [
     note: "Booking auto-close scan.",
   },
   {
+    path: "src/pages/Dashboard.tsx",
+    marker: "setInterval(() => setTopbarNowMs(Date.now()), 1000)",
+    kind: "local-only",
+    note: "TV queue topbar clock only; no network or database read.",
+  },
+  {
     path: "src/pages/DashboardQueueTv.tsx",
     marker: "setNowMs(now.getTime())",
     kind: "local-only",
