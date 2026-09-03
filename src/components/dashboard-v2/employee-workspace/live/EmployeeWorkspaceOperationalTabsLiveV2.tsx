@@ -190,15 +190,41 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   return "لا توجد بيانات";
 }
 
+function attendanceCalendarTimeLabel(input: {
+  status: string;
+  specialDay?: AttendanceSpecialDay;
+  checkIn: string;
+  checkOut: string;
+}) {
+  const punchLabel = [input.checkIn, input.checkOut]
+    .filter(Boolean)
+    .join(" – ");
+
+  if (punchLabel) return punchLabel;
+
+  const specialKind = input.specialDay?.kind;
+  if (specialKind === "leave") return "إجازة معتمدة — لا تتطلب بصمة";
+  if (specialKind === "rest") return "راحة معتمدة — لا تتطلب بصمة";
+  if (specialKind === "weekly_off") return "راحة أسبوعية — لا تتطلب بصمة";
+  if (specialKind === "exception_off") return "يوم مغلق — لا تتطلب بصمة";
+  if (input.status === "غياب") return "لم تسجل بصمة دخول أو خروج";
+  if (input.status === "غير مصنف") return "لا توجد بيانات بصمة أو حالة معتمدة";
+
+  return "لا توجد بيانات بصمة";
+}
 function buildAttendanceCalendar(
   monthKey: string,
   rows: EmployeeAttendanceRowLiveV2[],
   approvedLeaveDateKeys: readonly string[],
   absenceDateKeys: readonly string[],
+  scheduledWorkDateKeys: readonly string[],
   specialDays: readonly AttendanceSpecialDay[] = []
 ): AttendanceCalendarDayLiveV2[] {
   const normalized =
     safeMonthKey(monthKey);
+
+  const todayKey =
+    getLocalDateKey();
 
   const year =
     Number(
@@ -227,6 +253,13 @@ function buildAttendanceCalendar(
   const absenceDates =
     new Set(
       absenceDateKeys
+        .map(cleanText)
+        .filter(Boolean)
+    );
+
+  const workDates =
+    new Set(
+      scheduledWorkDateKeys
         .map(cleanText)
         .filter(Boolean)
     );
@@ -301,6 +334,17 @@ function buildAttendanceCalendar(
           row?.checkOutAtClient
         );
 
+      const hasPunch =
+        Boolean(
+          checkIn ||
+          checkOut
+        );
+
+      const hasScheduledWork =
+        workDates.has(
+          date
+        );
+
       const hasLeave =
         leaveDates.has(
           date
@@ -321,17 +365,60 @@ function buildAttendanceCalendar(
           row
         );
 
-      const status =
-        specialDay?.kind === "weekly_rest_work" && rowStatus
+      const reliableRowStatus =
+        rowStatus &&
+        (
+          hasPunch ||
+          [
+            "غياب",
+            "إجازة",
+            "بصمة ناقصة",
+            "ضمن مهلة التعويض",
+            "تأخير",
+            "خروج مبكر",
+          ].includes(
+            rowStatus
+          )
+        )
           ? rowStatus
+          : "";
+
+      const isPastScheduledNoPunch =
+        hasScheduledWork &&
+        date < todayKey &&
+        !hasPunch &&
+        !hasLeave &&
+        !hasAbsence &&
+        (
+          !specialDay ||
+          specialDay.kind ===
+            "weekly_rest_work" ||
+          specialDay.kind ===
+            "partial_leave"
+        );
+
+      const status =
+        specialDay?.kind === "weekly_rest_work" ||
+        specialDay?.kind === "partial_leave"
+          ? reliableRowStatus ||
+            (
+              hasAbsence ||
+              isPastScheduledNoPunch
+                ? "\u063a\u064a\u0627\u0628"
+                : specialDay.label
+            )
           : specialDay?.label ||
             (
               hasLeave
                 ? "\u0625\u062c\u0627\u0632\u0629"
                 : hasAbsence
                   ? "\u063a\u064a\u0627\u0628"
-                  : rowStatus ||
-                    "?"
+                  : reliableRowStatus ||
+                    (
+                      isPastScheduledNoPunch
+                        ? "\u063a\u064a\u0627\u0628"
+                        : "غير مصنف"
+                    )
             );
 
       return {
@@ -341,13 +428,12 @@ function buildAttendanceCalendar(
         specialDay,
         status,
         timeLabel:
-          [
+          attendanceCalendarTimeLabel({
+            status,
+            specialDay,
             checkIn,
             checkOut,
-          ]
-            .filter(Boolean)
-            .join(" ? ") ||
-          "\u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u0635\u0645\u0629",
+          }),
       };
     }
   );
@@ -733,6 +819,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   selectedDate: string;
   approvedLeaveDateKeys?: string[];
   absenceDateKeys?: string[];
+  scheduledWorkDateKeys?: string[];
   specialDays?: AttendanceSpecialDay[];
   effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
   canEdit: boolean;
@@ -757,6 +844,7 @@ export function EmployeeAttendanceTabLiveV2({
   selectedDate,
   approvedLeaveDateKeys = [],
   absenceDateKeys = [],
+  scheduledWorkDateKeys = [],
   specialDays = [],
   effectiveShiftInfo = null,
   canEdit,
@@ -796,6 +884,21 @@ export function EmployeeAttendanceTabLiveV2({
           )
     );
 
+  const canInferScheduledAbsence =
+    !loading &&
+    !cleanText(error);
+
+  const monthScheduledWorkDates =
+    canInferScheduledAbsence
+      ? scheduledWorkDateKeys.filter(
+          (date) =>
+            cleanText(date)
+              .startsWith(
+                normalizedMonth
+              )
+        )
+      : [];
+
   const monthSpecialDays =
     specialDays.filter(
       (day) =>
@@ -812,6 +915,7 @@ export function EmployeeAttendanceTabLiveV2({
       normalizedRows,
       monthLeaveDates,
       monthAbsenceDates,
+      monthScheduledWorkDates,
       monthSpecialDays
     );
 
@@ -835,7 +939,11 @@ export function EmployeeAttendanceTabLiveV2({
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
-  const loadedDataCount = normalizedRows.length + monthLeaveDates.length + monthSpecialDays.length;
+  const loadedDataCount =
+    normalizedRows.length +
+    monthLeaveDates.length +
+    monthScheduledWorkDates.length +
+    monthSpecialDays.length;
   const viewState: "loading" | "error" | "empty" | "data" = loading && !loadedDataCount
     ? "loading"
     : cleanText(error) && !loadedDataCount
