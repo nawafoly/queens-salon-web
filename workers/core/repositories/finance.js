@@ -78,9 +78,21 @@ export async function listIncome(db, salonId, query = {}) {
       ORDER BY i.occurred_at DESC LIMIT 500`,
     [salonId, scope.date]
   );
+  const legacyBookingRows = await dbAll(
+    db,
+    `SELECT i.*
+       FROM bookings b
+       JOIN income_entries i
+         ON i.salon_id = b.salon_id AND i.id = b.id
+      WHERE b.salon_id = ? AND b.booking_date = ? AND b.deleted_at IS NULL
+        AND (i.booking_id IS NULL OR TRIM(i.booking_id) = '')
+        AND LOWER(TRIM(COALESCE(i.source, ''))) IN ('booking', 'invoice', 'حجز', 'فاتورة')
+      ORDER BY i.occurred_at DESC LIMIT 500`,
+    [salonId, scope.date]
+  );
 
   const byId = new Map();
-  for (const row of [...occurredRows, ...bookingRows]) byId.set(cleanText(row?.id), row);
+  for (const row of [...occurredRows, ...bookingRows, ...legacyBookingRows]) byId.set(cleanText(row?.id), row);
   return [...byId.values()]
     .sort((a, b) => cleanText(b?.occurred_at).localeCompare(cleanText(a?.occurred_at)))
     .slice(0, 500);
