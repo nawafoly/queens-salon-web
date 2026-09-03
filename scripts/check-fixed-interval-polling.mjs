@@ -78,12 +78,6 @@ const BASELINE = [
     note: "Permission requests and employee directory polling.",
   },
   {
-    path: "src/services/AppSettingsService.ts",
-    marker: "setInterval(run, 60_000)",
-    kind: "data-polling-debt",
-    note: "Core settings polling.",
-  },
-  {
     path: "src/services/firestoreBookings.ts",
     marker: "setInterval(loadCore, 8_000)",
     kind: "data-polling-debt",
