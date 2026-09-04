@@ -206,7 +206,7 @@ function payrollPermissionMinutesForDate(rows, dateKey) {
   return { paid, unpaid };
 }
 
-async function canonicalEmployment(db, salonId, employeeId) {
+async function canonicalEmployment(db, salonId, employeeId, options = {}) {
   const employment = await dbFirst(
     db,
     `SELECT e.*, p.name AS employee_name, p.status AS profile_status
@@ -216,9 +216,30 @@ async function canonicalEmployment(db, salonId, employeeId) {
       LIMIT 1`,
     [salonId, employeeId]
   );
-  if (!employment || cleanText(employment.profile_status).toLowerCase() !== 'active' || cleanText(employment.employment_status).toLowerCase() !== 'active') {
-    throw new AppError(409, 'core_payroll:employee_not_active');
+  if (!employment) {
+    throw new AppError(
+      409,
+      'core_payroll:employee_not_active'
+    );
   }
+
+  if (
+    options.allowInactive !== true &&
+    (
+      cleanText(
+        employment.profile_status
+      ).toLowerCase() !== 'active' ||
+      cleanText(
+        employment.employment_status
+      ).toLowerCase() !== 'active'
+    )
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:employee_not_active'
+    );
+  }
+
   if (Number(employment.base_salary_halalas || 0) <= 0) {
     throw new AppError(409, 'core_payroll:employee_not_payroll_eligible');
   }
@@ -1377,7 +1398,12 @@ export async function listPayrollCarryoverAdjustments(db, salonId, query = {}) {
 
 async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, options = {}) {
   const sourceAttendance = parseJsonObject(sourceEntry.attendance_summary_json);
-  const employment = await canonicalEmployment(db, salonId, sourceEntry.employee_id);
+  const employment = await canonicalEmployment(
+    db,
+    salonId,
+    sourceEntry.employee_id,
+    { allowInactive: true }
+  );
   const employmentForPeriod = {
     ...employment,
     attendance_payroll_mode:

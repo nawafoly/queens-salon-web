@@ -1790,6 +1790,26 @@ test('historical annual leave correction routes locked payroll impact through ca
       ORDER BY approval_version, id`
   ).bind(augustPaid.id).all()).results;
 
+  // Historical correction must not require current active employment.
+  // The locked source payroll remains financially authoritative even when the
+  // employee left the company after that payroll was approved/paid.
+  await db.prepare(
+    `UPDATE employee_profiles
+        SET status = 'inactive',
+            updated_at = '2026-09-04T09:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND id = ?`
+  ).bind(employeeId).run();
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET employment_status = 'inactive',
+            end_date = '2026-09-01',
+            updated_at = '2026-09-04T09:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = ?`
+  ).bind(employeeId).run();
+
   const leave = await createLeave(db, 'main', {
     id: 'historical-leave-2026-08-31-a',
     employeeId,
@@ -1816,6 +1836,25 @@ test('historical annual leave correction routes locked payroll impact through ca
   ), '2026-09-04');
 
   assert.equal(approved.status, 'approved');
+
+  // Reactivate only for the remainder of this compound regression fixture,
+  // which later creates September/October payroll entries for the same employee.
+  await db.prepare(
+    `UPDATE employee_profiles
+        SET status = 'active',
+            updated_at = '2026-09-04T10:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND id = ?`
+  ).bind(employeeId).run();
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET employment_status = 'active',
+            end_date = NULL,
+            updated_at = '2026-09-04T10:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = ?`
+  ).bind(employeeId).run();
   assert.equal(approved.payrollReconciliation.results.length, 1);
   const approvalReconciliation = approved.payrollReconciliation.results[0];
   assert.equal(approvalReconciliation.sourcePayrollEntryId, augustPaid.id);

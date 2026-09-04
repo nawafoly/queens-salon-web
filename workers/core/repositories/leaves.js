@@ -527,6 +527,13 @@ export async function decideLeave(
     actor
   );
 
+  // Composite HR reversals may need to finish linked operational effects
+  // before payroll reads canonical truth. The orchestrator must reconcile
+  // explicitly after all dependent effects are complete.
+  if (options.skipPayrollReconciliation === true) {
+    return decided;
+  }
+
   // Payroll imports the canonical leave reader, so defer this import until the
   // leave transaction has completed. Every retry (including an idempotent leave
   // decision) re-runs reconciliation and can repair a prior post-commit failure.

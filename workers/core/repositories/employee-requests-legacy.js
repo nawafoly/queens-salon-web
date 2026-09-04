@@ -2386,7 +2386,10 @@ async function cancelExecutedLeaveRequest(db, salonId, row, input, actor, option
         hrNote: optionalText(input.note || input.reason) || 'إلغاء طلب إجازة منفذ واسترجاع أثره التشغيلي',
       },
       actor,
-      options
+      {
+        ...options,
+        skipPayrollReconciliation: true,
+      }
     );
   }
 
@@ -2409,6 +2412,24 @@ async function cancelExecutedLeaveRequest(db, salonId, row, input, actor, option
         financialEffect: permission.financial_effect,
       },
       actor
+    );
+  }
+
+
+  // Reconcile only after all linked HR effects are reversed.
+  // At this point both the leave and the linked permission reflect
+  // the final canonical operational truth.
+  if (leave?.id) {
+    const {
+      reconcileLockedPayrollImpactForHrCorrection,
+    } = await import('./payroll.js');
+
+    await reconcileLockedPayrollImpactForHrCorrection(
+      db,
+      salonId,
+      { leaveId: leave.id },
+      actor,
+      options
     );
   }
 
