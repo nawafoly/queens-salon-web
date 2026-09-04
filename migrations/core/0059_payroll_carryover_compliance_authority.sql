@@ -45,77 +45,112 @@ BEFORE UPDATE OF status ON payroll_entries
 WHEN NEW.status = 'approved'
  AND OLD.status <> 'approved'
  AND (
-   EXISTS (
-     SELECT 1
-       FROM json_each(COALESCE(NEW.deductions_json, '[]')) item
-      WHERE COALESCE(
-              json_extract(item.value, '$.sourceType'),
-              json_extract(item.value, '$.source_type'),
-              ''
-            ) = 'payroll_carryover'
-        AND NOT EXISTS (
-          SELECT 1
-            FROM payroll_carryover_adjustments carryover
-           WHERE carryover.salon_id = NEW.salon_id
-             AND carryover.employee_id = NEW.employee_id
-             AND carryover.target_payroll_month = NEW.payroll_month
-             AND carryover.id = COALESCE(
-                   json_extract(item.value, '$.sourceId'),
-                   json_extract(item.value, '$.source_id'),
-                   ''
-                 )
-             AND carryover.direction = 'deduction'
-             AND carryover.amount_halalas = COALESCE(
-                   json_extract(item.value, '$.amountHalalas'),
-                   json_extract(item.value, '$.amount_halalas'),
-                   json_extract(item.value, '$.amount'),
-                   0
-                 )
-             AND (
-               carryover.status = 'pending'
-               OR (
-                 carryover.status = 'applied'
-                 AND carryover.target_payroll_entry_id = NEW.id
-               )
-             )
+   -- The payroll JSON and the canonical Core D1 carryover set must have
+   -- exactly the same cardinality. This catches omitted or duplicated items.
+   (
+     (
+       SELECT COUNT(*)
+         FROM json_each(COALESCE(NEW.deductions_json, '[]')) item
+        WHERE COALESCE(
+                json_extract(item.value, '$.sourceType'),
+                json_extract(item.value, '$.source_type'),
+                ''
+              ) = 'payroll_carryover'
+     )
+     +
+     (
+       SELECT COUNT(*)
+         FROM json_each(COALESCE(NEW.additions_json, '[]')) item
+        WHERE COALESCE(
+                json_extract(item.value, '$.sourceType'),
+                json_extract(item.value, '$.source_type'),
+                ''
+              ) = 'payroll_carryover'
+     )
+   ) <> (
+     SELECT COUNT(*)
+       FROM payroll_carryover_adjustments carryover
+      WHERE carryover.salon_id = NEW.salon_id
+        AND carryover.employee_id = NEW.employee_id
+        AND carryover.target_payroll_month = NEW.payroll_month
+        AND (
+          carryover.status = 'pending'
+          OR (
+            carryover.status = 'applied'
+            AND carryover.target_payroll_entry_id = NEW.id
+          )
         )
    )
+
+   -- Every canonical row must also appear exactly once in the correct JSON
+   -- collection with the exact source id, direction and amount.
    OR EXISTS (
      SELECT 1
-       FROM json_each(COALESCE(NEW.additions_json, '[]')) item
-      WHERE COALESCE(
-              json_extract(item.value, '$.sourceType'),
-              json_extract(item.value, '$.source_type'),
-              ''
-            ) = 'payroll_carryover'
-        AND NOT EXISTS (
-          SELECT 1
-            FROM payroll_carryover_adjustments carryover
-           WHERE carryover.salon_id = NEW.salon_id
-             AND carryover.employee_id = NEW.employee_id
-             AND carryover.target_payroll_month = NEW.payroll_month
-             AND carryover.id = COALESCE(
-                   json_extract(item.value, '$.sourceId'),
-                   json_extract(item.value, '$.source_id'),
-                   ''
-                 )
-             AND carryover.direction = 'addition'
-             AND carryover.amount_halalas = COALESCE(
-                   json_extract(item.value, '$.amountHalalas'),
-                   json_extract(item.value, '$.amount_halalas'),
-                   json_extract(item.value, '$.amount'),
-                   0
-                 )
-             AND (
-               carryover.status = 'pending'
-               OR (
-                 carryover.status = 'applied'
-                 AND carryover.target_payroll_entry_id = NEW.id
-               )
-             )
+       FROM payroll_carryover_adjustments carryover
+      WHERE carryover.salon_id = NEW.salon_id
+        AND carryover.employee_id = NEW.employee_id
+        AND carryover.target_payroll_month = NEW.payroll_month
+        AND (
+          carryover.status = 'pending'
+          OR (
+            carryover.status = 'applied'
+            AND carryover.target_payroll_entry_id = NEW.id
+          )
         )
+        AND (
+          CASE carryover.direction
+            WHEN 'deduction' THEN (
+              SELECT COUNT(*)
+                FROM json_each(
+                  COALESCE(NEW.deductions_json, '[]')
+                ) item
+               WHERE COALESCE(
+                       json_extract(item.value, '$.sourceType'),
+                       json_extract(item.value, '$.source_type'),
+                       ''
+                     ) = 'payroll_carryover'
+                 AND COALESCE(
+                       json_extract(item.value, '$.sourceId'),
+                       json_extract(item.value, '$.source_id'),
+                       ''
+                     ) = carryover.id
+                 AND COALESCE(
+                       json_extract(item.value, '$.amountHalalas'),
+                       json_extract(item.value, '$.amount_halalas'),
+                       json_extract(item.value, '$.amount'),
+                       0
+                     ) = carryover.amount_halalas
+            )
+            WHEN 'addition' THEN (
+              SELECT COUNT(*)
+                FROM json_each(
+                  COALESCE(NEW.additions_json, '[]')
+                ) item
+               WHERE COALESCE(
+                       json_extract(item.value, '$.sourceType'),
+                       json_extract(item.value, '$.source_type'),
+                       ''
+                     ) = 'payroll_carryover'
+                 AND COALESCE(
+                       json_extract(item.value, '$.sourceId'),
+                       json_extract(item.value, '$.source_id'),
+                       ''
+                     ) = carryover.id
+                 AND COALESCE(
+                       json_extract(item.value, '$.amountHalalas'),
+                       json_extract(item.value, '$.amount_halalas'),
+                       json_extract(item.value, '$.amount'),
+                       0
+                     ) = carryover.amount_halalas
+            )
+            ELSE 0
+          END
+        ) <> 1
    )
  )
 BEGIN
-  SELECT RAISE(ABORT, 'payroll_carryover_authority_mismatch');
+  SELECT RAISE(
+    ABORT,
+    'payroll_carryover_authority_mismatch'
+  );
 END;

@@ -743,6 +743,87 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     JSON.parse(repeatedTargetPayroll.deductions_json || '[]')
   );
 
+
+  // D1 must reject a locked payroll that omits a canonical pending carryover.
+  // This protects both stale drafts and carryovers created after a refresh.
+  const repeatedTargetDeductions = JSON.parse(
+    repeatedTargetPayroll.deductions_json || '[]'
+  );
+
+  const directD1OmittedCarryover = JSON.stringify(
+    repeatedTargetDeductions.filter(
+      (item) =>
+        item?.sourceType !== 'payroll_carryover'
+    )
+  );
+
+  await assert.rejects(
+    () => db.prepare(
+      `UPDATE payroll_entries
+          SET deductions_json = ?,
+              status = 'approved'
+        WHERE salon_id = 'main'
+          AND id = ?`
+    ).bind(
+      directD1OmittedCarryover,
+      repeatedTargetPayroll.id
+    ).run(),
+    /payroll_carryover_authority_mismatch/
+  );
+
+  // D1 must also reject repeating one otherwise-valid canonical carryover.
+  const canonicalCarryoverForDirectD1 =
+    repeatedTargetDeductions.find(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.ok(canonicalCarryoverForDirectD1);
+
+  const directD1DuplicateCarryover = JSON.stringify([
+    ...repeatedTargetDeductions,
+    canonicalCarryoverForDirectD1,
+  ]);
+
+  await assert.rejects(
+    () => db.prepare(
+      `UPDATE payroll_entries
+          SET deductions_json = ?,
+              status = 'approved'
+        WHERE salon_id = 'main'
+          AND id = ?`
+    ).bind(
+      directD1DuplicateCarryover,
+      repeatedTargetPayroll.id
+    ).run(),
+    /payroll_carryover_authority_mismatch/
+  );
+
+  // Both rejected statements must remain atomic.
+  const targetAfterCarryoverSetForgery =
+    await db.prepare(
+      `SELECT status, deductions_json
+         FROM payroll_entries
+        WHERE salon_id = 'main'
+          AND id = ?
+        LIMIT 1`
+    ).bind(
+      repeatedTargetPayroll.id
+    ).first();
+
+  assert.notEqual(
+    targetAfterCarryoverSetForgery.status,
+    'approved'
+  );
+
+  assert.deepEqual(
+    JSON.parse(
+      targetAfterCarryoverSetForgery.deductions_json ||
+        '[]'
+    ),
+    repeatedTargetDeductions
+  );
+
   const approvedTargetPayroll = await approvePayrollEntry(
     db,
     'main',
