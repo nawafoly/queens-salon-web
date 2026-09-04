@@ -211,7 +211,6 @@ test('historical weekly-rest opening balance is audited, idempotent and consumab
       {
         days: 3,
         effectiveDate: '2026-08-30',
-        sourceReference: 'legacy-weekly-rest-emp-1',
         reason: 'confirmed legacy weekly-rest balance before Core',
       },
       actor
@@ -232,6 +231,10 @@ test('historical weekly-rest opening balance is audited, idempotent and consumab
     opening.entry.source_date,
     '2026-08-30'
   );
+  assert.equal(
+    opening.entry.source_id,
+    'emp-1:historical-weekly-rest-opening'
+  );
   assert.equal(opening.entry.created_by_uid, actor.uid);
   assert.equal(
     opening.entry.created_by_email,
@@ -246,7 +249,6 @@ test('historical weekly-rest opening balance is audited, idempotent and consumab
       {
         days: 3,
         effectiveDate: '2026-08-30',
-        sourceReference: 'legacy-weekly-rest-emp-1',
         reason: 'confirmed legacy weekly-rest balance before Core',
       },
       actor
@@ -264,7 +266,6 @@ test('historical weekly-rest opening balance is audited, idempotent and consumab
         {
           days: 3,
           effectiveDate: '2026-08-30',
-          sourceReference: 'second-opening',
           reason: 'second historical opening attempt',
         },
         actor

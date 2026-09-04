@@ -885,7 +885,6 @@ export const CoreHrService = {
     input: {
       days: number;
       effectiveDate: string;
-      sourceReference: string;
       reason: string;
     }
   ) {
