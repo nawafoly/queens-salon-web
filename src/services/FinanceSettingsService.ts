@@ -1,20 +1,13 @@
 // src/services/FinanceSettingsService.ts
-import {
-  doc,
-  getDoc,
-  setDoc,
-  onSnapshot,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "./firebase";
+// CORE D1 ONLY — finance settings must not fall back to Firestore.
+import { CoreSettingsService } from "./CoreSettingsService";
 import type {
   FinanceSettings,
   UiPaymentMethod,
   BookingIncomeStatus,
 } from "../types/finance";
 
-const SALON_ID = "main";
-const DOC_PATH = ["salons", SALON_ID, "settings", "finance"] as const;
+const SETTING_KEY = "finance";
 
 const DEFAULT_CATEGORIES: string[] = [
   "إيجار",
@@ -36,7 +29,7 @@ const DEFAULT_SETTINGS: FinanceSettings = {
   incomeBookingStatuses: ["completed"],
 };
 
-function normalizeStatuses(v: any): BookingIncomeStatus[] {
+function normalizeStatuses(v: unknown): BookingIncomeStatus[] {
   if (!Array.isArray(v)) return ["completed"];
   const cleaned = v
     .map((x) => String(x).toLowerCase().trim())
@@ -46,8 +39,8 @@ function normalizeStatuses(v: any): BookingIncomeStatus[] {
   return cleaned.length ? cleaned : ["completed"];
 }
 
-function sanitize(input: any): FinanceSettings {
-  const s = input || {};
+function sanitize(input: unknown): FinanceSettings {
+  const s = (input && typeof input === "object" ? input : {}) as Partial<FinanceSettings>;
 
   const expenseCategories =
     Array.isArray(s.expenseCategories) && s.expenseCategories.length
@@ -56,7 +49,7 @@ function sanitize(input: any): FinanceSettings {
 
   const paymentMethods =
     Array.isArray(s.paymentMethods) && s.paymentMethods.length
-      ? (s.paymentMethods as UiPaymentMethod[])
+      ? s.paymentMethods
       : DEFAULT_SETTINGS.paymentMethods;
 
   const currency =
@@ -74,58 +67,87 @@ function sanitize(input: any): FinanceSettings {
   };
 }
 
+type FinanceSettingsSubscriber = (settings: FinanceSettings) => void;
+
+const subscribers = new Set<FinanceSettingsSubscriber>();
+let snapshot: FinanceSettings | null = null;
+let refreshInFlight: Promise<FinanceSettings> | null = null;
+
+function publish(settings: FinanceSettings) {
+  snapshot = settings;
+  for (const subscriber of subscribers) subscriber(settings);
+}
+
+async function readRemoteShared(): Promise<FinanceSettings> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const setting = await CoreSettingsService.get<FinanceSettings>(SETTING_KEY);
+    if (!setting) {
+      throw new Error("FINANCE_SETTINGS_D1_NOT_FOUND: salons/main/settings/finance is missing from Core D1.");
+    }
+    const remote = sanitize(setting.value);
+    snapshot = remote;
+    return remote;
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+
+  return refreshInFlight;
+}
+
 export const FinanceSettingsService = {
   async get(): Promise<FinanceSettings> {
-    const ref = doc(db, ...DOC_PATH);
-    const snap = await getDoc(ref);
-
-    if (!snap.exists()) {
-      return DEFAULT_SETTINGS;
-    }
-
-    return sanitize(snap.data());
+    return readRemoteShared();
   },
 
-  subscribe(cb: (settings: FinanceSettings) => void) {
-    const ref = doc(db, ...DOC_PATH);
+  subscribe(cb: FinanceSettingsSubscriber) {
+    subscribers.add(cb);
+    if (snapshot) cb(snapshot);
+    void readRemoteShared()
+      .then((remote) => publish(remote))
+      .catch((error) => console.error("Core D1 finance settings refresh failed closed:", error));
 
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          cb(DEFAULT_SETTINGS);
-          return;
-        }
-        cb(sanitize(snap.data()));
-      },
-      () => { }
-    );
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void readRemoteShared()
+        .then((remote) => publish(remote))
+        .catch((error) => console.error("Core D1 finance settings refresh failed closed:", error));
+    };
 
-    return unsub;
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", refresh);
+      window.addEventListener("online", refresh);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refresh);
+    }
+
+    return () => {
+      subscribers.delete(cb);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", refresh);
+        window.removeEventListener("online", refresh);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", refresh);
+      }
+    };
   },
 
   async save(next: FinanceSettings) {
-    const ref = doc(db, ...DOC_PATH);
-    const payload = {
-      ...sanitize(next),
-      updatedAt: serverTimestamp(),
-    };
-    await setDoc(ref, payload, { merge: true });
+    const payload = sanitize(next);
+    await CoreSettingsService.save(SETTING_KEY, payload, "private");
+    publish(payload);
     return payload;
   },
 
-  // ===== categories =====
   async addCategory(name: string) {
     const n = (name || "").trim();
     if (!n) return;
 
     const current = await this.get();
-    if (
-      current.expenseCategories.some(
-        (c) => c.trim().toLowerCase() === n.toLowerCase()
-      )
-    )
-      return;
+    if (current.expenseCategories.some((c) => c.trim().toLowerCase() === n.toLowerCase())) return;
 
     await this.save({
       ...current,
@@ -141,7 +163,6 @@ export const FinanceSettingsService = {
     });
   },
 
-  // ===== payment methods =====
   async addPaymentMethod(name: string) {
     const n = (name || "").trim() as UiPaymentMethod;
     if (!n) return;
@@ -163,13 +184,11 @@ export const FinanceSettingsService = {
     });
   },
 
-  // ===== currency =====
   async setCurrency(currency: string) {
     const current = await this.get();
     await this.save({ ...current, currency: currency.trim() || "SAR" });
   },
 
-  // ===== income rule from bookings =====
   async setIncomeBookingStatuses(statuses: BookingIncomeStatus[]) {
     const current = await this.get();
     await this.save({ ...current, incomeBookingStatuses: statuses });
