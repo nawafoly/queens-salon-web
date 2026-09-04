@@ -196,6 +196,7 @@ function leaveTypeLabel(value: string) {
   if (type === "emergency") return "طارئة مدفوعة";
   if (type === "unpaid") return "إجازة بدون راتب";
   if (type === "rest") return "راحة معتمدة";
+  if (type === "weekly_rest_substitute_use") return "راحة أسبوعية تعويضية";
   if (type === "other") return "إجازة أخرى";
   return "غير محدد";
 }

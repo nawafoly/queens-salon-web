@@ -37,6 +37,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   emergency: "طارئة",
   unpaid: "غير مدفوعة",
   rest: "راحة",
+  weekly_rest_substitute_use: "راحة أسبوعية تعويضية",
   other: "أخرى",
 };
 
@@ -50,6 +51,7 @@ const LEAVE_TYPE_POLICY: Record<string, { deductFromBalance: boolean; affectsPay
   emergency: { deductFromBalance: true, affectsPayroll: false },
   unpaid: { deductFromBalance: false, affectsPayroll: true },
   rest: { deductFromBalance: false, affectsPayroll: false },
+  weekly_rest_substitute_use: { deductFromBalance: false, affectsPayroll: false },
   other: { deductFromBalance: false, affectsPayroll: false },
   sick: { deductFromBalance: true, affectsPayroll: false },
 };
@@ -77,6 +79,7 @@ export default function LeaveRequestModal({
   const [submitting, setSubmitting] = useState(false);
 
   const isOtherLeaveType = type === "other";
+  const isWeeklyRestSubstituteUse = type === "weekly_rest_substitute_use";
   const isPartialLeave = durationKind === "partial";
   const selectedTypeLabel = LEAVE_TYPE_LABELS[type] || "غير محدد";
 
@@ -132,6 +135,9 @@ export default function LeaveRequestModal({
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime)) result.push("حدد وقت بداية صحيح للاستئذان.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) result.push("حدد وقت نهاية صحيح للاستئذان.");
       if (partialStartTime >= partialEndTime) result.push("وقت نهاية الاستئذان يجب أن يكون بعد وقت البداية.");
+    }
+    if (!isPartialLeave && isWeeklyRestSubstituteUse && days !== 1) {
+      result.push("الراحة الأسبوعية التعويضية تُسجل ليوم واحد فقط.");
     }
     if (!isPartialLeave && deductFromBalance && availableBalance != null && availableBalance < days) {
       result.push("الرصيد غير كافٍ لهذه الإجازة.");
@@ -300,8 +306,14 @@ export default function LeaveRequestModal({
           </div>
           {!isPartialLeave ? (
             <div className="leave-request-v2__summary-item">
-              <span>الرصيد المتاح</span>
-              <strong>{availableBalance == null ? "غير محدد" : `${availableBalance} يوم`}</strong>
+              <span>{isWeeklyRestSubstituteUse ? "مصدر الرصيد" : "الرصيد المتاح"}</span>
+              <strong>
+                {isWeeklyRestSubstituteUse
+                  ? "رصيد الراحة الأسبوعية"
+                  : availableBalance == null
+                    ? "غير محدد"
+                    : `${availableBalance} يوم`}
+              </strong>
             </div>
           ) : null}
         </section>
@@ -313,17 +325,25 @@ export default function LeaveRequestModal({
               <p>
                 {isPartialLeave
                   ? "الاستئذان يحجب فترة الحجز المحددة فقط، ولا تخصم يومًا كاملًا من الرصيد أو الراتب."
-                  : isOtherLeaveType
-                    ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
-                    : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
+                  : isWeeklyRestSubstituteUse
+                    ? "سيُخصم يوم واحد من رصيد الراحة الأسبوعية التعويضية في Core، ولن يُخصم من الرصيد السنوي أو الراتب."
+                    : isOtherLeaveType
+                      ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
+                      : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
               </p>
             </div>
             <span className={`dsv2-badge ${affectsPayroll ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
-              {isPartialLeave ? "لا خصم — حجب وقتي" : affectsPayroll ? "تؤثر على الراتب" : "لا تؤثر على الراتب"}
+              {isPartialLeave
+                ? "لا خصم — حجب وقتي"
+                : isWeeklyRestSubstituteUse
+                  ? "يخصم من رصيد الراحة"
+                  : affectsPayroll
+                    ? "تؤثر على الراتب"
+                    : "لا تؤثر على الراتب"}
             </span>
           </header>
 
-          {!isPartialLeave ? (
+          {!isPartialLeave && !isWeeklyRestSubstituteUse ? (
             <div className="dsv2-ew-switch-list leave-request-v2__switch-list">
               <WorkspaceSwitchV2
                 checked={deductFromBalance}

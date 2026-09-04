@@ -486,7 +486,14 @@ function countCoreScheduleVersions(
   ).size;
 }
 
-type ManagedLeaveType = "annual" | "sick" | "emergency" | "unpaid" | "rest" | "other";
+type ManagedLeaveType =
+  | "annual"
+  | "sick"
+  | "emergency"
+  | "unpaid"
+  | "rest"
+  | "weekly_rest_substitute_use"
+  | "other";
 
 const MANAGED_LEAVE_TYPES = new Set<ManagedLeaveType>([
   "annual",
@@ -494,6 +501,7 @@ const MANAGED_LEAVE_TYPES = new Set<ManagedLeaveType>([
   "emergency",
   "unpaid",
   "rest",
+  "weekly_rest_substitute_use",
   "other",
 ]);
 
