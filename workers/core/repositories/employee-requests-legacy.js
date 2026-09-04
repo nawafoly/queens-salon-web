@@ -830,7 +830,8 @@ async function createLeaveEffect(
   salonId,
   row,
   payload,
-  actor
+  actor,
+  options = {}
 ) {
   let leave = await dbFirst(
     db,
@@ -1014,9 +1015,9 @@ async function createLeaveEffect(
 
   try {
     if (
-      cleanText(
-        leave.status
-      ).toLowerCase() === 'pending'
+      ['pending', 'approved'].includes(
+        cleanText(leave.status).toLowerCase()
+      )
     ) {
       leave = await decideLeave(
         db,
@@ -1030,7 +1031,8 @@ async function createLeaveEffect(
             ) ||
             'اعتماد طلب الإجازة من نظام الطلبات',
         },
-        actor
+        actor,
+        options
       );
     }
   } catch (error) {
@@ -2340,7 +2342,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
       return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'returned' } };
     }
     case 'leave': {
-      const effect = await createLeaveEffect(db, salonId, row, payload, actor);
+      const effect = await createLeaveEffect(db, salonId, row, payload, actor, options);
       return { sourceType: 'employee_leave', sourceId: effect.leaveId, before: null, after: { status: 'approved', days: effect.days, permissionId: effect.permissionId } };
     }
     case 'overtime': return executeOvertime(db, salonId, row, payload, actor, input);
@@ -2353,7 +2355,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
 }
 
 
-async function cancelExecutedLeaveRequest(db, salonId, row, input, actor) {
+async function cancelExecutedLeaveRequest(db, salonId, row, input, actor, options = {}) {
   const leave = await dbFirst(
     db,
     `SELECT * FROM employee_leaves
@@ -2383,7 +2385,8 @@ async function cancelExecutedLeaveRequest(db, salonId, row, input, actor) {
         status: 'rejected',
         hrNote: optionalText(input.note || input.reason) || 'إلغاء طلب إجازة منفذ واسترجاع أثره التشغيلي',
       },
-      actor
+      actor,
+      options
     );
   }
 
@@ -2478,7 +2481,7 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
     row.request_type === 'leave' &&
     ['executing', 'completed'].includes(row.status)
   ) {
-    return cancelExecutedLeaveRequest(db, salonId, row, input, actor);
+    return cancelExecutedLeaveRequest(db, salonId, row, input, actor, options);
   }
 
   const actionStatus = {

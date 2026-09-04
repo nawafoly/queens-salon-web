@@ -11,6 +11,7 @@ import {
   nowIso,
   optionalText,
   requiredId,
+  validDate,
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { SA_LABOR_POLICY_VERSION } from '../../../src/helpers/hr/saLaborPolicy.js';
@@ -150,6 +151,11 @@ export async function cancelApprovedAnnualLeave(
     decision.entitlementAsOfDate ||
       decision.entitlement_as_of_date
   ) || riyadhDateKey();
+  const effectiveDate = validDate(
+    original.effective_date || leave.start_date,
+    'effectiveDate'
+  );
+  const recordedDate = riyadhDateKey();
   const state = await getAnnualLeaveState(
     db,
     salonId,
@@ -191,7 +197,7 @@ export async function cancelApprovedAnnualLeave(
   );
   const serviceYear = annualLeaveServiceYear(
     state.startDate,
-    asOfDate
+    effectiveDate
   );
   const note =
     optionalText(
@@ -310,20 +316,23 @@ export async function cancelApprovedAnnualLeave(
         restoredDays,
         state.availableDays,
         newAvailable,
-        asOfDate,
+        recordedDate,
         note,
         adjustmentId,
         actorUid,
         actorEmail,
         actorName,
         now,
-        asOfDate,
+        effectiveDate,
         serviceYear.serviceYearStart,
         serviceYear.serviceYearEnd,
         SA_LABOR_POLICY_VERSION,
         JSON.stringify({
           originalUsageEntryId: adjustmentId,
           leaveId,
+          entitlementAsOfDate: asOfDate,
+          recordedDate,
+          effectiveDate,
         }),
         salonId,
         employeeId,

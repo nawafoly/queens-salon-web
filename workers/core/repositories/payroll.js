@@ -1127,6 +1127,88 @@ function validPayrollMonthKey(value, field = 'payrollMonth') {
   return payrollMonth;
 }
 
+const LOCKED_PAYROLL_PERIOD_STATUSES = new Set([
+  'closed',
+  'approved',
+  'paid',
+  'locked',
+  'posted',
+  'posted_to_payroll',
+]);
+
+function payrollMonthAfter(value) {
+  const payrollMonth = validPayrollMonthKey(value);
+  const year = Number(payrollMonth.slice(0, 4));
+  const month = Number(payrollMonth.slice(5, 7));
+  const next = new Date(Date.UTC(year, month, 1, 12));
+  return `${next.getUTCFullYear()}-${payrollPad(next.getUTCMonth() + 1)}`;
+}
+
+function payrollMonthsForDateRange(startDateValue, endDateValue) {
+  const startDate = validDate(startDateValue, 'startDate');
+  const endDate = validDate(endDateValue, 'endDate');
+  if (endDate < startDate) throw new AppError(400, 'core_payroll:invalid_correction_range');
+
+  const endMonth = endDate.slice(0, 7);
+  const months = [];
+  let cursor = startDate.slice(0, 7);
+  for (let guard = 0; guard < 240; guard += 1) {
+    months.push(cursor);
+    if (cursor === endMonth) return months;
+    cursor = payrollMonthAfter(cursor);
+  }
+  throw new AppError(409, 'core_payroll:correction_range_too_large');
+}
+
+async function firstEligibleCarryoverTargetMonth(
+  db,
+  salonId,
+  employeeId,
+  sourcePayrollMonth
+) {
+  let candidate = payrollMonthAfter(sourcePayrollMonth);
+  const [entries, periods] = await Promise.all([
+    dbAll(
+      db,
+      `SELECT payroll_month, status
+         FROM payroll_entries
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND payroll_month > ?
+        ORDER BY payroll_month
+        LIMIT 240`,
+      [salonId, employeeId, sourcePayrollMonth]
+    ),
+    dbAll(
+      db,
+      `SELECT payroll_month, status
+         FROM payroll_periods
+        WHERE salon_id = ?
+          AND payroll_month > ?
+        ORDER BY payroll_month
+        LIMIT 240`,
+      [salonId, sourcePayrollMonth]
+    ),
+  ]);
+  const entriesByMonth = new Map(
+    entries.map((row) => [cleanText(row.payroll_month), cleanText(row.status).toLowerCase()])
+  );
+  const periodsByMonth = new Map(
+    periods.map((row) => [cleanText(row.payroll_month), cleanText(row.status).toLowerCase()])
+  );
+
+  for (let guard = 0; guard < 240; guard += 1) {
+    const entryLocked = lockedStatus(entriesByMonth.get(candidate));
+    const periodLocked = LOCKED_PAYROLL_PERIOD_STATUSES.has(
+      periodsByMonth.get(candidate) || 'open'
+    );
+    if (!entryLocked && !periodLocked) return candidate;
+    candidate = payrollMonthAfter(candidate);
+  }
+
+  throw new AppError(409, 'core_payroll:no_eligible_carryover_target');
+}
+
 function carryoverSignedAmount(row) {
   const amount = Math.max(0, Number(row?.amount_halalas || 0));
   return cleanText(row?.direction) === 'addition' ? amount : -amount;
@@ -1228,7 +1310,14 @@ async function ensureApprovalSnapshotExists(db, salonId, entry, actor = {}) {
   if (existingSnapshot) return existingSnapshot;
   const approvedAt = optionalText(entry.approved_at) || nowIso();
   const statement = await buildApprovalSnapshotStatement(db, salonId, entry, actor, approvedAt);
-  await dbRun(db, statement.sql, statement.params);
+  await dbRun(
+    db,
+    statement.sql.replace(
+      'INSERT INTO payroll_approval_snapshots',
+      'INSERT OR IGNORE INTO payroll_approval_snapshots'
+    ),
+    statement.params
+  );
   return latestPayrollApprovalSnapshot(db, salonId, entry.id);
 }
 
@@ -1349,18 +1438,23 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
 }
 
 async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options = {}) {
+  const retryDepth = Math.max(0, Number(options.carryoverRetryDepth || 0));
   const sourcePayrollEntryId = requiredId(
     data.sourcePayrollEntryId || data.source_payroll_entry_id,
     'sourcePayrollEntryId'
-  );
-  const targetPayrollMonth = validPayrollMonthKey(
-    data.targetPayrollMonth || data.target_payroll_month,
-    'target_month'
   );
   const sourceEntry = await getPayrollEntry(db, salonId, sourcePayrollEntryId);
   if (!['approved', 'paid'].includes(cleanText(sourceEntry.status))) {
     throw new AppError(409, 'core_payroll:carryover_source_not_approved');
   }
+  // The target is always selected from Core payroll state. Any caller-supplied
+  // month is deliberately ignored so browser code cannot route money.
+  const targetPayrollMonth = await firstEligibleCarryoverTargetMonth(
+    db,
+    salonId,
+    sourceEntry.employee_id,
+    sourceEntry.payroll_month
+  );
   const canonicalRecalculation = await canonicalRecalculatedNetForLockedEntry(
     db,
     salonId,
@@ -1368,10 +1462,6 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
     options
   );
   const recalculatedNetHalalas = canonicalRecalculation.netSalaryHalalas;
-  if (targetPayrollMonth <= cleanText(sourceEntry.payroll_month)) {
-    throw new AppError(400, 'core_payroll:carryover_target_must_be_future');
-  }
-
   const snapshot = await ensureApprovalSnapshotExists(db, salonId, sourceEntry, actor);
   if (!snapshot) throw new AppError(409, 'core_payroll:approval_snapshot_missing');
 
@@ -1392,7 +1482,8 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   const appliedSigned = rows
     .filter((row) => cleanText(row.status) === 'applied')
     .reduce((total, row) => total + carryoverSignedAmount(row), 0);
-  const pending = rows.find(
+  const pendingRows = rows.filter((row) => cleanText(row.status) === 'pending');
+  const pending = pendingRows.find(
     (row) => cleanText(row.status) === 'pending' && cleanText(row.target_payroll_month) === targetPayrollMonth
   );
   const residualSigned = desired.signedDeltaHalalas - appliedSigned;
@@ -1401,16 +1492,45 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   const reason = optionalText(data.reason) ||
     `تسوية فرق مسيرة ${sourceEntry.payroll_month} بعد إعادة الاحتساب النهائي للحضور والإجازات والخصومات.`;
 
+  // A pending residual may move forward when its former target becomes locked.
+  // Applied rows are immutable evidence; only obsolete pending rows are voided.
+  for (const obsolete of pendingRows) {
+    if (residualSigned !== 0 && obsolete.id === pending?.id) continue;
+    await dbRun(
+      db,
+      `UPDATE payroll_carryover_adjustments
+          SET status = 'void', amount_halalas = 0,
+              recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
+        WHERE salon_id = ? AND id = ? AND status = 'pending'`,
+      [recalculatedNetHalalas, reason, sourceDate, now, salonId, obsolete.id]
+    );
+  }
+
   if (residualSigned === 0) {
-    if (pending) {
-      await dbRun(
-        db,
-        `UPDATE payroll_carryover_adjustments
-            SET status = 'void', amount_halalas = 0,
-                recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
-          WHERE salon_id = ? AND id = ? AND status = 'pending'`,
-        [recalculatedNetHalalas, reason, sourceDate, now, salonId, pending.id]
-      );
+    const activeAfterVoid = await dbAll(
+      db,
+      `SELECT *
+         FROM payroll_carryover_adjustments
+        WHERE salon_id = ?
+          AND source_snapshot_id = ?
+          AND status IN ('pending', 'applied')`,
+      [salonId, snapshot.id]
+    );
+    const activeSigned = activeAfterVoid.reduce(
+      (total, row) => total + carryoverSignedAmount(row),
+      0
+    );
+    const pendingStillActive = activeAfterVoid.some(
+      (row) => cleanText(row.status) === 'pending'
+    );
+    if (activeSigned !== desired.signedDeltaHalalas || pendingStillActive) {
+      if (retryDepth >= 3) {
+        throw new AppError(409, 'core_payroll:carryover_concurrent_mutation');
+      }
+      return reconcilePayrollCarryover(db, salonId, data, actor, {
+        ...options,
+        carryoverRetryDepth: retryDepth + 1,
+      });
     }
     return {
       sourcePayrollEntryId,
@@ -1451,7 +1571,7 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   } else {
     await dbRun(
       db,
-      `INSERT INTO payroll_carryover_adjustments
+      `INSERT OR IGNORE INTO payroll_carryover_adjustments
         (id, salon_id, employee_id, source_payroll_month, target_payroll_month,
          source_payroll_entry_id, source_snapshot_id, direction, amount_halalas,
          approved_net_halalas, recalculated_net_halalas, reason, source_date,
@@ -1479,9 +1599,34 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
 
   const adjustment = await dbFirst(
     db,
-    `SELECT * FROM payroll_carryover_adjustments WHERE salon_id = ? AND id = ? LIMIT 1`,
-    [salonId, adjustmentId]
+    `SELECT *
+       FROM payroll_carryover_adjustments
+      WHERE salon_id = ?
+        AND source_snapshot_id = ?
+        AND target_payroll_month = ?
+        AND status = 'pending'
+      LIMIT 1`,
+    [salonId, snapshot.id, targetPayrollMonth]
   );
+  const targetAfterWrite = await firstEligibleCarryoverTargetMonth(
+    db,
+    salonId,
+    sourceEntry.employee_id,
+    sourceEntry.payroll_month
+  );
+  const adjustmentSigned = adjustment ? carryoverSignedAmount(adjustment) : 0;
+  if (
+    targetAfterWrite !== targetPayrollMonth ||
+    adjustmentSigned !== residualSigned
+  ) {
+    if (retryDepth >= 3) {
+      throw new AppError(409, 'core_payroll:carryover_concurrent_mutation');
+    }
+    return reconcilePayrollCarryover(db, salonId, data, actor, {
+      ...options,
+      carryoverRetryDepth: retryDepth + 1,
+    });
+  }
   return {
     sourcePayrollEntryId,
     sourcePayrollMonth: sourceEntry.payroll_month,
@@ -1504,6 +1649,80 @@ export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, ac
     results.push(await reconcilePayrollCarryover(db, salonId, item, actor, options));
   }
   return { results };
+}
+
+export async function reconcileLockedPayrollImpactForHrCorrection(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const leaveId = requiredId(data.leaveId || data.leave_id, 'leaveId');
+  const leave = await dbFirst(
+    db,
+    `SELECT id, employee_id, status, leave_type, start_date, end_date, decided_at
+       FROM employee_leaves
+      WHERE salon_id = ?
+        AND id = ?
+      LIMIT 1`,
+    [salonId, leaveId]
+  );
+  if (!leave) throw new AppError(404, 'core_leave:not_found');
+
+  const affectedPayrollMonths = payrollMonthsForDateRange(
+    leave.start_date,
+    leave.end_date
+  );
+  const lockedEntries = await dbAll(
+    db,
+    `SELECT *
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month >= ?
+        AND payroll_month <= ?
+        AND status IN ('approved', 'paid')
+      ORDER BY payroll_month, id`,
+    [
+      salonId,
+      leave.employee_id,
+      affectedPayrollMonths[0],
+      affectedPayrollMonths[affectedPayrollMonths.length - 1],
+    ]
+  );
+  const reason =
+    `Canonical ${cleanText(leave.leave_type) || 'leave'} ${cleanText(leave.status) || 'decision'} ` +
+    `for ${leave.start_date} through ${leave.end_date} (${leave.id}).`;
+  const reconciled = await reconcilePayrollCarryoversBatch(
+    db,
+    salonId,
+    {
+      items: lockedEntries.map((entry) => ({
+        sourcePayrollEntryId: entry.id,
+        sourceDate:
+          cleanText(entry.payroll_month) === leave.start_date.slice(0, 7)
+            ? leave.start_date
+            : `${entry.payroll_month}-01`,
+        reason,
+      })),
+    },
+    actor,
+    options
+  );
+
+  return {
+    sourceType: 'employee_leave',
+    sourceId: leave.id,
+    employeeId: leave.employee_id,
+    correctionStatus: leave.status,
+    effectiveStartDate: leave.start_date,
+    effectiveEndDate: leave.end_date,
+    recordedAt: leave.decided_at || null,
+    affectedPayrollMonths,
+    lockedSourcePayrollMonths: lockedEntries.map((entry) => entry.payroll_month),
+    results: reconciled.results,
+  };
 }
 
 const PAYROLL_ENTRY_MUTATION_COLUMNS = [

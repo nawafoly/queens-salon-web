@@ -1177,8 +1177,6 @@ export const CoreHrService = {
   async reconcilePayrollCarryoversBatch(input: {
     items: Array<{
       sourcePayrollEntryId: string;
-      targetPayrollMonth: string;
-      recalculatedNetHalalas?: number;
       sourceDate?: string;
       reason?: string;
     }>;

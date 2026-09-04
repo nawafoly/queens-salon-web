@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { listPayrollCarryoverAdjustments } from './core/repositories/payroll.js';
@@ -140,5 +141,40 @@ test('payroll carryover D1 reads are scoped before materialization', async () =>
       'pending',
       '2026-08',
     ]
+  );
+});
+
+test('historical HR correction keeps carryover source, amount, direction and target under Core authority', async () => {
+  const [payrollRepository, leaveRepository, corePayrollService, coreHrService] =
+    await Promise.all([
+      readFile(new URL('./core/repositories/payroll.js', import.meta.url), 'utf8'),
+      readFile(new URL('./core/repositories/leaves.js', import.meta.url), 'utf8'),
+      readFile(new URL('../src/services/CorePayrollService.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../src/services/CoreHrService.ts', import.meta.url), 'utf8'),
+    ]);
+
+  assert.match(
+    payrollRepository,
+    /firstEligibleCarryoverTargetMonth\([\s\S]*?payroll_entries[\s\S]*?payroll_periods/
+  );
+  assert.match(
+    payrollRepository,
+    /Any caller-supplied[\s\S]*?firstEligibleCarryoverTargetMonth\(/
+  );
+  assert.match(
+    leaveRepository,
+    /reconcileLockedPayrollImpactForHrCorrection\([\s\S]*?\{ leaveId: idValue \}/
+  );
+  assert.match(
+    corePayrollService,
+    /sourcePayrollEntryId: sourceEntry\.id,\s+sourceDate:/
+  );
+  assert.doesNotMatch(
+    corePayrollService,
+    /sourcePayrollEntryId: sourceEntry\.id,\s+targetPayrollMonth:/
+  );
+  assert.doesNotMatch(
+    coreHrService,
+    /sourcePayrollEntryId: string;\s+targetPayrollMonth: string;/
   );
 });

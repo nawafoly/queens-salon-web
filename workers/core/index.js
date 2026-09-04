@@ -1921,11 +1921,25 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
-      return decideLeave(db, ctx.salonId, route.id, { ...body, status: "approved" }, actorInfo);
+      return decideLeave(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, status: "approved" },
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "leave:reject":
       requirePermission(ctx, "attendance.leaves.manage");
-      return decideLeave(db, ctx.salonId, route.id, { ...body, status: "rejected" }, actorInfo);
+      return decideLeave(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, status: "rejected" },
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permissions": {
       const permissionActor = { ...actorInfo, employeeId: ctx.employeeId || "" };
