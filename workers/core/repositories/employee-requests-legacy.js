@@ -1019,7 +1019,7 @@ async function createLeaveEffect(
         cleanText(leave.status).toLowerCase()
       )
     ) {
-      leave = await decideLeave(
+      const decisionResult = await decideLeave(
         db,
         salonId,
         leave.id,
@@ -1034,6 +1034,8 @@ async function createLeaveEffect(
         actor,
         options
       );
+
+      leave = decisionResult?.leave || decisionResult;
     }
   } catch (error) {
     // If this execution created the pending row and
