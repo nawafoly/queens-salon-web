@@ -1566,6 +1566,32 @@ function employeeOperationalOnDate(row, date) {
     (!cleanText(row.end_date) || date <= cleanText(row.end_date));
 }
 
+function employeeHistoricallyOperationalOnDate(row, date) {
+  // Current inactive lifecycle flags do not erase shifts that were effective
+  // before an employee's recorded end date. This path is reserved for locked
+  // payroll reconciliation; normal scheduling continues to require active
+  // profile and employment status through employeeOperationalOnDate.
+  if (!row) return true;
+  const hasProfile =
+    Number(row.has_profile) === 1 ||
+    cleanText(row.profile_status) !== "";
+  const hasEmployment =
+    Number(row.has_employment) === 1 ||
+    cleanText(row.employment_status) !== "" ||
+    cleanText(row.end_date) !== "";
+
+  if (!hasProfile && !hasEmployment) return true;
+  if (!hasProfile || !hasEmployment) return false;
+
+  return !cleanText(row.end_date) || date <= cleanText(row.end_date);
+}
+
+function employeeOperationalForResolution(row, date, runtime = {}) {
+  return runtime.allowInactiveHistoricalPayroll === true
+    ? employeeHistoricallyOperationalOnDate(row, date)
+    : employeeOperationalOnDate(row, date);
+}
+
 function inactiveShiftResult(employeeId, date) {
   return {
     source: 'none',
@@ -1576,7 +1602,13 @@ function inactiveShiftResult(employeeId, date) {
   };
 }
 
-async function resolveEmployeeBaseShift(db, salonId, employeeIdValue, dateValue) {
+async function resolveEmployeeBaseShift(
+  db,
+  salonId,
+  employeeIdValue,
+  dateValue,
+  runtime = {}
+) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const date = dateKey(dateValue, 'date');
   const employeeState = await dbFirst(
@@ -1610,7 +1642,7 @@ async function resolveEmployeeBaseShift(db, salonId, employeeIdValue, dateValue)
       LIMIT 1`,
     [salonId, employeeId, salonId, employeeId]
   );
-  if (!employeeOperationalOnDate(employeeState, date)) {
+  if (!employeeOperationalForResolution(employeeState, date, runtime)) {
     return inactiveShiftResult(employeeId, date);
   }
   const exception = await dbFirst(db, `SELECT e.*, t.name AS shift_name, t.start_time AS template_start_time,
@@ -1789,7 +1821,8 @@ export async function resolveEmployeeShift(
   db,
   salonId,
   employeeIdValue,
-  dateValue
+  dateValue,
+  runtime = {}
 ) {
   const employeeId =
     requiredId(
@@ -1807,7 +1840,8 @@ export async function resolveEmployeeShift(
       db,
       salonId,
       employeeId,
-      date
+      date,
+      runtime
     );
 
   if (baseShift?.operational === false) {
@@ -2020,7 +2054,8 @@ function resolveEmployeeShiftFromBatchFacts(
 export async function resolveEmployeeShiftsBatch(
   db,
   salonId,
-  data = {}
+  data = {},
+  runtime = {}
 ) {
   const rawEmployeeIds =
     Array.isArray(
@@ -2161,7 +2196,8 @@ export async function resolveEmployeeShiftsBatch(
             addDays(
               dateFrom,
               offset
-            )
+            ),
+            runtime
           )
         );
       }
@@ -2408,7 +2444,7 @@ export async function resolveEmployeeShiftsBatch(
         );
 
       const employeeState = employmentByEmployee.get(employeeId) || null;
-      if (!employeeOperationalOnDate(employeeState, date)) {
+      if (!employeeOperationalForResolution(employeeState, date, runtime)) {
         rows.push(inactiveShiftResult(employeeId, date));
         continue;
       }

@@ -1741,7 +1741,10 @@ test('historical annual leave correction routes locked payroll impact through ca
     effectiveFrom: '2026-08-01',
   }]);
 
-  for (const date of ['2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24']) {
+  // Aug 24 and Aug 31 are both missing. The historical leave corrects only
+  // Aug 31, so reconciliation for a former employee must preserve the other
+  // historical scheduled shift and refund exactly one day, not both days.
+  for (const date of ['2026-08-03', '2026-08-10', '2026-08-17']) {
     await recordAttendance(db, 'main', {
       employeeId,
       type: 'check_in',
@@ -1772,14 +1775,18 @@ test('historical annual leave correction routes locked payroll impact through ca
     payrollMonth: '2026-08',
     skipTargetBonus: true,
   }, actor);
-  assert.equal(Number(augustDraft.missing_hours), 8);
+  assert.equal(Number(augustDraft.missing_hours), 16);
   assert.ok(Number(augustDraft.missing_hours_deduction_halalas) > 0);
 
   const augustApproved = await approvePayrollEntry(db, 'main', augustDraft.id, actor);
   const augustPaid = await markPayrollEntryPaid(db, 'main', augustApproved.id, actor);
-  const correctionAmount = Number(augustPaid.missing_hours_deduction_halalas);
+  const correctionAmount = Number(augustPaid.hourly_rate_halalas) * 8;
   assert.equal(augustPaid.status, 'paid');
   assert.ok(correctionAmount > 0);
+  assert.equal(
+    Number(augustPaid.missing_hours_deduction_halalas),
+    correctionAmount * 2
+  );
 
   const lockedAugustBefore = await db.prepare(
     `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`

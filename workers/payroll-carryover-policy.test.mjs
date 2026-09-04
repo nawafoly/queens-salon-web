@@ -223,13 +223,22 @@ test('linked permission reversal completes before historical payroll reconciliat
 });
 
 test('historical locked payroll is the only path allowed to bypass current active employment', async () => {
-  const source = await readFile(
-    new URL(
-      './core/repositories/payroll.js',
-      import.meta.url
+  const [source, shiftControl] = await Promise.all([
+    readFile(
+      new URL(
+        './core/repositories/payroll.js',
+        import.meta.url
+      ),
+      'utf8'
     ),
-    'utf8'
-  );
+    readFile(
+      new URL(
+        './core/repositories/shift-control.js',
+        import.meta.url
+      ),
+      'utf8'
+    ),
+  ]);
 
   assert.match(
     source,
@@ -255,5 +264,20 @@ test('historical locked payroll is the only path allowed to bypass current activ
   assert.match(
     historicalBlock,
     /canonicalEmployment\([\s\S]*?\{ allowInactive: true \}/
+  );
+
+  assert.match(
+    historicalBlock,
+    /buildCanonicalAttendanceSummary\([\s\S]*?allowInactiveHistoricalPayroll: true/
+  );
+
+  assert.match(
+    shiftControl,
+    /runtime\.allowInactiveHistoricalPayroll === true[\s\S]*?employeeHistoricallyOperationalOnDate/
+  );
+
+  assert.match(
+    shiftControl,
+    /return !cleanText\(row\.end_date\) \|\| date <= cleanText\(row\.end_date\)/
   );
 });

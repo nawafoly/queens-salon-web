@@ -278,7 +278,15 @@ function canonicalGosiFromEmployment(employment, payrollMonth) {
   }
 }
 
-async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollMonth, employment, options = {}) {
+async function buildCanonicalAttendanceSummary(
+  db,
+  salonId,
+  employeeId,
+  payrollMonth,
+  employment,
+  options = {},
+  shiftRuntime = {}
+) {
   const bounds = payrollMonthBoundsCanonical(payrollMonth);
   const completedThrough = payrollCompletedThrough(bounds);
   const completedPeriodEnd =
@@ -289,7 +297,16 @@ async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollM
     listLeaves(db, salonId, { employeeId, status: 'approved' }),
     listAbsences(db, salonId, { employeeId }),
     dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, bounds.monthStart, bounds.monthEnd]).catch(() => []),
-    resolveEmployeeShiftsBatch(db, salonId, { employeeIds: [employeeId], dateFrom: bounds.monthStart, dateTo: bounds.monthEnd }),
+    resolveEmployeeShiftsBatch(
+      db,
+      salonId,
+      {
+        employeeIds: [employeeId],
+        dateFrom: bounds.monthStart,
+        dateTo: bounds.monthEnd,
+      },
+      shiftRuntime
+    ),
   ]);
 
   const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= bounds.monthStart && cleanText(row.date_key) <= bounds.monthEnd);
@@ -1420,7 +1437,11 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     sourceEntry.employee_id,
     sourceEntry.payroll_month,
     employmentForPeriod,
-    options
+    options,
+    // This bypass is internal-only and scoped to immutable locked payroll.
+    // It preserves shifts effective before a former employee's end date while
+    // every normal scheduling/payroll path still requires active employment.
+    { allowInactiveHistoricalPayroll: true }
   );
   const summary = attendance.summary;
   const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
