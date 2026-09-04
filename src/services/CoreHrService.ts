@@ -172,6 +172,15 @@ export type CoreLeaveRestOverview = {
   weeklyRest: {
     dueMinutes: number;
     dueDays: number;
+    historicalOpening?: {
+      id?: string;
+      minutes?: number;
+      days?: number;
+      effectiveDate?: string | null;
+      sourceReference?: string | null;
+      reason?: string | null;
+      createdAt?: string | null;
+    } | null;
     assignments: CoreWeeklyRestWorkAssignment[];
     events: Array<Record<string, unknown>>;
   };
@@ -792,6 +801,11 @@ export const CoreHrService = {
       []
     ) as unknown[];
 
+    const historicalOpeningRaw =
+      weeklyRestRaw.historical_opening ||
+      weeklyRestRaw.historicalOpening ||
+      null;
+
     return {
       employeeId: String(
         payload.employee_id ||
@@ -820,6 +834,18 @@ export const CoreHrService = {
           weeklyRestRaw.dueDays ??
           0
         ),
+        historicalOpening:
+          historicalOpeningRaw &&
+          typeof historicalOpeningRaw === "object" &&
+          !Array.isArray(
+            historicalOpeningRaw
+          )
+            ? camelRecord(
+                historicalOpeningRaw
+              ) as CoreLeaveRestOverview[
+                "weeklyRest"
+              ]["historicalOpening"]
+            : null,
         assignments: assignmentsRaw
           .filter((row) => row && typeof row === "object")
           .map((row) =>
@@ -852,6 +878,40 @@ export const CoreHrService = {
         body: input,
       }
     );
+  },
+
+  async setHistoricalWeeklyRestOpeningBalance(
+    employeeId: string,
+    input: {
+      days: number;
+      effectiveDate: string;
+      sourceReference: string;
+      reason: string;
+    }
+  ) {
+    const payload =
+      await coreApiRequest<
+        Record<string, unknown>
+      >(
+        `/api/core/hr/employees/${encodeURIComponent(
+          employeeId
+        )}/weekly-rest/opening-balance`,
+        {
+          method: "POST",
+          body: input,
+        }
+      );
+
+    return {
+      entry: camelRecord(
+        payload.entry
+      ),
+      state: camelRecord(
+        payload.state
+      ),
+      idempotent:
+        payload.idempotent === true,
+    };
   },
 
   async createAnnualLeaveRecall(

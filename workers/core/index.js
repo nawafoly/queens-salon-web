@@ -129,6 +129,9 @@ import {
   setAnnualLeaveOpeningBalance,
 } from './repositories/annual-leave.js';
 import {
+  setHistoricalWeeklyRestOpeningBalance,
+} from './repositories/weekly-rest-entitlements.js';
+import {
   createPermissionRequest,
   decidePermissionRequest,
   listPermissionRequests,
@@ -693,6 +696,15 @@ function match(url, method) {
   if (weeklyRestWorkCancel && method === "POST") return { name: "weekly-rest:work-cancel", id: weeklyRestWorkCancel[1] };
   if (path === "/api/core/hr/weekly-rest/work-assignments" && ["GET", "POST"].includes(method)) {
     return { name: "weekly-rest:work-assignments" };
+  }
+
+  const weeklyRestOpeningBalance =
+    /^\/api\/core\/hr\/employees\/([^/]+)\/weekly-rest\/opening-balance$/.exec(path);
+  if (weeklyRestOpeningBalance && method === "POST") {
+    return {
+      name: "weekly-rest:opening-balance",
+      id: weeklyRestOpeningBalance[1],
+    };
   }
   const leaveRestOverview = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-rest-overview$/.exec(path);
   if (leaveRestOverview && method === "GET") return { name: "leave-rest:overview", id: leaveRestOverview[1] };
@@ -2138,6 +2150,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requirePermission(ctx, "employees.schedule.manage");
       return cancelWeeklyRestWorkAssignment(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "weekly-rest:opening-balance":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(
+        ctx,
+        "attendance.leaves.manage"
+      );
+      return setHistoricalWeeklyRestOpeningBalance(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo
+      );
 
     case "leave-rest:overview":
       requireAnyPermission(ctx, [

@@ -577,6 +577,22 @@ export async function getLeaveRestOverview(db, salonId, employeeIdValue) {
       [salonId, employeeId]
     ),
   ]);
+
+  const historicalOpening = await dbFirst(
+    db,
+    `SELECT id, minutes, source_date, source_id, note,
+            created_by_uid, created_by_email, created_at
+       FROM employee_comp_time_ledger
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND entitlement_type = 'weekly_rest_due'
+        AND entry_kind = 'credit'
+        AND source_type = 'historical_opening_balance'
+      ORDER BY created_at ASC, id ASC
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
   return {
     employeeId,
     annualLeave,
@@ -584,6 +600,41 @@ export async function getLeaveRestOverview(db, salonId, employeeIdValue) {
     weeklyRest: {
       dueMinutes: Number(weeklyRestDue.balanceMinutes || 0),
       dueDays: Number(weeklyRestDue.balanceMinutes || 0) / WEEKLY_REST_MINUTES,
+      historicalOpening: historicalOpening
+        ? {
+            id: historicalOpening.id,
+            minutes: Number(
+              historicalOpening.minutes || 0
+            ),
+            days:
+              Number(
+                historicalOpening.minutes || 0
+              ) / WEEKLY_REST_MINUTES,
+            effectiveDate:
+              cleanText(
+                historicalOpening.source_date
+              ) || null,
+            sourceReference:
+              cleanText(
+                historicalOpening.source_id
+              ).startsWith(`${employeeId}:`)
+                ? cleanText(
+                    historicalOpening.source_id
+                  ).slice(
+                    employeeId.length + 1
+                  )
+                : cleanText(
+                    historicalOpening.source_id
+                  ) || null,
+            reason:
+              cleanText(
+                historicalOpening.note
+              ) || null,
+            createdAt:
+              historicalOpening.created_at ||
+              null,
+          }
+        : null,
       assignments,
       events: weeklyRestEvents,
     },

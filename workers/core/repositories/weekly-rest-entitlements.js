@@ -9,6 +9,7 @@ import {
   nowIso,
   optionalText,
   requiredId,
+  validDate,
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import {
@@ -22,6 +23,53 @@ import {
 } from './comp-time.js';
 
 const WEEKLY_REST_MINUTES = SA_LABOR_LIMITS.weeklyRestMinimumHours * 60;
+
+const HISTORICAL_OPENING_SOURCE_TYPE = 'historical_opening_balance';
+const MAX_HISTORICAL_WEEKLY_REST_DAYS = 366;
+
+function riyadhDateKey() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function historicalOpeningDays(value) {
+  const days = Number(value);
+  if (
+    !Number.isInteger(days) ||
+    days <= 0 ||
+    days > MAX_HISTORICAL_WEEKLY_REST_DAYS
+  ) {
+    throw new AppError(
+      400,
+      'core_weekly_rest:historical_opening_invalid_days'
+    );
+  }
+  return days;
+}
+
+function requiredHistoricalOpeningText(value, code, maxLength) {
+  const text = cleanText(value);
+  if (!text || text.length > maxLength) {
+    throw new AppError(400, code);
+  }
+  return text;
+}
+
+function historicalOpeningSourceId(employeeId, sourceReference) {
+  const id = `${employeeId}:${sourceReference}`;
+  if (id.length > 240) {
+    throw new AppError(
+      400,
+      'core_weekly_rest:historical_opening_source_reference_too_long'
+    );
+  }
+  return id;
+}
+
 
 function parseJson(value) {
   if (value && typeof value === 'object') return value;
@@ -136,6 +184,202 @@ export async function confirmWeeklyRestDue(
     state: credit.state,
     idempotent: credit.idempotent,
   };
+}
+
+
+export async function setHistoricalWeeklyRestOpeningBalance(
+  db,
+  salonId,
+  employeeIdValue,
+  data = {},
+  actor = {}
+) {
+  const employeeId = requiredId(employeeIdValue, 'employeeId');
+  const days = historicalOpeningDays(
+    data.days ?? data.openingBalanceDays ?? data.opening_balance_days
+  );
+  const minutes = days * WEEKLY_REST_MINUTES;
+
+  const effectiveDate = validDate(
+    data.effectiveDate ||
+      data.effective_date ||
+      data.asOfDate ||
+      data.as_of_date,
+    'effectiveDate'
+  );
+
+  if (effectiveDate > riyadhDateKey()) {
+    throw new AppError(
+      400,
+      'core_weekly_rest:historical_opening_effective_date_in_future'
+    );
+  }
+
+  const reason = requiredHistoricalOpeningText(
+    data.reason || data.note,
+    'core_weekly_rest:historical_opening_reason_required',
+    1500
+  );
+
+  const sourceReference = requiredHistoricalOpeningText(
+    data.sourceReference ||
+      data.source_reference ||
+      data.migrationReference ||
+      data.migration_reference,
+    'core_weekly_rest:historical_opening_source_reference_required',
+    180
+  );
+
+  const employment = await dbFirst(
+    db,
+    `SELECT employee_id, start_date
+       FROM employee_employment
+      WHERE salon_id = ? AND employee_id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  if (!employment) {
+    throw new AppError(
+      404,
+      'core_weekly_rest:employee_employment_not_found'
+    );
+  }
+
+  const employmentStartDate = cleanText(employment.start_date);
+  if (
+    employmentStartDate &&
+    effectiveDate < validDate(employmentStartDate, 'startDate')
+  ) {
+    throw new AppError(
+      400,
+      'core_weekly_rest:historical_opening_before_service_start'
+    );
+  }
+
+  const sourceId = historicalOpeningSourceId(
+    employeeId,
+    sourceReference
+  );
+
+  const existing = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_comp_time_ledger
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND entitlement_type = 'weekly_rest_due'
+        AND entry_kind = 'credit'
+        AND source_type = ?
+      ORDER BY created_at ASC, id ASC
+      LIMIT 1`,
+    [
+      salonId,
+      employeeId,
+      HISTORICAL_OPENING_SOURCE_TYPE,
+    ]
+  );
+
+  if (existing) {
+    if (cleanText(existing.source_id) !== sourceId) {
+      throw new AppError(
+        409,
+        'core_weekly_rest:historical_opening_balance_already_exists'
+      );
+    }
+
+    if (
+      Number(existing.minutes || 0) !== minutes ||
+      cleanText(existing.source_date) !== effectiveDate ||
+      cleanText(existing.note) !== reason
+    ) {
+      throw new AppError(
+        409,
+        'core_weekly_rest:historical_opening_payload_mismatch'
+      );
+    }
+
+    return {
+      entry: existing,
+      state: await getCompTimeBalanceState(
+        db,
+        salonId,
+        employeeId,
+        'weekly_rest_due'
+      ),
+      idempotent: true,
+    };
+  }
+
+  // HISTORICAL_OPENING_DB_GUARD_V1
+  // The partial unique index guarantees one opening credit per employee even
+  // when two different source references race concurrently.
+  try {
+    return await creditCompTime(
+      db,
+      salonId,
+      {
+        employeeId,
+        entitlementType: 'weekly_rest_due',
+        minutes,
+        sourceDate: effectiveDate,
+        sourceType: HISTORICAL_OPENING_SOURCE_TYPE,
+        sourceId,
+        policyVersion: SA_LABOR_POLICY_VERSION,
+        note: reason,
+      },
+      actor
+    );
+  } catch (error) {
+    const raced = await dbFirst(
+      db,
+      `SELECT *
+         FROM employee_comp_time_ledger
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND entitlement_type = 'weekly_rest_due'
+          AND entry_kind = 'credit'
+          AND source_type = ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1`,
+      [
+        salonId,
+        employeeId,
+        HISTORICAL_OPENING_SOURCE_TYPE,
+      ]
+    );
+
+    if (!raced) throw error;
+
+    if (cleanText(raced.source_id) !== sourceId) {
+      throw new AppError(
+        409,
+        'core_weekly_rest:historical_opening_balance_already_exists'
+      );
+    }
+
+    if (
+      Number(raced.minutes || 0) !== minutes ||
+      cleanText(raced.source_date) !== effectiveDate ||
+      cleanText(raced.note) !== reason
+    ) {
+      throw new AppError(
+        409,
+        'core_weekly_rest:historical_opening_payload_mismatch'
+      );
+    }
+
+    return {
+      entry: raced,
+      state: await getCompTimeBalanceState(
+        db,
+        salonId,
+        employeeId,
+        'weekly_rest_due'
+      ),
+      idempotent: true,
+    };
+  }
 }
 
 export async function consumeWeeklyRestDue(

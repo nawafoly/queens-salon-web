@@ -208,6 +208,26 @@ export default function LeaveRestManagementPanel({
   const openingBalanceOperationIdRef =
     useRef("");
 
+  const [
+    weeklyRestOpeningDays,
+    setWeeklyRestOpeningDays,
+  ] = useState("");
+
+  const [
+    weeklyRestOpeningEffectiveDate,
+    setWeeklyRestOpeningEffectiveDate,
+  ] = useState(today);
+
+  const [
+    weeklyRestOpeningSourceReference,
+    setWeeklyRestOpeningSourceReference,
+  ] = useState("");
+
+  const [
+    weeklyRestOpeningReason,
+    setWeeklyRestOpeningReason,
+  ] = useState("");
+
   const [recallDate, setRecallDate] =
     useState(today);
   const [recallReason, setRecallReason] =
@@ -315,6 +335,15 @@ export default function LeaveRestManagementPanel({
   const assignments =
     (overview?.weeklyRest.assignments || [])
       .slice(0, 8);
+
+  const historicalWeeklyRestOpening =
+    overview?.weeklyRest.historicalOpening ||
+    null;
+
+  const hasHistoricalWeeklyRestOpening =
+    Boolean(
+      historicalWeeklyRestOpening
+    );
 
   const weeklyRestLabel =
     weeklyRestWeekdays.length
@@ -496,6 +525,88 @@ export default function LeaveRestManagementPanel({
 
         setMessage(
           "تم تسجيل الرصيد الافتتاحي في السجل الموحد للإجازة السنوية."
+        );
+      } catch (error) {
+        setMessage(
+          humanError(error)
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
+
+  const submitHistoricalWeeklyRestOpening =
+    async () => {
+      const days =
+        Number(weeklyRestOpeningDays);
+
+      if (
+        !Number.isInteger(days) ||
+        days < 1 ||
+        days > 366
+      ) {
+        setMessage(
+          "أدخل عدد أيام صحيح من 1 إلى 366."
+        );
+        return;
+      }
+
+      if (
+        !weeklyRestOpeningEffectiveDate
+      ) {
+        setMessage(
+          "حدد تاريخ سريان الرصيد التاريخي."
+        );
+        return;
+      }
+
+      const sourceReference =
+        weeklyRestOpeningSourceReference
+          .trim();
+
+      if (!sourceReference) {
+        setMessage(
+          "اكتب مرجع الرصيد التاريخي."
+        );
+        return;
+      }
+
+      const reason =
+        weeklyRestOpeningReason.trim();
+
+      if (!reason) {
+        setMessage(
+          "اكتب سبب التسوية."
+        );
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+
+      try {
+        await CoreHrService
+          .setHistoricalWeeklyRestOpeningBalance(
+            employeeId,
+            {
+              days,
+              effectiveDate:
+                weeklyRestOpeningEffectiveDate,
+              sourceReference,
+              reason,
+            }
+          );
+
+        setWeeklyRestOpeningDays("");
+        setWeeklyRestOpeningSourceReference(
+          ""
+        );
+        setWeeklyRestOpeningReason("");
+
+        await load();
+
+        setMessage(
+          "تم تسجيل الرصيد التاريخي للراحة التعويضية في السجل الموحد."
         );
       } catch (error) {
         setMessage(
@@ -972,6 +1083,168 @@ export default function LeaveRestManagementPanel({
         >
           اعتماد الرصيد المتبقي
         </button>
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="الرصيد التاريخي للراحة التعويضية"
+        description="تسوية مرة واحدة لنقل الرصيد المؤكد المستحق قبل بدء الاعتماد الكامل على Core. لا تدخل رصيدا تقديريا."
+      >
+        {hasHistoricalWeeklyRestOpening ? (
+          <WorkspaceNoticeV2
+            title="الرصيد التاريخي مثبت"
+            description={
+              "الرصيد المسجل: " +
+              numberLabel(
+                historicalWeeklyRestOpening
+                  ?.days,
+                " يوم"
+              ) +
+              "، تاريخ السريان: " +
+              (
+                historicalWeeklyRestOpening
+                  ?.effectiveDate
+                  ? fmtIsoDate(
+                      String(
+                        historicalWeeklyRestOpening
+                          .effectiveDate
+                      )
+                    )
+                  : "غير محدد"
+              ) +
+              (
+                historicalWeeklyRestOpening
+                  ?.sourceReference
+                  ? "، المرجع: " +
+                    String(
+                      historicalWeeklyRestOpening
+                        .sourceReference
+                    )
+                  : ""
+              ) +
+              "."
+            }
+            tone="success"
+          />
+        ) : (
+          <>
+            <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+              <DashboardFieldV2
+                id="employee-live-v2-weekly-rest-opening-days"
+                label="عدد الأيام المستحقة"
+              >
+                <input
+                  id="employee-live-v2-weekly-rest-opening-days"
+                  className="dsv2-input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={
+                    weeklyRestOpeningDays
+                  }
+                  disabled={
+                    readOnly || saving
+                  }
+                  placeholder="3"
+                  onChange={(event) =>
+                    setWeeklyRestOpeningDays(
+                      event.target.value
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2
+                id="employee-live-v2-weekly-rest-opening-effective-date"
+                label="تاريخ سريان الرصيد"
+              >
+                <DashboardDatePickerV2
+                  id="employee-live-v2-weekly-rest-opening-effective-date"
+                  value={
+                    weeklyRestOpeningEffectiveDate
+                  }
+                  max={today}
+                  disabled={
+                    readOnly || saving
+                  }
+                  onChange={
+                    setWeeklyRestOpeningEffectiveDate
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2
+                id="employee-live-v2-weekly-rest-opening-reference"
+                label="مرجع الرصيد"
+              >
+                <input
+                  id="employee-live-v2-weekly-rest-opening-reference"
+                  className="dsv2-input"
+                  value={
+                    weeklyRestOpeningSourceReference
+                  }
+                  maxLength={180}
+                  disabled={
+                    readOnly || saving
+                  }
+                  placeholder="مثال: legacy-weekly-rest-1001"
+                  onChange={(event) =>
+                    setWeeklyRestOpeningSourceReference(
+                      event.target.value
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2
+                id="employee-live-v2-weekly-rest-opening-reason"
+                label="سبب التسوية"
+              >
+                <input
+                  id="employee-live-v2-weekly-rest-opening-reason"
+                  className="dsv2-input"
+                  value={
+                    weeklyRestOpeningReason
+                  }
+                  maxLength={1500}
+                  disabled={
+                    readOnly || saving
+                  }
+                  placeholder="رصيد تاريخي مؤكد من الموارد البشرية"
+                  onChange={(event) =>
+                    setWeeklyRestOpeningReason(
+                      event.target.value
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+            </div>
+
+            <WorkspaceNoticeV2
+              title="تسوية انتقالية"
+              description="بعد اعتماد هذا الرصيد لا يتم استبداله أو حذفه. أي تصحيح لاحق يجب أن يكون حركة مستقلة ومدققة."
+              tone="neutral"
+            />
+
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--success"
+              disabled={
+                readOnly ||
+                saving ||
+                weeklyRestOpeningDays === "" ||
+                !weeklyRestOpeningEffectiveDate ||
+                !weeklyRestOpeningSourceReference
+                  .trim() ||
+                !weeklyRestOpeningReason
+                  .trim()
+              }
+              onClick={() =>
+                void submitHistoricalWeeklyRestOpening()
+              }
+            >
+              {"اعتماد الرصيد التاريخي"}
+            </button>
+          </>
+        )}
       </WorkspaceCardV2>
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
