@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { listPayrollCarryoverAdjustments } from './core/repositories/payroll.js';
+
 import {
   nextPayrollMonth,
   payrollCarryoverDelta,
@@ -61,4 +63,82 @@ test('payroll carryover items are traceable and never mixed with ordinary manual
   assert.equal(addition.sourceDate, '2026-08-31');
   assert.equal(payrollCarryoverNetHalalas([addition], [deduction]), -2500);
   assert.deepEqual(withoutPayrollCarryoverItems([ordinary, addition]), [ordinary]);
+});
+
+
+test('payroll carryover D1 reads are scoped before materialization', async () => {
+  const calls = [];
+
+  const db = {
+    __fakeD1: true,
+    async all(sql, params) {
+      calls.push({ sql, params });
+      return [{ id: 'carry-query-scope-1' }];
+    },
+  };
+
+  const activeRows = await listPayrollCarryoverAdjustments(
+    db,
+    'main',
+    {
+      employeeId: 'emp-1',
+      targetPayrollMonth: '2026-09',
+      status: 'active',
+    }
+  );
+
+  assert.equal(activeRows.length, 1);
+  assert.equal(calls.length, 1);
+
+  assert.match(
+    calls[0].sql,
+    /WHERE salon_id = \?\s+AND target_payroll_month = \?\s+AND employee_id = \?\s+AND status IN \(\?, \?\)/s
+  );
+
+  assert.deepEqual(
+    calls[0].params,
+    [
+      'main',
+      '2026-09',
+      'emp-1',
+      'pending',
+      'applied',
+    ]
+  );
+
+  calls.length = 0;
+
+  await listPayrollCarryoverAdjustments(
+    db,
+    'main',
+    {
+      employee_id: 'emp-2',
+      target_payroll_month: '2026-10',
+      source_payroll_month: '2026-08',
+      status: 'pending',
+    }
+  );
+
+  assert.equal(calls.length, 1);
+
+  assert.match(
+    calls[0].sql,
+    /AND source_payroll_month = \?/s
+  );
+
+  assert.match(
+    calls[0].sql,
+    /AND status = \?/s
+  );
+
+  assert.deepEqual(
+    calls[0].params,
+    [
+      'main',
+      '2026-10',
+      'emp-2',
+      'pending',
+      '2026-08',
+    ]
+  );
 });

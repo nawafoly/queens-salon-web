@@ -1233,32 +1233,57 @@ async function ensureApprovalSnapshotExists(db, salonId, entry, actor = {}) {
 }
 
 export async function listPayrollCarryoverAdjustments(db, salonId, query = {}) {
-  let rows;
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const targetPayrollMonth = cleanText(
+    query.targetPayrollMonth || query.target_payroll_month
+  );
+  const sourcePayrollMonth = cleanText(
+    query.sourcePayrollMonth || query.source_payroll_month
+  );
+  const status = cleanText(query.status);
+
+  // Scope reads in D1 before rows are materialized. The common payroll runtime
+  // path follows idx_payroll_carryover_target:
+  // (salon_id, target_payroll_month, employee_id, status).
+  const predicates = ['salon_id = ?'];
+  const params = [salonId];
+
+  if (targetPayrollMonth) {
+    predicates.push('target_payroll_month = ?');
+    params.push(targetPayrollMonth);
+  }
+
+  if (employeeId) {
+    predicates.push('employee_id = ?');
+    params.push(employeeId);
+  }
+
+  if (status === 'active') {
+    predicates.push('status IN (?, ?)');
+    params.push('pending', 'applied');
+  } else if (status) {
+    predicates.push('status = ?');
+    params.push(status);
+  }
+
+  if (sourcePayrollMonth) {
+    predicates.push('source_payroll_month = ?');
+    params.push(sourcePayrollMonth);
+  }
+
   try {
-    rows = await dbAll(
+    return await dbAll(
       db,
       `SELECT *
          FROM payroll_carryover_adjustments
-        WHERE salon_id = ?
+        WHERE ${predicates.join('\n          AND ')}
         ORDER BY target_payroll_month DESC, employee_id, created_at`,
-      [salonId]
+      params
     );
   } catch (error) {
     if (carryoverSchemaUnavailable(error)) return [];
     throw error;
   }
-  const employeeId = cleanText(query.employeeId || query.employee_id);
-  const targetPayrollMonth = cleanText(query.targetPayrollMonth || query.target_payroll_month);
-  const sourcePayrollMonth = cleanText(query.sourcePayrollMonth || query.source_payroll_month);
-  const status = cleanText(query.status);
-  return rows.filter((row) =>
-    (!employeeId || cleanText(row.employee_id) === employeeId) &&
-    (!targetPayrollMonth || cleanText(row.target_payroll_month) === targetPayrollMonth) &&
-    (!sourcePayrollMonth || cleanText(row.source_payroll_month) === sourcePayrollMonth) &&
-    (!status || status === 'active'
-      ? ['pending', 'applied'].includes(cleanText(row.status))
-      : cleanText(row.status) === status)
-  );
 }
 
 async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, options = {}) {
