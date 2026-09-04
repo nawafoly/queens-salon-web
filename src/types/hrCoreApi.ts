@@ -91,6 +91,18 @@ export type CoreLeave = {
   balanceAdjustmentId?: string | null;
   employeeNote?: string | null;
   hrNote?: string | null;
+  payrollReconciliation?: {
+    sourceType: "employee_leave";
+    sourceId: string;
+    employeeId: string;
+    correctionStatus: string;
+    effectiveStartDate: string;
+    effectiveEndDate: string;
+    recordedAt?: string | null;
+    affectedPayrollMonths: string[];
+    lockedSourcePayrollMonths: string[];
+    results: Array<Record<string, unknown>>;
+  };
   createdAt: string;
   updatedAt: string;
 };

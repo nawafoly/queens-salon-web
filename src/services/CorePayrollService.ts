@@ -1096,7 +1096,6 @@ export async function reconcilePreviousPayrollCarryovers(input: {
     if (!sourceEntry.id) return [];
     return [{
       sourcePayrollEntryId: sourceEntry.id,
-      targetPayrollMonth: target.payrollMonth,
       sourceDate: sourceBounds.monthEnd,
       reason: `تسوية فرق مسيرة ${sourcePayrollMonth} بعد إقفال الفترة وإعادة احتساب الحضور والإجازات والخصومات النهائية داخل Core.`,
     }];
@@ -1105,10 +1104,20 @@ export async function reconcilePreviousPayrollCarryovers(input: {
     return { sourcePayrollMonth, targetPayrollMonth: target.payrollMonth, results: [] };
   }
   const reconciled = await CoreHrService.reconcilePayrollCarryoversBatch({ items });
+  const results = reconciled.results || [];
+  const targetPayrollMonths = Array.from(new Set(
+    results
+      .map((row) => text(row.targetPayrollMonth))
+      .filter((value) => /^\d{4}-\d{2}$/.test(value))
+  ));
   return {
     sourcePayrollMonth,
-    targetPayrollMonth: target.payrollMonth,
-    results: reconciled.results || [],
+    targetPayrollMonth:
+      targetPayrollMonths.length === 1
+        ? targetPayrollMonths[0]
+        : "",
+    targetPayrollMonths,
+    results,
   };
 }
 

@@ -200,13 +200,17 @@ async function seedAnnualLeaveOpeningBalance(
   );
 }
 
-async function withFixedRiyadhDate(testContext, callback) {
+async function withFixedRiyadhDate(
+  testContext,
+  callback,
+  dateKey = TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE
+) {
   if (typeof testContext === 'function') {
     callback = testContext;
     testContext = null;
   }
   const RealDate = globalThis.Date;
-  const fixedIso = `${TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE}T12:00:00.000Z`;
+  const fixedIso = `${dateKey}T12:00:00.000Z`;
   if (testContext?.mock?.timers) {
     testContext.mock.timers.enable({
       apis: ['Date'],
@@ -1693,6 +1697,410 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(paidPayroll.status, 'paid');
 });
 
+test('historical annual leave correction routes locked payroll impact through canonical carryover', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const employeeId = 'emp-historical-leave';
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES (?, 'main', 'uid-historical-leave', 'Historical Leave Employee', 1, 'active',
+            '2026-01-01', '2026-01-01')`)
+    .bind(employeeId)
+    .run();
+
+  await upsertHrEmployee(db, 'main', {
+    id: employeeId,
+    name: 'Historical Leave Employee',
+    firebaseUid: 'uid-historical-leave',
+    employment: {
+      startDate: '2025-01-01',
+      baseSalaryHalalas: 600000,
+      expectedWorkDays: 30,
+      expectedWorkHours: 240,
+      dailyScheduledHours: 8,
+      attendancePayrollMode: 'required',
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-01-01',
+      socialInsuranceClassificationNote: 'Historical leave regression fixture',
+      gosiWageMode: 'derived',
+    },
+  }, actor);
+
+  const shift = await saveShiftTemplate(db, 'main', {
+    id: 'shift-historical-leave',
+    name: 'Historical leave shift',
+    startTime: '09:00',
+    endTime: '17:00',
+  }, actor);
+  await replaceHrSchedules(db, 'main', employeeId, [{
+    id: 'schedule-historical-leave',
+    weekday: 1,
+    shiftTemplateId: shift.id,
+    active: true,
+    effectiveFrom: '2026-08-01',
+  }]);
+
+  // Aug 24 and Aug 31 are both missing. The historical leave corrects only
+  // Aug 31, so reconciliation for a former employee must preserve the other
+  // historical scheduled shift and refund exactly one day, not both days.
+  for (const date of ['2026-08-03', '2026-08-10', '2026-08-17']) {
+    await recordAttendance(db, 'main', {
+      employeeId,
+      type: 'check_in',
+      date,
+      recordedAt: `${date}T06:00:00.000Z`,
+      idempotencyKey: `${employeeId}-${date}-in`,
+    }, actor);
+    await recordAttendance(db, 'main', {
+      employeeId,
+      type: 'check_out',
+      date,
+      recordedAt: `${date}T14:00:00.000Z`,
+      idempotencyKey: `${employeeId}-${date}-out`,
+    }, actor);
+  }
+
+  await seedAnnualLeaveOpeningBalance(db, employeeId, 20);
+  const augustPeriod = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-historical-2026-08',
+    payrollMonth: '2026-08',
+    monthStart: '2026-08-01',
+    monthEnd: '2026-08-31',
+  }, actor);
+  const augustDraft = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-historical-2026-08',
+    periodId: augustPeriod.id,
+    employeeId,
+    payrollMonth: '2026-08',
+    skipTargetBonus: true,
+  }, actor);
+  assert.equal(Number(augustDraft.missing_hours), 16);
+  assert.ok(Number(augustDraft.missing_hours_deduction_halalas) > 0);
+
+  const augustApproved = await approvePayrollEntry(db, 'main', augustDraft.id, actor);
+  const augustPaid = await markPayrollEntryPaid(db, 'main', augustApproved.id, actor);
+  const correctionAmount = Number(augustPaid.hourly_rate_halalas) * 8;
+  assert.equal(augustPaid.status, 'paid');
+  assert.ok(correctionAmount > 0);
+  assert.equal(
+    Number(augustPaid.missing_hours_deduction_halalas),
+    correctionAmount * 2
+  );
+
+  const lockedAugustBefore = await db.prepare(
+    `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`
+  ).bind(augustPaid.id).first();
+  const augustSnapshotsBefore = (await db.prepare(
+    `SELECT * FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ?
+      ORDER BY approval_version, id`
+  ).bind(augustPaid.id).all()).results;
+
+  // Historical correction must not require current active employment.
+  // The locked source payroll remains financially authoritative even when the
+  // employee left the company after that payroll was approved/paid.
+  await db.prepare(
+    `UPDATE employee_profiles
+        SET status = 'inactive',
+            updated_at = '2026-09-04T09:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND id = ?`
+  ).bind(employeeId).run();
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET employment_status = 'inactive',
+            end_date = '2026-09-01',
+            updated_at = '2026-09-04T09:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = ?`
+  ).bind(employeeId).run();
+
+  const leave = await createLeave(db, 'main', {
+    id: 'historical-leave-2026-08-31-a',
+    employeeId,
+    leaveType: 'annual',
+    startDate: '2026-08-31',
+    endDate: '2026-08-31',
+    employeeNote: 'Historical HR correction',
+  }, actor);
+
+  const approved = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'approved',
+      hrNote: 'Approved on September 4 for August 31',
+      entitlementAsOfDate: '2026-08-31',
+      amountHalalas: 99999999,
+      direction: 'deduction',
+      sourcePayrollEntryId: 'forged-source-payroll',
+      targetPayrollMonth: '2099-12',
+    },
+    actor
+  ), '2026-09-04');
+
+  assert.equal(approved.status, 'approved');
+
+  // Reactivate only for the remainder of this compound regression fixture,
+  // which later creates September/October payroll entries for the same employee.
+  await db.prepare(
+    `UPDATE employee_profiles
+        SET status = 'active',
+            updated_at = '2026-09-04T10:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND id = ?`
+  ).bind(employeeId).run();
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET employment_status = 'active',
+            end_date = NULL,
+            updated_at = '2026-09-04T10:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = ?`
+  ).bind(employeeId).run();
+  assert.equal(approved.payrollReconciliation.results.length, 1);
+  const approvalReconciliation = approved.payrollReconciliation.results[0];
+  assert.equal(approvalReconciliation.sourcePayrollEntryId, augustPaid.id);
+  assert.equal(approvalReconciliation.sourcePayrollMonth, '2026-08');
+  assert.equal(approvalReconciliation.targetPayrollMonth, '2026-09');
+  assert.equal(approvalReconciliation.residualSignedHalalas, correctionAmount);
+  assert.equal(approvalReconciliation.adjustment.direction, 'addition');
+  assert.equal(Number(approvalReconciliation.adjustment.amount_halalas), correctionAmount);
+
+  const canonicalApprovedLeave = await db.prepare(
+    `SELECT * FROM employee_leaves WHERE salon_id = 'main' AND id = ? LIMIT 1`
+  ).bind(leave.id).first();
+  assert.match(canonicalApprovedLeave.decided_at, /^2026-09-04T/);
+  const usage = await db.prepare(
+    `SELECT * FROM employee_leave_balance_ledger
+      WHERE salon_id = 'main'
+        AND entry_code = 'LEAVE_USED'
+        AND source_type = 'leave_request'
+        AND source_id = ?
+      LIMIT 1`
+  ).bind(leave.id).first();
+  assert.equal(usage.operation_date, '2026-09-04');
+  assert.equal(usage.effective_date, '2026-08-31');
+  assert.match(usage.created_at, /^2026-09-04T/);
+  assert.equal(JSON.parse(usage.metadata_json).entitlementAsOfDate, '2026-08-31');
+
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`)
+      .bind(augustPaid.id).first(),
+    lockedAugustBefore
+  );
+  assert.deepEqual(
+    (await db.prepare(`SELECT * FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ? ORDER BY approval_version, id`)
+      .bind(augustPaid.id).all()).results,
+    augustSnapshotsBefore
+  );
+
+  const approvedAgain = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'approved',
+      targetPayrollMonth: '2099-11',
+      amountHalalas: 1,
+      direction: 'deduction',
+    },
+    actor
+  ), '2026-09-04');
+  assert.equal(approvedAgain.idempotent, true);
+  assert.equal(approvedAgain.payrollReconciliation.results[0].adjustment.id,
+    approvalReconciliation.adjustment.id);
+
+  const usageCountAfterRetry = await db.prepare(
+    `SELECT COUNT(*) AS count FROM employee_leave_balance_ledger
+      WHERE salon_id = 'main' AND entry_code = 'LEAVE_USED' AND source_id = ?`
+  ).bind(leave.id).first();
+  assert.equal(Number(usageCountAfterRetry.count), 1);
+  const pendingAfterRetry = await listPayrollCarryoverAdjustments(db, 'main', {
+    employeeId,
+    sourcePayrollMonth: '2026-08',
+    status: 'pending',
+  });
+  assert.equal(pendingAfterRetry.length, 1);
+
+  const cancelled = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'rejected',
+      hrNote: 'Historical correction cancelled',
+      entitlementAsOfDate: '2026-09-04',
+      targetPayrollMonth: '2099-10',
+      amountHalalas: 777777,
+      direction: 'addition',
+    },
+    actor
+  ), '2026-09-04');
+  assert.equal(cancelled.status, 'rejected');
+  assert.equal(cancelled.payrollReconciliation.results[0].residualSignedHalalas, 0);
+  assert.equal(cancelled.payrollReconciliation.results[0].adjustment, null);
+
+  const reversal = await db.prepare(
+    `SELECT * FROM employee_leave_balance_ledger
+      WHERE salon_id = 'main' AND entry_code = 'LEAVE_REVERSAL' AND source_id = ? LIMIT 1`
+  ).bind(usage.id).first();
+  assert.equal(reversal.operation_date, '2026-09-04');
+  assert.equal(reversal.effective_date, '2026-08-31');
+  assert.match(reversal.created_at, /^2026-09-04T/);
+  assert.equal((await listPayrollCarryoverAdjustments(db, 'main', {
+    employeeId,
+    sourcePayrollMonth: '2026-08',
+    status: 'pending',
+  })).length, 0);
+  const voidedAfterCancellation = await listPayrollCarryoverAdjustments(db, 'main', {
+    employeeId,
+    sourcePayrollMonth: '2026-08',
+    status: 'void',
+  });
+  assert.equal(voidedAfterCancellation.length, 1);
+  assert.equal(Number(voidedAfterCancellation[0].amount_halalas), 0);
+
+  const cancelledAgain = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    leave.id,
+    { status: 'rejected' },
+    actor
+  ), '2026-09-04');
+  assert.equal(cancelledAgain.idempotent, true);
+  assert.equal((await db.prepare(
+    `SELECT COUNT(*) AS count FROM employee_leave_balance_ledger
+      WHERE salon_id = 'main' AND entry_code = 'LEAVE_REVERSAL' AND source_id = ?`
+  ).bind(usage.id).first()).count, 1);
+
+  const appliedLeave = await createLeave(db, 'main', {
+    id: 'historical-leave-2026-08-31-b',
+    employeeId,
+    leaveType: 'annual',
+    startDate: '2026-08-31',
+    endDate: '2026-08-31',
+  }, actor);
+  const secondApproval = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    appliedLeave.id,
+    { status: 'approved', entitlementAsOfDate: '2026-08-31' },
+    actor
+  ), '2026-09-04');
+  assert.equal(secondApproval.payrollReconciliation.results[0].targetPayrollMonth, '2026-09');
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET attendance_payroll_mode = 'exempt',
+            attendance_payroll_exemption_reason = 'Locked target regression fixture',
+            updated_at = '2026-09-04T12:00:00.000Z'
+      WHERE salon_id = 'main' AND employee_id = ?`
+  ).bind(employeeId).run();
+  const septemberPeriod = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-historical-2026-09',
+    payrollMonth: '2026-09',
+    monthStart: '2026-09-01',
+    monthEnd: '2026-09-30',
+  }, actor);
+  const septemberDraft = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-historical-2026-09',
+    periodId: septemberPeriod.id,
+    employeeId,
+    payrollMonth: '2026-09',
+    skipTargetBonus: true,
+  }, actor);
+  const septemberPaid = await markPayrollEntryPaid(
+    db,
+    'main',
+    (await approvePayrollEntry(db, 'main', septemberDraft.id, actor)).id,
+    actor
+  );
+  const lockedSeptemberBefore = await db.prepare(
+    `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`
+  ).bind(septemberPaid.id).first();
+
+  const residualCancellation = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    appliedLeave.id,
+    {
+      status: 'rejected',
+      entitlementAsOfDate: '2026-09-04',
+      sourcePayrollEntryId: septemberPaid.id,
+      targetPayrollMonth: '2099-09',
+      amountHalalas: 123,
+      direction: 'addition',
+    },
+    actor
+  ), '2026-09-04');
+  const octoberResidual = residualCancellation.payrollReconciliation.results[0];
+  assert.equal(octoberResidual.sourcePayrollEntryId, augustPaid.id);
+  assert.equal(octoberResidual.targetPayrollMonth, '2026-10');
+  assert.equal(octoberResidual.residualSignedHalalas, -correctionAmount);
+  assert.equal(octoberResidual.adjustment.direction, 'deduction');
+  assert.equal(Number(octoberResidual.adjustment.amount_halalas), correctionAmount);
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`)
+      .bind(septemberPaid.id).first(),
+    lockedSeptemberBefore
+  );
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`)
+      .bind(augustPaid.id).first(),
+    lockedAugustBefore
+  );
+  assert.deepEqual(
+    (await db.prepare(`SELECT * FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ? ORDER BY approval_version, id`)
+      .bind(augustPaid.id).all()).results,
+    augustSnapshotsBefore
+  );
+
+  const octoberPeriod = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-historical-2026-10',
+    payrollMonth: '2026-10',
+    monthStart: '2026-10-01',
+    monthEnd: '2026-10-31',
+  }, actor);
+  const octoberDraft = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-historical-2026-10',
+    periodId: octoberPeriod.id,
+    employeeId,
+    payrollMonth: '2026-10',
+    skipTargetBonus: true,
+  }, actor);
+  const octoberBeforeCurrentLeave = await db.prepare(
+    `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`
+  ).bind(octoberDraft.id).first();
+  const currentLeave = await createLeave(db, 'main', {
+    id: 'open-month-leave-2026-10-05',
+    employeeId,
+    leaveType: 'annual',
+    startDate: '2026-10-05',
+    endDate: '2026-10-05',
+  }, actor);
+  const currentApproval = await withFixedRiyadhDate(t, () => decideLeave(
+    db,
+    'main',
+    currentLeave.id,
+    { status: 'approved', entitlementAsOfDate: '2026-10-05' },
+    actor
+  ), '2026-10-05');
+  assert.deepEqual(currentApproval.payrollReconciliation.lockedSourcePayrollMonths, []);
+  assert.deepEqual(currentApproval.payrollReconciliation.results, []);
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ? LIMIT 1`)
+      .bind(octoberDraft.id).first(),
+    octoberBeforeCurrentLeave
+  );
+});
+
 test('payroll obligations API contract is canonical, traceable and settlement-safe', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
@@ -2451,6 +2859,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     Number(originalLedger.balance_after),
     3
   );
+  assert.equal(originalLedger.effective_date, '2026-08-20');
 
   // Double approval cannot double-deduct.
   const approvedAgain = await decideLeave(
@@ -2535,6 +2944,7 @@ test('approved Core leave deducts and restores canonical balance exactly once', 
     Number(reversal.change_amount),
     2
   );
+  assert.equal(reversal.effective_date, '2026-08-20');
 
   const originalAfterCancellation =
     await db.prepare(`

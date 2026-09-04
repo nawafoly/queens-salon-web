@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { listPayrollCarryoverAdjustments } from './core/repositories/payroll.js';
@@ -140,5 +141,143 @@ test('payroll carryover D1 reads are scoped before materialization', async () =>
       'pending',
       '2026-08',
     ]
+  );
+});
+
+test('historical HR correction keeps carryover source, amount, direction and target under Core authority', async () => {
+  const [payrollRepository, leaveRepository, corePayrollService, coreHrService] =
+    await Promise.all([
+      readFile(new URL('./core/repositories/payroll.js', import.meta.url), 'utf8'),
+      readFile(new URL('./core/repositories/leaves.js', import.meta.url), 'utf8'),
+      readFile(new URL('../src/services/CorePayrollService.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../src/services/CoreHrService.ts', import.meta.url), 'utf8'),
+    ]);
+
+  assert.match(
+    payrollRepository,
+    /firstEligibleCarryoverTargetMonth\([\s\S]*?payroll_entries[\s\S]*?payroll_periods/
+  );
+  assert.match(
+    payrollRepository,
+    /Any caller-supplied[\s\S]*?firstEligibleCarryoverTargetMonth\(/
+  );
+  assert.match(
+    leaveRepository,
+    /reconcileLockedPayrollImpactForHrCorrection\([\s\S]*?\{ leaveId: idValue \}/
+  );
+  assert.match(
+    corePayrollService,
+    /sourcePayrollEntryId: sourceEntry\.id,\s+sourceDate:/
+  );
+  assert.doesNotMatch(
+    corePayrollService,
+    /sourcePayrollEntryId: sourceEntry\.id,\s+targetPayrollMonth:/
+  );
+  assert.doesNotMatch(
+    coreHrService,
+    /sourcePayrollEntryId: string;\s+targetPayrollMonth: string;/
+  );
+});
+
+
+test('linked permission reversal completes before historical payroll reconciliation', async () => {
+  const source = await readFile(
+    new URL(
+      './core/repositories/employee-requests-legacy.js',
+      import.meta.url
+    ),
+    'utf8'
+  );
+
+  const start = source.indexOf(
+    'async function cancelExecutedLeaveRequest('
+  );
+  const end = source.indexOf(
+    '\nexport async function transitionEmployeeRequest',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = source.slice(start, end);
+
+  const leaveDecision = fn.indexOf('await decideLeave(');
+  const skip = fn.indexOf(
+    'skipPayrollReconciliation: true',
+    leaveDecision
+  );
+  const permissionDecision = fn.indexOf(
+    'await decidePermissionRequest(',
+    leaveDecision
+  );
+  const reconciliation = fn.indexOf(
+    'await reconcileLockedPayrollImpactForHrCorrection(',
+    permissionDecision
+  );
+
+  assert.ok(leaveDecision >= 0);
+  assert.ok(skip > leaveDecision);
+  assert.ok(permissionDecision > skip);
+  assert.ok(reconciliation > permissionDecision);
+});
+
+test('historical locked payroll is the only path allowed to bypass current active employment', async () => {
+  const [source, shiftControl] = await Promise.all([
+    readFile(
+      new URL(
+        './core/repositories/payroll.js',
+        import.meta.url
+      ),
+      'utf8'
+    ),
+    readFile(
+      new URL(
+        './core/repositories/shift-control.js',
+        import.meta.url
+      ),
+      'utf8'
+    ),
+  ]);
+
+  assert.match(
+    source,
+    /canonicalEmployment\(db, salonId, employeeId, options = \{\}\)/
+  );
+
+  assert.match(
+    source,
+    /options\.allowInactive !== true/
+  );
+
+  const historicalStart = source.indexOf(
+    'async function canonicalRecalculatedNetForLockedEntry('
+  );
+
+  assert.ok(historicalStart >= 0);
+
+  const historicalBlock = source.slice(
+    historicalStart,
+    historicalStart + 3000
+  );
+
+  assert.match(
+    historicalBlock,
+    /canonicalEmployment\([\s\S]*?\{ allowInactive: true \}/
+  );
+
+  assert.match(
+    historicalBlock,
+    /buildCanonicalAttendanceSummary\([\s\S]*?allowInactiveHistoricalPayroll: true/
+  );
+
+  assert.match(
+    shiftControl,
+    /runtime\.allowInactiveHistoricalPayroll === true[\s\S]*?employeeHistoricallyOperationalOnDate/
+  );
+
+  assert.match(
+    shiftControl,
+    /return !cleanText\(row\.end_date\) \|\| date <= cleanText\(row\.end_date\)/
   );
 });

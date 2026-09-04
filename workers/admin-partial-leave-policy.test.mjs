@@ -30,7 +30,11 @@ class LeaveFakeD1 {
           sql: normalized,
           params,
           async first() {
-            if (normalized.startsWith("SELECT * FROM employee_leaves WHERE salon_id = ? AND id = ?")) {
+            if (
+              normalized.includes("FROM employee_leaves") &&
+              normalized.includes("WHERE salon_id = ?") &&
+              normalized.includes("AND id = ?")
+            ) {
               const [salonId, id] = params;
               const row = db.leaves.get(id);
               return row && row.salon_id === salonId ? { ...row } : null;

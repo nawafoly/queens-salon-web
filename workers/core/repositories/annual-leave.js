@@ -183,15 +183,11 @@ function rowsAfterOpening(rows, opening) {
       return false;
     }
 
-    const effectiveDate = cleanText(
-      row.effective_date || row.operation_date
-    );
-    const openingEffectiveDate = cleanText(
-      opening.effective_date || opening.operation_date
-    );
-
-    if (effectiveDate < openingEffectiveDate) return false;
-    if (cleanText(row.created_at) <= cleanText(opening.created_at)) {
+    // The opening row supersedes only events that were already known when the
+    // anchor was recorded. A later HR correction can legitimately carry an
+    // earlier effective date and must still change the current canonical
+    // balance; created_at preserves when that historical truth was recorded.
+    if (cleanText(row.created_at) < cleanText(opening.created_at)) {
       return false;
     }
 
@@ -841,6 +837,11 @@ export async function approveAnnualLeave(
       riyadhDateKey(),
     'entitlementAsOfDate'
   );
+  const effectiveDate = validDate(
+    leave.start_date,
+    'effectiveDate'
+  );
+  const recordedDate = riyadhDateKey();
 
   const state = await getAnnualLeaveState(
     db,
@@ -888,7 +889,7 @@ export async function approveAnnualLeave(
   );
   const serviceYear = annualLeaveServiceYear(
     state.startDate,
-    asOfDate
+    effectiveDate
   );
 
   const note =
@@ -907,6 +908,8 @@ export async function approveAnnualLeave(
     annualLeaveStartDate: leave.start_date,
     annualLeaveEndDate: leave.end_date,
     entitlementAsOfDate: asOfDate,
+    recordedDate,
+    effectiveDate,
     accruedSinceAnchorDays:
       state.accruedSinceAnchorDays,
     openingBalanceDays:
@@ -1036,14 +1039,14 @@ export async function approveAnnualLeave(
         -days,
         state.availableDays,
         newAvailable,
-        asOfDate,
+        recordedDate,
         note,
         leaveId,
         actorUid,
         actorEmail,
         actorName,
         now,
-        asOfDate,
+        effectiveDate,
         serviceYear.serviceYearStart,
         serviceYear.serviceYearEnd,
         SA_LABOR_POLICY_VERSION,

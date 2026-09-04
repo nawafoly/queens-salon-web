@@ -342,7 +342,7 @@ export async function createLeave(
   ) || created;
 }
 
-export async function decideLeave(
+async function decideLeaveCanonical(
   db,
   salonId,
   idValue,
@@ -509,6 +509,47 @@ export async function decideLeave(
         actor
       );
   }
+}
+
+export async function decideLeave(
+  db,
+  salonId,
+  idValue,
+  decision = {},
+  actor = {},
+  options = {}
+) {
+  const decided = await decideLeaveCanonical(
+    db,
+    salonId,
+    idValue,
+    decision,
+    actor
+  );
+
+  // Composite HR reversals may need to finish linked operational effects
+  // before payroll reads canonical truth. The orchestrator must reconcile
+  // explicitly after all dependent effects are complete.
+  if (options.skipPayrollReconciliation === true) {
+    return decided;
+  }
+
+  // Payroll imports the canonical leave reader, so defer this import until the
+  // leave transaction has completed. Every retry (including an idempotent leave
+  // decision) re-runs reconciliation and can repair a prior post-commit failure.
+  const { reconcileLockedPayrollImpactForHrCorrection } = await import('./payroll.js');
+  const payrollReconciliation = await reconcileLockedPayrollImpactForHrCorrection(
+    db,
+    salonId,
+    { leaveId: idValue },
+    actor,
+    options
+  );
+
+  return {
+    ...decided,
+    payrollReconciliation,
+  };
 }
 
 export {
