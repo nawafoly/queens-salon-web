@@ -30,7 +30,9 @@ import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.
 import { payrollAttendanceReadiness } from '../../../src/helpers/hr/payrollReadiness.js';
 import {
   payrollCarryoverDelta,
+  payrollCarryoverItem,
   PAYROLL_CARRYOVER_SOURCE_TYPE,
+  withoutPayrollCarryoverItems,
 } from '../../../src/helpers/hr/payrollCarryoverPolicy.js';
 import { withoutPayrollObligationDeductionItems } from '../../../src/helpers/hr/payrollObligationPolicy.js';
 import {
@@ -1231,32 +1233,57 @@ async function ensureApprovalSnapshotExists(db, salonId, entry, actor = {}) {
 }
 
 export async function listPayrollCarryoverAdjustments(db, salonId, query = {}) {
-  let rows;
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const targetPayrollMonth = cleanText(
+    query.targetPayrollMonth || query.target_payroll_month
+  );
+  const sourcePayrollMonth = cleanText(
+    query.sourcePayrollMonth || query.source_payroll_month
+  );
+  const status = cleanText(query.status);
+
+  // Scope reads in D1 before rows are materialized. The common payroll runtime
+  // path follows idx_payroll_carryover_target:
+  // (salon_id, target_payroll_month, employee_id, status).
+  const predicates = ['salon_id = ?'];
+  const params = [salonId];
+
+  if (targetPayrollMonth) {
+    predicates.push('target_payroll_month = ?');
+    params.push(targetPayrollMonth);
+  }
+
+  if (employeeId) {
+    predicates.push('employee_id = ?');
+    params.push(employeeId);
+  }
+
+  if (status === 'active') {
+    predicates.push('status IN (?, ?)');
+    params.push('pending', 'applied');
+  } else if (status) {
+    predicates.push('status = ?');
+    params.push(status);
+  }
+
+  if (sourcePayrollMonth) {
+    predicates.push('source_payroll_month = ?');
+    params.push(sourcePayrollMonth);
+  }
+
   try {
-    rows = await dbAll(
+    return await dbAll(
       db,
       `SELECT *
          FROM payroll_carryover_adjustments
-        WHERE salon_id = ?
+        WHERE ${predicates.join('\n          AND ')}
         ORDER BY target_payroll_month DESC, employee_id, created_at`,
-      [salonId]
+      params
     );
   } catch (error) {
     if (carryoverSchemaUnavailable(error)) return [];
     throw error;
   }
-  const employeeId = cleanText(query.employeeId || query.employee_id);
-  const targetPayrollMonth = cleanText(query.targetPayrollMonth || query.target_payroll_month);
-  const sourcePayrollMonth = cleanText(query.sourcePayrollMonth || query.source_payroll_month);
-  const status = cleanText(query.status);
-  return rows.filter((row) =>
-    (!employeeId || cleanText(row.employee_id) === employeeId) &&
-    (!targetPayrollMonth || cleanText(row.target_payroll_month) === targetPayrollMonth) &&
-    (!sourcePayrollMonth || cleanText(row.source_payroll_month) === sourcePayrollMonth) &&
-    (!status || status === 'active'
-      ? ['pending', 'applied'].includes(cleanText(row.status))
-      : cleanText(row.status) === status)
-  );
 }
 
 async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, options = {}) {
@@ -1653,9 +1680,50 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     : Array.isArray(data.salaryDeductions)
       ? data.salaryDeductions
       : parseJsonArray(data.deductions_json);
+
   if (submittedDeductions.some((item) => cleanText(item?.kind) === 'advance')) {
     throw new AppError(400, 'core_payroll:manual_advance_not_allowed');
   }
+
+  // Carryover authority is Core D1. Browser-submitted carryover items are
+  // discarded and rebuilt from canonical payroll_carryover_adjustments.
+  const submittedDeductionsWithoutCarryovers =
+    withoutPayrollCarryoverItems(submittedDeductions);
+
+  const activeCarryoverRows =
+    await listPayrollCarryoverAdjustments(db, salonId, {
+      employeeId,
+      targetPayrollMonth: payrollMonth,
+      status: 'active',
+    });
+
+  const canonicalCarryoverItems = activeCarryoverRows
+    .filter((row) => {
+      const carryoverStatus = cleanText(row.status);
+
+      if (carryoverStatus === 'pending') return true;
+
+      return (
+        carryoverStatus === 'applied' &&
+        Boolean(existing?.id) &&
+        cleanText(
+          row.target_payroll_entry_id ??
+          row.targetPayrollEntryId
+        ) === cleanText(existing.id)
+      );
+    })
+    .map((row) => payrollCarryoverItem(row))
+    .filter((item) => Number(item.amountHalalas || 0) > 0);
+
+  const canonicalCarryoverAdditions =
+    canonicalCarryoverItems.filter(
+      (item) => item.direction === 'addition'
+    );
+
+  const canonicalCarryoverDeductions =
+    canonicalCarryoverItems.filter(
+      (item) => item.direction === 'deduction'
+    );
 
   const obligationCanonical = options.previewOnly === true
     ? (() => null)()
@@ -1666,20 +1734,38 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
           ...data,
           employeeId,
           payrollMonth,
-          deductions: submittedDeductions,
+          deductions: submittedDeductionsWithoutCarryovers,
         },
         actor
       );
+
   const previewObligationDeductions = options.previewOnly === true
-    ? await listPayrollObligationDeductions(db, salonId, { employeeId, payrollMonth })
+    ? await listPayrollObligationDeductions(
+        db,
+        salonId,
+        { employeeId, payrollMonth }
+      )
     : [];
-  const canonicalDeductions = options.previewOnly === true
-    ? [
-        ...withoutPayrollObligationDeductionItems(submittedDeductions),
-        ...previewObligationDeductions,
-      ]
-    : obligationCanonical.deductions;
-  const canonicalManualDeductionsHalalas = deductionItemsTotal(canonicalDeductions);
+
+  const canonicalNonCarryoverDeductions =
+    options.previewOnly === true
+      ? [
+          ...withoutPayrollObligationDeductionItems(
+            submittedDeductionsWithoutCarryovers
+          ),
+          ...previewObligationDeductions,
+        ]
+      : obligationCanonical.deductions;
+
+  const canonicalDeductions = [
+    ...withoutPayrollCarryoverItems(
+      canonicalNonCarryoverDeductions
+    ),
+    ...canonicalCarryoverDeductions,
+  ];
+
+  const canonicalManualDeductionsHalalas =
+    deductionItemsTotal(canonicalDeductions);
 
   const hasInternalCanonicalAdvance = Object.prototype.hasOwnProperty.call(
     options,
@@ -1724,7 +1810,14 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   const submittedAdditions = Array.isArray(data.additions)
     ? data.additions
     : parseJsonArray(data.additions_json);
-  const canonicalManualAdditionsHalalas = deductionItemsTotal(submittedAdditions);
+
+  const canonicalAdditions = [
+    ...withoutPayrollCarryoverItems(submittedAdditions),
+    ...canonicalCarryoverAdditions,
+  ];
+
+  const canonicalManualAdditionsHalalas =
+    deductionItemsTotal(canonicalAdditions);
   const canonicalGrossSalaryHalalas =
     authority.baseSalaryHalalas +
     authority.allowancesHalalas +
@@ -1781,6 +1874,7 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
       authority.overtimeActualHourlyHalalas,
     overtimeBasicHourlyHalalas:
       authority.overtimeBasicHourlyHalalas,
+    additions: canonicalAdditions,
     deductions: canonicalDeductions,
     otherDeductionsHalalas: canonicalLegacyOtherDeductionsHalalas,
     manualAdditionsHalalas: canonicalManualAdditionsHalalas,

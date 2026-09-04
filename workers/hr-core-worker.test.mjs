@@ -20,7 +20,7 @@ import {
   getLeaveBalanceState,
   reverseLeaveBalanceAdjustment,
 } from './core/repositories/leave-balance.js';
-import { createAbsence } from './core/repositories/absences.js';
+import { createAbsence, deleteAbsence } from './core/repositories/absences.js';
 import {
   approvePayrollEntry,
   deferAttendanceDeduction,
@@ -163,6 +163,7 @@ async function setup() {
 
     '0055_attendance_deferral_recreate_after_cancel.sql',
     '0057_leave_rest_workflows.sql',
+    '0059_payroll_carryover_compliance_authority.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -540,6 +541,1152 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(
     Number(carryovers[0].amount_halalas),
     expectedCarryoverDeductionHalalas
+  );
+
+  // The target payroll must consume pending Core carryovers automatically.
+  // Browser/UI code must not reconstruct or manually inject financial carryovers.
+  const targetPayroll = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-carryover-target-2026-09',
+    employeeId: 'emp-1',
+    payrollMonth: '2026-09',
+    skipTargetBonus: true,
+  }, actor);
+
+  const targetCarryoverDeductions = JSON.parse(
+    targetPayroll.deductions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  assert.equal(targetCarryoverDeductions.length, 1);
+  assert.equal(
+    targetCarryoverDeductions[0].sourceId,
+    carryovers[0].id
+  );
+  assert.equal(
+    Number(targetCarryoverDeductions[0].amountHalalas),
+    expectedCarryoverDeductionHalalas
+  );
+  assert.equal(
+    Number(targetPayroll.manual_deductions_halalas),
+    expectedCarryoverDeductionHalalas
+  );
+
+  const carryoversAfterTargetDraft =
+    await listPayrollCarryoverAdjustments(db, 'main', {
+      employeeId: 'emp-1',
+      targetPayrollMonth: '2026-09',
+      status: 'pending',
+    });
+
+  assert.equal(carryoversAfterTargetDraft.length, 1);
+  assert.equal(carryoversAfterTargetDraft[0].status, 'pending');
+
+
+  // Preserve traceability back to the immutable source payroll period.
+  assert.equal(
+    targetCarryoverDeductions[0].sourcePayrollMonth,
+    '2026-08'
+  );
+  assert.equal(
+    targetCarryoverDeductions[0].sourceDate,
+    '2026-08-31'
+  );
+
+  // Browser-submitted carryover items are untrusted. Core must discard both
+  // forged additions and deductions and rebuild the real adjustment from D1.
+  const forgedTargetPayroll = await upsertPayrollEntry(db, 'main', {
+    id: targetPayroll.id,
+    employeeId: 'emp-1',
+    payrollMonth: '2026-09',
+    skipTargetBonus: true,
+    additions: [{
+      id: 'payroll_carryover:forged-browser-carryover-addition',
+      sourceType: 'payroll_carryover',
+      sourceId: 'forged-browser-carryover-addition',
+      direction: 'addition',
+      kind: 'manual_addition',
+      amountHalalas: 888888,
+      reason: 'forged browser carryover',
+    }],
+    deductions: [{
+      id: 'payroll_carryover:forged-browser-carryover-deduction',
+      sourceType: 'payroll_carryover',
+      sourceId: 'forged-browser-carryover-deduction',
+      direction: 'deduction',
+      kind: 'manual_deduction',
+      amountHalalas: 999999,
+      reason: 'forged browser carryover',
+    }],
+  }, actor);
+
+  const forgedCarryoverAdditions = JSON.parse(
+    forgedTargetPayroll.additions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  const forgedCarryoverDeductions = JSON.parse(
+    forgedTargetPayroll.deductions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  assert.equal(forgedCarryoverAdditions.length, 0);
+  assert.equal(forgedCarryoverDeductions.length, 1);
+  assert.equal(
+    forgedCarryoverDeductions[0].sourceId,
+    carryovers[0].id
+  );
+  assert.equal(
+    Number(forgedCarryoverDeductions[0].amountHalalas),
+    expectedCarryoverDeductionHalalas
+  );
+
+  // Re-saving a canonical target payroll must never duplicate the carryover.
+  const repeatedTargetPayroll = await upsertPayrollEntry(db, 'main', {
+    id: forgedTargetPayroll.id,
+    employeeId: 'emp-1',
+    payrollMonth: '2026-09',
+    skipTargetBonus: true,
+    additions: JSON.parse(
+      forgedTargetPayroll.additions_json || '[]'
+    ),
+    deductions: JSON.parse(
+      forgedTargetPayroll.deductions_json || '[]'
+    ),
+  }, actor);
+
+  const repeatedCarryoverDeductions = JSON.parse(
+    repeatedTargetPayroll.deductions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  assert.equal(repeatedCarryoverDeductions.length, 1);
+  assert.equal(
+    repeatedCarryoverDeductions[0].sourceId,
+    carryovers[0].id
+  );
+
+  // September is a real target payroll period, so satisfy the normal
+  // attendance approval gate instead of bypassing financial safeguards.
+  for (const date of [
+    '2026-09-06',
+    '2026-09-13',
+    '2026-09-20',
+    '2026-09-27',
+  ]) {
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-1',
+      employeeUid: 'uid-1',
+      type: 'check_in',
+      date,
+      recordedAt: `${date}T09:00:00.000Z`,
+      idempotencyKey: `emp-1-${date}-in`,
+    }, actor);
+
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-1',
+      employeeUid: 'uid-1',
+      type: 'check_out',
+      date,
+      recordedAt: `${date}T17:00:00.000Z`,
+      idempotencyKey: `emp-1-${date}-out`,
+    }, actor);
+  }
+
+  // Saving/previewing keeps the adjustment pending. Approval is the authority
+  // boundary that consumes it and links it to the locked target payroll.
+  // D1 is the final authority boundary. Even a caller that bypasses the
+  // repository cannot approve a forged carryover that has no canonical row.
+  const directD1ForgedCarryover = JSON.stringify([{
+    id: 'payroll_carryover:direct-d1-forged-carryover',
+    sourceType: 'payroll_carryover',
+    sourceId: 'direct-d1-forged-carryover',
+    direction: 'deduction',
+    kind: 'manual_deduction',
+    amountHalalas: 1,
+    reason: 'direct D1 forgery attempt',
+  }]);
+
+  await assert.rejects(
+    () => db.prepare(
+      `UPDATE payroll_entries
+          SET deductions_json = ?,
+              status = 'approved'
+        WHERE salon_id = 'main'
+          AND id = ?`
+    ).bind(
+      directD1ForgedCarryover,
+      repeatedTargetPayroll.id
+    ).run(),
+    /payroll_carryover_authority_mismatch/
+  );
+
+  // The failed statement must be atomic: neither the forged JSON nor the
+  // approved status may survive the D1 trigger rejection.
+  const targetAfterDirectForgery = await db.prepare(
+    `SELECT status, deductions_json
+       FROM payroll_entries
+      WHERE salon_id = 'main'
+        AND id = ?
+      LIMIT 1`
+  ).bind(repeatedTargetPayroll.id).first();
+
+  assert.notEqual(
+    targetAfterDirectForgery.status,
+    'approved'
+  );
+  assert.deepEqual(
+    JSON.parse(targetAfterDirectForgery.deductions_json || '[]'),
+    JSON.parse(repeatedTargetPayroll.deductions_json || '[]')
+  );
+
+
+  // D1 must reject a locked payroll that omits a canonical pending carryover.
+  // This protects both stale drafts and carryovers created after a refresh.
+  const repeatedTargetDeductions = JSON.parse(
+    repeatedTargetPayroll.deductions_json || '[]'
+  );
+
+  const directD1OmittedCarryover = JSON.stringify(
+    repeatedTargetDeductions.filter(
+      (item) =>
+        item?.sourceType !== 'payroll_carryover'
+    )
+  );
+
+  await assert.rejects(
+    () => db.prepare(
+      `UPDATE payroll_entries
+          SET deductions_json = ?,
+              status = 'approved'
+        WHERE salon_id = 'main'
+          AND id = ?`
+    ).bind(
+      directD1OmittedCarryover,
+      repeatedTargetPayroll.id
+    ).run(),
+    /payroll_carryover_authority_mismatch/
+  );
+
+  // D1 must also reject repeating one otherwise-valid canonical carryover.
+  const canonicalCarryoverForDirectD1 =
+    repeatedTargetDeductions.find(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.ok(canonicalCarryoverForDirectD1);
+
+  const directD1DuplicateCarryover = JSON.stringify([
+    ...repeatedTargetDeductions,
+    canonicalCarryoverForDirectD1,
+  ]);
+
+  await assert.rejects(
+    () => db.prepare(
+      `UPDATE payroll_entries
+          SET deductions_json = ?,
+              status = 'approved'
+        WHERE salon_id = 'main'
+          AND id = ?`
+    ).bind(
+      directD1DuplicateCarryover,
+      repeatedTargetPayroll.id
+    ).run(),
+    /payroll_carryover_authority_mismatch/
+  );
+
+  // Both rejected statements must remain atomic.
+  const targetAfterCarryoverSetForgery =
+    await db.prepare(
+      `SELECT status, deductions_json
+         FROM payroll_entries
+        WHERE salon_id = 'main'
+          AND id = ?
+        LIMIT 1`
+    ).bind(
+      repeatedTargetPayroll.id
+    ).first();
+
+  assert.notEqual(
+    targetAfterCarryoverSetForgery.status,
+    'approved'
+  );
+
+  assert.deepEqual(
+    JSON.parse(
+      targetAfterCarryoverSetForgery.deductions_json ||
+        '[]'
+    ),
+    repeatedTargetDeductions
+  );
+
+  const approvedTargetPayroll = await approvePayrollEntry(
+    db,
+    'main',
+    repeatedTargetPayroll.id,
+    actor
+  );
+
+  assert.equal(approvedTargetPayroll.status, 'approved');
+
+  const pendingCarryoversAfterApproval =
+    await listPayrollCarryoverAdjustments(db, 'main', {
+      employeeId: 'emp-1',
+      targetPayrollMonth: '2026-09',
+      status: 'pending',
+    });
+
+  assert.equal(pendingCarryoversAfterApproval.length, 0);
+
+  const appliedCarryovers =
+    await listPayrollCarryoverAdjustments(db, 'main', {
+      employeeId: 'emp-1',
+      targetPayrollMonth: '2026-09',
+      status: 'applied',
+    });
+
+  assert.equal(appliedCarryovers.length, 1);
+  assert.equal(appliedCarryovers[0].id, carryovers[0].id);
+  assert.equal(
+    appliedCarryovers[0].target_payroll_entry_id,
+    approvedTargetPayroll.id
+  );
+  assert.ok(appliedCarryovers[0].applied_at);
+
+  // Consuming the carryover must never rewrite the immutable August approval.
+  const approvalSnapshotAfterTargetApproval = await db.prepare(
+    `SELECT approved_net_halalas, approval_version
+       FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ?
+      ORDER BY approval_version DESC LIMIT 1`
+  ).bind(readyPayroll.id).first();
+
+  assert.equal(
+    Number(approvalSnapshotAfterTargetApproval.approved_net_halalas),
+    500000
+  );
+  assert.equal(
+    Number(approvalSnapshotAfterTargetApproval.approval_version),
+    1
+  );
+
+  // Cover the opposite financial direction independently: a canonical positive
+  // post-approval correction must become an addition in the target payroll.
+  await seedNonSaudiPayrollEmployment(
+    db,
+    'emp-carryover-add',
+    500000
+  );
+
+  await db.prepare(
+    `INSERT INTO payroll_approval_snapshots (
+       id,
+       salon_id,
+       payroll_entry_id,
+       employee_id,
+       payroll_month,
+       approval_version,
+       approved_at,
+       approved_by_uid,
+       approved_net_halalas,
+       base_salary_halalas,
+       total_additions_halalas,
+       total_deductions_halalas,
+       attendance_summary_json,
+       entry_snapshot_json,
+       created_at
+     ) VALUES (
+       'snapshot-carryover-add-source',
+       'main',
+       'payroll-carryover-add-source-2026-08',
+       'emp-carryover-add',
+       '2026-08',
+       1,
+       '2026-08-28T12:00:00.000Z',
+       'uid-admin',
+       500000,
+       500000,
+       0,
+       0,
+       '{}',
+       '{}',
+       '2026-08-28T12:00:00.000Z'
+     )`
+  ).run();
+
+  await db.prepare(
+    `INSERT INTO payroll_carryover_adjustments (
+       id,
+       salon_id,
+       employee_id,
+       source_payroll_month,
+       target_payroll_month,
+       source_payroll_entry_id,
+       source_snapshot_id,
+       direction,
+       amount_halalas,
+       approved_net_halalas,
+       recalculated_net_halalas,
+       reason,
+       source_date,
+       status,
+       target_payroll_entry_id,
+       applied_at,
+       created_at,
+       updated_at
+     ) VALUES (
+       'carryover-addition-2026-09',
+       'main',
+       'emp-carryover-add',
+       '2026-08',
+       '2026-09',
+       'payroll-carryover-add-source-2026-08',
+       'snapshot-carryover-add-source',
+       'addition',
+       10000,
+       500000,
+       510000,
+       'Positive post-approval correction',
+       '2026-08-31',
+       'pending',
+       NULL,
+       NULL,
+       '2026-09-01T00:00:00.000Z',
+       '2026-09-01T00:00:00.000Z'
+     )`
+  ).run();
+
+  const additionTargetPayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: 'payroll-carryover-add-target-2026-09',
+      employeeId: 'emp-carryover-add',
+      payrollMonth: '2026-09',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const canonicalCarryoverAdditions = JSON.parse(
+    additionTargetPayroll.additions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  const canonicalCarryoverAdditionDeductions = JSON.parse(
+    additionTargetPayroll.deductions_json || '[]'
+  ).filter(
+    (item) => item?.sourceType === 'payroll_carryover'
+  );
+
+  assert.equal(canonicalCarryoverAdditions.length, 1);
+  assert.equal(canonicalCarryoverAdditionDeductions.length, 0);
+
+  assert.equal(
+    canonicalCarryoverAdditions[0].sourceId,
+    'carryover-addition-2026-09'
+  );
+  assert.equal(
+    canonicalCarryoverAdditions[0].sourcePayrollMonth,
+    '2026-08'
+  );
+  assert.equal(
+    canonicalCarryoverAdditions[0].sourceDate,
+    '2026-08-31'
+  );
+  assert.equal(
+    Number(canonicalCarryoverAdditions[0].amountHalalas),
+    10000
+  );
+
+  assert.equal(
+    Number(additionTargetPayroll.manual_additions_halalas),
+    10000
+  );
+
+  assert.equal(
+    Number(additionTargetPayroll.gross_salary_halalas),
+    510000
+  );
+  assert.equal(
+    Number(additionTargetPayroll.net_salary_halalas),
+    510000
+  );
+  assert.equal(
+    Number(additionTargetPayroll.final_salary_halalas),
+    510000
+  );
+
+  const pendingAdditionCarryovers =
+    await listPayrollCarryoverAdjustments(db, 'main', {
+      employeeId: 'emp-carryover-add',
+      targetPayrollMonth: '2026-09',
+      status: 'pending',
+    });
+
+  assert.equal(pendingAdditionCarryovers.length, 1);
+  assert.equal(
+    pendingAdditionCarryovers[0].id,
+    'carryover-addition-2026-09'
+  );
+
+
+  // Void semantics must be driven by canonical operational truth, never by a
+  // caller-supplied recalculated amount.
+  await seedNonSaudiPayrollEmployment(
+    db,
+    'emp-carryover-void',
+    500000
+  );
+
+  await db.prepare(
+    `UPDATE employee_employment
+        SET attendance_payroll_mode = 'required',
+            attendance_payroll_exemption_reason = NULL,
+            updated_at = '2026-01-02T00:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = 'emp-carryover-void'`
+  ).run();
+
+  await replaceHrSchedules(
+    db,
+    'main',
+    'emp-carryover-void',
+    [{
+      id: 'sched-carryover-void',
+      weekday: 0,
+      shiftTemplateId: shiftTemplate.id,
+      active: true,
+      effectiveFrom: '2026-08-01',
+    }]
+  );
+
+  // All scheduled Sundays are complete before the August approval.
+  for (const date of [
+    '2026-08-02',
+    '2026-08-09',
+    '2026-08-16',
+    '2026-08-23',
+    '2026-08-30',
+  ]) {
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-carryover-void',
+      type: 'check_in',
+      date,
+      recordedAt: `${date}T06:00:00.000Z`,
+      idempotencyKey:
+        `emp-carryover-void-${date}-in`,
+    }, actor);
+
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-carryover-void',
+      type: 'check_out',
+      date,
+      recordedAt: `${date}T14:00:00.000Z`,
+      idempotencyKey:
+        `emp-carryover-void-${date}-out`,
+    }, actor);
+  }
+
+  const voidSourcePayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: 'payroll-carryover-void-source-2026-08',
+      employeeId: 'emp-carryover-void',
+      payrollMonth: '2026-08',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const approvedVoidSourcePayroll =
+    await approvePayrollEntry(
+      db,
+      'main',
+      voidSourcePayroll.id,
+      actor
+    );
+
+  assert.equal(
+    approvedVoidSourcePayroll.status,
+    'approved'
+  );
+
+  const approvedVoidSourceNet = Number(
+    approvedVoidSourcePayroll.final_salary_halalas
+  );
+
+  // A real HR correction is entered after August has already been approved.
+  const temporaryVoidAbsence = await createAbsence(
+    db,
+    'main',
+    {
+      id: 'absence-carryover-void-2026-08-10',
+      employeeId: 'emp-carryover-void',
+      date: '2026-08-10',
+      type: 'full_day',
+      note: 'Temporary post-approval correction',
+    },
+    actor
+  );
+
+  const expectedVoidDeduction = Number(
+    approvedVoidSourcePayroll.daily_rate_halalas
+  );
+
+  assert.ok(expectedVoidDeduction > 0);
+
+  const initialVoidReconciliation =
+    await reconcilePayrollCarryoversBatch(
+      db,
+      'main',
+      {
+        items: [{
+          sourcePayrollEntryId:
+            approvedVoidSourcePayroll.id,
+          targetPayrollMonth: '2026-09',
+          sourceDate: '2026-08-31',
+          reason:
+            'Temporary post-approval correction',
+        }],
+      },
+      actor
+    );
+
+  assert.equal(
+    initialVoidReconciliation.results.length,
+    1
+  );
+  assert.equal(
+    initialVoidReconciliation.results[0]
+      .recalculatedNetHalalas,
+    approvedVoidSourceNet - expectedVoidDeduction
+  );
+  assert.equal(
+    initialVoidReconciliation.results[0]
+      .residualSignedHalalas,
+    -expectedVoidDeduction
+  );
+  assert.equal(
+    initialVoidReconciliation.results[0]
+      .adjustment.direction,
+    'deduction'
+  );
+  assert.equal(
+    Number(
+      initialVoidReconciliation.results[0]
+        .adjustment.amount_halalas
+    ),
+    expectedVoidDeduction
+  );
+
+  const voidTargetDraft = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: 'payroll-carryover-void-target-2026-09',
+      employeeId: 'emp-carryover-void',
+      payrollMonth: '2026-09',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const voidTargetCarryoversBeforeResolution =
+    JSON.parse(
+      voidTargetDraft.deductions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.equal(
+    voidTargetCarryoversBeforeResolution.length,
+    1
+  );
+  assert.equal(
+    Number(
+      voidTargetCarryoversBeforeResolution[0]
+        .amountHalalas
+    ),
+    expectedVoidDeduction
+  );
+
+  // HR then corrects the operational truth before September is approved.
+  await deleteAbsence(
+    db,
+    'main',
+    temporaryVoidAbsence.id
+  );
+
+  const resolvedVoidReconciliation =
+    await reconcilePayrollCarryoversBatch(
+      db,
+      'main',
+      {
+        items: [{
+          sourcePayrollEntryId:
+            approvedVoidSourcePayroll.id,
+          targetPayrollMonth: '2026-09',
+          sourceDate: '2026-08-31',
+          reason:
+            'Source correction resolved before target approval',
+        }],
+      },
+      actor
+    );
+
+  assert.equal(
+    resolvedVoidReconciliation.results.length,
+    1
+  );
+  assert.equal(
+    resolvedVoidReconciliation.results[0]
+      .recalculatedNetHalalas,
+    approvedVoidSourceNet
+  );
+  assert.equal(
+    resolvedVoidReconciliation.results[0]
+      .residualSignedHalalas,
+    0
+  );
+  assert.equal(
+    resolvedVoidReconciliation.results[0]
+      .adjustment,
+    null
+  );
+
+  const pendingVoidCarryovers =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-carryover-void',
+        targetPayrollMonth: '2026-09',
+        status: 'pending',
+      }
+    );
+
+  assert.equal(pendingVoidCarryovers.length, 0);
+
+  const voidedCarryovers =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-carryover-void',
+        targetPayrollMonth: '2026-09',
+        status: 'void',
+      }
+    );
+
+  assert.equal(voidedCarryovers.length, 1);
+  assert.equal(
+    Number(voidedCarryovers[0].amount_halalas),
+    0
+  );
+
+  // Refreshing the unlocked September draft removes the now-void adjustment.
+  const refreshedVoidTarget = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: voidTargetDraft.id,
+      employeeId: 'emp-carryover-void',
+      payrollMonth: '2026-09',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const refreshedVoidCarryoverDeductions =
+    JSON.parse(
+      refreshedVoidTarget.deductions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  const refreshedVoidCarryoverAdditions =
+    JSON.parse(
+      refreshedVoidTarget.additions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.equal(
+    refreshedVoidCarryoverDeductions.length,
+    0
+  );
+  assert.equal(
+    refreshedVoidCarryoverAdditions.length,
+    0
+  );
+  assert.equal(
+    Number(
+      refreshedVoidTarget.manual_deductions_halalas
+    ),
+    0
+  );
+  assert.equal(
+    Number(
+      refreshedVoidTarget.manual_additions_halalas
+    ),
+    0
+  );
+
+
+  // Once a target carryover has been approved/applied, later source corrections
+  // must never rewrite that locked target payroll. Only the residual may move
+  // forward into a later payroll month.
+  const appliedScenarioAbsence = await createAbsence(
+    db,
+    'main',
+    {
+      id: 'absence-carryover-applied-2026-08-11',
+      employeeId: 'emp-carryover-void',
+      date: '2026-08-11',
+      type: 'full_day',
+      note: 'Post-approval correction that will be applied in September',
+    },
+    actor
+  );
+
+  const appliedScenarioInitialReconciliation =
+    await reconcilePayrollCarryoversBatch(
+      db,
+      'main',
+      {
+        items: [{
+          sourcePayrollEntryId:
+            approvedVoidSourcePayroll.id,
+          targetPayrollMonth: '2026-09',
+          sourceDate: '2026-08-31',
+          reason:
+            'Apply August correction through September',
+        }],
+      },
+      actor
+    );
+
+  assert.equal(
+    appliedScenarioInitialReconciliation.results.length,
+    1
+  );
+  assert.equal(
+    appliedScenarioInitialReconciliation.results[0]
+      .residualSignedHalalas,
+    -expectedVoidDeduction
+  );
+  assert.equal(
+    appliedScenarioInitialReconciliation.results[0]
+      .adjustment.direction,
+    'deduction'
+  );
+
+  // The August source keeps its original attendance policy snapshot, but the
+  // September target itself can use the current exempt policy so this test
+  // isolates carryover locking rather than attendance readiness.
+  await db.prepare(
+    `UPDATE employee_employment
+        SET attendance_payroll_mode = 'exempt',
+            attendance_payroll_exemption_reason =
+              'Carryover lock regression fixture',
+            updated_at = '2026-09-01T00:00:00.000Z'
+      WHERE salon_id = 'main'
+        AND employee_id = 'emp-carryover-void'`
+  ).run();
+
+  const appliedSeptemberDraft = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: refreshedVoidTarget.id,
+      employeeId: 'emp-carryover-void',
+      payrollMonth: '2026-09',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const appliedSeptemberDraftCarryovers =
+    JSON.parse(
+      appliedSeptemberDraft.deductions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.equal(
+    appliedSeptemberDraftCarryovers.length,
+    1
+  );
+  assert.equal(
+    Number(
+      appliedSeptemberDraftCarryovers[0]
+        .amountHalalas
+    ),
+    expectedVoidDeduction
+  );
+
+  const approvedAppliedSeptember =
+    await approvePayrollEntry(
+      db,
+      'main',
+      appliedSeptemberDraft.id,
+      actor
+    );
+
+  assert.equal(
+    approvedAppliedSeptember.status,
+    'approved'
+  );
+
+  const septemberAppliedCarryovers =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-carryover-void',
+        targetPayrollMonth: '2026-09',
+        status: 'applied',
+      }
+    );
+
+  assert.equal(septemberAppliedCarryovers.length, 1);
+  assert.equal(
+    septemberAppliedCarryovers[0]
+      .target_payroll_entry_id,
+    approvedAppliedSeptember.id
+  );
+  assert.equal(
+    septemberAppliedCarryovers[0].direction,
+    'deduction'
+  );
+  assert.equal(
+    Number(
+      septemberAppliedCarryovers[0]
+        .amount_halalas
+    ),
+    expectedVoidDeduction
+  );
+
+  const lockedSeptemberBeforeLaterCorrection =
+    await db.prepare(
+      `SELECT
+         status,
+         gross_salary_halalas,
+         final_salary_halalas,
+         net_salary_halalas,
+         manual_additions_halalas,
+         manual_deductions_halalas,
+         additions_json,
+         deductions_json
+       FROM payroll_entries
+       WHERE salon_id = 'main'
+         AND id = ?
+       LIMIT 1`
+    ).bind(
+      approvedAppliedSeptember.id
+    ).first();
+
+  assert.equal(
+    lockedSeptemberBeforeLaterCorrection.status,
+    'approved'
+  );
+
+  // HR later discovers the August correction was unnecessary, but September
+  // is already locked. Removing the source absence must create an October
+  // residual instead of reversing September in place.
+  await deleteAbsence(
+    db,
+    'main',
+    appliedScenarioAbsence.id
+  );
+
+  const octoberResidualReconciliation =
+    await reconcilePayrollCarryoversBatch(
+      db,
+      'main',
+      {
+        items: [{
+          sourcePayrollEntryId:
+            approvedVoidSourcePayroll.id,
+          targetPayrollMonth: '2026-10',
+          sourceDate: '2026-08-31',
+          reason:
+            'Reverse already-applied September correction in next open month',
+        }],
+      },
+      actor
+    );
+
+  assert.equal(
+    octoberResidualReconciliation.results.length,
+    1
+  );
+
+  // Desired August delta is now zero, but September already consumed a
+  // deduction. Therefore October must carry the exact opposite residual.
+  assert.equal(
+    octoberResidualReconciliation.results[0]
+      .desiredSignedDeltaHalalas,
+    0
+  );
+  assert.equal(
+    octoberResidualReconciliation.results[0]
+      .appliedSignedHalalas,
+    -expectedVoidDeduction
+  );
+  assert.equal(
+    octoberResidualReconciliation.results[0]
+      .residualSignedHalalas,
+    expectedVoidDeduction
+  );
+  assert.equal(
+    octoberResidualReconciliation.results[0]
+      .adjustment.direction,
+    'addition'
+  );
+  assert.equal(
+    Number(
+      octoberResidualReconciliation.results[0]
+        .adjustment.amount_halalas
+    ),
+    expectedVoidDeduction
+  );
+
+  const octoberPendingCarryovers =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-carryover-void',
+        targetPayrollMonth: '2026-10',
+        status: 'pending',
+      }
+    );
+
+  assert.equal(octoberPendingCarryovers.length, 1);
+  assert.equal(
+    octoberPendingCarryovers[0].direction,
+    'addition'
+  );
+  assert.equal(
+    Number(
+      octoberPendingCarryovers[0].amount_halalas
+    ),
+    expectedVoidDeduction
+  );
+
+  const octoberTargetPayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: 'payroll-carryover-residual-target-2026-10',
+      employeeId: 'emp-carryover-void',
+      payrollMonth: '2026-10',
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const octoberCanonicalCarryoverAdditions =
+    JSON.parse(
+      octoberTargetPayroll.additions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  const octoberCanonicalCarryoverDeductions =
+    JSON.parse(
+      octoberTargetPayroll.deductions_json || '[]'
+    ).filter(
+      (item) =>
+        item?.sourceType === 'payroll_carryover'
+    );
+
+  assert.equal(
+    octoberCanonicalCarryoverAdditions.length,
+    1
+  );
+  assert.equal(
+    octoberCanonicalCarryoverDeductions.length,
+    0
+  );
+  assert.equal(
+    Number(
+      octoberCanonicalCarryoverAdditions[0]
+        .amountHalalas
+    ),
+    expectedVoidDeduction
+  );
+  assert.equal(
+    Number(
+      octoberTargetPayroll.manual_additions_halalas
+    ),
+    expectedVoidDeduction
+  );
+
+  // Critical invariant: reconciliation after September approval cannot mutate
+  // the September financial snapshot.
+  const lockedSeptemberAfterLaterCorrection =
+    await db.prepare(
+      `SELECT
+         status,
+         gross_salary_halalas,
+         final_salary_halalas,
+         net_salary_halalas,
+         manual_additions_halalas,
+         manual_deductions_halalas,
+         additions_json,
+         deductions_json
+       FROM payroll_entries
+       WHERE salon_id = 'main'
+         AND id = ?
+       LIMIT 1`
+    ).bind(
+      approvedAppliedSeptember.id
+    ).first();
+
+  assert.deepEqual(
+    lockedSeptemberAfterLaterCorrection,
+    lockedSeptemberBeforeLaterCorrection
+  );
+
+  const septemberAppliedCarryoversAfterOctober =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-carryover-void',
+        targetPayrollMonth: '2026-09',
+        status: 'applied',
+      }
+    );
+
+  assert.equal(
+    septemberAppliedCarryoversAfterOctober.length,
+    1
+  );
+  assert.equal(
+    septemberAppliedCarryoversAfterOctober[0].id,
+    septemberAppliedCarryovers[0].id
+  );
+  assert.equal(
+    Number(
+      septemberAppliedCarryoversAfterOctober[0]
+        .amount_halalas
+    ),
+    expectedVoidDeduction
   );
 
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
