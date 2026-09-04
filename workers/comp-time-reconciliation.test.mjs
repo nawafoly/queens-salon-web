@@ -14,6 +14,7 @@ import {
 import {
   confirmWeeklyRestDue,
   consumeWeeklyRestDue,
+  setHistoricalWeeklyRestOpeningBalance,
   WEEKLY_REST_MINUTES,
 } from './core/repositories/weekly-rest-entitlements.js';
 
@@ -63,6 +64,17 @@ async function setup() {
   await db.prepare(`CREATE UNIQUE INDEX idx_test_comp_source
     ON employee_comp_time_ledger(salon_id, entitlement_type, source_type, source_id, entry_kind)
     WHERE source_id IS NOT NULL`).run();
+  await db.prepare(`CREATE UNIQUE INDEX idx_test_historical_weekly_rest_opening_once
+    ON employee_comp_time_ledger(
+      salon_id,
+      employee_id,
+      entitlement_type,
+      source_type,
+      entry_kind
+    )
+    WHERE entitlement_type = 'weekly_rest_due'
+      AND source_type = 'historical_opening_balance'
+      AND entry_kind = 'credit'`).run();
   await db.prepare(`CREATE TABLE employee_comp_time_balances (
     salon_id TEXT NOT NULL,
     employee_id TEXT NOT NULL,
@@ -73,6 +85,16 @@ async function setup() {
     updated_at TEXT NOT NULL,
     PRIMARY KEY (salon_id, employee_id, entitlement_type)
   )`).run();
+  await db.prepare(`CREATE TABLE employee_employment (
+    salon_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    start_date TEXT,
+    PRIMARY KEY (salon_id, employee_id)
+  )`).run();
+  await db.prepare(`INSERT INTO employee_employment
+    (salon_id, employee_id, start_date)
+    VALUES ('main', 'emp-1', '2025-01-01')`).run();
+
   await db.prepare(`CREATE TABLE employee_weekly_rest_events (
     id TEXT PRIMARY KEY,
     salon_id TEXT NOT NULL,
@@ -177,6 +199,112 @@ test('weekly-rest due creates and consumes a separate 24-hour entitlement block'
   );
 });
 
+test('historical weekly-rest opening balance is audited, idempotent and consumable', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const opening =
+    await setHistoricalWeeklyRestOpeningBalance(
+      db,
+      'main',
+      'emp-1',
+      {
+        days: 3,
+        effectiveDate: '2026-08-30',
+        sourceReference: 'legacy-weekly-rest-emp-1',
+        reason: 'confirmed legacy weekly-rest balance before Core',
+      },
+      actor
+    );
+
+  assert.equal(opening.idempotent, false);
+  assert.equal(opening.state.balanceMinutes, 4320);
+  assert.equal(opening.entry.entry_kind, 'credit');
+  assert.equal(
+    opening.entry.entitlement_type,
+    'weekly_rest_due'
+  );
+  assert.equal(
+    opening.entry.source_type,
+    'historical_opening_balance'
+  );
+  assert.equal(
+    opening.entry.source_date,
+    '2026-08-30'
+  );
+  assert.equal(opening.entry.created_by_uid, actor.uid);
+  assert.equal(
+    opening.entry.created_by_email,
+    actor.email
+  );
+
+  const repeated =
+    await setHistoricalWeeklyRestOpeningBalance(
+      db,
+      'main',
+      'emp-1',
+      {
+        days: 3,
+        effectiveDate: '2026-08-30',
+        sourceReference: 'legacy-weekly-rest-emp-1',
+        reason: 'confirmed legacy weekly-rest balance before Core',
+      },
+      actor
+    );
+
+  assert.equal(repeated.idempotent, true);
+  assert.equal(repeated.state.balanceMinutes, 4320);
+
+  await assert.rejects(
+    () =>
+      setHistoricalWeeklyRestOpeningBalance(
+        db,
+        'main',
+        'emp-1',
+        {
+          days: 3,
+          effectiveDate: '2026-08-30',
+          sourceReference: 'second-opening',
+          reason: 'second historical opening attempt',
+        },
+        actor
+      ),
+    {
+      code:
+        'core_weekly_rest:historical_opening_balance_already_exists',
+    }
+  );
+
+  const consumed = await consumeWeeklyRestDue(
+    db,
+    'main',
+    {
+      employeeId: 'emp-1',
+      sourceDate: '2026-08-31',
+      sourceType: 'weekly_rest_substitute_use',
+      sourceId: 'leave-rest-2026-08-31',
+    },
+    actor
+  );
+
+  assert.equal(consumed.state.balanceMinutes, 2880);
+
+  const rows = await db.prepare(
+    `SELECT *
+       FROM employee_comp_time_ledger
+      WHERE salon_id = 'main'
+        AND employee_id = 'emp-1'
+        AND entitlement_type = 'weekly_rest_due'
+      ORDER BY created_at ASC, id ASC`
+  ).all();
+
+  assert.equal(rows.results.length, 2);
+  assert.equal(rows.results[0].balance_before_minutes, 0);
+  assert.equal(rows.results[0].balance_after_minutes, 4320);
+  assert.equal(rows.results[1].balance_before_minutes, 4320);
+  assert.equal(rows.results[1].balance_after_minutes, 2880);
+});
+
 test('overtime attendance counts only actual work inside the authorized window and caps at approval', () => {
   const attendance = {
     complete: true,
@@ -210,4 +338,37 @@ test('0044 stores attendance evidence and a concurrency-safe entitlement project
   assert.match(runtime, /financial_status = 'comp_time_credited'/);
   assert.match(runtime, /calculateCompensatoryLeaveMinutes/);
   assert.match(runtime, /compensation_mode = 'cash_overtime'/);
+});
+
+
+test('0060 enforces one historical weekly-rest opening credit per employee', () => {
+  const migration = readFileSync(
+    'migrations/core/0060_weekly_rest_historical_opening_guard.sql',
+    'utf8'
+  );
+
+  assert.match(
+    migration,
+    /CREATE UNIQUE INDEX IF NOT EXISTS/
+  );
+
+  assert.match(
+    migration,
+    /salon_id[\s\S]*employee_id[\s\S]*entitlement_type[\s\S]*source_type[\s\S]*entry_kind/
+  );
+
+  assert.match(
+    migration,
+    /entitlement_type = 'weekly_rest_due'/
+  );
+
+  assert.match(
+    migration,
+    /source_type = 'historical_opening_balance'/
+  );
+
+  assert.match(
+    migration,
+    /entry_kind = 'credit'/
+  );
 });

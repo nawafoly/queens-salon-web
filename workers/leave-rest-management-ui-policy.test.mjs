@@ -239,3 +239,136 @@ test("annual leave opening balance uses the canonical audited Core path", () => 
     /اعتماد الرصيد المتبقي/
   );
 });
+
+test("historical weekly-rest opening balance has a dedicated guarded Core path", () => {
+  const core = source("../workers/core/index.js");
+  const workflow = source(
+    "../workers/core/repositories/weekly-rest-entitlements.js"
+  );
+
+  assert.ok(
+    core.includes("weekly-rest\\/opening-balance")
+  );
+
+  assert.ok(
+    core.includes('name: "weekly-rest:opening-balance"')
+  );
+
+  const caseStart = core.indexOf(
+    'case "weekly-rest:opening-balance":'
+  );
+
+  assert.notEqual(caseStart, -1);
+
+  const nextCase = core.indexOf(
+    '\n    case "',
+    caseStart + 10
+  );
+
+  const block = core.slice(
+    caseStart,
+    nextCase === -1 ? undefined : nextCase
+  );
+
+  assert.match(
+    block,
+    /requireRole\(ctx\.role, HR_MANAGEMENT_ROLES\)/
+  );
+
+  assert.match(
+    block,
+    /attendance\.leaves\.manage/
+  );
+
+  assert.match(
+    block,
+    /setHistoricalWeeklyRestOpeningBalance/
+  );
+
+  assert.match(
+    workflow,
+    /HISTORICAL_OPENING_SOURCE_TYPE = 'historical_opening_balance'/
+  );
+
+  assert.match(
+    workflow,
+    /entitlementType: 'weekly_rest_due'/
+  );
+
+  assert.doesNotMatch(
+    workflow,
+    /entitlementType:\s*['"]annual/
+  );
+});
+
+
+test("historical weekly-rest opening projection is exposed through CoreHrService", () => {
+  const service = source(
+    "../src/services/CoreHrService.ts"
+  );
+  const workflow = source(
+    "../workers/core/repositories/leave-rest-workflows.js"
+  );
+
+  assert.match(
+    workflow,
+    /historicalOpening/
+  );
+
+  assert.match(
+    workflow,
+    /source_type = 'historical_opening_balance'/
+  );
+
+  assert.match(
+    service,
+    /historicalOpeningRaw/
+  );
+
+  assert.match(
+    service,
+    /setHistoricalWeeklyRestOpeningBalance/
+  );
+
+  assert.match(
+    service,
+    /weekly-rest\/opening-balance/
+  );
+});
+
+
+test("historical weekly-rest opening UI uses the canonical Core contract", () => {
+  const panel = source(
+    "../src/pages/dashboardEmployees/LeaveRestManagementPanel.tsx"
+  );
+
+  assert.match(
+    panel,
+    /weeklyRest\.historicalOpening/
+  );
+
+  assert.match(
+    panel,
+    /submitHistoricalWeeklyRestOpening/
+  );
+
+  assert.match(
+    panel,
+    /setHistoricalWeeklyRestOpeningBalance/
+  );
+
+  assert.match(
+    panel,
+    /weeklyRestOpeningSourceReference/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /coreApiRequest/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /firebase|firestore|collection\(|doc\(/
+  );
+});
