@@ -81,6 +81,7 @@ const LEAVE_TYPE_POLICY: Record<
   unpaid: { kind: "leave", deductFromBalance: false, affectsPayroll: true, visibleInAttendance: true },
   other: { kind: "leave", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true },
   rest: { kind: "rest", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true },
+  weekly_rest_substitute_use: { kind: "leave", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true },
 };
 
 const WEEKDAY_TO_OFF_KEY: Record<string, string> = {

@@ -148,7 +148,14 @@ export type EmployeeLeaveRequest = {
   employeeUid: string;
   employeeId?: string;
   employeeName?: string;
-  type?: "annual" | "sick" | "emergency" | "unpaid" | "rest" | "other";
+  type?:
+    | "annual"
+    | "sick"
+    | "emergency"
+    | "unpaid"
+    | "rest"
+    | "weekly_rest_substitute_use"
+    | "other";
   fromDate: string;
   toDate: string;
   days?: number;

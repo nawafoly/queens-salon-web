@@ -114,3 +114,49 @@ test("post-commit UI refresh cannot roll back an approved canonical leave", () =
     /Fail closed: after canonical approval the linked Core[\s\S]*?CoreHrService\.listLeaves/
   );
 });
+
+test("weekly-rest substitute is selectable and stays on the canonical entitlement path", () => {
+  assert.match(
+    leaveRequestModalSource,
+    /weekly_rest_substitute_use: "راحة أسبوعية تعويضية"/
+  );
+  assert.match(
+    leaveRequestModalSource,
+    /weekly_rest_substitute_use: \{ deductFromBalance: false, affectsPayroll: false \}/
+  );
+  assert.match(
+    leaveRequestModalSource,
+    /isWeeklyRestSubstituteUse[\s\S]*?days !== 1[\s\S]*?الراحة الأسبوعية التعويضية تُسجل ليوم واحد فقط/
+  );
+  assert.match(
+    leaveRequestModalSource,
+    /سيُخصم يوم واحد من رصيد الراحة الأسبوعية التعويضية في Core، ولن يُخصم من الرصيد السنوي أو الراتب/
+  );
+  assert.match(
+    dashboardEmployeesSource,
+    /"weekly_rest_substitute_use"/
+  );
+
+  const employeeHubSource = readFileSync(
+    new URL("../src/services/employeeHub.ts", import.meta.url),
+    "utf8"
+  );
+  const attendanceCalendarSource = readFileSync(
+    new URL("../src/helpers/hr/attendanceCalendarData.ts", import.meta.url),
+    "utf8"
+  );
+  const employeeStatsSource = readFileSync(
+    new URL("../src/pages/dashboardEmployees/EmployeeStatsSection.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(employeeHubSource, /"weekly_rest_substitute_use"/);
+  assert.match(
+    attendanceCalendarSource,
+    /weekly_rest_substitute_use: \{ kind: "leave", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true \}/
+  );
+  assert.match(
+    employeeStatsSource,
+    /weekly_rest_substitute_use"\) return "راحة أسبوعية تعويضية"/
+  );
+});
