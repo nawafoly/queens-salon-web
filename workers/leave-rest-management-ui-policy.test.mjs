@@ -295,6 +295,16 @@ test("historical weekly-rest opening balance has a dedicated guarded Core path",
     /entitlementType: 'weekly_rest_due'/
   );
 
+  assert.match(
+    workflow,
+    /historical-weekly-rest-opening/
+  );
+
+  assert.doesNotMatch(
+    workflow,
+    /data\.sourceReference|data\.source_reference|data\.migrationReference|data\.migration_reference/
+  );
+
   assert.doesNotMatch(
     workflow,
     /entitlementType:\s*['"]annual/
@@ -357,9 +367,14 @@ test("historical weekly-rest opening UI uses the canonical Core contract", () =>
     /setHistoricalWeeklyRestOpeningBalance/
   );
 
-  assert.match(
+  assert.doesNotMatch(
     panel,
     /weeklyRestOpeningSourceReference/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /label="مرجع الرصيد"/
   );
 
   assert.doesNotMatch(

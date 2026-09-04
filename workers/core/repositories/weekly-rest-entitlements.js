@@ -59,12 +59,12 @@ function requiredHistoricalOpeningText(value, code, maxLength) {
   return text;
 }
 
-function historicalOpeningSourceId(employeeId, sourceReference) {
-  const id = `${employeeId}:${sourceReference}`;
+function historicalOpeningSourceId(employeeId) {
+  const id = `${employeeId}:historical-weekly-rest-opening`;
   if (id.length > 240) {
     throw new AppError(
       400,
-      'core_weekly_rest:historical_opening_source_reference_too_long'
+      'core_weekly_rest:historical_opening_generated_source_id_too_long'
     );
   }
   return id;
@@ -221,15 +221,6 @@ export async function setHistoricalWeeklyRestOpeningBalance(
     1500
   );
 
-  const sourceReference = requiredHistoricalOpeningText(
-    data.sourceReference ||
-      data.source_reference ||
-      data.migrationReference ||
-      data.migration_reference,
-    'core_weekly_rest:historical_opening_source_reference_required',
-    180
-  );
-
   const employment = await dbFirst(
     db,
     `SELECT employee_id, start_date
@@ -258,8 +249,7 @@ export async function setHistoricalWeeklyRestOpeningBalance(
   }
 
   const sourceId = historicalOpeningSourceId(
-    employeeId,
-    sourceReference
+    employeeId
   );
 
   const existing = await dbFirst(
@@ -281,13 +271,6 @@ export async function setHistoricalWeeklyRestOpeningBalance(
   );
 
   if (existing) {
-    if (cleanText(existing.source_id) !== sourceId) {
-      throw new AppError(
-        409,
-        'core_weekly_rest:historical_opening_balance_already_exists'
-      );
-    }
-
     if (
       Number(existing.minutes || 0) !== minutes ||
       cleanText(existing.source_date) !== effectiveDate ||
@@ -295,7 +278,7 @@ export async function setHistoricalWeeklyRestOpeningBalance(
     ) {
       throw new AppError(
         409,
-        'core_weekly_rest:historical_opening_payload_mismatch'
+        'core_weekly_rest:historical_opening_balance_already_exists'
       );
     }
 
@@ -313,7 +296,7 @@ export async function setHistoricalWeeklyRestOpeningBalance(
 
   // HISTORICAL_OPENING_DB_GUARD_V1
   // The partial unique index guarantees one opening credit per employee even
-  // when two different source references race concurrently.
+  // when concurrent historical-opening submissions race.
   try {
     return await creditCompTime(
       db,
@@ -351,13 +334,6 @@ export async function setHistoricalWeeklyRestOpeningBalance(
 
     if (!raced) throw error;
 
-    if (cleanText(raced.source_id) !== sourceId) {
-      throw new AppError(
-        409,
-        'core_weekly_rest:historical_opening_balance_already_exists'
-      );
-    }
-
     if (
       Number(raced.minutes || 0) !== minutes ||
       cleanText(raced.source_date) !== effectiveDate ||
@@ -365,7 +341,7 @@ export async function setHistoricalWeeklyRestOpeningBalance(
     ) {
       throw new AppError(
         409,
-        'core_weekly_rest:historical_opening_payload_mismatch'
+        'core_weekly_rest:historical_opening_balance_already_exists'
       );
     }
 

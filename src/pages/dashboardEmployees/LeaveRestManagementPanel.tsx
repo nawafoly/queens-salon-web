@@ -219,11 +219,6 @@ export default function LeaveRestManagementPanel({
   ] = useState(today);
 
   const [
-    weeklyRestOpeningSourceReference,
-    setWeeklyRestOpeningSourceReference,
-  ] = useState("");
-
-  const [
     weeklyRestOpeningReason,
     setWeeklyRestOpeningReason,
   ] = useState("");
@@ -560,17 +555,6 @@ export default function LeaveRestManagementPanel({
         return;
       }
 
-      const sourceReference =
-        weeklyRestOpeningSourceReference
-          .trim();
-
-      if (!sourceReference) {
-        setMessage(
-          "اكتب مرجع الرصيد التاريخي."
-        );
-        return;
-      }
-
       const reason =
         weeklyRestOpeningReason.trim();
 
@@ -592,15 +576,11 @@ export default function LeaveRestManagementPanel({
               days,
               effectiveDate:
                 weeklyRestOpeningEffectiveDate,
-              sourceReference,
               reason,
             }
           );
 
         setWeeklyRestOpeningDays("");
-        setWeeklyRestOpeningSourceReference(
-          ""
-        );
         setWeeklyRestOpeningReason("");
 
         await load();
@@ -1111,16 +1091,6 @@ export default function LeaveRestManagementPanel({
                     )
                   : "غير محدد"
               ) +
-              (
-                historicalWeeklyRestOpening
-                  ?.sourceReference
-                  ? "، المرجع: " +
-                    String(
-                      historicalWeeklyRestOpening
-                        .sourceReference
-                    )
-                  : ""
-              ) +
               "."
             }
             tone="success"
@@ -1172,29 +1142,6 @@ export default function LeaveRestManagementPanel({
               </DashboardFieldV2>
 
               <DashboardFieldV2
-                id="employee-live-v2-weekly-rest-opening-reference"
-                label="مرجع الرصيد"
-              >
-                <input
-                  id="employee-live-v2-weekly-rest-opening-reference"
-                  className="dsv2-input"
-                  value={
-                    weeklyRestOpeningSourceReference
-                  }
-                  maxLength={180}
-                  disabled={
-                    readOnly || saving
-                  }
-                  placeholder="مثال: legacy-weekly-rest-1001"
-                  onChange={(event) =>
-                    setWeeklyRestOpeningSourceReference(
-                      event.target.value
-                    )
-                  }
-                />
-              </DashboardFieldV2>
-
-              <DashboardFieldV2
                 id="employee-live-v2-weekly-rest-opening-reason"
                 label="سبب التسوية"
               >
@@ -1232,8 +1179,6 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 weeklyRestOpeningDays === "" ||
                 !weeklyRestOpeningEffectiveDate ||
-                !weeklyRestOpeningSourceReference
-                  .trim() ||
                 !weeklyRestOpeningReason
                   .trim()
               }
