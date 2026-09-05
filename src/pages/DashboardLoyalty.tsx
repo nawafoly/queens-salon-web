@@ -1,251 +1,146 @@
-import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FiAward,
+  FiRefreshCw,
   FiSearch,
-  FiSettings,
+  FiShield,
   FiStar,
   FiTrendingUp,
   FiUsers,
 } from "react-icons/fi";
-import { DashboardSelectV2 } from "../components/dashboard-v2";
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  setDoc,
-} from "firebase/firestore";
+import { CoreClientService } from "../services/CoreClientService";
+import type { CoreClient } from "../types/coreApi";
 
-import { db } from "../services/firebase";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
-
-const SALON_ID = "main";
-
-/* =========================
-   Types
-========================= */
-
-type LoyaltySettings = {
-  pointsMode: "service" | "amount";
-  amountPointsStep: number;
-  loyaltyWindowDays: number;
-  vipAutoEnabled: boolean;
-  vipAutoThreshold: number;
-};
-
-type ClientRow = {
-  id: string;
-  name?: string;
-  phone?: string;
-  loyaltyPoints?: number;
-  loyaltyStats?: {
-    loyaltyScore?: number;
-    completedCountWindow?: number;
-    lastCompletedAt?: any;
-  };
-  vip?: {
-    isVip?: boolean;
-    vipOverride?: boolean;
-  };
-};
-
-/* =========================
-   Helpers
-========================= */
-
-function formatDate(ts?: any) {
-  if (!ts) return "-";
-  try {
-    const d = ts?.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString("ar-SA-u-nu-latn", {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-  } catch {
-    return "-";
-  }
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("ar-SA-u-nu-latn", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 function formatNumber(value: number, maximumFractionDigits = 0) {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits }).format(
-    Number.isFinite(value) ? value : 0
-  );
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
+    maximumFractionDigits,
+  }).format(Number.isFinite(value) ? value : 0);
 }
-
-const pointsModeOptions = [
-  { value: "service", label: "حسب الخدمة (زيارة واحدة = نقطة)" },
-  { value: "amount", label: "حسب المبلغ المدفوع" },
-];
-
-/* =========================
-   Component
-========================= */
 
 export default function DashboardLoyalty() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const [settings, setSettings] = useState<LoyaltySettings>({
-    pointsMode: "service",
-    amountPointsStep: 10,
-    loyaltyWindowDays: 90,
-    vipAutoEnabled: true,
-    vipAutoThreshold: 70,
-  });
-
-  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [error, setError] = useState("");
+  const [clients, setClients] = useState<CoreClient[]>([]);
   const [search, setSearch] = useState("");
+  const [busyClientId, setBusyClientId] = useState("");
+  const loadGenerationRef = useRef(0);
 
-  /* =========================
-     Load settings
-  ========================= */
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const ref = doc(db, "salons", SALON_ID, "settings", "loyalty");
-        FirestoreReadStats.bump(ref.path, "DashboardLoyalty.loadSettings", "getDoc");
-        const snap = await getDoc(ref);
-        
-        if (snap.exists()) {
-          setSettings((prev) => ({
-            ...prev,
-            ...(snap.data() as any),
-          }));
-        }
-      } catch (e) {
-        console.error("Error loading loyalty settings:", e);
-      }
-    };
-
-    loadSettings();
-  }, []);
-
-  /* =========================
-     Load clients
-  ========================= */
-  useEffect(() => {
-    const loadClients = async () => {
-      setLoading(true);
-      try {
-        const snap = await getDocs(collection(db, "users"));
-        snap.docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, "DashboardLoyalty.loadClients", "getDocs");
-        });
-        const rows: ClientRow[] = [];
-
-        snap.forEach((d) => {
-          const data = d.data() as any;
-          if (data.role !== "client") return;
-
-          rows.push({
-            id: d.id,
-            ...data,
-          });
-        });
-
-        // Sort by loyalty score descending
-        rows.sort((a, b) => (b.loyaltyStats?.loyaltyScore || 0) - (a.loyaltyStats?.loyaltyScore || 0));
-        
-        setClients(rows);
-      } catch (e) {
-        console.error("Error loading clients:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadClients();
-  }, []);
-
-  /* =========================
-     Save settings
-  ========================= */
-  const saveSettings = async () => {
-    setSaving(true);
+  const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    setLoading(true);
+    setError("");
     try {
-      await setDoc(
-        doc(db, "salons", SALON_ID, "settings", "loyalty"),
-        settings,
-        { merge: true }
-      );
-      alert("تم حفظ إعدادات الولاء بنجاح ✅");
-    } catch (e) {
-      console.error(e);
-      alert("حدث خطأ أثناء حفظ الإعدادات");
+      const rows = await CoreClientService.list("", { includeLoyalty: true });
+      if (generation !== loadGenerationRef.current) return;
+      setClients(rows);
+    } catch (cause) {
+      if (generation !== loadGenerationRef.current) return;
+      setError(cause instanceof Error ? cause.message : "تعذر تحميل بيانات الولاء من Core D1.");
     } finally {
-      setSaving(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
-  };
+  }, []);
 
-  /* =========================
-     VIP toggle
-  ========================= */
-  const toggleVip = async (c: ClientRow) => {
-    const newVipStatus = !c?.vip?.isVip;
-    try {
-      await updateDoc(doc(db, "users", c.id), {
-        "vip.isVip": newVipStatus,
-        "vip.vipOverride": true,
+  useEffect(() => {
+    void load();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
+  }, [load]);
+
+  useEffect(() => {
+    let inFlight = false;
+    const refreshWhenActive = () => {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      void load().finally(() => {
+        inFlight = false;
       });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshWhenActive();
+    };
 
-      setClients((prev) =>
-        prev.map((x) =>
-          x.id === c.id
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [load]);
+
+  const toggleVip = async (client: CoreClient) => {
+    if (busyClientId) return;
+    const nextVip = !Boolean(client.vip);
+    setBusyClientId(client.id);
+    setError("");
+    try {
+      const updated = await CoreClientService.patch(client.id, { vip: nextVip });
+      setClients((current) =>
+        current.map((row) =>
+          row.id === client.id
             ? {
-                ...x,
-                vip: {
-                  isVip: newVipStatus,
-                  vipOverride: true,
-                },
+                ...row,
+                ...updated,
+                loyaltyBalance: row.loyaltyBalance,
+                loyaltyEarned: row.loyaltyEarned,
+                loyaltyUsed: row.loyaltyUsed,
+                loyaltyReversed: row.loyaltyReversed,
+                lastCompletedAt: row.lastCompletedAt,
               }
-            : x
+            : row
         )
       );
-    } catch (e) {
-      console.error("Error toggling VIP:", e);
-      alert("فشل في تحديث حالة VIP");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تحديث حالة VIP في Core D1.");
+    } finally {
+      setBusyClientId("");
     }
   };
 
-  /* =========================
-     Filtered clients
-  ========================= */
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return clients;
-
-    return clients.filter((c) =>
-      `${c.name || ""} ${c.phone || ""}`
+    const query = search.trim().toLowerCase();
+    if (!query) return clients;
+    return clients.filter((client) =>
+      `${client.name || ""} ${client.phoneNormalized || ""}`
         .toLowerCase()
-        .includes(q)
+        .includes(query)
     );
   }, [clients, search]);
 
   const vipCount = useMemo(
-    () => clients.filter((client) => client?.vip?.isVip).length,
+    () => clients.filter((client) => Boolean(client.vip)).length,
     [clients]
   );
 
   const totalPoints = useMemo(
-    () => clients.reduce((sum, client) => sum + Number(client.loyaltyPoints || 0), 0),
+    () =>
+      clients.reduce(
+        (sum, client) => sum + Number(client.loyaltyBalance || 0),
+        0
+      ),
     [clients]
   );
 
-  const averageScore = useMemo(
-    () => clients.length
-      ? clients.reduce((sum, client) => sum + Number(client.loyaltyStats?.loyaltyScore || 0), 0) / clients.length
-      : 0,
+  const activeLoyaltyCount = useMemo(
+    () => clients.filter((client) => Number(client.loyaltyBalance || 0) > 0).length,
     [clients]
   );
-
-  /* =========================
-     UI
-  ========================= */
 
   return (
     <main className="dsv2-page dsv2-loyalty-page" dir="rtl">
@@ -254,7 +149,7 @@ export default function DashboardLoyalty() {
           <p className="dsv2-loyalty-eyebrow">Customer Retention</p>
           <h1 className="dsv2-page-title">برنامج الولاء والعملاء المميزون</h1>
           <p className="dsv2-page-subtitle">
-            إدارة النقاط، درجة الولاء، والتأهيل التلقائي لعملاء VIP من شاشة واحدة.
+            رصيد النقاط وحالة VIP هنا من Core D1 فقط؛ لا توجد نسخة تشغيلية موازية في Firestore.
           </p>
         </div>
 
@@ -268,13 +163,15 @@ export default function DashboardLoyalty() {
         </div>
       </header>
 
+      {error ? <div className="dsv2-error-state" role="alert">{error}</div> : null}
+
       <section className="dsv2-grid--metrics dsv2-loyalty-metrics" aria-label="ملخص الولاء">
         <article className="dsv2-metric-card dsv2-metric-card--gold dsv2-loyalty-metric">
           <span className="dsv2-metric-card__icon"><FiUsers /></span>
           <div>
             <p className="dsv2-metric-card__label">إجمالي العملاء</p>
             <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(clients.length)}</p>
-            <p className="dsv2-metric-card__meta">كل حسابات العملاء المحملة</p>
+            <p className="dsv2-metric-card__meta">من سجل العملاء Canonical</p>
           </div>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--success dsv2-loyalty-metric">
@@ -282,135 +179,55 @@ export default function DashboardLoyalty() {
           <div>
             <p className="dsv2-metric-card__label">عملاء VIP</p>
             <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(vipCount)}</p>
-            <p className="dsv2-metric-card__meta">حسب حالة VIP الحالية</p>
+            <p className="dsv2-metric-card__meta">حالة VIP في Core D1</p>
           </div>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--dark dsv2-loyalty-metric">
           <span className="dsv2-metric-card__icon"><FiTrendingUp /></span>
           <div>
-            <p className="dsv2-metric-card__label">متوسط Loyalty Score</p>
-            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(averageScore, 1)}</p>
-            <p className="dsv2-metric-card__meta">متوسط درجات العملاء</p>
+            <p className="dsv2-metric-card__label">لديهم رصيد نقاط</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(activeLoyaltyCount)}</p>
+            <p className="dsv2-metric-card__meta">رصيد موجب في سجل حركات الولاء</p>
           </div>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--danger dsv2-loyalty-metric">
           <span className="dsv2-metric-card__icon"><FiAward /></span>
           <div>
-            <p className="dsv2-metric-card__label">رصيد النقاط</p>
+            <p className="dsv2-metric-card__label">إجمالي رصيد النقاط</p>
             <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(totalPoints)}</p>
-            <p className="dsv2-metric-card__meta">مجموع النقاط الحالي</p>
+            <p className="dsv2-metric-card__meta">محسوب من loyalty_point_transactions</p>
           </div>
         </article>
       </section>
 
-      {/* SETTINGS */}
-      <section className="dsv2-card dsv2-card--padded dsv2-loyalty-settings" aria-labelledby="loyalty-settings-title">
+      <section className="dsv2-card dsv2-card--padded dsv2-loyalty-settings" aria-label="مصدر بيانات الولاء">
         <div className="dsv2-section-head">
           <div>
-            <p className="dsv2-loyalty-eyebrow">إعدادات البرنامج</p>
-            <h2 id="loyalty-settings-title" className="dsv2-section-title">إعدادات برنامج الولاء</h2>
-            <p className="dsv2-section-caption">تحديد طريقة احتساب النقاط وحدود التأهيل التلقائي للعملاء المميزين.</p>
+            <p className="dsv2-loyalty-eyebrow">مصدر الحقيقة</p>
+            <h2 className="dsv2-section-title">سياسة الولاء التشغيلية</h2>
+            <p className="dsv2-section-caption">
+              هذه الشاشة لم تعد تحفظ إعدادات ولاء محلية أو في Firestore. أي تغيير في سياسة احتساب النقاط يجب أن يمر عبر Core حتى يطبّق على الداشبورد وبوابة العميلة بنفس القاعدة.
+            </p>
           </div>
-          <span className="dsv2-loyalty-panel-icon" aria-hidden="true"><FiSettings /></span>
+          <span className="dsv2-loyalty-panel-icon" aria-hidden="true"><FiShield /></span>
         </div>
-
-        <div className="dsv2-loyalty-settings-grid">
-          <label className="dsv2-field">
-            <span className="dsv2-field__label">وضع احتساب النقاط</span>
-            <DashboardSelectV2
-              value={settings.pointsMode}
-              options={pointsModeOptions}
-              onChange={(value) =>
-                setSettings((s) => ({
-                  ...s,
-                  pointsMode: value as LoyaltySettings["pointsMode"],
-                }))
-              }
-            />
-          </label>
-  
-          {settings.pointsMode === "amount" && (
-            <label className="dsv2-field">
-              <span className="dsv2-field__label">قيمة النقطة (كل كم ريال = نقطة)</span>
-              <DashboardNumberInputV2
-                className="dsv2-input"
-                value={settings.amountPointsStep}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    amountPointsStep: Number(e.target.value),
-                  }))
-                }
-              />
-            </label>
-          )}
-  
-          <label className="dsv2-field">
-            <span className="dsv2-field__label">فترة تقييم الولاء (بالأيام)</span>
-            <DashboardNumberInputV2
-              className="dsv2-input"
-              value={settings.loyaltyWindowDays}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  loyaltyWindowDays: Number(e.target.value),
-                }))
-              }
-            />
-          </label>
-  
-          <button
-            type="button"
-            className={`dsv2-loyalty-toggle ${settings.vipAutoEnabled ? "is-on" : ""}`}
-            role="switch"
-            aria-checked={settings.vipAutoEnabled}
-            onClick={() =>
-              setSettings((s) => ({
-                ...s,
-                vipAutoEnabled: !s.vipAutoEnabled,
-              }))
-            }
-          >
-            <span className="dsv2-loyalty-toggle__mark" aria-hidden="true">{settings.vipAutoEnabled ? "✓" : ""}</span>
-            <span className="dsv2-loyalty-toggle__copy">
-              <strong>تفعيل VIP تلقائي</strong>
-              <small>يعتمد على حد التأهل المحدد في Loyalty Score.</small>
-            </span>
-            <span className="dsv2-loyalty-toggle__status">{settings.vipAutoEnabled ? "مفعل" : "متوقف"}</span>
-          </button>
-  
-          <label className="dsv2-field">
-            <span className="dsv2-field__label">حد التأهل لـ VIP (Loyalty Score)</span>
-            <DashboardNumberInputV2
-              className="dsv2-input"
-              value={settings.vipAutoThreshold}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  vipAutoThreshold: Number(e.target.value),
-                }))
-              }
-            />
-          </label>
-        </div>
-  
-        <button 
-            className="dsv2-btn dsv2-btn--primary dsv2-loyalty-save"
-            onClick={saveSettings} 
-            type="button"
-            disabled={saving}
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--secondary dsv2-loyalty-save"
+          onClick={() => void load()}
+          disabled={loading}
         >
-          {saving ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
+          <FiRefreshCw className={loading ? "is-spinning" : ""} />
+          تحديث من Core D1
         </button>
       </section>
-  
-      {/* CLIENTS */}
+
       <section className="dsv2-table-card dsv2-loyalty-clients" aria-labelledby="loyalty-clients-title">
         <div className="dsv2-card--padded dsv2-loyalty-clients-head">
           <div>
             <p className="dsv2-loyalty-eyebrow">قائمة العملاء</p>
             <h2 id="loyalty-clients-title" className="dsv2-section-title">قائمة العملاء والولاء</h2>
-            <p className="dsv2-section-caption">عرض النقاط ودرجة الولاء وتحديث حالة VIP يدويًا.</p>
+            <p className="dsv2-section-caption">عرض الرصيد والحركات المجمعة من Core وتحديث VIP على السجل Canonical.</p>
           </div>
           <label className="dsv2-loyalty-search">
             <FiSearch aria-hidden="true" />
@@ -418,11 +235,11 @@ export default function DashboardLoyalty() {
               className="dsv2-input"
               placeholder="بحث باسم العميل أو رقم الجوال..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
             />
           </label>
         </div>
-  
+
         {loading ? (
           <div className="dsv2-loyalty-loading" role="status">
             <span className="dsv2-skeleton dsv2-skeleton--title" />
@@ -433,47 +250,49 @@ export default function DashboardLoyalty() {
         ) : (
           <div className="dsv2-table-scroll">
             <table className="dsv2-table dsv2-loyalty-table">
-                <thead>
+              <thead>
                 <tr>
                   <th>الاسم</th>
                   <th>الجوال</th>
-                  <th>رصيد النقاط</th>
-                  <th>مستوى الولاء</th>
-                  <th>آخر زيارة</th>
-                  <th>الحالة VIP</th>
+                  <th>الرصيد</th>
+                  <th>مكتسبة</th>
+                  <th>مستخدمة / معكوسة</th>
+                  <th>آخر زيارة مكتملة</th>
+                  <th>VIP</th>
                 </tr>
-                </thead>
-    
-                <tbody>
-                {filtered.length > 0 ? (
-                    filtered.map((c) => (
-                        <tr key={c.id}>
-                        <td data-label="الاسم"><span className="dsv2-table__primary">{c.name || "عميل غير مسمى"}</span></td>
-                        <td data-label="الجوال"><bdi dir="ltr">{c.phone || "-"}</bdi></td>
-                        <td data-label="رصيد النقاط">
-                            <span className="dsv2-badge dsv2-badge--gold">{formatNumber(c.loyaltyPoints || 0)} نقطة</span>
-                        </td>
-                        <td data-label="مستوى الولاء">
-                            <span className="dsv2-badge">{formatNumber(c?.loyaltyStats?.loyaltyScore || 0)}</span>
-                        </td>
-                        <td data-label="آخر زيارة">{formatDate(c?.loyaltyStats?.lastCompletedAt)}</td>
-                        <td data-label="الحالة VIP">
-                            <button
-                            className={`dsv2-btn dsv2-btn--sm ${c?.vip?.isVip ? "dsv2-btn--danger" : "dsv2-btn--success"}`}
-                            onClick={() => toggleVip(c)}
-                            type="button"
-                            >
-                            {c?.vip?.isVip ? "إلغاء VIP" : "ترقية لـ VIP"}
-                            </button>
-                        </td>
-                        </tr>
-                    ))
-                ) : (
-                    <tr>
-                      <td colSpan={6} className="dsv2-loyalty-empty-cell">لا يوجد نتائج للبحث</td>
+              </thead>
+              <tbody>
+                {filtered.length ? (
+                  filtered.map((client) => (
+                    <tr key={client.id}>
+                      <td data-label="الاسم"><span className="dsv2-table__primary">{client.name || "عميل غير مسمى"}</span></td>
+                      <td data-label="الجوال"><bdi dir="ltr">{client.phoneNormalized || "-"}</bdi></td>
+                      <td data-label="الرصيد"><span className="dsv2-badge dsv2-badge--gold">{formatNumber(Number(client.loyaltyBalance || 0))} نقطة</span></td>
+                      <td data-label="مكتسبة">{formatNumber(Number(client.loyaltyEarned || 0))}</td>
+                      <td data-label="مستخدمة / معكوسة">{formatNumber(Number(client.loyaltyUsed || 0))} / {formatNumber(Number(client.loyaltyReversed || 0))}</td>
+                      <td data-label="آخر زيارة مكتملة">{formatDate(client.lastCompletedAt)}</td>
+                      <td data-label="VIP">
+                        <button
+                          className={`dsv2-btn dsv2-btn--sm ${client.vip ? "dsv2-btn--danger" : "dsv2-btn--success"}`}
+                          onClick={() => void toggleVip(client)}
+                          type="button"
+                          disabled={Boolean(busyClientId)}
+                        >
+                          {busyClientId === client.id
+                            ? "جارٍ الحفظ..."
+                            : client.vip
+                              ? "إلغاء VIP"
+                              : "ترقية لـ VIP"}
+                        </button>
+                      </td>
                     </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="dsv2-loyalty-empty-cell">لا توجد نتائج للبحث</td>
+                  </tr>
                 )}
-                </tbody>
+              </tbody>
             </table>
           </div>
         )}
