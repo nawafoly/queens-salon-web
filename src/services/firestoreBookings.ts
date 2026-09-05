@@ -175,6 +175,7 @@ export type BookingDoc = {
 
   status: BookingStatus;
   note?: string;
+  adminNote?: string;
   viewedAt?: Timestamp | number;
   viewedAtMs?: number;
   viewedByUid?: string | null;

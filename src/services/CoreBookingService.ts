@@ -61,6 +61,7 @@ export const CoreBookingService = {
     input: Partial<{
       status: string;
       notes: string | null;
+      adminNotes: string | null;
       paymentStatus: string;
       bookingDate: string;
       startTime: string;

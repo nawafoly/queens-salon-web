@@ -254,7 +254,6 @@ type BookingSourceFilterOption = "all" | "client" | "dashboard" | "internal" | "
 type SortOrderOption = "newest" | "oldest";
 type OldPendingFilterOption = "off" | "before_today" | "older_7" | "older_30" | "custom";
 
-const NOTES_KEY = "dashboard_booking_notes_v1";
 const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
 const LIVE_WINDOW_PAST_DAYS = 90;
 const LIVE_WINDOW_FUTURE_DAYS = 90;
@@ -304,22 +303,6 @@ function compactPaymentStatusLabel(payment: ReturnType<typeof resolveBookingPaym
 /* =========================
    Helpers
 ========================= */
-
-function loadNotesMap(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(NOTES_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed;
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function saveNotesMap(map: Record<string, string>) {
-  localStorage.setItem(NOTES_KEY, JSON.stringify(map));
-}
 
 function getAuthUserSafe(): { displayName: string; email: string } {
   const u = auth.currentUser;
@@ -849,6 +832,7 @@ type Booking = {
   serviceName?: string;
   serviceId?: string;
   note?: string;
+  adminNote?: string;
   services?: BookingServiceItem[];
   serviceSnapshot?: {
     serviceNameAtBooking?: string;
@@ -4107,9 +4091,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [notesMap, setNotesMap] = useState<Record<string, string>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [savedNoteId, setSavedNoteId] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState("");
   const [clientLoyalty, setClientLoyalty] = useState<ClientLoyaltyInfo | null>(null);
   const [clientLoyaltyLoading, setClientLoyaltyLoading] = useState(false);
   const clientLoyaltyCacheRef = useRef<Record<string, ClientLoyaltyInfo>>({});
@@ -4135,6 +4119,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: todayISOLocal(),
   });
   const saveHintTimerRef = useRef<number | null>(null);
+  const noteSaveInFlightRef = useRef<Record<string, boolean>>({});
   const employeeFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
   const serviceFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
@@ -4315,12 +4300,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     ).trim();
     setUserNamesByUid(uid && name ? { [uid]: name } : {});
   }, [authUserDisplayName, authUserUid]);
-
-  useEffect(() => {
-    const loaded = loadNotesMap();
-    setNotesMap(loaded);
-    setNoteDrafts(loaded);
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -4595,7 +4574,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return bookings
       .filter((b) => b.id !== selectedBooking.id)
       .map((b) => {
-        const note = String(notesMap[b.id] || "").trim();
+        const note = String(b.adminNote || "").trim();
         if (!note) return null;
 
         const samePhone = !!targetPhone && digitsOnly(String(b.phone || "")) === targetPhone;
@@ -4617,7 +4596,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       .sort((a: any, b: any) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)) as Array<{
       id: string; ref: string; date: string; time: string; note: string
     }>;
-  }, [selectedBooking, bookings, notesMap]);
+  }, [selectedBooking, bookings]);
 
   const employeeFilterOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -5979,15 +5958,61 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setNoteDrafts((prev) => ({ ...prev, [id]: note }));
   };
 
-  const saveNote = (id: string) => {
+  const saveNote = async (id: string) => {
+    if (noteSaveInFlightRef.current[id]) return;
+
     const text = String(noteDrafts[id] ?? "").trim();
-    const newMap = { ...notesMap, [id]: text };
-    setNotesMap(newMap);
-    setNoteDrafts(newMap);
-    saveNotesMap(newMap);
-    setSavedNoteId(id);
-    if (saveHintTimerRef.current) window.clearTimeout(saveHintTimerRef.current);
-    saveHintTimerRef.current = window.setTimeout(() => setSavedNoteId(""), 1800);
+
+    noteSaveInFlightRef.current[id] = true;
+    setSavingNoteId(id);
+    setSavedNoteId("");
+
+    try {
+      const canonical = coreBookingToLegacy(
+        await CoreBookingService.patch(id, {
+          adminNotes: text || null,
+        })
+      ) as Booking;
+
+      setLiveBookingsSource((prev) =>
+        prev.map((booking) =>
+          booking.id === id ? canonical : booking
+        )
+      );
+
+      setHistoryBookingsSource((prev) =>
+        prev.map((booking) =>
+          booking.id === id ? canonical : booking
+        )
+      );
+
+      setSelectedBooking((prev) =>
+        prev?.id === id ? canonical : prev
+      );
+
+      setNoteDrafts((prev) => ({
+        ...prev,
+        [id]: canonical.adminNote || "",
+      }));
+
+      setSavedNoteId(id);
+
+      if (saveHintTimerRef.current) {
+        window.clearTimeout(saveHintTimerRef.current);
+      }
+
+      saveHintTimerRef.current = window.setTimeout(
+        () => setSavedNoteId(""),
+        1800
+      );
+    } catch (error) {
+      console.error("[DashboardBookings] Core admin note save failed", error);
+      setSavedNoteId("");
+      setError("تعذر حفظ ملاحظة الإدارة في Core D1. حاول مرة أخرى.");
+    } finally {
+      noteSaveInFlightRef.current[id] = false;
+      setSavingNoteId((current) => current === id ? "" : current);
+    }
   };
 
   const hasActiveBookingFilters = useMemo(
@@ -7724,14 +7749,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     className="bk-input bk-booking-note-input"
                     rows={3}
                     placeholder="أضف ملاحظات هنا..."
-                    value={noteDrafts[selectedBooking.id] ?? notesMap[selectedBooking.id] ?? ""}
+                    value={noteDrafts[selectedBooking.id] ?? selectedBooking.adminNote ?? ""}
                     onChange={(e) => updateNote(selectedBooking.id, e.target.value)}
+                    disabled={savingNoteId === selectedBooking.id}
                   />
                   <div className="bk-note-actions">
                     <button
                       type="button"
                       className="dsv2-btn dsv2-btn--primary"
                       onClick={() => saveNote(selectedBooking.id)}
+                      disabled={savingNoteId === selectedBooking.id}
                     >
                       حفظ الملاحظة
                     </button>
@@ -7870,14 +7897,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   className="bk-input" 
                   rows={3} 
                   placeholder="أضف ملاحظات هنا..."
-                  value={noteDrafts[selectedBooking.id] ?? notesMap[selectedBooking.id] ?? ""}
+                  value={noteDrafts[selectedBooking.id] ?? selectedBooking.adminNote ?? ""}
                   onChange={e => updateNote(selectedBooking.id, e.target.value)}
+                  disabled={savingNoteId === selectedBooking.id}
                 />
                 <div className="bk-note-actions">
                   <button
                     type="button"
                     className="dsv2-btn dsv2-btn--primary"
                     onClick={() => saveNote(selectedBooking.id)}
+                      disabled={savingNoteId === selectedBooking.id}
                   >
                     حفظ الملاحظة
                   </button>

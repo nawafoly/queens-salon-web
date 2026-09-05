@@ -1224,6 +1224,10 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         data.notes === undefined
           ? undefined
           : optionalText(data.notes) || null,
+      admin_notes:
+        data.adminNotes === undefined && data.admin_notes === undefined
+          ? undefined
+          : optionalText(data.adminNotes ?? data.admin_notes) || null,
       payment_status:
         data.paymentStatus === undefined && data.payment_status === undefined
           ? undefined
@@ -1396,7 +1400,7 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     {
       sql: `UPDATE bookings
                SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?,
-                   notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
+                   notes = ?, admin_notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
                    slot_step_min = ?, buffer_min = ?, updated_at = ?
              WHERE salon_id = ? AND id = ?`,
       params: [
@@ -1405,6 +1409,9 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         startTime,
         endTime,
         data.notes === undefined ? before.notes || null : optionalText(data.notes) || null,
+        data.adminNotes === undefined && data.admin_notes === undefined
+          ? before.admin_notes || null
+          : optionalText(data.adminNotes ?? data.admin_notes) || null,
         subtotalHalalas,
         requestedTotal,
         paymentStatus,

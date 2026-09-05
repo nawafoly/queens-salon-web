@@ -119,6 +119,7 @@ export type CoreBooking = {
   status: string;
   source?: string | null;
   notes?: string | null;
+  adminNotes?: string | null;
   subtotalHalalas: number;
   discountHalalas: number;
   totalHalalas: number;
