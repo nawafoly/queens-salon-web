@@ -21,12 +21,59 @@ function normalizedClientName(value) {
   return cleanText(value).replace(/\s+/gu, ' ');
 }
 
+function wantsLoyaltySummary(query = {}) {
+  const raw = cleanText(
+    query.includeLoyalty ?? query.include_loyalty ?? query.loyalty
+  ).toLowerCase();
+  return ['1', 'true', 'yes'].includes(raw);
+}
+
 export async function listClients(db, salonId, query = {}) {
-  const rows = await dbAll(
-    db,
-    "SELECT * FROM clients WHERE salon_id = ? ORDER BY updated_at DESC LIMIT 500",
-    [salonId]
-  );
+  const includeLoyalty = wantsLoyaltySummary(query);
+  const rows = includeLoyalty
+    ? await dbAll(
+        db,
+        `SELECT
+           c.*,
+           COALESCE(lp.loyalty_balance, 0) AS loyalty_balance,
+           COALESCE(lp.loyalty_earned, 0) AS loyalty_earned,
+           COALESCE(lp.loyalty_used, 0) AS loyalty_used,
+           COALESCE(lp.loyalty_reversed, 0) AS loyalty_reversed,
+           lc.last_completed_at
+         FROM clients c
+         LEFT JOIN (
+           SELECT
+             client_id,
+             SUM(points) AS loyalty_balance,
+             SUM(CASE WHEN type = 'earn' THEN points ELSE 0 END) AS loyalty_earned,
+             ABS(SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END)) AS loyalty_used,
+             ABS(SUM(CASE WHEN type = 'refund' THEN points ELSE 0 END)) AS loyalty_reversed
+           FROM loyalty_point_transactions
+           WHERE salon_id = ?
+           GROUP BY client_id
+         ) lp
+           ON lp.client_id = c.id
+         LEFT JOIN (
+           SELECT
+             client_id,
+             MAX(COALESCE(completed_at, updated_at, created_at)) AS last_completed_at
+           FROM bookings
+           WHERE salon_id = ?
+             AND status = 'completed'
+             AND deleted_at IS NULL
+           GROUP BY client_id
+         ) lc
+           ON lc.client_id = c.id
+         WHERE c.salon_id = ?
+         ORDER BY c.updated_at DESC
+         LIMIT 500`,
+        [salonId, salonId, salonId]
+      )
+    : await dbAll(
+        db,
+        "SELECT * FROM clients WHERE salon_id = ? ORDER BY updated_at DESC LIMIT 500",
+        [salonId]
+      );
   const search = cleanText(query.search || query.q).toLowerCase();
   if (!search) return rows;
 
