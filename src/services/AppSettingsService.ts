@@ -502,6 +502,7 @@ let settingsRefreshInFlight: Promise<AppSettings> | null = null;
 let settingsListenersInstalled = false;
 let lastSettingsRefreshAt = 0;
 let lastSettingsActiveRefreshRequestAt = 0;
+let settingsGeneration = 0;
 
 function publishSettings(settings: AppSettings) {
   settingsSnapshot = settings;
@@ -520,12 +521,17 @@ function reportSettingsSubscriptionError(error: unknown) {
 async function readRemoteSettingsShared(): Promise<AppSettings> {
   if (settingsRefreshInFlight) return settingsRefreshInFlight;
 
+  const requestGeneration = settingsGeneration;
+
   settingsRefreshInFlight = (async () => {
     const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
     if (!setting) {
       throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
     }
     const remote = sanitize(setting.value);
+    if (requestGeneration !== settingsGeneration) {
+      return settingsSnapshot || remote;
+    }
     cacheWrite(remote);
     settingsSnapshot = remote;
     lastSettingsRefreshAt = Date.now();
@@ -613,6 +619,7 @@ export const AppSettingsService = {
       updatedAt: new Date().toISOString(),
     });
     await CoreSettingsService.save(DOC_PATH.id, payload, "public");
+    settingsGeneration += 1;
     cacheWrite(payload);
     settingsSnapshot = payload;
     lastSettingsRefreshAt = Date.now();
