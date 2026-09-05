@@ -183,10 +183,48 @@ export type CoreIncomeEntry = {
   description?: string | null;
   method?: string | null;
   paymentBreakdownJson?: string | null;
-  sourceKind?: string | null;
-  sourceId?: string | null;
-  paidAt?: string | null;
+  source?: string | null;
+  note?: string | null;
+  clientName?: string | null;
+  clientPhone?: string | null;
+  occurredAt: string;
   createdAt: string;
+};
+
+export type CoreDiscount = {
+  id: string;
+  salonId: string;
+  code?: string | null;
+  codeKey?: string | null;
+  name: string;
+  type: "fixed" | "percent";
+  value: number;
+  active: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  usageLimit?: number | null;
+  usedCount: number;
+  minOrderHalalas?: number | null;
+  maxDiscountHalalas?: number | null;
+  perClientLimit?: number | null;
+  appliesTo: "all" | "services" | "categories";
+  serviceIds: string[];
+  categoryIds?: string[];
+  sequenceSteps: Record<string, unknown>[];
+  imageUrl?: string | null;
+  description?: string | null;
+  priceBeforeHalalas?: number | null;
+  priceAfterHalalas?: number | null;
+  published: boolean;
+  status: "draft" | "scheduled" | "active" | "expired" | "disabled" | string;
+  sortOrder: number;
+  ctaLabel?: string | null;
+  ctaUrl?: string | null;
+  targetScope: "all" | "specific" | string;
+  targetClientIds: string[];
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CoreExpenseEntry = {
@@ -195,11 +233,193 @@ export type CoreExpenseEntry = {
   amountHalalas: number;
   category?: string | null;
   description?: string | null;
-  method?: string | null;
-  paymentBreakdownJson?: string | null;
-  sourceKind?: string | null;
-  sourceId?: string | null;
-  expenseDate?: string | null;
+  paymentMethod?: string | null;
+  occurredAt: string;
+  createdByUid?: string | null;
   createdAt: string;
-  updatedAt?: string | null;
+  updatedAt: string;
+  title?: string | null;
+  note?: string | null;
+  addedBy?: string | null;
+  sourceKind?: string | null;
+  sourceRefId?: string | null;
+  sourceType?: string | null;
+  staffId?: string | null;
+  staffName?: string | null;
+  monthKey?: string | null;
+  payrollKind?: string | null;
+};
+
+export type CoreCreateBookingInput = {
+  id?: string;
+  clientId: string;
+  staffId?: string;
+  bookingDate: string;
+  startTime: string;
+  endTime?: string;
+  status?: string;
+  source?: string;
+  notes?: string;
+  discountHalalas?: number;
+  discountSnapshot?: Record<string, unknown>;
+  discount_snapshot?: Record<string, unknown>;
+  packageSessionsUsed?: number;
+  createInvoice?: boolean;
+  items: Array<{
+    id?: string;
+    serviceId: string;
+    serviceName?: string;
+    staffId?: string;
+    quantity?: number;
+    unitPriceHalalas?: number;
+    discountHalalas?: number;
+    finalTotalHalalas?: number;
+    packageCovered?: boolean;
+    clientPackageId?: string;
+    bookingDate?: string;
+    startTime?: string;
+    endTime?: string;
+    cartItemId?: string;
+    packageReservationId?: string;
+  }>;
+  slotStepMin?: number;
+  bufferMin?: number;
+};
+
+export type CoreAvailabilityBookingSlot = {
+  bookingId: string;
+  publicId: string;
+  bookingItemId: string;
+  serviceName: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  source: string;
+  status: string;
+  startTime: string;
+  endTime: string;
+  bufferMin?: number;
+};
+
+export type CoreAvailabilityBlockedRange = {
+  startTime: string;
+  endTime: string;
+  source?: string;
+  reason?: string;
+  leaveId?: string;
+  leaveType?: string;
+};
+
+export type CoreStaffAvailability = {
+  salonId: string;
+  date: string;
+  weekday: number;
+  staffId: string;
+  staffName: string;
+  active: boolean;
+  showOnBooking: boolean;
+  onLeave: boolean;
+  leaveNote: string;
+  availableForDate: boolean;
+  unavailableReason?: string;
+  availabilitySource?: string;
+  scheduleWindows: Array<{ id: string; startTime: string; endTime: string }>;
+  blockedRanges?: CoreAvailabilityBlockedRange[];
+  lockedTimes: string[];
+  takenTimes: string[];
+  bookedSlots: Record<string, CoreAvailabilityBookingSlot>;
+  bookings: Array<Record<string, unknown>>;
+};
+
+export type CoreApiListResponse<T> = {
+  ok: true;
+  data: T[];
+};
+
+export type CoreApiErrorResponse = {
+  ok: false;
+  error: string;
+  message?: string;
+};
+
+export type CoreCatalogRow = {
+  id: string;
+  salonId: string;
+  name: string;
+  sectionId?: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CoreRefund = {
+  id: string;
+  salonId: string;
+  paymentId?: string | null;
+  invoiceId?: string | null;
+  bookingId?: string | null;
+  clientId?: string | null;
+  amountHalalas: number;
+  method: string;
+  reason?: string | null;
+  status: string;
+  idempotencyKey?: string | null;
+  providerReference?: string | null;
+  createdByUid?: string | null;
+  refundedAt: string;
+  voidedAt?: string | null;
+  voidedByUid?: string | null;
+  createdAt: string;
+  idempotent?: boolean;
+};
+
+export type CoreAuditLog = {
+  id: string;
+  salonId: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  description?: string | null;
+  source?: string | null;
+  actorUid?: string | null;
+  actorEmail?: string | null;
+  actorName?: string | null;
+  beforeJson?: string | null;
+  afterJson?: string | null;
+  metaJson?: string | null;
+  createdAt: string;
+};
+
+export type CoreRefundInput = {
+  id?: string;
+  paymentId?: string;
+  invoiceId?: string;
+  bookingId?: string;
+  clientId?: string;
+  amountHalalas: number;
+  method?: string;
+  reason?: string;
+  idempotencyKey?: string;
+  providerReference?: string;
+};
+
+export type CoreRefundPatch = {
+  status?: string;
+  reason?: string | null;
+};
+
+export type CoreAuditInput = {
+  id?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  description?: string;
+  source?: string;
+  actorUid?: string;
+  actorEmail?: string;
+  actorName?: string;
+  before?: unknown;
+  after?: unknown;
+  meta?: unknown;
 };
