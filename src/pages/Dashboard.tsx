@@ -191,6 +191,31 @@ type DashboardSnapshot = {
 };
 
 const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v3";
+const DASHBOARD_VIEW_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function dashboardLocalDateKey(ms: number): string {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "";
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function isDashboardViewCacheFresh(
+  snapshot: DashboardSnapshot,
+  now = Date.now()
+): boolean {
+  const savedAt = Number(snapshot?.savedAt);
+  if (!Number.isFinite(savedAt) || savedAt <= 0) return false;
+
+  const ageMs = now - savedAt;
+  if (ageMs < 0 || ageMs > DASHBOARD_VIEW_CACHE_TTL_MS) return false;
+
+  return dashboardLocalDateKey(savedAt) === dashboardLocalDateKey(now);
+}
 const emptyDashboardStats: DashboardStats = {
   todayBookings: 0,
   todayRevenue: 0,
@@ -202,19 +227,36 @@ const emptyFinanceToday = { income: 0, expenses: 0, net: 0 };
 let dashboardViewMemoryCache: DashboardSnapshot | null = null;
 
 function readDashboardViewCache(): DashboardSnapshot | null {
-  if (dashboardViewMemoryCache) return dashboardViewMemoryCache;
+  if (dashboardViewMemoryCache) {
+    if (isDashboardViewCacheFresh(dashboardViewMemoryCache)) {
+      return dashboardViewMemoryCache;
+    }
+
+    clearDashboardViewCache();
+  }
+
   try {
     const raw = localStorage.getItem(DASHBOARD_VIEW_CACHE_KEY);
     if (!raw) return null;
+
     const parsed = JSON.parse(raw) as DashboardSnapshot;
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      clearDashboardViewCache();
+      return null;
+    }
+
+    if (!isDashboardViewCacheFresh(parsed)) {
+      clearDashboardViewCache();
+      return null;
+    }
+
     dashboardViewMemoryCache = parsed;
     return parsed;
   } catch {
-    return dashboardViewMemoryCache;
+    clearDashboardViewCache();
+    return null;
   }
 }
-
 function writeDashboardViewCache(snapshot: DashboardSnapshot) {
   dashboardViewMemoryCache = snapshot;
   try {
@@ -1008,6 +1050,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return getInitialDashboardUserInfo();
   });
   const [dashError, setDashError] = useState<string>("");
+  const [refreshWarning, setRefreshWarning] = useState<string>("");
   const [hasBootstrappedDashboard, setHasBootstrappedDashboard] = useState<boolean>(() => {
     if (hasExternalAuthBootstrap) return Boolean(externalDashboardRole);
     try {
@@ -1117,6 +1160,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     if (roleForRefresh === "staff") {
       hasDashboardDataRef.current = false;
+      setRefreshWarning("");
       clearDashboardViewCache();
       setStats(emptyDashboardStats);
       setAllScheduleBookings([]);
@@ -1298,6 +1342,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       setFinanceToday(nextFinanceToday);
       setRecentFinanceTransactions(nextRecentFinanceTransactions);
       hasDashboardDataRef.current = true;
+      setRefreshWarning("");
       writeDashboardViewCache({
         stats: nextStats,
         allScheduleBookings: uiBookings,
@@ -1315,6 +1360,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
+      if (hasDashboardDataRef.current) {
+        setRefreshWarning(
+          `تعذر تحديث بيانات لوحة التحكم من المصدر التشغيلي. البيانات المعروضة هي آخر نسخة محلية صالحة. step: ${step} — ${msg || code}`
+        );
+      }
       if (!options?.silent && !hasDashboardDataRef.current) {
         alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
       }
@@ -1565,6 +1615,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     } finally {
       refreshRequestIdRef.current += 1;
       hasDashboardDataRef.current = false;
+      setRefreshWarning("");
       clearDashboardViewCache();
       setUserInfo(null);
       setHasBootstrappedDashboard(false);
@@ -2635,6 +2686,24 @@ const Dashboard: React.FC<DashboardProps> = ({
               }
             />
 
+            {refreshWarning ? (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  margin: "12px 18px 0",
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(180, 120, 0, 0.28)",
+                  background: "rgba(255, 193, 7, 0.12)",
+                  fontWeight: 700,
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {refreshWarning}
+              </div>
+            ) : null}
             <div className="dashboard-inner">
               {isHrWorkspacePage ? (
                 <AdminHrDashboard embedded />
