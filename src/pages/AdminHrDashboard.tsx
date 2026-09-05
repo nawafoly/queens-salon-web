@@ -1481,9 +1481,23 @@ export default function AdminHrDashboard({
       setLoadingData(false);
       return;
     }
-    void loadData();
+
+    const refreshOverviewWhenActive = () => {
+      if (isOverviewRoute && document.visibilityState === "visible") {
+        void loadData(true);
+      }
+    };
+
+    void loadData(true);
+    window.addEventListener("focus", refreshOverviewWhenActive);
+    window.addEventListener("online", refreshOverviewWhenActive);
+    document.addEventListener("visibilitychange", refreshOverviewWhenActive);
+
     return () => {
       loadRequestRef.current += 1;
+      window.removeEventListener("focus", refreshOverviewWhenActive);
+      window.removeEventListener("online", refreshOverviewWhenActive);
+      document.removeEventListener("visibilitychange", refreshOverviewWhenActive);
     };
   }, [isOverviewRoute, loadData]);
 
