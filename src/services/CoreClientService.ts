@@ -93,11 +93,23 @@ function mapLoyalty(row: Record<string, unknown>): CoreClientLoyalty {
   };
 }
 
+function mapClient(row: Record<string, unknown>): CoreClient {
+  const client = mapCoreClient(row);
+  return {
+    ...client,
+    loyaltyBalance: finiteNumber(row.loyaltyBalance ?? row.loyalty_balance),
+    loyaltyEarned: finiteNumber(row.loyaltyEarned ?? row.loyalty_earned),
+    loyaltyUsed: finiteNumber(row.loyaltyUsed ?? row.loyalty_used),
+    loyaltyReversed: finiteNumber(row.loyaltyReversed ?? row.loyalty_reversed),
+    lastCompletedAt: text(row.lastCompletedAt ?? row.last_completed_at) || null,
+  };
+}
+
 function mapOverview(row: Record<string, unknown>): CoreClientOverview {
   const summary = (row.summary ?? {}) as Record<string, unknown>;
   const rawClient = (row.client ?? {}) as Record<string, unknown>;
   return {
-    client: mapCoreClient(rawClient),
+    client: mapClient(rawClient),
     bookings: Array.isArray(row.bookings)
       ? (row.bookings as Array<Record<string, unknown>>)
       : [],
@@ -123,19 +135,27 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
 }
 
 export const CoreClientService = {
-  async list(search = ""): Promise<CoreClient[]> {
+  async list(
+    search = "",
+    options: { includeLoyalty?: boolean } = {}
+  ): Promise<CoreClient[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/clients",
-      { query: { search } }
+      {
+        query: {
+          search,
+          ...(options.includeLoyalty ? { includeLoyalty: "1" } : {}),
+        },
+      }
     );
-    return rows.map(mapCoreClient);
+    return rows.map(mapClient);
   },
 
   async get(id: string): Promise<CoreClient> {
     const row = await coreApiRequest<Record<string, unknown>>(
       `/api/core/clients/${encodeURIComponent(id)}`
     );
-    return mapCoreClient(row);
+    return mapClient(row);
   },
 
   async overview(id: string): Promise<CoreClientOverview> {
@@ -170,7 +190,7 @@ export const CoreClientService = {
       "/api/core/clients",
       { method: "POST", body: input }
     );
-    return mapCoreClient(row);
+    return mapClient(row);
   },
 
   async patch(
@@ -190,7 +210,7 @@ export const CoreClientService = {
       `/api/core/clients/${encodeURIComponent(id)}`,
       { method: "PATCH", body: input }
     );
-    return mapCoreClient(row);
+    return mapClient(row);
   },
 
   async updateProfile(
@@ -201,6 +221,6 @@ export const CoreClientService = {
       `/api/core/clients/${encodeURIComponent(id)}`,
       { method: "PATCH", body: input }
     );
-    return mapCoreClient(row);
+    return mapClient(row);
   },
 };
