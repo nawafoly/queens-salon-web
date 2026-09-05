@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   FiAlertTriangle,
@@ -556,6 +556,7 @@ export default function DashboardPayroll() {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const loadGenerationRef = useRef(0);
 
   const payrollBounds = payrollMonthBounds(year, month);
   const payrollMonth = payrollBounds.payrollMonth;
@@ -617,20 +618,26 @@ export default function DashboardPayroll() {
   };
 
   const load = async () => {
+    const generation = ++loadGenerationRef.current;
+    const requestedYear = year;
+    const requestedMonth = month;
+    const requestIsCurrent = () => generation === loadGenerationRef.current;
+
     setLoading(true);
     setError("");
     try {
       const [employeeRows, payroll] = await Promise.all([
         CoreHrService.listEmployees({ status: "active" }),
-        loadPayrollMonth({ year, month }),
+        loadPayrollMonth({ year: requestedYear, month: requestedMonth }),
       ]);
       const eligibleEmployeeRows = employeeRows.filter(isEmployeePayrollEligible);
       const excludedEmployeeCount = employeeRows.length - eligibleEmployeeRows.length;
       const previewEntries = await generatePayrollEntries({
-        year,
-        month,
+        year: requestedYear,
+        month: requestedMonth,
         currentEntries: payroll.entries,
       });
+      if (!requestIsCurrent()) return;
       const savedCount = previewEntries.filter((entry) => entry.saved).length;
       const previewCount = previewEntries.length - savedCount;
 
@@ -644,14 +651,18 @@ export default function DashboardPayroll() {
             : "لا توجد موظفات نشطات مطابقة لهذا الشهر."
       );
     } catch (loadError: any) {
+      if (!requestIsCurrent()) return;
       setError(String(loadError?.message || "تعذر تحميل إدارة الرواتب."));
     } finally {
-      setLoading(false);
+      if (requestIsCurrent()) setLoading(false);
     }
   };
 
   useEffect(() => {
     void load();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [year, month]);
 
   const visibleEntries = useMemo(
