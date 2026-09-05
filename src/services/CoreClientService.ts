@@ -2,6 +2,13 @@ import { coreApiRequest } from "./coreApiClient";
 import { mapCoreClient } from "./coreBookingMappers";
 import type { CoreClient } from "../types/coreApi";
 
+export type CoreClientLoyaltySummary = {
+  totalClients: number;
+  vipCount: number;
+  activeLoyaltyCount: number;
+  totalPoints: number;
+};
+
 export type CoreClientLoyaltyTransaction = {
   id: string;
   type: string;
@@ -149,6 +156,20 @@ export const CoreClientService = {
       }
     );
     return rows.map(mapClient);
+  },
+
+  async loyaltySummary(): Promise<CoreClientLoyaltySummary> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/clients/loyalty-summary"
+    );
+    return {
+      totalClients: finiteNumber(row.totalClients ?? row.total_clients),
+      vipCount: finiteNumber(row.vipCount ?? row.vip_count),
+      activeLoyaltyCount: finiteNumber(
+        row.activeLoyaltyCount ?? row.active_loyalty_count
+      ),
+      totalPoints: finiteNumber(row.totalPoints ?? row.total_points),
+    };
   },
 
   async get(id: string): Promise<CoreClient> {

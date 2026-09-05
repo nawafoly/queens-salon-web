@@ -23,6 +23,7 @@ import {
 import {
   createClient,
   getClient,
+  getClientLoyaltySummary,
   listClients,
   patchClient,
 } from './repositories/clients.js';
@@ -464,6 +465,10 @@ function match(url, method) {
   ]);
   if (clientPortalRoutes.has(path)) {
     return { name: clientPortalRoutes.get(path) };
+  }
+
+  if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
+    return { name: "client:loyalty-summary" };
   }
 
   const clientOverview = /^\/api\/core\/clients\/([^/]+)\/overview$/.exec(path);
@@ -947,6 +952,11 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "client:offers":
       if (method === "GET") return listSelfOffers(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:loyalty-summary":
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      if (method === "GET") return getClientLoyaltySummary(db, ctx.salonId);
       break;
 
     case "client:admin-overview":

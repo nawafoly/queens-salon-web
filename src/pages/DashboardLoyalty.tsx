@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FiAward,
   FiRefreshCw,
@@ -10,7 +10,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 
-import { CoreClientService } from "../services/CoreClientService";
+import { CoreClientService, type CoreClientLoyaltySummary } from "../services/CoreClientService";
 import type { CoreClient } from "../types/coreApi";
 
 function formatDate(value?: string | null) {
@@ -34,18 +34,35 @@ export default function DashboardLoyalty() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [clients, setClients] = useState<CoreClient[]>([]);
+  const [summary, setSummary] = useState<CoreClientLoyaltySummary>({
+    totalClients: 0,
+    vipCount: 0,
+    activeLoyaltyCount: 0,
+    totalPoints: 0,
+  });
   const [search, setSearch] = useState("");
   const [busyClientId, setBusyClientId] = useState("");
   const loadGenerationRef = useRef(0);
+  const summaryGenerationRef = useRef(0);
+  const searchRef = useRef("");
+  const searchEffectReadyRef = useRef(false);
 
   const load = useCallback(async () => {
     const generation = ++loadGenerationRef.current;
+    const summaryGeneration = ++summaryGenerationRef.current;
     setLoading(true);
     setError("");
     try {
-      const rows = await CoreClientService.list("", { includeLoyalty: true });
-      if (generation !== loadGenerationRef.current) return;
-      setClients(rows);
+      const [rows, nextSummary] = await Promise.all([
+        CoreClientService.list(searchRef.current.trim(), { includeLoyalty: true }),
+        CoreClientService.loyaltySummary(),
+      ]);
+      if (generation === loadGenerationRef.current) {
+        setClients(rows);
+      }
+      if (summaryGeneration === summaryGenerationRef.current) {
+        setSummary(nextSummary);
+      }
     } catch (cause) {
       if (generation !== loadGenerationRef.current) return;
       setError(cause instanceof Error ? cause.message : "تعذر تحميل بيانات الولاء من Core D1.");
@@ -58,6 +75,7 @@ export default function DashboardLoyalty() {
     void load();
     return () => {
       loadGenerationRef.current += 1;
+      summaryGenerationRef.current += 1;
     };
   }, [load]);
 
@@ -106,6 +124,21 @@ export default function DashboardLoyalty() {
             : row
         )
       );
+
+      const summaryGeneration = ++summaryGenerationRef.current;
+      try {
+        const nextSummary = await CoreClientService.loyaltySummary();
+        if (summaryGeneration === summaryGenerationRef.current) {
+          setSummary(nextSummary);
+        }
+      } catch (summaryCause) {
+        if (summaryGeneration !== summaryGenerationRef.current) return;
+        setError(
+          summaryCause instanceof Error
+            ? `تم تحديث حالة VIP في Core D1، لكن تعذر تحديث الملخص: ${summaryCause.message}`
+            : "تم تحديث حالة VIP في Core D1، لكن تعذر تحديث ملخص الولاء."
+        );
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تحديث حالة VIP في Core D1.");
     } finally {
@@ -113,34 +146,45 @@ export default function DashboardLoyalty() {
     }
   };
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return clients;
-    return clients.filter((client) =>
-      `${client.name || ""} ${client.phoneNormalized || ""}`
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [clients, search]);
+  useEffect(() => {
+    if (!searchEffectReadyRef.current) {
+      searchEffectReadyRef.current = true;
+      return;
+    }
 
-  const vipCount = useMemo(
-    () => clients.filter((client) => Boolean(client.vip)).length,
-    [clients]
-  );
+    const timer = window.setTimeout(() => {
+      const generation = ++loadGenerationRef.current;
+      setLoading(true);
+      setError("");
 
-  const totalPoints = useMemo(
-    () =>
-      clients.reduce(
-        (sum, client) => sum + Number(client.loyaltyBalance || 0),
-        0
-      ),
-    [clients]
-  );
+      void CoreClientService.list(search.trim(), { includeLoyalty: true })
+        .then((rows) => {
+          if (generation !== loadGenerationRef.current) return;
+          setClients(rows);
+        })
+        .catch((cause) => {
+          if (generation !== loadGenerationRef.current) return;
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "تعذر البحث في بيانات الولاء من Core D1."
+          );
+        })
+        .finally(() => {
+          if (generation === loadGenerationRef.current) {
+            setLoading(false);
+          }
+        });
+    }, 300);
 
-  const activeLoyaltyCount = useMemo(
-    () => clients.filter((client) => Number(client.loyaltyBalance || 0) > 0).length,
-    [clients]
-  );
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [search]);
+
+
+
+
 
   return (
     <main className="dsv2-page dsv2-loyalty-page" dir="rtl">
@@ -157,8 +201,8 @@ export default function DashboardLoyalty() {
           <span className="dsv2-loyalty-summary__icon" aria-hidden="true"><FiAward /></span>
           <div>
             <span>إجمالي العملاء</span>
-            <strong>{formatNumber(clients.length)}</strong>
-            <small>{formatNumber(filtered.length)} نتيجة ظاهرة</small>
+            <strong>{formatNumber(summary.totalClients)}</strong>
+            <small>{formatNumber(clients.length)} نتيجة محملة — حد العرض 500</small>
           </div>
         </div>
       </header>
@@ -170,7 +214,7 @@ export default function DashboardLoyalty() {
           <span className="dsv2-metric-card__icon"><FiUsers /></span>
           <div>
             <p className="dsv2-metric-card__label">إجمالي العملاء</p>
-            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(clients.length)}</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(summary.totalClients)}</p>
             <p className="dsv2-metric-card__meta">من سجل العملاء Canonical</p>
           </div>
         </article>
@@ -178,7 +222,7 @@ export default function DashboardLoyalty() {
           <span className="dsv2-metric-card__icon"><FiStar /></span>
           <div>
             <p className="dsv2-metric-card__label">عملاء VIP</p>
-            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(vipCount)}</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(summary.vipCount)}</p>
             <p className="dsv2-metric-card__meta">حالة VIP في Core D1</p>
           </div>
         </article>
@@ -186,16 +230,16 @@ export default function DashboardLoyalty() {
           <span className="dsv2-metric-card__icon"><FiTrendingUp /></span>
           <div>
             <p className="dsv2-metric-card__label">لديهم رصيد نقاط</p>
-            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(activeLoyaltyCount)}</p>
-            <p className="dsv2-metric-card__meta">رصيد موجب في سجل حركات الولاء</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(summary.activeLoyaltyCount)}</p>
+            <p className="dsv2-metric-card__meta">رصيد موجب محسوب من المصدر التشغيلي Canonical في Core D1</p>
           </div>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--danger dsv2-loyalty-metric">
           <span className="dsv2-metric-card__icon"><FiAward /></span>
           <div>
             <p className="dsv2-metric-card__label">إجمالي رصيد النقاط</p>
-            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(totalPoints)}</p>
-            <p className="dsv2-metric-card__meta">محسوب من loyalty_point_transactions</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(summary.totalPoints)}</p>
+            <p className="dsv2-metric-card__meta">محسوب من الحجوزات والاستردادات المكتملة والتعديلات اليدوية في Core D1</p>
           </div>
         </article>
       </section>
@@ -235,7 +279,11 @@ export default function DashboardLoyalty() {
               className="dsv2-input"
               placeholder="بحث باسم العميل أو رقم الجوال..."
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                searchRef.current = value;
+                setSearch(value);
+              }}
             />
           </label>
         </div>
@@ -262,8 +310,8 @@ export default function DashboardLoyalty() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length ? (
-                  filtered.map((client) => (
+                {clients.length ? (
+                  clients.map((client) => (
                     <tr key={client.id}>
                       <td data-label="الاسم"><span className="dsv2-table__primary">{client.name || "عميل غير مسمى"}</span></td>
                       <td data-label="الجوال"><bdi dir="ltr">{client.phoneNormalized || "-"}</bdi></td>

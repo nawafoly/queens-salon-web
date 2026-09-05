@@ -30,67 +30,234 @@ function wantsLoyaltySummary(query = {}) {
 
 export async function listClients(db, salonId, query = {}) {
   const includeLoyalty = wantsLoyaltySummary(query);
-  const rows = includeLoyalty
-    ? await dbAll(
-        db,
-        `SELECT
-           c.*,
-           COALESCE(lp.loyalty_balance, 0) AS loyalty_balance,
-           COALESCE(lp.loyalty_earned, 0) AS loyalty_earned,
-           COALESCE(lp.loyalty_used, 0) AS loyalty_used,
-           COALESCE(lp.loyalty_reversed, 0) AS loyalty_reversed,
-           lc.last_completed_at
-         FROM clients c
-         LEFT JOIN (
-           SELECT
-             client_id,
-             SUM(points) AS loyalty_balance,
-             SUM(CASE WHEN type = 'earn' THEN points ELSE 0 END) AS loyalty_earned,
-             ABS(SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END)) AS loyalty_used,
-             ABS(SUM(CASE WHEN type = 'refund' THEN points ELSE 0 END)) AS loyalty_reversed
-           FROM loyalty_point_transactions
-           WHERE salon_id = ?
-           GROUP BY client_id
-         ) lp
-           ON lp.client_id = c.id
-         LEFT JOIN (
-           SELECT
-             client_id,
-             MAX(COALESCE(completed_at, updated_at, created_at)) AS last_completed_at
-           FROM bookings
-           WHERE salon_id = ?
-             AND status = 'completed'
-             AND deleted_at IS NULL
-           GROUP BY client_id
-         ) lc
-           ON lc.client_id = c.id
-         WHERE c.salon_id = ?
-         ORDER BY c.updated_at DESC
-         LIMIT 500`,
-        [salonId, salonId, salonId]
-      )
-    : await dbAll(
-        db,
-        "SELECT * FROM clients WHERE salon_id = ? ORDER BY updated_at DESC LIMIT 500",
-        [salonId]
-      );
   const search = cleanText(query.search || query.q).toLowerCase();
-  if (!search) return rows;
-
   const phone = normalizePhone(search);
-  return rows.filter((row) => {
-    const fields = [
-      row.id,
-      row.name,
-      row.email,
-      row.firebase_uid,
-      row.phone_normalized,
-    ].map((value) => cleanText(value).toLowerCase());
-    return fields.some((value) => value.includes(search)) ||
-      Boolean(phone && cleanText(row.phone_normalized) === phone);
-  });
+
+  const searchClause = search
+    ? ` AND (
+         INSTR(LOWER(COALESCE(c.id, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(c.name, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(c.email, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
+         OR (? <> '' AND c.phone_normalized = ?)
+       )`
+    : '';
+
+  const searchParams = search
+    ? [
+        search,
+        search,
+        search,
+        search,
+        search,
+        phone || '',
+        phone || '',
+      ]
+    : [];
+
+  if (includeLoyalty) {
+    return dbAll(
+      db,
+      `WITH completed_bookings AS (
+         SELECT
+           id,
+           client_id,
+           CAST(COALESCE(total_halalas, 0) / 100 AS INTEGER) AS earned_points,
+           COALESCE(completed_at, updated_at, created_at) AS completed_at
+         FROM bookings
+         WHERE salon_id = ?
+           AND status = 'completed'
+           AND deleted_at IS NULL
+           AND client_id IS NOT NULL
+       ),
+       refund_by_booking AS (
+         SELECT
+           cb.id AS booking_id,
+           cb.client_id,
+           MIN(
+             cb.earned_points,
+             CAST(
+               COALESCE(
+                 SUM(
+                   CASE
+                     WHEN r.amount_halalas > 0 THEN r.amount_halalas
+                     ELSE 0
+                   END
+                 ),
+                 0
+               ) / 100
+               AS INTEGER
+             )
+           ) AS reversed_points
+         FROM completed_bookings cb
+         LEFT JOIN refunds r
+           ON r.salon_id = ?
+          AND r.booking_id = cb.id
+          AND r.status = 'completed'
+         GROUP BY cb.id, cb.client_id, cb.earned_points
+       ),
+       booking_loyalty AS (
+         SELECT
+           cb.client_id,
+           SUM(cb.earned_points) AS loyalty_earned,
+           SUM(COALESCE(rb.reversed_points, 0)) AS loyalty_reversed,
+           MAX(cb.completed_at) AS last_completed_at
+         FROM completed_bookings cb
+         LEFT JOIN refund_by_booking rb
+           ON rb.booking_id = cb.id
+         GROUP BY cb.client_id
+       ),
+       manual_loyalty AS (
+         SELECT
+           client_id,
+           SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END) AS redeem_delta,
+           SUM(CASE WHEN type = 'adjustment' THEN points ELSE 0 END) AS adjustment_delta,
+           ABS(SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END)) AS loyalty_used
+         FROM loyalty_point_transactions
+         WHERE salon_id = ?
+           AND type IN ('redeem', 'adjustment')
+         GROUP BY client_id
+       )
+       SELECT
+         c.*,
+         (
+           COALESCE(bl.loyalty_earned, 0)
+           - COALESCE(bl.loyalty_reversed, 0)
+           + COALESCE(ml.redeem_delta, 0)
+           + COALESCE(ml.adjustment_delta, 0)
+         ) AS loyalty_balance,
+         COALESCE(bl.loyalty_earned, 0) AS loyalty_earned,
+         COALESCE(ml.loyalty_used, 0) AS loyalty_used,
+         COALESCE(bl.loyalty_reversed, 0) AS loyalty_reversed,
+         bl.last_completed_at
+       FROM clients c
+       LEFT JOIN booking_loyalty bl
+         ON bl.client_id = c.id
+       LEFT JOIN manual_loyalty ml
+         ON ml.client_id = c.id
+       WHERE c.salon_id = ?${searchClause}
+       ORDER BY c.updated_at DESC
+       LIMIT 500`,
+      [salonId, salonId, salonId, salonId, ...searchParams]
+    );
+  }
+
+  const plainSearchClause = search
+    ? ` AND (
+         INSTR(LOWER(COALESCE(id, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(name, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(email, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(firebase_uid, '')), ?) > 0
+         OR INSTR(LOWER(COALESCE(phone_normalized, '')), ?) > 0
+         OR (? <> '' AND phone_normalized = ?)
+       )`
+    : '';
+
+  return dbAll(
+    db,
+    `SELECT *
+     FROM clients
+     WHERE salon_id = ?${plainSearchClause}
+     ORDER BY updated_at DESC
+     LIMIT 500`,
+    [salonId, ...searchParams]
+  );
 }
 
+export async function getClientLoyaltySummary(db, salonId) {
+  const row = await dbFirst(
+    db,
+    `WITH completed_bookings AS (
+       SELECT
+         id,
+         client_id,
+         CAST(COALESCE(total_halalas, 0) / 100 AS INTEGER) AS earned_points
+       FROM bookings
+       WHERE salon_id = ?
+         AND status = 'completed'
+         AND deleted_at IS NULL
+         AND client_id IS NOT NULL
+     ),
+     refund_by_booking AS (
+       SELECT
+         cb.id AS booking_id,
+         cb.client_id,
+         MIN(
+           cb.earned_points,
+           CAST(
+             COALESCE(
+               SUM(
+                 CASE
+                   WHEN r.amount_halalas > 0 THEN r.amount_halalas
+                   ELSE 0
+                 END
+               ),
+               0
+             ) / 100
+             AS INTEGER
+           )
+         ) AS reversed_points
+       FROM completed_bookings cb
+       LEFT JOIN refunds r
+         ON r.salon_id = ?
+        AND r.booking_id = cb.id
+        AND r.status = 'completed'
+       GROUP BY cb.id, cb.client_id, cb.earned_points
+     ),
+     booking_loyalty AS (
+       SELECT
+         cb.client_id,
+         SUM(cb.earned_points) AS loyalty_earned,
+         SUM(COALESCE(rb.reversed_points, 0)) AS loyalty_reversed
+       FROM completed_bookings cb
+       LEFT JOIN refund_by_booking rb
+         ON rb.booking_id = cb.id
+       GROUP BY cb.client_id
+     ),
+     manual_loyalty AS (
+       SELECT
+         client_id,
+         SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END) AS redeem_delta,
+         SUM(CASE WHEN type = 'adjustment' THEN points ELSE 0 END) AS adjustment_delta
+       FROM loyalty_point_transactions
+       WHERE salon_id = ?
+         AND type IN ('redeem', 'adjustment')
+       GROUP BY client_id
+     ),
+     client_balances AS (
+       SELECT
+         c.id,
+         c.vip,
+         (
+           COALESCE(bl.loyalty_earned, 0)
+           - COALESCE(bl.loyalty_reversed, 0)
+           + COALESCE(ml.redeem_delta, 0)
+           + COALESCE(ml.adjustment_delta, 0)
+         ) AS loyalty_balance
+       FROM clients c
+       LEFT JOIN booking_loyalty bl
+         ON bl.client_id = c.id
+       LEFT JOIN manual_loyalty ml
+         ON ml.client_id = c.id
+       WHERE c.salon_id = ?
+     )
+     SELECT
+       COUNT(*) AS total_clients,
+       COALESCE(SUM(CASE WHEN vip = 1 THEN 1 ELSE 0 END), 0) AS vip_count,
+       COALESCE(SUM(CASE WHEN loyalty_balance > 0 THEN 1 ELSE 0 END), 0) AS active_loyalty_count,
+       COALESCE(SUM(loyalty_balance), 0) AS total_points
+     FROM client_balances`,
+    [salonId, salonId, salonId, salonId]
+  );
+
+  return {
+    totalClients: Number(row?.total_clients || 0),
+    vipCount: Number(row?.vip_count || 0),
+    activeLoyaltyCount: Number(row?.active_loyalty_count || 0),
+    totalPoints: Number(row?.total_points || 0),
+  };
+}
 export async function getClient(db, salonId, id) {
   const requestedId = requiredId(id);
   let row = await dbFirst(
