@@ -1806,67 +1806,6 @@ export async function listUserBookings(userId: string) {
 }
 
 /* =========================
-   STAFF (Employee) READ
-========================= */
-
-function sortByCreatedAtDesc(a: BookingDocWithId, b: BookingDocWithId) {
-  return (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.();
-}
-
-function uniqMerge(a: BookingDocWithId[], b: BookingDocWithId[]) {
-  const m = new Map<string, BookingDocWithId>();
-  for (const x of a) m.set(x.id, x);
-  for (const x of b) m.set(x.id, x);
-  return Array.from(m.values()).sort(sortByCreatedAtDesc);
-}
-
-export async function listEmployeeBookings(
-  employeeIdOrUid: string,
-  _employeeName?: string
-): Promise<BookingDocWithId[]> {
-  return (await CoreBookingService.list({ staffId: String(employeeIdOrUid || "").trim() })).map(coreBookingToLegacy);
-}
-
-export function watchEmployeeBookings(
-  employeeIdOrUid: string,
-  employeeName: string | undefined,
-  onData: (rows: BookingDocWithId[]) => void,
-  onError?: (err: unknown) => void
-) {
-  let stopped = false;
-  let loading = false;
-  const load = async () => {
-    if (stopped || loading) return;
-    loading = true;
-    try {
-      if (!stopped) onData(await listEmployeeBookings(employeeIdOrUid, employeeName));
-    } catch (error) {
-      if (!stopped) onError?.(error);
-    } finally {
-      loading = false;
-    }
-  };
-  const refreshWhenActive = () => {
-    if (stopped || document.visibilityState === "hidden") return;
-    void load();
-  };
-  const onVisibility = () => {
-    if (document.visibilityState === "visible") refreshWhenActive();
-  };
-
-  void load();
-  window.addEventListener("focus", refreshWhenActive);
-  window.addEventListener("online", refreshWhenActive);
-  document.addEventListener("visibilitychange", onVisibility);
-  return () => {
-    stopped = true;
-    window.removeEventListener("focus", refreshWhenActive);
-    window.removeEventListener("online", refreshWhenActive);
-    document.removeEventListener("visibilitychange", onVisibility);
-  };
-}
-
-/* =========================
    UPDATE
 ========================= */
 
