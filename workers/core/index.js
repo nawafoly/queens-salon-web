@@ -488,6 +488,9 @@ function match(url, method) {
     return { name: "bookings:internal" };
   }
 
+  if (path === "/api/core/bookings/mine" && method === "GET") {
+    return { name: "bookings:mine" };
+  }
   const bookingAction =
     /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
       path
@@ -1068,6 +1071,19 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return getPublicBookingTrack(db, ctx.salonId, query.publicId || query.public_id || query.code);
       break;
 
+    case "bookings:mine":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) {
+        throw new AppError(403, "core_booking:employee_link_required");
+      }
+      return listBookings(
+        db,
+        ctx.salonId,
+        {
+          ...query,
+          staffId: ctx.employeeId,
+        }
+      );
     case "bookings":
       if (method === "GET" && route.id) {
         return getBooking(db, ctx.salonId, route.id);
@@ -1114,7 +1130,6 @@ async function dispatch(ctx, route, method, body, query, env) {
         actorInfo,
         { allowPastDates: true }
       );
-
     case "booking:complete":
       return completeBooking(db, ctx.salonId, route.id);
 
