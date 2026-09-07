@@ -3546,6 +3546,126 @@ test("booking conflict rejects same staff slot", async () => {
   assert.equal(body.error, "core_booking:staff_slot_conflict");
 });
 
+test("generic public booking preserves guest and client flow while enforcing operations create permission", async () => {
+  const createPayload = (id) => ({
+    salonId: "main",
+    id,
+    invoiceId: `invoice-${id}`,
+    clientId: "client-a",
+    staffId: "staff-a",
+    source: "internal",
+    bookingDate: "2027-02-10",
+    startTime: "10:00",
+    items: [{ id: `item-${id}`, serviceId: "svc-a" }],
+  });
+
+  for (const [role, token] of [
+    ["hr", "test:hr1:hr"],
+    ["accountant", "test:accountant1:accountant"],
+    ["staff", "test:staff1:staff"],
+  ]) {
+    const fake = new FakeD1();
+    seedCore(fake);
+
+    const response = await worker.fetch(
+      request("/api/core/bookings", {
+        method: "POST",
+        token,
+        body: createPayload(`booking-generic-forbidden-${role}`),
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+
+    assert.equal(response.status, 403, `${role}: ${JSON.stringify(body)}`);
+    assert.equal(body.error, "core_auth:missing_permission");
+    assert.equal(fake.rows("bookings").length, 0);
+  }
+
+  for (const [role, token] of [
+    ["owner", "test:owner1:owner"],
+    ["admin", "test:admin1:admin"],
+    ["reception", "test:reception1:reception"],
+  ]) {
+    const fake = new FakeD1();
+    seedCore(fake);
+
+    const id = `booking-generic-allowed-${role}`;
+
+    const response = await worker.fetch(
+      request("/api/core/bookings", {
+        method: "POST",
+        token,
+        body: createPayload(id),
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+
+    assert.equal(response.status, 200, `${role}: ${JSON.stringify(body)}`);
+    assert.equal(fake.find("bookings", "main", id)?.id, id);
+  }
+
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+
+    const response = await worker.fetch(
+      request("/api/core/bookings", {
+        method: "POST",
+        token: "",
+        body: {
+          ...createPayload("booking-generic-guest"),
+          source: "client",
+        },
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(
+      fake.find("bookings", "main", "booking-generic-guest")?.client_id,
+      "client-a"
+    );
+  }
+
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+
+    const response = await worker.fetch(
+      request("/api/core/bookings", {
+        method: "POST",
+        token: "test:client1:client",
+        body: {
+          ...createPayload("booking-generic-client"),
+          clientId: "spoofed-client-id",
+          client_id: "spoofed-client-id",
+        },
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+
+    assert.equal(response.status, 200, JSON.stringify(body));
+
+    const booking = fake.find(
+      "bookings",
+      "main",
+      "booking-generic-client"
+    );
+
+    assert.ok(booking);
+    assert.equal(booking.client_id, "client-a");
+    assert.equal(booking.source, "client");
+  }
+});
+
 test("booking mutation routes enforce canonical permissions", async () => {
   const fake = new FakeD1();
   seedCore(fake);

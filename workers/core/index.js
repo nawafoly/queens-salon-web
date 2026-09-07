@@ -1092,6 +1092,10 @@ async function dispatch(ctx, route, method, body, query, env) {
         return listBookings(db, ctx.salonId, query);
       }
       if (method === "POST") {
+        if (OPERATIONS_ROLES.has(ctx.role)) {
+          requirePermission(ctx, "bookings.create");
+        }
+
         let bookingBody = body;
         if (ctx.role === "client") {
           const selfClient = await resolveSelfClient(
