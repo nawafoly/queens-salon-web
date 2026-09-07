@@ -287,6 +287,39 @@ export async function getIncome(db, salonId, id) {
   return row;
 }
 
+async function assertIncomeDirectMutationAllowed(db, salonId, row, data = {}) {
+  const requestedBookingId =
+    data.bookingId === undefined && data.booking_id === undefined
+      ? ''
+      : cleanText(data.bookingId || data.booking_id);
+  const requestedPaymentId =
+    data.paymentId === undefined && data.payment_id === undefined
+      ? ''
+      : cleanText(data.paymentId || data.payment_id);
+
+  if (
+    cleanText(row?.booking_id) ||
+    cleanText(row?.payment_id) ||
+    requestedBookingId ||
+    requestedPaymentId
+  ) {
+    throw new AppError(409, 'core_income:booking_managed');
+  }
+
+  const nextSource = data.source === undefined ? row?.source : data.source;
+  if (!isBookingIncomeSource(nextSource)) return;
+
+  const legacyBooking = await dbFirst(
+    db,
+    'SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, requiredId(row?.id)]
+  );
+
+  if (legacyBooking) {
+    throw new AppError(409, 'core_income:booking_managed');
+  }
+}
+
 export async function createIncome(db, salonId, data, actor = {}) {
   const now = nowIso();
   const row = {
@@ -329,6 +362,7 @@ export async function createIncome(db, salonId, data, actor = {}) {
 
 export async function patchIncome(db, salonId, id, data, actor = {}) {
   const before = await getIncome(db, salonId, id);
+  await assertIncomeDirectMutationAllowed(db, salonId, before, data);
   const row = await updateById(db, 'income_entries', salonId, requiredId(id), {
     booking_id: data.bookingId === undefined && data.booking_id === undefined ? undefined : optionalText(data.bookingId || data.booking_id) || null,
     invoice_id: data.invoiceId === undefined && data.invoice_id === undefined ? undefined : optionalText(data.invoiceId || data.invoice_id) || null,
@@ -353,6 +387,7 @@ export async function patchIncome(db, salonId, id, data, actor = {}) {
 
 export async function deleteIncome(db, salonId, id, actor = {}) {
   const before = await getIncome(db, salonId, id);
+  await assertIncomeDirectMutationAllowed(db, salonId, before);
   await dbRun(db, 'DELETE FROM income_entries WHERE salon_id = ? AND id = ?', [salonId, requiredId(id)]);
   await recordAudit(db, salonId, {
     action: 'income_deleted', entityType: 'income', entityId: id,

@@ -4437,6 +4437,183 @@ test("income supports patch and delete with D1 audit", async () => {
   assert.equal(fake.rows("income_entries").length, 0);
 });
 
+test("booking-managed income rejects direct patch and delete while invoice-only income remains mutable", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const now = "2027-01-01T00:00:00.000Z";
+
+  fake.seed("bookings", {
+    id: "income-legacy-booking",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "10:00",
+    end_time: "10:30",
+    status: "completed",
+    source: "test",
+    total_halalas: 5000,
+    payment_status: "paid",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  });
+
+  for (const row of [
+    {
+      id: "income-booking-linked",
+      booking_id: "booking-linked",
+      invoice_id: null,
+      payment_id: null,
+      source: "booking",
+    },
+    {
+      id: "income-payment-linked",
+      booking_id: null,
+      invoice_id: null,
+      payment_id: "payment-linked",
+      source: "manual",
+    },
+    {
+      id: "income-legacy-booking",
+      booking_id: null,
+      invoice_id: null,
+      payment_id: null,
+      source: "booking",
+    },
+  ]) {
+    fake.seed("income_entries", {
+      ...row,
+      salon_id: "main",
+      amount_halalas: 5000,
+      method: "cash",
+      note: "before",
+      occurred_at: now,
+      created_at: now,
+    });
+  }
+
+  for (const id of [
+    "income-booking-linked",
+    "income-payment-linked",
+    "income-legacy-booking",
+  ]) {
+    let response = await worker.fetch(
+      request(`/api/core/income/${id}`, {
+        method: "PATCH",
+        body: { note: "tampered" },
+      }),
+      env(fake)
+    );
+
+    let body = await json(response);
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, "core_income:booking_managed");
+    assert.equal(fake.find("income_entries", "main", id).note, "before");
+
+    response = await worker.fetch(
+      request(`/api/core/income/${id}`, { method: "DELETE" }),
+      env(fake)
+    );
+
+    body = await json(response);
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, "core_income:booking_managed");
+    assert.ok(fake.find("income_entries", "main", id));
+  }
+
+  fake.seed("bookings", {
+    id: "income-transition",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "12:00",
+    end_time: "12:30",
+    status: "completed",
+    source: "test",
+    total_halalas: 3000,
+    payment_status: "unpaid",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  });
+
+  fake.seed("income_entries", {
+    id: "income-transition",
+    salon_id: "main",
+    booking_id: null,
+    invoice_id: null,
+    payment_id: null,
+    amount_halalas: 3000,
+    method: "cash",
+    source: "manual",
+    note: "manual before transition",
+    occurred_at: now,
+    created_at: now,
+  });
+
+  for (const patch of [
+    { bookingId: "forged-booking" },
+    { paymentId: "forged-payment" },
+    { source: "booking" },
+  ]) {
+    const response = await worker.fetch(
+      request("/api/core/income/income-transition", {
+        method: "PATCH",
+        body: patch,
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, "core_income:booking_managed");
+
+    const stored = fake.find("income_entries", "main", "income-transition");
+    assert.equal(stored.booking_id, null);
+    assert.equal(stored.payment_id, null);
+    assert.equal(stored.source, "manual");
+  }
+
+  fake.seed("income_entries", {
+    id: "income-invoice-only",
+    salon_id: "main",
+    booking_id: null,
+    invoice_id: "invoice-manual-reference",
+    payment_id: null,
+    amount_halalas: 2500,
+    method: "transfer",
+    source: "manual",
+    note: "invoice reference only",
+    occurred_at: now,
+    created_at: now,
+  });
+
+  let response = await worker.fetch(
+    request("/api/core/income/income-invoice-only", {
+      method: "PATCH",
+      body: { note: "updated invoice reference" },
+    }),
+    env(fake)
+  );
+
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.note, "updated invoice reference");
+
+  response = await worker.fetch(
+    request("/api/core/income/income-invoice-only", { method: "DELETE" }),
+    env(fake)
+  );
+
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.deleted, true);
+  assert.equal(fake.find("income_entries", "main", "income-invoice-only"), null);
+});
+
 test("refund is idempotent and adjusts invoice paid total", async () => {
   const fake = new FakeD1();
   seedCore(fake);
