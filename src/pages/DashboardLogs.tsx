@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faChevronDown,
@@ -637,6 +637,7 @@ export default function DashboardLogs() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [rows, setRows] = useState<LogRow[]>([]);
+  const currentRowsCountRef = useRef(0);
   const [errMsg, setErrMsg] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsById, setDetailsById] = useState<Record<string, LogDetails>>({});
@@ -709,10 +710,11 @@ export default function DashboardLogs() {
       if (mode === "initial") { setLoading(true); setErrMsg(""); }
       else setLoadingMore(true);
       try {
-        const requestedLimit = mode === "more" ? Math.min(1000, rows.length + PAGE_SIZE) : PAGE_SIZE;
+        const requestedLimit = mode === "more" ? Math.min(1000, currentRowsCountRef.current + PAGE_SIZE) : PAGE_SIZE;
         const auditRows = await CoreAuditService.list({ limit: requestedLimit });
         const list = auditRows.map(parseRow);
         setHasMore(auditRows.length === requestedLimit && requestedLimit < 1000);
+        currentRowsCountRef.current = list.length;
         setRows(list);
       } catch (e: any) {
         console.warn("DashboardLogs Core audit load error:", e);
@@ -723,11 +725,12 @@ export default function DashboardLogs() {
         setLoadingMore(false);
       }
     },
-    [canManage, parseRow, rows.length]
+    [canManage, parseRow]
   );
 
   useEffect(() => {
     if (!canManage) return;
+    currentRowsCountRef.current = 0;
     setRows([]);
     setDetailsById({});
     setExpandedId(null);
