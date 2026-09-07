@@ -8,7 +8,6 @@ import { CoreClientService, type CoreClientOverview } from "../../services/CoreC
 import type { BookingDocWithId, BookingStatus } from "../../services/firestoreBookings";
 import type { CoreClient } from "../../types/coreApi";
 import {
-  customerPhoneDigits,
   formatCustomerLastVisit,
   getCustomerStatusLabel,
   isCustomerActive,
@@ -21,8 +20,6 @@ import type { CustomerRow } from "./customerTypes";
 
 type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "guest";
 type Feedback = { type: "success" | "error"; text: string } | null;
-
-const NOTES_KEY = "dashboard_client_notes_v1";
 
 const bookingStatusLabel: Record<BookingStatus, string> = {
   confirmed: "مؤكد",
@@ -75,29 +72,6 @@ function bookingNoOf(booking: BookingDocWithId): string {
   return "غير متوفر";
 }
 
-function noteKeysForCustomer(customer: CustomerRow): string[] {
-  const keys: string[] = [];
-  if (customer.clientId) keys.push(`id:${customer.clientId}`);
-  const phone = customerPhoneDigits(customer.phone);
-  if (phone) keys.push(`p:${phone}`);
-  keys.push(`n:${normalizeCustomerName(customer.name).toLocaleLowerCase("ar")}`);
-  return keys;
-}
-
-function readNotes(): Record<string, string> {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function initialNoteForCustomer(customer: CustomerRow): string {
-  const notes = readNotes();
-  return noteKeysForCustomer(customer).map((key) => notes[key]).find(Boolean) || "";
-}
-
 function editErrorMessage(cause: unknown): string {
   if (cause instanceof CoreApiError) {
     if (cause.code === "core_client:phone_conflict") {
@@ -141,7 +115,7 @@ export default function CustomerRecordModal({
   const [loyaltyReason, setLoyaltyReason] = useState("");
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltyMessage, setLoyaltyMessage] = useState("");
-  const [noteText, setNoteText] = useState(() => initialNoteForCustomer(customer));
+  const [noteText, setNoteText] = useState(() => repairCustomerDisplayText(customer.importedNote));
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteFeedback, setNoteFeedback] = useState<Feedback>(null);
   const noteSavedTimer = useRef<number | null>(null);
@@ -186,6 +160,11 @@ export default function CustomerRecordModal({
     setEditPhone(customer.phone === "—" ? "" : customer.phone);
   }, [customer.name, customer.phone, editing]);
 
+  useEffect(() => {
+    setNoteText(repairCustomerDisplayText(customer.importedNote));
+    setNoteFeedback(null);
+  }, [customer.clientId, customer.importedNote]);
+
   useEffect(() => () => {
     if (noteSavedTimer.current) window.clearTimeout(noteSavedTimer.current);
   }, []);
@@ -226,14 +205,6 @@ export default function CustomerRecordModal({
     setEditFeedback(null);
     try {
       const updated = await CoreClientService.updateProfile(clientId, { name, phone });
-      const notes = readNotes();
-      const stableNoteKey = `id:${updated.id}`;
-      if (noteText.trim() && !notes[stableNoteKey]) {
-        localStorage.setItem(NOTES_KEY, JSON.stringify({
-          ...notes,
-          [stableNoteKey]: noteText.trim(),
-        }));
-      }
       onCustomerUpdated(updated);
       setOverview((current) => current ? { ...current, client: updated } : current);
       setEditName(updated.name);
@@ -249,18 +220,28 @@ export default function CustomerRecordModal({
 
   const saveNote = async () => {
     if (noteSaving) return;
+    const clientId = String(customer.clientId || "").trim();
+    if (!clientId) {
+      setNoteFeedback({ type: "error", text: "لا يمكن حفظ ملاحظة لعميلة غير مرتبطة بسجل Core D1." });
+      return;
+    }
+
     setNoteSaving(true);
     setNoteFeedback(null);
     try {
-      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-      const notes = readNotes();
-      const key = noteKeysForCustomer(customer)[0];
-      localStorage.setItem(NOTES_KEY, JSON.stringify({ ...notes, [key]: noteText.trim() }));
-      setNoteFeedback({ type: "success", text: "تم حفظ الملاحظة." });
+      const updated = await CoreClientService.patch(clientId, { notes: noteText.trim() });
+      const canonicalNote = repairCustomerDisplayText(updated.notes);
+      setNoteText(canonicalNote);
+      onCustomerUpdated(updated);
+      setOverview((current) => current ? { ...current, client: updated } : current);
+      setNoteFeedback({ type: "success", text: "تم حفظ الملاحظة في Core." });
       if (noteSavedTimer.current) window.clearTimeout(noteSavedTimer.current);
       noteSavedTimer.current = window.setTimeout(() => setNoteFeedback(null), 2500);
-    } catch {
-      setNoteFeedback({ type: "error", text: "تعذر حفظ الملاحظة على هذا الجهاز." });
+    } catch (cause) {
+      setNoteFeedback({
+        type: "error",
+        text: cause instanceof Error ? cause.message : "تعذر حفظ الملاحظة في Core.",
+      });
     } finally {
       setNoteSaving(false);
     }
@@ -416,13 +397,11 @@ export default function CustomerRecordModal({
               ) : null}
         </section>
 
-        {customer.importedNote ? <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card"><h3 className="dsv2-section-title">ملاحظة من ملف العميلة</h3><p>{repairCustomerDisplayText(customer.importedNote)}</p></section> : null}
-
         <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card">
           <h3 className="dsv2-section-title">ملاحظات إدارية داخلية</h3>
-          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة..." disabled={noteSaving} />
+          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة..." disabled={noteSaving || !customer.clientId} />
           <div className="dsv2-customers-note-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving}>{noteSaving ? "جارٍ حفظ الملاحظة..." : "حفظ الملاحظة"}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving || !customer.clientId}>{noteSaving ? "جارٍ حفظ الملاحظة..." : "حفظ الملاحظة"}</button>
             {noteFeedback ? <span className={`dsv2-customers-form-feedback is-${noteFeedback.type}`} role="status">{noteFeedback.text}</span> : null}
           </div>
         </section>

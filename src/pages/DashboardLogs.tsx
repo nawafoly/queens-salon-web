@@ -446,6 +446,10 @@ function buildIncomeFromBefore(before: Record<string, unknown>, row: LogRow): In
   const createdAtMs = safeMs((before as any).createdAt) || safeMs((before as any).updatedAt) || row.atMs || Date.now();
   const date = normalizeIsoDate((before as any).date, createdAtMs);
   const source = String((before as any).source ?? "dashboard").trim() || "dashboard";
+  const bookingId = String((before as any).bookingId ?? (before as any).booking_id ?? "").trim();
+  const paymentId = String((before as any).paymentId ?? (before as any).payment_id ?? "").trim();
+  if (bookingId || paymentId) return null;
+
   return {
     id,
     date,
@@ -453,7 +457,6 @@ function buildIncomeFromBefore(before: Record<string, unknown>, row: LogRow): In
     method: normalizePaymentMethod((before as any).method ?? (before as any).paymentMethod),
     source,
     note: String((before as any).note ?? "").trim() || undefined,
-    bookingId: String((before as any).bookingId ?? "").trim() || undefined,
     createdAt: createdAtMs || Date.now(),
   };
 }

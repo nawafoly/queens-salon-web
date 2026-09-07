@@ -9,6 +9,11 @@ export type CoreClient = {
   notes?: string | null;
   vip?: boolean;
   legacyClientDocId?: string | null;
+  loyaltyBalance?: number;
+  loyaltyEarned?: number;
+  loyaltyUsed?: number;
+  loyaltyReversed?: number;
+  lastCompletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -114,6 +119,7 @@ export type CoreBooking = {
   status: string;
   source?: string | null;
   notes?: string | null;
+  adminNotes?: string | null;
   subtotalHalalas: number;
   discountHalalas: number;
   totalHalalas: number;
@@ -171,6 +177,18 @@ export type CoreIncomeEntry = {
   id: string;
   salonId: string;
   bookingId?: string | null;
+  bookingPublicId?: string | null;
+  bookingDate?: string | null;
+  bookingStatus?: string | null;
+  bookingTotalHalalas?: number | null;
+  bookingPaidHalalas?: number | null;
+  bookingPaymentStatus?: string | null;
+  bookingStaffId?: string | null;
+  bookingStaffName?: string | null;
+  bookingClientName?: string | null;
+  bookingClientPhone?: string | null;
+  bookingInvoiceId?: string | null;
+  bookingInvoiceNumber?: string | null;
   invoiceId?: string | null;
   paymentId?: string | null;
   amountHalalas: number;

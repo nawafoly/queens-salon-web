@@ -429,6 +429,7 @@ export const coreD1BookingDataSource: BookingDataSource = {
       status:
         patch.status === "confirmed" ? "booked" : patch.status,
       notes: patch.note === undefined ? undefined : patch.note || null,
+      adminNotes: patch.adminNote === undefined ? undefined : patch.adminNote || null,
       bookingDate: patch.date,
       startTime: patch.time || patch.startTime,
       endTime: patch.endTime,

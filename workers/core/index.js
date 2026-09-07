@@ -23,6 +23,7 @@ import {
 import {
   createClient,
   getClient,
+  getClientLoyaltySummary,
   listClients,
   patchClient,
 } from './repositories/clients.js';
@@ -466,6 +467,10 @@ function match(url, method) {
     return { name: clientPortalRoutes.get(path) };
   }
 
+  if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
+    return { name: "client:loyalty-summary" };
+  }
+
   const clientOverview = /^\/api\/core\/clients\/([^/]+)\/overview$/.exec(path);
   if (clientOverview && method === "GET") {
     return { name: "client:admin-overview", id: clientOverview[1] };
@@ -483,6 +488,9 @@ function match(url, method) {
     return { name: "bookings:internal" };
   }
 
+  if (path === "/api/core/bookings/mine" && method === "GET") {
+    return { name: "bookings:mine" };
+  }
   const bookingAction =
     /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
       path
@@ -949,6 +957,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return listSelfOffers(db, ctx.salonId, ctx.identity);
       break;
 
+    case "client:loyalty-summary":
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      if (method === "GET") return getClientLoyaltySummary(db, ctx.salonId);
+      break;
+
     case "client:admin-overview":
       requireRole(ctx.role, OPERATIONS_ROLES);
       if (method === "GET") return getAdminClientOverview(db, ctx.salonId, route.id);
@@ -1058,6 +1071,19 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return getPublicBookingTrack(db, ctx.salonId, query.publicId || query.public_id || query.code);
       break;
 
+    case "bookings:mine":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) {
+        throw new AppError(403, "core_booking:employee_link_required");
+      }
+      return listBookings(
+        db,
+        ctx.salonId,
+        {
+          ...query,
+          staffId: ctx.employeeId,
+        }
+      );
     case "bookings":
       if (method === "GET" && route.id) {
         return getBooking(db, ctx.salonId, route.id);
@@ -1066,6 +1092,10 @@ async function dispatch(ctx, route, method, body, query, env) {
         return listBookings(db, ctx.salonId, query);
       }
       if (method === "POST") {
+        if (OPERATIONS_ROLES.has(ctx.role)) {
+          requirePermission(ctx, "bookings.create");
+        }
+
         let bookingBody = body;
         if (ctx.role === "client") {
           const selfClient = await resolveSelfClient(
@@ -1089,14 +1119,57 @@ async function dispatch(ctx, route, method, body, query, env) {
         );
       }
       if (method === "PATCH" && route.id) {
-        return patchBooking(db, ctx.salonId, route.id, body, actorInfo);
+        const patchBody = body || {};
+        const patchKeys = Object.keys(patchBody);
+        const cancelling =
+          cleanText(patchBody.status).toLowerCase() === "cancelled";
+
+        if (cancelling) {
+          requirePermission(ctx, "bookings.cancel");
+        } else {
+          const financialFields = new Set([
+            "paymentStatus",
+            "payment_status",
+            "subtotalHalalas",
+            "subtotal_halalas",
+            "discountHalalas",
+            "discount_halalas",
+            "totalHalalas",
+            "total_halalas",
+            "paidHalalas",
+            "paid_halalas",
+            "paymentMethod",
+            "payment_method",
+            "paymentBreakdown",
+            "payment_breakdown",
+            "reconcilePayment",
+          ]);
+
+          const hasFinancialMutation = patchKeys.some((key) =>
+            financialFields.has(key)
+          );
+          const hasOperationalMutation =
+            patchKeys.length === 0 ||
+            patchKeys.some((key) => !financialFields.has(key));
+
+          if (hasOperationalMutation) {
+            requirePermission(ctx, "bookings.update");
+          }
+          if (hasFinancialMutation) {
+            requirePermission(ctx, "bookings.payment.manage");
+          }
+        }
+
+        return patchBooking(db, ctx.salonId, route.id, patchBody, actorInfo);
       }
       if (method === "DELETE" && route.id) {
+        requirePermission(ctx, "bookings.delete");
         return deleteBooking(db, ctx.salonId, route.id, actorInfo);
       }
       break;
 
     case "bookings:internal":
+      requirePermission(ctx, "bookings.create");
       return createBooking(
         db,
         ctx.salonId,
@@ -1104,11 +1177,12 @@ async function dispatch(ctx, route, method, body, query, env) {
         actorInfo,
         { allowPastDates: true }
       );
-
     case "booking:complete":
+      requirePermission(ctx, "bookings.update");
       return completeBooking(db, ctx.salonId, route.id);
 
     case "booking:cancel":
+      requirePermission(ctx, "bookings.cancel");
       return cancelBooking(
         db,
         ctx.salonId,
@@ -1117,6 +1191,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       );
 
     case "booking:reschedule":
+      requirePermission(ctx, "bookings.update");
       return rescheduleBooking(db, ctx.salonId, route.id, body);
 
     case "invoices":
@@ -1145,15 +1220,19 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "income":
       if (method === "GET") {
+        requirePermission(ctx, "income.view");
         return listIncome(db, ctx.salonId, query);
       }
       if (method === "POST") {
+        requirePermission(ctx, "income.manage");
         return createIncome(db, ctx.salonId, body, actorInfo);
       }
       if (method === "PATCH" && route.id) {
+        requirePermission(ctx, "income.manage");
         return patchIncome(db, ctx.salonId, route.id, body, actorInfo);
       }
       if (method === "DELETE" && route.id) {
+        requirePermission(ctx, "income.manage");
         return deleteIncome(db, ctx.salonId, route.id, actorInfo);
       }
       break;

@@ -16,6 +16,16 @@ test("finance runtime is Core-only", () => {
   assert.match(income, /CoreRefundService/);
 });
 
+test("finance settings are Core D1 only", () => {
+  const source = read("src/services/FinanceSettingsService.ts");
+  assert.match(source, /CoreSettingsService/);
+  assert.match(source, /CoreSettingsService\.get/);
+  assert.match(source, /CoreSettingsService\.save/);
+  assert.doesNotMatch(source, /firebase\/firestore/);
+  assert.doesNotMatch(source, /services\/firebase/);
+  assert.doesNotMatch(source, /\b(getDoc|setDoc|onSnapshot|serverTimestamp)\b/);
+});
+
 test("legacy finance services stay deleted", () => {
   for (const path of [
     "src/services/firestoreIncome.ts",

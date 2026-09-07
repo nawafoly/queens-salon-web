@@ -240,8 +240,11 @@ export async function listSelfBookings(db, salonId, identity) {
   return bookings.map((booking) => {
     const refundState = refundsByBooking.get(cleanText(booking.id)) || { total: 0, rows: [] };
     const payment = paymentByBooking.get(cleanText(booking.id));
+    const clientBooking = { ...booking };
+    delete clientBooking.admin_notes;
+    delete clientBooking.adminNotes;
     return {
-      ...booking,
+      ...clientBooking,
       status: computedBookingStatus(booking, refundState.total),
       original_status: booking.status,
       payment_method: payment?.method || null,

@@ -333,17 +333,46 @@ async function assertStaffRangeAvailable(
 
 export async function listBookings(db, salonId, query = {}) {
   const date = cleanText(query.date || query.bookingDate);
-  const rows = date
-    ? await dbAll(
-        db,
-        "SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ? AND deleted_at IS NULL ORDER BY start_time LIMIT 500",
-        [salonId, date]
+  const staffId = cleanText(query.staffId || query.staff_id);
+
+  const where = [
+    "b.salon_id = ?",
+    "b.deleted_at IS NULL",
+  ];
+  const params = [salonId];
+
+  if (date) {
+    where.push("b.booking_date = ?");
+    params.push(date);
+  }
+
+  if (staffId) {
+    where.push(`(
+      b.staff_id = ?
+      OR EXISTS (
+        SELECT 1
+          FROM booking_items assigned_item
+         WHERE assigned_item.salon_id = b.salon_id
+           AND assigned_item.booking_id = b.id
+           AND assigned_item.staff_id = ?
       )
-    : await dbAll(
-        db,
-        "SELECT * FROM bookings WHERE salon_id = ? AND deleted_at IS NULL ORDER BY booking_date DESC, start_time DESC LIMIT 500",
-        [salonId]
-      );
+    )`);
+    params.push(staffId, staffId);
+  }
+
+  const rows = await dbAll(
+    db,
+    `SELECT b.*
+       FROM bookings b
+      WHERE ${where.join(" AND ")}
+      ORDER BY ${
+        date
+          ? "b.start_time"
+          : "b.booking_date DESC, b.start_time DESC"
+      }
+      LIMIT 500`,
+    params
+  );
 
   if (!rows.length) return [];
 
@@ -356,6 +385,7 @@ export async function listBookings(db, salonId, query = {}) {
     }
     return groups;
   };
+
   const bookingIds = rows.map((row) => cleanText(row.id)).filter(Boolean);
   const clientIds = [...new Set(rows.map((row) => cleanText(row.client_id)).filter(Boolean))];
   const staffIds = [...new Set(rows.map((row) => cleanText(row.staff_id)).filter(Boolean))];
@@ -363,7 +393,12 @@ export async function listBookings(db, salonId, query = {}) {
   const clientIdChunks = chunk(clientIds);
   const staffIdChunks = chunk(staffIds);
 
-  const [clientGroups, staffGroups, invoiceGroups, itemGroups] = await Promise.all([
+  const [
+    clientGroups,
+    staffGroups,
+    invoiceGroups,
+    itemGroups,
+  ] = await Promise.all([
     Promise.all(
       clientIdChunks.map((ids) =>
         dbAll(
@@ -401,12 +436,14 @@ export async function listBookings(db, salonId, query = {}) {
       )
     ),
   ]);
+
   const clients = clientGroups.flat();
   const staffRows = staffGroups.flat();
   const invoices = invoiceGroups.flat();
 
   const clientsById = new Map(clients.map((row) => [cleanText(row.id), row]));
   const staffById = new Map(staffRows.map((row) => [cleanText(row.id), row]));
+
   const itemsByBookingId = new Map();
   for (const item of itemGroups.flat()) {
     const bookingId = cleanText(item.booking_id);
@@ -426,6 +463,7 @@ export async function listBookings(db, salonId, query = {}) {
     const client = clientsById.get(cleanText(row.client_id));
     const staff = staffById.get(cleanText(row.staff_id));
     const invoice = invoiceByBookingId.get(cleanText(row.id));
+
     return {
       ...row,
       client_name: client?.name || null,
@@ -440,11 +478,11 @@ export async function listBookings(db, salonId, query = {}) {
 
   const search = cleanText(query.search || query.q).toLowerCase();
   const clientId = cleanText(query.clientId || query.client_id);
-  const staffId = cleanText(query.staffId || query.staff_id);
   const status = cleanText(query.status);
 
   return enriched.filter((row) => {
     if (clientId && cleanText(row.client_id) !== clientId) return false;
+
     if (
       staffId &&
       cleanText(row.staff_id) !== staffId &&
@@ -452,8 +490,10 @@ export async function listBookings(db, salonId, query = {}) {
     ) {
       return false;
     }
+
     if (status && cleanText(row.status) !== status) return false;
     if (!search) return true;
+
     return [
       row.id,
       row.public_id,
@@ -1224,6 +1264,10 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         data.notes === undefined
           ? undefined
           : optionalText(data.notes) || null,
+      admin_notes:
+        data.adminNotes === undefined && data.admin_notes === undefined
+          ? undefined
+          : optionalText(data.adminNotes ?? data.admin_notes) || null,
       payment_status:
         data.paymentStatus === undefined && data.payment_status === undefined
           ? undefined
@@ -1396,7 +1440,7 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     {
       sql: `UPDATE bookings
                SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?,
-                   notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
+                   notes = ?, admin_notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
                    slot_step_min = ?, buffer_min = ?, updated_at = ?
              WHERE salon_id = ? AND id = ?`,
       params: [
@@ -1405,6 +1449,9 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         startTime,
         endTime,
         data.notes === undefined ? before.notes || null : optionalText(data.notes) || null,
+        data.adminNotes === undefined && data.admin_notes === undefined
+          ? before.admin_notes || null
+          : optionalText(data.adminNotes ?? data.admin_notes) || null,
         subtotalHalalas,
         requestedTotal,
         paymentStatus,
@@ -1580,6 +1627,7 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
   await safeRefreshTargetsForBooking(db, salonId, bookingId);
   return getBooking(db, salonId, bookingId);
 }
+
 
 export async function completeBooking(db, salonId, id) {
   const now = nowIso();

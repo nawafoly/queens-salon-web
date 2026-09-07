@@ -30,10 +30,9 @@ import {
 } from "../../services/firestoreAttendance";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { CoreHrService } from "../../services/CoreHrService";
-import {
-  listEmployeeBookings,
-  type BookingDocWithId,
-} from "../../services/firestoreBookings";
+import { type BookingDocWithId } from "../../services/firestoreBookings";
+import { CoreBookingService } from "../../services/CoreBookingService";
+import { coreBookingToLegacy } from "../../services/coreBookingMappers";
 import {
   getBrowserPosition,
   resolveAssignedAttendanceZoneId,
@@ -770,7 +769,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance]);
 
   useEffect(() => {
-    if (!attendanceEmployeeId) {
+    if (!session.uid) {
       setEmployeeBookings([]);
       return;
     }
@@ -780,7 +779,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     async function loadEmployeeBookings() {
       setEmployeeBookingsLoading(true);
       try {
-        const rows = await listEmployeeBookings(attendanceEmployeeId, displayName);
+        const rows = (await CoreBookingService.mine()).map(coreBookingToLegacy);
         if (alive) setEmployeeBookings(rows);
       } catch {
         if (alive) setEmployeeBookings([]);
@@ -794,7 +793,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceEmployeeId, displayName]);
+  }, [session.uid]);
 
   useEffect(() => {
     if (!session.uid) {

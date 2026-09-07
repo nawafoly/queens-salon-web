@@ -69,6 +69,18 @@ export type IncomeItem = {
   note?: string;
 
   bookingId?: string;
+  bookingPublicId?: string;
+  bookingDate?: string;
+  bookingStatus?: string;
+  bookingTotal?: number;
+  bookingPaid?: number;
+  bookingPaymentStatus?: string;
+  bookingStaffId?: string;
+  bookingStaffName?: string;
+  bookingClientName?: string;
+  bookingClientPhone?: string;
+  bookingInvoiceId?: string;
+  bookingInvoiceNumber?: string;
 
   /** Optional client data (may exist for booking/internal/manual rows) */
   clientName?: string;

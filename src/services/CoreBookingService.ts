@@ -10,6 +10,7 @@ export type CoreBookingSearch = {
   status?: string;
 };
 
+
 export const CoreBookingService = {
   async list(query: CoreBookingSearch = {}): Promise<CoreBooking[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
@@ -18,6 +19,17 @@ export const CoreBookingService = {
     );
     return rows.map(mapCoreBooking);
   },
+
+  async mine(
+    query: Omit<CoreBookingSearch, "staffId"> = {}
+  ): Promise<CoreBooking[]> {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/bookings/mine",
+      { query }
+    );
+    return rows.map(mapCoreBooking);
+  },
+
 
   async get(id: string): Promise<CoreBooking> {
     const row = await coreApiRequest<Record<string, unknown>>(
@@ -61,6 +73,7 @@ export const CoreBookingService = {
     input: Partial<{
       status: string;
       notes: string | null;
+      adminNotes: string | null;
       paymentStatus: string;
       bookingDate: string;
       startTime: string;

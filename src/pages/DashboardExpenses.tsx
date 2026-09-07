@@ -258,6 +258,7 @@ const DashboardExpenses: React.FC = () => {
   // ✅ data (Firestore)
   const [items, setItems] = useState<Expense[]>([]);
   const [autoPayrollItems, setAutoPayrollItems] = useState<Expense[]>([]);
+  const [payrollLoadWarning, setPayrollLoadWarning] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   // ✅ NEW: كرت تنبيه + فلترة "الناقص ملاحظات"
@@ -559,14 +560,15 @@ const DashboardExpenses: React.FC = () => {
         setAutoPayrollItems(
           payrollItems
         );
+        setPayrollLoadWarning("");
       } catch (payrollErr) {
         console.warn(
           "Malikat Core payroll expenses load error:",
           payrollErr
         );
 
-        setAutoPayrollItems(
-          []
+        setPayrollLoadWarning(
+          "تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح."
         );
       }
 
@@ -963,11 +965,13 @@ const DashboardExpenses: React.FC = () => {
   });
 
   const exportPdf = () => {
+    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
     if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
     exportExpensesReportPdf(buildExpensesReportInput());
   };
 
   const exportExcel = () => {
+    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
     if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
     exportExpensesReportExcel(buildExpensesReportInput());
   };
@@ -1111,6 +1115,24 @@ const DashboardExpenses: React.FC = () => {
             ) : null}
           </div>
         </section>
+
+        {payrollLoadWarning ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              margin: "0 0 16px",
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid rgba(180, 120, 0, 0.28)",
+              background: "rgba(255, 193, 7, 0.12)",
+              fontWeight: 700,
+              lineHeight: 1.7,
+            }}
+          >
+            {payrollLoadWarning}
+          </div>
+        ) : null}
 
         <section className="expenses-v2-metrics" aria-label="ملخص المصروفات">
           <article className="dsv2-metric-card dsv2-metric-card--danger">

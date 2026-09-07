@@ -179,7 +179,7 @@ type DashboardFinanceTransaction = {
   createdAt: number;
 };
 
-type DashboardSnapshot = {
+type DashboardSnapshotData = {
   stats: DashboardStats;
   allScheduleBookings: Booking[];
   staffOperationalRows: StaffOperationalRow[];
@@ -190,7 +190,44 @@ type DashboardSnapshot = {
   savedAt: number;
 };
 
+type DashboardCacheScope = {
+  uid: string;
+  role: UiRole;
+  permissionsFingerprint: string;
+};
+
+type DashboardSnapshot = DashboardSnapshotData & {
+  cacheUid: string;
+  cacheRole: UiRole;
+  cachePermissionsFingerprint: string;
+};
+
 const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v3";
+const DASHBOARD_VIEW_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function dashboardLocalDateKey(ms: number): string {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "";
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function isDashboardViewCacheFresh(
+  snapshot: DashboardSnapshot,
+  now = Date.now()
+): boolean {
+  const savedAt = Number(snapshot?.savedAt);
+  if (!Number.isFinite(savedAt) || savedAt <= 0) return false;
+
+  const ageMs = now - savedAt;
+  if (ageMs < 0 || ageMs > DASHBOARD_VIEW_CACHE_TTL_MS) return false;
+
+  return dashboardLocalDateKey(savedAt) === dashboardLocalDateKey(now);
+}
 const emptyDashboardStats: DashboardStats = {
   todayBookings: 0,
   todayRevenue: 0,
@@ -201,24 +238,74 @@ const emptyFinanceToday = { income: 0, expenses: 0, net: 0 };
 
 let dashboardViewMemoryCache: DashboardSnapshot | null = null;
 
-function readDashboardViewCache(): DashboardSnapshot | null {
-  if (dashboardViewMemoryCache) return dashboardViewMemoryCache;
+function dashboardPermissionsFingerprint(permissions: readonly unknown[]): string {
+  return Array.from(
+    new Set(
+      (permissions || [])
+        .map((permission) => String(permission || "").trim())
+        .filter(Boolean)
+    )
+  )
+    .sort()
+    .join("|");
+}
+
+function readDashboardViewCache(scope: DashboardCacheScope): DashboardSnapshot | null {
+  const matchesScope = (snapshot: DashboardSnapshot) => {
+    if (snapshot.cacheUid !== scope.uid) return false;
+    if (snapshot.cacheRole !== scope.role) return false;
+    if (snapshot.cachePermissionsFingerprint !== scope.permissionsFingerprint) return false;
+    return true;
+  };
+
+  if (dashboardViewMemoryCache) {
+    if (
+      isDashboardViewCacheFresh(dashboardViewMemoryCache) &&
+      matchesScope(dashboardViewMemoryCache)
+    ) {
+      return dashboardViewMemoryCache;
+    }
+    clearDashboardViewCache();
+  }
+
   try {
     const raw = localStorage.getItem(DASHBOARD_VIEW_CACHE_KEY);
     if (!raw) return null;
+
     const parsed = JSON.parse(raw) as DashboardSnapshot;
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      clearDashboardViewCache();
+      return null;
+    }
+
+    if (!isDashboardViewCacheFresh(parsed) || !matchesScope(parsed)) {
+      clearDashboardViewCache();
+      return null;
+    }
+
     dashboardViewMemoryCache = parsed;
     return parsed;
   } catch {
-    return dashboardViewMemoryCache;
+    clearDashboardViewCache();
+    return null;
   }
 }
 
-function writeDashboardViewCache(snapshot: DashboardSnapshot) {
-  dashboardViewMemoryCache = snapshot;
+function writeDashboardViewCache(
+  scope: DashboardCacheScope,
+  snapshot: DashboardSnapshotData
+) {
+  const scopedSnapshot: DashboardSnapshot = {
+    ...snapshot,
+    cacheUid: scope.uid,
+    cacheRole: scope.role,
+    cachePermissionsFingerprint: scope.permissionsFingerprint,
+  };
+
+  dashboardViewMemoryCache = scopedSnapshot;
+
   try {
-    localStorage.setItem(DASHBOARD_VIEW_CACHE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(DASHBOARD_VIEW_CACHE_KEY, JSON.stringify(scopedSnapshot));
   } catch {
     // ignore cache write failures
   }
@@ -1008,6 +1095,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return getInitialDashboardUserInfo();
   });
   const [dashError, setDashError] = useState<string>("");
+  const [refreshWarning, setRefreshWarning] = useState<string>("");
   const [hasBootstrappedDashboard, setHasBootstrappedDashboard] = useState<boolean>(() => {
     if (hasExternalAuthBootstrap) return Boolean(externalDashboardRole);
     try {
@@ -1019,27 +1107,19 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
-  const initialDashboardSnapshot = readDashboardViewCache();
-
-  const [stats, setStats] = useState<DashboardStats>(() => initialDashboardSnapshot?.stats || emptyDashboardStats);
-  const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>(
-    () => initialDashboardSnapshot?.allScheduleBookings || []
-  );
-  const [staffOperationalRows, setStaffOperationalRows] = useState<StaffOperationalRow[]>(
-    () => initialDashboardSnapshot?.staffOperationalRows || []
-  );
+  const [stats, setStats] = useState<DashboardStats>(emptyDashboardStats);
+  const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>([]);
+  const [staffOperationalRows, setStaffOperationalRows] = useState<StaffOperationalRow[]>([]);
   const [scheduleDate, setScheduleDate] = useState<string>(() => formatLocalDateISO(new Date()));
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedBookingActivity, setSelectedBookingActivity] = useState<BookingActivityItem[]>([]);
   const [selectedBookingActivityLoading, setSelectedBookingActivityLoading] = useState(false);
   const [selectedBookingActivityError, setSelectedBookingActivityError] = useState("");
 
-  const [expensesTotalFS, setExpensesTotalFS] = useState(() => initialDashboardSnapshot?.expensesTotalFS || 0);
-  const [incomeTotalFS, setIncomeTotalFS] = useState(() => initialDashboardSnapshot?.incomeTotalFS || 0);
-  const [financeToday, setFinanceToday] = useState(() => initialDashboardSnapshot?.financeToday || emptyFinanceToday);
-  const [recentFinanceTransactions, setRecentFinanceTransactions] = useState<DashboardFinanceTransaction[]>(
-    () => initialDashboardSnapshot?.recentFinanceTransactions || []
-  );
+  const [expensesTotalFS, setExpensesTotalFS] = useState(0);
+  const [incomeTotalFS, setIncomeTotalFS] = useState(0);
+  const [financeToday, setFinanceToday] = useState(emptyFinanceToday);
+  const [recentFinanceTransactions, setRecentFinanceTransactions] = useState<DashboardFinanceTransaction[]>([]);
 
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
@@ -1053,9 +1133,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     .split("/")[0];
   const isHrWorkspacePage = DASHBOARD_HR_SECTIONS.has(dashboardSection);
   const navigate = useNavigate();
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const { permissions, hasPermission, hasAnyPermission } = usePermissions();
   const refreshRequestIdRef = useRef(0);
-  const hasDashboardDataRef = useRef(Boolean(initialDashboardSnapshot));
+  const hasDashboardDataRef = useRef(false);
+  const [verifiedDashboardUid, setVerifiedDashboardUid] = useState("");
+  const hydratedDashboardCacheScopeRef = useRef("");
+
+  const permissionsFingerprint = useMemo(
+    () => dashboardPermissionsFingerprint(permissions),
+    [permissions]
+  );
+
+  const dashboardCacheScope = useMemo<DashboardCacheScope | null>(() => {
+    const uid = String(verifiedDashboardUid || "").trim();
+    const role = userInfo?.role;
+    if (!uid || !role) return null;
+
+    return {
+      uid,
+      role,
+      permissionsFingerprint,
+    };
+  }, [verifiedDashboardUid, userInfo?.role, permissionsFingerprint]);
 
   useEffect(() => {
     const query = window.matchMedia("(min-width: 992px)");
@@ -1081,6 +1180,58 @@ const Dashboard: React.FC<DashboardProps> = ({
     () => filterOperationalScheduleBookings(allScheduleBookings || [], scheduleDate, staffOperationalRows),
     [allScheduleBookings, scheduleDate, staffOperationalRows]
   );
+
+  useEffect(() => {
+    if (!hasExternalAuthBootstrap || !authReady || !externalDashboardRole) {
+      setVerifiedDashboardUid("");
+      return;
+    }
+
+    setVerifiedDashboardUid(String(auth.currentUser?.uid || "").trim());
+  }, [hasExternalAuthBootstrap, authReady, externalDashboardRole]);
+
+  useEffect(() => {
+    if (isHrWorkspacePage) return;
+
+    const scopeKey = dashboardCacheScope
+      ? [
+          dashboardCacheScope.uid,
+          dashboardCacheScope.role,
+          dashboardCacheScope.permissionsFingerprint,
+        ].join("::")
+      : "__unverified__";
+
+    if (hydratedDashboardCacheScopeRef.current === scopeKey) return;
+    hydratedDashboardCacheScopeRef.current = scopeKey;
+
+    refreshRequestIdRef.current += 1;
+    hasDashboardDataRef.current = false;
+    setRefreshWarning("");
+    setStats(emptyDashboardStats);
+    setAllScheduleBookings([]);
+    setStaffOperationalRows([]);
+    setExpensesTotalFS(0);
+    setIncomeTotalFS(0);
+    setFinanceToday(emptyFinanceToday);
+    setRecentFinanceTransactions([]);
+
+    if (!dashboardCacheScope) {
+      clearDashboardViewCache();
+      return;
+    }
+
+    const cached = readDashboardViewCache(dashboardCacheScope);
+    if (!cached) return;
+
+    setStats(cached.stats);
+    setAllScheduleBookings(cached.allScheduleBookings);
+    setStaffOperationalRows(cached.staffOperationalRows);
+    setExpensesTotalFS(cached.expensesTotalFS);
+    setIncomeTotalFS(cached.incomeTotalFS);
+    setFinanceToday(cached.financeToday);
+    setRecentFinanceTransactions(cached.recentFinanceTransactions);
+    hasDashboardDataRef.current = true;
+  }, [dashboardCacheScope, isHrWorkspacePage]);
 
   useEffect(() => {
     if (!hasExternalAuthBootstrap || !externalDashboardRole) return;
@@ -1117,6 +1268,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     if (roleForRefresh === "staff") {
       hasDashboardDataRef.current = false;
+      setRefreshWarning("");
       clearDashboardViewCache();
       setStats(emptyDashboardStats);
       setAllScheduleBookings([]);
@@ -1298,16 +1450,19 @@ const Dashboard: React.FC<DashboardProps> = ({
       setFinanceToday(nextFinanceToday);
       setRecentFinanceTransactions(nextRecentFinanceTransactions);
       hasDashboardDataRef.current = true;
-      writeDashboardViewCache({
-        stats: nextStats,
-        allScheduleBookings: uiBookings,
-        staffOperationalRows: nextStaffRows,
-        expensesTotalFS: nextExpensesTotal,
-        incomeTotalFS: nextIncomeTotal,
-        financeToday: nextFinanceToday,
-        recentFinanceTransactions: nextRecentFinanceTransactions,
-        savedAt: Date.now(),
-      });
+      setRefreshWarning("");
+      if (dashboardCacheScope) {
+        writeDashboardViewCache(dashboardCacheScope, {
+          stats: nextStats,
+          allScheduleBookings: uiBookings,
+          staffOperationalRows: nextStaffRows,
+          expensesTotalFS: nextExpensesTotal,
+          incomeTotalFS: nextIncomeTotal,
+          financeToday: nextFinanceToday,
+          recentFinanceTransactions: nextRecentFinanceTransactions,
+          savedAt: Date.now(),
+        });
+      }
     } catch (e) {
       if (requestId !== refreshRequestIdRef.current) return;
       console.error("refreshDashboard error:", e);
@@ -1315,6 +1470,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
+      if (hasDashboardDataRef.current) {
+        setRefreshWarning(
+          `تعذر تحديث بيانات لوحة التحكم من المصدر التشغيلي. البيانات المعروضة هي آخر نسخة محلية صالحة. step: ${step} — ${msg || code}`
+        );
+      }
       if (!options?.silent && !hasDashboardDataRef.current) {
         alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
       }
@@ -1476,6 +1636,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         step = "ui:setUserInfo";
         const name = profile.name || user.displayName || "مستخدم";
 
+        setVerifiedDashboardUid(user.uid);
         setUserInfo({
           name,
           role: dashRole,
@@ -1565,6 +1726,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     } finally {
       refreshRequestIdRef.current += 1;
       hasDashboardDataRef.current = false;
+      setRefreshWarning("");
       clearDashboardViewCache();
       setUserInfo(null);
       setHasBootstrappedDashboard(false);
@@ -2635,6 +2797,24 @@ const Dashboard: React.FC<DashboardProps> = ({
               }
             />
 
+            {refreshWarning ? (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  margin: "12px 18px 0",
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(180, 120, 0, 0.28)",
+                  background: "rgba(255, 193, 7, 0.12)",
+                  fontWeight: 700,
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {refreshWarning}
+              </div>
+            ) : null}
             <div className="dashboard-inner">
               {isHrWorkspacePage ? (
                 <AdminHrDashboard embedded />
