@@ -177,6 +177,18 @@ export type CoreIncomeEntry = {
   id: string;
   salonId: string;
   bookingId?: string | null;
+  bookingPublicId?: string | null;
+  bookingDate?: string | null;
+  bookingStatus?: string | null;
+  bookingTotalHalalas?: number | null;
+  bookingPaidHalalas?: number | null;
+  bookingPaymentStatus?: string | null;
+  bookingStaffId?: string | null;
+  bookingStaffName?: string | null;
+  bookingClientName?: string | null;
+  bookingClientPhone?: string | null;
+  bookingInvoiceId?: string | null;
+  bookingInvoiceNumber?: string | null;
   invoiceId?: string | null;
   paymentId?: string | null;
   amountHalalas: number;

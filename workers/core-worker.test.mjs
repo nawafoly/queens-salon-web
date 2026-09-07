@@ -119,7 +119,11 @@ class FakeD1 {
       "bookings.view",
       "bookings.create",
       "bookings.update",
+      "bookings.cancel",
+      "bookings.payment.manage",
       "bookings.delete",
+      "income.view",
+      "income.manage",
       "finance.view",
       "finance.manage",
       "reports.view",
@@ -140,8 +144,8 @@ class FakeD1 {
     };
     grantRole("admin", permissionKeys.filter((key) => !["accounts.delete", "permissions.manage", "roles.manage"].includes(key)));
     grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
-    grantRole("accountant", ["finance.view", "finance.manage", "reports.view", "audit.read"]);
-    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update"]);
+    grantRole("accountant", ["finance.view", "finance.manage", "income.view", "income.manage", "reports.view", "audit.read"]);
+    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage"]);
     grantRole("staff", ["bookings.view", "targets.view_own"]);
 
     const accounts = [
@@ -974,6 +978,16 @@ class FakeD1 {
       if (!row) return [];
       if (normalized.includes("deleted_at IS NULL") && row.deleted_at) return [];
       return [row];
+    }
+    if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? AND id IN (")) {
+      const [salonId, ...ids] = params;
+      const requestedIds = new Set(ids.map(String));
+      return this.rows("bookings").filter(
+        (row) =>
+          row.salon_id === salonId &&
+          requestedIds.has(String(row.id)) &&
+          (!normalized.includes("deleted_at IS NULL") || !row.deleted_at)
+      );
     }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ?")) {
       const [salonId, date] = params;
@@ -3532,6 +3546,147 @@ test("booking conflict rejects same staff slot", async () => {
   assert.equal(body.error, "core_booking:staff_slot_conflict");
 });
 
+test("booking mutation routes enforce canonical permissions", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const seedBooking = (id) => {
+    fake.seed("bookings", {
+      id,
+      salon_id: "main",
+      client_id: "client-a",
+      staff_id: "staff-a",
+      booking_date: "2027-01-10",
+      start_time: "10:00",
+      end_time: "10:30",
+      status: "booked",
+      source: "test",
+      notes: null,
+      subtotal_halalas: 7500,
+      discount_halalas: 0,
+      total_halalas: 7500,
+      payment_status: "unpaid",
+      package_sessions_used: 0,
+      created_by_uid: "owner1",
+      created_at: "2027-01-01T00:00:00.000Z",
+      updated_at: "2027-01-01T00:00:00.000Z",
+      cancelled_at: null,
+      completed_at: null,
+    });
+  };
+
+  const expectForbidden = async (path, options) => {
+    const response = await worker.fetch(request(path, options), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 403, JSON.stringify(body));
+    return body;
+  };
+
+  seedBooking("booking-auth-operational");
+  await expectForbidden("/api/core/bookings/booking-auth-operational", {
+    method: "PATCH",
+    token: "test:hr1:hr",
+    body: { notes: "forbidden operational edit" },
+  });
+
+  seedBooking("booking-auth-financial");
+  await expectForbidden("/api/core/bookings/booking-auth-financial", {
+    method: "PATCH",
+    token: "test:accountant1:accountant",
+    body: { paidHalalas: 2500, reconcilePayment: true },
+  });
+
+  seedBooking("booking-auth-mixed");
+  await expectForbidden("/api/core/bookings/booking-auth-mixed", {
+    method: "PATCH",
+    token: "test:accountant1:accountant",
+    body: {
+      notes: "mixed edit",
+      paidHalalas: 2500,
+      reconcilePayment: true,
+    },
+  });
+
+  seedBooking("booking-auth-delete-reception");
+  await expectForbidden("/api/core/bookings/booking-auth-delete-reception", {
+    method: "DELETE",
+    token: "test:reception1:reception",
+    body: {},
+  });
+
+  seedBooking("booking-auth-complete-accountant");
+  await expectForbidden(
+    "/api/core/bookings/booking-auth-complete-accountant/complete",
+    {
+      method: "POST",
+      token: "test:accountant1:accountant",
+      body: { salonId: "main" },
+    }
+  );
+
+  seedBooking("booking-auth-cancel-accountant");
+  await expectForbidden(
+    "/api/core/bookings/booking-auth-cancel-accountant/cancel",
+    {
+      method: "POST",
+      token: "test:accountant1:accountant",
+      body: { salonId: "main", reason: "forbidden" },
+    }
+  );
+
+  seedBooking("booking-auth-reschedule-accountant");
+  await expectForbidden(
+    "/api/core/bookings/booking-auth-reschedule-accountant/reschedule",
+    {
+      method: "POST",
+      token: "test:accountant1:accountant",
+      body: {
+        salonId: "main",
+        bookingDate: "2027-01-11",
+        startTime: "10:00",
+      },
+    }
+  );
+
+  const internalResponse = await worker.fetch(
+    request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:accountant1:accountant",
+      body: {
+        salonId: "main",
+        id: "booking-auth-internal",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-01-10",
+        startTime: "12:00",
+        items: [{ id: "item-auth-internal", serviceId: "svc-a" }],
+      },
+    }),
+    env(fake)
+  );
+  assert.equal(
+    internalResponse.status,
+    403,
+    JSON.stringify(await json(internalResponse))
+  );
+
+  seedBooking("booking-auth-owner-financial");
+  const ownerFinancial = await worker.fetch(
+    request("/api/core/bookings/booking-auth-owner-financial", {
+      method: "PATCH",
+      body: {
+        paymentStatus: "partial",
+      },
+    }),
+    env(fake)
+  );
+  assert.equal(
+    ownerFinancial.status,
+    200,
+    JSON.stringify(await json(ownerFinancial))
+  );
+});
+
 test("booking completion and cancellation update status", async () => {
   const fake = new FakeD1();
   seedCore(fake);
@@ -3715,6 +3870,140 @@ test("mixed booking payments create independent payment and income rows", async 
   assert.equal(fake.find("bookings", "main", "booking-mixed").payment_status, "paid");
 });
 
+test("booking payment reconciliation replaces canonical payment and income rows atomically", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  await createCoreBooking(fake, {
+    id: "booking-reconcile-edit",
+    invoiceId: "invoice-reconcile-edit",
+  });
+
+  fake.seed("payments", {
+    id: "payment-reconcile-old",
+    salon_id: "main",
+    invoice_id: "invoice-reconcile-edit",
+    booking_id: "booking-reconcile-edit",
+    client_id: "client-a",
+    method: "card",
+    amount_halalas: 7500,
+    status: "paid",
+    provider: "seed",
+    created_at: "2026-01-01T00:00:00.000Z",
+  });
+
+  fake.seed("income_entries", {
+    id: "income-reconcile-old",
+    salon_id: "main",
+    booking_id: "booking-reconcile-edit",
+    invoice_id: "invoice-reconcile-edit",
+    payment_id: "payment-reconcile-old",
+    amount_halalas: 7500,
+    category: "payment",
+    description: "Old payment",
+    method: "card",
+    source: "booking",
+    occurred_at: "2026-01-01T00:00:00.000Z",
+    created_at: "2026-01-01T00:00:00.000Z",
+  });
+
+  fake.update("invoices", "main", "invoice-reconcile-edit", {
+    paid_halalas: 7500,
+    status: "paid",
+  });
+
+  fake.update("bookings", "main", "booking-reconcile-edit", {
+    payment_status: "paid",
+  });
+
+  const response = await worker.fetch(
+    request("/api/core/bookings/booking-reconcile-edit", {
+      method: "PATCH",
+      body: {
+        paidHalalas: 2500,
+        paymentMethod: "card",
+        reconcilePayment: true,
+      },
+    }),
+    env(fake)
+  );
+
+  assert.equal(response.status, 200);
+
+  const booking = fake.find(
+    "bookings",
+    "main",
+    "booking-reconcile-edit"
+  );
+
+  const invoice = fake.find(
+    "invoices",
+    "main",
+    "invoice-reconcile-edit"
+  );
+
+  const payments = fake
+    .rows("payments")
+    .filter(
+      (row) =>
+        row.salon_id === "main" &&
+        row.booking_id === "booking-reconcile-edit"
+    );
+
+  const incomeRows = fake
+    .rows("income_entries")
+    .filter(
+      (row) =>
+        row.salon_id === "main" &&
+        row.booking_id === "booking-reconcile-edit" &&
+        row.payment_id
+    );
+
+  assert.equal(booking.payment_status, "partial");
+
+  assert.equal(Number(invoice.paid_halalas), 2500);
+  assert.equal(invoice.status, "partial");
+
+  assert.equal(payments.length, 1);
+  assert.equal(payments[0].method, "card");
+  assert.equal(Number(payments[0].amount_halalas), 2500);
+  assert.equal(payments[0].provider, "dashboard_edit");
+  assert.notEqual(payments[0].id, "payment-reconcile-old");
+
+  assert.equal(incomeRows.length, 1);
+  assert.equal(incomeRows[0].payment_id, payments[0].id);
+  assert.equal(incomeRows[0].invoice_id, "invoice-reconcile-edit");
+  assert.equal(incomeRows[0].method, "card");
+  assert.equal(Number(incomeRows[0].amount_halalas), 2500);
+  assert.notEqual(incomeRows[0].id, "income-reconcile-old");
+
+  assert.equal(
+    fake.find("payments", "main", "payment-reconcile-old"),
+    null
+  );
+
+  assert.equal(
+    fake.find("income_entries", "main", "income-reconcile-old"),
+    null
+  );
+
+  assert.equal(
+    payments.reduce(
+      (sum, row) => sum + Number(row.amount_halalas || 0),
+      0
+    ),
+    Number(invoice.paid_halalas)
+  );
+
+  assert.equal(
+    incomeRows.reduce(
+      (sum, row) => sum + Number(row.amount_halalas || 0),
+      0
+    ),
+    Number(invoice.paid_halalas)
+  );
+});
+
 test("payment batch failure rolls back and retry succeeds without duplicate rows", async () => {
   const fake = new FakeD1();
   seedCore(fake);
@@ -3829,6 +4118,180 @@ test("catalog sections and categories use Core D1", async () => {
   body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(body.data.length, 1);
+});
+
+test("income routes enforce canonical income permissions", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(request("/api/core/income", {
+    token: "test:accountant1:accountant",
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/income", {
+    method: "POST",
+    token: "test:accountant1:accountant",
+    body: { id: "income-accountant", amountHalalas: 1000, method: "cash" },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/income", {
+    token: "test:hr1:hr",
+  }), env(fake));
+  assert.equal(response.status, 403, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/income", {
+    method: "POST",
+    token: "test:hr1:hr",
+    body: { id: "income-forbidden", amountHalalas: 1000, method: "cash" },
+  }), env(fake));
+  assert.equal(response.status, 403, JSON.stringify(await json(response)));
+});
+
+test("income read model hydrates booking metadata without bookings.view", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const now = "2027-01-01T00:00:00.000Z";
+
+  fake.seed("bookings", {
+    id: "booking-income-direct",
+    public_id: "QS-270110-INCOME01",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "10:00",
+    end_time: "10:30",
+    status: "completed",
+    source: "test",
+    total_halalas: 10000,
+    payment_status: "partial",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  });
+
+  fake.seed("invoices", {
+    id: "invoice-income-latest",
+    salon_id: "main",
+    booking_id: "booking-income-direct",
+    client_id: "client-a",
+    invoice_number: "INV-LATEST",
+    total_halalas: 10000,
+    paid_halalas: 9000,
+    status: "partial",
+    issued_at: "2027-01-11T00:00:00.000Z",
+    created_at: "2027-01-11T00:00:00.000Z",
+  });
+
+  fake.seed("invoices", {
+    id: "invoice-income-linked",
+    salon_id: "main",
+    booking_id: "booking-income-direct",
+    client_id: "client-a",
+    invoice_number: "INV-LINKED",
+    total_halalas: 10000,
+    paid_halalas: 4000,
+    status: "partial",
+    issued_at: "2027-01-10T00:00:00.000Z",
+    created_at: "2027-01-10T00:00:00.000Z",
+  });
+
+  fake.seed("income_entries", {
+    id: "income-booking-direct",
+    salon_id: "main",
+    booking_id: "booking-income-direct",
+    invoice_id: "invoice-income-linked",
+    amount_halalas: 4000,
+    method: "cash",
+    source: "booking",
+    occurred_at: "2027-01-10T10:30:00.000Z",
+    created_at: "2027-01-10T10:30:00.000Z",
+  });
+
+  fake.seed("bookings", {
+    id: "booking-income-item-staff",
+    public_id: "QS-270110-INCOME02",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: null,
+    booking_date: "2027-01-10",
+    start_time: "11:00",
+    end_time: "11:30",
+    status: "completed",
+    source: "test",
+    total_halalas: 7500,
+    payment_status: "paid",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  });
+
+  fake.seed("booking_items", {
+    id: "item-income-staff",
+    salon_id: "main",
+    booking_id: "booking-income-item-staff",
+    service_id: "service-a",
+    service_name_snapshot: "Service A",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "11:00",
+    end_time: "11:30",
+    created_at: now,
+  });
+
+  fake.seed("invoices", {
+    id: "invoice-income-item-staff",
+    salon_id: "main",
+    booking_id: "booking-income-item-staff",
+    client_id: "client-a",
+    invoice_number: "INV-ITEM-STAFF",
+    total_halalas: 7500,
+    paid_halalas: 7500,
+    status: "paid",
+    issued_at: "2027-01-10T11:30:00.000Z",
+    created_at: "2027-01-10T11:30:00.000Z",
+  });
+
+  fake.seed("income_entries", {
+    id: "income-booking-item-staff",
+    salon_id: "main",
+    booking_id: "booking-income-item-staff",
+    invoice_id: "invoice-income-item-staff",
+    amount_halalas: 7500,
+    method: "card",
+    source: "booking",
+    occurred_at: "2027-01-10T11:30:00.000Z",
+    created_at: "2027-01-10T11:30:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/core/income", {
+    token: "test:accountant1:accountant",
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const direct = body.data.find((row) => row.id === "income-booking-direct");
+  assert.ok(direct);
+  assert.equal(direct.booking_public_id, "QS-270110-INCOME01");
+  assert.equal(direct.booking_date, "2027-01-10");
+  assert.equal(direct.booking_status, "completed");
+  assert.equal(direct.booking_total_halalas, 10000);
+  assert.equal(direct.booking_paid_halalas, 4000);
+  assert.equal(direct.booking_payment_status, "partial");
+  assert.equal(direct.booking_staff_id, "staff-a");
+  assert.equal(direct.booking_staff_name, "Staff A");
+  assert.equal(direct.booking_client_name, "Client A");
+  assert.equal(direct.booking_invoice_id, "invoice-income-linked");
+  assert.equal(direct.booking_invoice_number, "INV-LINKED");
+
+  const fallback = body.data.find((row) => row.id === "income-booking-item-staff");
+  assert.ok(fallback);
+  assert.equal(fallback.booking_staff_id, "staff-a");
+  assert.equal(fallback.booking_staff_name, "Staff A");
+  assert.equal(fallback.booking_paid_halalas, 7500);
 });
 
 test("income supports patch and delete with D1 audit", async () => {

@@ -17,15 +17,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
+import { usePermissions } from "../security/PermissionContext";
 
 import {
   listAllIncomeCore,
   removeIncomeCore,
   upsertIncomeCore,
 } from "../services/CoreIncomeService";
-import { listCoreBookings } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
-import { CoreStaffService } from "../services/CoreStaffService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
 import { formatFinanceNote, isSystemFinanceNote } from "../helpers/financeDisplay";
@@ -49,8 +48,6 @@ import {
   DashboardToastProviderV2,
   useDashboardToastV2,
 } from "../components/dashboard-v2";
-
-const ALL_BOOKINGS_KEY = "allBookings";
 
 // ✅ LocalStorage Income (Migration)
 const LEGACY_INCOME_KEY = "dashboard_income_v1";
@@ -170,60 +167,6 @@ function isBookingLinkedIncomeSource(raw: string): boolean {
     s === "فاتورة"
   );
 }
-function normalizeBookingPaymentType(raw: unknown): BookingPaymentType | null {
-  const s = String(raw ?? "").trim().toLowerCase();
-  if (!s) return null;
-  if (s === "full" || s === "complete" || s === "\u0643\u0627\u0645\u0644") return "full";
-  if (s === "partial" || s === "deposit" || s === "\u0639\u0631\u0628\u0648\u0646" || s === "\u062c\u0632\u0626\u064a") return "partial";
-  return null;
-}
-
-function resolveBookingPayment(raw: any): {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-} {
-  const totalAmount = Math.max(
-    0,
-    Number(
-      raw?.finalPrice ??
-        raw?.total ??
-        raw?.serviceSnapshot?.priceAtBooking ??
-        raw?.packageSnapshot?.finalPriceAtBooking ??
-        0
-    ) || 0
-  );
-  const normalizedType = normalizeBookingPaymentType(raw?.paymentType);
-  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
-  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
-  const status = String(raw?.status || "").trim().toLowerCase();
-  const isRevenueStatus = status === "confirmed" || status === "completed";
-
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
-  let paidAmount: number;
-  if (hasExplicitPaid) {
-    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
-  } else if (paymentType === "partial") {
-    paidAmount = 0;
-  } else {
-    paidAmount = isRevenueStatus ? totalAmount : 0;
-  }
-
-  if (paymentType === "full") {
-    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
-  } else {
-    paymentType = paidAmount >= totalAmount ? "full" : "partial";
-  }
-
-  return {
-    paymentType,
-    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
-    remainingAmount: round2(Math.max(0, totalAmount - paidAmount)),
-    totalAmount: round2(totalAmount),
-  };
-}
-
 function resolveLinkedBookingId(item: IncomeItem): string {
   const kind = sourceKind(item.source || "");
   if (kind === "refund" || Number(item.amount || 0) < 0 || String(item.id || "").startsWith("refund_")) {
@@ -276,38 +219,35 @@ function buildPaymentSummary(meta?: BookingMeta): string {
   return `${typeText} - ${rowsText}`;
 }
 
-function buildStaffNameById(rows: any[]): Record<string, string> {
-  return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
-    const name = exportV2ResolveEmployeeName(
-      [row?.name, row?.employeeName, row?.staffName],
-      ""
+function buildBookingMetaByIncomeRows(rows: IncomeItem[]): Record<string, BookingMeta> {
+  return rows.reduce((acc, item) => {
+    const bookingId = resolveLinkedBookingId(item);
+    if (!bookingId) return acc;
+
+    const totalAmount = round2(
+      Math.max(0, Number(item.bookingTotal ?? item.amount ?? 0))
     );
-    if (!name) return acc;
-    for (const key of [row?.id, row?.firebaseUid, row?.uid]) {
-      const normalized = String(key || "").trim();
-      if (normalized) acc[normalized] = name;
-    }
+    const paidAmount = round2(
+      Math.max(0, Math.min(totalAmount, Number(item.bookingPaid ?? item.amount ?? 0)))
+    );
+    const remainingAmount = round2(Math.max(0, totalAmount - paidAmount));
+    const paymentStatus = String(item.bookingPaymentStatus || "").trim().toLowerCase();
+    const paymentType: BookingPaymentType =
+      paymentStatus === "partial" || remainingAmount > 0 ? "partial" : "full";
+
+    acc[bookingId] = {
+      bookingRef: toBookingRef(String(item.bookingPublicId || bookingId)),
+      clientName: String(item.bookingClientName || item.clientName || "").trim(),
+      employeeName: exportV2ResolveEmployeeName([item.bookingStaffName]),
+      bookingDate: normalizeISODate(item.bookingDate),
+      paymentType,
+      paidAmount,
+      remainingAmount,
+      totalAmount,
+    };
+
     return acc;
-  }, {} as Record<string, string>);
-}
-
-function resolveBookingEmployeeName(
-  booking: any,
-  staffNameById: Record<string, string>
-): string {
-  const itemRows = Array.isArray(booking?.items) ? booking.items : [];
-  const itemStaffNames = itemRows.flatMap((item: any) => [
-    item?.employeeName,
-    item?.staffName,
-    staffNameById[String(item?.staffId || "").trim()],
-  ]);
-
-  return exportV2ResolveEmployeeName([
-    booking?.employeeName,
-    booking?.staffName,
-    staffNameById[String(booking?.employeeId || booking?.staffId || "").trim()],
-    ...itemStaffNames,
-  ]);
+  }, {} as Record<string, BookingMeta>);
 }
 
 function resolveDisplayEmployeeName(item: IncomeItem, meta?: BookingMeta): string {
@@ -365,17 +305,6 @@ function buildFallbackPaymentSummaryText(item: IncomeItem, amountToShow: number)
   const kind = sourceKind(item.source || "");
   if (kind === "refund" || signedAmount < 0) return `استرجاع ${absAmount.toFixed(2)} ر.س`;
   return `مدفوع ${absAmount.toFixed(2)} ر.س`;
-}
-
-function loadBookings(): any[] {
-  try {
-    const raw = localStorage.getItem(ALL_BOOKINGS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 function isRevenueStatus(status: any) {
@@ -468,6 +397,10 @@ function firebaseMsg(e: any) {
 }
 
 function DashboardIncomeContent() {
+  const { hasPermission } = usePermissions();
+  const canManageIncome = hasPermission("income.manage");
+  const canManageBookingPayment = hasPermission("bookings.payment.manage");
+
   const [items, setItems] = useState<IncomeItem[]>([]);
   const [bookingMetaById, setBookingMetaById] = useState<Record<string, BookingMeta>>({});
   const [loading, setLoading] = useState(true);
@@ -504,7 +437,10 @@ function DashboardIncomeContent() {
   const editLinkedBookingId = editTarget ? resolveLinkedBookingId(editTarget) : "";
   const editBookingMeta = editLinkedBookingId ? bookingMetaById[editLinkedBookingId] : undefined;
   const editIsRefund = editTarget ? isRefundIncomeRow(editTarget) : false;
-  const editCanAdjustPayment = !!editLinkedBookingId && !editIsRefund;
+  const editCanAdjustPayment =
+    !!editLinkedBookingId &&
+    !editIsRefund &&
+    canManageBookingPayment;
 
   useEffect(() => {
     const message = modalMsg.trim();
@@ -524,32 +460,9 @@ function DashboardIncomeContent() {
     try {
       setLoading(true);
       setLoadError("");
-      const [incomeRows, bookingRows, staffRows] = await Promise.all([
-        listAllIncomeCore(),
-        listCoreBookings(),
-        CoreStaffService.list({ activeOnly: false }),
-      ]);
-      const staffNameById = buildStaffNameById(staffRows);
-      const bookingMap = bookingRows.reduce(
-        (acc, b: any) => {
-          const payment = resolveBookingPayment(b);
-          acc[String(b.id)] = {
-            bookingRef: toBookingRef(String(b.publicId || "")),
-            clientName: String(
-              b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
-            ).trim(),
-            employeeName: resolveBookingEmployeeName(b, staffNameById),
-            paymentType: payment.paymentType,
-            paidAmount: payment.paidAmount,
-            remainingAmount: payment.remainingAmount,
-            totalAmount: payment.totalAmount,
-          };
-          return acc;
-        },
-        {} as Record<string, BookingMeta>
-      );
+      const incomeRows = await listAllIncomeCore();
       setItems(incomeRows);
-      setBookingMetaById(bookingMap);
+      setBookingMetaById(buildBookingMetaByIncomeRows(incomeRows));
       setLoadError("");
       if (announce) setModalMsg("تم تحديث بيانات الإيرادات");
     } catch (e) {
@@ -598,34 +511,10 @@ function DashboardIncomeContent() {
           localStorage.setItem(INCOME_MIGRATED_KEY, "1");
         }
 
-        const [finalData, bookingRows, staffRows] = await Promise.all([
-          listAllIncomeCore(),
-          listCoreBookings(),
-          CoreStaffService.list({ activeOnly: false }),
-        ]);
-        const staffNameById = buildStaffNameById(staffRows);
-        const bookingMap = bookingRows.reduce(
-          (acc, b: any) => {
-            const payment = resolveBookingPayment(b);
-            acc[String(b.id)] = {
-              bookingRef: toBookingRef(String(b.publicId || "")),
-              clientName: String(
-                b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
-              ).trim(),
-              employeeName: resolveBookingEmployeeName(b, staffNameById),
-              bookingDate: normalizeISODate(b?.date),
-              paymentType: payment.paymentType,
-              paidAmount: payment.paidAmount,
-              remainingAmount: payment.remainingAmount,
-              totalAmount: payment.totalAmount,
-            };
-            return acc;
-          },
-          {} as Record<string, BookingMeta>
-        );
+        const finalData = await listAllIncomeCore();
         if (mounted) {
           setItems(finalData);
-          setBookingMetaById(bookingMap);
+          setBookingMetaById(buildBookingMetaByIncomeRows(finalData));
           setLoadError("");
         }
       } catch (e) {
@@ -782,6 +671,14 @@ function DashboardIncomeContent() {
       setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
       return;
     }
+    if (!canManageIncome) {
+      setModalMsg("لا تملك صلاحية إدارة الإيرادات.");
+      return;
+    }
+    if (resolveLinkedBookingId(item)) {
+      setModalMsg("إيراد الحجز يُدار من الحجز نفسه حتى تبقى الفاتورة والمدفوعات والإيراد متطابقة.");
+      return;
+    }
     setDeleteTarget(item);
     setDeletePin("");
     setDeleteError("");
@@ -798,6 +695,14 @@ function DashboardIncomeContent() {
 
   const confirmDeleteIncome = async () => {
     if (!deleteTarget?.id) return;
+    if (!canManageIncome) {
+      setDeleteError("لا تملك صلاحية إدارة الإيرادات.");
+      return;
+    }
+    if (resolveLinkedBookingId(deleteTarget)) {
+      setDeleteError("إيراد الحجز لا يُحذف مباشرة من صفحة الإيرادات.");
+      return;
+    }
     if (String(deletePin).trim() !== INCOME_EDIT_PIN) {
       setDeleteError("الرقم السري غير صحيح");
       return;
@@ -822,11 +727,23 @@ function DashboardIncomeContent() {
   };
 
   const openEditIncomeModal = (item: IncomeItem) => {
+    if (!canManageIncome) {
+      setModalMsg("لا تملك صلاحية إدارة الإيرادات.");
+      return;
+    }
     if (isRefundIncomeRow(item)) {
       setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
       return;
     }
     const linkedBookingId = resolveLinkedBookingId(item);
+    if (linkedBookingId && !canManageBookingPayment) {
+      setModalMsg("لا تملك صلاحية إدارة دفعات الحجوزات.");
+      return;
+    }
+    if (linkedBookingId && item.method === "mixed") {
+      setModalMsg("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح.");
+      return;
+    }
     const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
     const fallbackAmount = round2(Math.max(0, Number(item.amount || 0)));
 
@@ -856,7 +773,25 @@ function DashboardIncomeContent() {
     }
 
     const bookingId = resolveLinkedBookingId(editTarget);
-    const canAdjustPayment = !!bookingId && !isRefundIncomeRow(editTarget);
+    const bookingPaymentEdit =
+      !!bookingId && !isRefundIncomeRow(editTarget);
+
+    if (!canManageIncome) {
+      setEditError("لا تملك صلاحية إدارة الإيرادات.");
+      return;
+    }
+    if (bookingPaymentEdit && !canManageBookingPayment) {
+      setEditError("لا تملك صلاحية إدارة دفعات الحجوزات.");
+      return;
+    }
+
+    const canAdjustPayment =
+      bookingPaymentEdit && canManageBookingPayment;
+
+    if (canAdjustPayment && editTarget.method === "mixed") {
+      setEditError("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح.");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -898,18 +833,16 @@ function DashboardIncomeContent() {
         const paidRounded = round2(Math.max(0, Math.min(totalAmount, paidAmount)));
         const remainingAmount = round2(Math.max(0, totalAmount - paidRounded));
 
-        await Promise.all([
-          upsertIncomeCore({
-            ...editTarget,
-            amount: paidRounded,
-            createdAt: Number(editTarget.createdAt) || Date.now(),
-          }),
-          CoreBookingService.patch(bookingId, {
-            subtotalHalalas: Math.round(totalAmount * 100),
-            totalHalalas: Math.round(totalAmount * 100),
-            paymentStatus: paymentType === "full" ? "paid" : "partial",
-          }),
-        ]);
+        const paymentMethod = editTarget.method;
+
+        await CoreBookingService.patch(bookingId, {
+          subtotalHalalas: Math.round(totalAmount * 100),
+          totalHalalas: Math.round(totalAmount * 100),
+          paidHalalas: Math.round(paidRounded * 100),
+          paymentStatus: paymentType === "full" ? "paid" : "partial",
+          reconcilePayment: true,
+          paymentMethod,
+        });
 
         await refresh();
         setModalMsg("تم تعديل طريقة الدفع وتحديث الإيراد");
@@ -1551,6 +1484,3 @@ export default function DashboardIncome() {
     </DashboardToastProviderV2>
   );
 }
-
-// silence legacy helper retained for compatibility
-void loadBookings;

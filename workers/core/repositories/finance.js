@@ -9,6 +9,7 @@ import {
   integer,
   nowIso,
   optionalText,
+  placeholders,
   requiredId,
   rowNotFound,
   updateById,
@@ -55,10 +56,191 @@ function dateScope(rawDate) {
   return { date, start: startDate.toISOString(), end: endDate.toISOString() };
 }
 
+function isBookingIncomeSource(value) {
+  const source = cleanText(value).toLowerCase();
+  return (
+    source === 'booking' ||
+    source === 'invoice' ||
+    source === '\u062d\u062c\u0632' ||
+    source === '\u0641\u0627\u062a\u0648\u0631\u0629'
+  );
+}
+
+function chunkValues(values) {
+  const groups = [];
+  for (let index = 0; index < values.length; index += 80) {
+    groups.push(values.slice(index, index + 80));
+  }
+  return groups;
+}
+
+async function hydrateIncomeRows(db, salonId, rows) {
+  if (!rows.length) return [];
+
+  const candidateBookingIds = [
+    ...new Set(
+      rows
+        .map((row) => {
+          const linkedId = cleanText(row.booking_id);
+          if (linkedId) return linkedId;
+          return isBookingIncomeSource(row.source) ? cleanText(row.id) : '';
+        })
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!candidateBookingIds.length) return rows;
+
+  const bookingGroups = await Promise.all(
+    chunkValues(candidateBookingIds).map((ids) =>
+      dbAll(
+        db,
+        `SELECT * FROM bookings WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+        [salonId, ...ids]
+      )
+    )
+  );
+  const bookings = bookingGroups.flat();
+  if (!bookings.length) return rows;
+
+  const bookingsById = new Map(
+    bookings.map((row) => [cleanText(row.id), row])
+  );
+  const bookingIds = [...bookingsById.keys()];
+  const clientIds = [
+    ...new Set(bookings.map((row) => cleanText(row.client_id)).filter(Boolean)),
+  ];
+
+  const [clientGroups, invoiceGroups, itemGroups] = await Promise.all([
+    Promise.all(
+      chunkValues(clientIds).map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM clients WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+    Promise.all(
+      chunkValues(bookingIds).map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM invoices WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)}) ORDER BY issued_at DESC, created_at DESC, id DESC`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+    Promise.all(
+      chunkValues(bookingIds).map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)}) ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id`,
+          [salonId, ...ids]
+        )
+      )
+    ),
+  ]);
+
+  const clientsById = new Map(
+    clientGroups.flat().map((row) => [cleanText(row.id), row])
+  );
+
+  const invoices = invoiceGroups.flat();
+  const invoicesById = new Map(
+    invoices.map((row) => [cleanText(row.id), row])
+  );
+  const invoiceByBookingId = new Map();
+  for (const invoice of invoices) {
+    const bookingId = cleanText(invoice.booking_id);
+    if (bookingId && !invoiceByBookingId.has(bookingId)) {
+      invoiceByBookingId.set(bookingId, invoice);
+    }
+  }
+
+  const firstItemStaffIdByBookingId = new Map();
+  const itemStaffIds = [];
+  for (const item of itemGroups.flat()) {
+    const bookingId = cleanText(item.booking_id);
+    const staffId = cleanText(item.staff_id);
+    if (bookingId && staffId && !firstItemStaffIdByBookingId.has(bookingId)) {
+      firstItemStaffIdByBookingId.set(bookingId, staffId);
+    }
+    if (staffId) itemStaffIds.push(staffId);
+  }
+
+  const staffIds = [
+    ...new Set([
+      ...bookings.map((row) => cleanText(row.staff_id)).filter(Boolean),
+      ...itemStaffIds,
+    ]),
+  ];
+
+  const staffGroups = await Promise.all(
+    chunkValues(staffIds).map((ids) =>
+      dbAll(
+        db,
+        `SELECT * FROM staff WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+        [salonId, ...ids]
+      )
+    )
+  );
+  const staffById = new Map(
+    staffGroups.flat().map((row) => [cleanText(row.id), row])
+  );
+
+  return rows.map((row) => {
+    const explicitBookingId = cleanText(row.booking_id);
+    const effectiveBookingId =
+      explicitBookingId ||
+      (isBookingIncomeSource(row.source) ? cleanText(row.id) : '');
+
+    const booking = bookingsById.get(effectiveBookingId);
+    if (!booking) return row;
+
+    const explicitInvoiceId = cleanText(row.invoice_id);
+    const explicitInvoice = explicitInvoiceId
+      ? invoicesById.get(explicitInvoiceId)
+      : null;
+    const invoice =
+      explicitInvoice &&
+      cleanText(explicitInvoice.booking_id) === effectiveBookingId
+        ? explicitInvoice
+        : invoiceByBookingId.get(effectiveBookingId);
+    const client = clientsById.get(cleanText(booking.client_id));
+    const staffId =
+      cleanText(booking.staff_id) ||
+      firstItemStaffIdByBookingId.get(effectiveBookingId) ||
+      '';
+    const staff = staffById.get(staffId);
+
+    return {
+      ...row,
+      booking_id: explicitBookingId || effectiveBookingId,
+      booking_public_id: cleanText(booking.public_id) || null,
+      booking_date: cleanText(booking.booking_date) || null,
+      booking_status: cleanText(booking.status) || null,
+      booking_total_halalas: Number(booking.total_halalas || 0),
+      booking_paid_halalas: Number(invoice?.paid_halalas || 0),
+      booking_payment_status: cleanText(booking.payment_status) || null,
+      booking_staff_id: staffId || null,
+      booking_staff_name: cleanText(staff?.name) || null,
+      booking_client_name: cleanText(client?.name) || null,
+      booking_client_phone: cleanText(client?.phone_normalized) || null,
+      booking_invoice_id: cleanText(invoice?.id) || null,
+      booking_invoice_number: cleanText(invoice?.invoice_number) || null,
+    };
+  });
+}
+
 export async function listIncome(db, salonId, query = {}) {
   const scope = dateScope(query.date);
   if (!scope) {
-    return dbAll(db, 'SELECT * FROM income_entries WHERE salon_id = ? ORDER BY occurred_at DESC LIMIT 500', [salonId]);
+    const rows = await dbAll(
+      db,
+      'SELECT * FROM income_entries WHERE salon_id = ? ORDER BY occurred_at DESC LIMIT 500',
+      [salonId]
+    );
+    return hydrateIncomeRows(db, salonId, rows);
   }
 
   const occurredRows = await dbAll(
@@ -93,9 +275,10 @@ export async function listIncome(db, salonId, query = {}) {
 
   const byId = new Map();
   for (const row of [...occurredRows, ...bookingRows, ...legacyBookingRows]) byId.set(cleanText(row?.id), row);
-  return [...byId.values()]
+  const rows = [...byId.values()]
     .sort((a, b) => cleanText(b?.occurred_at).localeCompare(cleanText(a?.occurred_at)))
     .slice(0, 500);
+  return hydrateIncomeRows(db, salonId, rows);
 }
 
 export async function getIncome(db, salonId, id) {
