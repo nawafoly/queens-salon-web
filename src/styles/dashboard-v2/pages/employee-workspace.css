@@ -1371,6 +1371,58 @@
   box-shadow: inset 0 -3px 0 var(--dsv2-gold);
 }
 
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-block-end: 14px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsv2-text-soft);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--calendar-leave-accent, var(--dsv2-border-strong));
+}
+
+.dashboard-v2 .dsv2-employee-workspace [data-leave-type="weekly_rest"] {
+  --calendar-leave-accent: #2563eb;
+  --calendar-leave-soft: rgb(37 99 235 / 10%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace [data-leave-type="compensatory"] {
+  --calendar-leave-accent: #0f9f8f;
+  --calendar-leave-soft: rgb(15 159 143 / 10%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace [data-leave-type="annual"] {
+  --calendar-leave-accent: #7c3aed;
+  --calendar-leave-soft: rgb(124 58 237 / 10%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace [data-leave-type="exceptional"] {
+  --calendar-leave-accent: #db2777;
+  --calendar-leave-soft: rgb(219 39 119 / 10%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="weekly_rest"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="compensatory"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="annual"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="exceptional"] {
+  border-color: color-mix(in srgb, var(--calendar-leave-accent) 34%, var(--dsv2-border-strong));
+  background: var(--calendar-leave-soft);
+  box-shadow: inset 0 -3px 0 var(--calendar-leave-accent);
+}
+
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="غياب"] {
   border-color: color-mix(in srgb, var(--dsv2-burgundy) 28%, var(--dsv2-border-strong));
   background: var(--dsv2-ew-danger-soft);
@@ -1526,7 +1578,6 @@
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-special="partial_leave"],
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-special="rest"],
-.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-special="weekly_off"],
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-special="exception_off"] {
   border-color: color-mix(in srgb, var(--dsv2-gold) 34%, var(--dsv2-border-strong));
 }

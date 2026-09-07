@@ -190,6 +190,29 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   return "لا توجد بيانات";
 }
 
+function attendanceCalendarLeaveType(day: AttendanceCalendarDayLiveV2) {
+  const type = cleanText(day.specialDay?.type).toLowerCase();
+  if (day.specialDay?.kind === "weekly_off") return "weekly_rest";
+  if (type === "weekly_rest_substitute_use") return "compensatory";
+  if (type === "annual") return "annual";
+  if (type === "unpaid") return "exceptional";
+  if (type === "emergency") return "emergency";
+  if (type === "sick") return "sick";
+  return "";
+}
+
+function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
+  switch (attendanceCalendarLeaveType(day)) {
+    case "weekly_rest": return "\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
+    case "compensatory": return "\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629";
+    case "annual": return "\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629";
+    case "exceptional": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629";
+    case "emergency": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0636\u0637\u0631\u0627\u0631\u064a\u0629";
+    case "sick": return "\u0625\u062c\u0627\u0632\u0629 \u0645\u0631\u0636\u064a\u0629";
+    default: return day.status;
+  }
+}
+
 function attendanceCalendarTimeLabel(input: {
   status: string;
   specialDay?: AttendanceSpecialDay;
@@ -1094,6 +1117,12 @@ export function EmployeeAttendanceTabLiveV2({
               }
               className="dsv2-ew-attendance-calendar-card"
             >
+              <div className="dsv2-ew-calendar-legend" aria-label={"\u062f\u0644\u064a\u0644 \u0623\u0644\u0648\u0627\u0646 \u0627\u0644\u062a\u0642\u0648\u064a\u0645"}>
+                <span data-leave-type="weekly_rest"><i />{"\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629"}</span>
+                <span data-leave-type="compensatory"><i />{"\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629"}</span>
+                <span data-leave-type="annual"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629"}</span>
+                <span data-leave-type="exceptional"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629"}</span>
+              </div>
               <div className="dsv2-ew-calendar-head" aria-hidden="true">
                 {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
               </div>
@@ -1105,13 +1134,14 @@ export function EmployeeAttendanceTabLiveV2({
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
                     data-special={day.specialDay?.kind || ""}
+                    data-leave-type={attendanceCalendarLeaveType(day)}
                     data-selected={activeSelectedDate === day.date ? "true" : "false"}
                     data-today={todayKey === day.date ? "true" : "false"}
                     onClick={() => handleSelectedDateChange(day.date)}
                     onDoubleClick={() => openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
-                    <span>{day.status === "—" ? "-" : day.status}</span>
+                    <span>{attendanceCalendarDisplayStatus(day) || "-"}</span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
                         {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "فترة الاستئذان"}
