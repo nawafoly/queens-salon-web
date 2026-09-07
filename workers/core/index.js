@@ -127,9 +127,11 @@ import {
   setLeaveEntitlementDate,
 } from './repositories/leave-balance.js';
 import {
+  adjustAnnualLeaveBalance,
   setAnnualLeaveOpeningBalance,
 } from './repositories/annual-leave.js';
 import {
+  adjustWeeklyRestDue,
   setHistoricalWeeklyRestOpeningBalance,
 } from './repositories/weekly-rest-entitlements.js';
 import {
@@ -589,6 +591,13 @@ function match(url, method) {
     };
   }
 
+  const annualLeaveAdjustment = /^\/api\/core\/hr\/employees\/([^/]+)\/annual-leave\/adjustments$/.exec(path);
+  if (annualLeaveAdjustment && method === "POST") {
+    return {
+      name: "hr-employee:annual-leave-adjustment",
+      id: annualLeaveAdjustment[1],
+    };
+  }
   const leaveBalanceAdjustment = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/adjustments$/.exec(path);
   if (leaveBalanceAdjustment && method === "POST") {
     return {
@@ -704,6 +713,15 @@ function match(url, method) {
   if (weeklyRestWorkCancel && method === "POST") return { name: "weekly-rest:work-cancel", id: weeklyRestWorkCancel[1] };
   if (path === "/api/core/hr/weekly-rest/work-assignments" && ["GET", "POST"].includes(method)) {
     return { name: "weekly-rest:work-assignments" };
+  }
+
+  const weeklyRestAdjustment =
+    /^\/api\/core\/hr\/employees\/([^/]+)\/weekly-rest\/adjustments$/.exec(path);
+  if (weeklyRestAdjustment && method === "POST") {
+    return {
+      name: "weekly-rest:adjustment",
+      id: weeklyRestAdjustment[1],
+    };
   }
 
   const weeklyRestOpeningBalance =
@@ -1794,6 +1812,19 @@ async function dispatch(ctx, route, method, body, query, env) {
         actorInfo
       );
 
+    case "hr-employee:annual-leave-adjustment":
+      requirePermission(
+        ctx,
+        "attendance.leaves.manage"
+      );
+      return adjustAnnualLeaveBalance(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo
+      );
+
     case "hr-employee:leave-balance-adjustment": {
       requirePermission(
         ctx,
@@ -2229,6 +2260,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requirePermission(ctx, "employees.schedule.manage");
       return cancelWeeklyRestWorkAssignment(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "weekly-rest:adjustment":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(
+        ctx,
+        "attendance.leaves.manage"
+      );
+      return adjustWeeklyRestDue(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo
+      );
 
     case "weekly-rest:opening-balance":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);

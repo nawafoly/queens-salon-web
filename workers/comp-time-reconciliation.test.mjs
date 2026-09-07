@@ -12,6 +12,7 @@ import {
   overtimeAttendanceOverlapMinutes,
 } from './core/repositories/overtime-reconciliation.js';
 import {
+  adjustWeeklyRestDue,
   confirmWeeklyRestDue,
   consumeWeeklyRestDue,
   setHistoricalWeeklyRestOpeningBalance,
@@ -160,6 +161,121 @@ test('comp-time ledger is bucketed, idempotent and refuses overdraft', async (t)
       sourceType: 'leave_request',
       sourceId: 'leave-2',
     }, actor),
+    { code: 'core_comp_time:insufficient_balance' }
+  );
+});
+
+test('weekly-rest manual adjustment uses the canonical entitlement ledger', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const credited = await adjustWeeklyRestDue(
+    db,
+    'main',
+    'emp-1',
+    {
+      action: 'credit',
+      days: 2,
+      effectiveDate: '2026-08-30',
+      reason: 'HR correction for confirmed weekly-rest entitlement',
+      operationId: 'weekly-rest-adjustment-1',
+    },
+    actor
+  );
+
+  assert.equal(credited.state.balanceMinutes, 2880);
+  assert.equal(credited.entry.entitlement_type, 'weekly_rest_due');
+  assert.equal(credited.entry.entry_kind, 'credit');
+  assert.equal(credited.entry.source_type, 'manual_adjustment');
+  assert.equal(credited.entry.source_id, 'weekly-rest-adjustment-1');
+
+  const repeated = await adjustWeeklyRestDue(
+    db,
+    'main',
+    'emp-1',
+    {
+      action: 'credit',
+      days: 2,
+      effectiveDate: '2026-08-30',
+      reason: 'HR correction for confirmed weekly-rest entitlement',
+      operationId: 'weekly-rest-adjustment-1',
+    },
+    actor
+  );
+
+  assert.equal(repeated.idempotent, true);
+  assert.equal(repeated.state.balanceMinutes, 2880);
+
+  await assert.rejects(
+    () =>
+      adjustWeeklyRestDue(
+        db,
+        'main',
+        'emp-1',
+        {
+          action: 'credit',
+          days: 1,
+          effectiveDate: '2026-08-30',
+          reason: 'Changed replay payload',
+          operationId: 'weekly-rest-adjustment-1',
+        },
+        actor
+      ),
+    { code: 'core_comp_time:source_replay_mismatch' }
+  );
+
+  await assert.rejects(
+    () =>
+      adjustWeeklyRestDue(
+        db,
+        'main',
+        'emp-2',
+        {
+          action: 'credit',
+          days: 2,
+          effectiveDate: '2026-08-30',
+          reason: 'HR correction for confirmed weekly-rest entitlement',
+          operationId: 'weekly-rest-adjustment-1',
+        },
+        actor
+      ),
+    { code: 'core_comp_time:source_replay_mismatch' }
+  );
+
+  const debited = await adjustWeeklyRestDue(
+    db,
+    'main',
+    'emp-1',
+    {
+      action: 'debit',
+      days: 1,
+      effectiveDate: '2026-08-31',
+      reason: 'HR correction for previously granted substitute rest',
+      operationId: 'weekly-rest-adjustment-2',
+    },
+    actor
+  );
+
+  assert.equal(debited.state.balanceMinutes, 1440);
+  assert.equal(debited.entry.entry_kind, 'debit');
+  assert.equal(debited.entry.balance_before_minutes, 2880);
+  assert.equal(debited.entry.balance_after_minutes, 1440);
+
+  await assert.rejects(
+    () =>
+      adjustWeeklyRestDue(
+        db,
+        'main',
+        'emp-1',
+        {
+          action: 'debit',
+          days: 2,
+          effectiveDate: '2026-08-31',
+          reason: 'must not allow a negative weekly-rest balance',
+          operationId: 'weekly-rest-adjustment-3',
+        },
+        actor
+      ),
     { code: 'core_comp_time:insufficient_balance' }
   );
 });

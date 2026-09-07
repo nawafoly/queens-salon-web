@@ -387,3 +387,256 @@ test("historical weekly-rest opening UI uses the canonical Core contract", () =>
     /firebase|firestore|collection\(|doc\(/
   );
 });
+test("annual leave manual adjustment stays behind the canonical Core contract", () => {
+  const service = source("../src/services/CoreHrService.ts");
+  const core = source("../workers/core/index.js");
+  const annual = source(
+    "../workers/core/repositories/annual-leave.js"
+  );
+
+  assert.match(
+    service,
+    /async adjustAnnualLeaveBalance/
+  );
+
+  assert.match(
+    service,
+    /annual-leave\/adjustments/
+  );
+
+  assert.match(
+    core,
+    /name: "hr-employee:annual-leave-adjustment"/
+  );
+
+  assert.match(
+    core,
+    /case "hr-employee:annual-leave-adjustment"[\s\S]*requirePermission\([\s\S]*"attendance\.leaves\.manage"/
+  );
+
+  assert.match(
+    core,
+    /case "hr-employee:annual-leave-adjustment"[\s\S]*adjustAnnualLeaveBalance\(/
+  );
+
+  assert.match(
+    annual,
+    /export async function adjustAnnualLeaveBalance/
+  );
+
+  assert.match(
+    annual,
+    /entry_code = 'MANUAL_CORRECTION'/
+  );
+
+  assert.match(
+    annual,
+    /source_type = 'manual_adjustment'/
+  );
+
+  const adjustmentMethod = service.match(
+    /async adjustAnnualLeaveBalance\([\s\S]*?\n  \},/
+  );
+
+  assert.ok(
+    adjustmentMethod,
+    "adjustAnnualLeaveBalance service method must exist"
+  );
+
+  assert.doesNotMatch(
+    adjustmentMethod[0],
+    /leave-balance\/adjustments/
+  );
+});
+test("weekly-rest manual adjustment stays behind the canonical Core contract", () => {
+  const service = source("../src/services/CoreHrService.ts");
+  const core = source("../workers/core/index.js");
+  const entitlement = source("../workers/core/repositories/weekly-rest-entitlements.js");
+
+  assert.match(
+    service,
+    /weekly-rest\/adjustments/
+  );
+
+  assert.match(
+    service,
+    /async adjustWeeklyRestBalance/
+  );
+
+  assert.match(
+    core,
+    /name: "weekly-rest:adjustment"/
+  );
+
+  assert.match(
+    core,
+    /case "weekly-rest:adjustment"[\s\S]*requirePermission\([\s\S]*"attendance\.leaves\.manage"/
+  );
+
+  assert.match(
+    core,
+    /case "weekly-rest:adjustment"[\s\S]*adjustWeeklyRestDue\(/
+  );
+
+  assert.match(
+    entitlement,
+    /export async function adjustWeeklyRestDue/
+  );
+
+  assert.match(
+    entitlement,
+    /entitlementType: 'weekly_rest_due'/
+  );
+
+  assert.match(
+    entitlement,
+    /sourceType: 'manual_adjustment'/
+  );
+
+  assert.match(
+    entitlement,
+    /minutes: days \* WEEKLY_REST_MINUTES/
+  );
+
+  assert.doesNotMatch(
+    service,
+    /weekly-rest\/opening-balance[\s\S]{0,120}adjustWeeklyRestBalance/
+  );
+});
+test("weekly-rest adjustment UI is wired to the canonical service", () => {
+  const panel = source(
+    "../src/pages/dashboardEmployees/LeaveRestManagementPanel.tsx"
+  );
+
+  assert.match(
+    panel,
+    /const submitWeeklyRestAdjustment =/
+  );
+
+  assert.match(
+    panel,
+    /adjustWeeklyRestBalance\(/
+  );
+
+  assert.match(
+    panel,
+    /weeklyRestAdjustmentAction/
+  );
+
+  assert.match(
+    panel,
+    /weeklyRestAdjustmentDays/
+  );
+
+  assert.match(
+    panel,
+    /weeklyRestAdjustmentEffectiveDate/
+  );
+
+  assert.match(
+    panel,
+    /weeklyRestAdjustmentReason/
+  );
+
+  assert.match(
+    panel,
+    /employee-live-v2-weekly-rest-adjustment-action/
+  );
+
+  assert.match(
+    panel,
+    /employee-live-v2-weekly-rest-adjustment-days/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /submitWeeklyRestAdjustment[\s\S]{0,1800}setHistoricalWeeklyRestOpeningBalance/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /submitWeeklyRestAdjustment[\s\S]{0,1800}firebase|submitWeeklyRestAdjustment[\s\S]{0,1800}firestore/
+  );
+});
+test("annual leave adjustment UI is wired to the canonical service", () => {
+  const panel = source(
+    "../src/pages/dashboardEmployees/LeaveRestManagementPanel.tsx"
+  );
+
+  assert.match(
+    panel,
+    /const submitAnnualLeaveAdjustment =/
+  );
+
+  assert.match(
+    panel,
+    /adjustAnnualLeaveBalance\(/
+  );
+
+  assert.match(
+    panel,
+    /annualAdjustmentAction/
+  );
+
+  assert.match(
+    panel,
+    /annualAdjustmentDays/
+  );
+
+  assert.match(
+    panel,
+    /annualAdjustmentEffectiveDate/
+  );
+
+  assert.match(
+    panel,
+    /annualAdjustmentReason/
+  );
+
+  assert.match(
+    panel,
+    /Math\.round\(days \* 2\) !== days \* 2/
+  );
+
+  assert.match(
+    panel,
+    /if \(annualReviewRequired\)/
+  );
+
+  assert.match(
+    panel,
+    /employee-live-v2-annual-adjustment-action/
+  );
+
+  assert.match(
+    panel,
+    /employee-live-v2-annual-adjustment-days/
+  );
+
+  assert.doesNotMatch(
+    panel,
+    /submitAnnualLeaveAdjustment[\s\S]{0,2200}adjustLeaveBalance\(/
+  );
+
+  const annualAdjustmentIndex = panel.indexOf(
+    'employee-live-v2-annual-adjustment-action'
+  );
+  const openingBalanceIndex = panel.indexOf(
+    'employee-live-v2-opening-balance-days'
+  );
+  const weeklyRestAdjustmentIndex = panel.indexOf(
+    'employee-live-v2-weekly-rest-adjustment-action'
+  );
+
+  assert.ok(annualAdjustmentIndex >= 0);
+  assert.ok(openingBalanceIndex >= 0);
+  assert.ok(weeklyRestAdjustmentIndex >= 0);
+
+  assert.ok(
+    annualAdjustmentIndex < openingBalanceIndex
+  );
+
+  assert.ok(
+    annualAdjustmentIndex < weeklyRestAdjustmentIndex
+  );
+});

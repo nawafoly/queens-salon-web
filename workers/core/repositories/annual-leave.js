@@ -750,6 +750,421 @@ export async function setAnnualLeaveOpeningBalance(
   };
 }
 
+async function annualCorrectionBySource(
+  db,
+  salonId,
+  sourceId
+) {
+  if (!sourceId) return null;
+
+  return dbFirst(
+    db,
+    `SELECT *
+       FROM employee_leave_balance_ledger
+      WHERE salon_id = ?
+        AND entry_code = 'MANUAL_CORRECTION'
+        AND source_type = 'manual_adjustment'
+        AND source_id = ?
+      LIMIT 1`,
+    [salonId, sourceId]
+  );
+}
+
+function assertAnnualCorrectionReplay(
+  existing,
+  employeeId,
+  action,
+  days,
+  effectiveDate,
+  reason
+) {
+  if (
+    cleanText(existing.employee_id) !== employeeId
+  ) {
+    throw new AppError(
+      409,
+      'core_annual_leave:adjustment_source_employee_mismatch'
+    );
+  }
+
+  if (
+    cleanText(existing.action_type) !== action ||
+    Math.abs(Number(existing.days || 0) - days) > EPSILON ||
+    cleanText(existing.effective_date) !== effectiveDate ||
+    cleanText(existing.note) !== reason
+  ) {
+    throw new AppError(
+      409,
+      'core_annual_leave:adjustment_operation_mismatch'
+    );
+  }
+}
+
+export async function adjustAnnualLeaveBalance(
+  db,
+  salonId,
+  employeeIdValue,
+  data = {},
+  actor = {}
+) {
+  const employeeId = requiredId(
+    employeeIdValue,
+    'employeeId'
+  );
+
+  const action = cleanText(
+    data.action ||
+      data.actionType ||
+      data.action_type
+  ).toLowerCase();
+
+  if (!['add', 'deduct'].includes(action)) {
+    throw new AppError(
+      400,
+      'core_annual_leave:invalid_adjustment_action'
+    );
+  }
+
+  const days = halfDayValue(
+    data.days,
+    'adjustment_days'
+  );
+
+  const effectiveDate = validDate(
+    data.effectiveDate ||
+      data.effective_date ||
+      data.operationDate ||
+      data.operation_date,
+    'effectiveDate'
+  );
+
+  const today = riyadhDateKey();
+
+  if (effectiveDate > today) {
+    throw new AppError(
+      400,
+      'core_annual_leave:adjustment_effective_date_in_future'
+    );
+  }
+
+  const reason = cleanText(
+    data.reason || data.note
+  );
+
+  if (!reason || reason.length > 1500) {
+    throw new AppError(
+      400,
+      'core_annual_leave:adjustment_reason_required'
+    );
+  }
+
+  const operationId = requiredId(
+    data.operationId ||
+      data.operation_id,
+    'operationId'
+  );
+
+  const existing = await annualCorrectionBySource(
+    db,
+    salonId,
+    operationId
+  );
+
+  if (existing) {
+    assertAnnualCorrectionReplay(
+      existing,
+      employeeId,
+      action,
+      days,
+      effectiveDate,
+      reason
+    );
+
+    return {
+      state: await getAnnualLeaveState(
+        db,
+        salonId,
+        employeeId
+      ),
+      entry: mapLedgerEntry(existing),
+      idempotent: true,
+    };
+  }
+
+  const state = await getAnnualLeaveState(
+    db,
+    salonId,
+    employeeId
+  );
+
+  if (
+    state.reviewRequired ||
+    !Number.isFinite(Number(state.availableDays))
+  ) {
+    throw new AppError(
+      409,
+      `core_annual_leave:${
+        state.reviewReason ||
+        'state_review_required'
+      }`
+    );
+  }
+
+  if (effectiveDate < state.startDate) {
+    throw new AppError(
+      400,
+      'core_annual_leave:adjustment_before_service_start'
+    );
+  }
+
+  const before = roundDays(
+    state.availableDays
+  );
+
+  const changeAmount =
+    action === 'add' ? days : -days;
+
+  const after = roundDays(
+    before + changeAmount
+  );
+
+  if (after < -EPSILON) {
+    throw new AppError(
+      409,
+      'core_annual_leave:insufficient_available_entitlement'
+    );
+  }
+
+  const employment = await requireEmployment(
+    db,
+    salonId,
+    employeeId
+  );
+
+  const expectedLastEntryId =
+    cleanText(
+      employment.leave_balance_last_entry_id
+    ) || null;
+
+  const id = requiredId(
+    data.id ||
+      generatedId('annual_leave_adjustment'),
+    'id'
+  );
+
+  const serviceYear =
+    annualLeaveServiceYear(
+      state.startDate,
+      effectiveDate
+    );
+
+  const now = nowIso();
+
+  const actorUid = actorField(actor, 'uid');
+  const actorEmail =
+    actorField(actor, 'email');
+  const actorName =
+    actorField(actor, 'name') ||
+    actorField(actor, 'displayName');
+
+  const metadata = JSON.stringify({
+    correctionAction: action,
+    recordedDate: today,
+    effectiveDate,
+    canonicalBalanceBeforeDays: before,
+    canonicalBalanceAfterDays: after,
+    source: 'manual_hr_adjustment',
+  });
+
+  const results = await dbBatch(db, [
+    {
+      sql: `
+        UPDATE employee_employment
+           SET leave_balance = ?,
+               leave_balance_last_entry_id = ?,
+               annual_leave_legacy_projection_updated_at = ?,
+               updated_by_uid = ?,
+               updated_by_email = ?,
+               updated_at = ?
+         WHERE salon_id = ?
+           AND employee_id = ?
+           AND (
+             (? IS NULL AND leave_balance_last_entry_id IS NULL) OR
+             leave_balance_last_entry_id = ?
+           )
+           AND NOT EXISTS (
+             SELECT 1
+               FROM employee_leave_balance_ledger existing
+              WHERE existing.salon_id = ?
+                AND existing.entry_code = 'MANUAL_CORRECTION'
+                AND existing.source_type = 'manual_adjustment'
+                AND existing.source_id = ?
+           )
+      `,
+      params: [
+        after,
+        id,
+        now,
+        actorUid,
+        actorEmail,
+        now,
+        salonId,
+        employeeId,
+        expectedLastEntryId,
+        expectedLastEntryId,
+        salonId,
+        operationId,
+      ],
+    },
+    {
+      sql: `
+        INSERT INTO employee_leave_balance_ledger (
+          id,
+          salon_id,
+          employee_id,
+          action_type,
+          days,
+          change_amount,
+          balance_before,
+          balance_after,
+          operation_date,
+          note,
+          source_type,
+          source_id,
+          created_by_uid,
+          created_by_email,
+          created_by_name,
+          created_at,
+          entry_code,
+          effective_date,
+          service_year_start,
+          service_year_end,
+          policy_version,
+          metadata_json
+        )
+        SELECT
+          ?,
+          ?,
+          employment.employee_id,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          'manual_adjustment',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          'MANUAL_CORRECTION',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        FROM employee_employment employment
+        WHERE employment.salon_id = ?
+          AND employment.employee_id = ?
+          AND employment.leave_balance_last_entry_id = ?
+          AND NOT EXISTS (
+            SELECT 1
+              FROM employee_leave_balance_ledger existing
+             WHERE existing.salon_id = ?
+               AND existing.entry_code = 'MANUAL_CORRECTION'
+               AND existing.source_type = 'manual_adjustment'
+               AND existing.source_id = ?
+          )
+      `,
+      params: [
+        id,
+        salonId,
+        action,
+        days,
+        changeAmount,
+        before,
+        after,
+        today,
+        reason,
+        operationId,
+        actorUid,
+        actorEmail,
+        actorName,
+        now,
+        effectiveDate,
+        serviceYear.serviceYearStart,
+        serviceYear.serviceYearEnd,
+        SA_LABOR_POLICY_VERSION,
+        metadata,
+        salonId,
+        employeeId,
+        id,
+        salonId,
+        operationId,
+      ],
+    },
+  ]);
+
+  if (
+    changes(results?.[0]) < 1 ||
+    changes(results?.[1]) < 1
+  ) {
+    const raced =
+      await annualCorrectionBySource(
+        db,
+        salonId,
+        operationId
+      );
+
+    if (raced) {
+      assertAnnualCorrectionReplay(
+        raced,
+        employeeId,
+        action,
+        days,
+        effectiveDate,
+        reason
+      );
+
+      return {
+        state: await getAnnualLeaveState(
+          db,
+          salonId,
+          employeeId
+        ),
+        entry: mapLedgerEntry(raced),
+        idempotent: true,
+      };
+    }
+
+    throw new AppError(
+      409,
+      'core_annual_leave:adjustment_concurrency_conflict'
+    );
+  }
+
+  const entry = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_leave_balance_ledger
+      WHERE salon_id = ?
+        AND id = ?
+      LIMIT 1`,
+    [salonId, id]
+  );
+
+  return {
+    state: await getAnnualLeaveState(
+      db,
+      salonId,
+      employeeId
+    ),
+    entry: mapLedgerEntry(entry),
+    idempotent: false,
+  };
+}
 async function annualUsageByLeave(
   db,
   salonId,

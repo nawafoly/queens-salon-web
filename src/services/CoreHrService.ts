@@ -880,6 +880,66 @@ export const CoreHrService = {
     );
   },
 
+  async adjustAnnualLeaveBalance(
+    employeeId: string,
+    input: {
+      action: "add" | "deduct";
+      days: number;
+      effectiveDate: string;
+      reason: string;
+      operationId: string;
+    }
+  ) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(
+        employeeId
+      )}/annual-leave/adjustments`,
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+
+    return {
+      entry: camelRecord(
+        (payload.entry || {}) as Record<string, unknown>
+      ),
+      state: camelRecord(
+        (payload.state || {}) as Record<string, unknown>
+      ),
+      idempotent: Boolean(payload.idempotent),
+    };
+  },
+  async adjustWeeklyRestBalance(
+    employeeId: string,
+    input: {
+      action: "credit" | "debit";
+      days: number;
+      effectiveDate: string;
+      reason: string;
+      operationId: string;
+    }
+  ) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(
+        employeeId
+      )}/weekly-rest/adjustments`,
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+
+    return {
+      entry: camelRecord(
+        (payload.entry || {}) as Record<string, unknown>
+      ),
+      state: camelRecord(
+        (payload.state || {}) as Record<string, unknown>
+      ),
+      idempotent: Boolean(payload.idempotent),
+    };
+  },
   async setHistoricalWeeklyRestOpeningBalance(
     employeeId: string,
     input: {

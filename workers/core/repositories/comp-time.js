@@ -87,6 +87,32 @@ async function existingSourceEntry(db, salonId, type, sourceTypeValue, sourceIdV
   );
 }
 
+function assertSourceReplay(existing, expected) {
+  const existingConversionRatio =
+    existing.conversion_ratio_milli == null
+      ? null
+      : Number(existing.conversion_ratio_milli);
+
+  if (
+    cleanText(existing.employee_id) !== expected.employeeId ||
+    Number(existing.minutes || 0) !== expected.minutes ||
+    Number(existing.source_minutes || 0) !== expected.sourceMinutes ||
+    existingConversionRatio !== expected.conversionRatioMilli ||
+    (cleanText(existing.source_date) || null) !== expected.sourceDate ||
+    (cleanText(existing.employee_consent_at) || null) !== expected.consentAt ||
+    (cleanText(existing.employee_consent_reference) || null) !==
+      expected.consentReference ||
+    (cleanText(existing.expires_at) || null) !== expected.expiresAt ||
+    (cleanText(existing.policy_version) || null) !== expected.policyVersion ||
+    (cleanText(existing.note) || null) !== expected.note
+  ) {
+    throw new AppError(
+      409,
+      'core_comp_time:source_replay_mismatch'
+    );
+  }
+}
+
 export async function getCompTimeBalanceState(
   db,
   salonId,
@@ -141,6 +167,79 @@ async function mutateEntitlement(
   const minutes = positiveMinutes(data.minutes);
   const sourceTypeValue = sourceType(data.sourceType || data.source_type);
   const sourceIdValue = sourceId(data.sourceId || data.source_id);
+  const sourceMinutesValue = Math.max(
+    0,
+    Math.round(
+      Number(data.sourceMinutes || data.source_minutes || 0) || 0
+    )
+  );
+  const conversionRatioValue =
+    data.conversionRatioMilli == null &&
+    data.conversion_ratio_milli == null
+      ? null
+      : Math.max(
+          0,
+          Math.round(
+            Number(
+              data.conversionRatioMilli ??
+                data.conversion_ratio_milli
+            ) || 0
+          )
+        );
+  const sourceDateValue =
+    cleanText(data.sourceDate || data.source_date) || null;
+  const consentAt =
+    cleanText(
+      data.employeeConsentAt ||
+        data.employee_consent_at
+    ) || null;
+
+  if (
+    consentAt &&
+    !Number.isFinite(Date.parse(consentAt))
+  ) {
+    throw new AppError(
+      400,
+      'core_comp_time:invalid_employee_consent_at'
+    );
+  }
+
+  const consentReferenceValue =
+    cleanText(
+      data.employeeConsentReference ||
+        data.employee_consent_reference
+    ) || null;
+  const expiresAt =
+    cleanText(data.expiresAt || data.expires_at) || null;
+
+  if (
+    expiresAt &&
+    !Number.isFinite(Date.parse(expiresAt))
+  ) {
+    throw new AppError(
+      400,
+      'core_comp_time:invalid_expires_at'
+    );
+  }
+
+  const policyVersionValue =
+    cleanText(
+      data.policyVersion || data.policy_version
+    ) || SA_LABOR_POLICY_VERSION;
+  const noteValue = optionalText(data.note) || null;
+
+  const replayExpected = {
+    employeeId,
+    minutes,
+    sourceMinutes: sourceMinutesValue,
+    conversionRatioMilli: conversionRatioValue,
+    sourceDate: sourceDateValue,
+    consentAt,
+    consentReference: consentReferenceValue,
+    expiresAt,
+    policyVersion: policyVersionValue,
+    note: noteValue,
+  };
 
   const existing = await existingSourceEntry(
     db,
@@ -151,6 +250,11 @@ async function mutateEntitlement(
     entryKind
   );
   if (existing) {
+    assertSourceReplay(
+      existing,
+      replayExpected
+    );
+
     return {
       entry: existing,
       state: await getCompTimeBalanceState(db, salonId, employeeId, type),
@@ -168,14 +272,7 @@ async function mutateEntitlement(
   const now = nowIso();
   const actorUid = cleanText(actor.uid) || null;
   const actorEmail = cleanText(actor.email) || null;
-  const expiresAt = cleanText(data.expiresAt || data.expires_at) || null;
-  if (expiresAt && !Number.isFinite(Date.parse(expiresAt))) {
-    throw new AppError(400, 'core_comp_time:invalid_expires_at');
-  }
-  const consentAt = cleanText(data.employeeConsentAt || data.employee_consent_at) || null;
-  if (consentAt && !Number.isFinite(Date.parse(consentAt))) {
-    throw new AppError(400, 'core_comp_time:invalid_employee_consent_at');
-  }
+
 
   const results = await dbBatch(db, [
     {
@@ -219,20 +316,18 @@ async function mutateEntitlement(
         type,
         entryKind,
         minutes,
-        Math.max(0, Math.round(Number(data.sourceMinutes || data.source_minutes || 0) || 0)),
+        sourceMinutesValue,
         before,
         after,
-        data.conversionRatioMilli == null && data.conversion_ratio_milli == null
-          ? null
-          : Math.max(0, Math.round(Number(data.conversionRatioMilli ?? data.conversion_ratio_milli) || 0)),
-        cleanText(data.sourceDate || data.source_date) || null,
+        conversionRatioValue,
+        sourceDateValue,
         sourceTypeValue,
         sourceIdValue,
         consentAt,
-        cleanText(data.employeeConsentReference || data.employee_consent_reference) || null,
+        consentReferenceValue,
         expiresAt,
-        cleanText(data.policyVersion || data.policy_version) || SA_LABOR_POLICY_VERSION,
-        optionalText(data.note) || null,
+        policyVersionValue,
+        noteValue,
         actorUid,
         actorEmail,
         now,
@@ -259,6 +354,11 @@ async function mutateEntitlement(
       entryKind
     );
     if (raced) {
+      assertSourceReplay(
+        raced,
+        replayExpected
+      );
+
       return {
         entry: raced,
         state: await getCompTimeBalanceState(db, salonId, employeeId, type),

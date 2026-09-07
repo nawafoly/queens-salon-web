@@ -358,6 +358,65 @@ export async function setHistoricalWeeklyRestOpeningBalance(
   }
 }
 
+export async function adjustWeeklyRestDue(
+  db,
+  salonId,
+  employeeIdValue,
+  data = {},
+  actor = {}
+) {
+  const employeeId = requiredId(employeeIdValue, 'employeeId');
+  const action = cleanText(data.action || data.actionType || data.action_type)
+    .toLowerCase();
+
+  if (!['credit', 'debit'].includes(action)) {
+    throw new AppError(400, 'core_weekly_rest:invalid_adjustment_action');
+  }
+
+  const days = Number(data.days);
+  if (!Number.isInteger(days) || days < 1 || days > MAX_HISTORICAL_WEEKLY_REST_DAYS) {
+    throw new AppError(400, 'core_weekly_rest:invalid_adjustment_days');
+  }
+
+  const effectiveDate = validDate(
+    data.effectiveDate ||
+      data.effective_date ||
+      data.operationDate ||
+      data.operation_date,
+    'effectiveDate'
+  );
+
+  if (effectiveDate > riyadhDateKey()) {
+    throw new AppError(400, 'core_weekly_rest:adjustment_effective_date_in_future');
+  }
+
+  const reason = cleanText(data.reason || data.note);
+  if (!reason || reason.length > 1500) {
+    throw new AppError(400, 'core_weekly_rest:adjustment_reason_required');
+  }
+
+  const operationId = requiredId(
+    data.operationId || data.operation_id,
+    'operationId'
+  );
+
+  const mutation = {
+    employeeId,
+    entitlementType: 'weekly_rest_due',
+    minutes: days * WEEKLY_REST_MINUTES,
+    sourceMinutes: days * WEEKLY_REST_MINUTES,
+    sourceDate: effectiveDate,
+    sourceType: 'manual_adjustment',
+    sourceId: operationId,
+    policyVersion: SA_LABOR_POLICY_VERSION,
+    note: reason,
+  };
+
+  return action === 'credit'
+    ? creditCompTime(db, salonId, mutation, actor)
+    : debitCompTime(db, salonId, mutation, actor);
+}
+
 export async function consumeWeeklyRestDue(
   db,
   salonId,
