@@ -13,7 +13,7 @@ import {
   updateScheduleException,
 } from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
-import { setAnnualLeaveOpeningBalance } from './core/repositories/annual-leave.js';
+import { adjustAnnualLeaveBalance, setAnnualLeaveOpeningBalance } from './core/repositories/annual-leave.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
 import {
   adjustLeaveBalance,
@@ -1697,6 +1697,283 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(paidPayroll.status, 'paid');
 });
 
+test('annual leave manual adjustment writes canonical audited corrections', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await withFixedRiyadhDate(t, async () => {
+    const employeeId = 'emp-annual-adjustment';
+
+    await upsertHrEmployee(
+      db,
+      'main',
+      {
+        id: employeeId,
+        name: 'Annual Adjustment Employee',
+        firebaseUid: 'uid-annual-adjustment',
+        employment: {
+          startDate: '2025-01-01',
+          baseSalaryHalalas: 450000,
+          leaveBalance: 5,
+        },
+      },
+      actor
+    );
+
+    await seedAnnualLeaveOpeningBalance(
+      db,
+      employeeId,
+      5,
+      'opening-annual-adjustment'
+    );
+
+    const added = await adjustAnnualLeaveBalance(
+      db,
+      'main',
+      employeeId,
+      {
+        action: 'add',
+        days: 1.5,
+        effectiveDate: '2026-08-28',
+        reason: 'Manual annual correction credit',
+        operationId: 'annual-adjustment-credit-1',
+      },
+      actor
+    );
+
+    assert.equal(added.idempotent, false);
+    assert.equal(added.entry.entryCode, 'MANUAL_CORRECTION');
+    assert.equal(added.entry.sourceType, 'manual_adjustment');
+    assert.equal(added.entry.sourceId, 'annual-adjustment-credit-1');
+    assert.equal(added.entry.actionType, 'add');
+    assert.equal(Number(added.entry.days), 1.5);
+    assert.equal(Number(added.entry.changeAmount), 1.5);
+    assert.equal(added.entry.effectiveDate, '2026-08-28');
+    assert.equal(Number(added.entry.balanceAfter), 6.5);
+    assert.equal(Number(added.state.availableDays), 6.5);
+
+    const projectionAfterAdd = await db.prepare(`
+      SELECT leave_balance
+        FROM employee_employment
+       WHERE salon_id = 'main'
+         AND employee_id = ?
+       LIMIT 1
+    `).bind(employeeId).first();
+
+    assert.equal(
+      Number(projectionAfterAdd.leave_balance),
+      6.5
+    );
+
+    const repeated = await adjustAnnualLeaveBalance(
+      db,
+      'main',
+      employeeId,
+      {
+        action: 'add',
+        days: 1.5,
+        effectiveDate: '2026-08-28',
+        reason: 'Manual annual correction credit',
+        operationId: 'annual-adjustment-credit-1',
+      },
+      actor
+    );
+
+    assert.equal(repeated.idempotent, true);
+    assert.equal(Number(repeated.state.availableDays), 6.5);
+
+    const repeatedRows = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND employee_id = ?
+         AND entry_code = 'MANUAL_CORRECTION'
+         AND source_type = 'manual_adjustment'
+         AND source_id = 'annual-adjustment-credit-1'
+    `).bind(employeeId).first();
+
+    assert.equal(Number(repeatedRows.count), 1);
+
+    await assert.rejects(
+      () =>
+        adjustAnnualLeaveBalance(
+          db,
+          'main',
+          employeeId,
+          {
+            action: 'add',
+            days: 0.5,
+            effectiveDate: '2026-08-28',
+            reason: 'Changed replay payload',
+            operationId: 'annual-adjustment-credit-1',
+          },
+          actor
+        ),
+      {
+        code:
+          'core_annual_leave:adjustment_operation_mismatch',
+      }
+    );
+
+    const deducted = await adjustAnnualLeaveBalance(
+      db,
+      'main',
+      employeeId,
+      {
+        action: 'deduct',
+        days: 0.5,
+        effectiveDate: '2026-08-28',
+        reason: 'Manual annual correction debit',
+        operationId: 'annual-adjustment-debit-1',
+      },
+      actor
+    );
+
+    assert.equal(deducted.idempotent, false);
+    assert.equal(deducted.entry.entryCode, 'MANUAL_CORRECTION');
+    assert.equal(Number(deducted.entry.changeAmount), -0.5);
+    assert.equal(Number(deducted.entry.balanceBefore), 6.5);
+    assert.equal(Number(deducted.entry.balanceAfter), 6);
+    assert.equal(Number(deducted.state.availableDays), 6);
+
+    await assert.rejects(
+      () =>
+        adjustAnnualLeaveBalance(
+          db,
+          'main',
+          employeeId,
+          {
+            action: 'deduct',
+            days: 6.5,
+            effectiveDate: '2026-08-28',
+            reason: 'Must not overdraw annual entitlement',
+            operationId: 'annual-adjustment-overdraft-1',
+          },
+          actor
+        ),
+      {
+        code:
+          'core_annual_leave:insufficient_available_entitlement',
+      }
+    );
+
+    const failedOverdraftRows = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'manual_adjustment'
+         AND source_id = 'annual-adjustment-overdraft-1'
+    `).first();
+
+    assert.equal(Number(failedOverdraftRows.count), 0);
+
+    const otherEmployeeId =
+      'emp-annual-adjustment-other';
+
+    await upsertHrEmployee(
+      db,
+      'main',
+      {
+        id: otherEmployeeId,
+        name: 'Annual Adjustment Other Employee',
+        firebaseUid: 'uid-annual-adjustment-other',
+        employment: {
+          startDate: '2025-01-01',
+          baseSalaryHalalas: 450000,
+          leaveBalance: 5,
+        },
+      },
+      actor
+    );
+
+    await seedAnnualLeaveOpeningBalance(
+      db,
+      otherEmployeeId,
+      5,
+      'opening-annual-adjustment-other'
+    );
+
+    await assert.rejects(
+      () =>
+        adjustAnnualLeaveBalance(
+          db,
+          'main',
+          otherEmployeeId,
+          {
+            action: 'add',
+            days: 1.5,
+            effectiveDate: '2026-08-28',
+            reason: 'Manual annual correction credit',
+            operationId: 'annual-adjustment-credit-1',
+          },
+          actor
+        ),
+      {
+        code:
+          'core_annual_leave:adjustment_source_employee_mismatch',
+      }
+    );
+  });
+});
+test('annual leave manual adjustment refuses review-required state', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await withFixedRiyadhDate(t, async () => {
+    const employeeId =
+      'emp-annual-adjustment-review-required';
+
+    await upsertHrEmployee(
+      db,
+      'main',
+      {
+        id: employeeId,
+        name: 'Annual Adjustment Review Required',
+        firebaseUid:
+          'uid-annual-adjustment-review-required',
+        employment: {
+          startDate: '2025-01-01',
+          baseSalaryHalalas: 450000,
+          leaveBalance: 5,
+        },
+      },
+      actor
+    );
+
+    await assert.rejects(
+      () =>
+        adjustAnnualLeaveBalance(
+          db,
+          'main',
+          employeeId,
+          {
+            action: 'add',
+            days: 0.5,
+            effectiveDate: '2026-08-28',
+            reason:
+              'Must not bypass annual review state',
+            operationId:
+              'annual-adjustment-review-required-1',
+          },
+          actor
+        ),
+      {
+        code:
+          'core_annual_leave:opening_balance_required',
+      }
+    );
+
+    const rows = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND employee_id = ?
+         AND source_type = 'manual_adjustment'
+    `).bind(employeeId).first();
+
+    assert.equal(Number(rows.count), 0);
+  });
+});
 test('historical annual leave correction routes locked payroll impact through canonical carryover', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());

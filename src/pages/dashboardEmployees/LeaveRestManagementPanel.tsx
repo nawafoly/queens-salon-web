@@ -223,6 +223,51 @@ export default function LeaveRestManagementPanel({
     setWeeklyRestOpeningReason,
   ] = useState("");
 
+  const [
+    annualAdjustmentAction,
+    setAnnualAdjustmentAction,
+  ] = useState<"add" | "deduct">("add");
+
+  const [
+    annualAdjustmentDays,
+    setAnnualAdjustmentDays,
+  ] = useState("");
+
+  const [
+    annualAdjustmentEffectiveDate,
+    setAnnualAdjustmentEffectiveDate,
+  ] = useState(today);
+
+  const [
+    annualAdjustmentReason,
+    setAnnualAdjustmentReason,
+  ] = useState("");
+
+  const annualAdjustmentOperationIdRef =
+    useRef("");
+
+  const [
+    weeklyRestAdjustmentAction,
+    setWeeklyRestAdjustmentAction,
+  ] = useState<"credit" | "debit">("credit");
+
+  const [
+    weeklyRestAdjustmentDays,
+    setWeeklyRestAdjustmentDays,
+  ] = useState("");
+
+  const [
+    weeklyRestAdjustmentEffectiveDate,
+    setWeeklyRestAdjustmentEffectiveDate,
+  ] = useState(today);
+
+  const [
+    weeklyRestAdjustmentReason,
+    setWeeklyRestAdjustmentReason,
+  ] = useState("");
+
+  const weeklyRestAdjustmentOperationIdRef =
+    useRef("");
   const [recallDate, setRecallDate] =
     useState(today);
   const [recallReason, setRecallReason] =
@@ -597,6 +642,176 @@ export default function LeaveRestManagementPanel({
       }
     };
 
+  const submitAnnualLeaveAdjustment =
+    async () => {
+      if (annualReviewRequired) {
+        setMessage(
+          "لا يمكن تسوية الرصيد السنوي قبل اكتمال مراجعة الرصيد واعتماد نقطة البداية."
+        );
+        return;
+      }
+
+      const days =
+        Number(annualAdjustmentDays);
+
+      if (
+        !Number.isFinite(days) ||
+        days < 0.5 ||
+        days > 3650 ||
+        Math.round(days * 2) !== days * 2
+      ) {
+        setMessage(
+          "أدخل عدد أيام صحيح بمضاعفات نصف يوم، مثل 0.5 أو 1 أو 1.5."
+        );
+        return;
+      }
+
+      if (!annualAdjustmentEffectiveDate) {
+        setMessage(
+          "حدد تاريخ سريان التسوية."
+        );
+        return;
+      }
+
+      const reason =
+        annualAdjustmentReason.trim();
+
+      if (!reason) {
+        setMessage(
+          "اكتب سبب التسوية."
+        );
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+
+      try {
+        if (
+          !annualAdjustmentOperationIdRef.current
+        ) {
+          annualAdjustmentOperationIdRef.current =
+            `annual-adjustment-${employeeId}-${crypto.randomUUID()}`;
+        }
+
+        await CoreHrService
+          .adjustAnnualLeaveBalance(
+            employeeId,
+            {
+              action:
+                annualAdjustmentAction,
+              days,
+              effectiveDate:
+                annualAdjustmentEffectiveDate,
+              reason,
+              operationId:
+                annualAdjustmentOperationIdRef.current,
+            }
+          );
+
+        setAnnualAdjustmentDays("");
+        setAnnualAdjustmentReason("");
+        annualAdjustmentOperationIdRef.current =
+          "";
+
+        await load();
+
+        setMessage(
+          annualAdjustmentAction === "add"
+            ? "تمت إضافة التسوية إلى رصيد الإجازة السنوية."
+            : "تم خصم التسوية من رصيد الإجازة السنوية."
+        );
+      } catch (error) {
+        setMessage(
+          humanError(error)
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
+
+  const submitWeeklyRestAdjustment =
+    async () => {
+      const days =
+        Number(weeklyRestAdjustmentDays);
+
+      if (
+        !Number.isInteger(days) ||
+        days < 1 ||
+        days > 366
+      ) {
+        setMessage(
+          "أدخل عدد أيام صحيح من 1 إلى 366."
+        );
+        return;
+      }
+
+      if (
+        !weeklyRestAdjustmentEffectiveDate
+      ) {
+        setMessage(
+          "حدد تاريخ سريان التسوية."
+        );
+        return;
+      }
+
+      const reason =
+        weeklyRestAdjustmentReason.trim();
+
+      if (!reason) {
+        setMessage(
+          "اكتب سبب التسوية."
+        );
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+
+      try {
+        if (
+          !weeklyRestAdjustmentOperationIdRef.current
+        ) {
+          weeklyRestAdjustmentOperationIdRef.current =
+            `weekly-rest-adjustment-${employeeId}-${crypto.randomUUID()}`;
+        }
+
+        await CoreHrService
+          .adjustWeeklyRestBalance(
+            employeeId,
+            {
+              action:
+                weeklyRestAdjustmentAction,
+              days,
+              effectiveDate:
+                weeklyRestAdjustmentEffectiveDate,
+              reason,
+              operationId:
+                weeklyRestAdjustmentOperationIdRef.current,
+            }
+          );
+
+        setWeeklyRestAdjustmentDays("");
+        setWeeklyRestAdjustmentReason("");
+        weeklyRestAdjustmentOperationIdRef.current =
+          "";
+
+        await load();
+
+        setMessage(
+          weeklyRestAdjustmentAction ===
+            "credit"
+            ? "تمت إضافة التسوية إلى رصيد الراحة التعويضية."
+            : "تم خصم التسوية من رصيد الراحة التعويضية."
+        );
+      } catch (error) {
+        setMessage(
+          humanError(error)
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
   const submitRecall = async () => {
     if (!recallLeave) {
       setMessage(
@@ -957,6 +1172,138 @@ export default function LeaveRestManagementPanel({
         />
       </WorkspaceCardV2>
 
+      {!annualReviewRequired ? (
+        <WorkspaceCardV2
+          title="تسوية رصيد الإجازة السنوية"
+          description="استخدم هذه العملية لتصحيح رصيد مؤكد بعد اعتماد الرصيد السنوي. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الحركات السابقة."
+        >
+          <div className="dsv2-ew-metrics">
+            <WorkspaceMetricV2
+              label="الرصيد الحالي"
+              value={
+                loading
+                  ? "جاري التحميل..."
+                  : annualBalanceValue(
+                      annualLeave.availableDays,
+                      false
+                    )
+              }
+              note="الرصيد السنوي المتاح"
+              tone="success"
+            />
+          </div>
+
+          <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+            <DashboardFieldV2
+              id="employee-live-v2-annual-adjustment-action"
+              label="نوع التسوية"
+            >
+              <select
+                id="employee-live-v2-annual-adjustment-action"
+                className="dsv2-input"
+                value={annualAdjustmentAction}
+                disabled={readOnly || saving}
+                onChange={(event) =>
+                  setAnnualAdjustmentAction(
+                    event.target.value as
+                      | "add"
+                      | "deduct"
+                  )
+                }
+              >
+                <option value="add">
+                  إضافة إلى الرصيد
+                </option>
+                <option value="deduct">
+                  خصم من الرصيد
+                </option>
+              </select>
+            </DashboardFieldV2>
+
+            <DashboardFieldV2
+              id="employee-live-v2-annual-adjustment-days"
+              label="عدد الأيام"
+            >
+              <input
+                id="employee-live-v2-annual-adjustment-days"
+                className="dsv2-input"
+                inputMode="decimal"
+                value={annualAdjustmentDays}
+                disabled={readOnly || saving}
+                placeholder="مثال: 0.5 أو 1 أو 1.5"
+                onChange={(event) =>
+                  setAnnualAdjustmentDays(
+                    event.target.value
+                  )
+                }
+              />
+            </DashboardFieldV2>
+
+            <DashboardFieldV2
+              id="employee-live-v2-annual-adjustment-effective-date"
+              label="تاريخ سريان التسوية"
+            >
+              <DashboardDatePickerV2
+                id="employee-live-v2-annual-adjustment-effective-date"
+                value={annualAdjustmentEffectiveDate}
+                max={today}
+                disabled={readOnly || saving}
+                onChange={
+                  setAnnualAdjustmentEffectiveDate
+                }
+              />
+            </DashboardFieldV2>
+
+            <DashboardFieldV2
+              id="employee-live-v2-annual-adjustment-reason"
+              label="سبب التسوية"
+            >
+              <input
+                id="employee-live-v2-annual-adjustment-reason"
+                className="dsv2-input"
+                value={annualAdjustmentReason}
+                disabled={readOnly || saving}
+                placeholder="مثال: تصحيح رصيد مؤكد بعد مراجعة السجل"
+                onChange={(event) =>
+                  setAnnualAdjustmentReason(
+                    event.target.value
+                  )
+                }
+              />
+            </DashboardFieldV2>
+          </div>
+
+          <WorkspaceNoticeV2
+            title="حركة مدققة وليست تعديلًا مباشرًا"
+            description="الإضافة أو الخصم يسجلان كتصحيح يدوي في السجل الموحد للإجازة السنوية. لا يتم حذف الحركات السابقة أو تعديلها."
+            tone="neutral"
+          />
+
+          <button
+            type="button"
+            className={
+              annualAdjustmentAction === "deduct"
+                ? "dsv2-btn dsv2-btn--danger"
+                : "dsv2-btn dsv2-btn--success"
+            }
+            disabled={
+              readOnly ||
+              saving ||
+              annualAdjustmentDays === "" ||
+              !annualAdjustmentEffectiveDate ||
+              !annualAdjustmentReason.trim()
+            }
+            onClick={() =>
+              void submitAnnualLeaveAdjustment()
+            }
+          >
+            {annualAdjustmentAction === "add"
+              ? "إضافة التسوية"
+              : "خصم التسوية"}
+          </button>
+        </WorkspaceCardV2>
+      ) : null}
+
       <WorkspaceCardV2
         title="الرصيد الافتتاحي / تسوية بدء النظام"
         description="سجل هنا فقط الرصيد المتبقي الذي تم اعتماده فعليًا عند بدء النظام. إذا كان السجل السابق غير مكتمل فلا تخمّن الرصيد."
@@ -1192,6 +1539,153 @@ export default function LeaveRestManagementPanel({
         )}
       </WorkspaceCardV2>
 
+      <WorkspaceCardV2
+        title="تسوية رصيد الراحة التعويضية"
+        description="استخدم هذه العملية لتصحيح رصيد مؤكد بعد بدء النظام. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الرصيد التاريخي."
+      >
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2
+            label="الرصيد الحالي"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(
+                    overview?.weeklyRest.dueDays,
+                    " يوم"
+                  )
+            }
+            note="رصيد الراحة التعويضية"
+            tone={
+              Number(
+                overview?.weeklyRest.dueDays || 0
+              ) > 0
+                ? "gold"
+                : "neutral"
+            }
+          />
+        </div>
+
+        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+          <DashboardFieldV2
+            id="employee-live-v2-weekly-rest-adjustment-action"
+            label="نوع التسوية"
+          >
+            <select
+              id="employee-live-v2-weekly-rest-adjustment-action"
+              className="dsv2-input"
+              value={
+                weeklyRestAdjustmentAction
+              }
+              disabled={readOnly || saving}
+              onChange={(event) =>
+                setWeeklyRestAdjustmentAction(
+                  event.target.value as
+                    | "credit"
+                    | "debit"
+                )
+              }
+            >
+              <option value="credit">
+                إضافة إلى الرصيد
+              </option>
+              <option value="debit">
+                خصم من الرصيد
+              </option>
+            </select>
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-weekly-rest-adjustment-days"
+            label="عدد الأيام"
+          >
+            <input
+              id="employee-live-v2-weekly-rest-adjustment-days"
+              className="dsv2-input"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={
+                weeklyRestAdjustmentDays
+              }
+              disabled={readOnly || saving}
+              placeholder="1"
+              onChange={(event) =>
+                setWeeklyRestAdjustmentDays(
+                  event.target.value
+                )
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-weekly-rest-adjustment-effective-date"
+            label="تاريخ سريان التسوية"
+          >
+            <DashboardDatePickerV2
+              id="employee-live-v2-weekly-rest-adjustment-effective-date"
+              value={
+                weeklyRestAdjustmentEffectiveDate
+              }
+              max={today}
+              disabled={readOnly || saving}
+              onChange={
+                setWeeklyRestAdjustmentEffectiveDate
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="employee-live-v2-weekly-rest-adjustment-reason"
+            label="سبب التسوية"
+          >
+            <input
+              id="employee-live-v2-weekly-rest-adjustment-reason"
+              className="dsv2-input"
+              value={
+                weeklyRestAdjustmentReason
+              }
+              maxLength={1500}
+              disabled={readOnly || saving}
+              placeholder="مثال: تصحيح استحقاق مؤكد من الموارد البشرية"
+              onChange={(event) =>
+                setWeeklyRestAdjustmentReason(
+                  event.target.value
+                )
+              }
+            />
+          </DashboardFieldV2>
+        </div>
+
+        <WorkspaceNoticeV2
+          title="حركة مدققة وليست تعديلًا مباشرًا"
+          description="الإضافة أو الخصم يسجلان في السجل الموحد للراحة التعويضية. لا يتم حذف الرصيد التاريخي أو تعديل الحركات السابقة."
+          tone="neutral"
+        />
+
+        <button
+          type="button"
+          className={
+            weeklyRestAdjustmentAction ===
+            "debit"
+              ? "dsv2-btn dsv2-btn--danger"
+              : "dsv2-btn dsv2-btn--success"
+          }
+          disabled={
+            readOnly ||
+            saving ||
+            weeklyRestAdjustmentDays === "" ||
+            !weeklyRestAdjustmentEffectiveDate ||
+            !weeklyRestAdjustmentReason.trim()
+          }
+          onClick={() =>
+            void submitWeeklyRestAdjustment()
+          }
+        >
+          {weeklyRestAdjustmentAction ===
+          "credit"
+            ? "إضافة التسوية"
+            : "خصم التسوية"}
+        </button>
+      </WorkspaceCardV2>
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2
           title="استدعاء من الإجازة السنوية"
