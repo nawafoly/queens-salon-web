@@ -40,6 +40,7 @@ test("attendance calendar exposes canonical leave presentation types", () => {
   assert.match(source, /type === "annual"[\s\S]*return "annual"/);
   assert.match(source, /type === "unpaid"[\s\S]*return "exceptional"/);
   assert.match(source, /kind === "weekly_off"[\s\S]*return "weekly_rest"/);
+  assert.match(source, /if \(kind !== "leave"\) return "";/);
   assert.match(source, /data-leave-type=\{attendanceCalendarLeaveType\(day\)\}/);
   assert.match(source, /className="dsv2-ew-calendar-legend"/);
   assert.match(source, /data-leave-type="weekly_rest"/);

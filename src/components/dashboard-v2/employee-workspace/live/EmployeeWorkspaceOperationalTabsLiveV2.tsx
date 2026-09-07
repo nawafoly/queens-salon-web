@@ -191,8 +191,11 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
 }
 
 function attendanceCalendarLeaveType(day: AttendanceCalendarDayLiveV2) {
+  const kind = day.specialDay?.kind;
+  if (kind === "weekly_off") return "weekly_rest";
+  if (kind !== "leave") return "";
+
   const type = cleanText(day.specialDay?.type).toLowerCase();
-  if (day.specialDay?.kind === "weekly_off") return "weekly_rest";
   if (type === "weekly_rest_substitute_use") return "compensatory";
   if (type === "annual") return "annual";
   if (type === "unpaid") return "exceptional";
