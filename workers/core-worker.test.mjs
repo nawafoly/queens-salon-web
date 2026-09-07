@@ -4614,6 +4614,88 @@ test("booking-managed income rejects direct patch and delete while invoice-only 
   assert.equal(fake.find("income_entries", "main", "income-invoice-only"), null);
 });
 
+test("generic income create rejects booking-managed linkage while preserving manual invoice references", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const now = "2027-01-01T00:00:00.000Z";
+
+  fake.seed("bookings", {
+    id: "income-create-legacy",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "13:00",
+    end_time: "13:30",
+    status: "completed",
+    source: "test",
+    total_halalas: 4000,
+    payment_status: "paid",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  });
+
+  for (const payload of [
+    {
+      id: "income-create-booking",
+      bookingId: "forged-booking",
+      amountHalalas: 4000,
+      source: "manual",
+    },
+    {
+      id: "income-create-payment",
+      paymentId: "forged-payment",
+      amountHalalas: 4000,
+      source: "manual",
+    },
+    {
+      id: "income-create-legacy",
+      amountHalalas: 4000,
+      source: "booking",
+    },
+  ]) {
+    const response = await worker.fetch(
+      request("/api/core/income", {
+        method: "POST",
+        body: payload,
+      }),
+      env(fake)
+    );
+
+    const body = await json(response);
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, "core_income:booking_managed");
+    assert.equal(fake.find("income_entries", "main", payload.id), null);
+  }
+
+  const response = await worker.fetch(
+    request("/api/core/income", {
+      method: "POST",
+      body: {
+        id: "income-create-invoice-only",
+        invoiceId: "invoice-manual-reference",
+        amountHalalas: 2500,
+        method: "transfer",
+        source: "manual",
+        note: "manual invoice reference",
+      },
+    }),
+    env(fake)
+  );
+
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const stored = fake.find("income_entries", "main", "income-create-invoice-only");
+  assert.ok(stored);
+  assert.equal(stored.booking_id, null);
+  assert.equal(stored.payment_id, null);
+  assert.equal(stored.invoice_id, "invoice-manual-reference");
+  assert.equal(stored.source, "manual");
+});
+
 test("refund is idempotent and adjusts invoice paid total", async () => {
   const fake = new FakeD1();
   seedCore(fake);

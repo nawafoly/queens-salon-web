@@ -322,8 +322,22 @@ async function assertIncomeDirectMutationAllowed(db, salonId, row, data = {}) {
 
 export async function createIncome(db, salonId, data, actor = {}) {
   const now = nowIso();
+  const id = requiredId(data.id || generatedId('income'));
+
+  await assertIncomeDirectMutationAllowed(
+    db,
+    salonId,
+    {
+      id,
+      booking_id: null,
+      payment_id: null,
+      source: null,
+    },
+    data
+  );
+
   const row = {
-    id: requiredId(data.id || generatedId('income')),
+    id,
     salon_id: salonId,
     booking_id: optionalText(data.bookingId || data.booking_id) || null,
     invoice_id: optionalText(data.invoiceId || data.invoice_id) || null,

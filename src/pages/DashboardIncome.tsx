@@ -503,6 +503,7 @@ function DashboardIncomeContent() {
           const legacy = loadLegacyIncome();
           if (legacy.length) {
             for (const it of legacy) {
+              if (String(it.bookingId || "").trim()) continue;
               await upsertIncomeCore(it);
             }
           }
