@@ -7,6 +7,11 @@ const source = readFileSync(
   "utf8"
 );
 
+const calendarStyleSource = readFileSync(
+  "src/styles/dashboard-v2/pages/employee-workspace.css",
+  "utf8"
+);
+
 const attendanceSectionSource = readFileSync(
   "src/pages/dashboardEmployees/AttendanceSection.tsx",
   "utf8"
@@ -26,6 +31,30 @@ test("attendance calendar uses semantic no-punch labels", () => {
   assert.doesNotMatch(
     source,
     /\.join\(" \? "\)/
+  );
+});
+
+test("attendance calendar exposes canonical leave presentation types", () => {
+  assert.match(source, /function attendanceCalendarLeaveType/);
+  assert.match(source, /type === "weekly_rest_substitute_use"[\s\S]*return "compensatory"/);
+  assert.match(source, /type === "annual"[\s\S]*return "annual"/);
+  assert.match(source, /type === "unpaid"[\s\S]*return "exceptional"/);
+  assert.match(source, /kind === "weekly_off"[\s\S]*return "weekly_rest"/);
+  assert.match(source, /if \(kind !== "leave"\) return "";/);
+  assert.match(source, /data-leave-type=\{attendanceCalendarLeaveType\(day\)\}/);
+  assert.match(source, /className="dsv2-ew-calendar-legend"/);
+  assert.match(source, /data-leave-type="weekly_rest"/);
+  assert.match(source, /data-leave-type="compensatory"/);
+  assert.match(source, /data-leave-type="annual"/);
+  assert.match(source, /data-leave-type="exceptional"/);
+
+  assert.match(calendarStyleSource, /\[data-leave-type="weekly_rest"\]/);
+  assert.match(calendarStyleSource, /\[data-leave-type="compensatory"\]/);
+  assert.match(calendarStyleSource, /\[data-leave-type="annual"\]/);
+  assert.match(calendarStyleSource, /\[data-leave-type="exceptional"\]/);
+  assert.doesNotMatch(
+    calendarStyleSource,
+    /data-special="weekly_off"[\s\S]{0,220}var\(--dsv2-gold\)/
   );
 });
 
