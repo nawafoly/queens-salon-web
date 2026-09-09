@@ -66,12 +66,34 @@ function annualReviewReasonLabel(value: unknown) {
   return reason || "يحتاج مراجعة من الموارد البشرية";
 }
 
+const annualAccruedLabel = "\u0627\u0644\u0645\u0643\u062a\u0633\u0628 \u062d\u062a\u0649 \u0627\u0644\u0622\u0646";
+
+function annualDurationLabel(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631";
+  }
+
+  const sign = number < 0 ? "-" : "";
+  const totalHours = Math.floor(Math.abs(number) * 24);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const dayUnit =
+    days === 1
+      ? "\u064a\u0648\u0645"
+      : "\u0623\u064a\u0627\u0645";
+
+  return `${sign}${days} ${dayUnit} \u0648${hours} \u0633\u0627\u0639\u0629`;
+}
+
 function annualBalanceValue(
   value: unknown,
   reviewRequired = false
 ) {
-  if (reviewRequired) return "يحتاج مراجعة";
-  return numberLabel(value, " يوم");
+  if (reviewRequired) {
+    return "\u064a\u062d\u062a\u0627\u062c \u0645\u0631\u0627\u062c\u0639\u0629";
+  }
+  return annualDurationLabel(value);
 }
 
 function statusLabel(value: unknown) {
@@ -1084,6 +1106,25 @@ export default function LeaveRestManagementPanel({
           />
 
           <WorkspaceMetricV2
+            label={annualAccruedLabel}
+            value={
+              loading
+                ? "\u062c\u0627\u0631\u064a \u0627\u0644\u062a\u062d\u0645\u064a\u0644..."
+                : annualBalanceValue(
+                    annualLeave.earnedCurrentServiceYearDays ??
+                      annualLeave.accruedDays,
+                    annualReviewRequired
+                  )
+            }
+            note={
+              annualReviewRequired
+                ? annualReviewReasonLabel(annualLeave.reviewReason)
+                : undefined
+            }
+            tone={annualReviewRequired ? "gold" : "success"}
+          />
+
+          <WorkspaceMetricV2
             label="الرصيد الافتتاحي"
             value={
               loading
@@ -1157,19 +1198,6 @@ export default function LeaveRestManagementPanel({
           />
         </div>
 
-        <WorkspaceNoticeV2
-          title="معلومة احتسابية"
-          description={
-            loading
-              ? "جاري تحميل تفاصيل الاحتساب..."
-              : `الاستحقاق النظري المتراكم حسب تاريخ الخدمة: ${numberLabel(
-                  annualLeave.earnedCurrentServiceYearDays ??
-                    annualLeave.accruedDays,
-                  " يوم"
-                )}. هذه المعلومة لا تمثل الرصيد المتبقي ولا تُضاف فوق الرصيد الافتتاحي المعتمد.`
-          }
-          tone="neutral"
-        />
       </WorkspaceCardV2>
 
       {!annualReviewRequired ? (

@@ -19,6 +19,8 @@ import { SA_LABOR_POLICY_VERSION } from '../../../src/helpers/hr/saLaborPolicy.j
 import {
   annualLeaveServiceYear,
   calculateAnnualLeaveAccrual,
+  calculateAnnualLeaveLiveAccrual,
+  calculateAnnualLeaveLiveAccrualRange,
   calculateAnnualLeaveAvailable,
 } from '../../../src/helpers/hr/saLeaveEntitlements.js';
 
@@ -50,13 +52,13 @@ function actorField(actor, field) {
   return optionalText(actor?.[field]) || null;
 }
 
-function riyadhDateKey() {
+function riyadhDateKey(value = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Riyadh',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(value);
 }
 
 function parseMetadata(value) {
@@ -202,8 +204,29 @@ export async function getAnnualLeaveState(
   query = {}
 ) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
+  const liveAccrualRequested = query.liveAccrual === true;
+  const liveAsOfDateTime = liveAccrualRequested
+    ? cleanText(query.asOfDateTime || query.as_of_date_time) ||
+      new Date().toISOString()
+    : null;
+  const liveAsOfInstant = liveAccrualRequested
+    ? new Date(liveAsOfDateTime)
+    : null;
+
+  if (
+    liveAsOfInstant &&
+    Number.isNaN(liveAsOfInstant.getTime())
+  ) {
+    throw new AppError(
+      400,
+      'core_annual_leave:invalid_as_of_date_time'
+    );
+  }
+
   const asOfDate = validDate(
-    query.asOfDate || query.as_of_date || riyadhDateKey(),
+    liveAsOfInstant
+      ? riyadhDateKey(liveAsOfInstant)
+      : query.asOfDate || query.as_of_date || riyadhDateKey(),
     'asOfDate'
   );
 
@@ -294,6 +317,18 @@ export async function getAnnualLeaveState(
       employment.annual_leave_contract_days,
   });
 
+  const liveCurrentAccrual = liveAccrualRequested
+    ? calculateAnnualLeaveLiveAccrual({
+        startDate: normalizedStartDate,
+        asOfDateTime: liveAsOfDateTime,
+        contractAnnualDays:
+          employment.annual_leave_contract_days,
+      })
+    : null;
+
+  const effectiveCurrentAccrual =
+    liveCurrentAccrual || currentAccrual;
+
   if (openingRequired) {
     return {
       employeeId,
@@ -308,13 +343,13 @@ export async function getAnnualLeaveState(
       legacyBalanceDays,
       leaveBalance: legacyBalanceDays,
       earnedCurrentServiceYearDays:
-        currentAccrual.accruedDays,
+        effectiveCurrentAccrual.accruedDays,
       annualEntitlementDays:
-        currentAccrual.annualEntitlementDays,
+        effectiveCurrentAccrual.annualEntitlementDays,
       serviceYearStart:
-        currentAccrual.serviceYearStart,
+        effectiveCurrentAccrual.serviceYearStart,
       serviceYearEnd:
-        currentAccrual.serviceYearEnd,
+        effectiveCurrentAccrual.serviceYearEnd,
       openingBalance: null,
       usedDays: null,
       availableDays: null,
@@ -343,6 +378,30 @@ export async function getAnnualLeaveState(
     openingBalanceDays,
     postOpeningNetDays,
   });
+  const liveAccrualSinceAnchor = liveAccrualRequested
+    ? calculateAnnualLeaveLiveAccrualRange({
+        startDate: normalizedStartDate,
+        asOfDateTime: liveAsOfDateTime,
+        contractAnnualDays:
+          employment.annual_leave_contract_days,
+        fromExclusiveDate: availability.openingApplied
+          ? availability.openingBalanceEffectiveDate
+          : null,
+      })
+    : null;
+
+  const effectiveAccruedSinceAnchorDays =
+    liveAccrualSinceAnchor
+      ? roundDays(liveAccrualSinceAnchor.accruedDays)
+      : availability.accruedSinceAnchorDays;
+
+  const effectiveAvailableDays = liveAccrualSinceAnchor
+    ? roundDays(
+        availability.openingBalanceDays +
+          liveAccrualSinceAnchor.accruedDays +
+          availability.postOpeningNetDays
+      )
+    : availability.availableDays;
 
   const usedDays = roundDays(
     postOpeningRows
@@ -381,23 +440,23 @@ export async function getAnnualLeaveState(
       ? roundDays(openingBalanceDays)
       : 0,
     earnedCurrentServiceYearDays:
-      currentAccrual.accruedDays,
+      effectiveCurrentAccrual.accruedDays,
     accruedSinceAnchorDays:
-      availability.accruedSinceAnchorDays,
+      effectiveAccruedSinceAnchorDays,
     annualEntitlementDays:
-      currentAccrual.annualEntitlementDays,
+      effectiveCurrentAccrual.annualEntitlementDays,
     statutoryEntitlementDays:
-      currentAccrual.statutoryEntitlementDays,
+      effectiveCurrentAccrual.statutoryEntitlementDays,
     contractualEntitlementDays:
-      currentAccrual.contractualEntitlementDays,
+      effectiveCurrentAccrual.contractualEntitlementDays,
     serviceYearStart:
-      currentAccrual.serviceYearStart,
+      effectiveCurrentAccrual.serviceYearStart,
     serviceYearEnd:
-      currentAccrual.serviceYearEnd,
+      effectiveCurrentAccrual.serviceYearEnd,
     usedDays,
     reversedDays,
     postOpeningNetDays,
-    availableDays: availability.availableDays,
+    availableDays: effectiveAvailableDays,
     entries: rows.map(mapLedgerEntry),
     compatibilityProjectionUpdatedAt:
       employment.annual_leave_legacy_projection_updated_at ||

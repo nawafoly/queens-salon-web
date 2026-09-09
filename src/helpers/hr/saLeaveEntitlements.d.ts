@@ -32,6 +32,40 @@ export function calculateAnnualLeaveAccrual(input: {
   asOfDate: string;
   contractAnnualDays?: number | null;
 }): Record<string, unknown>;
+export function calculateAnnualLeaveLiveAccrual(input: {
+  startDate: string;
+  asOfDateTime: string;
+  contractAnnualDays?: number | null;
+}): {
+  policyVersion: string;
+  startDate: string;
+  asOfDate: string;
+  asOfDateTime: string;
+  serviceYearStart: string;
+  serviceYearEnd: string;
+  completedServiceYearsAtStart: number;
+  statutoryEntitlementDays: number;
+  contractualEntitlementDays: number | null;
+  annualEntitlementDays: number;
+  periodDays: number;
+  elapsedMinutes: number;
+  accruedDays: number;
+};
+export function calculateAnnualLeaveLiveAccrualRange(input: {
+  startDate: string;
+  asOfDateTime: string;
+  contractAnnualDays?: number | null;
+  fromExclusiveDate?: string | null;
+}): {
+  policyVersion: string;
+  startDate: string;
+  fromExclusiveDate: string | null;
+  asOfDate: string;
+  asOfDateTime: string;
+  accruedDays: number;
+  elapsedMinutes: number;
+  segments: Array<Record<string, unknown>>;
+};
 export function calculateAnnualLeaveAccrualRange(input: {
   startDate: string;
   asOfDate: string;

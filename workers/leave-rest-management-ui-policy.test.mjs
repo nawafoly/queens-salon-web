@@ -77,10 +77,12 @@ test("annual leave balance UI renders canonical Core balance components", () => 
   }
 
   assert.match(panel, /label="الاستحقاق السنوي"/);
-  assert.doesNotMatch(panel, /label="المكتسب حتى اليوم"/);
-  assert.match(panel, /title="معلومة احتسابية"/);
-  assert.match(panel, /الاستحقاق النظري المتراكم حسب تاريخ الخدمة/);
-  assert.match(panel, /لا تمثل الرصيد المتبقي ولا تُضاف فوق الرصيد الافتتاحي المعتمد/);
+  assert.match(panel, /const annualAccruedLabel/);
+  assert.match(panel, /function annualDurationLabel/);
+  assert.match(panel, /Math\.floor\(Math\.abs\(number\) \* 24\)/);
+  assert.match(panel, /label=\{annualAccruedLabel\}/);
+  assert.match(panel, /annualBalanceValue\([\s\S]*earnedCurrentServiceYearDays/);
+  assert.match(panel, /annualBalanceValue[\s\S]*annualDurationLabel/);
   assert.match(panel, /label="الرصيد الافتتاحي"/);
   assert.match(panel, /label="المستخدم"/);
   assert.match(panel, /label="المعاد\/المسترجع"/);
@@ -97,7 +99,9 @@ test("reviewRequired annual balance shows Arabic reason instead of misleading ba
   assert.match(panel, /service_start_date_invalid[\s\S]*تاريخ بداية الخدمة غير صالح/);
   assert.match(panel, /opening_balance_required[\s\S]*يحتاج رصيدًا افتتاحيًا قبل اعتماده/);
   assert.match(panel, /as_of_before_service_start[\s\S]*تاريخ الحساب قبل بداية الخدمة/);
-  assert.match(panel, /annualBalanceValue[\s\S]*if \(reviewRequired\) return "يحتاج مراجعة"/);
+  assert.match(panel, /function annualBalanceValue/);
+  assert.match(panel, /annualBalanceValue[\s\S]*if \(reviewRequired\)/);
+  assert.match(panel, /annualBalanceValue[\s\S]*annualDurationLabel\(value\)/);
   assert.match(panel, /title="الرصيد يحتاج مراجعة"/);
   assert.doesNotMatch(panel, /reviewRequired[\s\S]{0,120}numberLabel\(\s*annualLeave\.availableDays/);
 });
