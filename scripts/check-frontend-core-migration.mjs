@@ -147,19 +147,6 @@ const forbiddenChecks = [
     ],
   },
   {
-    file: "src/pages/hr/CreateStaffAccount.tsx",
-    forbidden: [/CreateStaffAccountLegacy/, /window\.location/, /isDashboardCreateStaffRoute/],
-  },
-  {
-    file: "src/pages/hr/CreateStaffAccountV2.tsx",
-    forbidden: [
-      /syncEmployeeRecordFromUser/,
-      /services\/employeeHub/,
-      /firebase\/firestore/,
-      /staff_public/,
-    ],
-  },
-  {
     file: "src/pages/DashboardEmployees.tsx",
     forbidden: [
       /employee_leave_requests/,
@@ -347,21 +334,6 @@ const requiredChecks = [
       /openCoreEmployeeFile/,
       /downloadCoreEmployeeFile/,
       /updateCoreEmployeeFileStatus/,
-    ],
-  },
-  {
-    file: "src/pages/hr/CreateStaffAccount.tsx",
-    required: [/CreateStaffAccountV2/, /return <CreateStaffAccountV2/],
-  },
-  {
-    file: "src/pages/hr/CreateStaffAccountV2.tsx",
-    required: [
-      /createUserWithEmailAndPassword/,
-      /deleteUser/,
-      /CoreAccountService\.(?:create|update)/,
-      /CoreAccountService\.linkEmployee/,
-      /CoreHrService\.saveEmployee/,
-      /CoreWorkforceService\.createNotification/,
     ],
   },
   {

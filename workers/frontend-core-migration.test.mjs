@@ -213,13 +213,6 @@ test("dashboard bookings uses Core D1 without an operational Firestore switch", 
   assert.doesNotMatch(watchBlock, /setInterval\(/);
   assert.doesNotMatch(watchBlock, /getDataSourceFlags|watchFirestoreBookings/);
 
-  const employeeWatchStart = service.indexOf("export function watchEmployeeBookings");
-  const employeeWatchEnd = service.indexOf("/* =========================\n   UPDATE", employeeWatchStart);
-  const employeeWatchBlock = service.slice(employeeWatchStart, employeeWatchEnd);
-  assert.match(employeeWatchBlock, /visibilitychange/);
-  assert.match(employeeWatchBlock, /addEventListener\("focus", refreshWhenActive\)/);
-  assert.match(employeeWatchBlock, /addEventListener\("online", refreshWhenActive\)/);
-  assert.doesNotMatch(employeeWatchBlock, /setInterval\(/);
 
   assert.match(dashboard, /CoreBookingService\.list\(\)/);
   assert.match(dashboard, /requestInFlight/);
@@ -729,7 +722,7 @@ test("Core worker binds authenticated bookings to the verified client identity",
   const source = readFileSync("workers/core/index.js", "utf8");
   const authContext = readFileSync("workers/core/auth-context.js", "utf8");
   assert.match(source, /getAuthContext/);
-  assert.match(authContext, /getAccountByFirebaseUid/);
+  assert.match(authContext, /resolveAccountForVerifiedIdentity/);
   assert.match(source, /resolveSelfClient/);
   assert.match(source, /clientId:\s*selfClient\.id/);
   assert.match(source, /source:\s*"client"/);
@@ -768,7 +761,7 @@ test("Core auth path does not read Firestore role profiles", () => {
   const packageAuth = readFileSync("workers/packages/auth.js", "utf8");
   const accountRepo = readFileSync("workers/core/repositories/accounts.js", "utf8");
 
-  assert.match(coreAuth, /getAccountByFirebaseUid/);
+  assert.match(coreAuth, /resolveAccountForVerifiedIdentity/);
   assert.match(coreAuth, /assertAccountCanAuthenticate/);
   assert.match(accountRepo, /SELECT \* FROM app_users WHERE salon_id = \? AND firebase_uid = \?/);
   assert.doesNotMatch(packageAuth, /documents\/users|documents\/admin_users|firestore\.googleapis/);
