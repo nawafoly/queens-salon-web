@@ -115,14 +115,15 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "miniflare": "5.20260811.0-alpha",
+    "miniflare": "^5.20260811.0-alpha",
     "tsx": "^4.23.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.3.1",
-    "wrangler": "4.127.1"
+    "wrangler": "^4.127.1"
   },
   "overrides": {
-    "vite": "npm:rolldown-vite@7.3.1"
+    "vite": "npm:rolldown-vite@7.3.1",
+    "sharp": "0.35.4"
   }
 }

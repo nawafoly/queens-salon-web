@@ -526,6 +526,28 @@ class FakeD1 {
         (row) => row.salon_id === salonId && requestedIds.has(String(row.id))
       );
     }
+    if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND (")) {
+      const [salonId, search] = params;
+      const needle = String(search || "").toLowerCase();
+      const exactPhone = String(params[6] || "");
+
+      return this.rows("clients")
+        .filter((row) => row.salon_id === salonId)
+        .filter((row) =>
+          [row.id, row.name, row.email, row.firebase_uid, row.phone_normalized]
+            .some((value) =>
+              String(value || "").toLowerCase().includes(needle)
+            ) ||
+          (exactPhone &&
+            String(row.phone_normalized || "") === exactPhone)
+        )
+        .sort((a, b) =>
+          String(b.updated_at || "").localeCompare(
+            String(a.updated_at || "")
+          )
+        )
+        .slice(0, 500);
+    }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("clients").filter((row) => row.salon_id === salonId);
@@ -971,6 +993,29 @@ class FakeD1 {
         row.status !== "cancelled" &&
         row.id !== excludeId
       ).slice(0, 1).map((row) => ({ id: row.id }));
+    }
+    if (
+      normalized ===
+      "SELECT b.* FROM bookings b WHERE b.salon_id = ? AND b.deleted_at IS NULL ORDER BY b.booking_date DESC, b.start_time DESC LIMIT 500"
+    ) {
+      const [salonId] = params;
+
+      return this.rows("bookings")
+        .filter(
+          (row) =>
+            row.salon_id === salonId &&
+            !row.deleted_at
+        )
+        .sort((a, b) => {
+          const byDate = String(b.booking_date || "").localeCompare(
+            String(a.booking_date || "")
+          );
+          if (byDate !== 0) return byDate;
+          return String(b.start_time || "").localeCompare(
+            String(a.start_time || "")
+          );
+        })
+        .slice(0, 500);
     }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
