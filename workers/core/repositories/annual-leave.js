@@ -302,13 +302,10 @@ export async function getAnnualLeaveState(
     (row) => row.entry_code !== 'OPENING_BALANCE'
   );
 
-  const openingRequired =
-    !opening &&
-    Boolean(
-      legacyEvidence ||
-      (!hasCanonicalActivity &&
-        Math.abs(legacyBalanceDays) > EPSILON)
-    );
+  // Opening balance is an optional migration aid, not a prerequisite for
+  // canonical accrual. When no opening anchor exists, Core derives the
+  // balance from service-date accrual plus canonical ledger movements.
+  const openingRequired = false;
 
   const currentAccrual = calculateAnnualLeaveAccrual({
     startDate: normalizedStartDate,
@@ -512,11 +509,22 @@ export async function setAnnualLeaveOpeningBalance(
     employeeIdValue,
     'employeeId'
   );
-  const days = halfDayValue(
-    data.days ?? data.openingBalanceDays,
-    'opening_balance_days',
-    { allowZero: true }
+  const rawOpeningDays = Number(
+    data.days ?? data.openingBalanceDays
   );
+  if (
+    !Number.isFinite(rawOpeningDays) ||
+    rawOpeningDays < 0 ||
+    rawOpeningDays > MAX_ANNUAL_BALANCE_DAYS
+  ) {
+    throw new AppError(
+      400,
+      'core_annual_leave:invalid_opening_balance_days'
+    );
+  }
+  // Opening anchors can be derived from prorated accrual, so they must retain
+  // sub-half-day precision. Manual corrections remain half-day constrained.
+  const days = roundDays(rawOpeningDays);
   const effectiveDate = validDate(
     data.effectiveDate ||
       data.effective_date ||

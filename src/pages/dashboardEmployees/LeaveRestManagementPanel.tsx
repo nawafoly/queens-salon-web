@@ -18,6 +18,7 @@ import {
   type CoreWeeklyRestWorkAssignment,
 } from "../../services/CoreHrService";
 import type { CoreLeave } from "../../types/hrCoreApi";
+import { calculateAnnualLeaveAccrualRange } from "../../helpers/hr/saLeaveEntitlements.js";
 import {
   WEEKDAY_OPTIONS,
   fmtIsoDate,
@@ -212,6 +213,9 @@ export default function LeaveRestManagementPanel({
     setServiceStartDate,
   ] = useState("");
 
+  const [annualContractDays, setAnnualContractDays] =
+    useState<number | null>(null);
+
   const [
     openingBalanceDays,
     setOpeningBalanceDays,
@@ -342,6 +346,16 @@ export default function LeaveRestManagementPanel({
         employment.socialInsuranceEffectiveFrom
       );
 
+      const contractDays = Number(
+        employment.annual_leave_contract_days ??
+        employment.annualLeaveContractDays
+      );
+      setAnnualContractDays(
+        Number.isFinite(contractDays) && contractDays > 0
+          ? contractDays
+          : null
+      );
+
       setPersistedServiceStartDate(
         persistedStartDate
       );
@@ -437,6 +451,50 @@ export default function LeaveRestManagementPanel({
       annualLeave.openingBalance
     );
 
+  const openingHistoricalUsedDays =
+    openingBalanceDays === ""
+      ? 0
+      : Number(openingBalanceDays);
+
+  const openingAccruedToEffectiveDate = useMemo(() => {
+    if (
+      !persistedServiceStartDate ||
+      !openingBalanceEffectiveDate ||
+      openingBalanceEffectiveDate < persistedServiceStartDate
+    ) {
+      return null;
+    }
+
+    try {
+      const result = calculateAnnualLeaveAccrualRange({
+        startDate: persistedServiceStartDate,
+        asOfDate: openingBalanceEffectiveDate,
+        contractAnnualDays: annualContractDays,
+      }) as { accruedDays?: number };
+      const value = Number(result.accruedDays);
+      return Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }, [
+    persistedServiceStartDate,
+    openingBalanceEffectiveDate,
+    annualContractDays,
+  ]);
+
+  const openingCalculatedRemainingDays =
+    Number.isFinite(openingHistoricalUsedDays) &&
+    openingAccruedToEffectiveDate !== null
+      ? Math.max(
+          0,
+          Math.round(
+            (openingAccruedToEffectiveDate -
+              openingHistoricalUsedDays) *
+              10000
+          ) / 10000
+        )
+      : null;
+
   const serviceStartSourceLabel =
     persistedServiceStartDate
       ? gosiEffectiveDate &&
@@ -525,18 +583,44 @@ export default function LeaveRestManagementPanel({
         return;
       }
 
-      const days =
-        Number(openingBalanceDays);
+      const historicalUsedDays =
+        openingBalanceDays === ""
+          ? 0
+          : Number(openingBalanceDays);
 
       if (
-        !Number.isFinite(days) ||
-        days < 0
+        !Number.isFinite(historicalUsedDays) ||
+        historicalUsedDays < 0 ||
+        Math.round(historicalUsedDays * 2) !==
+          historicalUsedDays * 2
       ) {
         setMessage(
-          "أدخل رصيدًا افتتاحيًا صالحًا."
+          "أدخل الأيام المستخدمة سابقًا بمضاعفات نصف يوم، مثل 0.5 أو 1 أو 1.5."
         );
         return;
       }
+
+      if (
+        openingAccruedToEffectiveDate === null ||
+        openingCalculatedRemainingDays === null
+      ) {
+        setMessage(
+          "تعذر احتساب الرصيد حتى تاريخ بدء النظام. تحقق من تاريخ بداية الخدمة وتاريخ السريان."
+        );
+        return;
+      }
+
+      if (
+        historicalUsedDays >
+        openingAccruedToEffectiveDate + 0.0001
+      ) {
+        setMessage(
+          "الأيام المستخدمة سابقًا أكبر من الاستحقاق المكتسب حتى تاريخ بدء النظام."
+        );
+        return;
+      }
+
+      const days = openingCalculatedRemainingDays;
 
       if (
         !openingBalanceEffectiveDate
@@ -573,7 +657,8 @@ export default function LeaveRestManagementPanel({
               effectiveDate:
                 openingBalanceEffectiveDate,
               reason:
-                openingBalanceReason.trim(),
+                openingBalanceReason.trim() ||
+                "تسوية استخدام سابق قبل بدء النظام",
               operationId:
                 openingBalanceOperationIdRef.current,
             }
@@ -586,7 +671,7 @@ export default function LeaveRestManagementPanel({
         await load();
 
         setMessage(
-          "تم تسجيل الرصيد الافتتاحي في السجل الموحد للإجازة السنوية."
+          "تم تسجيل الاستخدام السابق واحتساب الرصيد المتبقي تلقائيًا."
         );
       } catch (error) {
         setMessage(
@@ -958,50 +1043,6 @@ export default function LeaveRestManagementPanel({
 
   return (
     <>
-      <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2
-          label="الإجازة السنوية"
-          value={
-            loading
-              ? "جاري التحميل..."
-              : annualBalanceValue(
-                  annualAvailable,
-                  annualReviewRequired
-                )
-          }
-          note={
-            annualReviewRequired
-              ? annualReviewReasonLabel(annualLeave.reviewReason)
-              : "الرصيد المتاح"
-          }
-          tone={annualReviewRequired ? "gold" : "success"}
-        />
-        <WorkspaceMetricV2
-          label="الراحة الأسبوعية"
-          value={weeklyRestLabel}
-          note="من جدول الدوام"
-        />
-        <WorkspaceMetricV2
-          label="الراحة التعويضية"
-          value={
-            loading
-              ? "جاري التحميل..."
-              : numberLabel(
-                  overview?.weeklyRest.dueDays,
-                  " يوم"
-                )
-          }
-          note="مستحقة بسبب العمل في يوم الراحة"
-          tone={
-            Number(
-              overview?.weeklyRest.dueDays || 0
-            ) > 0
-              ? "gold"
-              : "neutral"
-          }
-        />
-      </div>
-
       {message ? (
         <WorkspaceNoticeV2
           title={
@@ -1027,8 +1068,8 @@ export default function LeaveRestManagementPanel({
       ) : null}
 
       <WorkspaceCardV2
-        title="تفصيل رصيد الإجازة السنوية"
-        description="يفصل بين الاستحقاق السنوي النظامي وبين الرصيد المتبقي المعتمد فعليًا للموظفة."
+        title="الإجازة السنوية"
+        description="مرجع الخدمة والاستحقاق المكتسب والرصيد المتاح في مكان واحد. الاستحقاق السنوي هو معدل سنوي وليس الرصيد الحالي."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
@@ -1124,23 +1165,6 @@ export default function LeaveRestManagementPanel({
             tone={annualReviewRequired ? "gold" : "success"}
           />
 
-          <WorkspaceMetricV2
-            label="الرصيد الافتتاحي"
-            value={
-              loading
-                ? "جاري التحميل..."
-                : annualReviewRequired &&
-                    annualLeave.reviewReason === "opening_balance_required"
-                  ? "مطلوب"
-                  : numberLabel(annualLeave.openingBalanceDays ?? 0, " يوم")
-            }
-            tone={
-              annualReviewRequired &&
-              annualLeave.reviewReason === "opening_balance_required"
-                ? "gold"
-                : "neutral"
-            }
-          />
           <WorkspaceMetricV2
             label="المستخدم"
             value={
@@ -1333,13 +1357,13 @@ export default function LeaveRestManagementPanel({
       ) : null}
 
       <WorkspaceCardV2
-        title="الرصيد الافتتاحي / تسوية بدء النظام"
-        description="سجل هنا فقط الرصيد المتبقي الذي تم اعتماده فعليًا عند بدء النظام. إذا كان السجل السابق غير مكتمل فلا تخمّن الرصيد."
+        title="تسوية بدء النظام (اختيارية)"
+        description="إذا كانت الموظفة استخدمت إجازات قبل تشغيل النظام، أدخل فقط الأيام المستخدمة سابقًا. النظام يحسب الرصيد المتبقي تلقائيًا. إذا لم يوجد استخدام سابق فلا يلزم تسجيل أي تسوية."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-days"
-            label="الرصيد المتبقي المعتمد"
+            label="الأيام المستخدمة قبل بدء النظام"
           >
             <input
               id="employee-live-v2-opening-balance-days"
@@ -1351,7 +1375,7 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 hasOpeningBalance
               }
-              placeholder="مثال: 21 أو 15.5"
+              placeholder="مثال: 2 أو 3.5 — اتركه فارغًا إذا لم يوجد استخدام سابق"
               onChange={(event) =>
                 setOpeningBalanceDays(
                   event.target.value
@@ -1362,7 +1386,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-effective-date"
-            label="تاريخ سريان الرصيد"
+            label="تاريخ بدء اعتماد النظام"
           >
             <DashboardDatePickerV2
               id="employee-live-v2-opening-balance-effective-date"
@@ -1381,7 +1405,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-reason"
-            label="سبب التسوية"
+            label="ملاحظة التسوية (اختيارية)"
           >
             <input
               id="employee-live-v2-opening-balance-reason"
@@ -1392,7 +1416,7 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 hasOpeningBalance
               }
-              placeholder="مثال: الرصيد الفعلي عند بدء النظام"
+              placeholder="مثال: استخدام سابق مثبت من سجل الموارد البشرية"
               onChange={(event) =>
                 setOpeningBalanceReason(
                   event.target.value
@@ -1402,22 +1426,57 @@ export default function LeaveRestManagementPanel({
           </DashboardFieldV2>
         </div>
 
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2
+            label="المكتسب حتى تاريخ بدء النظام"
+            value={
+              openingAccruedToEffectiveDate === null
+                ? "غير متوفر"
+                : annualDurationLabel(
+                    openingAccruedToEffectiveDate
+                  )
+            }
+          />
+          <WorkspaceMetricV2
+            label="المستخدم سابقًا"
+            value={
+              Number.isFinite(openingHistoricalUsedDays)
+                ? numberLabel(
+                    openingHistoricalUsedDays,
+                    " يوم"
+                  )
+                : "غير صالح"
+            }
+          />
+          <WorkspaceMetricV2
+            label="الرصيد المتبقي المعتمد"
+            value={
+              openingCalculatedRemainingDays === null
+                ? "غير متوفر"
+                : annualDurationLabel(
+                    openingCalculatedRemainingDays
+                  )
+            }
+            tone="success"
+          />
+        </div>
+
         <WorkspaceNoticeV2
           title={
             hasOpeningBalance
-              ? "الرصيد الافتتاحي مثبت"
-              : "تسوية انتقالية"
+              ? "تسوية بدء النظام مثبتة"
+              : openingBalanceDays === ""
+                ? "لا توجد تسوية مطلوبة"
+                : "معاينة قبل الاعتماد"
           }
           description={
             hasOpeningBalance
-              ? "يوجد رصيد افتتاحي مسجل في السجل الموحد. الحركات والاستحقاقات التالية تستمر من خلال Core."
-              : "أدخل فقط الرصيد المتبقي الذي اعتمدته الموارد البشرية في تاريخ السريان. إذا لم تعرف ما تم استخدامه سابقًا فلا تدخل رقمًا تقديريًا واترك الرصيد بحالة مراجعة حتى تتم التسوية."
+              ? "تم تثبيت نقطة البداية في السجل الموحد، وتستمر الاستحقاقات والحركات التالية تلقائيًا من خلال Core."
+              : openingBalanceDays === ""
+                ? "اترك الحقل فارغًا إذا لم تستخدم الموظفة أي أيام قبل تشغيل النظام. الرصيد الحالي يُحتسب تلقائيًا ولا يحتاج رصيدًا افتتاحيًا إجباريًا."
+                : "سيحفظ النظام الرصيد المتبقي الناتج من الاستحقاق المكتسب ناقص الأيام المستخدمة سابقًا."
           }
-          tone={
-            hasOpeningBalance
-              ? "success"
-              : "neutral"
-          }
+          tone={hasOpeningBalance ? "success" : "neutral"}
         />
 
         <button
@@ -1429,15 +1488,44 @@ export default function LeaveRestManagementPanel({
             hasOpeningBalance ||
             !persistedServiceStartDate ||
             openingBalanceDays === "" ||
-            !openingBalanceEffectiveDate ||
-            !openingBalanceReason.trim()
+            !openingBalanceEffectiveDate
           }
           onClick={() =>
             void submitOpeningBalance()
           }
         >
-          اعتماد الرصيد المتبقي
+          اعتماد الاستخدام السابق
         </button>
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="الراحة الأسبوعية والتعويضية"
+        description="هذا القسم مستقل عن الإجازة السنوية: يوم الراحة من جدول الدوام، والرصيد التعويضي ينتج فقط عن العمل المعتمد في يوم الراحة."
+      >
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2
+            label="يوم الراحة الأسبوعية"
+            value={weeklyRestLabel}
+            note="من جدول الدوام"
+          />
+          <WorkspaceMetricV2
+            label="الرصيد التعويضي الحالي"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : numberLabel(
+                    overview?.weeklyRest.dueDays,
+                    " يوم"
+                  )
+            }
+            note="مستحق بسبب العمل في يوم الراحة"
+            tone={
+              Number(overview?.weeklyRest.dueDays || 0) > 0
+                ? "gold"
+                : "neutral"
+            }
+          />
+        </div>
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
