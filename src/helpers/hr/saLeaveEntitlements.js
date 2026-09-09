@@ -88,6 +88,36 @@ function roundDays(value) {
   return Math.round((Number(value) || 0) * 10000) / 10000;
 }
 
+function requiredInstant(value, field) {
+  const text = String(value ?? '').trim();
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(text)) {
+    throw new Error(`${field}_timezone_required`);
+  }
+  const instant = new Date(text);
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error(`${field}_invalid`);
+  }
+  return instant;
+}
+
+function riyadhDateFromInstant(instant) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
+function riyadhMidnightEpoch(value) {
+  const normalized = dateKey(value, 'date');
+  return Date.parse(`${normalized}T00:00:00+03:00`);
+}
+
+function roundPreciseDays(value) {
+  return Math.round((Number(value) || 0) * 100000000) / 100000000;
+}
+
 function contractAnnualDays(value) {
   return Math.max(0, Number(value || 0) || 0);
 }
@@ -246,6 +276,188 @@ export function calculateAnnualLeaveAccrual(input = {}) {
     periodDays,
     elapsedDays,
     accruedDays,
+  };
+}
+
+export function calculateAnnualLeaveLiveAccrual(input = {}) {
+  const startDate = dateKey(input.startDate, 'startDate');
+  const asOfInstant = requiredInstant(input.asOfDateTime, 'asOfDateTime');
+  const asOfDate = riyadhDateFromInstant(asOfInstant);
+
+  if (asOfDate < startDate) {
+    throw new Error('asOfDateTime_before_startDate');
+  }
+
+  const serviceYear = annualLeaveServiceYear(startDate, asOfDate);
+  const contractualDays = contractAnnualDays(input.contractAnnualDays);
+  const entitlement = annualEntitlementForServiceYear(
+    serviceYear,
+    contractualDays
+  );
+
+  const periodStartEpoch = riyadhMidnightEpoch(
+    serviceYear.serviceYearStart
+  );
+  const periodEndEpoch = riyadhMidnightEpoch(
+    serviceYear.serviceYearEnd
+  );
+  const periodMilliseconds = periodEndEpoch - periodStartEpoch;
+  const accrualEndEpoch = Math.min(
+    periodEndEpoch,
+    Math.max(periodStartEpoch, asOfInstant.getTime())
+  );
+  const elapsedMilliseconds = Math.max(
+    0,
+    accrualEndEpoch - periodStartEpoch
+  );
+
+  const accruedDays = periodMilliseconds > 0
+    ? roundPreciseDays(
+        entitlement.annualEntitlementDays *
+          elapsedMilliseconds /
+          periodMilliseconds
+      )
+    : 0;
+
+  return {
+    policyVersion: SA_LABOR_POLICY_VERSION,
+    startDate,
+    asOfDate,
+    asOfDateTime: asOfInstant.toISOString(),
+    serviceYearStart: serviceYear.serviceYearStart,
+    serviceYearEnd: serviceYear.serviceYearEnd,
+    completedServiceYearsAtStart:
+      serviceYear.completedServiceYearsAtStart,
+    ...entitlement,
+    periodDays: daysBetween(
+      serviceYear.serviceYearStart,
+      serviceYear.serviceYearEnd
+    ),
+    elapsedMinutes: Math.floor(elapsedMilliseconds / 60000),
+    accruedDays,
+  };
+}
+
+export function calculateAnnualLeaveLiveAccrualRange(input = {}) {
+  const startDate = dateKey(input.startDate, 'startDate');
+  const asOfInstant = requiredInstant(input.asOfDateTime, 'asOfDateTime');
+  const asOfDate = riyadhDateFromInstant(asOfInstant);
+  const contractualDays = contractAnnualDays(input.contractAnnualDays);
+
+  if (asOfDate < startDate) {
+    throw new Error('asOfDateTime_before_startDate');
+  }
+
+  let fromExclusiveDate = null;
+  let cursorDate = startDate;
+
+  if (
+    input.fromExclusiveDate !== undefined &&
+    input.fromExclusiveDate !== null &&
+    String(input.fromExclusiveDate).trim() !== ''
+  ) {
+    fromExclusiveDate = dateKey(
+      input.fromExclusiveDate,
+      'fromExclusiveDate'
+    );
+
+    if (fromExclusiveDate >= startDate) {
+      cursorDate = addDays(fromExclusiveDate, 1);
+    }
+  }
+
+  let cursorEpoch = riyadhMidnightEpoch(cursorDate);
+  const asOfEpoch = asOfInstant.getTime();
+
+  if (cursorEpoch >= asOfEpoch) {
+    return {
+      policyVersion: SA_LABOR_POLICY_VERSION,
+      startDate,
+      fromExclusiveDate,
+      asOfDate,
+      asOfDateTime: asOfInstant.toISOString(),
+      accruedDays: 0,
+      elapsedMinutes: 0,
+      segments: [],
+    };
+  }
+
+  const segments = [];
+  let total = 0;
+  let totalElapsedMilliseconds = 0;
+  let guard = 0;
+
+  while (cursorEpoch < asOfEpoch) {
+    guard += 1;
+    if (guard > 200) {
+      throw new Error('annual_live_accrual_range_too_large');
+    }
+
+    const cursorBusinessDate = riyadhDateFromInstant(
+      new Date(cursorEpoch)
+    );
+    const serviceYear = annualLeaveServiceYear(
+      startDate,
+      cursorBusinessDate
+    );
+    const entitlement = annualEntitlementForServiceYear(
+      serviceYear,
+      contractualDays
+    );
+
+    const serviceYearEndEpoch = riyadhMidnightEpoch(
+      serviceYear.serviceYearEnd
+    );
+    const segmentEndEpoch = Math.min(
+      serviceYearEndEpoch,
+      asOfEpoch
+    );
+    const elapsedMilliseconds = Math.max(
+      0,
+      segmentEndEpoch - cursorEpoch
+    );
+    const periodMilliseconds =
+      serviceYearEndEpoch -
+      riyadhMidnightEpoch(serviceYear.serviceYearStart);
+
+    const accruedDays = periodMilliseconds > 0
+      ? entitlement.annualEntitlementDays *
+        elapsedMilliseconds /
+        periodMilliseconds
+      : 0;
+
+    segments.push({
+      serviceYearStart: serviceYear.serviceYearStart,
+      serviceYearEnd: serviceYear.serviceYearEnd,
+      fromDateTime: new Date(cursorEpoch).toISOString(),
+      toDateTimeExclusive: new Date(
+        segmentEndEpoch
+      ).toISOString(),
+      completedServiceYearsAtStart:
+        serviceYear.completedServiceYearsAtStart,
+      ...entitlement,
+      elapsedMinutes: Math.floor(
+        elapsedMilliseconds / 60000
+      ),
+      accruedDays: roundPreciseDays(accruedDays),
+    });
+
+    total += accruedDays;
+    totalElapsedMilliseconds += elapsedMilliseconds;
+    cursorEpoch = segmentEndEpoch;
+  }
+
+  return {
+    policyVersion: SA_LABOR_POLICY_VERSION,
+    startDate,
+    fromExclusiveDate,
+    asOfDate,
+    asOfDateTime: asOfInstant.toISOString(),
+    accruedDays: roundPreciseDays(total),
+    elapsedMinutes: Math.floor(
+      totalElapsedMilliseconds / 60000
+    ),
+    segments,
   };
 }
 

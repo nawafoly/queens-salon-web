@@ -65,6 +65,138 @@ test('new employee derives annual available balance from service-date accrual wi
   assert.ok(state.availableDays < 1.9);
 });
 
+test('live annual read model accrues within the day while explicit date mode remains unchanged', async () => {
+  const db = new FakeAnnualD1({ employment: employment() });
+
+  const dateState = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    { asOfDate: '2026-01-01' }
+  );
+
+  const liveState = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    {
+      liveAccrual: true,
+      asOfDateTime: '2026-01-01T09:00:00.000Z',
+    }
+  );
+
+  assert.equal(liveState.asOfDate, '2026-01-01');
+  assert.ok(liveState.earnedCurrentServiceYearDays > 0);
+  assert.ok(
+    liveState.earnedCurrentServiceYearDays <
+      dateState.earnedCurrentServiceYearDays
+  );
+  assert.ok(liveState.availableDays > 0);
+  assert.ok(liveState.availableDays < dateState.availableDays);
+});
+
+test('live annual availability accrues after an opening anchor without double-counting ledger movements', async () => {
+  const db = new FakeAnnualD1({
+    employment: employment({
+      leave_balance: 7,
+      leave_balance_last_entry_id: 'usage-1',
+    }),
+    canonicalRows: [
+      {
+        id: 'opening-1',
+        employee_id: 'emp-1',
+        action_type: 'add',
+        days: 8,
+        change_amount: 8,
+        balance_before: 0,
+        balance_after: 8,
+        operation_date: '2026-08-28',
+        effective_date: '2026-08-28',
+        entry_code: 'OPENING_BALANCE',
+        source_type: 'opening_balance',
+        source_id: 'op-1',
+        policy_version: 'sa-labor-2025-amended-v1',
+        metadata_json: '{}',
+        created_at: '2026-08-28T00:00:00.000Z',
+        deleted_at: null,
+      },
+      {
+        id: 'usage-1',
+        employee_id: 'emp-1',
+        action_type: 'deduct',
+        days: 1,
+        change_amount: -1,
+        balance_before: 8.0575,
+        balance_after: 7.0575,
+        operation_date: '2026-08-29',
+        effective_date: '2026-08-29',
+        entry_code: 'LEAVE_USED',
+        source_type: 'leave_request',
+        source_id: 'leave-1',
+        policy_version: 'sa-labor-2025-amended-v1',
+        metadata_json: '{}',
+        created_at: '2026-08-29T00:00:00.000Z',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const atStart = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    {
+      liveAccrual: true,
+      asOfDateTime: '2026-08-28T21:00:00.000Z',
+    }
+  );
+
+  const atNoon = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    {
+      liveAccrual: true,
+      asOfDateTime: '2026-08-29T09:00:00.000Z',
+    }
+  );
+
+  const dateState = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    { asOfDate: '2026-08-29' }
+  );
+
+  const nextMidnight = await getAnnualLeaveState(
+    db,
+    'main',
+    'emp-1',
+    {
+      liveAccrual: true,
+      asOfDateTime: '2026-08-29T21:00:00.000Z',
+    }
+  );
+
+  assert.equal(atStart.asOfDate, '2026-08-29');
+  assert.equal(atStart.openingBalanceDays, 8);
+  assert.equal(atStart.usedDays, 1);
+  assert.equal(atStart.accruedSinceAnchorDays, 0);
+  assert.equal(atStart.availableDays, 7);
+
+  assert.equal(atNoon.openingBalanceDays, 8);
+  assert.equal(atNoon.usedDays, 1);
+  assert.ok(atNoon.accruedSinceAnchorDays > 0);
+  assert.ok(atNoon.availableDays > 7);
+  assert.ok(atNoon.availableDays < dateState.availableDays);
+
+  assert.ok(
+    Math.abs(
+      nextMidnight.availableDays - dateState.availableDays
+    ) < 0.0001
+  );
+});
+
 test('legacy scalar balance fails closed until HR records an opening balance anchor', async () => {
   const db = new FakeAnnualD1({
     employment: employment({ leave_balance: 8 }),

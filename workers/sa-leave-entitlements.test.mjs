@@ -6,6 +6,8 @@ import {
   SA_LEAVE_TYPES,
   annualLeaveStatutoryMinimumDays,
   calculateAnnualLeaveAccrual,
+  calculateAnnualLeaveLiveAccrual,
+  calculateAnnualLeaveLiveAccrualRange,
   calculateAnnualLeaveAccrualRange,
   calculateAnnualLeaveAvailable,
   calculateSickLeaveSegments,
@@ -32,6 +34,49 @@ test('annual accrual uses service anniversary year and actual period days', () =
   assert.equal(result.annualEntitlementDays, 21);
   assert.ok(result.accruedDays > 10);
   assert.ok(result.accruedDays < 11);
+});
+
+test('live annual accrual grows continuously within the Riyadh day', () => {
+  const atStart = calculateAnnualLeaveLiveAccrual({
+    startDate: '2026-01-01',
+    asOfDateTime: '2026-01-01T00:00:00+03:00',
+  });
+  assert.equal(atStart.accruedDays, 0);
+  assert.equal(atStart.elapsedMinutes, 0);
+
+  const atNoon = calculateAnnualLeaveLiveAccrual({
+    startDate: '2026-01-01',
+    asOfDateTime: '2026-01-01T12:00:00+03:00',
+  });
+  assert.equal(atNoon.asOfDate, '2026-01-01');
+  assert.equal(atNoon.elapsedMinutes, 720);
+  assert.ok(atNoon.accruedDays > 0);
+
+  const fullFirstDay = calculateAnnualLeaveAccrual({
+    startDate: '2026-01-01',
+    asOfDate: '2026-01-01',
+  });
+  assert.ok(atNoon.accruedDays < fullFirstDay.accruedDays);
+
+  const nextMidnight = calculateAnnualLeaveLiveAccrual({
+    startDate: '2026-01-01',
+    asOfDateTime: '2026-01-02T00:00:00+03:00',
+  });
+  assert.ok(Math.abs(nextMidnight.accruedDays - fullFirstDay.accruedDays) < 0.0001);
+});
+
+test('live annual accrual range crosses a service anniversary without losing or double-counting time', () => {
+  const result = calculateAnnualLeaveLiveAccrualRange({
+    startDate: '2025-01-01',
+    fromExclusiveDate: '2025-12-31',
+    asOfDateTime: '2026-01-01T12:00:00+03:00',
+  });
+
+  assert.equal(result.asOfDate, '2026-01-01');
+  assert.equal(result.elapsedMinutes, 720);
+  assert.equal(result.segments.length, 1);
+  assert.ok(result.accruedDays > 0);
+  assert.ok(result.accruedDays < 0.1);
 });
 
 test('contractual annual entitlement may exceed statutory minimum but never reduce it', () => {

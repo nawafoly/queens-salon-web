@@ -565,7 +565,9 @@ export async function reconcileAssignedWeeklyRestWork(
 export async function getLeaveRestOverview(db, salonId, employeeIdValue) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const [annualLeave, weeklyRestDue, recalls, assignments, weeklyRestEvents] = await Promise.all([
-    getAnnualLeaveState(db, salonId, employeeId),
+    getAnnualLeaveState(db, salonId, employeeId, {
+      liveAccrual: true,
+    }),
     getCompTimeBalanceState(db, salonId, employeeId, 'weekly_rest_due'),
     listAnnualLeaveRecalls(db, salonId, { employeeId }),
     listWeeklyRestWorkAssignments(db, salonId, { employeeId }),
