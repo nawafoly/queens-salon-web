@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 
 const checks = [
   {
+    file: "src/pages/hr/EmployeeLeave.tsx",
+    required: [/createManagedLeaveRequest/],
+    forbidden: [/\bcreateLeaveRequest\s*\(/],
+  },
+  {
     file: "src/pages/DashboardEmployees.tsx",
     required: [
       /createManagedLeaveRequest/,

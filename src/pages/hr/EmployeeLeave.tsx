@@ -15,7 +15,7 @@ import {
 
 import {
   createEmployeeNotification,
-  createLeaveRequest,
+  createManagedLeaveRequest,
   listEmployeeNotifications,
   listLeaveRequestsByEmployee,
   markEmployeeNotificationsRead,
@@ -161,7 +161,7 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
     setSaving(true);
     setMessage("");
     try {
-      await createLeaveRequest({
+      await createManagedLeaveRequest({
         employeeUid: session.uid,
         employeeId: session.employeeId || session.uid,
         employeeName: employeeLabel,
@@ -170,8 +170,6 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
         toDate: form.toDate,
         note: form.note,
         days,
-        createdByUid: session.uid,
-        createdByName: employeeLabel,
       });
 
       await createEmployeeNotification({

@@ -293,12 +293,21 @@ export async function createClient(db, salonId, data) {
   const firebaseUid =
     optionalText(data.firebaseUid || data.uid || data.authUid) || null;
 
-  const existingRows = await listClients(db, salonId);
-  const existing = existingRows.find(
-    (row) =>
-      (firebaseUid && cleanText(row.firebase_uid) === firebaseUid) ||
-      (phone && cleanText(row.phone_normalized) === phone)
-  );
+  let existing = null;
+  if (firebaseUid) {
+    existing = await dbFirst(
+      db,
+      "SELECT * FROM clients WHERE salon_id = ? AND firebase_uid = ? LIMIT 1",
+      [salonId, firebaseUid]
+    );
+  }
+  if (!existing && phone) {
+    existing = await dbFirst(
+      db,
+      "SELECT * FROM clients WHERE salon_id = ? AND phone_normalized = ? LIMIT 1",
+      [salonId, phone]
+    );
+  }
   if (existing) return existing;
 
   const rowId = requiredId(data.id || generatedId("client"));
@@ -363,10 +372,10 @@ export async function patchClient(db, salonId, id, data) {
   }
 
   if (phone) {
-    const existingRows = await listClients(db, salonId);
-    const duplicate = existingRows.find(
-      (row) =>
-        row.id !== current.id && cleanText(row.phone_normalized) === phone
+    const duplicate = await dbFirst(
+      db,
+      "SELECT id FROM clients WHERE salon_id = ? AND phone_normalized = ? AND id <> ? LIMIT 1",
+      [salonId, phone, current.id]
     );
     if (duplicate) {
       throw new AppError(
