@@ -17,22 +17,31 @@ import {
 } from '../d1.js';
 
 export async function listServices(db, salonId, query = {}) {
-  const rows = await dbAll(
-    db,
-    "SELECT * FROM services WHERE salon_id = ? ORDER BY sort_order, name LIMIT 1000",
-    [salonId]
-  );
   const activeOnly = ["1", "true", "yes"].includes(
     cleanText(query.active).toLowerCase()
   );
   const sectionId = cleanText(query.sectionId || query.section_id);
   const categoryId = cleanText(query.categoryId || query.category_id);
+  const where = ["salon_id = ?"];
+  const params = [salonId];
 
-  return rows.filter(
-    (row) =>
-      (!activeOnly || Number(row.active) === 1) &&
-      (!sectionId || cleanText(row.section_id) === sectionId) &&
-      (!categoryId || cleanText(row.category_id) === categoryId)
+  if (activeOnly) where.push("active = 1");
+  if (sectionId) {
+    where.push("section_id = ?");
+    params.push(sectionId);
+  }
+  if (categoryId) {
+    where.push("category_id = ?");
+    params.push(categoryId);
+  }
+
+  return dbAll(
+    db,
+    `SELECT * FROM services
+      WHERE ${where.join(" AND ")}
+      ORDER BY sort_order, name
+      LIMIT 1000`,
+    params
   );
 }
 

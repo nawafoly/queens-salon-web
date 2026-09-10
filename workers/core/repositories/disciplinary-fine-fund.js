@@ -61,17 +61,28 @@ export async function getDisciplinaryFineFundBalance(db, salonId) {
 }
 
 export async function listDisciplinaryFineFundLedger(db, salonId, query = {}) {
-  let rows = await dbAll(
-    db,
-    `SELECT * FROM employee_disciplinary_fine_fund_ledger
-      WHERE salon_id = ? ORDER BY created_at DESC, id DESC LIMIT 1000`,
-    [salonId]
-  );
   const entryKind = cleanText(query.entryKind || query.entry_kind).toLowerCase();
   const disciplinaryCaseId = cleanText(query.disciplinaryCaseId || query.disciplinary_case_id);
-  if (entryKind) rows = rows.filter((row) => cleanText(row.entry_kind) === entryKind);
-  if (disciplinaryCaseId) rows = rows.filter((row) => cleanText(row.disciplinary_case_id) === disciplinaryCaseId);
-  return rows;
+  const where = ['salon_id = ?'];
+  const params = [salonId];
+
+  if (entryKind) {
+    where.push('entry_kind = ?');
+    params.push(entryKind);
+  }
+  if (disciplinaryCaseId) {
+    where.push('disciplinary_case_id = ?');
+    params.push(disciplinaryCaseId);
+  }
+
+  return dbAll(
+    db,
+    `SELECT * FROM employee_disciplinary_fine_fund_ledger
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1000`,
+    params
+  );
 }
 
 export async function createDisciplinaryFineFundDisbursement(

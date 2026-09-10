@@ -77,6 +77,36 @@ test("public booking tracking stays on canonical Core instead of Firestore", () 
   assert.doesNotMatch(source, /getTrackByPublicId/);
 });
 
+test("catalog and disciplinary list filters stay inside D1", () => {
+  const services = read("workers/core/repositories/services.js");
+  const fineFund = read("workers/core/repositories/disciplinary-fine-fund.js");
+  const migration = read("migrations/core/0066_filtered_list_read_efficiency.sql");
+
+  const servicesStart = services.indexOf("export async function listServices");
+  const servicesEnd = services.indexOf("export async function getService", servicesStart);
+  const servicesBlock = services.slice(servicesStart, servicesEnd);
+  assert.match(servicesBlock, /where = \["salon_id = \?"\]/);
+  assert.match(servicesBlock, /where\.push\("active = 1"\)/);
+  assert.match(servicesBlock, /where\.push\("section_id = \?"\)/);
+  assert.match(servicesBlock, /where\.push\("category_id = \?"\)/);
+  assert.match(servicesBlock, /ORDER BY sort_order, name[\s\S]*LIMIT 1000/);
+  assert.doesNotMatch(servicesBlock, /rows\.filter/);
+
+  const ledgerStart = fineFund.indexOf("export async function listDisciplinaryFineFundLedger");
+  const ledgerEnd = fineFund.indexOf("export async function createDisciplinaryFineFundDisbursement", ledgerStart);
+  const ledgerBlock = fineFund.slice(ledgerStart, ledgerEnd);
+  assert.match(ledgerBlock, /where = \['salon_id = \?'\]/);
+  assert.match(ledgerBlock, /where\.push\('entry_kind = \?'\)/);
+  assert.match(ledgerBlock, /where\.push\('disciplinary_case_id = \?'\)/);
+  assert.match(ledgerBlock, /ORDER BY created_at DESC, id DESC[\s\S]*LIMIT 1000/);
+  assert.doesNotMatch(ledgerBlock, /rows\.filter/);
+
+  assert.match(migration, /services\(salon_id, section_id, active, sort_order, name\)/);
+  assert.match(migration, /services\(salon_id, category_id, active, sort_order, name\)/);
+  assert.match(migration, /salon_id, entry_kind, created_at DESC, id DESC/);
+  assert.match(migration, /salon_id, disciplinary_case_id, entry_kind, created_at DESC, id DESC/);
+});
+
 test("final aggregate remains cumulative through P7 and critical journeys", () => {
   const pkg = JSON.parse(read("package.json"));
 
