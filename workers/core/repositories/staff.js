@@ -213,45 +213,56 @@ function mergeHrStatus(row, maps) {
 }
 
 export async function listStaff(db, salonId, query = {}) {
-  const rows = await dbAll(
-    db,
-    "SELECT * FROM staff WHERE salon_id = ? ORDER BY active DESC, name LIMIT 500",
-    [salonId]
-  );
-  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, rows);
-  const mergedRows = rows.map((row) => mergeHrStatus(row, hrStatusMaps));
   const activeOnly = ["1", "true", "yes"].includes(
     cleanText(query.active).toLowerCase()
   );
   const serviceId = cleanText(query.serviceId || query.service_id);
 
-  let filtered = mergedRows.filter(
-    (row) => !activeOnly || staffIsActive(row)
-  );
-
-  if (serviceId) {
-    const allowed = db.__fakeD1 && typeof db.rows === "function"
-      ? db
-          .rows("staff_services")
+  let rows;
+  if (db.__fakeD1) {
+    rows = safeFakeRows(db, "staff").filter(
+      (row) => row.salon_id === salonId && (!activeOnly || Number(row.active) === 1)
+    );
+    if (serviceId) {
+      const allowedIds = new Set(
+        safeFakeRows(db, "staff_services")
           .filter(
             (row) =>
               row.salon_id === salonId &&
-              row.service_id === serviceId &&
+              cleanText(row.service_id) === serviceId &&
               Number(row.active) === 1
           )
-          .map((row) => row.staff_id)
-      : (
-          await dbAll(
-            db,
-            "SELECT staff_id FROM staff_services WHERE salon_id = ? AND service_id = ? AND active = 1",
-            [salonId, serviceId]
-          )
-        ).map((row) => row.staff_id);
-    const allowedIds = new Set(allowed);
-    filtered = filtered.filter((row) => allowedIds.has(row.id));
+          .map((row) => cleanText(row.staff_id))
+      );
+      rows = rows.filter((row) => allowedIds.has(cleanText(row.id)));
+    }
+    rows.sort((left, right) => {
+      const activeDiff = Number(right.active || 0) - Number(left.active || 0);
+      if (activeDiff) return activeDiff;
+      return cleanText(left.name).localeCompare(cleanText(right.name));
+    });
+    rows = rows.slice(0, 500);
+  } else {
+    const params = [];
+    let sql = "SELECT DISTINCT s.* FROM staff s";
+    if (serviceId) {
+      sql += ` JOIN staff_services ss
+                 ON ss.salon_id = s.salon_id
+                AND ss.staff_id = s.id
+                AND ss.service_id = ?
+                AND ss.active = 1`;
+      params.push(serviceId);
+    }
+    sql += " WHERE s.salon_id = ?";
+    params.push(salonId);
+    if (activeOnly) sql += " AND s.active = 1";
+    sql += " ORDER BY s.active DESC, s.name LIMIT 500";
+    rows = await dbAll(db, sql, params);
   }
 
-  return filtered;
+  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, rows);
+  const mergedRows = rows.map((row) => mergeHrStatus(row, hrStatusMaps));
+  return mergedRows.filter((row) => !activeOnly || staffIsActive(row));
 }
 
 export async function listStaffByIds(
