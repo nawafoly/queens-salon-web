@@ -1,152 +1,117 @@
 import { DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
-// ✅ src/pages/DashboardStaff.tsx
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
-import {
-  collection,
-  getDocs,
-  onSnapshot,
-  query,
-  where,
-  doc,
-  writeBatch,
-  serverTimestamp,
-} from "firebase/firestore";
-import type { Timestamp } from "firebase/firestore";
-
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
-import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
+import {
+  CoreBookingService,
+  type CoreStaffPortalBooking,
+} from "../services/CoreBookingService";
 
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
+type DateQuick = "all" | "today" | "tomorrow" | "week";
+type StatusQuick = "all" | BookingStatus;
 
-type BookingDoc = {
-  clientName?: string;
-  clientPhone?: string;
-
-  serviceName?: string;
-  serviceId?: string;
-
-  employeeName?: string;
-  employeeId?: string;
-  employeeUid?: string;
-  employeeKey?: string;
-
-  date?: string; // YYYY-MM-DD
-  time?: string; // e.g. 05:30 PM أو 17:30
-
-  status?: BookingStatus;
-
-  // ✅ NEW: staff receipt acknowledgement (source of truth)
-  staffAck?: boolean;
-  staffAckAt?: any;
-  staffAckByUid?: string;
-
-  createdAt?: Timestamp | any;
+type StaffBooking = {
+  id: string;
+  clientName: string;
+  clientPhone: string;
+  serviceName: string;
+  serviceId: string;
+  employeeName: string;
+  date: string;
+  time: string;
+  status: BookingStatus;
+  staffAck: boolean;
+  staffAckAt?: string | null;
+  staffAckByUid?: string | null;
+  createdAt?: string | null;
 };
 
-type BookingWithId = BookingDoc & { id: string };
+const REFRESH_DELAYS_MS = [15_000, 30_000, 60_000] as const;
 
-const SALON_ID = "main";
-
-function normalizeArabic(s: any) {
-  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+function normalizeArabic(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function safeStaffKey(s: any) {
-  return String(s || "")
-    .trim()
-    .replaceAll("/", "-")
-    .replace(/\s+/g, "_");
+function safeMs(value: unknown): number {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function safeMs(ts: any): number {
-  try {
-    if (!ts) return 0;
-    if (typeof ts === "number") return ts;
-    if (typeof ts?.toMillis === "function") return ts.toMillis();
-    return 0;
-  } catch {
-    return 0;
-  }
-}
+function parseTimeToMinutes(value?: string) {
+  const text = String(value || "").trim();
+  const m24 = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return Number(m24[1]) * 60 + Number(m24[2]);
 
-function parseTimeToMinutes(t?: string) {
-  const s = String(t || "").trim();
-  if (!s) return 99999;
-
-  // 17:30
-  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (m24) {
-    const hh = Number(m24[1]);
-    const mm = Number(m24[2]);
-    return hh * 60 + mm;
-  }
-
-  // 05:30 PM
-  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (m12) {
-    let hh = Number(m12[1]);
-    const mm = Number(m12[2]);
-    const ap = String(m12[3]).toUpperCase();
-    if (ap === "PM" && hh < 12) hh += 12;
-    if (ap === "AM" && hh === 12) hh = 0;
-    return hh * 60 + mm;
-  }
-
-  return 99999;
+  const m12 = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m12) return 99999;
+  let hours = Number(m12[1]);
+  const minutes = Number(m12[2]);
+  const marker = String(m12[3]).toUpperCase();
+  if (marker === "PM" && hours < 12) hours += 12;
+  if (marker === "AM" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
 }
 
 function formatTime12(time24?: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "—");
-  const h24 = Number(m[1]);
-  const mm = m[2];
-  const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+  const match = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return String(time24 || "—");
+  const hour24 = Number(match[1]);
+  const hour12 = hour24 % 12 || 12;
+  return `${String(hour12).padStart(2, "0")}:${match[2]} ${hour24 >= 12 ? "م" : "ص"}`;
 }
 
-type DateQuick = "all" | "today" | "tomorrow" | "week";
-type StatusQuick = "all" | BookingStatus;
+function normalizeStatus(value?: string): BookingStatus {
+  const status = String(value || "pending").trim().toLowerCase();
+  if (status === "confirmed" || status === "completed" || status === "cancelled") return status;
+  return "pending";
+}
+
+function todayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function isInQuickRange(iso: string, mode: DateQuick) {
   if (!iso) return false;
   if (mode === "all") return true;
 
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
+  const start = new Date(`${todayIso()}T00:00:00`);
+  const value = new Date(`${iso}T00:00:00`);
+  if (!Number.isFinite(value.getTime())) return false;
+  if (mode === "today") return value.getTime() === start.getTime();
 
-  const x = new Date(
-    Number(iso.slice(0, 4)),
-    Number(iso.slice(5, 7)) - 1,
-    Number(iso.slice(8, 10))
-  );
-  x.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(start);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (mode === "tomorrow") return value.getTime() === tomorrow.getTime();
 
-  if (mode === "today") return x.getTime() === d.getTime();
-
-  if (mode === "tomorrow") {
-    const t = new Date(d);
-    t.setDate(t.getDate() + 1);
-    return x.getTime() === t.getTime();
-  }
-
-  // week: من اليوم إلى 7 أيام قدام
-  if (mode === "week") {
-    const end = new Date(d);
-    end.setDate(end.getDate() + 7);
-    return x >= d && x <= end;
-  }
-
-  return true;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return value >= start && value <= end;
 }
 
-function normalizeStatus(status?: string): BookingStatus {
-  const st = String(status || "pending").toLowerCase();
-  if (st === "confirmed" || st === "completed" || st === "cancelled") return st;
-  return "pending";
+function staffBookingFromCore(row: CoreStaffPortalBooking): StaffBooking {
+  const firstItem = row.items?.[0];
+  return {
+    id: row.id,
+    clientName: String(row.clientName || ""),
+    clientPhone: String(row.clientPhone || ""),
+    serviceName: String(firstItem?.serviceNameSnapshot || ""),
+    serviceId: String(firstItem?.serviceId || ""),
+    employeeName: String(firstItem?.staffName || row.staffName || ""),
+    date: String(firstItem?.bookingDate || row.bookingDate || ""),
+    time: String(firstItem?.startTime || row.startTime || ""),
+    status: normalizeStatus(row.status),
+    staffAck: row.staffAck === true,
+    staffAckAt: row.staffAckAt,
+    staffAckByUid: row.staffAckByUid,
+    createdAt: row.createdAt,
+  };
 }
 
 const STATUS_LABEL: Record<BookingStatus, string> = {
@@ -156,499 +121,231 @@ const STATUS_LABEL: Record<BookingStatus, string> = {
   cancelled: "ملغي",
 };
 
-/* =========================
-   Log Helpers (Firestore)
-========================= */
-function bookingRef(id: string) {
-  return doc(db, "salons", SALON_ID, "bookings", id);
-}
-
-function bookingEventsCol(bookingId: string) {
-  return collection(db, "salons", SALON_ID, "booking_logs", bookingId, "events");
-}
-
-type BookingLogEvent = {
-  type: "staff_acknowledged";
-  bookingId: string;
-  byUid: string;
-  byEmail?: string;
-  byName?: string;
-  at: any;
-  note?: string;
-};
-
-function readCachedStaffDisplayName() {
-  try {
-    const raw = localStorage.getItem("auth_user");
-    if (raw) {
-      const parsed = JSON.parse(raw) as any;
-      const displayName = String(parsed?.displayName || parsed?.name || "").trim();
-      if (displayName) return displayName;
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    return String(localStorage.getItem("userName") || "").trim();
-  } catch {
-    return "";
-  }
-}
-
 type DashboardStaffProps = {
   allowStatusChange?: boolean;
 };
 
 export default function DashboardStaff({ allowStatusChange = false }: DashboardStaffProps) {
-  const [myUid, setMyUid] = useState<string>(() => readStoredAuthSession()?.uid || "");
-  const [myEmail, setMyEmail] = useState<string>(() => readStoredAuthSession()?.email || "");
-  const [myName, setMyName] = useState<string>(() => {
-    return readStoredAuthSession()?.displayName || readCachedStaffDisplayName();
-  });
-  const [myStaffDocId, setMyStaffDocId] = useState<string>("");
-  const [myStaffName, setMyStaffName] = useState<string>("");
-
-  const [allBookingsRaw, setAllBookingsRaw] = useState<BookingWithId[]>([]);
+  const [myUid, setMyUid] = useState(() => readStoredAuthSession()?.uid || "");
+  const [myEmail, setMyEmail] = useState(() => readStoredAuthSession()?.email || "");
+  const [rows, setRows] = useState<StaffBooking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errMsg, setErrMsg] = useState<string>("");
-
+  const [errMsg, setErrMsg] = useState("");
+  const [busyId, setBusyId] = useState("");
   const [tab, setTab] = useState<"new" | "seen" | "all">("new");
   const [q, setQ] = useState("");
   const [dateQuick, setDateQuick] = useState<DateQuick>("all");
   const [statusQuick, setStatusQuick] = useState<StatusQuick>("all");
 
-  const [busyId, setBusyId] = useState<string>(""); // ✅ disable button while writing
-
-  // ✅ 1) Auth: uid + email
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      const localSession = readStoredAuthSession();
-      const uid = String(localSession?.uid || u?.uid || "");
-      const email = String(localSession?.email || u?.email || "");
-      const displayName = String(
-        localSession?.displayName ||
-          u?.displayName ||
-          readCachedStaffDisplayName() ||
-          ""
-      ).trim();
-      setMyUid(uid);
-      setMyEmail(email);
-      setMyName(displayName);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const local = readStoredAuthSession();
+      setMyUid(String(local?.uid || user?.uid || ""));
+      setMyEmail(String(local?.email || user?.email || ""));
     });
-    return () => unsub();
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
     if (!myUid) {
-      setMyStaffDocId("");
-      setMyStaffName("");
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadStaffIdentity = async () => {
-      try {
-        const spCol = collection(db, "salons", SALON_ID, "staff_public");
-        const byUid = query(spCol, where("linkedUid", "==", myUid));
-        const snap = await getDocs(byUid);
-
-        if (cancelled) return;
-
-        if (!snap.empty) {
-          const hit = snap.docs[0];
-          const data = hit.data() as any;
-          setMyStaffDocId(hit.id);
-          setMyStaffName(String(data?.name || "").trim());
-        } else {
-          setMyStaffDocId("");
-          setMyStaffName("");
-        }
-      } catch (e) {
-        console.warn("DashboardStaff staff identity lookup failed:", e);
-        if (cancelled) return;
-        setMyStaffDocId("");
-        setMyStaffName("");
-      }
-    };
-
-    loadStaffIdentity();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [myUid]);
-
-  // ✅ 2) Realtime: حجوزات الموظفة فقط (employeeUid == myUid)
-  useEffect(() => {
-    if (!myUid) {
-      setAllBookingsRaw([]);
+      setRows([]);
       setLoading(false);
       setErrMsg("⚠️ سجّل دخول بحساب الموظفة لعرض حجوزاتك.");
       return;
     }
 
+    let active = true;
+    let inFlight = false;
+    let timer: number | null = null;
+    let unchangedStreak = 0;
+    let lastSignature = "";
+
+    const clearTimer = () => {
+      if (timer === null) return;
+      window.clearTimeout(timer);
+      timer = null;
+    };
+
+    const canRefresh = () =>
+      active &&
+      document.visibilityState === "visible" &&
+      (typeof navigator === "undefined" || navigator.onLine !== false);
+
+    const schedule = () => {
+      clearTimer();
+      if (!canRefresh()) return;
+      const delay = REFRESH_DELAYS_MS[Math.min(unchangedStreak, REFRESH_DELAYS_MS.length - 1)];
+      timer = window.setTimeout(() => {
+        timer = null;
+        void load();
+      }, delay);
+    };
+
+    const load = async () => {
+      if (!canRefresh() || inFlight) return;
+      inFlight = true;
+      try {
+        const next = (await CoreBookingService.mine()).map(staffBookingFromCore);
+        const signature = next
+          .map((row) => `${row.id}:${row.status}:${row.staffAck}:${row.date}:${row.time}`)
+          .join("|");
+        unchangedStreak = signature && signature === lastSignature
+          ? Math.min(unchangedStreak + 1, REFRESH_DELAYS_MS.length - 1)
+          : 0;
+        lastSignature = signature;
+        if (!active) return;
+        setRows(next.sort((a, b) => safeMs(b.createdAt) - safeMs(a.createdAt)));
+        setErrMsg("");
+      } catch (error) {
+        if (!active) return;
+        console.error("DashboardStaff Core load failed:", error);
+        setErrMsg("❌ تعذر تحميل حجوزاتك من Core. حاول مرة أخرى.");
+      } finally {
+        inFlight = false;
+        if (active) {
+          setLoading(false);
+          schedule();
+        }
+      }
+    };
+
+    const refreshWhenActive = () => {
+      if (!canRefresh()) {
+        clearTimer();
+        return;
+      }
+      unchangedStreak = 0;
+      clearTimer();
+      void load();
+    };
+
     setLoading(true);
-    setErrMsg("");
-    setAllBookingsRaw([]);
-
-    const colRef = collection(db, "salons", SALON_ID, "bookings");
-    const rowsByKeyUid: { value: BookingWithId[] } = { value: [] };
-    const rowsByUid: { value: BookingWithId[] } = { value: [] };
-    const rowsByStaffId: { value: BookingWithId[] } = { value: [] };
-    const rowsByName: { value: BookingWithId[] } = { value: [] };
-    const rowsByKeyName: { value: BookingWithId[] } = { value: [] };
-
-    const makeSnapLogger = (label: string) => {
-      let first = true;
-      const src = `DashboardStaff.${String(label || "").trim() || "unknown"}.onSnapshot`;
-      return (snap: any) => {
-        const docs = first ? snap.docs : snap.docChanges().map((c: any) => c.doc);
-        docs.forEach((d: any) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, src, "onSnapshot");
-        });
-        first = false;
-      };
-    };
-    const logKeyUid = makeSnapLogger("employeeKey_uid");
-    const logUid = makeSnapLogger("employeeUid_uid");
-    const logStaffId = makeSnapLogger("employeeId_staffDocId");
-    const logName = makeSnapLogger("employeeName");
-    const logKeyName = makeSnapLogger("employeeKey_safeName");
-
-    const mapDocs = (snap: any): BookingWithId[] =>
-      snap.docs.map((d: any) => ({
-        id: d.id,
-        ...(d.data() as BookingDoc),
-      }));
-
-    const emitMerged = () => {
-      const merged = new Map<string, BookingWithId>();
-      [
-        rowsByKeyUid.value,
-        rowsByUid.value,
-        rowsByStaffId.value,
-        rowsByName.value,
-        rowsByKeyName.value,
-      ].forEach((rows) => {
-        rows.forEach((r) => merged.set(r.id, r));
-      });
-
-      const finalRows = Array.from(merged.values()).sort(
-        (a, b) => safeMs(b.createdAt) - safeMs(a.createdAt)
-      );
-
-      setAllBookingsRaw(finalRows);
-      setLoading(false);
-    };
-
-    const onErr = (e: any) => {
-      console.error("DashboardStaff snapshot error:", e);
-      const msg = String(e?.message || e);
-
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات (Rules) تمنع قراءة الحجوزات. تأكد أن booking فيه employeeUid = uid حقك، وأن Rules تسمح للموظفة بقراءة حجوزاتها."
-          : msg.includes("index")
-            ? "⚠️ يحتاج Index في Firestore للاستعلام. انسخ رسالة الخطأ كاملة من Console عشان نطلع رابط إنشاء الـ Index."
-            : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
-      );
-
-      setAllBookingsRaw([]);
-      setLoading(false);
-    };
-
-    const unsubs: Array<() => void> = [];
-
-    unsubs.push(
-      onSnapshot(
-        query(colRef, where("employeeKey", "==", myUid)),
-        (snap) => {
-          logKeyUid(snap);
-          rowsByKeyUid.value = mapDocs(snap);
-          emitMerged();
-        },
-        onErr
-      )
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(colRef, where("employeeUid", "==", myUid)),
-        (snap) => {
-          logUid(snap);
-          rowsByUid.value = mapDocs(snap);
-          emitMerged();
-        },
-        onErr
-      )
-    );
-
-    if (myStaffDocId) {
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeId", "==", myStaffDocId)),
-          (snap) => {
-            logStaffId(snap);
-            rowsByStaffId.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-    }
-
-    if (myStaffName) {
-      const keyName = safeStaffKey(myStaffName);
-
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeName", "==", myStaffName)),
-          (snap) => {
-            logName(snap);
-            rowsByName.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeKey", "==", keyName)),
-          (snap) => {
-            logKeyName(snap);
-            rowsByKeyName.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-    }
+    void load();
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
-      unsubs.forEach((u) => {
-        try {
-          u();
-        } catch {}
-      });
+      active = false;
+      clearTimer();
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
-  }, [myUid, myStaffDocId, myStaffName]);
+  }, [myUid]);
 
   const baseFiltered = useMemo(() => {
-    const text = normalizeArabic(q);
-
-    return allBookingsRaw.filter((b) => {
-      const st = normalizeStatus(b.status);
-
-      const iso = String(b.date || "").trim();
-      if (!isInQuickRange(iso, dateQuick)) return false;
-
-      if (statusQuick !== "all" && st !== statusQuick) return false;
-
-      if (text) {
-        const hay = normalizeArabic(
-          `${b.clientName || ""} ${b.clientPhone || ""} ${b.serviceName || ""} ${b.employeeName || ""} ${b.date || ""} ${b.time || ""} ${b.id || ""}`
-        );
-        if (!hay.includes(text)) return false;
-      }
-
-      return true;
+    const search = normalizeArabic(q);
+    return rows.filter((booking) => {
+      if (!isInQuickRange(booking.date, dateQuick)) return false;
+      if (statusQuick !== "all" && booking.status !== statusQuick) return false;
+      if (!search) return true;
+      return normalizeArabic(
+        `${booking.clientName} ${booking.clientPhone} ${booking.serviceName} ${booking.employeeName} ${booking.date} ${booking.time} ${booking.id}`
+      ).includes(search);
     });
-  }, [allBookingsRaw, q, dateQuick, statusQuick]);
+  }, [rows, q, dateQuick, statusQuick]);
 
   const filtered = useMemo(() => {
-    const list = baseFiltered.filter((b) => {
-      const isAck = !!b.staffAck;
-      if (tab === "new" && isAck) return false;
-      if (tab === "seen" && !isAck) return false;
-      return true;
-    });
-
-    list.sort((a, b) => {
-      const da = String(a.date || "");
-      const dbb = String(b.date || "");
-      if (da !== dbb) return da.localeCompare(dbb);
-
-      const ta = parseTimeToMinutes(a.time);
-      const tb = parseTimeToMinutes(b.time);
-      if (ta !== tb) return ta - tb;
-
-      return safeMs(b.createdAt) - safeMs(a.createdAt);
-    });
-
-    return list;
+    return baseFiltered
+      .filter((booking) => {
+        if (tab === "new") return !booking.staffAck;
+        if (tab === "seen") return booking.staffAck;
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        const timeDiff = parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time);
+        return timeDiff || safeMs(b.createdAt) - safeMs(a.createdAt);
+      });
   }, [baseFiltered, tab]);
 
   const grouped = useMemo(() => {
-    const map = new Map<string, BookingWithId[]>();
-    for (const b of filtered) {
-      const k = String(b.date || "بدون تاريخ");
-      if (!map.has(k)) map.set(k, []);
-      map.get(k)!.push(b);
+    const groups = new Map<string, StaffBooking[]>();
+    for (const booking of filtered) {
+      const date = booking.date || "بدون تاريخ";
+      if (!groups.has(date)) groups.set(date, []);
+      groups.get(date)!.push(booking);
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
-  const countNew = useMemo(() => baseFiltered.filter((b) => !b.staffAck).length, [baseFiltered]);
-  const countSeen = useMemo(() => baseFiltered.filter((b) => b.staffAck).length, [baseFiltered]);
-  const countAll = useMemo(() => baseFiltered.length, [baseFiltered]);
-
   const statusCounts = useMemo(() => {
-    const out: Record<BookingStatus, number> = {
+    const counts: Record<BookingStatus, number> = {
       pending: 0,
       confirmed: 0,
       completed: 0,
       cancelled: 0,
     };
-    baseFiltered.forEach((b) => {
-      out[normalizeStatus(b.status)] += 1;
-    });
-    return out;
+    for (const booking of baseFiltered) counts[booking.status] += 1;
+    return counts;
   }, [baseFiltered]);
 
-  // ✅ Confirm Receipt: update booking + write log event (atomic batch)
   const confirmReceipt = async (bookingId: string) => {
-    if (!myUid) return;
-    if (!bookingId) return;
-
+    if (!myUid || !bookingId) return;
     setBusyId(bookingId);
     setErrMsg("");
-
     try {
-      const bRef = bookingRef(bookingId);
-
-      // new event doc ref inside subcollection
-      const evCol = bookingEventsCol(bookingId);
-      const evRef = doc(evCol);
-
-      const ev: BookingLogEvent = {
-        type: "staff_acknowledged",
-        bookingId,
-        byUid: myUid,
-        byEmail: myEmail || "",
-        byName: myName || myEmail || myUid,
-        at: serverTimestamp(),
-        note: "تم تأكيد استلام الحجز من الموظفة",
-      };
-
-      const batch = writeBatch(db);
-
-      // 1) stamp booking
-      batch.update(bRef, {
-        staffAck: true,
-        staffAckAt: serverTimestamp(),
-        staffAckByUid: myUid,
-        updatedAt: serverTimestamp(),
-      });
-
-      // 2) add event
-      batch.set(evRef, ev);
-
-      await batch.commit();
-    } catch (e: any) {
-      console.error("confirmReceipt error:", e);
-      const msg = String(e?.message || e);
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع تأكيد الاستلام. لازم Rules تسمح للموظفة بتحديث staffAck وكتابة log."
-          : "❌ تعذر تأكيد الاستلام:\n" + msg
-      );
+      const updated = staffBookingFromCore(await CoreBookingService.acknowledgeMine(bookingId));
+      setRows((current) => current.map((row) => (row.id === bookingId ? updated : row)));
+    } catch (error) {
+      console.error("confirmReceipt Core error:", error);
+      setErrMsg("❌ تعذر تأكيد استلام الحجز.");
     } finally {
       setBusyId("");
     }
   };
 
-  // ✅ Confirm all visible (with safe batching)
   const confirmAllVisible = async () => {
     if (!myUid) return;
-
-    const targets = filtered.filter((b) => !b.staffAck).slice(0, 450);
-    if (targets.length === 0) return;
-
-    const ok = confirm(`سيتم تأكيد استلام ${targets.length} حجز وعمل Log لكل واحد.\nمتابعة؟`);
-    if (!ok) return;
+    const targets = filtered.filter((booking) => !booking.staffAck).slice(0, 100);
+    if (!targets.length) return;
+    if (!confirm(`سيتم تأكيد استلام ${targets.length} حجز.\nمتابعة؟`)) return;
 
     setBusyId("__all__");
     setErrMsg("");
-
     try {
-      // batch limit 500: we do 2 writes per booking (update + event set)
-      // safe chunk size: 200 bookings => 400 writes
-      const CHUNK = 200;
-
-      for (let i = 0; i < targets.length; i += CHUNK) {
-        const chunk = targets.slice(i, i + CHUNK);
-        const batch = writeBatch(db);
-
-        for (const b of chunk) {
-          const bRef = bookingRef(b.id);
-
-          const evCol = bookingEventsCol(b.id);
-          const evRef = doc(evCol);
-
-          const ev: BookingLogEvent = {
-            type: "staff_acknowledged",
-            bookingId: b.id,
-            byUid: myUid,
-            byEmail: myEmail || "",
-            byName: myName || myEmail || myUid,
-            at: serverTimestamp(),
-            note: "تم تأكيد استلام الحجز من الموظفة",
-          };
-
-          batch.update(bRef, {
-            staffAck: true,
-            staffAckAt: serverTimestamp(),
-            staffAckByUid: myUid,
-            updatedAt: serverTimestamp(),
-          });
-
-          batch.set(evRef, ev);
+      const updatedById = new Map<string, StaffBooking>();
+      for (let index = 0; index < targets.length; index += 5) {
+        const chunk = targets.slice(index, index + 5);
+        const updated = await Promise.all(
+          chunk.map((booking) => CoreBookingService.acknowledgeMine(booking.id))
+        );
+        for (const booking of updated) {
+          const mapped = staffBookingFromCore(booking);
+          updatedById.set(mapped.id, mapped);
         }
-
-        await batch.commit();
       }
-    } catch (e: any) {
-      console.error("confirmAllVisible error:", e);
-      const msg = String(e?.message || e);
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع تأكيد الاستلام. لازم Rules تسمح للموظفة بتحديث staffAck وكتابة log."
-          : "❌ تعذر تأكيد الاستلام للجميع:\n" + msg
-      );
+      setRows((current) => current.map((row) => updatedById.get(row.id) || row));
+    } catch (error) {
+      console.error("confirmAllVisible Core error:", error);
+      setErrMsg("❌ تعذر تأكيد استلام جميع الحجوزات الظاهرة.");
     } finally {
       setBusyId("");
     }
   };
 
   const setBookingStatus = async (bookingId: string, status: BookingStatus) => {
-    if (!myUid || !bookingId) return;
-    if (!allowStatusChange) return;
-
-    if (status === "cancelled") {
-      const ok = confirm("تأكيد إلغاء هذا الحجز؟");
-      if (!ok) return;
-    }
+    if (!myUid || !bookingId || !allowStatusChange || status === "pending") return;
+    if (status === "cancelled" && !confirm("تأكيد إلغاء هذا الحجز؟")) return;
 
     setBusyId(bookingId);
     setErrMsg("");
-
     try {
-      await updateBookingStatusFS(bookingId, status);
-    } catch (e: any) {
-      console.error("setBookingStatus error:", e);
-      const msg = String(e?.message || e);
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع تغيير حالة الحجز. تأكد من تفعيل صلاحية الموظفة من الإعدادات."
-          : "❌ تعذر تغيير حالة الحجز:\n" + msg
+      const updated = staffBookingFromCore(
+        await CoreBookingService.updateMineStatus(bookingId, status)
       );
+      setRows((current) => current.map((row) => (row.id === bookingId ? updated : row)));
+    } catch (error) {
+      console.error("setBookingStatus Core error:", error);
+      setErrMsg("❌ تعذر تغيير حالة الحجز. راجع صلاحية الموظفة وسياسة تغيير الحالة.");
     } finally {
       setBusyId("");
     }
   };
+
+  const countNew = baseFiltered.filter((booking) => !booking.staffAck).length;
+  const countSeen = baseFiltered.filter((booking) => booking.staffAck).length;
 
   return (
     <div className="dashstaff-page" dir="rtl">
@@ -665,39 +362,35 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
             <span className="pill soft">العرض: حجوزاتي فقط</span>
           </div>
         </div>
-
         <div className="dashstaff-count">النتائج: {filtered.length}</div>
       </div>
 
       {loading && !errMsg && <div className="dashstaff-box warn">جاري تحميل الحجوزات...</div>}
-
       {!!errMsg && <div className="dashstaff-box error">{errMsg}</div>}
 
-      {!loading && !errMsg && (
+      {!loading && (
         <>
           <div className="dashstaff-filters">
             <input
               className="dashstaff-input"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(event) => setQ(event.target.value)}
               placeholder="بحث: اسم العميلة / رقم / خدمة / تاريخ..."
             />
-
             <DashboardSelectBridgeV2
               className="dashstaff-input"
               value={dateQuick}
-              onChange={(e) => setDateQuick(e.target.value as DateQuick)}
+              onChange={(event) => setDateQuick(event.target.value as DateQuick)}
             >
               <option value="week">هذا الأسبوع</option>
               <option value="today">اليوم</option>
               <option value="tomorrow">بكرا</option>
               <option value="all">كل التواريخ</option>
             </DashboardSelectBridgeV2>
-
             <DashboardSelectBridgeV2
               className="dashstaff-input"
               value={statusQuick}
-              onChange={(e) => setStatusQuick(e.target.value as StatusQuick)}
+              onChange={(event) => setStatusQuick(event.target.value as StatusQuick)}
             >
               <option value="all">كل الحالات</option>
               <option value="pending">بانتظار التأكيد</option>
@@ -715,34 +408,20 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
           </div>
 
           <div className="dashstaff-actions">
-            <button
-              type="button"
-              className={`btn-tab ${tab === "new" ? "is-active" : ""}`}
-              onClick={() => setTab("new")}
-            >
+            <button type="button" className={`btn-tab ${tab === "new" ? "is-active" : ""}`} onClick={() => setTab("new")}>
               جديد ({countNew})
             </button>
-            <button
-              type="button"
-              className={`btn-tab ${tab === "seen" ? "is-active" : ""}`}
-              onClick={() => setTab("seen")}
-            >
+            <button type="button" className={`btn-tab ${tab === "seen" ? "is-active" : ""}`} onClick={() => setTab("seen")}>
               تم الاستلام ({countSeen})
             </button>
-            <button
-              type="button"
-              className={`btn-tab ${tab === "all" ? "is-active" : ""}`}
-              onClick={() => setTab("all")}
-            >
-              الكل ({countAll})
+            <button type="button" className={`btn-tab ${tab === "all" ? "is-active" : ""}`} onClick={() => setTab("all")}>
+              الكل ({baseFiltered.length})
             </button>
-
             <button
               type="button"
               className="btn-bulk"
               onClick={confirmAllVisible}
-              disabled={!myUid || busyId === "__all__" || filtered.every((b) => b.staffAck)}
-              title="يؤكد استلام كل الحجوزات الظاهرة (ويكتب Log لكل واحد)"
+              disabled={!myUid || busyId === "__all__" || filtered.every((booking) => booking.staffAck)}
             >
               {busyId === "__all__" ? "..." : "تأكيد استلام الكل ✅"}
             </button>
@@ -752,114 +431,80 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
             <div className="dashstaff-box empty">ما فيه حجوزات حسب الفلاتر الحالية.</div>
           ) : (
             <div className="dashstaff-list">
-              {grouped.map(([day, rows]) => (
+              {grouped.map(([day, bookings]) => (
                 <div key={day} className="dashstaff-card">
                   <div className="dashstaff-row top">
                     <div className="dashstaff-service">{day}</div>
-                    <div className="dashstaff-meta">{rows.length} حجز</div>
+                    <div className="dashstaff-meta">{bookings.length} حجز</div>
                   </div>
 
-                  {rows.map((b) => {
-                    const st = normalizeStatus(b.status);
-                    const statusLabel = STATUS_LABEL[st];
-                    const isAck = !!b.staffAck;
-                    const canConfirm = allowStatusChange && st === "pending";
-                    const canComplete = allowStatusChange && st === "confirmed";
-                    const canCancel = allowStatusChange && (st === "pending" || st === "confirmed");
-
+                  {bookings.map((booking) => {
+                    const statusLabel = STATUS_LABEL[booking.status];
+                    const canConfirm = allowStatusChange && booking.status === "pending";
+                    const canComplete = allowStatusChange && booking.status === "confirmed";
+                    const canCancel = allowStatusChange && ["pending", "confirmed"].includes(booking.status);
                     return (
-                      <div key={b.id} className="dashstaff-card" style={{ marginTop: 10 }}>
+                      <div key={booking.id} className="dashstaff-card" style={{ marginTop: 10 }}>
                         <div className="dashstaff-row top">
                           <div className="dashstaff-service">
-                            {b.clientName || "—"}{" "}
-                            <span className="dashstaff-meta">
-                              {b.clientPhone ? `• ${b.clientPhone}` : ""}
-                            </span>
+                            {booking.clientName || "—"}{" "}
+                            <span className="dashstaff-meta">{booking.clientPhone ? `• ${booking.clientPhone}` : ""}</span>
                           </div>
-
                           <div className="dashstaff-badges">
-                            <span className={`dashstaff-status ${st}`}>{statusLabel}</span>
-                            <span className={`pill ${isAck ? "soft" : "ack-new"}`}>
-                              {isAck ? "تم الاستلام" : "جديد ولم يتم الاستلام"}
+                            <span className={`dashstaff-status ${booking.status}`}>{statusLabel}</span>
+                            <span className={`pill ${booking.staffAck ? "soft" : "ack-new"}`}>
+                              {booking.staffAck ? "تم الاستلام" : "جديد ولم يتم الاستلام"}
                             </span>
                           </div>
                         </div>
 
                         <div className="dashstaff-row">
-                          <div className="dashstaff-meta">
-                            الخدمة: <b>{b.serviceName || b.serviceId || "—"}</b>
-                          </div>
+                          <div className="dashstaff-meta">الخدمة: <b>{booking.serviceName || booking.serviceId || "—"}</b></div>
                         </div>
-
                         <div className="dashstaff-row">
-                          <div className="dashstaff-meta">
-                            الموعد: <b>{b.date || "—"}</b> • <b>{formatTime12(b.time)}</b>
-                          </div>
+                          <div className="dashstaff-meta">الموعد: <b>{booking.date || "—"}</b> • <b>{formatTime12(booking.time)}</b></div>
                         </div>
-
                         <div className="dashstaff-row">
                           <div className="dashstaff-meta">
                             الحالة التشغيلية: <b>{statusLabel}</b>
-                            {isAck && b.staffAckByUid ? (
+                            {booking.staffAck && booking.staffAckByUid ? (
                               <span className="dashstaff-meta" style={{ marginInlineStart: 10 }}>
-                                • تم بواسطة: <b>{String(b.staffAckByUid).slice(0, 6)}</b>
+                                • تم بواسطة: <b>{booking.staffAckByUid.slice(0, 6)}</b>
                               </span>
                             ) : null}
                           </div>
                         </div>
 
                         <div className="dashstaff-actions">
-                          {!isAck ? (
+                          {!booking.staffAck ? (
                             <button
                               type="button"
                               className="btn-receipt"
-                              onClick={() => confirmReceipt(b.id)}
-                              disabled={!myUid || busyId === b.id}
-                              title="يسجل حدث استلام داخل booking_logs"
+                              onClick={() => confirmReceipt(booking.id)}
+                              disabled={!myUid || busyId === booking.id}
                             >
-                              {busyId === b.id ? "..." : "اضغطي هنا لتأكيد الاستلام ✅"}
+                              {busyId === booking.id ? "..." : "اضغطي هنا لتأكيد الاستلام ✅"}
                             </button>
                           ) : (
                             <span className="pill soft">✅ تم تأكيد الاستلام (مسجل)</span>
                           )}
 
                           {canConfirm && (
-                            <button
-                              type="button"
-                              className="btn-confirm"
-                              onClick={() => setBookingStatus(b.id, "confirmed")}
-                              disabled={!myUid || busyId === b.id}
-                              title="تأكيد الحجز"
-                            >
+                            <button type="button" className="btn-confirm" onClick={() => setBookingStatus(booking.id, "confirmed")} disabled={busyId === booking.id}>
                               تأكيد الموعد
                             </button>
                           )}
-
                           {canComplete && (
-                            <button
-                              type="button"
-                              className="btn-complete"
-                              onClick={() => setBookingStatus(b.id, "completed")}
-                              disabled={!myUid || busyId === b.id}
-                              title="إنهاء الخدمة"
-                            >
+                            <button type="button" className="btn-complete" onClick={() => setBookingStatus(booking.id, "completed")} disabled={busyId === booking.id}>
                               إنهاء الخدمة
                             </button>
                           )}
-
                           {canCancel && (
-                            <button
-                              type="button"
-                              className="btn-cancel"
-                              onClick={() => setBookingStatus(b.id, "cancelled")}
-                              disabled={!myUid || busyId === b.id}
-                              title="إلغاء الحجز"
-                            >
+                            <button type="button" className="btn-cancel" onClick={() => setBookingStatus(booking.id, "cancelled")} disabled={busyId === booking.id}>
                               إلغاء الحجز
                             </button>
                           )}
-
-                          <span className="pill soft">Booking ID: {b.id}</span>
+                          <span className="pill soft">Booking ID: {booking.id}</span>
                         </div>
                       </div>
                     );
