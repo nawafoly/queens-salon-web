@@ -21,12 +21,23 @@ async function resolveAbsenceEmployeeIdentity(db, salonId, data) {
 }
 
 export async function listAbsences(db, salonId, query = {}) {
-  let rows = await dbAll(db, 'SELECT * FROM employee_absences WHERE salon_id = ? ORDER BY date_key DESC LIMIT 1000', [salonId]);
   const employeeId = cleanText(query.employeeId || query.employee_id);
+  const where = ['salon_id = ?'];
+  const params = [salonId];
+
   if (employeeId) {
-    rows = rows.filter((row) => cleanText(row.employee_id) === employeeId || cleanText(row.employee_uid) === employeeId);
+    where.push('(employee_id = ? OR employee_uid = ?)');
+    params.push(employeeId, employeeId);
   }
-  return rows;
+
+  return dbAll(
+    db,
+    `SELECT * FROM employee_absences
+      WHERE ${where.join(' AND ')}
+      ORDER BY date_key DESC
+      LIMIT 1000`,
+    params
+  );
 }
 
 export async function createAbsence(db, salonId, data, actor = {}) {
