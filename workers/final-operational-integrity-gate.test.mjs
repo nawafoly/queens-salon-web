@@ -46,6 +46,25 @@ test("generic idempotency ledger never uses an implicit shared tenant namespace"
   );
 });
 
+test("absence employee filtering stays inside D1 before the bounded list", () => {
+  const source = read("workers/core/repositories/absences.js");
+  const migration = read("migrations/core/0065_absence_read_efficiency.sql");
+  const start = source.indexOf("export async function listAbsences");
+  const end = source.indexOf("export async function createAbsence", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+
+  assert.match(block, /where = \['salon_id = \?'\]/);
+  assert.match(block, /\(employee_id = \? OR employee_uid = \?\)/);
+  assert.match(block, /WHERE \$\{where\.join\(' AND '\)\}/);
+  assert.match(block, /ORDER BY date_key DESC[\s\S]*LIMIT 1000/);
+  assert.doesNotMatch(block, /rows\.filter/);
+  assert.match(migration, /employee_absences\(salon_id, date_key DESC\)/);
+  assert.match(migration, /employee_absences\(salon_id, employee_id, date_key DESC\)/);
+  assert.match(migration, /employee_absences\(salon_id, employee_uid, date_key DESC\)/);
+});
+
 test("final aggregate remains cumulative through P7 and critical journeys", () => {
   const pkg = JSON.parse(read("package.json"));
 
