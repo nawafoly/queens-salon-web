@@ -3,9 +3,11 @@
 import {
   changes,
   cleanText,
+  dbAll,
   dbFirst,
   dbRun,
   nowIso,
+  placeholders,
   requiredId,
 } from '../d1.js';
 import { AppError } from '../errors.js';
@@ -18,7 +20,7 @@ const SELF_STATUS_TRANSITIONS = new Map([
   ['confirmed', new Set(['completed', 'cancelled'])],
 ]);
 
-function projectOwnBooking(row, employeeId) {
+function projectOwnBooking(row, employeeId, acknowledgement = null) {
   const ownEmployeeId = cleanText(employeeId);
   const topLevelAssigned = cleanText(row?.staff_id) === ownEmployeeId;
   const items = (Array.isArray(row?.items) ? row.items : [])
@@ -55,9 +57,9 @@ function projectOwnBooking(row, employeeId) {
     end_time: row.end_time,
     status: row.status,
     source: row.source,
-    staff_ack: Number(row.staff_ack) === 1 ? 1 : 0,
-    staff_ack_at: row.staff_ack_at || null,
-    staff_ack_by_uid: row.staff_ack_by_uid || null,
+    staff_ack: acknowledgement ? 1 : 0,
+    staff_ack_at: acknowledgement?.acknowledged_at || null,
+    staff_ack_by_uid: acknowledgement?.acknowledged_by_uid || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     cancelled_at: row.cancelled_at || null,
@@ -93,9 +95,24 @@ async function assignedBooking(db, salonId, bookingId, employeeId) {
   return row;
 }
 
+async function acknowledgementForEmployee(db, salonId, bookingId, employeeId) {
+  return dbFirst(
+    db,
+    `SELECT acknowledged_at, acknowledged_by_uid
+       FROM booking_staff_acknowledgements
+      WHERE salon_id = ? AND booking_id = ? AND employee_id = ?
+      LIMIT 1`,
+    [salonId, bookingId, employeeId]
+  );
+}
+
 async function projectedBookingById(db, salonId, bookingId, employeeId) {
   await assignedBooking(db, salonId, bookingId, employeeId);
-  return projectOwnBooking(await getBooking(db, salonId, bookingId), employeeId);
+  const [booking, acknowledgement] = await Promise.all([
+    getBooking(db, salonId, bookingId),
+    acknowledgementForEmployee(db, salonId, bookingId, employeeId),
+  ]);
+  return projectOwnBooking(booking, employeeId, acknowledgement);
 }
 
 export async function listOwnStaffBookings(db, salonId, employeeId, query = {}) {
@@ -104,7 +121,29 @@ export async function listOwnStaffBookings(db, salonId, employeeId, query = {}) 
     ...query,
     staffId: ownEmployeeId,
   });
-  return rows.map((row) => projectOwnBooking(row, ownEmployeeId));
+  if (!rows.length) return [];
+
+  const bookingIds = [...new Set(rows.map((row) => cleanText(row.id)).filter(Boolean))];
+  const acknowledgements = await dbAll(
+    db,
+    `SELECT booking_id, acknowledged_at, acknowledged_by_uid
+       FROM booking_staff_acknowledgements
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND booking_id IN (${placeholders(bookingIds.length)})`,
+    [salonId, ownEmployeeId, ...bookingIds]
+  );
+  const acknowledgementByBookingId = new Map(
+    acknowledgements.map((row) => [cleanText(row.booking_id), row])
+  );
+
+  return rows.map((row) =>
+    projectOwnBooking(
+      row,
+      ownEmployeeId,
+      acknowledgementByBookingId.get(cleanText(row.id)) || null
+    )
+  );
 }
 
 async function assertStaffStatusChangeEnabled(db, salonId) {
@@ -117,6 +156,36 @@ async function assertStaffStatusChangeEnabled(db, salonId) {
   );
 }
 
+async function assertExclusiveStatusControl(db, salonId, booking, employeeId) {
+  const ownEmployeeId = cleanText(employeeId);
+  const topLevelStaffId = cleanText(booking?.staff_id);
+  const items = await dbAll(
+    db,
+    `SELECT staff_id
+       FROM booking_items
+      WHERE salon_id = ? AND booking_id = ?`,
+    [salonId, booking.id]
+  );
+  const itemStaffIds = items.map((item) => cleanText(item.staff_id));
+
+  const topLevelOwned = topLevelStaffId === ownEmployeeId;
+  const hasForeignAssignedItem = itemStaffIds.some(
+    (staffId) => staffId && staffId !== ownEmployeeId
+  );
+  const allItemsExplicitlyOwned =
+    itemStaffIds.length > 0 && itemStaffIds.every((staffId) => staffId === ownEmployeeId);
+
+  if ((topLevelOwned && !hasForeignAssignedItem) || (!topLevelStaffId && allItemsExplicitlyOwned)) {
+    return;
+  }
+
+  throw new AppError(
+    409,
+    'core_booking:staff_status_requires_exclusive_assignment',
+    'A staff member cannot change the whole booking status when another staff member is assigned.'
+  );
+}
+
 export async function acknowledgeOwnBooking(
   db,
   salonId,
@@ -125,54 +194,56 @@ export async function acknowledgeOwnBooking(
   actor = {}
 ) {
   const before = await assignedBooking(db, salonId, bookingId, employeeId);
-  if (Number(before.staff_ack) === 1) {
+  const existing = await acknowledgementForEmployee(
+    db,
+    salonId,
+    before.id,
+    employeeId
+  );
+  if (existing) {
     return projectedBookingById(db, salonId, before.id, employeeId);
   }
 
   const now = nowIso();
   const result = await dbRun(
     db,
-    `UPDATE bookings
-        SET staff_ack = 1,
-            staff_ack_at = ?,
-            staff_ack_by_uid = ?,
-            updated_at = ?
-      WHERE salon_id = ?
-        AND id = ?
-        AND staff_ack = 0`,
-    [now, cleanText(actor.uid) || null, now, salonId, before.id]
+    `INSERT OR IGNORE INTO booking_staff_acknowledgements
+      (salon_id, booking_id, employee_id, acknowledged_at, acknowledged_by_uid)
+     VALUES (?, ?, ?, ?, ?)`,
+    [salonId, before.id, employeeId, now, cleanText(actor.uid) || null]
   );
 
-  if (changes(result) !== 1) {
-    const current = await assignedBooking(db, salonId, before.id, employeeId);
-    if (Number(current.staff_ack) !== 1) {
-      throw new AppError(409, 'core_booking:staff_ack_conflict');
-    }
+  const acknowledgement = await acknowledgementForEmployee(
+    db,
+    salonId,
+    before.id,
+    employeeId
+  );
+  if (!acknowledgement) {
+    throw new AppError(409, 'core_booking:staff_ack_conflict');
   }
 
   const after = await projectedBookingById(db, salonId, before.id, employeeId);
-  await recordAudit(
-    db,
-    salonId,
-    {
-      action: 'booking_staff_acknowledged',
-      entityType: 'booking',
-      entityId: before.id,
-      description: 'Booking receipt acknowledged by the assigned employee.',
-      before: {
-        staffAck: Number(before.staff_ack) === 1,
-        staffAckAt: before.staff_ack_at || null,
-        staffAckByUid: before.staff_ack_by_uid || null,
+  if (changes(result) === 1) {
+    await recordAudit(
+      db,
+      salonId,
+      {
+        action: 'booking_staff_acknowledged',
+        entityType: 'booking',
+        entityId: before.id,
+        description: 'Booking receipt acknowledged by the assigned employee.',
+        before: { staffAck: false },
+        after: {
+          staffAck: true,
+          staffAckAt: acknowledgement.acknowledged_at,
+          staffAckByUid: acknowledgement.acknowledged_by_uid || null,
+        },
+        meta: { employeeId },
       },
-      after: {
-        staffAck: true,
-        staffAckAt: after.staff_ack_at || now,
-        staffAckByUid: after.staff_ack_by_uid || cleanText(actor.uid) || null,
-      },
-      meta: { employeeId },
-    },
-    actor
-  );
+      actor
+    );
+  }
   return after;
 }
 
@@ -186,6 +257,8 @@ export async function updateOwnBookingStatus(
 ) {
   await assertStaffStatusChangeEnabled(db, salonId);
   const before = await assignedBooking(db, salonId, bookingId, employeeId);
+  await assertExclusiveStatusControl(db, salonId, before, employeeId);
+
   const fromStatus = cleanText(before.status || 'pending').toLowerCase();
   const toStatus = cleanText(statusValue).toLowerCase();
   const allowed = SELF_STATUS_TRANSITIONS.get(fromStatus);
@@ -234,7 +307,7 @@ export async function updateOwnBookingStatus(
       action: 'booking_staff_status_updated',
       entityType: 'booking',
       entityId: before.id,
-      description: 'Booking status changed by the assigned employee portal.',
+      description: 'Booking status changed by the exclusively assigned employee portal.',
       before: { status: fromStatus },
       after: { status: toStatus },
       meta: { employeeId },

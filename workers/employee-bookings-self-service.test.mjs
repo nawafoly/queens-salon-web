@@ -19,71 +19,40 @@ test("employee bookings use canonical self-service without browser-supplied staf
   const service = read("src/services/CoreBookingService.ts");
 
   assert.match(overview, /CoreBookingService\.mine\(\)/);
-
-  assert.doesNotMatch(
-    overview,
-    /listEmployeeBookings\(/
-  );
-
-  assert.doesNotMatch(
-    overview,
-    /CoreBookingService\.list\(\s*\{\s*staffId/
-  );
-
+  assert.doesNotMatch(overview, /listEmployeeBookings\(/);
+  assert.doesNotMatch(overview, /CoreBookingService\.list\(\s*\{\s*staffId/);
   assert.match(
     overview,
     /if \(!session\.uid\)[\s\S]*?CoreBookingService\.mine\(\)[\s\S]*?\}, \[session\.uid\]\);/
   );
-
   assert.match(
     service,
     /async mine\(\s*query:\s*Omit<CoreBookingSearch,\s*"staffId">\s*=\s*\{\}/s
   );
-
-  assert.match(
-    service,
-    /"\/api\/core\/bookings\/mine"/
-  );
+  assert.match(service, /"\/api\/core\/bookings\/mine"/);
 });
 
 test("Core derives employee booking ownership from verified employee context", () => {
   const core = read("workers/core/index.js");
-
-  const mineDispatch = between(
-    core,
-    'case "bookings:mine":',
-    'case "bookings":'
-  );
+  const mineDispatch = between(core, 'case "bookings:mine":', 'case "bookings":');
 
   assert.match(
     mineDispatch,
     /requirePermission\(ctx,\s*"workspace\.employee_portal\.view"\)/
   );
-
-  assert.match(
-    mineDispatch,
-    /if \(!ctx\.employeeId\)/
-  );
-
+  assert.match(mineDispatch, /if \(!ctx\.employeeId\)/);
   assert.match(
     mineDispatch,
     /listOwnStaffBookings\([\s\S]*ctx\.employeeId[\s\S]*query/
   );
-
-  assert.doesNotMatch(
-    mineDispatch,
-    /staffId:\s*query\./
-  );
-
-  assert.doesNotMatch(
-    mineDispatch,
-    /staffId:\s*body\./
-  );
+  assert.doesNotMatch(mineDispatch, /staffId:\s*query\./);
+  assert.doesNotMatch(mineDispatch, /staffId:\s*body\./);
 });
 
 test("employee booking acknowledgement and staff status are Core-owned and identity-bound", () => {
   const core = read("workers/core/index.js");
   const repo = read("workers/core/repositories/booking-staff-portal.js");
+  const migration = read("migrations/core/0063_booking_staff_acknowledgement.sql");
 
   assert.match(core, /booking:acknowledge/);
   assert.match(core, /booking:staff-status/);
@@ -97,4 +66,12 @@ test("employee booking acknowledgement and staff status are Core-owned and ident
   assert.match(repo, /projectOwnBooking/);
   assert.match(repo, /\.filter\(\(item\) =>/);
   assert.doesNotMatch(repo, /subtotal_halalas|discount_halalas|paid_halalas|invoice_number|admin_notes/);
+
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS booking_staff_acknowledgements/);
+  assert.match(migration, /PRIMARY KEY \(salon_id, booking_id, employee_id\)/);
+  assert.match(repo, /INSERT OR IGNORE INTO booking_staff_acknowledgements/);
+  assert.match(repo, /employee_id = \?/);
+  assert.match(repo, /assertExclusiveStatusControl/);
+  assert.match(repo, /staff_status_requires_exclusive_assignment/);
+  assert.doesNotMatch(migration, /ALTER TABLE bookings ADD COLUMN staff_ack/);
 });
