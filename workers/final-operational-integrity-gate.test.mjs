@@ -65,6 +65,18 @@ test("absence employee filtering stays inside D1 before the bounded list", () =>
   assert.match(migration, /employee_absences\(salon_id, employee_uid, date_key DESC\)/);
 });
 
+test("public booking tracking stays on canonical Core instead of Firestore", () => {
+  const source = read("src/pages/Track.tsx");
+
+  assert.match(source, /CoreBookingService\.trackPublic\(normalizedParam\)/);
+  assert.match(source, /coreApiRequest<CorePublicSettingRow>\("\/api\/core\/settings\/public"\)/);
+  assert.doesNotMatch(source, /firestoreBookings/);
+  assert.doesNotMatch(source, /firebase\/firestore/);
+  assert.doesNotMatch(source, /services\/firebase/);
+  assert.doesNotMatch(source, /onSnapshot\(/);
+  assert.doesNotMatch(source, /getTrackByPublicId/);
+});
+
 test("final aggregate remains cumulative through P7 and critical journeys", () => {
   const pkg = JSON.parse(read("package.json"));
 
