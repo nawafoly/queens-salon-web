@@ -1,6 +1,6 @@
 import { DashboardSelectBridgeV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -213,8 +213,10 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
-  const [financialPreview, setFinancialPreview] = useState<ExceptionalFinancialPaymentPreview | null>(null);
-  const [financialPreviewLoading, setFinancialPreviewLoading] = useState(false);
+  const [financialPreview, setFinancialPreview] =
+    useState<ExceptionalFinancialPaymentPreview | null>(null);
+  const [financialPreviewLoading, setFinancialPreviewLoading] =
+    useState(false);
 
   useEffect(() => { setForm(initialForm(type)); setAttachment(null); }, [type]);
 
@@ -224,23 +226,48 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
       setFinancialPreviewLoading(false);
       return;
     }
+
     const days = Number(form.requestedDays || 0);
-    if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) {
+
+    if (
+      !Number.isFinite(days) ||
+      days < 0.5 ||
+      days > 60 ||
+      Math.round(days * 2) !== days * 2
+    ) {
       setFinancialPreview(null);
       setFinancialPreviewLoading(false);
       return;
     }
+
     let cancelled = false;
+
     setFinancialPreviewLoading(true);
+
     const timer = window.setTimeout(() => {
       getExceptionalFinancialPaymentPreview(days)
-        .then((preview) => { if (!cancelled) setFinancialPreview(preview); })
-        .catch(() => { if (!cancelled) setFinancialPreview(null); })
-        .finally(() => { if (!cancelled) setFinancialPreviewLoading(false); });
+        .then((preview) => {
+          if (!cancelled) {
+            setFinancialPreview(preview);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFinancialPreview(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setFinancialPreviewLoading(false);
+          }
+        });
     }, 150);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [type, form.requestedDays]);
 
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [type, form.requestedDays]);
   const update = (name: string, value: string | boolean) => setForm((current) => ({ ...current, [name]: value }));
   const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
   const financialSignatureMissing = type === "exceptional_financial_payment" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
@@ -258,7 +285,9 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
         if (endDate < startDate) throw new Error("آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.");
         if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
       }
-      if (type === "salary_certificate" && !String(form.addressee || "").trim()) throw new Error("اكتب الجهة الموجه إليها تعريف الراتب.");
+      if (type === "salary_certificate" && !String(form.addressee || "").trim()) {
+        throw new Error("اكتب الجهة الموجه إليها تعريف الراتب.");
+      }
       if (type === "exceptional_financial_payment") {
         const days = Number(form.requestedDays);
         if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد أيام الإجازة المطلوب تعويضها من 0.5 إلى 60 وبزيادات نصف يوم.");
@@ -306,15 +335,26 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
     <div className="employee-request-modal" role="dialog" aria-modal="true">
       <div className="employee-request-modal__panel">
         <header>
-          <div><small>إنشاء طلب جديد</small><h2>{EMPLOYEE_REQUEST_TYPE_LABELS[type]}</h2></div>
+          <div>
+            <small>إنشاء طلب جديد</small>
+            <h2>{EMPLOYEE_REQUEST_TYPE_LABELS[type]}</h2>
+          </div>
           <button type="button" onClick={onClose} aria-label="إغلاق"><FontAwesomeIcon icon={faXmark} /></button>
         </header>
         <form onSubmit={submit}>
           {type === "leave" ? (
-            <div className="leave-request-form-shell"><LeaveRequestFormFields employeeName={employeeName} form={form} update={update} /></div>
+            <div className="leave-request-form-shell">
+              <LeaveRequestFormFields employeeName={employeeName} form={form} update={update} />
+            </div>
           ) : type === "exceptional_financial_payment" ? (
             <div className="leave-request-form-shell">
-              <ExceptionalFinancialPaymentRequestFormFields employeeName={employeeName} form={form} update={update} preview={financialPreview} previewLoading={financialPreviewLoading} />
+              <ExceptionalFinancialPaymentRequestFormFields
+                employeeName={employeeName}
+                form={form}
+                update={update}
+                preview={financialPreview}
+                previewLoading={financialPreviewLoading}
+              />
             </div>
           ) : (
             <>
@@ -426,18 +466,33 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
     if (!request || busy) return;
     setBusy(true); setError("");
     try {
-      await employeeRequestAction(request.id, "cancel", { version: request.version, note: cancelReason.trim() || "ألغته الموظفة" });
-      setCancelDialogOpen(false); setCancelReason(""); await load(); onChanged();
+      await employeeRequestAction(request.id, "cancel", {
+        version: request.version,
+        note: cancelReason.trim() || "ألغته الموظفة",
+      });
+      setCancelDialogOpen(false);
+      setCancelReason("");
+      await load();
+      onChanged();
     } catch (cause) {
       const message = employeeRequestErrorMessage(cause, "تعذر إلغاء الطلب.");
-      setCancelDialogOpen(false); setCancelReason(""); await load(); onChanged(); setError(message);
-    } finally { setBusy(false); }
+      setCancelDialogOpen(false);
+      setCancelReason("");
+      await load();
+      onChanged();
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   useEffect(() => {
     if (!request) return;
     const cancellable = ["submitted", "received", "under_review", "needs_info", "approved"].includes(request.status);
-    if (!cancellable) { setCancelDialogOpen(false); setCancelReason(""); }
+    if (!cancellable) {
+      setCancelDialogOpen(false);
+      setCancelReason("");
+    }
   }, [request?.status]);
 
   if (loading) return <div className="employee-requests-loading">جاري تحميل تفاصيل الطلب...</div>;
@@ -448,10 +503,23 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
   const requestInfoMessages = (request.events || [])
     .filter((event) => ["request_info", "request-info"].includes(event.event_type) && event.note)
     .filter((event) => !existingComments.some((commentItem) => commentItem.body.trim() === String(event.note || "").trim()))
-    .map((event) => ({ id: `event-message-${event.id}`, author_name: event.actor_name || "الإدارة", author_role: event.actor_role || "hr", visibility: "employee" as const, body: event.note || "", created_at: event.created_at }));
-  const conversation = [...existingComments, ...requestInfoMessages].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-  const closureEvent = [...(request.events || [])].reverse().find((event) => ["cancel", "cancelled"].includes(String(event.event_type || "").toLowerCase()) || event.to_status === "cancelled");
-
+    .map((event) => ({
+      id: `event-message-${event.id}`,
+      author_name: event.actor_name || "الإدارة",
+      author_role: event.actor_role || "hr",
+      visibility: "employee" as const,
+      body: event.note || "",
+      created_at: event.created_at,
+    }));
+  const conversation = [...existingComments, ...requestInfoMessages].sort(
+    (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
+  );
+  const closureEvent = [...(request.events || [])]
+    .reverse()
+    .find((event) =>
+      ["cancel", "cancelled"].includes(String(event.event_type || "").toLowerCase()) ||
+      event.to_status === "cancelled"
+    );
   return (
     <section className="employee-request-detail">
       <header className={`employee-request-detail__head ${request.status === "cancelled" ? "is-closed" : ""}`}>
@@ -460,7 +528,16 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
       </header>
       {request.rejection_reason ? <div className="employee-request-decision is-danger"><strong>سبب الرفض</strong><p>{request.rejection_reason}</p></div> : null}
       {request.execution_error ? <div className="employee-request-decision is-danger"><strong>تعذر تنفيذ الطلب</strong><p>{employeeRequestExecutionErrorLabel(request.execution_error)}</p></div> : null}
-      {request.status === "cancelled" ? <div className="employee-request-decision is-closed"><strong>تم إغلاق الطلب</strong><p>{closureEvent?.note || "أُغلق هذا الطلب ولن تُنفذ عليه إجراءات إضافية ما لم تعِد الإدارة فتحه."}</p><div className="employee-request-closed-meta"><span>وقت الإغلاق</span><time>{formatDateTime(request.cancelled_at || closureEvent?.created_at || request.updated_at)}</time></div></div> : null}
+      {request.status === "cancelled" ? (
+        <div className="employee-request-decision is-closed">
+          <strong>تم إغلاق الطلب</strong>
+          <p>{closureEvent?.note || "أُغلق هذا الطلب ولن تُنفذ عليه إجراءات إضافية ما لم تعِد الإدارة فتحه."}</p>
+          <div className="employee-request-closed-meta">
+            <span>وقت الإغلاق</span>
+            <time>{formatDateTime(request.cancelled_at || closureEvent?.created_at || request.updated_at)}</time>
+          </div>
+        </div>
+      ) : null}
       {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}
       {request.request_type === "exceptional_financial_payment" ? <ExceptionalFinancialPaymentRequestDocument request={request} /> : null}
       {request.request_type === "salary_certificate" && ["approved", "executing", "completed"].includes(request.status) ? <SalaryCertificateDocument request={request} /> : null}
@@ -470,12 +547,36 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
       </div>
       <article className="employee-request-attachments"><h3>المرفقات</h3>{(request.attachments || []).length ? <div className="employee-request-attachments__list">{(request.attachments || []).map((item) => <button type="button" key={item.id} disabled={busy || !item.file_metadata_id} onClick={() => void downloadAttachment(item.file_metadata_id || "", item.file_name)}><FontAwesomeIcon icon={faFileCircleCheck} /><span><strong>{item.file_name}</strong><small>{item.file_type || "ملف"}</small></span></button>)}</div> : <p className="employee-requests-empty-text">لا توجد مرفقات.</p>}</article>
       <div className="employee-request-communication-grid">
-        <article className="employee-request-conversation"><header><div><h3><FontAwesomeIcon icon={faCommentDots} /> محادثة الطلب</h3><p>تواصل مباشر مع الإدارة بعيدًا عن سجل الإجراءات.</p></div><span>{conversation.length}</span></header><div className="employee-request-conversation__messages">{conversation.length ? conversation.map((item) => { const isEmployee = ["staff", "employee"].includes(String(item.author_role || "").toLowerCase()); return <div key={item.id} className={`employee-request-message ${isEmployee ? "is-employee" : "is-admin"}`}><div><strong>{item.author_name || (isEmployee ? "الموظفة" : "الإدارة")}</strong></div><p>{item.body}</p><time>{formatDateTime(item.created_at)}</time></div>; }) : <p className="employee-request-conversation__empty">لا توجد رسائل حتى الآن.</p>}</div><div className="employee-request-composer"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder={request.status === "needs_info" ? "اكتب المعلومات المطلوبة..." : "اكتب ردًا أو استفسارًا..."} /><div><span /><button type="button" disabled={busy || !comment.trim()} onClick={() => void submitComment()}><FontAwesomeIcon icon={faPaperPlane} /> إرسال</button></div></div></article>
-        <article className="employee-request-timeline employee-request-timeline--operations"><header><h3><FontAwesomeIcon icon={faClockRotateLeft} /> سجل الإجراءات</h3><p>الحالات والقرارات والتنفيذ فقط.</p></header><div className="employee-request-timeline__list">{timelineEvents.map((event) => <div className="employee-request-timeline__item" key={event.id}><span /><div><strong>{employeeRequestEventLabel(event.event_type)}</strong><small>{formatDateTime(event.created_at)} {event.actor_name ? `• ${event.actor_name}` : ""}</small>{event.note && !["request_info", "request-info"].includes(event.event_type) ? <p>{event.note}</p> : null}</div></div>)}</div></article>
+        <article className="employee-request-conversation">
+          <header><div><h3><FontAwesomeIcon icon={faCommentDots} /> محادثة الطلب</h3><p>تواصل مباشر مع الإدارة بعيدًا عن سجل الإجراءات.</p></div><span>{conversation.length}</span></header>
+          <div className="employee-request-conversation__messages">
+            {conversation.length ? conversation.map((item) => {
+              const isEmployee = ["staff", "employee"].includes(String(item.author_role || "").toLowerCase());
+              return <div key={item.id} className={`employee-request-message ${isEmployee ? "is-employee" : "is-admin"}`}><div><strong>{item.author_name || (isEmployee ? "الموظفة" : "الإدارة")}</strong></div><p>{item.body}</p><time>{formatDateTime(item.created_at)}</time></div>;
+            }) : <p className="employee-request-conversation__empty">لا توجد رسائل حتى الآن.</p>}
+          </div>
+          <div className="employee-request-composer">
+            <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder={request.status === "needs_info" ? "اكتب المعلومات المطلوبة..." : "اكتب ردًا أو استفسارًا..."} />
+            <div><span /><button type="button" disabled={busy || !comment.trim()} onClick={() => void submitComment()}><FontAwesomeIcon icon={faPaperPlane} /> إرسال</button></div>
+          </div>
+        </article>
+        <article className="employee-request-timeline employee-request-timeline--operations">
+          <header><h3><FontAwesomeIcon icon={faClockRotateLeft} /> سجل الإجراءات</h3><p>الحالات والقرارات والتنفيذ فقط.</p></header>
+          <div className="employee-request-timeline__list">{timelineEvents.map((event) => <div className="employee-request-timeline__item" key={event.id}><span /><div><strong>{employeeRequestEventLabel(event.event_type)}</strong><small>{formatDateTime(event.created_at)} {event.actor_name ? `• ${event.actor_name}` : ""}</small>{event.note && !["request_info", "request-info"].includes(event.event_type) ? <p>{event.note}</p> : null}</div></div>)}</div>
+        </article>
       </div>
       {error ? <div className="employee-request-error">{error}</div> : null}
       {canCancel ? <button type="button" className="employee-request-cancel" disabled={busy} onClick={() => setCancelDialogOpen(true)}>إلغاء الطلب</button> : null}
-      {cancelDialogOpen ? createPortal(<div className="employee-request-action-modal" role="dialog" aria-modal="true" aria-labelledby="employee-cancel-request-title"><button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={() => !busy && setCancelDialogOpen(false)} /><section className="employee-request-action-modal__panel"><header><div><small>{request.request_number}</small><h2 id="employee-cancel-request-title">إلغاء الطلب</h2><p>لن يمكن إلغاء الطلب بعد بدء تنفيذه. اكتب السبب عند الحاجة ثم أكد الإلغاء.</p></div><button type="button" onClick={() => setCancelDialogOpen(false)} disabled={busy}><FontAwesomeIcon icon={faXmark} /></button></header><div className="employee-request-action-modal__body"><label className="employee-request-action-field"><span>سبب الإلغاء <small>اختياري</small></span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="اكتب سبب الإلغاء..." /></label></div><footer><button type="button" className="is-secondary" onClick={() => setCancelDialogOpen(false)} disabled={busy}>تراجع</button><button type="button" className="is-danger" onClick={() => void cancel()} disabled={busy}>{busy ? "جارٍ الإلغاء..." : "تأكيد الإلغاء"}</button></footer></section></div>, document.body) : null}
+      {cancelDialogOpen ? createPortal(
+        <div className="employee-request-action-modal" role="dialog" aria-modal="true" aria-labelledby="employee-cancel-request-title">
+          <button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={() => !busy && setCancelDialogOpen(false)} />
+          <section className="employee-request-action-modal__panel">
+            <header><div><small>{request.request_number}</small><h2 id="employee-cancel-request-title">إلغاء الطلب</h2><p>لن يمكن إلغاء الطلب بعد بدء تنفيذه. اكتب السبب عند الحاجة ثم أكد الإلغاء.</p></div><button type="button" onClick={() => setCancelDialogOpen(false)} disabled={busy}><FontAwesomeIcon icon={faXmark} /></button></header>
+            <div className="employee-request-action-modal__body"><label className="employee-request-action-field"><span>سبب الإلغاء <small>اختياري</small></span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="اكتب سبب الإلغاء..." /></label></div>
+            <footer><button type="button" className="is-secondary" onClick={() => setCancelDialogOpen(false)} disabled={busy}>تراجع</button><button type="button" className="is-danger" onClick={() => void cancel()} disabled={busy}>{busy ? "جارٍ الإلغاء..." : "تأكيد الإلغاء"}</button></footer>
+          </section>
+        </div>, document.body
+      ) : null}
     </section>
   );
 }
