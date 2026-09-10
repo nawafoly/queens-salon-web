@@ -751,34 +751,16 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
          reason, note, source, status, financial_effect, duration_minutes, unpaid_minutes,
          created_by_uid, created_by_name, reviewer_uid, reviewer_name, returned_by_uid,
          returned_by_name, reviewed_at, exited_at, returned_at, created_at, updated_at, employee_request_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'employee_request', 'returned', 'none', ?, 0,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'employee_request', 'approved', 'none', 0, 0,
          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         id, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot, payload.date,
-        payload.startTime, payload.endTime, payload.startTime, payload.endTime,
-        payload.reason, optionalText(payload.notes) || null, minutes,
+        payload.startTime, payload.endTime, NULL, NULL,
+        payload.reason, optionalText(payload.notes) || null,
         row.created_by_uid, row.employee_name_snapshot, cleanText(actor.uid) || null,
-        cleanText(actor.name) || null, cleanText(actor.uid) || null, cleanText(actor.name) || null,
-        now, now, now, now, now, row.id,
+        cleanText(actor.name) || null, NULL, NULL,
+        now, NULL, NULL, now, now, row.id,
       ],
-    },
-    {
-      sql: `INSERT OR IGNORE INTO attendance_records
-        (id, salon_id, employee_id, employee_uid, date_key, record_type, recorded_at,
-         source, note, idempotency_key, created_at)
-       VALUES (?, ?, ?, ?, ?, 'permission_out', ?, 'permission', ?, ?, ?)`,
-      params: [generatedId('attendance'), salonId, row.employee_id, row.employee_uid, payload.date,
-        riyadhEventIso(payload.date, payload.startTime, false), `${payload.reason} • ${id}`,
-        `permission:${id}:permission_out`, now],
-    },
-    {
-      sql: `INSERT OR IGNORE INTO attendance_records
-        (id, salon_id, employee_id, employee_uid, date_key, record_type, recorded_at,
-         source, note, idempotency_key, created_at)
-       VALUES (?, ?, ?, ?, ?, 'permission_return', ?, 'permission', ?, ?, ?)`,
-      params: [generatedId('attendance'), salonId, row.employee_id, row.employee_uid, payload.date,
-        riyadhEventIso(payload.date, payload.endTime, timeMinutes(payload.endTime) <= timeMinutes(payload.startTime)), `${payload.reason} • ${id}`,
-        `permission:${id}:permission_return`, now],
     },
     {
       sql: `INSERT OR IGNORE INTO employee_leaves
@@ -795,7 +777,6 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
       ],
     },
   ]);
-  await refreshPermissionPayrollEntries(db, salonId, row.employee_id, payload.date);
   return id;
 }
 
@@ -2342,7 +2323,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
     case 'attendance_correction': return executeAttendanceCorrection(db, salonId, row, payload, actor, input, options);
     case 'permission': {
       const id = await createPermissionEffect(db, salonId, row, payload, actor);
-      return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'returned' } };
+      return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'approved' } };
     }
     case 'leave': {
       const effect = await createLeaveEffect(db, salonId, row, payload, actor, options);
