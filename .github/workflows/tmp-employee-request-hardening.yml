@@ -1,0 +1,45 @@
+name: Temporary Employee Request Hardening
+on:
+  push:
+    branches:
+      - fix/employee-request-workflow-hardening
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/employee-request-workflow-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply leave-request consistency patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replace_once('src/documents/leave/leaveRequestModel.ts','  const diff = Math.floor((endUtc - startUtc) / 86400000);\n  return diff >= 0 ? diff : 0;','  const diff = Math.floor((endUtc - startUtc) / 86400000);\n  return diff >= 0 ? diff + 1 : 0;')
+          replace_once('src/components/hr/LeaveRequestDocument.tsx','    if (value && endDate && endDate <= value) update("endDate", "");','    if (value && endDate && endDate < value) update("endDate", "");')
+          replace_once('src/pages/hr/EmployeeRequests.tsx','        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وتاريخ العودة قبل الإرسال.");\n        if (endDate <= startDate) throw new Error("يجب أن يكون تاريخ العودة بعد تاريخ بداية الإجازة.");','        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وآخر يوم إجازة قبل الإرسال.");\n        if (endDate < startDate) throw new Error("آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.");')
+          PY
+      - name: Verify
+        run: |
+          npm ci
+          npm run build
+          git diff --check
+      - name: Commit patch
+        run: |
+          git config user.name "nawafoly"
+          git config user.email "114729674+nawafoly@users.noreply.github.com"
+          git add src/documents/leave/leaveRequestModel.ts src/components/hr/LeaveRequestDocument.tsx src/pages/hr/EmployeeRequests.tsx
+          git commit -m "fix(hr): align leave request date semantics"
+          git push
