@@ -91,7 +91,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 
   const updateStartDate = (value: string) => {
     update("startDate", value);
-    if (value && endDate && endDate <= value) update("endDate", "");
+    if (value && endDate && endDate < value) update("endDate", "");
   };
 
   return (

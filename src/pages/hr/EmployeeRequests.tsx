@@ -268,8 +268,8 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
       if (type === "leave") {
         const startDate = String(form.startDate || "");
         const endDate = String(form.endDate || "");
-        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وتاريخ العودة قبل الإرسال.");
-        if (endDate <= startDate) throw new Error("يجب أن يكون تاريخ العودة بعد تاريخ بداية الإجازة.");
+        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وآخر يوم إجازة قبل الإرسال.");
+        if (endDate < startDate) throw new Error("آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.");
         if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
       }
       if (type === "exceptional_financial_payment") {
