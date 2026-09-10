@@ -5,6 +5,7 @@ export type EmployeeRequestType =
   | "permission"
   | "overtime"
   | "salary_advance"
+  | "salary_certificate"
   | "exceptional_financial_payment"
   | "leave"
   | "exit_return"
@@ -135,6 +136,8 @@ const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
   "core_employee_request:execution_reference_missing": "تعذر إكمال التنفيذ لأن المرجع التشغيلي الأساسي لم يُسجل. أعد المحاولة بعد مراجعة السجل.",
   "core_employee_request:financial_payment_acknowledgement_required": "يجب الموافقة على الإقرار قبل إرسال طلب الصرف المالي.",
   "core_employee_request:financial_payment_signature_required": "يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.",
+  "core_employee_request:salary_certificate_addressee_required": "اكتب الجهة الموجه إليها تعريف الراتب.",
+  "core_employee_request:salary_certificate_reviewer_signature_required": "يجب توقيع تعريف الراتب بخط اليد قبل اعتماده.",
 };
 
 export function employeeRequestErrorMessage(cause: unknown, fallback = "تعذر تنفيذ العملية.") {
@@ -160,6 +163,7 @@ export const EMPLOYEE_REQUEST_TYPE_LABELS: Record<EmployeeRequestType, string> =
   permission: "طلب استئذان",
   overtime: "طلب أوفرتايم",
   salary_advance: "طلب سلفة",
+  salary_certificate: "طلب تعريف بالراتب",
   exceptional_financial_payment: "طلب تعويض مالي بدل إجازة",
   leave: "طلب إجازة",
   exit_return: "طلب خروج وعودة",
