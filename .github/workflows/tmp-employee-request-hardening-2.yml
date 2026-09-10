@@ -20,41 +20,45 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          def rep(path, old, new, count=1):
+          def rep(path, old, new):
               p=Path(path); t=p.read_text(encoding='utf-8')
-              if t.count(old)!=count: raise SystemExit(f'{path}: expected {count}, got {t.count(old)}')
-              p.write_text(t.replace(old,new,count),encoding='utf-8')
+              if t.count(old)!=1: raise SystemExit(f'{path}: expected 1 match for {old[:60]!r}, got {t.count(old)}')
+              p.write_text(t.replace(old,new,1),encoding='utf-8')
 
-          # Employee document/form: sick leave is a real canonical type and must not disappear from UI/document.
           rep('src/components/hr/LeaveRequestDocument.tsx', '        options={LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({', '        options={LEAVE_TYPE_OPTIONS.map((item) => ({')
           rep('src/documents/leave/leaveRequestModel.ts', '    leaveTypeOptions: LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({', '    leaveTypeOptions: LEAVE_TYPE_OPTIONS.map((item) => ({')
-
-          # Canonical annual-balance runtime: emergency leave shares annual bucket but must finish approval with its own legal basis.
           rep('workers/core/repositories/annual-leave.js', "           AND leave_type = 'annual'\n           AND EXISTS (", "           AND leave_type IN ('annual', 'emergency')\n           AND EXISTS (")
           rep('workers/core/repositories/annual-leave.js', "               legal_basis = 'SA_LABOR_ARTICLE_109',", "               legal_basis = CASE\n                 WHEN leave_type = 'emergency' THEN 'COMPANY_POLICY_ANNUAL_BALANCE'\n                 ELSE 'SA_LABOR_ARTICLE_109'\n               END,")
-
-          # Pass explicit leave decision metadata into canonical leave approval execution.
           rep('workers/core/repositories/employee-requests-legacy.js', "          status: 'approved',\n          hrNote:\n            optionalText(\n              payload.hrNote\n            ) ||\n            'اعتماد طلب الإجازة من نظام الطلبات',\n        },", "          status: 'approved',\n          hrNote:\n            optionalText(\n              payload.hrNote\n            ) ||\n            'اعتماد طلب الإجازة من نظام الطلبات',\n          ...(options.leaveDecision || {}),\n        },")
 
-          # Employee-request compliance wrapper carries sick documentation verification from the approved action into execute.
           p=Path('workers/core/repositories/employee-requests.js'); t=p.read_text(encoding='utf-8')
           marker="  if (\n    cleanText(row.request_type).toLowerCase() === 'overtime' &&\n    actionKey === 'execute'\n  ) {"
-          if t.count(marker)!=1: raise SystemExit('employee-requests.js execute marker mismatch')
-          insert="""  if (\n    cleanText(row.request_type).toLowerCase() === 'leave' &&\n    actionKey === 'execute'\n  ) {\n    const requestPayload = parsePayload(row.payload_json);\n    if (cleanText(requestPayload.leaveType).toLowerCase() === 'sick') {\n      const approvalEvent = await dbFirst(\n        db,\n        `SELECT payload_json\n           FROM employee_request_events\n          WHERE salon_id = ?\n            AND request_id = ?\n            AND event_type IN ('approve', 'approved')\n          ORDER BY created_at DESC\n          LIMIT 1`,\n        [salonId, cleanText(idValue)]\n      );\n      const approvalPayload = parsePayload(approvalEvent?.payload_json);\n      if (approvalPayload.documentationVerified !== true) {\n        throw new AppError(\n          409,\n          'core_sick_leave:documentation_verification_required'\n        );\n      }\n      options = {\n        ...options,\n        leaveDecision: {\n          documentationVerified: true,\n          documentationStatus: 'verified',\n        },\n      };\n    }\n  }\n\n"""
-          p.write_text(t.replace(marker, insert+marker,1),encoding='utf-8')
-
-          # Admin approval must explicitly confirm sick-leave documentation review.
-          p=Path('src/pages/hr/AdminEmployeeRequests.tsx'); t=p.read_text(encoding='utf-8')
-          t=t.replace('  confirmClearance: boolean;\n  signatureDataUrl: string;','  confirmClearance: boolean;\n  documentationVerified: boolean;\n  signatureDataUrl: string;',1)
-          t=t.replace('    confirmClearance: false,\n    signatureDataUrl: "",','    confirmClearance: false,\n    documentationVerified: false,\n    signatureDataUrl: "",',1)
-          old='''      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }'''
-          new='''      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {\n        const sickLeave = selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick";\n        if (sickLeave && !dialog.documentationVerified) {\n          setDialogError("يجب التحقق من المستند الطبي قبل اعتماد الإجازة المرضية.");\n          return;\n        }\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n          ...(sickLeave ? { documentationVerified: true } : {}),\n        };\n      }'''
-          if t.count(old)!=1: raise SystemExit('admin approve block mismatch')
-          t=t.replace(old,new,1)
-          marker='''            {decisionNeedsSignature ? (\n              <SignatureCaptureField'''
-          insert='''            {dialog.kind === "approve" && selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick" ? (\n              <label className="employee-request-action-confirmation">\n                <input type="checkbox" checked={dialog.documentationVerified} onChange={(event) => setDialog({ ...dialog, documentationVerified: event.target.checked })} />\n                <span><FontAwesomeIcon icon={faLock} /> تم التحقق من المستند الطبي المرفق وصلاحيته للاعتماد.</span>\n              </label>\n            ) : null}\n\n'''
-          if t.count(marker)!=1: raise SystemExit('admin signature marker mismatch')
+          if t.count(marker)!=1: raise SystemExit('employee-requests execute marker mismatch')
+          insert="""  if (\n    cleanText(row.request_type).toLowerCase() === 'leave' &&\n    actionKey === 'execute'\n  ) {\n    const requestPayload = parsePayload(row.payload_json);\n    if (cleanText(requestPayload.leaveType).toLowerCase() === 'sick') {\n      const approvalEvent = await dbFirst(\n        db,\n        `SELECT payload_json\n           FROM employee_request_events\n          WHERE salon_id = ?\n            AND request_id = ?\n            AND event_type IN ('approve', 'approved')\n          ORDER BY created_at DESC\n          LIMIT 1`,\n        [salonId, cleanText(idValue)]\n      );\n      const approvalPayload = parsePayload(approvalEvent?.payload_json);\n      if (approvalPayload.documentationVerified !== true) {\n        throw new AppError(409, 'core_sick_leave:documentation_verification_required');\n      }\n      options = { ...options, leaveDecision: { documentationVerified: true, documentationStatus: 'verified' } };\n    }\n  }\n\n"""
           p.write_text(t.replace(marker,insert+marker,1),encoding='utf-8')
+
+          p=Path('src/pages/hr/AdminEmployeeRequests.tsx'); t=p.read_text(encoding='utf-8')
+          for old,new in [
+            ('  confirmClearance: boolean;\n  signatureDataUrl: string;', '  confirmClearance: boolean;\n  documentationVerified: boolean;\n  signatureDataUrl: string;'),
+            ('    confirmClearance: false,\n    signatureDataUrl: "",', '    confirmClearance: false,\n    documentationVerified: false,\n    signatureDataUrl: "",')
+          ]:
+              if t.count(old)!=1: raise SystemExit(f'admin state anchor mismatch: {old!r}')
+              t=t.replace(old,new,1)
+
+          approve_anchor='''      action = "approve";\n      body.note = dialog.note.trim();\n      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {'''
+          approve_insert='''      action = "approve";\n      body.note = dialog.note.trim();\n      const sickLeave = selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick";\n      if (sickLeave && !dialog.documentationVerified) {\n        setDialogError("يجب التحقق من المستند الطبي قبل اعتماد الإجازة المرضية.");\n        return;\n      }\n      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {'''
+          if t.count(approve_anchor)!=1: raise SystemExit('admin approve anchor mismatch')
+          t=t.replace(approve_anchor,approve_insert,1)
+
+          payload_anchor='''          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }\n    } else if (dialog.kind === "reject") {'''
+          payload_insert='''          reviewerSignatureCapturedAt: new Date().toISOString(),\n          ...(sickLeave ? { documentationVerified: true } : {}),\n        };\n      }\n    } else if (dialog.kind === "reject") {'''
+          if t.count(payload_anchor)!=1: raise SystemExit('admin approve payload anchor mismatch')
+          t=t.replace(payload_anchor,payload_insert,1)
+
+          signature_anchor='''            {decisionNeedsSignature ? (\n              <SignatureCaptureField'''
+          signature_insert='''            {dialog.kind === "approve" && selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick" ? (\n              <label className="employee-request-action-confirmation">\n                <input type="checkbox" checked={dialog.documentationVerified} onChange={(event) => setDialog({ ...dialog, documentationVerified: event.target.checked })} />\n                <span><FontAwesomeIcon icon={faLock} /> تم التحقق من المستند الطبي المرفق وصلاحيته للاعتماد.</span>\n              </label>\n            ) : null}\n\n            {decisionNeedsSignature ? (\n              <SignatureCaptureField'''
+          if t.count(signature_anchor)!=1: raise SystemExit('admin signature anchor mismatch')
+          p.write_text(t.replace(signature_anchor,signature_insert,1),encoding='utf-8')
           PY
       - name: Verify focused tests and build
         run: |
