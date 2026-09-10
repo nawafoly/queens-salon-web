@@ -59,17 +59,25 @@ export async function listClients(db, salonId, query = {}) {
   if (includeLoyalty) {
     return dbAll(
       db,
-      `WITH completed_bookings AS (
+      `WITH selected_clients AS (
+         SELECT c.*
+           FROM clients c
+          WHERE c.salon_id = ?${searchClause}
+          ORDER BY c.updated_at DESC
+          LIMIT 500
+       ),
+       completed_bookings AS (
          SELECT
-           id,
-           client_id,
-           CAST(COALESCE(total_halalas, 0) / 100 AS INTEGER) AS earned_points,
-           COALESCE(completed_at, updated_at, created_at) AS completed_at
-         FROM bookings
-         WHERE salon_id = ?
-           AND status = 'completed'
-           AND deleted_at IS NULL
-           AND client_id IS NOT NULL
+           b.id,
+           b.client_id,
+           CAST(COALESCE(b.total_halalas, 0) / 100 AS INTEGER) AS earned_points,
+           COALESCE(b.completed_at, b.updated_at, b.created_at) AS completed_at
+         FROM bookings b
+         INNER JOIN selected_clients sc
+           ON sc.id = b.client_id
+         WHERE b.salon_id = ?
+           AND b.status = 'completed'
+           AND b.deleted_at IS NULL
        ),
        refund_by_booking AS (
          SELECT
@@ -110,17 +118,19 @@ export async function listClients(db, salonId, query = {}) {
        ),
        manual_loyalty AS (
          SELECT
-           client_id,
-           SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END) AS redeem_delta,
-           SUM(CASE WHEN type = 'adjustment' THEN points ELSE 0 END) AS adjustment_delta,
-           ABS(SUM(CASE WHEN type = 'redeem' THEN points ELSE 0 END)) AS loyalty_used
-         FROM loyalty_point_transactions
-         WHERE salon_id = ?
-           AND type IN ('redeem', 'adjustment')
-         GROUP BY client_id
+           l.client_id,
+           SUM(CASE WHEN l.type = 'redeem' THEN l.points ELSE 0 END) AS redeem_delta,
+           SUM(CASE WHEN l.type = 'adjustment' THEN l.points ELSE 0 END) AS adjustment_delta,
+           ABS(SUM(CASE WHEN l.type = 'redeem' THEN l.points ELSE 0 END)) AS loyalty_used
+         FROM loyalty_point_transactions l
+         INNER JOIN selected_clients sc
+           ON sc.id = l.client_id
+         WHERE l.salon_id = ?
+           AND l.type IN ('redeem', 'adjustment')
+         GROUP BY l.client_id
        )
        SELECT
-         c.*,
+         sc.*,
          (
            COALESCE(bl.loyalty_earned, 0)
            - COALESCE(bl.loyalty_reversed, 0)
@@ -131,15 +141,13 @@ export async function listClients(db, salonId, query = {}) {
          COALESCE(ml.loyalty_used, 0) AS loyalty_used,
          COALESCE(bl.loyalty_reversed, 0) AS loyalty_reversed,
          bl.last_completed_at
-       FROM clients c
+       FROM selected_clients sc
        LEFT JOIN booking_loyalty bl
-         ON bl.client_id = c.id
+         ON bl.client_id = sc.id
        LEFT JOIN manual_loyalty ml
-         ON ml.client_id = c.id
-       WHERE c.salon_id = ?${searchClause}
-       ORDER BY c.updated_at DESC
-       LIMIT 500`,
-      [salonId, salonId, salonId, salonId, ...searchParams]
+         ON ml.client_id = sc.id
+       ORDER BY sc.updated_at DESC`,
+      [salonId, ...searchParams, salonId, salonId, salonId]
     );
   }
 
