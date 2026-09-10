@@ -10,12 +10,35 @@ function requireBucket(env) {
 }
 
 export async function listFileMetadata(db, salonId, query = {}) {
-  let rows = await dbAll(db, 'SELECT * FROM file_metadata WHERE salon_id = ? ORDER BY created_at DESC LIMIT 1000', [salonId]);
   const employeeId = cleanText(query.employeeId || query.employee_id);
   const category = cleanText(query.category);
-  if (employeeId) rows = rows.filter((row) => row.employee_id === employeeId);
-  if (category) rows = rows.filter((row) => row.category === category);
-  return rows;
+  const status = cleanText(query.status);
+  const limit = Math.max(1, Math.min(1000, Number(query.limit || 1000) || 1000));
+  const where = ['salon_id = ?'];
+  const params = [salonId];
+
+  if (employeeId) {
+    where.push('employee_id = ?');
+    params.push(employeeId);
+  }
+  if (category) {
+    where.push('category = ?');
+    params.push(category);
+  }
+  if (status) {
+    where.push('status = ?');
+    params.push(status);
+  }
+
+  params.push(limit);
+  return dbAll(
+    db,
+    `SELECT * FROM file_metadata
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT ?`,
+    params
+  );
 }
 
 export async function getFileMetadata(db, salonId, idValue) {
