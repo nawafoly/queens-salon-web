@@ -9,6 +9,14 @@ export type CoreClientLoyaltySummary = {
   totalPoints: number;
 };
 
+const LOYALTY_SUMMARY_TTL_MS = 60_000;
+let loyaltySummaryCache: { value: CoreClientLoyaltySummary; expiresAt: number } | null = null;
+let loyaltySummaryRequest: Promise<CoreClientLoyaltySummary> | null = null;
+
+function invalidateLoyaltySummary() {
+  loyaltySummaryCache = null;
+}
+
 export type CoreClientLoyaltyTransaction = {
   id: string;
   type: string;
@@ -159,17 +167,36 @@ export const CoreClientService = {
   },
 
   async loyaltySummary(): Promise<CoreClientLoyaltySummary> {
-    const row = await coreApiRequest<Record<string, unknown>>(
-      "/api/core/clients/loyalty-summary"
-    );
-    return {
-      totalClients: finiteNumber(row.totalClients ?? row.total_clients),
-      vipCount: finiteNumber(row.vipCount ?? row.vip_count),
-      activeLoyaltyCount: finiteNumber(
-        row.activeLoyaltyCount ?? row.active_loyalty_count
-      ),
-      totalPoints: finiteNumber(row.totalPoints ?? row.total_points),
-    };
+    const now = Date.now();
+    if (loyaltySummaryCache && loyaltySummaryCache.expiresAt > now) {
+      return loyaltySummaryCache.value;
+    }
+    if (loyaltySummaryRequest) return loyaltySummaryRequest;
+
+    loyaltySummaryRequest = (async () => {
+      const row = await coreApiRequest<Record<string, unknown>>(
+        "/api/core/clients/loyalty-summary"
+      );
+      const value = {
+        totalClients: finiteNumber(row.totalClients ?? row.total_clients),
+        vipCount: finiteNumber(row.vipCount ?? row.vip_count),
+        activeLoyaltyCount: finiteNumber(
+          row.activeLoyaltyCount ?? row.active_loyalty_count
+        ),
+        totalPoints: finiteNumber(row.totalPoints ?? row.total_points),
+      };
+      loyaltySummaryCache = {
+        value,
+        expiresAt: Date.now() + LOYALTY_SUMMARY_TTL_MS,
+      };
+      return value;
+    })();
+
+    try {
+      return await loyaltySummaryRequest;
+    } finally {
+      loyaltySummaryRequest = null;
+    }
   },
 
   async get(id: string): Promise<CoreClient> {
@@ -194,6 +221,7 @@ export const CoreClientService = {
       `/api/core/clients/${encodeURIComponent(id)}/loyalty-adjustments`,
       { method: "POST", body: input }
     );
+    invalidateLoyaltySummary();
     return mapLoyalty(row);
   },
 
@@ -211,6 +239,7 @@ export const CoreClientService = {
       "/api/core/clients",
       { method: "POST", body: input }
     );
+    invalidateLoyaltySummary();
     return mapClient(row);
   },
 
@@ -231,6 +260,7 @@ export const CoreClientService = {
       `/api/core/clients/${encodeURIComponent(id)}`,
       { method: "PATCH", body: input }
     );
+    invalidateLoyaltySummary();
     return mapClient(row);
   },
 
