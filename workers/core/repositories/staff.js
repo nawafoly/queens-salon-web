@@ -37,35 +37,70 @@ function safeFakeRows(db, table) {
   }
 }
 
-async function hrStatusMapsForStaff(db, salonId) {
+function emptyHrStatusMaps() {
+  return {
+    profilesById: new Map(),
+    profilesByUid: new Map(),
+    employmentsById: new Map(),
+    accountsByUid: new Map(),
+    accountsByEmployeeId: new Map(),
+  };
+}
+
+function staffIdentityScope(rows = []) {
+  const ids = Array.from(
+    new Set(rows.map((row) => cleanText(row?.id)).filter(Boolean))
+  );
+  const uids = Array.from(
+    new Set(rows.map((row) => cleanText(row?.firebase_uid)).filter(Boolean))
+  );
+  return { ids, uids };
+}
+
+async function hrStatusMapsForStaff(db, salonId, staffRows = []) {
+  const { ids, uids } = staffIdentityScope(staffRows);
+  if (!ids.length && !uids.length) return emptyHrStatusMaps();
+
   if (db.__fakeD1) {
+    const wantedIds = new Set(ids);
+    const wantedUids = new Set(uids);
     const profiles = safeFakeRows(db, "employee_profiles").filter(
-      (row) => row.salon_id === salonId
+      (row) =>
+        row.salon_id === salonId &&
+        (wantedIds.has(cleanText(row.id)) || wantedUids.has(cleanText(row.firebase_uid)))
     );
     const employments = safeFakeRows(db, "employee_employment").filter(
-      (row) => row.salon_id === salonId
+      (row) =>
+        row.salon_id === salonId && wantedIds.has(cleanText(row.employee_id))
     );
     const accounts = safeFakeRows(db, "app_users").filter(
-      (row) => row.salon_id === salonId
+      (row) => row.salon_id === salonId && wantedUids.has(cleanText(row.firebase_uid))
+    );
+    const allAccountsById = new Map(
+      safeFakeRows(db, "app_users")
+        .filter((row) => row.salon_id === salonId)
+        .map((row) => [cleanText(row.id), row])
     );
     const links = safeFakeRows(db, "user_employee_links").filter(
-      (row) => row.salon_id === salonId
+      (row) =>
+        row.salon_id === salonId &&
+        cleanText(row.link_status).toLowerCase() === "active" &&
+        wantedIds.has(cleanText(row.employee_id))
     );
-    const accountsById = new Map(accounts.map((row) => [row.id, row]));
     const accountsByEmployeeId = new Map();
     for (const link of links) {
-      const account = accountsById.get(link.user_id);
-      if (account) accountsByEmployeeId.set(link.employee_id, account);
+      const account = allAccountsById.get(cleanText(link.user_id));
+      if (account) accountsByEmployeeId.set(cleanText(link.employee_id), account);
     }
     return {
-      profilesById: new Map(profiles.map((row) => [row.id, row])),
+      profilesById: new Map(profiles.map((row) => [cleanText(row.id), row])),
       profilesByUid: new Map(
         profiles
           .filter((row) => cleanText(row.firebase_uid))
           .map((row) => [cleanText(row.firebase_uid), row])
       ),
       employmentsById: new Map(
-        employments.map((row) => [row.employee_id, row])
+        employments.map((row) => [cleanText(row.employee_id), row])
       ),
       accountsByUid: new Map(
         accounts
@@ -77,59 +112,87 @@ async function hrStatusMapsForStaff(db, salonId) {
   }
 
   try {
-    const [profiles, employments, accounts, links] = await Promise.all([
-      dbAll(
-        db,
-        "SELECT id, firebase_uid, status FROM employee_profiles WHERE salon_id = ?",
-        [salonId]
-      ),
-      dbAll(
-        db,
-        "SELECT employee_id, employment_status FROM employee_employment WHERE salon_id = ?",
-        [salonId]
-      ),
-      dbAll(
-        db,
-        "SELECT id, firebase_uid, status FROM app_users WHERE salon_id = ?",
-        [salonId]
-      ),
-      dbAll(
-        db,
-        "SELECT user_id, employee_id, link_status FROM user_employee_links WHERE salon_id = ?",
-        [salonId]
-      ),
-    ]);
-    const accountsById = new Map(accounts.map((row) => [row.id, row]));
-    const accountsByEmployeeId = new Map();
-    for (const link of links) {
-      const account = accountsById.get(link.user_id);
-      if (account) accountsByEmployeeId.set(link.employee_id, account);
+    const profileClauses = [];
+    const profileParams = [salonId];
+    if (ids.length) {
+      profileClauses.push(`id IN (${placeholders(ids.length)})`);
+      profileParams.push(...ids);
     }
+    if (uids.length) {
+      profileClauses.push(`firebase_uid IN (${placeholders(uids.length)})`);
+      profileParams.push(...uids);
+    }
+
+    const [profiles, employments, accounts, linkedAccounts] = await Promise.all([
+      dbAll(
+        db,
+        `SELECT id, firebase_uid, status
+           FROM employee_profiles
+          WHERE salon_id = ?
+            AND (${profileClauses.join(" OR ")})`,
+        profileParams
+      ),
+      ids.length
+        ? dbAll(
+            db,
+            `SELECT employee_id, employment_status
+               FROM employee_employment
+              WHERE salon_id = ?
+                AND employee_id IN (${placeholders(ids.length)})`,
+            [salonId, ...ids]
+          )
+        : Promise.resolve([]),
+      uids.length
+        ? dbAll(
+            db,
+            `SELECT id, firebase_uid, status
+               FROM app_users
+              WHERE salon_id = ?
+                AND firebase_uid IN (${placeholders(uids.length)})`,
+            [salonId, ...uids]
+          )
+        : Promise.resolve([]),
+      ids.length
+        ? dbAll(
+            db,
+            `SELECT
+               l.employee_id,
+               a.id,
+               a.firebase_uid,
+               a.status
+             FROM user_employee_links l
+             JOIN app_users a
+               ON a.salon_id = l.salon_id
+              AND a.id = l.user_id
+             WHERE l.salon_id = ?
+               AND l.link_status = 'active'
+               AND l.employee_id IN (${placeholders(ids.length)})`,
+            [salonId, ...ids]
+          )
+        : Promise.resolve([]),
+    ]);
+
     return {
-      profilesById: new Map(profiles.map((row) => [row.id, row])),
+      profilesById: new Map(profiles.map((row) => [cleanText(row.id), row])),
       profilesByUid: new Map(
         profiles
           .filter((row) => cleanText(row.firebase_uid))
           .map((row) => [cleanText(row.firebase_uid), row])
       ),
       employmentsById: new Map(
-        employments.map((row) => [row.employee_id, row])
+        employments.map((row) => [cleanText(row.employee_id), row])
       ),
       accountsByUid: new Map(
         accounts
           .filter((row) => cleanText(row.firebase_uid))
           .map((row) => [cleanText(row.firebase_uid), row])
       ),
-      accountsByEmployeeId,
+      accountsByEmployeeId: new Map(
+        linkedAccounts.map((row) => [cleanText(row.employee_id), row])
+      ),
     };
   } catch {
-    return {
-      profilesById: new Map(),
-      profilesByUid: new Map(),
-      employmentsById: new Map(),
-      accountsByUid: new Map(),
-      accountsByEmployeeId: new Map(),
-    };
+    return emptyHrStatusMaps();
   }
 }
 
@@ -153,45 +216,56 @@ function mergeHrStatus(row, maps) {
 }
 
 export async function listStaff(db, salonId, query = {}) {
-  const rows = await dbAll(
-    db,
-    "SELECT * FROM staff WHERE salon_id = ? ORDER BY active DESC, name LIMIT 500",
-    [salonId]
-  );
-  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId);
-  const mergedRows = rows.map((row) => mergeHrStatus(row, hrStatusMaps));
   const activeOnly = ["1", "true", "yes"].includes(
     cleanText(query.active).toLowerCase()
   );
   const serviceId = cleanText(query.serviceId || query.service_id);
 
-  let filtered = mergedRows.filter(
-    (row) => !activeOnly || staffIsActive(row)
-  );
-
-  if (serviceId) {
-    const allowed = db.__fakeD1 && typeof db.rows === "function"
-      ? db
-          .rows("staff_services")
+  let rows;
+  if (db.__fakeD1) {
+    rows = safeFakeRows(db, "staff").filter(
+      (row) => row.salon_id === salonId && (!activeOnly || Number(row.active) === 1)
+    );
+    if (serviceId) {
+      const allowedIds = new Set(
+        safeFakeRows(db, "staff_services")
           .filter(
             (row) =>
               row.salon_id === salonId &&
-              row.service_id === serviceId &&
+              cleanText(row.service_id) === serviceId &&
               Number(row.active) === 1
           )
-          .map((row) => row.staff_id)
-      : (
-          await dbAll(
-            db,
-            "SELECT staff_id FROM staff_services WHERE salon_id = ? AND service_id = ? AND active = 1",
-            [salonId, serviceId]
-          )
-        ).map((row) => row.staff_id);
-    const allowedIds = new Set(allowed);
-    filtered = filtered.filter((row) => allowedIds.has(row.id));
+          .map((row) => cleanText(row.staff_id))
+      );
+      rows = rows.filter((row) => allowedIds.has(cleanText(row.id)));
+    }
+    rows.sort((left, right) => {
+      const activeDiff = Number(right.active || 0) - Number(left.active || 0);
+      if (activeDiff) return activeDiff;
+      return cleanText(left.name).localeCompare(cleanText(right.name));
+    });
+    rows = rows.slice(0, 500);
+  } else {
+    const params = [];
+    let sql = "SELECT DISTINCT s.* FROM staff s";
+    if (serviceId) {
+      sql += ` JOIN staff_services ss
+                 ON ss.salon_id = s.salon_id
+                AND ss.staff_id = s.id
+                AND ss.service_id = ?
+                AND ss.active = 1`;
+      params.push(serviceId);
+    }
+    sql += " WHERE s.salon_id = ?";
+    params.push(salonId);
+    if (activeOnly) sql += " AND s.active = 1";
+    sql += " ORDER BY s.active DESC, s.name LIMIT 500";
+    rows = await dbAll(db, sql, params);
   }
 
-  return filtered;
+  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, rows);
+  const mergedRows = rows.map((row) => mergeHrStatus(row, hrStatusMaps));
+  return mergedRows.filter((row) => !activeOnly || staffIsActive(row));
 }
 
 export async function listStaffByIds(
@@ -251,7 +325,8 @@ export async function listStaffByIds(
   const hrStatusMaps =
     await hrStatusMapsForStaff(
       db,
-      salonId
+      salonId,
+      rows
     );
 
   const byId =
@@ -282,7 +357,7 @@ export async function getStaff(db, salonId, id) {
     [salonId, requiredId(id)]
   );
   if (!row) rowNotFound("staff");
-  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId);
+  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, [row]);
   const merged = mergeHrStatus(row, hrStatusMaps);
   return merged;
 }
