@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync("workers/core/repositories/staff.js", "utf8");
+const migration = readFileSync(
+  "migrations/core/0062_staff_read_efficiency_indexes.sql",
+  "utf8"
+);
 
 test("staff HR status hydration is scoped to returned staff identities", () => {
   assert.match(source, /function staffIdentityScope\(rows = \[\]\)/);
@@ -11,6 +15,8 @@ test("staff HR status hydration is scoped to returned staff identities", () => {
   assert.match(source, /firebase_uid IN \(\$\{placeholders\(uids\.length\)\}\)/);
   assert.match(source, /employee_id IN \(\$\{placeholders\(ids\.length\)\}\)/);
   assert.match(source, /JOIN app_users a/);
+  assert.match(source, /l\.link_status = 'active'/);
+  assert.match(source, /cleanText\(row\.link_status\)\.toLowerCase\(\) === "active"/);
   assert.match(source, /hrStatusMapsForStaff\(db, salonId, rows\)/);
   assert.match(source, /hrStatusMapsForStaff\(db, salonId, \[row\]\)/);
 
@@ -42,5 +48,16 @@ test("active and service-scoped staff reads are filtered before HR hydration", (
   assert.doesNotMatch(
     source,
     /SELECT \* FROM staff WHERE salon_id = \? ORDER BY active DESC, name LIMIT 500/
+  );
+});
+
+test("D1 has supporting indexes for scoped staff reads", () => {
+  assert.match(
+    migration,
+    /idx_staff_services_salon_service_active_staff[\s\S]*staff_services\(salon_id, service_id, active, staff_id\)/
+  );
+  assert.match(
+    migration,
+    /idx_app_users_salon_firebase_uid[\s\S]*app_users\(salon_id, firebase_uid\)/
   );
 });
