@@ -4,11 +4,8 @@ import "../styles/TrackMobile.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
-import { getTrackByPublicId } from "../services/firestoreBookings";
-
-// ✅ Firebase (للإعدادات العامة: واتساب + خريطة)
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../services/firebase";
+import { CoreBookingService } from "../services/CoreBookingService";
+import { CoreApiError, coreApiRequest } from "../services/coreApiClient";
 
 // ✅ الشعار
 import logo from "../assets/images/ssunnamed2.png";
@@ -25,17 +22,19 @@ type TrackData = {
   date?: string;
   time?: string;
 
-  updatedAt?: any;
+  updatedAt?: string;
 };
 
 type PublicSettings = {
   phone?: string;
   whatsapp?: string;
   locationText?: string;
-  mapEmbedUrl?: string; // رابط embed كامل أو pb فقط
+  mapEmbedUrl?: string;
 };
 
-const SALON_ID = "main";
+type CorePublicSettingRow = {
+  value?: PublicSettings | null;
+};
 
 function statusLabel(s?: string) {
   const v = String(s || "").toLowerCase().trim();
@@ -74,16 +73,14 @@ function formatTime12ForClient(time24: string) {
   return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
 }
 
-// ✅ واتساب: نحول الرقم لصيغة wa.me
 function normalizeWhatsAppNumber(input?: string) {
   const raw = String(input || "").replace(/\D/g, "");
   if (!raw) return "";
   if (raw.startsWith("05")) return "966" + raw.slice(1);
   if (raw.startsWith("5")) return "966" + raw;
-  return raw; // لو أصلاً 966...
+  return raw;
 }
 
-// ✅ خريطة: نفس Normalize المستخدم في Contact (يدعم embed كامل أو pb فقط)
 function normalizeMapEmbedUrl(input?: string) {
   const raw = String(input || "").trim();
   if (!raw) return "";
@@ -104,21 +101,25 @@ const Track = () => {
   const [notFound, setNotFound] = useState(false);
   const [data, setData] = useState<TrackData | null>(null);
   const [error, setError] = useState("");
-
-  // ✅ public settings
   const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
 
   const normalizedParam = useMemo(() => normalizeMk(trackId || ""), [trackId]);
 
-  // ✅ اسحب إعدادات التواصل (واتساب + خريطة) Live
+  // Public contact/location settings are now loaded from the canonical Core API.
   useEffect(() => {
-    const ref = doc(db, "salons", SALON_ID, "settings", "public");
-    const unsub = onSnapshot(
-      ref,
-      (snap) => setPublicSettings(snap.exists() ? (snap.data() as PublicSettings) : null),
-      () => setPublicSettings(null)
-    );
-    return () => unsub();
+    let alive = true;
+
+    coreApiRequest<CorePublicSettingRow>("/api/core/settings/public")
+      .then((row) => {
+        if (alive) setPublicSettings(row?.value || null);
+      })
+      .catch(() => {
+        if (alive) setPublicSettings(null);
+      });
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -147,48 +148,29 @@ const Track = () => {
 
     (async () => {
       try {
-        const res: any = await getTrackByPublicId(normalizedParam);
+        const booking = await CoreBookingService.trackPublic(normalizedParam);
         if (!alive) return;
 
-        if (!res) {
+        const item = booking.items?.[0];
+        setData({
+          id: booking.id,
+          publicId: booking.publicId || normalizedParam,
+          status: booking.status,
+          sectionLabel: item?.sectionName || item?.sectionId || "-",
+          categoryLabel: item?.categoryName || item?.categoryId || "-",
+          serviceName: item?.serviceNameSnapshot || "-",
+          employeeName: item?.staffName || booking.staffName || "-",
+          date: item?.bookingDate || booking.bookingDate || "-",
+          time: item?.startTime || booking.startTime || "-",
+          updatedAt: booking.updatedAt,
+        });
+      } catch (e: unknown) {
+        if (!alive) return;
+        if (e instanceof CoreApiError && e.status === 404) {
           setNotFound(true);
-        } else {
-          let sectionLabel =
-            res.serviceSnapshot?.sectionTitleAtBooking ||
-            res.serviceSnapshot?.sectionIdAtBooking ||
-            res.sectionTitleAtBooking ||
-            res.sectionIdAtBooking ||
-            res.sectionTitle ||
-            res.sectionId ||
-            "-";
-
-          let categoryLabel =
-            res.serviceSnapshot?.categoryNameAtBooking ||
-            res.serviceSnapshot?.categoryIdAtBooking ||
-            res.categoryNameAtBooking ||
-            res.categoryIdAtBooking ||
-            res.categoryName ||
-            res.categoryId ||
-            "-";
-
-
-
-          setData({
-            id: res.id,
-            publicId: res.publicId,
-            status: res.status,
-            sectionLabel,
-            categoryLabel,
-            serviceName: res.serviceSnapshot?.serviceNameAtBooking || res.serviceName || "-",
-            employeeName: res.employeeName || "-",
-            date: res.date || "-",
-            time: res.time || "-",
-            updatedAt: res.updatedAt,
-          });
+          return;
         }
-      } catch (e: any) {
-        if (!alive) return;
-        setError(e?.message || "حدث خطأ أثناء جلب بيانات التتبع");
+        setError(e instanceof Error ? e.message : "حدث خطأ أثناء جلب بيانات التتبع");
       } finally {
         if (alive) setLoading(false);
       }
@@ -207,8 +189,6 @@ const Track = () => {
   };
 
   const showContact = !loading && (notFound || data?.status === "pending" || data?.status === "cancelled");
-
-  // ✅ روابط التواصل
   const waNumber = normalizeWhatsAppNumber(publicSettings?.whatsapp || publicSettings?.phone);
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(
@@ -236,7 +216,6 @@ const Track = () => {
 
         <div className="track-body">
           <div className="track-panel success-details">
-            {/* ✅ الزر يمين + الإنبت يسار: نحط الزر أول عنصر */}
             <form className="track-form" onSubmit={onSubmit}>
               <button className="track-btn success-btn success-primary" type="submit" disabled={loading}>
                 {loading ? "..." : "تتبع"}
@@ -266,7 +245,6 @@ const Track = () => {
               <div className="track-notfound success-alert">❌ رقم التتبع غير موجود. تأكد من الرقم وحاول مرة أخرى.</div>
             )}
 
-            {/* ✅ استفسار: واتساب + خريطة */}
             {showContact && (
               <div className="track-contact-wrap" style={{ gap: 10, flexWrap: "wrap" }}>
                 {waHref ? (
