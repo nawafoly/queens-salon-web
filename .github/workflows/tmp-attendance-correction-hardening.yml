@@ -1,0 +1,34 @@
+name: Temporary Attendance Correction Hardening
+on:
+  push:
+    branches:
+      - fix/employee-request-workflow-hardening
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/employee-request-workflow-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply attendance correction hardening
+        run: python scripts/tmp-attendance-correction-hardening.py
+      - name: Verify focused scope and build
+        run: |
+          npm ci
+          node --test workers/attendance-correction-request-hardening.test.mjs workers/permission-lifecycle-hardening.test.mjs
+          npm run build
+          git diff --check
+      - name: Commit final patch and remove temporary runner
+        run: |
+          git config user.name "nawafoly"
+          git config user.email "114729674+nawafoly@users.noreply.github.com"
+          rm -f scripts/tmp-attendance-correction-hardening.py .github/workflows/tmp-attendance-correction-hardening.yml
+          git add workers/core/repositories/employee-requests-legacy.js workers/attendance-correction-request-hardening.test.mjs scripts/tmp-attendance-correction-hardening.py .github/workflows/tmp-attendance-correction-hardening.yml
+          git commit -m "fix(hr): preserve attendance correction audit history"
+          git push
