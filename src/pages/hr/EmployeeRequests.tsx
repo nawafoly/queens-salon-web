@@ -46,7 +46,8 @@ import "../../styles/EmployeeRequests.css";
 type Props = { session: HrSession; onPortalChange?: () => void | Promise<void> };
 type FormState = Record<string, string | boolean>;
 
-const REQUEST_TYPES = Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[];
+const REQUEST_TYPES: EmployeeRequestType[] = (Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[])
+  .filter((type) => type !== "exceptional_financial_payment");
 const STATUS_OPTIONS = Object.keys(EMPLOYEE_REQUEST_STATUS_LABELS) as EmployeeRequestStatus[];
 
 function todayDateKey() {
