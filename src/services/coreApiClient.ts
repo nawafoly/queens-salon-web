@@ -57,6 +57,7 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
 };
 
 const CORE_WRITE_OUTCOME_UNKNOWN_EVENT = "queens:core-write-outcome-unknown";
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
 function isMutatingCoreMethod(method: CoreApiRequestOptions["method"]) {
   return method !== "GET";
@@ -126,6 +127,17 @@ function createCoreRequestId(): string {
 
 function createCoreOperationId(): string {
   return crypto.randomUUID();
+}
+
+function coreGetRequestKey(path: string, options: CoreApiRequestOptions) {
+  const query = Object.entries(options.query ?? {})
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  const uid = String(auth.currentUser?.uid || "anonymous");
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  return `${uid}:${timeoutMs}:${path}${query ? `?${query}` : ""}`;
 }
 
 async function requestOnce<T>(
@@ -250,19 +262,11 @@ async function requestOnce<T>(
   }
 }
 
-export async function coreApiRequest<T>(
+async function executeCoreRequest<T>(
   path: string,
-  options: CoreApiRequestOptions = {}
+  options: CoreApiRequestOptions,
+  operationId: string
 ): Promise<T> {
-  const logicalMethod =
-    options.method ?? "GET";
-  const operationId =
-    logicalMethod === "GET"
-      ? ""
-      : (
-          options.operationId ||
-          createCoreOperationId()
-        );
   try {
     return await requestOnce<T>(
       path,
@@ -285,4 +289,33 @@ export async function coreApiRequest<T>(
     }
     throw error;
   }
+}
+
+export async function coreApiRequest<T>(
+  path: string,
+  options: CoreApiRequestOptions = {}
+): Promise<T> {
+  const logicalMethod = options.method ?? "GET";
+  const operationId =
+    logicalMethod === "GET"
+      ? ""
+      : (
+          options.operationId ||
+          createCoreOperationId()
+        );
+
+  if (logicalMethod !== "GET") {
+    return executeCoreRequest<T>(path, options, operationId);
+  }
+
+  const requestKey = coreGetRequestKey(path, options);
+  const existing = inFlightGetRequests.get(requestKey);
+  if (existing) return existing as Promise<T>;
+
+  const request = executeCoreRequest<T>(path, options, operationId)
+    .finally(() => {
+      inFlightGetRequests.delete(requestKey);
+    });
+  inFlightGetRequests.set(requestKey, request as Promise<unknown>);
+  return request;
 }
