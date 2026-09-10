@@ -51,6 +51,7 @@ import {
 } from './repositories/bookings.js';
 import {
   acknowledgeOwnBooking,
+  listOwnStaffBookings,
   updateOwnBookingStatus,
 } from './repositories/booking-staff-portal.js';
 import {
@@ -1098,13 +1099,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (!ctx.employeeId) {
         throw new AppError(403, "core_booking:employee_link_required");
       }
-      return listBookings(
+      return listOwnStaffBookings(
         db,
         ctx.salonId,
-        {
-          ...query,
-          staffId: ctx.employeeId,
-        }
+        ctx.employeeId,
+        query
       );
     case "bookings":
       if (method === "GET" && route.id) {
