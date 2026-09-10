@@ -171,6 +171,31 @@ export async function transitionEmployeeRequest(
   }
 
   if (
+    cleanText(row.request_type).toLowerCase() === 'leave' &&
+    actionKey === 'execute'
+  ) {
+    const requestPayload = parsePayload(row.payload_json);
+    if (cleanText(requestPayload.leaveType).toLowerCase() === 'sick') {
+      const approvalEvent = await dbFirst(
+        db,
+        `SELECT payload_json
+           FROM employee_request_events
+          WHERE salon_id = ?
+            AND request_id = ?
+            AND event_type IN ('approve', 'approved')
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [salonId, cleanText(idValue)]
+      );
+      const approvalPayload = parsePayload(approvalEvent?.payload_json);
+      if (approvalPayload.documentationVerified !== true) {
+        throw new AppError(409, 'core_sick_leave:documentation_verification_required');
+      }
+      options = { ...options, leaveDecision: { documentationVerified: true, documentationStatus: 'verified' } };
+    }
+  }
+
+  if (
     cleanText(row.request_type).toLowerCase() === 'overtime' &&
     actionKey === 'execute'
   ) {

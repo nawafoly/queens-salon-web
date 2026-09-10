@@ -1030,6 +1030,7 @@ async function createLeaveEffect(
               payload.hrNote
             ) ||
             'اعتماد طلب الإجازة من نظام الطلبات',
+          ...(options.leaveDecision || {}),
         },
         actor,
         options

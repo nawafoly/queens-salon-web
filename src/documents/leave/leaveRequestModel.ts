@@ -173,7 +173,7 @@ export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRe
     employeeName,
     employeeId: safeDocumentText(request.employee_id),
     leaveTypeLabel: leaveTypeLabel(selectedLeaveType),
-    leaveTypeOptions: LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({
+    leaveTypeOptions: LEAVE_TYPE_OPTIONS.map((item) => ({
       ...item,
       checked: item.value === selectedLeaveType,
     })),
