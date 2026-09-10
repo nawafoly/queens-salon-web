@@ -31,3 +31,16 @@ test("staff HR status hydration is scoped to returned staff identities", () => {
     /SELECT user_id, employee_id, link_status FROM user_employee_links WHERE salon_id = \?"/
   );
 });
+
+test("active and service-scoped staff reads are filtered before HR hydration", () => {
+  assert.match(source, /SELECT DISTINCT s\.\* FROM staff s/);
+  assert.match(source, /JOIN staff_services ss/);
+  assert.match(source, /ss\.service_id = \?/);
+  assert.match(source, /ss\.active = 1/);
+  assert.match(source, /if \(activeOnly\) sql \+= " AND s\.active = 1"/);
+  assert.match(source, /ORDER BY s\.active DESC, s\.name LIMIT 500/);
+  assert.doesNotMatch(
+    source,
+    /SELECT \* FROM staff WHERE salon_id = \? ORDER BY active DESC, name LIMIT 500/
+  );
+});
