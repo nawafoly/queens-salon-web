@@ -10,13 +10,61 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
-import { getBooking } from './bookings.js';
+import { getBooking, listBookings } from './bookings.js';
 import { getSetting } from './settings.js';
 
 const SELF_STATUS_TRANSITIONS = new Map([
   ['pending', new Set(['confirmed', 'cancelled'])],
   ['confirmed', new Set(['completed', 'cancelled'])],
 ]);
+
+function projectOwnBooking(row, employeeId) {
+  const ownEmployeeId = cleanText(employeeId);
+  const topLevelAssigned = cleanText(row?.staff_id) === ownEmployeeId;
+  const items = (Array.isArray(row?.items) ? row.items : [])
+    .filter((item) => {
+      const itemStaffId = cleanText(item?.staff_id);
+      return itemStaffId === ownEmployeeId || (topLevelAssigned && !itemStaffId);
+    })
+    .map((item) => ({
+      id: item.id,
+      booking_id: item.booking_id,
+      salon_id: item.salon_id,
+      service_id: item.service_id,
+      service_name_snapshot: item.service_name_snapshot,
+      staff_id: item.staff_id,
+      staff_name: item.staff_name,
+      booking_date: item.booking_date,
+      start_time: item.start_time,
+      end_time: item.end_time,
+      duration_minutes: item.duration_minutes,
+      created_at: item.created_at,
+    }));
+
+  return {
+    id: row.id,
+    public_id: row.public_id,
+    salon_id: row.salon_id,
+    client_id: row.client_id,
+    client_name: row.client_name,
+    client_phone: row.client_phone,
+    staff_id: row.staff_id,
+    staff_name: row.staff_name,
+    booking_date: row.booking_date,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    status: row.status,
+    source: row.source,
+    staff_ack: Number(row.staff_ack) === 1 ? 1 : 0,
+    staff_ack_at: row.staff_ack_at || null,
+    staff_ack_by_uid: row.staff_ack_by_uid || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    cancelled_at: row.cancelled_at || null,
+    completed_at: row.completed_at || null,
+    items,
+  };
+}
 
 async function assignedBooking(db, salonId, bookingId, employeeId) {
   const id = requiredId(bookingId, 'bookingId');
@@ -45,6 +93,20 @@ async function assignedBooking(db, salonId, bookingId, employeeId) {
   return row;
 }
 
+async function projectedBookingById(db, salonId, bookingId, employeeId) {
+  await assignedBooking(db, salonId, bookingId, employeeId);
+  return projectOwnBooking(await getBooking(db, salonId, bookingId), employeeId);
+}
+
+export async function listOwnStaffBookings(db, salonId, employeeId, query = {}) {
+  const ownEmployeeId = requiredId(employeeId, 'employeeId');
+  const rows = await listBookings(db, salonId, {
+    ...query,
+    staffId: ownEmployeeId,
+  });
+  return rows.map((row) => projectOwnBooking(row, ownEmployeeId));
+}
+
 async function assertStaffStatusChangeEnabled(db, salonId) {
   const setting = await getSetting(db, salonId, 'app');
   if (setting?.value?.policies?.allowStaffChangeStatus === true) return;
@@ -63,7 +125,9 @@ export async function acknowledgeOwnBooking(
   actor = {}
 ) {
   const before = await assignedBooking(db, salonId, bookingId, employeeId);
-  if (Number(before.staff_ack) === 1) return getBooking(db, salonId, before.id);
+  if (Number(before.staff_ack) === 1) {
+    return projectedBookingById(db, salonId, before.id, employeeId);
+  }
 
   const now = nowIso();
   const result = await dbRun(
@@ -86,7 +150,7 @@ export async function acknowledgeOwnBooking(
     }
   }
 
-  const after = await getBooking(db, salonId, before.id);
+  const after = await projectedBookingById(db, salonId, before.id, employeeId);
   await recordAudit(
     db,
     salonId,
@@ -162,7 +226,7 @@ export async function updateOwnBookingStatus(
     throw new AppError(409, 'core_booking:status_changed');
   }
 
-  const after = await getBooking(db, salonId, before.id);
+  const after = await projectedBookingById(db, salonId, before.id, employeeId);
   await recordAudit(
     db,
     salonId,
