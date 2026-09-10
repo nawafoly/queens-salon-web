@@ -1164,25 +1164,39 @@ async function refreshExternalAttendanceState(externalDb, row, dateKey) {
 async function executeExternalAttendanceCorrection(externalDb, row, payload, actor) {
   const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
   const before = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
-  if (payload.correctionType === 'delete_record') {
-    if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(
-      externalDb,
-      'DELETE FROM attendance_state WHERE employee_uid = ? AND last_record_id = ?',
-      [row.employee_uid || before.employee_uid, before.id]
-    );
-    await dbRun(externalDb, 'DELETE FROM attendance_records WHERE id = ?', [before.id]);
-    await refreshExternalAttendanceState(externalDb, row, payload.date);
-    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after: null };
-  }
-
-  const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   const sourceJson = JSON.stringify({
     source: 'employee_request_correction',
     requestId: row.id,
     requestNumber: row.request_number,
     reason: payload.reason,
   });
+
+  if (payload.correctionType === 'delete_record') {
+    if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
+    const now = nowIso();
+    await dbRun(
+      externalDb,
+      `UPDATE attendance_records
+          SET result = 'rejected',
+              rejection_reason = 'voided_by_employee_request',
+              source = ?,
+              updated_at = ?,
+              created_by_uid = ?,
+              created_by_email = ?,
+              created_by_role = ?
+        WHERE id = ? AND result = 'allowed'`,
+      [sourceJson, now, cleanText(actor.uid) || 'system', optionalText(actor.email) || null,
+        cleanText(actor.role) || 'hr', before.id]
+    );
+    const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
+    if (!after || cleanText(after.result).toLowerCase() !== 'rejected') {
+      throw new AppError(409, 'core_employee_request:attendance_void_failed');
+    }
+    await refreshExternalAttendanceState(externalDb, row, payload.date);
+    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after };
+  }
+
+  const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
     await dbRun(
@@ -1254,8 +1268,30 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
   }
   if (payload.correctionType === 'delete_record') {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(db, 'DELETE FROM attendance_records WHERE salon_id = ? AND id = ?', [salonId, before.id]);
-    return { sourceType: 'attendance_record', sourceId: before.id, before, after: null };
+    const originalType = cleanText(before.record_type).toLowerCase();
+    if (!['check_in', 'check_out'].includes(originalType)) {
+      throw new AppError(409, 'core_employee_request:attendance_record_not_active');
+    }
+    await dbRun(
+      db,
+      `UPDATE attendance_records
+          SET record_type = ?,
+              source = 'employee_request_void',
+              note = ?
+        WHERE salon_id = ? AND id = ? AND record_type = ?`,
+      [
+        `voided_${originalType}`,
+        `${payload.reason} • ${row.request_number} • original:${originalType}`,
+        salonId,
+        before.id,
+        originalType,
+      ]
+    );
+    const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, before.id]);
+    if (!after || cleanText(after.record_type).toLowerCase() !== `voided_${originalType}`) {
+      throw new AppError(409, 'core_employee_request:attendance_void_failed');
+    }
+    return { sourceType: 'attendance_record', sourceId: before.id, before, after };
   }
   const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
