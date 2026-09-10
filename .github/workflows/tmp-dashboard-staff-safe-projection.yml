@@ -1,0 +1,47 @@
+name: Temporary Dashboard Staff Safe Projection
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'fix/dashboard-staff-core-cutover'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dashboard-staff-core-cutover
+          fetch-depth: 0
+      - name: Patch employee-safe self read
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('workers/core/index.js')
+          s = p.read_text(encoding='utf-8')
+          old = "import {\n  acknowledgeOwnBooking,\n  updateOwnBookingStatus,\n} from './repositories/booking-staff-portal.js';"
+          new = "import {\n  acknowledgeOwnBooking,\n  listOwnStaffBookings,\n  updateOwnBookingStatus,\n} from './repositories/booking-staff-portal.js';"
+          if s.count(old) != 1:
+              raise SystemExit(f'import anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '''      return listBookings(\n        db,\n        ctx.salonId,\n        {\n          ...query,\n          staffId: ctx.employeeId,\n        }\n      );'''
+          new = '''      return listOwnStaffBookings(\n        db,\n        ctx.salonId,\n        ctx.employeeId,\n        query\n      );'''
+          if s.count(old) != 1:
+              raise SystemExit(f'mine dispatch anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify syntax
+        run: node --check workers/core/index.js && node --check workers/core/repositories/booking-staff-portal.js
+      - name: Commit patch and remove runner
+        run: |
+          rm .github/workflows/tmp-dashboard-staff-safe-projection.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add workers/core/index.js .github/workflows/tmp-dashboard-staff-safe-projection.yml
+          git commit -m 'fix(core): project employee-safe booking reads'
+          git push origin HEAD:fix/dashboard-staff-core-cutover
