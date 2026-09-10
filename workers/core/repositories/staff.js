@@ -83,7 +83,9 @@ async function hrStatusMapsForStaff(db, salonId, staffRows = []) {
     );
     const links = safeFakeRows(db, "user_employee_links").filter(
       (row) =>
-        row.salon_id === salonId && wantedIds.has(cleanText(row.employee_id))
+        row.salon_id === salonId &&
+        cleanText(row.link_status).toLowerCase() === "active" &&
+        wantedIds.has(cleanText(row.employee_id))
     );
     const accountsByEmployeeId = new Map();
     for (const link of links) {
@@ -163,6 +165,7 @@ async function hrStatusMapsForStaff(db, salonId, staffRows = []) {
                ON a.salon_id = l.salon_id
               AND a.id = l.user_id
              WHERE l.salon_id = ?
+               AND l.link_status = 'active'
                AND l.employee_id IN (${placeholders(ids.length)})`,
             [salonId, ...ids]
           )
