@@ -7,7 +7,6 @@ import {
   dbRun,
   generatedId,
   nowIso,
-  optionalText,
   requiredId,
   requiredText,
 } from '../d1.js';
