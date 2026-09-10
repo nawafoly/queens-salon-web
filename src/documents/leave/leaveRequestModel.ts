@@ -77,7 +77,7 @@ export function leaveDays(start: unknown, end: unknown) {
   const startUtc = Date.UTC(Number(fromMatch[1]), Number(fromMatch[2]) - 1, Number(fromMatch[3]));
   const endUtc = Date.UTC(Number(toMatch[1]), Number(toMatch[2]) - 1, Number(toMatch[3]));
   const diff = Math.floor((endUtc - startUtc) / 86400000);
-  return diff >= 0 ? diff : 0;
+  return diff >= 0 ? diff + 1 : 0;
 }
 
 export function formatDocumentDate(value: unknown) {
@@ -173,7 +173,7 @@ export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRe
     employeeName,
     employeeId: safeDocumentText(request.employee_id),
     leaveTypeLabel: leaveTypeLabel(selectedLeaveType),
-    leaveTypeOptions: LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({
+    leaveTypeOptions: LEAVE_TYPE_OPTIONS.map((item) => ({
       ...item,
       checked: item.value === selectedLeaveType,
     })),

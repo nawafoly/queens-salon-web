@@ -455,53 +455,32 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
     const returnTime = cleanText(row.expected_return_time);
     if (!returnTime) throw new AppError(409, 'core_permission:return_time_required');
     const approvedReturnTime = validTime(returnTime, 'expectedReturnTime');
-    const minutes = durationMinutes(exitTime, approvedReturnTime);
-    const unpaidMinutes = financialEffect === 'unpaid' ? minutes : 0;
-
+    const requestedMinutes = durationMinutes(exitTime, approvedReturnTime);
     await dbRun(
       db,
       `UPDATE employee_permission_requests
-          SET status = 'returned', financial_effect = ?, actual_exit_time = ?,
-              actual_return_time = ?, duration_minutes = ?, unpaid_minutes = ?,
-              reviewer_uid = ?, reviewer_name = ?, returned_by_uid = ?, returned_by_name = ?,
-              reviewed_at = ?, exited_at = ?, returned_at = ?, updated_at = ?
+          SET status = 'approved', financial_effect = ?, actual_exit_time = NULL,
+              actual_return_time = NULL, duration_minutes = 0, unpaid_minutes = 0,
+              reviewer_uid = ?, reviewer_name = ?, returned_by_uid = NULL, returned_by_name = NULL,
+              reviewed_at = ?, exited_at = NULL, returned_at = NULL, updated_at = ?
         WHERE salon_id = ? AND id = ?`,
-      [
-        financialEffect,
-        exitTime,
-        approvedReturnTime,
-        minutes,
-        unpaidMinutes,
-        optionalText(actor.uid) || null,
-        optionalText(actor.name) || null,
-        optionalText(actor.uid) || null,
-        optionalText(actor.name) || null,
-        now,
-        now,
-        now,
-        now,
-        salonId,
-        row.id,
-      ]
+      [financialEffect, optionalText(actor.uid) || null, optionalText(actor.name) || null, now, now, salonId, row.id]
     );
     await insertEvent(db, salonId, row.id, 'approved', actor, {
       financialEffect,
-      autoFinalized: true,
+      autoFinalized: false,
       exitTime,
       returnTime: approvedReturnTime,
-      durationMinutes: minutes,
+      requestedMinutes,
     });
     const updated = await getPermission(db, salonId, row.id);
     await syncPermissionBookingBlock(db, salonId, updated, actor);
-    await insertAttendanceEvent(db, salonId, updated, 'permission_out', exitTime, actor);
-    await insertAttendanceEvent(db, salonId, updated, 'permission_return', approvedReturnTime, actor);
-    await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
     await notifyEmployee(
       db,
       salonId,
       updated,
-      'تمت الموافقة واعتماد وقت الاستئذان',
-      `${updated.date_key} • من ${exitTime} إلى ${approvedReturnTime} • المدة ${minutes} دقيقة`
+      'تمت الموافقة على طلب الاستئذان',
+      `${updated.date_key} • من ${exitTime} إلى ${approvedReturnTime}`
     );
     return updated;
   }

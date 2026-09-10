@@ -46,7 +46,8 @@ import "../../styles/EmployeeRequests.css";
 type Props = { session: HrSession; onPortalChange?: () => void | Promise<void> };
 type FormState = Record<string, string | boolean>;
 
-const REQUEST_TYPES = Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[];
+const REQUEST_TYPES: EmployeeRequestType[] = (Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[])
+  .filter((type) => type !== "exceptional_financial_payment");
 const STATUS_OPTIONS = Object.keys(EMPLOYEE_REQUEST_STATUS_LABELS) as EmployeeRequestStatus[];
 
 function todayDateKey() {
@@ -78,7 +79,7 @@ function initialForm(type: EmployeeRequestType): FormState {
   const common = { reason: "", notes: "" };
   if (type === "attendance_correction") return { ...common, date: today, correctionType: "add_check_in", currentTime: "", requestedTime: "09:00", recordId: "" };
   if (type === "permission") return { ...common, date: today, startTime: "12:00", endTime: "13:00" };
-  if (type === "overtime") return { ...common, date: today, startTime: "23:00", endTime: "00:00", taskSummary: "", location: "", requestedByManager: "" };
+  if (type === "overtime") return { ...common, date: today, startTime: "", endTime: "", taskSummary: "", location: "", requestedByManager: "" };
   if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };
   if (type === "exceptional_financial_payment") return { ...common, requestedDays: "", acknowledgement: false, employeeSignatureDataUrl: "" };
   if (type === "leave") return { ...common, leaveType: "annual", startDate: "", endDate: "", durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
@@ -268,8 +269,8 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
       if (type === "leave") {
         const startDate = String(form.startDate || "");
         const endDate = String(form.endDate || "");
-        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وتاريخ العودة قبل الإرسال.");
-        if (endDate <= startDate) throw new Error("يجب أن يكون تاريخ العودة بعد تاريخ بداية الإجازة.");
+        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وآخر يوم إجازة قبل الإرسال.");
+        if (endDate < startDate) throw new Error("آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.");
         if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
       }
       if (type === "exceptional_financial_payment") {
@@ -348,11 +349,11 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
                   <SelectField label="نوع التصحيح" name="correctionType" value={String(form.correctionType)} onChange={update} options={[
                     { value: "add_check_in", label: "إضافة حضور" }, { value: "add_check_out", label: "إضافة انصراف" },
                     { value: "update_check_in", label: "تعديل حضور" }, { value: "update_check_out", label: "تعديل انصراف" },
-                    { value: "delete_record", label: "حذف بصمة خاطئة" },
+                    { value: "delete_record", label: "إلغاء بصمة خاطئة مع حفظ السجل" },
                   ]} />
-                  <TextField label="الوقت الحالي إن وجد" name="currentTime" type="time" value={String(form.currentTime)} onChange={update} />
+                  <TextField label={form.correctionType === "delete_record" || String(form.correctionType).startsWith("update_") ? "وقت البصمة الحالية (أو استخدم معرف السجل)" : "الوقت الحالي إن وجد"} name="currentTime" type="time" value={String(form.currentTime)} onChange={update} />
                   {form.correctionType !== "delete_record" ? <TextField label="الوقت المطلوب" name="requestedTime" type="time" required value={String(form.requestedTime)} onChange={update} /> : null}
-                  <TextField label="معرف السجل إن وجد" name="recordId" value={String(form.recordId)} onChange={update} />
+                  <TextField label={form.correctionType === "delete_record" || String(form.correctionType).startsWith("update_") ? "معرف السجل (بديل عن وقت البصمة الحالية)" : "معرف السجل إن وجد"} name="recordId" value={String(form.recordId)} onChange={update} />
                 </> : null}
                 {type === "permission" ? <>
                   <TextField label="تاريخ الاستئذان" name="date" type="date" required value={String(form.date)} onChange={update} />

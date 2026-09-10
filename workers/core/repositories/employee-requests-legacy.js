@@ -177,14 +177,19 @@ function validatePayload(type, rawPayload) {
       }
       const date = validDate(payload.date, 'date');
       const requestedTime = correctionType === 'delete_record' ? null : validTime(payload.requestedTime, 'requestedTime');
+      const currentTime = cleanText(payload.currentTime) ? validTime(payload.currentTime, 'currentTime') : '';
+      const recordId = cleanText(payload.recordId);
+      if ((correctionType.startsWith('update_') || correctionType === 'delete_record') && !recordId && !currentTime) {
+        throw new AppError(400, 'core_employee_request:attendance_target_required');
+      }
       return {
         ...payload,
         date,
         correctionType,
-        currentTime: cleanText(payload.currentTime) ? validTime(payload.currentTime, 'currentTime') : '',
+        currentTime,
         requestedTime,
         reason: requiredReason(payload.reason),
-        recordId: cleanText(payload.recordId),
+        recordId,
         notes: cleanText(payload.notes),
       };
     }
@@ -751,34 +756,16 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
          reason, note, source, status, financial_effect, duration_minutes, unpaid_minutes,
          created_by_uid, created_by_name, reviewer_uid, reviewer_name, returned_by_uid,
          returned_by_name, reviewed_at, exited_at, returned_at, created_at, updated_at, employee_request_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'employee_request', 'returned', 'none', ?, 0,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'employee_request', 'approved', 'none', 0, 0,
          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         id, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot, payload.date,
-        payload.startTime, payload.endTime, payload.startTime, payload.endTime,
-        payload.reason, optionalText(payload.notes) || null, minutes,
+        payload.startTime, payload.endTime, NULL, NULL,
+        payload.reason, optionalText(payload.notes) || null,
         row.created_by_uid, row.employee_name_snapshot, cleanText(actor.uid) || null,
-        cleanText(actor.name) || null, cleanText(actor.uid) || null, cleanText(actor.name) || null,
-        now, now, now, now, now, row.id,
+        cleanText(actor.name) || null, NULL, NULL,
+        now, NULL, NULL, now, now, row.id,
       ],
-    },
-    {
-      sql: `INSERT OR IGNORE INTO attendance_records
-        (id, salon_id, employee_id, employee_uid, date_key, record_type, recorded_at,
-         source, note, idempotency_key, created_at)
-       VALUES (?, ?, ?, ?, ?, 'permission_out', ?, 'permission', ?, ?, ?)`,
-      params: [generatedId('attendance'), salonId, row.employee_id, row.employee_uid, payload.date,
-        riyadhEventIso(payload.date, payload.startTime, false), `${payload.reason} • ${id}`,
-        `permission:${id}:permission_out`, now],
-    },
-    {
-      sql: `INSERT OR IGNORE INTO attendance_records
-        (id, salon_id, employee_id, employee_uid, date_key, record_type, recorded_at,
-         source, note, idempotency_key, created_at)
-       VALUES (?, ?, ?, ?, ?, 'permission_return', ?, 'permission', ?, ?, ?)`,
-      params: [generatedId('attendance'), salonId, row.employee_id, row.employee_uid, payload.date,
-        riyadhEventIso(payload.date, payload.endTime, timeMinutes(payload.endTime) <= timeMinutes(payload.startTime)), `${payload.reason} • ${id}`,
-        `permission:${id}:permission_return`, now],
     },
     {
       sql: `INSERT OR IGNORE INTO employee_leaves
@@ -795,7 +782,6 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
       ],
     },
   ]);
-  await refreshPermissionPayrollEntries(db, salonId, row.employee_id, payload.date);
   return id;
 }
 
@@ -1030,6 +1016,7 @@ async function createLeaveEffect(
               payload.hrNote
             ) ||
             'اعتماد طلب الإجازة من نظام الطلبات',
+          ...(options.leaveDecision || {}),
         },
         actor,
         options
@@ -1182,25 +1169,39 @@ async function refreshExternalAttendanceState(externalDb, row, dateKey) {
 async function executeExternalAttendanceCorrection(externalDb, row, payload, actor) {
   const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
   const before = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
-  if (payload.correctionType === 'delete_record') {
-    if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(
-      externalDb,
-      'DELETE FROM attendance_state WHERE employee_uid = ? AND last_record_id = ?',
-      [row.employee_uid || before.employee_uid, before.id]
-    );
-    await dbRun(externalDb, 'DELETE FROM attendance_records WHERE id = ?', [before.id]);
-    await refreshExternalAttendanceState(externalDb, row, payload.date);
-    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after: null };
-  }
-
-  const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   const sourceJson = JSON.stringify({
     source: 'employee_request_correction',
     requestId: row.id,
     requestNumber: row.request_number,
     reason: payload.reason,
   });
+
+  if (payload.correctionType === 'delete_record') {
+    if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
+    const now = nowIso();
+    await dbRun(
+      externalDb,
+      `UPDATE attendance_records
+          SET result = 'rejected',
+              rejection_reason = 'voided_by_employee_request',
+              source = ?,
+              updated_at = ?,
+              created_by_uid = ?,
+              created_by_email = ?,
+              created_by_role = ?
+        WHERE id = ? AND result = 'allowed'`,
+      [sourceJson, now, cleanText(actor.uid) || 'system', optionalText(actor.email) || null,
+        cleanText(actor.role) || 'hr', before.id]
+    );
+    const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
+    if (!after || cleanText(after.result).toLowerCase() !== 'rejected') {
+      throw new AppError(409, 'core_employee_request:attendance_void_failed');
+    }
+    await refreshExternalAttendanceState(externalDb, row, payload.date);
+    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after };
+  }
+
+  const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
     await dbRun(
@@ -1272,8 +1273,30 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
   }
   if (payload.correctionType === 'delete_record') {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(db, 'DELETE FROM attendance_records WHERE salon_id = ? AND id = ?', [salonId, before.id]);
-    return { sourceType: 'attendance_record', sourceId: before.id, before, after: null };
+    const originalType = cleanText(before.record_type).toLowerCase();
+    if (!['check_in', 'check_out'].includes(originalType)) {
+      throw new AppError(409, 'core_employee_request:attendance_record_not_active');
+    }
+    await dbRun(
+      db,
+      `UPDATE attendance_records
+          SET record_type = ?,
+              source = 'employee_request_void',
+              note = ?
+        WHERE salon_id = ? AND id = ? AND record_type = ?`,
+      [
+        `voided_${originalType}`,
+        `${payload.reason} • ${row.request_number} • original:${originalType}`,
+        salonId,
+        before.id,
+        originalType,
+      ]
+    );
+    const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, before.id]);
+    if (!after || cleanText(after.record_type).toLowerCase() !== `voided_${originalType}`) {
+      throw new AppError(409, 'core_employee_request:attendance_void_failed');
+    }
+    return { sourceType: 'attendance_record', sourceId: before.id, before, after };
   }
   const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
@@ -2321,18 +2344,54 @@ async function executeResignation(db, salonId, row, payload, actor, input) {
   const finalDay = validDate(input.finalWorkingDay || row.final_working_day || payload.proposedLastWorkingDay, 'finalWorkingDay');
   if (finalDay > riyadhDateKey()) throw new AppError(409, 'core_employee_request:resignation_day_not_reached');
   if (input.confirmClearance !== true || input.confirmTerminate !== true) throw new AppError(400, 'core_employee_request:resignation_confirmation_required');
+
+  const employment = await dbFirst(
+    db,
+    `SELECT start_date, end_date, employment_status
+       FROM employee_employment
+      WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, row.employee_id]
+  );
+  if (!employment) throw new AppError(409, 'core_employee_request:employment_record_required');
+  if (cleanText(employment.start_date) && finalDay < cleanText(employment.start_date)) {
+    throw new AppError(409, 'core_employee_request:resignation_before_employment_start');
+  }
+  const employmentStatus = cleanText(employment.employment_status).toLowerCase();
+  if (!['active', 'on_leave', 'probation', 'notice'].includes(employmentStatus)) {
+    throw new AppError(409, 'core_employee_request:employment_not_terminable');
+  }
+
   const now = nowIso();
-  await dbRun(db, `UPDATE employee_requests SET final_working_day = ?, updated_at = ? WHERE salon_id = ? AND id = ?`, [finalDay, now, salonId, row.id]);
   const linked = await dbFirst(db, `SELECT user_id FROM user_employee_links WHERE salon_id = ? AND employee_id = ? AND link_status = 'active' LIMIT 1`, [salonId, row.employee_id]);
   const statements = [
+    { sql: `UPDATE employee_requests SET final_working_day = ?, updated_at = ? WHERE salon_id = ? AND id = ?`, params: [finalDay, now, salonId, row.id] },
+    { sql: `UPDATE employee_employment
+               SET employment_status = 'terminated', end_date = ?, updated_by_uid = ?, updated_by_email = ?, updated_at = ?
+             WHERE salon_id = ? AND employee_id = ?`,
+      params: [finalDay, cleanText(actor.uid) || null, cleanText(actor.email) || null, now, salonId, row.employee_id] },
     { sql: `UPDATE employee_profiles SET status = 'terminated', updated_at = ? WHERE salon_id = ? AND id = ?`, params: [now, salonId, row.employee_id] },
     { sql: `UPDATE staff SET employment_status = 'terminated', active = 0, updated_at = ? WHERE salon_id = ? AND id = ?`, params: [now, salonId, row.employee_id] },
   ];
   if (linked?.user_id) {
     statements.push({ sql: `UPDATE app_users SET status = 'disabled', updated_at = ? WHERE salon_id = ? AND id = ?`, params: [now, salonId, linked.user_id] });
+    statements.push({ sql: `UPDATE user_employee_links SET link_status = 'inactive', updated_at = ? WHERE salon_id = ? AND employee_id = ? AND user_id = ? AND link_status = 'active'`, params: [now, salonId, row.employee_id, linked.user_id] });
   }
   await dbBatch(db, statements);
-  return { sourceType: 'resignation', sourceId: row.id, before: null, after: { finalWorkingDay: finalDay, accountDisabled: Boolean(linked?.user_id) } };
+
+  const afterEmployment = await dbFirst(
+    db,
+    `SELECT end_date, employment_status FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, row.employee_id]
+  );
+  if (cleanText(afterEmployment?.employment_status).toLowerCase() !== 'terminated' || cleanText(afterEmployment?.end_date) !== finalDay) {
+    throw new AppError(500, 'core_employee_request:resignation_employment_sync_failed');
+  }
+  return {
+    sourceType: 'resignation',
+    sourceId: row.id,
+    before: { employmentStatus, employmentEndDate: employment.end_date || null },
+    after: { finalWorkingDay: finalDay, employmentStatus: 'terminated', accountDisabled: Boolean(linked?.user_id) },
+  };
 }
 
 async function executeEffects(db, salonId, row, actor, input, options = {}) {
@@ -2341,7 +2400,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
     case 'attendance_correction': return executeAttendanceCorrection(db, salonId, row, payload, actor, input, options);
     case 'permission': {
       const id = await createPermissionEffect(db, salonId, row, payload, actor);
-      return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'returned' } };
+      return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'approved' } };
     }
     case 'leave': {
       const effect = await createLeaveEffect(db, salonId, row, payload, actor, options);
@@ -2617,27 +2676,46 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
   }
 
   if (actionKey === 'record-exit') {
+    if (options.ownOnly) throw new AppError(403, 'core_employee_request:employee_action_forbidden');
     if (row.request_type !== 'exit_return' || row.status !== 'executing') throw new AppError(409, 'core_employee_request:invalid_exit_action');
     if (row.actual_exit_at) return { ...requestSummary(row), idempotent: true };
     const actualExitAt = cleanText(input.actualExitAt) || nowIso();
-    if (!Number.isFinite(Date.parse(actualExitAt))) throw new AppError(400, 'core_employee_request:invalid_actual_exit');
-    await dbRun(db, `UPDATE employee_requests SET actual_exit_at = ?, updated_at = ?, updated_by_uid = ?, version = version + 1 WHERE salon_id = ? AND id = ?`, [actualExitAt, nowIso(), actor.uid || null, salonId, row.id]);
+    const actualExitMs = Date.parse(actualExitAt);
+    const nowMs = Date.now();
+    if (!Number.isFinite(actualExitMs) || actualExitMs > nowMs + 5 * 60 * 1000) {
+      throw new AppError(400, 'core_employee_request:invalid_actual_exit');
+    }
+    if (row.approved_at && actualExitMs < Date.parse(row.approved_at)) {
+      throw new AppError(409, 'core_employee_request:actual_exit_before_approval');
+    }
+    await dbRun(db, `UPDATE employee_requests SET actual_exit_at = ?, updated_at = ?, updated_by_uid = ?, version = version + 1 WHERE salon_id = ? AND id = ?`, [new Date(actualExitMs).toISOString(), nowIso(), actor.uid || null, salonId, row.id]);
     row = await getRow(db, salonId, row.id);
-    const eventId = await insertEvent(db, salonId, row, { eventType: 'actual_exit_recorded', payload: { actualExitAt }, idempotencyKey: input.idempotencyKey || `actual_exit:${row.version}` }, actor);
-    await notifyEmployee(db, salonId, row, eventId, `تم تسجيل خروجك ${row.request_number}`, actualExitAt, actor.uid);
+    const eventId = await insertEvent(db, salonId, row, { eventType: 'actual_exit_recorded', payload: { actualExitAt: row.actual_exit_at }, idempotencyKey: input.idempotencyKey || `actual_exit:${row.version}` }, actor);
+    await notifyEmployee(db, salonId, row, eventId, `تم تسجيل خروجك ${row.request_number}`, row.actual_exit_at, actor.uid);
     return requestSummary(row);
   }
 
   if (actionKey === 'record-return') {
+    if (options.ownOnly) throw new AppError(403, 'core_employee_request:employee_action_forbidden');
     if (row.request_type !== 'exit_return' || row.status !== 'executing' || !row.actual_exit_at) throw new AppError(409, 'core_employee_request:invalid_return_action');
     if (row.actual_return_at) return { ...requestSummary(row), idempotent: true };
     const actualReturnAt = cleanText(input.actualReturnAt) || nowIso();
-    if (!Number.isFinite(Date.parse(actualReturnAt)) || Date.parse(actualReturnAt) <= Date.parse(row.actual_exit_at)) throw new AppError(400, 'core_employee_request:invalid_actual_return');
-    await dbRun(db, `UPDATE employee_requests SET actual_return_at = ?, updated_at = ?, updated_by_uid = ?, version = version + 1 WHERE salon_id = ? AND id = ?`, [actualReturnAt, nowIso(), actor.uid || null, salonId, row.id]);
+    const actualReturnMs = Date.parse(actualReturnAt);
+    const actualExitMs = Date.parse(row.actual_exit_at);
+    const nowMs = Date.now();
+    if (!Number.isFinite(actualReturnMs) || actualReturnMs <= actualExitMs || actualReturnMs > nowMs + 5 * 60 * 1000) {
+      throw new AppError(400, 'core_employee_request:invalid_actual_return');
+    }
+    const canonicalReturnAt = new Date(actualReturnMs).toISOString();
+    await dbRun(db, `UPDATE employee_requests SET actual_return_at = ?, updated_at = ?, updated_by_uid = ?, version = version + 1 WHERE salon_id = ? AND id = ?`, [canonicalReturnAt, nowIso(), actor.uid || null, salonId, row.id]);
     row = await getRow(db, salonId, row.id);
     const completed = await updateStatus(db, salonId, row, 'completed', {
       eventType: 'actual_return_recorded', note: input.note,
-      payload: { actualReturnAt, delayMinutes: row.expected_return_at ? Math.max(0, Math.round((Date.parse(actualReturnAt) - Date.parse(row.expected_return_at)) / 60000)) : 0 },
+      payload: {
+        actualReturnAt: canonicalReturnAt,
+        actualDurationMinutes: Math.max(0, Math.round((actualReturnMs - actualExitMs) / 60000)),
+        delayMinutes: row.expected_return_at ? Math.max(0, Math.round((actualReturnMs - Date.parse(row.expected_return_at)) / 60000)) : 0,
+      },
       idempotencyKey: input.idempotencyKey || `actual_return:${row.version + 1}`,
     }, actor);
     await notifyEmployee(db, salonId, completed.updated, completed.eventId, `اكتمل طلب الخروج والعودة ${completed.updated.request_number}`, 'تم تسجيل العودة الفعلية.', actor.uid);

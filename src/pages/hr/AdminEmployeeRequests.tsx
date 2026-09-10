@@ -82,6 +82,7 @@ type DialogState = {
   approvedMinutes: string;
   finalWorkingDay: string;
   confirmClearance: boolean;
+  documentationVerified: boolean;
   signatureDataUrl: string;
 };
 
@@ -240,6 +241,7 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     approvedMinutes: "",
     finalWorkingDay: "",
     confirmClearance: false,
+    documentationVerified: false,
     signatureDataUrl: "",
   };
 }
@@ -401,10 +403,16 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
     } else if (dialog.kind === "approve") {
       action = "approve";
       body.note = dialog.note.trim();
+      const sickLeave = selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick";
+      if (sickLeave && !dialog.documentationVerified) {
+        setDialogError("يجب التحقق من المستند الطبي قبل اعتماد الإجازة المرضية.");
+        return;
+      }
       if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {
         body.payload = {
           reviewerSignatureDataUrl: dialog.signatureDataUrl,
           reviewerSignatureCapturedAt: new Date().toISOString(),
+          ...(sickLeave ? { documentationVerified: true } : {}),
         };
       }
     } else if (dialog.kind === "reject") {
@@ -649,6 +657,13 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   onChange={(event) => setDialog({ ...dialog, note: event.target.value })}
                   placeholder={dialog.kind === "request-info" ? "اكتب المطلوب بالتفصيل..." : "اكتب الملاحظة هنا..."}
                 />
+              </label>
+            ) : null}
+
+            {dialog.kind === "approve" && selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick" ? (
+              <label className="employee-request-action-confirmation">
+                <input type="checkbox" checked={dialog.documentationVerified} onChange={(event) => setDialog({ ...dialog, documentationVerified: event.target.checked })} />
+                <span><FontAwesomeIcon icon={faLock} /> تم التحقق من المستند الطبي المرفق وصلاحيته للاعتماد.</span>
               </label>
             ) : null}
 

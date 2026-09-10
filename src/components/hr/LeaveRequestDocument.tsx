@@ -91,7 +91,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 
   const updateStartDate = (value: string) => {
     update("startDate", value);
-    if (value && endDate && endDate <= value) update("endDate", "");
+    if (value && endDate && endDate < value) update("endDate", "");
   };
 
   return (
@@ -103,7 +103,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
       </header>
 
       <LeaveTypeRow
-        options={LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({
+        options={LEAVE_TYPE_OPTIONS.map((item) => ({
           ...item,
           checked: String(form.leaveType || "") === item.value,
         }))}

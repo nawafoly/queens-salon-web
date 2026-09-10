@@ -1549,7 +1549,10 @@ export async function approveAnnualLeave(
                policy_version = ?,
                pay_rate_bps = 10000,
                balance_bucket = 'annual',
-               legal_basis = 'SA_LABOR_ARTICLE_109',
+               legal_basis = CASE
+                 WHEN leave_type = 'emergency' THEN 'COMPANY_POLICY_ANNUAL_BALANCE'
+                 ELSE 'SA_LABOR_ARTICLE_109'
+               END,
                documentation_status = 'not_required',
                statutory_review_required = 0,
                hr_note = ?,
@@ -1561,7 +1564,7 @@ export async function approveAnnualLeave(
          WHERE salon_id = ?
            AND id = ?
            AND status = 'pending'
-           AND leave_type = 'annual'
+           AND leave_type IN ('annual', 'emergency')
            AND EXISTS (
              SELECT 1
                FROM employee_leave_balance_ledger ledger

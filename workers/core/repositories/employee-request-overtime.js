@@ -166,6 +166,12 @@ export async function executeStatutoryOvertimeRequest(
     input.approvedMinutes || input.approved_minutes,
     requestedMinutes
   );
+  if (approvedMinutes > requestedMinutes) {
+    throw new AppError(
+      409,
+      'core_employee_request:overtime_approval_exceeds_request'
+    );
+  }
 
   const mode = compensationMode(input);
   const consentAt = cleanText(

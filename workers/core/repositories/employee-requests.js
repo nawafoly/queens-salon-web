@@ -33,6 +33,47 @@ function parsePayload(value) {
   }
 }
 
+function riyadhMonthKey() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date()).slice(0, 7);
+}
+
+function normalizeSalaryAdvanceExecution(payload, input = {}) {
+  const requestedHalalas = Number(payload.amountHalalas || 0);
+  const approvedHalalas = input.approvedHalalas !== undefined
+    ? Number(input.approvedHalalas)
+    : input.approvedAmount !== undefined
+      ? Math.round(Number(input.approvedAmount) * 100)
+      : requestedHalalas;
+
+  if (!Number.isInteger(requestedHalalas) || requestedHalalas <= 0) {
+    throw new AppError(409, 'core_employee_request:salary_advance_request_amount_invalid');
+  }
+  if (!Number.isInteger(approvedHalalas) || approvedHalalas <= 0) {
+    throw new AppError(400, 'core_employee_request:invalid_approved_amount');
+  }
+  if (approvedHalalas > requestedHalalas) {
+    throw new AppError(409, 'core_employee_request:salary_advance_approval_exceeds_request');
+  }
+
+  const firstDeductionMonth = cleanText(input.firstDeductionMonth) || riyadhMonthKey();
+  if (!/^\d{4}-\d{2}$/.test(firstDeductionMonth)) {
+    throw new AppError(400, 'core_employee_request:invalid_first_deduction_month');
+  }
+  if (firstDeductionMonth < riyadhMonthKey()) {
+    throw new AppError(409, 'core_employee_request:salary_advance_deduction_month_in_past');
+  }
+
+  return {
+    ...input,
+    approvedHalalas,
+    firstDeductionMonth,
+  };
+}
+
 export function employeeRequestComplianceGate(
   requestTypeValue,
   actionValue = ''
@@ -161,9 +202,10 @@ export async function transitionEmployeeRequest(
   }
 
   const actionKey = cleanText(action).toLowerCase();
-  assertGate(row.request_type, actionKey);
+  const requestType = cleanText(row.request_type).toLowerCase();
+  assertGate(requestType, actionKey);
 
-  if (cleanText(row.request_type).toLowerCase() === 'leave') {
+  if (requestType === 'leave') {
     assertLeaveRequestDecisionAllowed(
       parsePayload(row.payload_json),
       actionKey
@@ -171,7 +213,32 @@ export async function transitionEmployeeRequest(
   }
 
   if (
-    cleanText(row.request_type).toLowerCase() === 'overtime' &&
+    requestType === 'leave' &&
+    actionKey === 'execute'
+  ) {
+    const requestPayload = parsePayload(row.payload_json);
+    if (cleanText(requestPayload.leaveType).toLowerCase() === 'sick') {
+      const approvalEvent = await dbFirst(
+        db,
+        `SELECT payload_json
+           FROM employee_request_events
+          WHERE salon_id = ?
+            AND request_id = ?
+            AND event_type IN ('approve', 'approved')
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [salonId, cleanText(idValue)]
+      );
+      const approvalPayload = parsePayload(approvalEvent?.payload_json);
+      if (approvalPayload.documentationVerified !== true) {
+        throw new AppError(409, 'core_sick_leave:documentation_verification_required');
+      }
+      options = { ...options, leaveDecision: { documentationVerified: true, documentationStatus: 'verified' } };
+    }
+  }
+
+  if (
+    requestType === 'overtime' &&
     actionKey === 'execute'
   ) {
     if (options.ownOnly) {
@@ -186,6 +253,22 @@ export async function transitionEmployeeRequest(
       idValue,
       input,
       actor
+    );
+  }
+
+  if (
+    requestType === 'salary_advance' &&
+    actionKey === 'execute'
+  ) {
+    if (options.ownOnly) {
+      throw new AppError(
+        403,
+        'core_employee_request:employee_action_forbidden'
+      );
+    }
+    input = normalizeSalaryAdvanceExecution(
+      parsePayload(row.payload_json),
+      input
     );
   }
 
