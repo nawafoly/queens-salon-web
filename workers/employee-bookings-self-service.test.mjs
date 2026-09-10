@@ -67,7 +67,7 @@ test("Core derives employee booking ownership from verified employee context", (
 
   assert.match(
     mineDispatch,
-    /staffId:\s*ctx\.employeeId/
+    /listOwnStaffBookings\([\s\S]*ctx\.employeeId[\s\S]*query/
   );
 
   assert.doesNotMatch(
@@ -81,13 +81,20 @@ test("Core derives employee booking ownership from verified employee context", (
   );
 });
 
-test("employee booking read path contains no acknowledgement contract", () => {
+test("employee booking acknowledgement and staff status are Core-owned and identity-bound", () => {
   const core = read("workers/core/index.js");
-  const repo = read("workers/core/repositories/bookings.js");
+  const repo = read("workers/core/repositories/booking-staff-portal.js");
 
-  assert.doesNotMatch(core, /booking:acknowledge/);
-  assert.doesNotMatch(core, /\backnowledgeBooking\b/);
-  assert.doesNotMatch(repo, /\backnowledgeBooking\b/);
-  assert.doesNotMatch(repo, /booking_staff_acknowledgements/);
-  assert.doesNotMatch(repo, /staff_acknowledged_/);
+  assert.match(core, /booking:acknowledge/);
+  assert.match(core, /booking:staff-status/);
+  assert.match(core, /acknowledgeOwnBooking\([\s\S]*ctx\.employeeId/);
+  assert.match(core, /updateOwnBookingStatus\([\s\S]*ctx\.employeeId/);
+
+  assert.match(repo, /assignedBooking/);
+  assert.match(repo, /allowStaffChangeStatus === true/);
+  assert.match(repo, /booking_staff_acknowledged/);
+  assert.match(repo, /booking_staff_status_updated/);
+  assert.match(repo, /projectOwnBooking/);
+  assert.match(repo, /\.filter\(\(item\) =>/);
+  assert.doesNotMatch(repo, /subtotal_halalas|discount_halalas|paid_halalas|invoice_number|admin_notes/);
 });

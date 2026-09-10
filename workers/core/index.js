@@ -50,6 +50,11 @@ import {
   rescheduleBooking,
 } from './repositories/bookings.js';
 import {
+  acknowledgeOwnBooking,
+  listOwnStaffBookings,
+  updateOwnBookingStatus,
+} from './repositories/booking-staff-portal.js';
+import {
   createInvoice,
   getInvoiceByBookingId,
   getInvoice,
@@ -494,7 +499,7 @@ function match(url, method) {
     return { name: "bookings:mine" };
   }
   const bookingAction =
-    /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
+    /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule|acknowledge|staff-status)$/.exec(
       path
     );
   if (bookingAction && method === "POST") {
@@ -1094,13 +1099,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (!ctx.employeeId) {
         throw new AppError(403, "core_booking:employee_link_required");
       }
-      return listBookings(
+      return listOwnStaffBookings(
         db,
         ctx.salonId,
-        {
-          ...query,
-          staffId: ctx.employeeId,
-        }
+        ctx.employeeId,
+        query
       );
     case "bookings":
       if (method === "GET" && route.id) {
@@ -1185,6 +1188,33 @@ async function dispatch(ctx, route, method, body, query, env) {
         return deleteBooking(db, ctx.salonId, route.id, actorInfo);
       }
       break;
+
+    case "booking:acknowledge":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) {
+        throw new AppError(403, "core_booking:employee_link_required");
+      }
+      return acknowledgeOwnBooking(
+        db,
+        ctx.salonId,
+        route.id,
+        ctx.employeeId,
+        actorInfo
+      );
+
+    case "booking:staff-status":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) {
+        throw new AppError(403, "core_booking:employee_link_required");
+      }
+      return updateOwnBookingStatus(
+        db,
+        ctx.salonId,
+        route.id,
+        ctx.employeeId,
+        body.status,
+        actorInfo
+      );
 
     case "bookings:internal":
       requirePermission(ctx, "bookings.create");
