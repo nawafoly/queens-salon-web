@@ -177,14 +177,19 @@ function validatePayload(type, rawPayload) {
       }
       const date = validDate(payload.date, 'date');
       const requestedTime = correctionType === 'delete_record' ? null : validTime(payload.requestedTime, 'requestedTime');
+      const currentTime = cleanText(payload.currentTime) ? validTime(payload.currentTime, 'currentTime') : '';
+      const recordId = cleanText(payload.recordId);
+      if ((correctionType.startsWith('update_') || correctionType === 'delete_record') && !recordId && !currentTime) {
+        throw new AppError(400, 'core_employee_request:attendance_target_required');
+      }
       return {
         ...payload,
         date,
         correctionType,
-        currentTime: cleanText(payload.currentTime) ? validTime(payload.currentTime, 'currentTime') : '',
+        currentTime,
         requestedTime,
         reason: requiredReason(payload.reason),
-        recordId: cleanText(payload.recordId),
+        recordId,
         notes: cleanText(payload.notes),
       };
     }
