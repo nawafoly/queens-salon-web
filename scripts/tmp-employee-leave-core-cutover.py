@@ -16,12 +16,12 @@ page.write_text(text, encoding='utf-8')
 
 checker = Path('scripts/check-employee-leave-core-cutover.mjs')
 check_text = checker.read_text(encoding='utf-8')
-anchor = 'const checks = ['
+anchor = 'const checks = [\n'
+entry = '''  {\n    file: "src/pages/hr/EmployeeLeave.tsx",\n    required: [/createManagedLeaveRequest/],\n    forbidden: [/\\bcreateLeaveRequest\\s*\\(/],\n  },\n'''
 if anchor not in check_text:
     raise SystemExit('checker anchor missing')
-insert = '''const employeeLeavePage = fs.readFileSync(path.join(ROOT, "src/pages/hr/EmployeeLeave.tsx"), "utf8");\nif (!employeeLeavePage.includes("createManagedLeaveRequest")) {\n  console.error("[leave-core-cutover] EmployeeLeave must create leave requests through Core managed requests.");\n  process.exit(1);\n}\nif (/\\bcreateLeaveRequest\\s*\\(/.test(employeeLeavePage)) {\n  console.error("[leave-core-cutover] EmployeeLeave must not call the legacy Firestore createLeaveRequest path.");\n  process.exit(1);\n}\n\n'''
-if 'EmployeeLeave must create leave requests through Core managed requests.' not in check_text:
-    check_text = check_text.replace(anchor, insert + anchor, 1)
+if 'file: "src/pages/hr/EmployeeLeave.tsx"' not in check_text:
+    check_text = check_text.replace(anchor, anchor + entry, 1)
 checker.write_text(check_text, encoding='utf-8')
 
 Path('workers/employee-leave-page-core-cutover.test.mjs').write_text("""import test from 'node:test';
