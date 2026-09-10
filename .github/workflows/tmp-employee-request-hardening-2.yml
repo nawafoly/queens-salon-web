@@ -16,71 +16,112 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Apply hardening patch
+      - name: Harden permission lifecycle
         run: |
           python - <<'PY'
           from pathlib import Path
-          def rep(path, old, new):
-              p=Path(path); t=p.read_text(encoding='utf-8')
-              if t.count(old)!=1: raise SystemExit(f'{path}: expected 1 match for {old[:60]!r}, got {t.count(old)}')
-              p.write_text(t.replace(old,new,1),encoding='utf-8')
+          p=Path('workers/core/repositories/employee-requests-legacy.js')
+          t=p.read_text(encoding='utf-8')
+          s=t.index('async function createPermissionEffect(')
+          e=t.index('\nfunction employeeRequestLeavePolicy', s)
+          block=t[s:e]
+          block=block.replace("'employee_request', 'returned', 'none', ?, 0,", "'employee_request', 'approved', 'none', 0, 0,")
+          block=block.replace('payload.startTime, payload.endTime,\n        payload.reason, optionalText(payload.notes) || null, minutes,', 'NULL, NULL,\n        payload.reason, optionalText(payload.notes) || null,')
+          block=block.replace('cleanText(actor.name) || null, cleanText(actor.uid) || null, cleanText(actor.name) || null,\n        now, now, now, now, now, row.id,', 'cleanText(actor.name) || null, NULL, NULL,\n        now, NULL, NULL, now, now, row.id,')
+          first=block.find("    {\n      sql: `INSERT OR IGNORE INTO attendance_records")
+          if first < 0: raise SystemExit('permission attendance insert start missing')
+          second=block.find("    {\n      sql: `INSERT OR IGNORE INTO employee_leaves", first)
+          if second < 0: raise SystemExit('permission leave insert start missing')
+          block=block[:first]+block[second:]
+          block=block.replace('  await refreshPermissionPayrollEntries(db, salonId, row.employee_id, payload.date);\n', '')
+          t=t[:s]+block+t[e:]
+          old="return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'returned' } };"
+          if t.count(old)!=1: raise SystemExit('permission effect status anchor mismatch')
+          t=t.replace(old,"return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'approved' } };",1)
+          p.write_text(t,encoding='utf-8')
 
-          rep('src/components/hr/LeaveRequestDocument.tsx', '        options={LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({', '        options={LEAVE_TYPE_OPTIONS.map((item) => ({')
-          rep('src/documents/leave/leaveRequestModel.ts', '    leaveTypeOptions: LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({', '    leaveTypeOptions: LEAVE_TYPE_OPTIONS.map((item) => ({')
-          rep('workers/core/repositories/annual-leave.js', "           AND leave_type = 'annual'\n           AND EXISTS (", "           AND leave_type IN ('annual', 'emergency')\n           AND EXISTS (")
-          rep('workers/core/repositories/annual-leave.js', "               legal_basis = 'SA_LABOR_ARTICLE_109',", "               legal_basis = CASE\n                 WHEN leave_type = 'emergency' THEN 'COMPANY_POLICY_ANNUAL_BALANCE'\n                 ELSE 'SA_LABOR_ARTICLE_109'\n               END,")
-          rep('workers/core/repositories/employee-requests-legacy.js', "          status: 'approved',\n          hrNote:\n            optionalText(\n              payload.hrNote\n            ) ||\n            'اعتماد طلب الإجازة من نظام الطلبات',\n        },", "          status: 'approved',\n          hrNote:\n            optionalText(\n              payload.hrNote\n            ) ||\n            'اعتماد طلب الإجازة من نظام الطلبات',\n          ...(options.leaveDecision || {}),\n        },")
+          p=Path('workers/core/repositories/permissions.js')
+          t=p.read_text(encoding='utf-8')
+          start=t.index("  if (status === 'approved') {")
+          end=t.index("\n  await dbRun(\n    db,\n    `UPDATE employee_permission_requests\n        SET status = ?", start)
+          old=t[start:end]
+          new="""  if (status === 'approved') {
+    const exitTime = validTime(row.requested_exit_time, 'requestedExitTime');
+    const returnTime = cleanText(row.expected_return_time);
+    if (!returnTime) throw new AppError(409, 'core_permission:return_time_required');
+    const approvedReturnTime = validTime(returnTime, 'expectedReturnTime');
+    const requestedMinutes = durationMinutes(exitTime, approvedReturnTime);
 
-          p=Path('workers/core/repositories/employee-requests.js'); t=p.read_text(encoding='utf-8')
-          marker="  if (\n    cleanText(row.request_type).toLowerCase() === 'overtime' &&\n    actionKey === 'execute'\n  ) {"
-          if t.count(marker)!=1: raise SystemExit('employee-requests execute marker mismatch')
-          insert="""  if (\n    cleanText(row.request_type).toLowerCase() === 'leave' &&\n    actionKey === 'execute'\n  ) {\n    const requestPayload = parsePayload(row.payload_json);\n    if (cleanText(requestPayload.leaveType).toLowerCase() === 'sick') {\n      const approvalEvent = await dbFirst(\n        db,\n        `SELECT payload_json\n           FROM employee_request_events\n          WHERE salon_id = ?\n            AND request_id = ?\n            AND event_type IN ('approve', 'approved')\n          ORDER BY created_at DESC\n          LIMIT 1`,\n        [salonId, cleanText(idValue)]\n      );\n      const approvalPayload = parsePayload(approvalEvent?.payload_json);\n      if (approvalPayload.documentationVerified !== true) {\n        throw new AppError(409, 'core_sick_leave:documentation_verification_required');\n      }\n      options = { ...options, leaveDecision: { documentationVerified: true, documentationStatus: 'verified' } };\n    }\n  }\n\n"""
-          p.write_text(t.replace(marker,insert+marker,1),encoding='utf-8')
+    await dbRun(
+      db,
+      `UPDATE employee_permission_requests
+          SET status = 'approved', financial_effect = ?, actual_exit_time = NULL,
+              actual_return_time = NULL, duration_minutes = 0, unpaid_minutes = 0,
+              reviewer_uid = ?, reviewer_name = ?, returned_by_uid = NULL, returned_by_name = NULL,
+              reviewed_at = ?, exited_at = NULL, returned_at = NULL, updated_at = ?
+        WHERE salon_id = ? AND id = ?`,
+      [
+        financialEffect,
+        optionalText(actor.uid) || null,
+        optionalText(actor.name) || null,
+        now,
+        now,
+        salonId,
+        row.id,
+      ]
+    );
+    await insertEvent(db, salonId, row.id, 'approved', actor, {
+      financialEffect,
+      autoFinalized: false,
+      exitTime,
+      returnTime: approvedReturnTime,
+      requestedMinutes,
+    });
+    const updated = await getPermission(db, salonId, row.id);
+    await syncPermissionBookingBlock(db, salonId, updated, actor);
+    await notifyEmployee(
+      db,
+      salonId,
+      updated,
+      'تمت الموافقة على طلب الاستئذان',
+      `${updated.date_key} • من ${exitTime} إلى ${approvedReturnTime}`
+    );
+    return updated;
+  }
+"""
+          p.write_text(t[:start]+new+t[end:],encoding='utf-8')
 
-          p=Path('src/pages/hr/AdminEmployeeRequests.tsx'); t=p.read_text(encoding='utf-8')
-          for old,new in [
-            ('  confirmClearance: boolean;\n  signatureDataUrl: string;', '  confirmClearance: boolean;\n  documentationVerified: boolean;\n  signatureDataUrl: string;'),
-            ('    confirmClearance: false,\n    signatureDataUrl: "",', '    confirmClearance: false,\n    documentationVerified: false,\n    signatureDataUrl: "",')
-          ]:
-              if t.count(old)!=1: raise SystemExit(f'admin state anchor mismatch: {old!r}')
-              t=t.replace(old,new,1)
+          Path('workers/permission-lifecycle-hardening.test.mjs').write_text("""import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-          approve_anchor='''      action = "approve";\n      body.note = dialog.note.trim();\n      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {'''
-          approve_insert='''      action = "approve";\n      body.note = dialog.note.trim();\n      const sickLeave = selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick";\n      if (sickLeave && !dialog.documentationVerified) {\n        setDialogError("يجب التحقق من المستند الطبي قبل اعتماد الإجازة المرضية.");\n        return;\n      }\n      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {'''
-          if t.count(approve_anchor)!=1: raise SystemExit('admin approve anchor mismatch')
-          t=t.replace(approve_anchor,approve_insert,1)
-
-          payload_anchor='''          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }\n    } else if (dialog.kind === "reject") {'''
-          payload_insert='''          reviewerSignatureCapturedAt: new Date().toISOString(),\n          ...(sickLeave ? { documentationVerified: true } : {}),\n        };\n      }\n    } else if (dialog.kind === "reject") {'''
-          if t.count(payload_anchor)!=1: raise SystemExit('admin approve payload anchor mismatch')
-          t=t.replace(payload_anchor,payload_insert,1)
-
-          signature_anchor='''            {decisionNeedsSignature ? (\n              <SignatureCaptureField'''
-          signature_insert='''            {dialog.kind === "approve" && selected.request_type === "leave" && String(selected.payload.leaveType || "").toLowerCase() === "sick" ? (\n              <label className="employee-request-action-confirmation">\n                <input type="checkbox" checked={dialog.documentationVerified} onChange={(event) => setDialog({ ...dialog, documentationVerified: event.target.checked })} />\n                <span><FontAwesomeIcon icon={faLock} /> تم التحقق من المستند الطبي المرفق وصلاحيته للاعتماد.</span>\n              </label>\n            ) : null}\n\n            {decisionNeedsSignature ? (\n              <SignatureCaptureField'''
-          if t.count(signature_anchor)!=1: raise SystemExit('admin signature anchor mismatch')
-          p.write_text(t.replace(signature_anchor,signature_insert,1),encoding='utf-8')
+test('approved permission preserves actual out and return lifecycle', () => {
+  const permissions = readFileSync('workers/core/repositories/permissions.js','utf8');
+  const requests = readFileSync('workers/core/repositories/employee-requests-legacy.js','utf8');
+  assert.match(permissions, /SET status = 'approved'/);
+  assert.match(permissions, /autoFinalized: false/);
+  assert.doesNotMatch(permissions, /autoFinalized: true/);
+  const s=requests.indexOf('async function createPermissionEffect');
+  const e=requests.indexOf('function employeeRequestLeavePolicy',s);
+  const block=requests.slice(s,e);
+  assert.match(block, /'employee_request', 'approved'/);
+  assert.doesNotMatch(block, /permission_out/);
+  assert.doesNotMatch(block, /permission_return/);
+  assert.match(requests, /after: \{ status: 'approved' \}/);
+});
+""",encoding='utf-8')
           PY
-      - name: Verify focused scope and build
+      - name: Verify permission scope and build
         run: |
           npm ci
+          node --test workers/permission-lifecycle-hardening.test.mjs
           node scripts/check-employee-leave-core-cutover.mjs
-          node --test workers/admin-partial-leave-policy.test.mjs
-          node - <<'NODE'
-          const fs = require('fs');
-          const annual = fs.readFileSync('workers/core/repositories/annual-leave.js','utf8');
-          const req = fs.readFileSync('workers/core/repositories/employee-requests.js','utf8');
-          const ui = fs.readFileSync('src/pages/hr/AdminEmployeeRequests.tsx','utf8');
-          if (!annual.includes("leave_type IN ('annual', 'emergency')")) throw new Error('emergency approval guard missing');
-          if (!annual.includes("WHEN leave_type = 'emergency' THEN 'COMPANY_POLICY_ANNUAL_BALANCE'")) throw new Error('emergency legal basis missing');
-          if (!req.includes('core_sick_leave:documentation_verification_required')) throw new Error('sick verification guard missing');
-          if (!ui.includes('documentationVerified')) throw new Error('sick verification UI missing');
-          NODE
           npm run build
           git diff --check
       - name: Commit patch
         run: |
           git config user.name "nawafoly"
           git config user.email "114729674+nawafoly@users.noreply.github.com"
-          git add src/components/hr/LeaveRequestDocument.tsx src/documents/leave/leaveRequestModel.ts src/pages/hr/AdminEmployeeRequests.tsx workers/core/repositories/annual-leave.js workers/core/repositories/employee-requests.js workers/core/repositories/employee-requests-legacy.js
-          git commit -m "fix(hr): harden leave request approval paths"
+          git add workers/core/repositories/permissions.js workers/core/repositories/employee-requests-legacy.js workers/permission-lifecycle-hardening.test.mjs
+          git commit -m "fix(hr): preserve actual permission lifecycle"
           git push
