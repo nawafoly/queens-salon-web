@@ -1,0 +1,34 @@
+name: Temporary Request Form Hardening
+on:
+  push:
+    branches:
+      - fix/employee-request-workflow-hardening
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/employee-request-workflow-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply request form hardening
+        run: python scripts/tmp-request-form-hardening.py
+      - name: Verify focused scope and build
+        run: |
+          npm ci
+          node --test workers/request-form-hardening.test.mjs workers/attendance-correction-request-hardening.test.mjs workers/permission-lifecycle-hardening.test.mjs
+          npm run build
+          git diff --check
+      - name: Commit final patch and remove temporary runner
+        run: |
+          git config user.name "nawafoly"
+          git config user.email "114729674+nawafoly@users.noreply.github.com"
+          rm -f scripts/tmp-request-form-hardening.py .github/workflows/tmp-request-form-hardening.yml
+          git add src/pages/hr/EmployeeRequests.tsx workers/core/repositories/employee-requests-legacy.js workers/request-form-hardening.test.mjs scripts/tmp-request-form-hardening.py .github/workflows/tmp-request-form-hardening.yml
+          git commit -m "fix(hr): harden attendance correction targeting and request defaults"
+          git push
