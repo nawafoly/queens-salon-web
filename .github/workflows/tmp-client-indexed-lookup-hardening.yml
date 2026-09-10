@@ -1,0 +1,41 @@
+name: Temporary Client Indexed Lookup Hardening
+
+on:
+  push:
+    branches:
+      - audit/d1-request-amplification-hardening
+    paths:
+      - scripts/tmp-client-indexed-lookup-hardening.py
+      - .github/workflows/tmp-client-indexed-lookup-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/d1-request-amplification-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply indexed client lookup hardening
+        run: python scripts/tmp-client-indexed-lookup-hardening.py
+      - name: Verify focused scope and build
+        run: |
+          npm ci
+          node --test workers/client-indexed-lookup-hardening.test.mjs workers/employee-leave-page-core-cutover.test.mjs
+          node scripts/check-employee-leave-core-cutover.mjs
+          node scripts/check-fixed-interval-polling.mjs
+          npm run build
+          git diff --check
+      - name: Commit final patch and remove temporary runner
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workers/core/repositories/clients.js workers/client-indexed-lookup-hardening.test.mjs
+          git rm scripts/tmp-client-indexed-lookup-hardening.py .github/workflows/tmp-client-indexed-lookup-hardening.yml
+          git commit -m "perf(core): use indexed client identity lookups"
+          git push origin HEAD:audit/d1-request-amplification-hardening
