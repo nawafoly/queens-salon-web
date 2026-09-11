@@ -15,6 +15,7 @@ import { AppError } from '../errors.js';
 const REQUEST_TYPE = 'salary_certificate';
 const REQUEST_TITLE = 'طلب تعريف بالراتب';
 const REQUEST_PREFIX = 'SALCERT';
+const MANAGEMENT_PERMISSION = 'employee_requests.manage';
 
 function json(value) {
   return JSON.stringify(value ?? {});
@@ -41,9 +42,86 @@ function requiredLongText(value, field, max = 1500) {
   return text;
 }
 
-async function resolveEmployee(db, salonId, actor) {
+async function actorCanManageEmployeeRequests(db, salonId, actor = {}) {
+  const actorUserId = cleanText(actor.userId || actor.user_id);
+  const actorUid = cleanText(actor.uid);
+  if (!actorUserId && !actorUid) return false;
+
+  const account = await dbFirst(
+    db,
+    `SELECT id, primary_role
+       FROM app_users
+      WHERE salon_id = ?
+        AND (id = ? OR firebase_uid = ?)
+        AND status = 'active'
+      LIMIT 1`,
+    [salonId, actorUserId, actorUid]
+  );
+  if (!account?.id) return false;
+
+  const direct = await dbFirst(
+    db,
+    `SELECT effect
+       FROM user_permissions
+      WHERE salon_id = ?
+        AND user_id = ?
+        AND permission_key = ?
+      LIMIT 1`,
+    [salonId, account.id, MANAGEMENT_PERMISSION]
+  );
+  const directEffect = cleanText(direct?.effect).toLowerCase();
+  if (directEffect === 'deny') return false;
+  if (directEffect === 'allow') return true;
+
+  const rolePermission = await dbFirst(
+    db,
+    `SELECT permission_key
+       FROM role_permissions
+      WHERE salon_id = ?
+        AND role_key = ?
+        AND permission_key = ?
+      LIMIT 1`,
+    [salonId, cleanText(account.primary_role), MANAGEMENT_PERMISSION]
+  );
+  return cleanText(rolePermission?.permission_key) === MANAGEMENT_PERMISSION;
+}
+
+async function resolveEmployee(db, salonId, actor, data = {}) {
   const actorEmployeeId = cleanText(actor.employeeId);
   const actorUid = cleanText(actor.uid);
+  const requestedEmployeeId = cleanText(data.employeeId || data.employee_id);
+  const requestedEmployeeUid = cleanText(data.employeeUid || data.employee_uid);
+
+  const crossEmployeeTarget = Boolean(
+    (requestedEmployeeId && requestedEmployeeId !== actorEmployeeId) ||
+    (requestedEmployeeUid && requestedEmployeeUid !== actorUid)
+  );
+
+  if (crossEmployeeTarget) {
+    const canManage = await actorCanManageEmployeeRequests(db, salonId, actor);
+    if (!canManage) {
+      throw new AppError(403, 'core_employee_request:cross_employee_forbidden');
+    }
+
+    const target = await dbFirst(
+      db,
+      `SELECT id, firebase_uid, name, email
+         FROM employee_profiles
+        WHERE salon_id = ?
+          AND (id = ? OR firebase_uid = ? OR firebase_uid = ?)
+        LIMIT 1`,
+      [salonId, requestedEmployeeId, requestedEmployeeId, requestedEmployeeUid]
+    );
+    if (!target?.id) throw new AppError(404, 'core_employee_request:employee_not_found');
+
+    return {
+      employeeId: requiredId(target.id, 'employeeId'),
+      employeeUid: cleanText(target.firebase_uid) || null,
+      employeeName: cleanText(target.name) || null,
+      employeeEmail: cleanText(target.email) || null,
+    };
+  }
+
   if (!actorEmployeeId && !actorUid) {
     throw new AppError(409, 'core_employee_request:employee_link_required');
   }
@@ -163,7 +241,7 @@ async function notifyManagement(db, salonId, row, eventId, actorUid) {
 }
 
 export async function createSalaryCertificateRequest(db, salonId, data = {}, actor = {}) {
-  const identity = await resolveEmployee(db, salonId, actor);
+  const identity = await resolveEmployee(db, salonId, actor, data);
   const rawPayload = parseJson(data.payload ?? data.payload_json ?? data, {});
   const addressee = requiredLongText(rawPayload.addressee, 'salary_certificate_addressee', 250);
   const reason = requiredLongText(rawPayload.reason, 'reason');
