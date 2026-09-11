@@ -21,6 +21,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { HrSession } from "./shared";
 import LeaveRequestDocument, { LeaveRequestFormFields } from "../../components/hr/LeaveRequestDocument";
 import ExceptionalFinancialPaymentRequestDocument, { ExceptionalFinancialPaymentRequestFormFields } from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";
+import SalaryCertificateDocument from "../../components/hr/SalaryCertificateDocument";
 import {
   addEmployeeRequestAttachment,
   addEmployeeRequestComment,
@@ -81,6 +82,7 @@ function initialForm(type: EmployeeRequestType): FormState {
   if (type === "permission") return { ...common, date: today, startTime: "12:00", endTime: "13:00" };
   if (type === "overtime") return { ...common, date: today, startTime: "", endTime: "", taskSummary: "", location: "", requestedByManager: "" };
   if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };
+  if (type === "salary_certificate") return { ...common, addressee: "" };
   if (type === "exceptional_financial_payment") return { ...common, requestedDays: "", acknowledgement: false, employeeSignatureDataUrl: "" };
   if (type === "leave") return { ...common, leaveType: "annual", startDate: "", endDate: "", durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
   if (type === "exit_return") return { ...common, expectedExitAt: localDateTimeValue(1), expectedReturnAt: localDateTimeValue(3), destination: "", contactMethod: "" };
@@ -106,7 +108,7 @@ function statusTone(status: EmployeeRequestStatus) {
 }
 
 function readablePayload(payload: Record<string, unknown>) {
-  const hidden = new Set(["acknowledgement", "employeeSignatureDataUrl"]);
+  const hidden = new Set(["acknowledgement", "employeeSignatureDataUrl", "salarySnapshotCapturedAt"]);
   return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);
 }
 
@@ -133,7 +135,17 @@ const FIELD_LABELS: Record<string, string> = {
   amount: "المبلغ المطلوب",
   amountHalalas: "المبلغ بالهللات",
   requestedDays: "عدد الأيام المرجعية",
+  addressee: "الجهة الموجه إليها التعريف",
+  employeeNameSnapshot: "اسم الموظفة وقت الطلب",
+  jobTitleSnapshot: "المسمى الوظيفي وقت الطلب",
+  departmentSnapshot: "القسم وقت الطلب",
+  employmentStartDateSnapshot: "تاريخ الالتحاق",
   baseSalaryHalalas: "الراتب الأساسي وقت الطلب",
+  housingAllowanceHalalas: "بدل السكن",
+  transportationAllowanceHalalas: "بدل النقل",
+  otherAllowancesHalalas: "بدلات أخرى",
+  allowancesHalalas: "إجمالي البدلات",
+  totalSalaryHalalas: "إجمالي الراتب الشهري",
   dayRateHalalas: "قيمة اليوم",
   calculatedAmountHalalas: "إجمالي الصرف",
   annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",
@@ -273,6 +285,9 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
         if (endDate < startDate) throw new Error("آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.");
         if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
       }
+      if (type === "salary_certificate" && !String(form.addressee || "").trim()) {
+        throw new Error("اكتب الجهة الموجه إليها تعريف الراتب.");
+      }
       if (type === "exceptional_financial_payment") {
         const days = Number(form.requestedDays);
         if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد أيام الإجازة المطلوب تعويضها من 0.5 إلى 60 وبزيادات نصف يوم.");
@@ -374,6 +389,9 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
                   <SelectField label="طريقة الاستقطاع" name="repaymentMethod" value={String(form.repaymentMethod)} onChange={update} options={[{ value: "single", label: "دفعة واحدة" }, { value: "installments", label: "أقساط" }]} />
                   {form.repaymentMethod === "installments" ? <TextField label="عدد الأقساط" name="installmentCount" type="number" min="2" max="24" required value={String(form.installmentCount)} onChange={update} /> : null}
                 </> : null}
+                {type === "salary_certificate" ? <>
+                  <TextField label="الجهة الموجه إليها التعريف" name="addressee" required value={String(form.addressee)} onChange={update} />
+                </> : null}
                 {type === "exit_return" ? <>
                   <TextField label="الخروج المتوقع" name="expectedExitAt" type="datetime-local" required value={String(form.expectedExitAt)} onChange={update} />
                   <TextField label="العودة المتوقعة" name="expectedReturnAt" type="datetime-local" required value={String(form.expectedReturnAt)} onChange={update} />
@@ -387,7 +405,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
                   <label className="employee-request-check"><input type="checkbox" checked={Boolean(form.hasAssetsToReturn)} onChange={(event) => update("hasAssetsToReturn", event.target.checked)} /><span>يوجد عهد أو ممتلكات للتسليم</span></label>
                 </> : null}
               </div>
-              <label className="employee-request-field employee-request-field--wide"><span>السبب *</span><textarea required value={String(form.reason)} onChange={(event) => update("reason", event.target.value)} /></label>
+              <label className="employee-request-field employee-request-field--wide"><span>{type === "salary_certificate" ? "سبب / غرض الطلب *" : "السبب *"}</span><textarea required value={String(form.reason)} onChange={(event) => update("reason", event.target.value)} /></label>
               <label className="employee-request-field employee-request-field--wide"><span>ملاحظات إضافية</span><textarea value={String(form.notes)} onChange={(event) => update("notes", event.target.value)} /></label>
             </>
           )}
@@ -522,6 +540,7 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
       ) : null}
       {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}
       {request.request_type === "exceptional_financial_payment" ? <ExceptionalFinancialPaymentRequestDocument request={request} /> : null}
+      {request.request_type === "salary_certificate" && ["approved", "executing", "completed"].includes(request.status) ? <SalaryCertificateDocument request={request} /> : null}
       <div className="employee-request-detail__grid">
         <article><h3>بيانات الطلب</h3><dl>{readablePayload(request.payload).map(([key, value]) => <div key={key}><dt>{FIELD_LABELS[key] || key}</dt><dd>{formatPayloadValue(key, value)}</dd></div>)}</dl></article>
         <article><h3>متابعة الطلب</h3><dl><div><dt>الحالة</dt><dd>{EMPLOYEE_REQUEST_STATUS_LABELS[request.status]}</dd></div><div><dt>تاريخ الإرسال</dt><dd>{formatDateTime(request.submitted_at)}</dd></div><div><dt>آخر تحديث</dt><dd>{formatDateTime(request.updated_at)}</dd></div>{request.status === "cancelled" ? <div><dt>وقت الإغلاق</dt><dd>{formatDateTime(request.cancelled_at || closureEvent?.created_at || request.updated_at)}</dd></div> : null}<div><dt>المسؤول</dt><dd>{request.assigned_to_name || "لم يعيّن بعد"}</dd></div><div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[request.execution_status] || request.execution_status}</dd></div></dl></article>

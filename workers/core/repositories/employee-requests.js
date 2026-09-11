@@ -12,6 +12,7 @@ import {
   requireExplicitSaLeaveType,
 } from './leaves.js';
 import { executeStatutoryOvertimeRequest } from './employee-request-overtime.js';
+import { createSalaryCertificateRequest } from './salary-certificate-requests.js';
 import {
   createEmployeeRequest as legacyCreateEmployeeRequest,
   transitionEmployeeRequest as legacyTransitionEmployeeRequest,
@@ -72,6 +73,18 @@ function normalizeSalaryAdvanceExecution(payload, input = {}) {
     approvedHalalas,
     firstDeductionMonth,
   };
+}
+
+function assertSalaryCertificateApproval(input = {}) {
+  const payload = parsePayload(input.payload);
+  const signerName = cleanText(payload.reviewerName || payload.certificateSignerName);
+  const signature = cleanText(payload.reviewerSignatureDataUrl);
+  if (!signerName) {
+    throw new AppError(400, 'core_employee_request:salary_certificate_reviewer_name_required');
+  }
+  if (!signature.startsWith('data:image/') || !signature.includes(';base64,') || signature.length < 200) {
+    throw new AppError(400, 'core_employee_request:salary_certificate_reviewer_signature_required');
+  }
 }
 
 export function employeeRequestComplianceGate(
@@ -148,6 +161,10 @@ export async function createEmployeeRequest(
 
   assertGate(requestType);
 
+  if (requestType === 'salary_certificate') {
+    return createSalaryCertificateRequest(db, salonId, data, actor);
+  }
+
   if (requestType !== 'leave') {
     return legacyCreateEmployeeRequest(
       db,
@@ -204,6 +221,10 @@ export async function transitionEmployeeRequest(
   const actionKey = cleanText(action).toLowerCase();
   const requestType = cleanText(row.request_type).toLowerCase();
   assertGate(requestType, actionKey);
+
+  if (requestType === 'salary_certificate' && actionKey === 'approve') {
+    assertSalaryCertificateApproval(input);
+  }
 
   if (requestType === 'leave') {
     assertLeaveRequestDecisionAllowed(

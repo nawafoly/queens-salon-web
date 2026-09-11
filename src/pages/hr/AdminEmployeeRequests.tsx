@@ -22,7 +22,9 @@ import {
 import type { HrSession } from "./shared";
 import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";
 import ExceptionalFinancialPaymentRequestDocument from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";
+import SalaryCertificateDocument from "../../components/hr/SalaryCertificateDocument";
 import { printExceptionalFinancialPaymentRequestDocument } from "../../services/exceptionalFinancialPaymentRequestExport";
+import { printSalaryCertificateDocument } from "../../services/salaryCertificateExport";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
 import {
@@ -83,6 +85,7 @@ type DialogState = {
   finalWorkingDay: string;
   confirmClearance: boolean;
   documentationVerified: boolean;
+  reviewerName: string;
   signatureDataUrl: string;
 };
 
@@ -115,8 +118,18 @@ const FIELD_LABELS: Record<string, string> = {
   location: "الموقع",
   managerName: "المدير",
   amountHalalas: "المبلغ",
-  requestedDays: "عدد أيام الإجازة المطلوب تعويضها",
+  addressee: "الجهة الموجه إليها التعريف",
+  employeeNameSnapshot: "اسم الموظفة وقت الطلب",
+  jobTitleSnapshot: "المسمى الوظيفي",
+  departmentSnapshot: "القسم",
+  employmentStartDateSnapshot: "تاريخ الالتحاق",
   baseSalaryHalalas: "الراتب الأساسي وقت الطلب",
+  housingAllowanceHalalas: "بدل السكن",
+  transportationAllowanceHalalas: "بدل النقل",
+  otherAllowancesHalalas: "بدلات أخرى",
+  allowancesHalalas: "إجمالي البدلات",
+  totalSalaryHalalas: "إجمالي الراتب الشهري",
+  requestedDays: "عدد أيام الإجازة المطلوب تعويضها",
   dayRateHalalas: "قيمة اليوم",
   calculatedAmountHalalas: "إجمالي الصرف",
   annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",
@@ -157,7 +170,7 @@ const ACTION_DIALOG_COPY: Record<ActionDialogKind, { title: string; description:
   },
   approve: {
     title: "اعتماد الطلب",
-    description: "راجع البيانات قبل الاعتماد. طلب الإجازة لا يعتمد بدون توقيع المراجع أو المسؤول.",
+    description: "راجع البيانات قبل الاعتماد. الطلبات التي تتطلب توقيعًا لا تعتمد بدون توقيع المراجع أو المسؤول.",
     confirm: "تأكيد الموافقة",
     tone: "success",
   },
@@ -224,7 +237,7 @@ function formatPayloadValue(key: string, value: unknown) {
 }
 
 function payloadEntries(payload: Record<string, unknown>) {
-  const hidden = new Set(["employeeSignatureDataUrl"]);
+  const hidden = new Set(["employeeSignatureDataUrl", "salarySnapshotCapturedAt"]);
   return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);
 }
 
@@ -242,6 +255,7 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     finalWorkingDay: "",
     confirmClearance: false,
     documentationVerified: false,
+    reviewerName: "",
     signatureDataUrl: "",
   };
 }
@@ -374,8 +388,14 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
     if (!dialog || !selected || busy) return;
     let action: Parameters<typeof employeeRequestAction>[1];
     const body: Record<string, unknown> = {};
-    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
+    const standardDecisionSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
+    const salaryCertificateApproval = selected.request_type === "salary_certificate" && dialog.kind === "approve";
+    const decisionNeedsSignature = standardDecisionSignature || salaryCertificateApproval;
 
+    if (salaryCertificateApproval && !dialog.reviewerName.trim()) {
+      setDialogError("اكتب اسم المعتمد كما سيظهر في تعريف الراتب.");
+      return;
+    }
     if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
       setDialogError("يجب توقيع القرار بخط اليد قبل اعتماده.");
       return;
@@ -413,6 +433,12 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
           reviewerSignatureDataUrl: dialog.signatureDataUrl,
           reviewerSignatureCapturedAt: new Date().toISOString(),
           ...(sickLeave ? { documentationVerified: true } : {}),
+        };
+      } else if (selected.request_type === "salary_certificate") {
+        body.payload = {
+          reviewerName: dialog.reviewerName.trim(),
+          reviewerSignatureDataUrl: dialog.signatureDataUrl,
+          reviewerSignatureCapturedAt: new Date().toISOString(),
         };
       }
     } else if (dialog.kind === "reject") {
@@ -566,7 +592,9 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
   const renderDialog = () => {
     if (!dialog || !selected) return null;
     const copy = ACTION_DIALOG_COPY[dialog.kind];
-    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
+    const standardDecisionSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
+    const salaryCertificateApproval = selected.request_type === "salary_certificate" && dialog.kind === "approve";
+    const decisionNeedsSignature = standardDecisionSignature || salaryCertificateApproval;
     return createPortal(
       <div className="employee-request-action-modal dashboard-v2" role="dialog" aria-modal="true" aria-labelledby="employee-request-action-title">
         <button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={closeDialog} />
@@ -652,10 +680,22 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   {dialog.kind === "approve" ? <small>اختياري</small> : null}
                 </span>
                 <textarea
-                  autoFocus
+                  autoFocus={!salaryCertificateApproval}
                   value={dialog.note}
                   onChange={(event) => setDialog({ ...dialog, note: event.target.value })}
                   placeholder={dialog.kind === "request-info" ? "اكتب المطلوب بالتفصيل..." : "اكتب الملاحظة هنا..."}
+                />
+              </label>
+            ) : null}
+
+            {salaryCertificateApproval ? (
+              <label className="employee-request-action-field">
+                <span>اسم المعتمد كما سيظهر في الخطاب *</span>
+                <input
+                  autoFocus
+                  value={dialog.reviewerName}
+                  onChange={(event) => setDialog({ ...dialog, reviewerName: event.target.value })}
+                  placeholder="اكتب اسم المعتمد"
                 />
               </label>
             ) : null}
@@ -670,8 +710,8 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
             {decisionNeedsSignature ? (
               <SignatureCaptureField
                 required
-                label="توقيع المراجع / المسؤول"
-                signerName={String(session.displayName || session.email || "المراجع")}
+                label={salaryCertificateApproval ? "التوقيع اليدوي للمعتمد" : "توقيع المراجع / المسؤول"}
+                signerName={salaryCertificateApproval ? (dialog.reviewerName || "المعتمد") : String(session.displayName || session.email || "المراجع")}
                 value={dialog.signatureDataUrl}
                 onChange={(signatureDataUrl) => setDialog({ ...dialog, signatureDataUrl })}
               />
@@ -763,7 +803,12 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
 
           <footer>
             <button type="button" className="is-secondary" onClick={closeDialog} disabled={busy}>إلغاء</button>
-            <button type="button" className={`is-${copy.tone}`} onClick={() => void submitDialog()} disabled={busy || assigneesLoading || (decisionNeedsSignature && !dialog.signatureDataUrl)}>
+            <button
+              type="button"
+              className={`is-${copy.tone}`}
+              onClick={() => void submitDialog()}
+              disabled={busy || assigneesLoading || (salaryCertificateApproval && !dialog.reviewerName.trim()) || (decisionNeedsSignature && !dialog.signatureDataUrl)}
+            >
               {busy ? "جارٍ التنفيذ..." : copy.confirm}
             </button>
           </footer>
@@ -854,6 +899,15 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
           </section>
         ) : null}
 
+        {selected.request_type === "salary_certificate" && ["approved", "executing", "completed"].includes(selected.status) ? (
+          <section className="admin-leave-request-document-shell">
+            <div className="leave-request-export-toolbar">
+              <button type="button" className="is-primary" onClick={() => void printSalaryCertificateDocument()}>طباعة / حفظ PDF</button>
+            </div>
+            <SalaryCertificateDocument request={selected} />
+          </section>
+        ) : null}
+
         <div className="admin-employee-request-detail__layout">
           <article className="dsv2-card admin-employee-request-panel">
             <h2>بيانات الطلب</h2>
@@ -862,7 +916,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
               <div><dt>النوع</dt><dd>{EMPLOYEE_REQUEST_TYPE_LABELS[selected.request_type]}</dd></div>
               <div><dt>الأولوية</dt><dd>{EMPLOYEE_REQUEST_PRIORITY_LABELS[selected.priority] || selected.priority}</dd></div>
               <div><dt>المسؤول</dt><dd>{selected.assigned_to_name || "غير معيّن"}</dd></div>
-              <div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[selected.execution_status] || selected.execution_status}</dd></div>{selected.execution_status === "failed" && selected.execution_error ? <div><dt>سبب تعثر التنفيذ</dt><dd>{employeeRequestExecutionErrorLabel(selected.execution_error)}</dd></div> : null}{selected.source_reference_id ? <div><dt>المرجع التشغيلي</dt><dd>{selected.source_reference_type ? `${selected.source_reference_type} • ` : ""}{selected.source_reference_id}</dd></div> : null}
+              <div><dt>التنفيذ</dt><dd>{selected.request_type === "salary_certificate" && selected.status === "approved" ? "صدر التعريف" : EMPLOYEE_REQUEST_EXECUTION_LABELS[selected.execution_status] || selected.execution_status}</dd></div>{selected.execution_status === "failed" && selected.execution_error ? <div><dt>سبب تعثر التنفيذ</dt><dd>{employeeRequestExecutionErrorLabel(selected.execution_error)}</dd></div> : null}{selected.source_reference_id ? <div><dt>المرجع التشغيلي</dt><dd>{selected.source_reference_type ? `${selected.source_reference_type} • ` : ""}{selected.source_reference_id}</dd></div> : null}
               <div><dt>آخر تحديث</dt><dd>{formatDateTime(selected.updated_at)}</dd></div>
               {selected.status === "cancelled" ? <div><dt>وقت الإغلاق</dt><dd>{formatDateTime(selected.cancelled_at || closureEvent?.created_at || selected.updated_at)}</dd></div> : null}
             </dl>
@@ -914,12 +968,12 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <FontAwesomeIcon icon={faXmark} /> رفض
                 </button>
               ) : null}
-              {selected.status === "executing" && selected.execution_status === "failed" && can("employee_requests.execute") ? (
+              {selected.status === "executing" && selected.execution_status === "failed" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> إعادة محاولة التنفيذ
                 </button>
               ) : null}
-              {selected.status === "approved" && can("employee_requests.execute") ? (
+              {selected.status === "approved" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> بدء التنفيذ
                 </button>
