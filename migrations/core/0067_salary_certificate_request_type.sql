@@ -1,6 +1,8 @@
 -- Add salary certificate as a canonical employee request type.
 -- SQLite cannot alter a CHECK constraint in place, so rebuild the table while
 -- preserving all request data and the existing request indexes.
+-- employee_request_reference_gaps depends on employee_requests, so it must be
+-- dropped before the table rebuild and recreated after the canonical table exists.
 
 CREATE TABLE employee_requests_v3 (
   id TEXT PRIMARY KEY,
@@ -82,6 +84,7 @@ SELECT
   expected_return_at, final_working_day
 FROM employee_requests;
 
+DROP VIEW IF EXISTS employee_request_reference_gaps;
 DROP TABLE employee_requests;
 ALTER TABLE employee_requests_v3 RENAME TO employee_requests;
 
@@ -91,3 +94,107 @@ CREATE INDEX IF NOT EXISTS idx_employee_requests_type ON employee_requests(salon
 CREATE INDEX IF NOT EXISTS idx_employee_requests_status ON employee_requests(salon_id, status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_employee_requests_assignee ON employee_requests(salon_id, assigned_to_uid, status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_employee_requests_number ON employee_requests(salon_id, request_number);
+
+-- Recreate the read-only reconciliation surface introduced by migration 0025.
+CREATE VIEW employee_request_reference_gaps AS
+SELECT
+  er.id,
+  er.salon_id,
+  er.request_number,
+  er.employee_id,
+  er.request_type,
+  er.status,
+  er.execution_status,
+  er.source_reference_type,
+  er.source_reference_id,
+  er.updated_at,
+  CASE
+    WHEN COALESCE(TRIM(er.source_reference_type), '') = ''
+      OR COALESCE(TRIM(er.source_reference_id), '') = ''
+      THEN 'missing_reference'
+    ELSE 'broken_reference'
+  END AS gap_reason
+FROM employee_requests er
+WHERE er.status = 'completed'
+  AND (
+    COALESCE(TRIM(er.source_reference_type), '') = ''
+    OR COALESCE(TRIM(er.source_reference_id), '') = ''
+    OR (
+      er.request_type = 'permission'
+      AND (
+        er.source_reference_type <> 'employee_permission_request'
+        OR NOT EXISTS (
+          SELECT 1 FROM employee_permission_requests pr
+           WHERE pr.salon_id = er.salon_id
+             AND pr.employee_request_id = er.id
+             AND pr.id = er.source_reference_id
+        )
+      )
+    )
+    OR (
+      er.request_type = 'leave'
+      AND (
+        er.source_reference_type <> 'employee_leave'
+        OR NOT EXISTS (
+          SELECT 1 FROM employee_leaves el
+           WHERE el.salon_id = er.salon_id
+             AND el.request_id = er.id
+             AND el.id = er.source_reference_id
+        )
+      )
+    )
+    OR (
+      er.request_type = 'overtime'
+      AND (
+        er.source_reference_type <> 'overtime'
+        OR NOT EXISTS (
+          SELECT 1 FROM employee_overtime_records ot
+           WHERE ot.salon_id = er.salon_id
+             AND ot.request_id = er.id
+             AND ot.id = er.source_reference_id
+        )
+      )
+    )
+    OR (
+      er.request_type = 'salary_advance'
+      AND (
+        er.source_reference_type <> 'salary_advance'
+        OR NOT EXISTS (
+          SELECT 1 FROM salary_advances sa
+           WHERE sa.salon_id = er.salon_id
+             AND sa.request_id = er.id
+             AND sa.id = er.source_reference_id
+        )
+      )
+    )
+    OR (
+      er.request_type = 'exceptional_financial_payment'
+      AND (
+        er.source_reference_type <> 'employee_financial_payment'
+        OR NOT EXISTS (
+          SELECT 1 FROM employee_financial_payments fp
+           WHERE fp.salon_id = er.salon_id
+             AND fp.request_id = er.id
+             AND fp.id = er.source_reference_id
+        )
+      )
+    )
+    OR (
+      er.request_type = 'attendance_correction'
+      AND er.source_reference_type NOT IN ('attendance_record', 'malikat_attendance_record')
+    )
+    OR (
+      er.request_type = 'exit_return'
+      AND (
+        er.source_reference_type <> 'exit_return'
+        OR er.source_reference_id <> er.id
+      )
+    )
+    OR (
+      er.request_type = 'resignation'
+      AND (
+        er.source_reference_type <> 'resignation'
+        OR er.source_reference_id <> er.id
+      )
+    )
+  );
