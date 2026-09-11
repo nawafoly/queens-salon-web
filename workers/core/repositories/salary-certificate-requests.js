@@ -41,25 +41,29 @@ function requiredLongText(value, field, max = 1500) {
   return text;
 }
 
-async function resolveEmployee(db, salonId, actor, data = {}) {
-  const requestedEmployeeId = cleanText(data.employeeId || data.employee_id || actor.employeeId);
-  const requestedUid = cleanText(data.employeeUid || data.employee_uid || actor.uid);
+async function resolveEmployee(db, salonId, actor) {
+  const actorEmployeeId = cleanText(actor.employeeId);
+  const actorUid = cleanText(actor.uid);
+  if (!actorEmployeeId && !actorUid) {
+    throw new AppError(409, 'core_employee_request:employee_link_required');
+  }
+
   const row = await dbFirst(
     db,
     `SELECT id, firebase_uid, name, email
        FROM employee_profiles
       WHERE salon_id = ?
-        AND (id = ? OR firebase_uid = ? OR firebase_uid = ?)
+        AND (id = ? OR firebase_uid = ?)
       LIMIT 1`,
-    [salonId, requestedEmployeeId, requestedEmployeeId, requestedUid]
+    [salonId, actorEmployeeId, actorUid]
   );
-  const employeeId = cleanText(row?.id || requestedEmployeeId);
-  if (!employeeId) throw new AppError(409, 'core_employee_request:employee_link_required');
+  if (!row?.id) throw new AppError(409, 'core_employee_request:employee_link_required');
+
   return {
-    employeeId: requiredId(employeeId, 'employeeId'),
-    employeeUid: cleanText(row?.firebase_uid || requestedUid) || null,
-    employeeName: cleanText(row?.name || data.employeeName || actor.name) || null,
-    employeeEmail: cleanText(row?.email || data.employeeEmail || actor.email) || null,
+    employeeId: requiredId(row.id, 'employeeId'),
+    employeeUid: cleanText(row.firebase_uid || actorUid) || null,
+    employeeName: cleanText(row.name || actor.name) || null,
+    employeeEmail: cleanText(row.email || actor.email) || null,
   };
 }
 
@@ -159,7 +163,7 @@ async function notifyManagement(db, salonId, row, eventId, actorUid) {
 }
 
 export async function createSalaryCertificateRequest(db, salonId, data = {}, actor = {}) {
-  const identity = await resolveEmployee(db, salonId, actor, data);
+  const identity = await resolveEmployee(db, salonId, actor);
   const rawPayload = parseJson(data.payload ?? data.payload_json ?? data, {});
   const addressee = requiredLongText(rawPayload.addressee, 'salary_certificate_addressee', 250);
   const reason = requiredLongText(rawPayload.reason, 'reason');
