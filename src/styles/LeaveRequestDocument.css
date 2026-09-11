@@ -263,6 +263,13 @@
   border-color: #0b1638;
 }
 
+/* Admin already owns an explicit export toolbar. The certificate component
+   provides the same action for employee self-service, so suppress only its
+   nested copy when rendered inside the admin document shell. */
+.admin-leave-request-document-shell .salary-certificate-export-toolbar {
+  display: none;
+}
+
 .leave-request-form-shell {
   display: grid;
   width: 100%;
