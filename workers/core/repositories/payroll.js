@@ -1708,7 +1708,7 @@ export async function reconcileLockedPayrollImpactForHrCorrection(
   const leaveId = requiredId(data.leaveId || data.leave_id, 'leaveId');
   const leave = await dbFirst(
     db,
-    `SELECT id, employee_id, status, leave_type, start_date, end_date, decided_at
+    `SELECT id, employee_id, status, leave_type, affects_payroll, start_date, end_date, decided_at
        FROM employee_leaves
       WHERE salon_id = ?
         AND id = ?
@@ -1721,6 +1721,26 @@ export async function reconcileLockedPayrollImpactForHrCorrection(
     leave.start_date,
     leave.end_date
   );
+
+  // A leave explicitly marked as non-financial must not create a payroll
+  // carryover against an already approved or paid payroll period.
+  if (Number(leave.affects_payroll || 0) !== 1) {
+    return {
+      sourceType: 'employee_leave',
+      sourceId: leave.id,
+      employeeId: leave.employee_id,
+      correctionStatus: leave.status,
+      effectiveStartDate: leave.start_date,
+      effectiveEndDate: leave.end_date,
+      recordedAt: leave.decided_at || null,
+      affectedPayrollMonths,
+      lockedSourcePayrollMonths: [],
+      results: [],
+      skipped: true,
+      skipReason: 'leave_does_not_affect_payroll',
+    };
+  }
+
   const lockedEntries = await dbAll(
     db,
     `SELECT *
