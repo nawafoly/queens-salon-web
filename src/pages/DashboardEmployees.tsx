@@ -75,6 +75,10 @@ import EmployeeFilesSection from "./dashboardEmployees/EmployeeFilesSection";
 import EmployeeMessagesSection from "./dashboardEmployees/EmployeeMessagesSection";
 import EmployeeRequestsSection from "./dashboardEmployees/EmployeeRequestsSection";
 import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
+import {
+  DashboardToastProviderV2,
+  useDashboardToastV2,
+} from "../components/dashboard-v2";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
 import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection";
 import ServicesSection from "./dashboardEmployees/ServicesSection";
@@ -1696,7 +1700,7 @@ function verifyEmployeeSaveSnapshot(
   }
 }
 
-export default function DashboardEmployees() {
+function DashboardEmployeesContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const employeeRouteMatch = /^\/dashboard\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
@@ -1732,7 +1736,66 @@ export default function DashboardEmployees() {
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const { pushToast } = useDashboardToastV2();
+  const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    tone: "danger" | "gold";
+  } | null>(null);
+
+  const requestConfirmation = useCallback(
+    (options: {
+      title: string;
+      description: string;
+      confirmLabel?: string;
+      tone?: "danger" | "gold";
+    }) =>
+      new Promise<boolean>((resolve) => {
+        confirmResolverRef.current?.(false);
+        confirmResolverRef.current = resolve;
+        setConfirmDialog({
+          title: options.title,
+          description: options.description,
+          confirmLabel: options.confirmLabel || "نعم، متابعة",
+          tone: options.tone || "danger",
+        });
+      }),
+    [],
+  );
+
+  const resolveConfirmation = useCallback((confirmed: boolean) => {
+    const resolve = confirmResolverRef.current;
+    confirmResolverRef.current = null;
+    setConfirmDialog(null);
+    resolve?.(confirmed);
+  }, []);
   const busy = loading || saving;
+
+  useEffect(() => {
+    if (!errorMsg) return;
+
+    pushToast({
+      title: "تعذر إكمال العملية",
+      description: errorMsg,
+      tone: "danger",
+    });
+
+    setErrorMsg("");
+  }, [errorMsg, pushToast]);
+
+  useEffect(() => {
+    if (!saveMessage) return;
+
+    pushToast({
+      title: "تمت العملية بنجاح",
+      description: saveMessage,
+      tone: "success",
+    });
+
+    setSaveMessage("");
+  }, [saveMessage, pushToast]);
 
   useEffect(() => {
     if (!saveMessage) return;
@@ -2442,7 +2505,12 @@ export default function DashboardEmployees() {
     const date = normalizeLeaveUntil(dateKey);
     if (!date) return;
     const existingRow = employeeAttendanceRows.find((item) => item.date === date) || null;
-    const ok = confirm(`سيتم مسح سجل البصمة ليوم ${date}. هل تريد المتابعة؟`);
+    const ok = await requestConfirmation({
+      title: "حذف سجل البصمة؟",
+      description: `سيتم مسح سجل البصمة ليوم ${date}.`,
+      confirmLabel: "نعم، احذف السجل",
+      tone: "danger",
+    });
     if (!ok) return;
 
     setSaving(true);
@@ -2641,7 +2709,12 @@ export default function DashboardEmployees() {
         return;
       }
 
-      const ok = confirm("سيتم إلغاء الاستئذان المعتمد ليوم " + date + ". هل تريد المتابعة؟");
+      const ok = await requestConfirmation({
+        title: "إلغاء الاستئذان المعتمد؟",
+        description: `سيتم إلغاء الاستئذان المعتمد ليوم ${date}.`,
+        confirmLabel: "نعم، ألغِ الاستئذان",
+        tone: "danger",
+      });
       if (!ok) return;
 
       setSaving(true);
@@ -2672,7 +2745,12 @@ export default function DashboardEmployees() {
       return;
     }
 
-    const ok = confirm(`سيتم إلغاء الإجازة المعتمدة ليوم ${date}. هل تريد المتابعة؟`);
+    const ok = await requestConfirmation({
+      title: "إلغاء الإجازة المعتمدة؟",
+      description: `سيتم إلغاء الإجازة المعتمدة ليوم ${date}.`,
+      confirmLabel: "نعم، ألغِ الإجازة",
+      tone: "danger",
+    });
     if (!ok) return;
 
     setSaving(true);
@@ -3099,7 +3177,12 @@ export default function DashboardEmployees() {
       setErrorMsg("تعذر العثور على ملف الموظفة.");
       return;
     }
-    const ok = confirm("سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي. هل تريد المتابعة؟");
+    const ok = await requestConfirmation({
+      title: "إنهاء الإجازة الحالية؟",
+      description: "سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي.",
+      confirmLabel: "نعم، أنهِ الإجازة",
+      tone: "danger",
+    });
     if (!ok) return;
 
     setSaving(true);
@@ -5173,9 +5256,12 @@ export default function DashboardEmployees() {
     }
     // ✅ منع "النسيان": موظفة نشطة لكن مخفية من الحجز
     if (active && specialtiesFixed.length > 0 && !effectiveShowOnBooking) {
-      const ok = confirm(
-        "⚠️ تنبيه: الموظفة لديها خدمات لكنها مخفية من الحجز.\nهل تريد الحفظ بهذا الشكل؟"
-      );
+      const ok = await requestConfirmation({
+        title: "الموظفة مخفية من الحجز",
+        description: "الموظفة لديها خدمات لكنها مخفية من الحجز. هل تريد الحفظ بهذا الشكل؟",
+        confirmLabel: "نعم، احفظ بهذا الشكل",
+        tone: "gold",
+      });
       if (!ok) return;
     }
 
@@ -9172,9 +9258,12 @@ const canonicalSchedules =
       return;
     }
 
-    const ok = confirm(
-      "هل أنت متأكد من حذف هذا السجل؟ سيتم إنشاء حركة عكسية وتعديل رصيد الإجازات تلقائيًا."
-    );
+    const ok = await requestConfirmation({
+      title: "حذف سجل الإجازة؟",
+      description: "سيتم إنشاء حركة عكسية وتعديل رصيد الإجازات تلقائيًا.",
+      confirmLabel: "نعم، احذف السجل",
+      tone: "danger",
+    });
 
     if (!ok) return;
 
@@ -9565,26 +9654,6 @@ const canonicalSchedules =
             </section>
           </>
         ) : null}
-
-        {errorMsg ? (
-          <div className="employees-v2-alert" role="alert">
-            {errorMsg}
-          </div>
-        ) : null}
-
-        {saveMessage ? (
-          <div
-            className="employees-v2-alert employees-v2-alert--success"
-            role="status"
-            aria-live="polite"
-          >
-            <strong className="employees-v2-alert__title">تمت العملية بنجاح</strong>
-            <span>{saveMessage}</span>
-          </div>
-        ) : null}
-
-
-
         <div className={isEmployeeProfileRoute ? "employees-v2-profile-host" : "employees-v2-directory-host"}>
           {!isEmployeeProfileRoute ? (
             <EmployeeListPanel
@@ -10141,8 +10210,28 @@ const canonicalSchedules =
           await handleLeaveModalSubmit(payload);
         }}
       />
+      <DashboardConfirmV2
+        open={Boolean(confirmDialog)}
+        onClose={() => resolveConfirmation(false)}
+        onConfirm={() => resolveConfirmation(true)}
+        title={confirmDialog?.title || ""}
+        description={confirmDialog?.description}
+        tone={confirmDialog?.tone || "danger"}
+        confirmLabel={confirmDialog?.confirmLabel || "نعم، متابعة"}
+        cancelLabel="تراجع"
+        pendingLabel="جارٍ التنفيذ..."
+        closeOnBackdrop={!busy}
+      />
 
 
     </div>
+  );
+}
+
+export default function DashboardEmployees() {
+  return (
+    <DashboardToastProviderV2 position="top-start">
+      <DashboardEmployeesContent />
+    </DashboardToastProviderV2>
   );
 }
