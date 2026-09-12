@@ -99,6 +99,11 @@ test("photo mutations stay behind the loaded employee revision fence", () => {
     );
     assert.match(
       block,
+      /const expectedUpdatedAt = cleanText\([\s\S]*?coreEmployeeUpdatedAtBaselineRef\.current[\s\S]*?\)/
+    );
+
+    assert.match(
+      block,
       /expectedUpdatedAt/
     );
   }

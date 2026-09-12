@@ -5424,6 +5424,17 @@ function DashboardEmployeesContent() {
       return;
     }
 
+    const expectedUpdatedAt = cleanText(
+      coreEmployeeUpdatedAtBaselineRef.current
+    );
+
+    if (!expectedUpdatedAt) {
+      setErrorMsg(
+        "\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0625\u0635\u062f\u0627\u0631 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u0648\u0638\u0641\u0629. \u0623\u0639\u064a\u062f\u064a \u0641\u062a\u062d \u0627\u0644\u0645\u0644\u0641 \u062b\u0645 \u062d\u0627\u0648\u0644\u064a \u0645\u0631\u0629 \u0623\u062e\u0631\u0649."
+      );
+      return;
+    }
+
     const ok = await requestConfirmation({
       title: "\u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629",
       description:
