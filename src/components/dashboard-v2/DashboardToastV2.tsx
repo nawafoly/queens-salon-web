@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 export type DashboardToastToneV2 = "success" | "danger" | "warning" | "info";
 export type DashboardToastPositionV2 =
   | "top-start"
+  | "top-center"
   | "top-end"
   | "bottom-start"
   | "bottom-end";

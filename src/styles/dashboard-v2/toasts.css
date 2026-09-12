@@ -37,6 +37,17 @@
   );
 }
 
+.dashboard-v2[data-position="top-center"] .dsv2-toast-viewport {
+  inset-block-start: var(--dsv2-toast-edge);
+  inset-inline-start: calc(
+    (
+      100vw + var(--dsv2-toast-shell-inline-start) -
+        var(--dsv2-toast-shell-inline-end)
+    ) / 2
+  );
+  transform: translateX(50%);
+}
+
 .dashboard-v2[data-position="top-end"] .dsv2-toast-viewport {
   inset-block-start: var(--dsv2-toast-edge);
   inset-inline-end: calc(
