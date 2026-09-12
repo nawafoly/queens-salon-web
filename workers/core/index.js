@@ -104,6 +104,7 @@ import {
 
 import {
   getHrEmployee,
+  getHrEmployeeAvatarProfile,
   listHrEmployees,
   replaceHrSchedules,
   upsertHrEmployee,
@@ -259,6 +260,7 @@ import {
 import {
   createFileMetadata,
   getFileContent,
+  getFileContentFromMetadata,
   getFileMetadata,
   listFileMetadata,
   patchFileMetadata,
@@ -399,7 +401,7 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track", "public:employee-avatar"].includes(route.name)) ||
     (method === "POST" &&
       ["clients", "bookings", "discount:use"].includes(route.name))
   );
@@ -774,6 +776,11 @@ function match(url, method) {
   if (path === "/api/core/hr/employee-targets/plans") return { name: "employee-targets:plans" };
   const targetEmployeeDetail = /^\/api\/core\/hr\/employee-targets\/([^/]+)$/.exec(path);
   if (targetEmployeeDetail && method === "GET") return { name: "employee-targets:detail", id: targetEmployeeDetail[1] };
+  const publicEmployeeAvatar = /^\/api\/core\/public\/employee-avatars\/([^/]+)$/.exec(path);
+  if (publicEmployeeAvatar && method === "GET") {
+    return { name: "public:employee-avatar", id: publicEmployeeAvatar[1] };
+  }
+
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
   if (fileContent && ["GET", "PUT"].includes(method)) return { name: "file:content", id: fileContent[1] };
 
@@ -2634,6 +2641,78 @@ export async function handleRequest(request, env) {
     touchLogin: route.name === "auth:me",
     allowBlockedAccount: route.name === "auth:me",
   });
+  if (route.name === "public:employee-avatar") {
+    const profile = await getHrEmployeeAvatarProfile(ctx.coreDb, ctx.salonId, route.id);
+    const avatarFileId = cleanText(profile.avatar_file_id);
+
+    if (
+      cleanText(profile.status).toLowerCase() !== "active" ||
+      !avatarFileId
+    ) {
+      throw new AppError(404, "employee_avatar:not_found");
+    }
+
+    let profileIsPublic =
+      Number(profile.show_on_about) === 1;
+
+    if (!profileIsPublic) {
+      try {
+        const staff = await getStaff(ctx.coreDb, ctx.salonId, route.id);
+        profileIsPublic = staffIsPubliclyBookable(staff);
+      } catch (error) {
+        if (!(error instanceof AppError) || error.status !== 404) {
+          throw error;
+        }
+      }
+    }
+
+    if (!profileIsPublic) {
+      throw new AppError(404, "employee_avatar:not_found");
+    }
+
+    const metadata = await getFileMetadata(
+      ctx.coreDb,
+      ctx.salonId,
+      avatarFileId
+    );
+
+    const validAvatar =
+      cleanText(metadata.id) === avatarFileId &&
+      cleanText(metadata.employee_id) === cleanText(profile.id) &&
+      cleanText(metadata.category) === "employee_profile_avatar" &&
+      cleanText(metadata.status).toLowerCase() === "active" &&
+      cleanText(metadata.content_type).toLowerCase().startsWith("image/");
+
+    if (!validAvatar) {
+      throw new AppError(404, "employee_avatar:not_found");
+    }
+
+    const response = await getFileContentFromMetadata(
+      metadata,
+      env
+    );
+
+    if (!(response instanceof Response)) {
+      throw new AppError(404, "employee_avatar:not_found");
+    }
+
+    const headers = new Headers(response.headers);
+    headers.set("Content-Disposition", "inline");
+    headers.set(
+      "Cache-Control",
+      "public, max-age=300, stale-while-revalidate=86400"
+    );
+
+    for (const [key, value] of Object.entries(corsHeaders(request, env))) {
+      headers.set(key, value);
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      headers,
+    });
+  }
+
   if (rawContentRoute) {
     const fileMetadata = await assertFileAccess(ctx, route.id, request.method === "PUT");
     const response = request.method === "PUT"

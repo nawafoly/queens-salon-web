@@ -134,6 +134,7 @@ export type StaffPublicDoc = {
   specialties: string[];
   bio?: string;
   avatarUrl?: string;
+  avatarFileId?: string | null;
   cvUrl?: string;
   rating?: number;
   reviewsCount?: number;

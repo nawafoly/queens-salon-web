@@ -3990,6 +3990,43 @@ test('Phase 6 settings and protected R2 file flow work without Firestore', async
   assert.equal(readMetadata.status, 'read');
 });
 
+test('public employee avatar route exposes only canonical active image metadata', async () => {
+  const source = await readFile(new URL('./core/index.js', import.meta.url), 'utf8');
+
+  const start = source.indexOf('  if (route.name === "public:employee-avatar") {');
+  const end = source.indexOf('  if (rawContentRoute) {', start);
+
+  assert.ok(start >= 0 && end > start);
+
+  const block = source.slice(start, end);
+
+  assert.match(block, /getHrEmployeeAvatarProfile/);
+  assert.match(block, /profile\.avatar_file_id/);
+  assert.match(block, /profile\.status/);
+  assert.match(block, /profile\.show_on_about/);
+  assert.match(block, /staffIsPubliclyBookable/);
+  assert.doesNotMatch(block, /include_in_employee_management/);
+
+  assert.match(
+    block,
+    /cleanText\(metadata\.employee_id\) === cleanText\(profile\.id\)/
+  );
+  assert.match(
+    block,
+    /cleanText\(metadata\.category\) === "employee_profile_avatar"/
+  );
+  assert.match(
+    block,
+    /cleanText\(metadata\.status\)\.toLowerCase\(\) === "active"/
+  );
+  assert.match(
+    block,
+    /cleanText\(metadata\.content_type\)\.toLowerCase\(\)\.startsWith\("image\/"\)/
+  );
+  assert.match(block, /Content-Disposition", "inline"/);
+  assert.match(block, /public, max-age=300, stale-while-revalidate=86400/);
+});
+
 test('Core employee file metadata uses manager-write and self-read-only policy', async () => {
   const source = await readFile(new URL('./core/index.js', import.meta.url), 'utf8');
   const start = source.indexOf('    case "files": {');
@@ -4120,6 +4157,49 @@ test('Core payroll ignores forged browser financial and attendance authority and
   assert.equal(Number(approved.final_salary_halalas), 700000 - updatedExpectedGosi.employee.deductionHalalas);
   const audit = JSON.parse(approved.audit_log_json || '[]');
   assert.ok(audit.some((entry) => entry.action === 'canonical_recalculation_before_approval'));
+});
+
+test('HR employee avatar file reference preserves omitted values and clears explicit null', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const created = await upsertHrEmployee(db, 'main', {
+    id: 'emp-avatar-reference',
+    name: 'Avatar Reference Employee',
+    status: 'active',
+    avatarFileId: 'avatar-file-a',
+  }, actor);
+
+  assert.equal(created.avatar_file_id, 'avatar-file-a');
+
+  const preserved = await upsertHrEmployee(db, 'main', {
+    id: 'emp-avatar-reference',
+    name: 'Avatar Reference Employee Updated',
+  }, actor);
+
+  assert.equal(preserved.avatar_file_id, 'avatar-file-a');
+
+  const replaced = await upsertHrEmployee(db, 'main', {
+    id: 'emp-avatar-reference',
+    name: 'Avatar Reference Employee Updated',
+    avatarFileId: 'avatar-file-b',
+  }, actor);
+
+  assert.equal(replaced.avatar_file_id, 'avatar-file-b');
+
+  const cleared = await upsertHrEmployee(db, 'main', {
+    id: 'emp-avatar-reference',
+    name: 'Avatar Reference Employee Updated',
+    avatarFileId: null,
+  }, actor);
+
+  assert.equal(cleared.avatar_file_id, null);
+
+  const stored = await db.prepare(
+    "SELECT avatar_file_id FROM employee_profiles WHERE salon_id='main' AND id='emp-avatar-reference'"
+  ).first();
+
+  assert.equal(stored.avatar_file_id, null);
 });
 
 test('HR employee save atomically creates canonical booking staff row without Firestore mirror', async (t) => {

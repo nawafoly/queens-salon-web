@@ -50,6 +50,7 @@ class FakeD1 {
       "user_permissions",
       "user_employee_links",
       "employee_profiles",
+      "file_metadata",
       "employee_employment",
       "attendance_records",
       "employee_leaves",
@@ -490,6 +491,17 @@ class FakeD1 {
           };
         });
     }
+    if (normalized.startsWith("SELECT id, status, avatar_file_id, show_on_about FROM employee_profiles WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      const row = this.find("employee_profiles", salonId, id);
+      return row ? [{
+        id: row.id,
+        status: row.status,
+        avatar_file_id: row.avatar_file_id ?? null,
+        show_on_about: row.show_on_about ?? 0,
+      }] : [];
+    }
+
     if (normalized.startsWith("SELECT id, name, email, phone_normalized FROM employee_profiles WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("employee_profiles", salonId, id) ? [this.find("employee_profiles", salonId, id)] : [];
@@ -509,6 +521,12 @@ class FakeD1 {
       const row = this.find("staff", salonId, id);
       return row ? [{ id: row.id, name: row.name, email: null, phone_normalized: row.phone_normalized }] : [];
     }
+    if (normalized.startsWith("SELECT * FROM file_metadata WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      const row = this.find("file_metadata", salonId, id);
+      return row ? [row] : [];
+    }
+
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("clients", salonId, id) ? [this.find("clients", salonId, id)] : [];
@@ -1896,12 +1914,52 @@ class FakeD1 {
   }
 }
 
-function env(fake) {
+class FakeR2Bucket {
+  constructor() {
+    this.objects = new Map();
+  }
+
+  async put(key, value, options = {}) {
+    const bytes =
+      value instanceof Uint8Array
+        ? value
+        : new Uint8Array(await new Response(value).arrayBuffer());
+
+    this.objects.set(String(key), {
+      bytes,
+      httpMetadata: options.httpMetadata || {},
+    });
+
+    return { key: String(key), size: bytes.byteLength };
+  }
+
+  async get(key) {
+    const item = this.objects.get(String(key));
+    if (!item) return null;
+
+    return {
+      body: item.bytes,
+      size: item.bytes.byteLength,
+      httpMetadata: item.httpMetadata,
+      writeHttpMetadata(headers) {
+        const type = item.httpMetadata?.contentType;
+        if (type) headers.set("Content-Type", type);
+      },
+    };
+  }
+
+  async delete(key) {
+    this.objects.delete(String(key));
+  }
+}
+
+function env(fake, filesBucket = new FakeR2Bucket()) {
   return {
     FIREBASE_PROJECT_ID: "waves-hotel-dashboard",
     PACKAGES_AUTH_TEST_MODE: "true",
     SALON_ID: "main",
     CORE_DB: fake,
+    FILES_BUCKET: filesBucket,
   };
 }
 
@@ -2622,6 +2680,141 @@ test("core attendance endpoint merges and normalizes malikat attendance records"
   const byDateKeyBody = await json(byDateKey);
   assert.equal(byDateKey.status, 200, JSON.stringify(byDateKeyBody));
   assert.deepEqual(byDateKeyBody.data.map((row) => row.id), ["malikat:malikat-allowed-a"]);
+});
+
+test("public employee avatar serves only the canonical active public image", async () => {
+  const fake = new FakeD1();
+  const bucket = new FakeR2Bucket();
+  const now = "2027-01-01T00:00:00.000Z";
+
+  fake.seed("employee_profiles", {
+    id: "avatar-public",
+    salon_id: "main",
+    firebase_uid: null,
+    name: "Avatar Public",
+    status: "active",
+    avatar_file_id: "avatar-file-current",
+    show_on_about: 1,
+    created_at: now,
+    updated_at: now,
+  });
+
+  fake.seed("file_metadata", {
+    id: "avatar-file-current",
+    salon_id: "main",
+    employee_id: "avatar-public",
+    category: "employee_profile_avatar",
+    document_type: null,
+    title: null,
+    description: null,
+    file_name: "avatar-public.png",
+    storage_key: "main/avatar-public/avatar-public.png",
+    bucket_name: null,
+    content_type: "image/png",
+    size_bytes: 4,
+    status: "active",
+    visibility: "private",
+    uploaded_by_uid: "owner1",
+    replaced_by_file_id: null,
+    replaces_file_id: null,
+    created_at: now,
+    updated_at: now,
+  });
+
+  await bucket.put(
+    "main/avatar-public/avatar-public.png",
+    new Uint8Array([137, 80, 78, 71]),
+    { httpMetadata: { contentType: "image/png" } }
+  );
+
+  const ok = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+
+  assert.equal(ok.status, 200);
+
+  const avatarMetadataReads = fake.allQueries.filter(
+    ({ sql }) =>
+      sql.startsWith(
+        "SELECT * FROM file_metadata WHERE salon_id = ? AND id = ?"
+      )
+  ).length;
+  assert.equal(avatarMetadataReads, 1);
+
+  assert.equal(ok.headers.get("Content-Type"), "image/png");
+  assert.match(ok.headers.get("Content-Disposition") || "", /^inline/);
+  assert.equal(
+    ok.headers.get("Cache-Control"),
+    "public, max-age=300, stale-while-revalidate=86400"
+  );
+  assert.deepEqual(
+    [...new Uint8Array(await ok.arrayBuffer())],
+    [137, 80, 78, 71]
+  );
+
+  fake.update("file_metadata", "main", "avatar-file-current", {
+    status: "archived",
+  });
+  const archived = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(archived.status, 404);
+
+  fake.update("file_metadata", "main", "avatar-file-current", {
+    status: "active",
+    content_type: "application/pdf",
+  });
+  const nonImage = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(nonImage.status, 404);
+
+  fake.update("file_metadata", "main", "avatar-file-current", {
+    content_type: "image/png",
+    employee_id: "different-employee",
+  });
+  const wrongEmployee = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(wrongEmployee.status, 404);
+
+  fake.update("file_metadata", "main", "avatar-file-current", {
+    employee_id: "avatar-public",
+    category: "contract",
+  });
+  const wrongCategory = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(wrongCategory.status, 404);
+
+  fake.update("file_metadata", "main", "avatar-file-current", {
+    category: "employee_profile_avatar",
+  });
+  fake.update("employee_profiles", "main", "avatar-public", {
+    show_on_about: 0,
+  });
+
+  const hidden = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(hidden.status, 404);
+
+  fake.update("employee_profiles", "main", "avatar-public", {
+    show_on_about: 1,
+    status: "inactive",
+  });
+
+  const inactive = await worker.fetch(
+    request("/api/core/public/employee-avatars/avatar-public", { token: "" }),
+    env(fake, bucket)
+  );
+  assert.equal(inactive.status, 404);
 });
 
 test("core absence endpoint stores canonical employee id and filters by employee identity", async () => {

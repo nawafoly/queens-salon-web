@@ -1,15 +1,20 @@
 import { EmployeeProfileTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
+import type { CoreEmployeeProfilePhoto } from "../../services/employeeProfilePhotoCore";
 
 type ProfileSectionProps = {
   isVisible: boolean;
+  employeeName: string;
   avatarUrl: string;
   bio: string;
   cvUrl: string;
   rating: string;
   reviewsCount: string;
-  staffImageOptions: Array<{ label: string; value: string }>;
+  profilePhotoBusy: boolean;
+  profilePhotos: CoreEmployeeProfilePhoto[];
+  photoManagementEnabled: boolean;
   resolveAvatarFromAssets: (raw: string) => string;
-  onAvatarUrlChange: (value: string) => void;
+  onProfilePhotoChange: (file: File) => void | Promise<void>;
+  onProfilePhotoRemove: () => void | Promise<void>;
   onBioChange: (value: string) => void;
   onCvUrlChange: (value: string) => void;
   onRatingChange: (value: string) => void;
@@ -18,14 +23,18 @@ type ProfileSectionProps = {
 
 export default function ProfileSection({
   isVisible,
+  employeeName,
   avatarUrl,
   bio,
   cvUrl,
   rating,
   reviewsCount,
-  staffImageOptions,
+  profilePhotoBusy,
+  profilePhotos,
+  photoManagementEnabled,
   resolveAvatarFromAssets,
-  onAvatarUrlChange,
+  onProfilePhotoChange,
+  onProfilePhotoRemove,
   onBioChange,
   onCvUrlChange,
   onRatingChange,
@@ -36,15 +45,18 @@ export default function ProfileSection({
   return (
     <EmployeeProfileTabLiveV2
       readOnly={false}
-      employeeName="موظفة"
+      employeeName={employeeName}
       avatarUrl={avatarUrl}
       bio={bio}
       cvUrl={cvUrl}
       rating={rating}
       reviewsCount={reviewsCount}
-      staffImageOptions={staffImageOptions}
+      profilePhotoBusy={profilePhotoBusy}
+      profilePhotos={profilePhotos}
+      photoManagementEnabled={photoManagementEnabled}
       resolveAvatarFromAssets={resolveAvatarFromAssets}
-      onAvatarUrlChange={onAvatarUrlChange}
+      onProfilePhotoChange={onProfilePhotoChange}
+      onProfilePhotoRemove={onProfilePhotoRemove}
       onBioChange={onBioChange}
       onCvUrlChange={onCvUrlChange}
       onRatingChange={onRatingChange}
