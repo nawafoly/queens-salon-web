@@ -73,7 +73,12 @@ export default function SalaryCertificateDocument({ request }: { request: Employ
       <DocumentPage className="leave-doc salary-certificate-print-root" labelledBy="salary-certificate-document-title">
         <DocumentWatermark src={DOCUMENT_BRANDING.watermarkSource} />
         <header className="leave-doc-header">
-          <img src={DOCUMENT_BRANDING.logoSource} alt={DOCUMENT_BRANDING.companyName} className="leave-doc-logo" />
+          <img
+            src={DOCUMENT_BRANDING.printLogoSource}
+            alt={DOCUMENT_BRANDING.companyName}
+            className="leave-doc-logo salary-certificate-logo"
+            style={{ filter: DOCUMENT_BRANDING.lightSurfaceLogoFilter }}
+          />
           <h2 id="salary-certificate-document-title">تعريف بالراتب</h2>
         </header>
 
@@ -84,19 +89,19 @@ export default function SalaryCertificateDocument({ request }: { request: Employ
           <p>الموقرين</p>
           <p className="leave-doc-greeting">السلام عليكم ورحمة الله وبركاته،،</p>
           <p>
-            تشهد {DOCUMENT_BRANDING.companyName} بأن الموظفة
+            تشهد {DOCUMENT_BRANDING.companyName} بأن الموظف/ة
             <strong className="leave-doc-inline-value"> {request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} </strong>
-            تعمل لدينا بمسمى
+            يعمل/تعمل لدينا بمسمى
             <strong className="leave-doc-inline-value"> {String(payload.jobTitleSnapshot || "—")} </strong>
             {payload.employmentStartDateSnapshot ? <> منذ تاريخ <strong className="leave-doc-inline-value">{formatDate(payload.employmentStartDateSnapshot)}</strong></> : null}.
-            وقد صدر لها هذا التعريف بناءً على طلبها لتقديمه إلى
+            وقد صدر له/لها هذا التعريف بناءً على طلبه/طلبها لتقديمه إلى
             <strong className="leave-doc-inline-value"> {String(payload.addressee || "—")} </strong>
             دون أدنى مسؤولية على المنشأة تجاه الغير.
           </p>
         </div>
 
         <DocumentFieldGrid>
-          <DocumentField label="اسم الموظفة" value={request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} />
+          <DocumentField label="اسم الموظف/ة" value={request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} />
           <DocumentField label="المسمى الوظيفي" value={String(payload.jobTitleSnapshot || "—")} />
           <DocumentField label="تاريخ الالتحاق" value={formatDate(payload.employmentStartDateSnapshot)} />
           <DocumentField label="تاريخ الإصدار" value={formatDate(request.approved_at || request.submitted_at)} />
@@ -125,9 +130,13 @@ export default function SalaryCertificateDocument({ request }: { request: Employ
           </div>
         </DocumentSection>
 
-        <DocumentSection title="ختم المنشأة" className="leave-doc-admin-block">
-          <div style={{ minHeight: 130, border: "1px dashed currentColor", borderRadius: 12, display: "grid", placeItems: "center" }}>
-            <strong>مكان الختم</strong>
+        <DocumentSection title="ختم المنشأة" className="leave-doc-admin-block salary-certificate-stamp-section">
+          <div className="salary-certificate-stamp-space">
+            <img
+              src={DOCUMENT_BRANDING.stampSource}
+              alt="ختم المنشأة"
+              className="salary-certificate-stamp-image"
+            />
           </div>
         </DocumentSection>
 
