@@ -180,7 +180,7 @@ test('historical HR correction keeps carryover source, amount, direction and tar
 });
 
 
-test('non-financial leave cannot create carryover against locked payroll', async () => {
+test('time-entitlement leave cannot create monetary carryover against locked payroll', async () => {
   const source = await readFile(
     new URL('./core/repositories/payroll.js', import.meta.url),
     'utf8'
@@ -199,31 +199,44 @@ test('non-financial leave cannot create carryover against locked payroll', async
 
   const fn = source.slice(start, end);
 
-  assert.match(
-    fn,
-    /leave_type,\s+affects_payroll,\s+start_date/
-  );
-
-  assert.match(
-    fn,
-    /Number\(leave\.affects_payroll \|\| 0\) !== 1/
-  );
-
-  assert.match(
-    fn,
-    /skipReason: 'leave_does_not_affect_payroll'/
-  );
+  assert.match(fn, /weekly_rest_substitute_use/);
+  assert.match(fn, /overtime_comp_time_use/);
+  assert.match(fn, /non_monetary_time_entitlement_leave/);
 
   const guard = fn.indexOf(
-    "skipReason: 'leave_does_not_affect_payroll'"
+    "skipReason: 'non_monetary_time_entitlement_leave'"
   );
-  const lockedPayrollRead = fn.indexOf(
-    'FROM payroll_entries'
-  );
+  const lockedPayrollRead = fn.indexOf('FROM payroll_entries');
 
   assert.ok(guard >= 0);
   assert.ok(lockedPayrollRead > guard);
 });
+
+test('ordinary paid leave is not globally excluded from locked payroll reconciliation', async () => {
+  const source = await readFile(
+    new URL('./core/repositories/payroll.js', import.meta.url),
+    'utf8'
+  );
+
+  const start = source.indexOf(
+    'export async function reconcileLockedPayrollImpactForHrCorrection('
+  );
+  const end = source.indexOf(
+    '\nconst PAYROLL_ENTRY_MUTATION_COLUMNS',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = source.slice(start, end);
+
+  assert.doesNotMatch(
+    fn,
+    /Number\(leave\.affects_payroll \|\| 0\) !== 1/
+  );
+});
+
 
 test('linked permission reversal completes before historical payroll reconciliation', async () => {
   const source = await readFile(
