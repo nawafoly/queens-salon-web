@@ -115,8 +115,8 @@ test("attendance deletion is not gated by employee profile revision", () => {
     "const deleteAttendancePunch = useCallback"
   );
   const end = dashboard.indexOf(
-    "const ",
-    start + 10
+    "\n  const ",
+    start + 1
   );
 
   assert.ok(start >= 0, "deleteAttendancePunch handler is missing");
