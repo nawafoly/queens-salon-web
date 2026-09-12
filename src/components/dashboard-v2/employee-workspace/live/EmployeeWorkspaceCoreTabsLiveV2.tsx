@@ -153,6 +153,16 @@ export function EmployeeBasicTabLiveV2({
   );
 }
 
+export type EmployeeProfilePhotoLiveV2 = {
+  id: string;
+  fileName: string;
+  status: string;
+  sizeBytes?: number | null;
+  createdAt: string;
+  replacedByFileId?: string | null;
+  replacesFileId?: string | null;
+};
+
 export type EmployeeProfileTabLiveV2Props = {
   readOnly: boolean;
   employeeName: string;
@@ -161,9 +171,12 @@ export type EmployeeProfileTabLiveV2Props = {
   cvUrl: string;
   rating: string;
   reviewsCount: string;
-  staffImageOptions: Array<{ label: string; value: string }>;
+  profilePhotoBusy: boolean;
+  profilePhotos: EmployeeProfilePhotoLiveV2[];
+  photoManagementEnabled: boolean;
   resolveAvatarFromAssets: (raw: string) => string;
-  onAvatarUrlChange: (value: string) => void;
+  onProfilePhotoChange: (file: File) => void | Promise<void>;
+  onProfilePhotoRemove: () => void | Promise<void>;
   onBioChange: (value: string) => void;
   onCvUrlChange: (value: string) => void;
   onRatingChange: (value: string) => void;
@@ -178,82 +191,167 @@ export function EmployeeProfileTabLiveV2({
   cvUrl,
   rating,
   reviewsCount,
-  staffImageOptions,
+  profilePhotoBusy,
+  profilePhotos,
+  photoManagementEnabled,
   resolveAvatarFromAssets,
-  onAvatarUrlChange,
+  onProfilePhotoChange,
+  onProfilePhotoRemove,
   onBioChange,
   onCvUrlChange,
   onRatingChange,
   onReviewsCountChange,
 }: EmployeeProfileTabLiveV2Props) {
-  const resolvedAvatar = resolveAvatarFromAssets(String(avatarUrl || "").trim());
-  const [imageSearch, setImageSearch] = useState("");
+  const resolvedAvatar =
+    resolveAvatarFromAssets(String(avatarUrl || "").trim());
 
-  const visibleImages = useMemo(() => {
-    const query = imageSearch.trim().toLocaleLowerCase("ar");
-    if (!query) return staffImageOptions;
-    return staffImageOptions.filter((item) => item.label.toLocaleLowerCase("ar").includes(query));
-  }, [imageSearch, staffImageOptions]);
+  const historicalPhotos = profilePhotos.filter(
+    (photo) =>
+      String(photo.status || "").toLowerCase() !== "active"
+  );
+
+  const photoStatusLabel = (status: string) => {
+    const value = String(status || "").toLowerCase();
+
+    if (value === "replaced") return "مستبدلة";
+    if (value === "archived") return "مؤرشفة";
+    if (value === "active") return "الحالية";
+
+    return value || "غير معروف";
+  };
 
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
         title="الصورة الشخصية والملف العام"
-        description="إدارة الصورة الشخصية والنبذة والتقييم والسيرة الذاتية ضمن مركز الملفات والصور."
-        badge={<WorkspaceStatusBadgeV2 tone={resolvedAvatar ? "success" : "gold"}>{resolvedAvatar ? "الصورة جاهزة" : "بدون صورة"}</WorkspaceStatusBadgeV2>}
+        description="إدارة الصورة الشخصية والسيرة والتقييم وسجل الصور السابقة."
+        badge={
+          <WorkspaceStatusBadgeV2
+            tone={resolvedAvatar ? "success" : "gold"}
+          >
+            {resolvedAvatar ? "الصورة جاهزة" : "بدون صورة"}
+          </WorkspaceStatusBadgeV2>
+        }
       />
 
       <div className="dsv2-ew-grid dsv2-ew-grid--profile">
-        <WorkspaceCardV2 title="معاينة الملف" description="الصورة الحالية المستخدمة في الحجز وصفحة من نحن.">
-          <div className="dsv2-ew-photo-panel" data-state={resolvedAvatar ? "ready" : "missing"}>
+        <WorkspaceCardV2
+          title="الصورة الشخصية"
+          description="الصورة الحالية المعتمدة في ملف الموظفة."
+        >
+          <div
+            className="dsv2-ew-photo-panel"
+            data-state={resolvedAvatar ? "ready" : "missing"}
+          >
             {resolvedAvatar ? (
               <EmployeeAvatar
                 className="dsv2-ew-photo"
                 src={resolvedAvatar}
                 name={employeeName || "موظفة"}
-                alt={employeeName ? `صورة ${employeeName}` : "صورة الموظفة"}
+                alt={
+                  employeeName
+                    ? `صورة ${employeeName}`
+                    : "صورة الموظفة"
+                }
                 loading="eager"
               />
             ) : (
               <div className="dsv2-ew-photo-placeholder">
                 <strong>لا توجد صورة</strong>
-                <span>اختاري صورة جاهزة أو أضيفي رابطًا مباشرًا.</span>
+                <span>
+                  ارفعي صورة شخصية من الجهاز.
+                </span>
               </div>
             )}
           </div>
 
+          {photoManagementEnabled ? (
+            <div className="dsv2-ew-gallery">
+              <label
+                className="dsv2-ew-gallery__add"
+                aria-disabled={
+                  readOnly || profilePhotoBusy ? "true" : "false"
+                }
+              >
+                {profilePhotoBusy
+                  ? "جاري رفع الصورة..."
+                  : resolvedAvatar
+                    ? "تغيير الصورة"
+                    : "رفع صورة"}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={readOnly || profilePhotoBusy}
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+
+                    if (file) {
+                      void onProfilePhotoChange(file);
+                    }
+
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+
+              {resolvedAvatar ? (
+                <button
+                  type="button"
+                  className="dsv2-ew-gallery__add"
+                  disabled={readOnly || profilePhotoBusy}
+                  onClick={() => void onProfilePhotoRemove()}
+                >
+                  حذف الصورة
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <WorkspaceNoticeV2
+              title="إدارة الصورة غير متاحة"
+              description="يجب حفظ سجل الموظفة أولًا قبل إدارة الصورة الشخصية."
+              tone="neutral"
+            />
+          )}
+
           <div className="dsv2-ew-rating-summary">
             <div>
               <span>التقييم</span>
-              <strong>{rating || "—"}{rating ? " / 5" : ""}</strong>
+              <strong>
+                {rating || "—"}
+                {rating ? " / 5" : ""}
+              </strong>
               <small>{reviewsCount || "0"} تقييم</small>
             </div>
           </div>
         </WorkspaceCardV2>
 
-        <WorkspaceCardV2 title="بيانات الوسائط" description="روابط الصورة والسيرة والتقييم الظاهر للعميلات.">
+        <WorkspaceCardV2
+          title="بيانات الملف العام"
+          description="السيرة والتقييمات المرتبطة بملف الموظفة."
+        >
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-            <DashboardFieldV2 id="employee-live-v2-avatar-url" label="رابط الصورة">
-              <input
-                id="employee-live-v2-avatar-url"
-                className="dsv2-input"
-                dir="ltr"
-                value={avatarUrl}
-                disabled={readOnly}
-                onChange={(event) => onAvatarUrlChange(event.target.value)}
-              />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-cv-url" label="رابط السيرة الذاتية">
+            <DashboardFieldV2
+              id="employee-live-v2-cv-url"
+              label="رابط السيرة الذاتية"
+            >
               <input
                 id="employee-live-v2-cv-url"
                 className="dsv2-input"
                 dir="ltr"
                 value={cvUrl}
                 disabled={readOnly}
-                onChange={(event) => onCvUrlChange(event.target.value)}
+                onChange={(event) =>
+                  onCvUrlChange(event.target.value)
+                }
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-rating" label="تقييم العرض">
+
+            <DashboardFieldV2
+              id="employee-live-v2-rating"
+              label="تقييم العرض"
+            >
               <DashboardNumberInputV2
                 id="employee-live-v2-rating"
                 className="dsv2-input"
@@ -262,10 +360,16 @@ export function EmployeeProfileTabLiveV2({
                 step="0.1"
                 value={rating}
                 disabled={readOnly}
-                onChange={(event) => onRatingChange(event.target.value)}
+                onChange={(event) =>
+                  onRatingChange(event.target.value)
+                }
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-reviews" label="عدد التقييمات">
+
+            <DashboardFieldV2
+              id="employee-live-v2-reviews"
+              label="عدد التقييمات"
+            >
               <DashboardNumberInputV2
                 id="employee-live-v2-reviews"
                 className="dsv2-input"
@@ -273,65 +377,71 @@ export function EmployeeProfileTabLiveV2({
                 step="1"
                 value={reviewsCount}
                 disabled={readOnly}
-                onChange={(event) => onReviewsCountChange(event.target.value)}
+                onChange={(event) =>
+                  onReviewsCountChange(event.target.value)
+                }
               />
             </DashboardFieldV2>
           </div>
         </WorkspaceCardV2>
       </div>
 
-      <WorkspaceCardV2 title="النبذة التعريفية" description="النص الذي يظهر للعميلات عند استعراض الموظفة.">
-        <DashboardFieldV2 id="employee-live-v2-bio" label="النبذة" hint={`${bio.length} حرف`}>
+      <WorkspaceCardV2
+        title="النبذة التعريفية"
+        description="النص الذي يظهر للعميلات عند استعراض الموظفة."
+      >
+        <DashboardFieldV2
+          id="employee-live-v2-bio"
+          label="النبذة"
+          hint={`${bio.length} حرف`}
+        >
           <textarea
             id="employee-live-v2-bio"
             className="dsv2-textarea dsv2-ew-bio"
             rows={6}
             value={bio}
             disabled={readOnly}
-            onChange={(event) => onBioChange(event.target.value)}
+            onChange={(event) =>
+              onBioChange(event.target.value)
+            }
           />
         </DashboardFieldV2>
       </WorkspaceCardV2>
 
-      <WorkspaceCardV2 title="معرض الصور" description="اختيار صورة من الأصول الحالية دون استخدام CSS القديم.">
-        <DashboardFieldV2 id="employee-live-v2-image-search" label="البحث داخل الصور">
-          <input
-            id="employee-live-v2-image-search"
-            className="dsv2-input"
-            value={imageSearch}
-            placeholder="اسم الصورة"
-            onChange={(event) => setImageSearch(event.target.value)}
-          />
-        </DashboardFieldV2>
-
-        <div className="dsv2-ew-gallery">
-          <button
-            type="button"
-            className="dsv2-ew-gallery__add"
-            disabled={readOnly}
-            onClick={() => onAvatarUrlChange("")}
-          >
-            إزالة الصورة
-          </button>
-          {visibleImages.map((image) => {
-            const src = resolveAvatarFromAssets(image.value);
-            const selected = Boolean(src && resolvedAvatar && src === resolvedAvatar);
-            return (
-              <button
-                key={image.value}
-                type="button"
+      <WorkspaceCardV2
+        title="سجل الصور السابقة"
+        description="الصور المستبدلة أو المؤرشفة تبقى محفوظة للسجل دون حذفها من R2."
+      >
+        {historicalPhotos.length ? (
+          <div className="dsv2-ew-gallery">
+            {historicalPhotos.map((photo) => (
+              <div
+                key={photo.id}
                 className="dsv2-ew-gallery__item"
-                data-selected={selected ? "true" : "false"}
-                disabled={readOnly}
-                onClick={() => onAvatarUrlChange(image.value)}
               >
-                {src ? <img src={src} alt={image.label} /> : <span>لا توجد معاينة</span>}
-                <strong>{image.label}</strong>
-                <small>{selected ? "الصورة الحالية" : "اختيار"}</small>
-              </button>
-            );
-          })}
-        </div>
+                <strong>
+                  {photo.fileName || "صورة شخصية"}
+                </strong>
+
+                <small>
+                  {photoStatusLabel(photo.status)}
+                </small>
+
+                <small>
+                  {photo.createdAt
+                    ? new Date(photo.createdAt).toLocaleString("ar-SA")
+                    : "بدون تاريخ"}
+                </small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <WorkspaceNoticeV2
+            title="لا توجد صور سابقة"
+            description="عند تغيير أو حذف الصورة الحالية ستظهر النسخ السابقة هنا."
+            tone="neutral"
+          />
+        )}
       </WorkspaceCardV2>
     </div>
   );

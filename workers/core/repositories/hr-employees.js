@@ -135,6 +135,21 @@ async function schedulesFor(db, salonId, employeeId) {
   );
 }
 
+export async function getHrEmployeeAvatarProfile(db, salonId, id) {
+  const employeeId = requiredId(id);
+  const profile = await dbFirst(
+    db,
+    `SELECT id, status, avatar_file_id, show_on_about
+       FROM employee_profiles
+      WHERE salon_id = ? AND id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  if (!profile) rowNotFound('employee');
+  return profile;
+}
+
 export async function getHrEmployee(db, salonId, id) {
   const employeeId = requiredId(id);
   const profile = await dbFirst(
@@ -225,9 +240,10 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
       data.phone === undefined && personal.phone === undefined
         ? (existing?.phone_normalized || null)
         : (normalizePhone(data.phone ?? personal.phone) || null),
-    avatar_file_id: optionalText(
-      data.avatarFileId ?? data.avatar_file_id ?? existing?.avatar_file_id
-    ) || null,
+    avatar_file_id: nullableTextField(
+      [[data, 'avatarFileId'], [data, 'avatar_file_id']],
+      existing?.avatar_file_id
+    ),
     avatar_url: nullableTextField([[data, 'avatarUrl'], [data, 'avatar_url']], existing?.avatar_url),
     bio: nullableTextField([[data, 'bio']], existing?.bio),
     cv_url: nullableTextField([[data, 'cvUrl'], [data, 'cv_url']], existing?.cv_url),

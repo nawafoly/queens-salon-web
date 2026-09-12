@@ -136,8 +136,7 @@ export async function putFileContent(db, salonId, idValue, request, env, options
   return getFileMetadata(db, salonId, metadata.id);
 }
 
-export async function getFileContent(db, salonId, idValue, env) {
-  const metadata = await getFileMetadata(db, salonId, idValue);
+export async function getFileContentFromMetadata(metadata, env) {
   const bucket = requireBucket(env);
   const object = await bucket.get(metadata.storage_key);
   if (!object) throw new AppError(404, 'files_r2:content_not_found');
@@ -147,4 +146,9 @@ export async function getFileContent(db, salonId, idValue, env) {
   headers.set('Content-Disposition', `inline; filename="${metadata.file_name.replace(/"/g, '')}"`);
   headers.set('Cache-Control', 'private, max-age=60');
   return new Response(object.body, { headers });
+}
+
+export async function getFileContent(db, salonId, idValue, env) {
+  const metadata = await getFileMetadata(db, salonId, idValue);
+  return getFileContentFromMetadata(metadata, env);
 }

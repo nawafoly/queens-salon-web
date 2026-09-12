@@ -42,6 +42,14 @@ import type {
 } from "../types/hrCoreApi";
 import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
+import {
+  archiveCoreEmployeeProfilePhoto,
+  coreEmployeeAvatarUrl,
+  listCoreEmployeeProfilePhotos,
+  markCoreEmployeeProfilePhotoReplaced,
+  uploadCoreEmployeeProfilePhoto,
+  type CoreEmployeeProfilePhoto,
+} from "../services/employeeProfilePhotoCore";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
@@ -1834,6 +1842,9 @@ function DashboardEmployeesContent() {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarFileId, setAvatarFileId] = useState("");
+  const [profilePhotos, setProfilePhotos] = useState<CoreEmployeeProfilePhoto[]>([]);
+  const [profilePhotoBusy, setProfilePhotoBusy] = useState(false);
   const [cvUrl, setCvUrl] = useState("");
   const [rating, setRating] = useState("");
   const [reviewsCount, setReviewsCount] = useState("");
@@ -3390,6 +3401,7 @@ function DashboardEmployeesContent() {
     setName("");
     setBio("");
     setAvatarUrl("");
+    setAvatarFileId("");
     setCvUrl("");
     setRating("");
     setReviewsCount("");
@@ -3488,6 +3500,7 @@ function DashboardEmployeesContent() {
     setName(x.name ?? "");
     setBio(x.bio ?? "");
     setAvatarUrl(resolveAvatarFromAssets(pickAvatarUrl(x as any)));
+    setAvatarFileId(cleanText((x as any).avatarFileId ?? (x as any).avatar_file_id));
     setCvUrl((x as any).cvUrl ?? "");
     setRating(String((x as any).rating ?? ""));
     setReviewsCount(String((x as any).reviewsCount ?? (x as any).reviewCount ?? ""));
@@ -5245,6 +5258,140 @@ function DashboardEmployeesContent() {
     };
   }, [editId]);
 
+  const currentProfilePhotoEmployeeId = cleanText(
+    selectedEmployeeId || editId || ""
+  );
+
+  const refreshProfilePhotos = useCallback(async () => {
+    const employeeId = currentProfilePhotoEmployeeId;
+
+    if (!employeeId) {
+      setProfilePhotos([]);
+      return;
+    }
+
+    try {
+      const rows = await listCoreEmployeeProfilePhotos(employeeId);
+      setProfilePhotos(rows);
+    } catch (error) {
+      console.error("[employee-profile-photo] history load failed", error);
+      setProfilePhotos([]);
+    }
+  }, [currentProfilePhotoEmployeeId]);
+
+  useEffect(() => {
+    if (!currentProfilePhotoEmployeeId || activeTab !== "profile") return;
+    void refreshProfilePhotos();
+  }, [
+    currentProfilePhotoEmployeeId,
+    activeTab,
+    refreshProfilePhotos,
+  ]);
+
+  const changeEmployeeProfilePhoto = useCallback(
+    async (file: File) => {
+      const employeeId = currentProfilePhotoEmployeeId;
+      if (!employeeId || profilePhotoBusy) return;
+
+      const previousFileId = cleanText(avatarFileId);
+      let uploadedFileId = "";
+
+      setProfilePhotoBusy(true);
+      setErrorMsg("");
+
+      try {
+        const uploaded = await uploadCoreEmployeeProfilePhoto({
+          employeeId,
+          file,
+          replacesFileId: previousFileId || undefined,
+        });
+
+        uploadedFileId = uploaded.id;
+        const publicAvatarUrl = coreEmployeeAvatarUrl(employeeId);
+
+        await CoreHrService.saveEmployee({
+          id: employeeId,
+          avatarFileId: uploaded.id,
+          avatarUrl: publicAvatarUrl,
+        });
+
+        if (previousFileId && previousFileId !== uploaded.id) {
+          await markCoreEmployeeProfilePhotoReplaced(
+            previousFileId,
+            uploaded.id
+          );
+        }
+
+        setAvatarFileId(uploaded.id);
+        setAvatarUrl(publicAvatarUrl);
+        await refreshProfilePhotos();
+      } catch (error) {
+        if (uploadedFileId) {
+          await archiveCoreEmployeeProfilePhoto(uploadedFileId).catch(() => {});
+        }
+
+        console.error("[employee-profile-photo] upload failed", error);
+        setErrorMsg("تعذر تحميل سجل الصور الشخصية. تم إبقاء الصورة الحالية.");
+      } finally {
+        setProfilePhotoBusy(false);
+      }
+    },
+    [
+      avatarFileId,
+      currentProfilePhotoEmployeeId,
+      profilePhotoBusy,
+      refreshProfilePhotos,
+    ]
+  );
+
+  const removeEmployeeProfilePhoto = useCallback(async () => {
+    const employeeId = currentProfilePhotoEmployeeId;
+    const currentFileId = cleanText(avatarFileId);
+
+    if (!employeeId || profilePhotoBusy || (!currentFileId && !avatarUrl)) return;
+
+    const ok = await requestConfirmation({
+      title: "إزالة الصورة الشخصية",
+      description:
+        "سيتم إزالة الصورة الشخصية من ملف الموظفة مع الاحتفاظ بها في السجل كصورة مؤرشفة.",
+      confirmLabel: "إزالة الصورة",
+      tone: "danger",
+    });
+
+    if (!ok) return;
+
+    setProfilePhotoBusy(true);
+    setErrorMsg("");
+
+    try {
+      await CoreHrService.saveEmployee({
+        id: employeeId,
+        avatarFileId: null,
+        avatarUrl: null,
+      });
+
+      if (currentFileId) {
+        await archiveCoreEmployeeProfilePhoto(currentFileId);
+      }
+
+      setAvatarFileId("");
+      setAvatarUrl("");
+      await refreshProfilePhotos();
+    } catch (error) {
+      console.error("[employee-profile-photo] remove failed", error);
+      setErrorMsg("تعذر إزالة الصورة الشخصية.");
+    } finally {
+      setProfilePhotoBusy(false);
+    }
+  }, [
+    avatarFileId,
+    avatarUrl,
+    currentProfilePhotoEmployeeId,
+    profilePhotoBusy,
+    refreshProfilePhotos,
+    requestConfirmation,
+  ]);
+
   const save = async (options?: { createLogin?: boolean }) => {
     if (!ensureCanManage()) return;
     const isCreatingEmployee = !editId;
@@ -5550,6 +5697,7 @@ function DashboardEmployeesContent() {
 
       specialties: specialtiesFixed,
       bio: bio.trim(),
+      avatarFileId: cleanText(avatarFileId) || null,
       avatarUrl: avatarUrl.trim(),
       cvUrl: cvUrl.trim(),
       rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
@@ -5611,6 +5759,9 @@ function DashboardEmployeesContent() {
           cleanText(
             payload.phone
           ),
+        avatarFileId:
+          cleanText(payload.avatarFileId) || null,
+
         avatarUrl:
           cleanText(payload.avatarUrl),
 
@@ -10116,14 +10267,18 @@ const canonicalSchedules =
               />
               <ProfileSection
                 isVisible={(!editingStaff && modalTab === "profile") || (!!editingStaff && activeTab === "profile")}
+                employeeName={name || cleanText((editingStaff as any)?.name)}
                 avatarUrl={avatarUrl}
                 bio={bio}
                 cvUrl={cvUrl}
                 rating={rating}
                 reviewsCount={reviewsCount}
-                staffImageOptions={STAFF_IMAGE_OPTIONS}
+                profilePhotoBusy={profilePhotoBusy}
+                profilePhotos={profilePhotos}
+                photoManagementEnabled={Boolean(currentProfilePhotoEmployeeId)}
                 resolveAvatarFromAssets={resolveAvatarFromAssets}
-                onAvatarUrlChange={setAvatarUrl}
+                onProfilePhotoChange={changeEmployeeProfilePhoto}
+                onProfilePhotoRemove={removeEmployeeProfilePhoto}
                 onBioChange={setBio}
                 onCvUrlChange={setCvUrl}
                 onRatingChange={setRating}
