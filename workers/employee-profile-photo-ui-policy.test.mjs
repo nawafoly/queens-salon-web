@@ -108,3 +108,29 @@ test("photo mutations stay behind the loaded employee revision fence", () => {
     );
   }
 });
+
+
+test("attendance deletion is not gated by employee profile revision", () => {
+  const start = dashboard.indexOf(
+    "const deleteAttendancePunch = useCallback"
+  );
+  const end = dashboard.indexOf(
+    "const ",
+    start + 10
+  );
+
+  assert.ok(start >= 0, "deleteAttendancePunch handler is missing");
+  assert.ok(end > start, "deleteAttendancePunch handler boundary is missing");
+
+  const block = dashboard.slice(start, end);
+
+  assert.doesNotMatch(
+    block,
+    /coreEmployeeUpdatedAtBaselineRef\.current/
+  );
+
+  assert.doesNotMatch(
+    block,
+    /expectedUpdatedAt/
+  );
+});
