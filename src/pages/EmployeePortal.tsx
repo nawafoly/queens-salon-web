@@ -416,7 +416,6 @@ export default function EmployeePortal() {
     { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/requests?new=overtime", permission: "employee_requests.own.create" as AppPermission },
     { label: "طلب سلفة", description: "طلب سلفة يراجع من الموارد البشرية", icon: faWallet, to: "/employee/requests?new=salary_advance", permission: "employee_requests.own.create" as AppPermission },
     { label: "تعريف بالراتب", description: "طلب إصدار تعريف بالراتب", icon: faFileLines, to: "/employee/requests?new=salary_certificate", permission: "employee_requests.own.create" as AppPermission },
-    { label: "تعويض مالي بدل إجازة", description: "صرف قيمة أيام من رصيد الإجازة", icon: faWallet, to: "/employee/requests?new=exceptional_financial_payment", permission: "employee_requests.own.create" as AppPermission },
     { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/requests?new=leave", permission: "employee_requests.own.create" as AppPermission },
     { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/requests?new=exit_return", permission: "employee_requests.own.create" as AppPermission },
     { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
