@@ -101,7 +101,6 @@ type EmployeeStatsSectionProps = {
     summary: PayrollSummary;
     setupPreview: PayrollSetupPreview;
     savingSettings: boolean;
-    settingsMessage?: string;
     onMonthlySalaryChange: (value: string) => void;
     onHousingAllowanceChange: (value: string) => void;
     onTransportationAllowanceChange: (value: string) => void;
@@ -277,7 +276,6 @@ export default function EmployeeStatsSection({
             payroll.attendancePayrollExemptionReason
           }
           savingSettings={payroll.savingSettings}
-          settingsMessage={payroll.settingsMessage}
           onMonthlySalaryChange={payroll.onMonthlySalaryChange}
           onHousingAllowanceChange={payroll.onHousingAllowanceChange}
           onTransportationAllowanceChange={payroll.onTransportationAllowanceChange}

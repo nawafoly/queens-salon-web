@@ -2004,7 +2004,6 @@ function DashboardEmployeesContent() {
     setPayrollAttendanceExemptionReason,
   ] = useState("");
   const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
-  const [payrollSettingsMessage, setPayrollSettingsMessage] = useState("");
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
   const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("");
   const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("");
@@ -3460,7 +3459,6 @@ function DashboardEmployeesContent() {
     setPayrollDeductionMethod("hourly");
     setPayrollAttendanceMode("required");
     setPayrollAttendanceExemptionReason("");
-    setPayrollSettingsMessage("");
     setOvertimeMethod("hours_from_salary");
     setOvertimeDaysPerMonth("");
     setOvertimeBaseHoursPerDay("");
@@ -3665,7 +3663,6 @@ function DashboardEmployeesContent() {
           (x as any).attendance_payroll_exemption_reason
       )
     );
-    setPayrollSettingsMessage("");
     setOvertimeMethod(payrollCfg.method);
     setOvertimeDaysPerMonth(
       positiveInputString(
@@ -5044,7 +5041,6 @@ function DashboardEmployeesContent() {
 
     setPayrollSettingsSaving(true);
     setErrorMsg("");
-    setPayrollSettingsMessage("");
     try {
       const existingCoreEmployee = await CoreHrService.getEmployee(targetEmployeeId).catch(() => null);
       const existingEmployment = (existingCoreEmployee?.employment || {}) as Record<string, unknown>;
@@ -5138,7 +5134,7 @@ function DashboardEmployeesContent() {
             : employee
         )
       );
-      setPayrollSettingsMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
+      setSaveMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب."));
     } finally {
@@ -9768,7 +9764,6 @@ const canonicalSchedules =
                   summary: modalPayrollMonthSummary,
                   setupPreview: payrollSettingsPreview,
                   savingSettings: payrollSettingsSaving,
-                  settingsMessage: payrollSettingsMessage,
                   onMonthlySalaryChange: setMonthlySalary,
                   onHousingAllowanceChange: setPayrollHousingAllowance,
                   onTransportationAllowanceChange: setPayrollTransportationAllowance,
