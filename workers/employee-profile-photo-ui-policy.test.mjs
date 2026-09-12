@@ -67,3 +67,39 @@ test("employee profile photo removal clears pointer before archival", () => {
   assert.ok(saveIndex >= 0, "avatar pointer clear is missing");
   assert.ok(archiveIndex > saveIndex, "old photo must archive only after pointer clear");
 });
+
+
+test("photo mutations stay behind the loaded employee revision fence", () => {
+  const changeStart = dashboard.indexOf(
+    "const changeEmployeeProfilePhoto = useCallback"
+  );
+  const removeStart = dashboard.indexOf(
+    "const removeEmployeeProfilePhoto = useCallback"
+  );
+  const saveStart = dashboard.indexOf(
+    "const save = async",
+    removeStart
+  );
+
+  assert.ok(changeStart >= 0);
+  assert.ok(removeStart > changeStart);
+  assert.ok(saveStart > removeStart);
+
+  const changeBlock = dashboard.slice(changeStart, removeStart);
+  const removeBlock = dashboard.slice(removeStart, saveStart);
+
+  for (const block of [changeBlock, removeBlock]) {
+    assert.match(
+      block,
+      /coreEmployeeUpdatedAtBaselineRef\.current/
+    );
+    assert.match(
+      block,
+      /enforceConcurrency:\s*true/
+    );
+    assert.match(
+      block,
+      /expectedUpdatedAt/
+    );
+  }
+});
