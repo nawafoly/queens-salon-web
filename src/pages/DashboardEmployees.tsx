@@ -3878,9 +3878,20 @@ function DashboardEmployeesContent() {
       return;
     }
     if (editId !== matched.id) openEdit(matched, false);
-    const resolvedRouteSection: EmployeeSplitTab = routeSection === "shifts" ? "booking" : routeSection;
-    if (routeSection === "shifts") {
-      navigate(`/dashboard/employees/${encodeURIComponent(matched.id)}/booking`, { replace: true });
+    const resolvedRouteSection: EmployeeSplitTab =
+      routeSection === "shifts"
+        ? "booking"
+        : routeSection === "files"
+          ? "profile"
+          : routeSection;
+    if (routeSection === "shifts" || routeSection === "files") {
+      const canonicalRouteSection =
+        routeSection === "shifts" ? "booking" : "profile";
+
+      navigate(
+        `/dashboard/employees/${encodeURIComponent(matched.id)}/${canonicalRouteSection}`,
+        { replace: true },
+      );
     }
     setActiveTab(resolvedRouteSection);
     if (["basic", "profile", "services", "booking"].includes(resolvedRouteSection)) {
@@ -8497,7 +8508,7 @@ const canonicalSchedules =
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
     { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
-    { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
+    { key: "profile", label: "الملفات والصور", hint: "الصورة والمستندات والمرفقات والسجل", icon: faFileLines },
     { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
     { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
     ...(canViewAttendance
@@ -8514,9 +8525,6 @@ const canonicalSchedules =
       : []),
     ...(canViewEmployeeMessages
       ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
-      : []),
-    ...(canViewEmployeeFiles
-      ? [{ key: "files" as EmployeeSplitTab, label: "الملفات", hint: "المستندات", icon: faFileLines }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
@@ -9476,7 +9484,7 @@ const canonicalSchedules =
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
-    const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab;
+    const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab === "files" ? "profile" : tab;
     if (selectedEmployeeId) {
       navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${resolvedTab}`);
     }
@@ -10158,7 +10166,7 @@ const canonicalSchedules =
               ) : null}
               {editingStaff ? (
                 <EmployeeFilesSection
-                  isVisible={activeTab === "files" && canViewEmployeeFiles}
+                  isVisible={activeTab === "profile" && canViewEmployeeFiles}
                   employeeId={selectedEmployeeId || editingStaff.id}
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}

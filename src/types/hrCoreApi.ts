@@ -327,6 +327,7 @@ export type CoreFileMetadata = {
   salonId: string;
   employeeId?: string | null;
   category: string;
+  documentType?: string | null;
   title?: string | null;
   description?: string | null;
   fileName: string;

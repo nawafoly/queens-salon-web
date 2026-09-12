@@ -9,6 +9,17 @@ function requireBucket(env) {
   return env.FILES_BUCKET;
 }
 
+const ALLOWED_DOCUMENT_TYPES = new Set(['identity', 'contract', 'certificate', 'other']);
+
+function normalizeDocumentType(value) {
+  const documentType = cleanText(value).toLowerCase();
+  if (!documentType) return null;
+  if (!ALLOWED_DOCUMENT_TYPES.has(documentType)) {
+    throw new AppError(400, 'files_r2:invalid_document_type');
+  }
+  return documentType;
+}
+
 export async function listFileMetadata(db, salonId, query = {}) {
   const employeeId = cleanText(query.employeeId || query.employee_id);
   const category = cleanText(query.category);
@@ -57,6 +68,7 @@ export async function createFileMetadata(db, salonId, data, actor = {}) {
     salon_id: salonId,
     employee_id: optionalText(data.employeeId || data.employee_id) || null,
     category: requiredText(data.category || 'general', 'category', 120),
+    document_type: normalizeDocumentType(data.documentType || data.document_type),
     title: optionalText(data.title) || null,
     description: optionalText(data.description) || null,
     file_name: requiredText(data.fileName || data.file_name, 'fileName', 300),
@@ -73,10 +85,10 @@ export async function createFileMetadata(db, salonId, data, actor = {}) {
     updated_at: now,
   };
   await dbRun(db, `INSERT INTO file_metadata
-    (id, salon_id, employee_id, category, title, description, file_name, storage_key, bucket_name,
+    (id, salon_id, employee_id, category, document_type, title, description, file_name, storage_key, bucket_name,
      content_type, size_bytes, status, visibility, uploaded_by_uid, replaced_by_file_id, replaces_file_id,
      created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(row));
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(row));
   return row;
 }
 
@@ -92,6 +104,9 @@ export async function patchFileMetadata(db, salonId, idValue, data = {}) {
 
   const title = data.title === undefined ? existing.title : optionalText(data.title) || null;
   const description = data.description === undefined ? existing.description : optionalText(data.description) || null;
+  const documentType = data.documentType === undefined && data.document_type === undefined
+    ? normalizeDocumentType(existing.document_type)
+    : normalizeDocumentType(data.documentType || data.document_type);
   const replacedByFileId = data.replacedByFileId === undefined && data.replaced_by_file_id === undefined
     ? existing.replaced_by_file_id
     : optionalText(data.replacedByFileId || data.replaced_by_file_id) || null;
@@ -100,9 +115,9 @@ export async function patchFileMetadata(db, salonId, idValue, data = {}) {
     : optionalText(data.replacesFileId || data.replaces_file_id) || null;
 
   await dbRun(db, `UPDATE file_metadata
-    SET title = ?, description = ?, status = ?, replaced_by_file_id = ?, replaces_file_id = ?, updated_at = ?
+    SET title = ?, description = ?, document_type = ?, status = ?, replaced_by_file_id = ?, replaces_file_id = ?, updated_at = ?
     WHERE salon_id = ? AND id = ?`, [
-    title, description, status, replacedByFileId, replacesFileId, nowIso(), salonId, existing.id,
+    title, description, documentType, status, replacedByFileId, replacesFileId, nowIso(), salonId, existing.id,
   ]);
   return getFileMetadata(db, salonId, existing.id);
 }
