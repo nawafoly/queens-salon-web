@@ -1722,9 +1722,18 @@ export async function reconcileLockedPayrollImpactForHrCorrection(
     leave.end_date
   );
 
-  // A leave explicitly marked as non-financial must not create a payroll
-  // carryover against an already approved or paid payroll period.
-  if (Number(leave.affects_payroll || 0) !== 1) {
+  const nonMonetaryTimeEntitlementLeaveTypes = new Set([
+    'weekly_rest_substitute_use',
+    'overtime_comp_time_use',
+  ]);
+
+  // Time-for-time entitlement leave must never create a monetary carryover
+  // against an already approved or paid payroll period.
+  if (
+    nonMonetaryTimeEntitlementLeaveTypes.has(
+      cleanText(leave.leave_type).toLowerCase()
+    )
+  ) {
     return {
       sourceType: 'employee_leave',
       sourceId: leave.id,
@@ -1737,7 +1746,7 @@ export async function reconcileLockedPayrollImpactForHrCorrection(
       lockedSourcePayrollMonths: [],
       results: [],
       skipped: true,
-      skipReason: 'leave_does_not_affect_payroll',
+      skipReason: 'non_monetary_time_entitlement_leave',
     };
   }
 
