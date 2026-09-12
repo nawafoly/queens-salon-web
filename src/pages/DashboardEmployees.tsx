@@ -3878,7 +3878,12 @@ function DashboardEmployeesContent() {
       return;
     }
     if (editId !== matched.id) openEdit(matched, false);
-    const resolvedRouteSection: EmployeeSplitTab = routeSection === "shifts" ? "booking" : routeSection;
+    const resolvedRouteSection: EmployeeSplitTab =
+      routeSection === "shifts"
+        ? "booking"
+        : routeSection === "files"
+          ? "profile"
+          : routeSection;
     if (routeSection === "shifts") {
       navigate(`/dashboard/employees/${encodeURIComponent(matched.id)}/booking`, { replace: true });
     }
@@ -9473,7 +9478,7 @@ const canonicalSchedules =
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
-    const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab;
+    const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab === "files" ? "profile" : tab;
     if (selectedEmployeeId) {
       navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${resolvedTab}`);
     }

@@ -92,11 +92,11 @@ function categoryOf(file: CoreEmployeeFile): FileCategory {
   if (legacyCategory === "\u0634\u0647\u0627\u062f\u0627\u062a") return "certificate";
   if (legacyCategory === "\u0623\u062e\u0631\u0649") return "other";
 
-  const text = `${cleanText(file.fileType)} ${cleanText(file.title)} ${cleanText(file.fileName)}`.toLowerCase();
+  const text = `${cleanText(file.fileType)} ${cleanText(file.title)} ${cleanText(file.fileName)} ${cleanText(file.notes)}`.toLowerCase();
 
-  if (/identity|id/.test(text)) return "identity";
-  if (/contract/.test(text)) return "contract";
-  if (/certificate|cert/.test(text)) return "certificate";
+  if (/identity|id|\u0647\u0648\u064a\u0629|\u0627\u0642\u0627\u0645\u0629|\u0625\u0642\u0627\u0645\u0629|\u0628\u0637\u0627\u0642\u0629/.test(text)) return "identity";
+  if (/contract|\u0639\u0642\u062f|\u0627\u062a\u0641\u0627\u0642/.test(text)) return "contract";
+  if (/certificate|cert|\u0634\u0647\u0627\u062f\u0629|\u0635\u062d\u064a\u0629|\u0645\u0647\u0646\u064a\u0629/.test(text)) return "certificate";
 
   return "other";
 }
@@ -324,6 +324,10 @@ export default function EmployeeFilesSection({
   const restoreFile = async (file: CoreEmployeeFile) => {
     if (!canManage || saving) return;
     if (cleanText(file.status).toLowerCase() !== "archived") return;
+    if (file.sizeBytes === null || file.sizeBytes === undefined) {
+      setError("\u0644\u0627 \u064a\0645\u0643\u0646 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0647\u0630\u0627 \u0627\u0644\u0633\u062c\u0644 \u0644\u0623\u0646 \u0645\u062d\u062a\u0648\u0649 \u0627\u0644\u0645\u0644\u0641 \u0644\u0645 \u064a\u0643\u062a\u0645\u0644 \u0631\u0641\u0639\u0647.");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -560,7 +564,7 @@ export default function EmployeeFilesSection({
                     {"\u062a\u0646\u0632\u064a\u0644"}
                   </button>
 
-                  {status === "archived" ? (
+                  {status === "archived" && file.sizeBytes !== null && file.sizeBytes !== undefined ? (
                     <button
                       type="button"
                       className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
