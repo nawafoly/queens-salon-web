@@ -1368,7 +1368,6 @@ export type EmployeePayrollTabLiveV2Props = {
   attendancePayrollMode: "required" | "exempt";
   attendancePayrollExemptionReason: string;
   savingSettings: boolean;
-  settingsMessage?: string;
   onMonthlySalaryChange: (value: string) => void;
   onHousingAllowanceChange: (value: string) => void;
   onTransportationAllowanceChange: (value: string) => void;
@@ -1417,7 +1416,6 @@ export function EmployeePayrollTabLiveV2({
   attendancePayrollMode,
   attendancePayrollExemptionReason,
   savingSettings,
-  settingsMessage,
   onMonthlySalaryChange,
   onHousingAllowanceChange,
   onTransportationAllowanceChange,
@@ -1470,10 +1468,6 @@ export function EmployeePayrollTabLiveV2({
           {savingSettings ? "جاري الحفظ..." : "حفظ إعدادات الراتب والتأمينات"}
         </button>
       </div>
-
-      {settingsMessage ? (
-        <WorkspaceNoticeV2 title="حالة الحفظ" description={settingsMessage} tone="success" />
-      ) : null}
 
       <WorkspaceCardV2
         title="هيكل الراتب والدوام"
