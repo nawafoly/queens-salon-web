@@ -180,6 +180,51 @@ test('historical HR correction keeps carryover source, amount, direction and tar
 });
 
 
+test('non-financial leave cannot create carryover against locked payroll', async () => {
+  const source = await readFile(
+    new URL('./core/repositories/payroll.js', import.meta.url),
+    'utf8'
+  );
+
+  const start = source.indexOf(
+    'export async function reconcileLockedPayrollImpactForHrCorrection('
+  );
+  const end = source.indexOf(
+    '\nconst PAYROLL_ENTRY_MUTATION_COLUMNS',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = source.slice(start, end);
+
+  assert.match(
+    fn,
+    /leave_type,\s+affects_payroll,\s+start_date/
+  );
+
+  assert.match(
+    fn,
+    /Number\(leave\.affects_payroll \|\| 0\) !== 1/
+  );
+
+  assert.match(
+    fn,
+    /skipReason: 'leave_does_not_affect_payroll'/
+  );
+
+  const guard = fn.indexOf(
+    "skipReason: 'leave_does_not_affect_payroll'"
+  );
+  const lockedPayrollRead = fn.indexOf(
+    'FROM payroll_entries'
+  );
+
+  assert.ok(guard >= 0);
+  assert.ok(lockedPayrollRead > guard);
+});
+
 test('linked permission reversal completes before historical payroll reconciliation', async () => {
   const source = await readFile(
     new URL(
