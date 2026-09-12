@@ -267,3 +267,13 @@
     -webkit-print-color-adjust: exact;
   }
 }
+.signature-capture-field__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.signature-capture-field__upload {
+  color: #997019;
+}

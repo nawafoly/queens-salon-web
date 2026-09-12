@@ -10,6 +10,7 @@ type Props = {
   required?: boolean;
   compact?: boolean;
   disabled?: boolean;
+  allowUpload?: boolean;
 };
 
 const CANVAS_WIDTH = 900;
@@ -45,11 +46,13 @@ export default function SignatureCaptureField({
   required = false,
   compact = false,
   disabled = false,
+  allowUpload = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [hasInk, setHasInk] = useState(false);
   const [error, setError] = useState("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const drawingRef = useRef(false);
 
   useEffect(() => {
@@ -124,6 +127,43 @@ export default function SignatureCaptureField({
     onChange(dataUrl);
     setOpen(false);
   };
+  const uploadSignature = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("يجب اختيار صورة PNG أو JPG أو WebP للتوقيع.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("حجم صورة التوقيع يجب ألا يتجاوز 5 ميجابايت.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+
+      if (!dataUrl.startsWith("data:image/")) {
+        setError("تعذر قراءة صورة التوقيع.");
+        return;
+      }
+
+      onChange(dataUrl);
+      setError("");
+      setOpen(false);
+    };
+
+    reader.onerror = () => {
+      setError("تعذر قراءة ملف التوقيع.");
+    };
+
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div className={`signature-capture-field ${compact ? "is-compact" : ""}`}>
@@ -143,11 +183,36 @@ export default function SignatureCaptureField({
           <span>اضغط لفتح لوحة التوقيع</span>
         )}
       </button>
-      {value && !disabled ? (
-        <button type="button" className="signature-capture-field__edit" onClick={() => setOpen(true)}>
-          تعديل التوقيع
-        </button>
-      ) : null}
+      <div className="signature-capture-field__actions">
+        {value && !disabled ? (
+          <button
+            type="button"
+            className="signature-capture-field__edit"
+            onClick={() => setOpen(true)}
+          >
+            تعديل التوقيع اليدوي
+          </button>
+        ) : null}
+
+        {allowUpload && !disabled ? (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={uploadSignature}
+            />
+            <button
+              type="button"
+              className="signature-capture-field__edit signature-capture-field__upload"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              رفع صورة توقيع
+            </button>
+          </>
+        ) : null}
+      </div>
 
       {open ? createPortal(
         <div className="signature-pad-modal" role="dialog" aria-modal="true" aria-label={label}>

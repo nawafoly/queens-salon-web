@@ -397,7 +397,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
       return;
     }
     if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
-      setDialogError("يجب توقيع القرار بخط اليد قبل اعتماده.");
+      setDialogError("يجب إضافة توقيع المعتمد، إما بالرسم اليدوي أو برفع صورة توقيع.");
       return;
     }
 
@@ -710,7 +710,8 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
             {decisionNeedsSignature ? (
               <SignatureCaptureField
                 required
-                label={salaryCertificateApproval ? "التوقيع اليدوي للمعتمد" : "توقيع المراجع / المسؤول"}
+                allowUpload={salaryCertificateApproval}
+                label={salaryCertificateApproval ? "توقيع المعتمد" : "توقيع المراجع / المسؤول"}
                 signerName={salaryCertificateApproval ? (dialog.reviewerName || "المعتمد") : String(session.displayName || session.email || "المراجع")}
                 value={dialog.signatureDataUrl}
                 onChange={(signatureDataUrl) => setDialog({ ...dialog, signatureDataUrl })}

@@ -340,3 +340,193 @@
     padding: 16px 12px;
   }
 }
+/* Salary certificate dedicated layout */
+.salary-certificate-print-root {
+  direction: rtl;
+}
+
+.salary-certificate-print-root .leave-doc-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding-bottom: 4mm;
+  margin-bottom: 4mm;
+  gap: 2mm;
+  text-align: center;
+  border-bottom: 1px solid #222;
+}
+
+.salary-certificate-print-root .salary-certificate-logo {
+  display: block;
+  width: 38mm;
+  max-width: 38mm;
+  height: auto;
+  max-height: 20mm;
+  object-fit: contain;
+  filter: brightness(0) contrast(100%);
+}
+
+.salary-certificate-print-root .leave-doc-header h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.salary-certificate-print-root .leave-doc-number {
+  margin: 0 0 3mm;
+  text-align: right;
+  font-size: 10px;
+}
+
+.salary-certificate-print-root .leave-doc-letter {
+  margin: 0 0 4mm;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.salary-certificate-print-root .leave-doc-letter p {
+  margin: 0.7mm 0;
+}
+
+.salary-certificate-print-root .leave-doc-greeting {
+  margin-top: 2mm !important;
+  margin-bottom: 2mm !important;
+}
+
+.salary-certificate-print-root .document-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3mm 10mm;
+  margin-bottom: 4mm;
+}
+
+.salary-certificate-print-root .document-section {
+  margin-top: 4mm;
+}
+
+.salary-certificate-print-root .document-section h3 {
+  margin-bottom: 2mm;
+}
+
+.salary-certificate-print-root .leave-doc-manager-opinion {
+  margin-top: 4mm;
+  padding-top: 3mm;
+}
+
+.salary-certificate-print-root .leave-doc-signature-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18mm;
+  margin-top: 3mm;
+}
+
+.salary-certificate-print-root .leave-doc-signature-cell {
+  min-height: 13mm;
+}
+
+.salary-certificate-print-root .leave-doc-admin-block {
+  margin-top: 3mm;
+  padding-top: 3mm;
+}
+
+.salary-certificate-print-root .salary-certificate-stamp-space {
+  min-height: 22mm;
+}
+
+.salary-certificate-print-root .leave-doc-copy-note {
+  margin-top: 3mm;
+  font-size: 7px;
+}
+
+@media print {
+  .salary-certificate-print-root {
+    box-sizing: border-box;
+    width: 210mm;
+    min-height: 0 !important;
+    height: 297mm;
+    max-height: 297mm;
+    overflow: hidden;
+    padding: 12mm 14mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .salary-certificate-print-root .leave-doc-header {
+    min-height: 0;
+    margin-bottom: 3mm;
+    padding-bottom: 3mm;
+  }
+
+  .salary-certificate-print-root .salary-certificate-logo {
+    width: 34mm;
+    max-width: 34mm;
+    max-height: 17mm;
+  }
+
+  .salary-certificate-print-root .leave-doc-header h2 {
+    font-size: 18px;
+  }
+
+  .salary-certificate-print-root .leave-doc-letter {
+    font-size: 10.5px;
+    line-height: 1.55;
+    margin-bottom: 3mm;
+  }
+
+  .salary-certificate-print-root .document-field-grid {
+    gap: 2mm 8mm;
+    margin-bottom: 3mm;
+  }
+
+  .salary-certificate-print-root .document-section {
+    margin-top: 3mm;
+  }
+
+  .salary-certificate-print-root .leave-doc-manager-opinion {
+    margin-top: 3mm;
+    padding-top: 2.5mm;
+  }
+
+  .salary-certificate-print-root .leave-doc-signature-row {
+    margin-top: 2mm;
+    gap: 14mm;
+  }
+
+  .salary-certificate-print-root .leave-doc-admin-block {
+    margin-top: 2.5mm;
+    padding-top: 2.5mm;
+  }
+
+  .salary-certificate-print-root .salary-certificate-stamp-space {
+    min-height: 18mm;
+  }
+
+  .salary-certificate-print-root .leave-doc-copy-note {
+    margin-top: 2mm;
+  }
+}
+.salary-certificate-print-root .salary-certificate-stamp-space {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.salary-certificate-print-root .salary-certificate-stamp-image {
+  display: block;
+  width: 38mm;
+  max-width: 38mm;
+  height: auto;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+
+@media print {
+  .salary-certificate-print-root .salary-certificate-stamp-image {
+    width: 34mm;
+    max-width: 34mm;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
