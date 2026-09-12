@@ -1040,6 +1040,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     includeInEmployeeManagement: pickEditableBoolean("includeInEmployeeManagement", true),
     bio: pickEditableText("bio"),
     avatarUrl: pickEditableText("avatarUrl"),
+    avatarFileId: pickEditableText("avatarFileId"),
     cvUrl: pickEditableText("cvUrl"),
     rating: pickEditableNumber("rating"),
     reviewsCount: Math.floor(pickEditableNumber("reviewsCount")),
@@ -1144,6 +1145,9 @@ function overlayCoreEmployeeMasterFields(
     avatarUrl: hasCoreField("avatarUrl")
       ? cleanText(core.avatarUrl)
       : cleanText(row.avatarUrl),
+    avatarFileId: hasCoreField("avatarFileId")
+      ? cleanText(core.avatarFileId)
+      : cleanText(row.avatarFileId),
     bio: hasCoreField("bio") ? cleanText(core.bio) : cleanText(row.bio),
     cvUrl: hasCoreField("cvUrl") ? cleanText(core.cvUrl) : cleanText(row.cvUrl),
     showOnAbout: hasCoreField("showOnAbout")
@@ -1737,6 +1741,7 @@ function DashboardEmployeesContent() {
   const canManagePayroll = hasPermission("payroll.manage");
   const canViewEmployeeMessages = hasAnyPermission(["messages.view", "messages.manage"]);
   const canViewEmployeeFiles = hasPermission("employees.files.view");
+  const canManageEmployeeFiles = hasPermission("employees.files.manage");
   const canFixBookings = hasPermission("bookings.update");
 
   const [loading, setLoading] = useState(false);
@@ -5293,8 +5298,16 @@ function DashboardEmployeesContent() {
       const employeeId = currentProfilePhotoEmployeeId;
       if (!employeeId || profilePhotoBusy) return;
 
+      if (!canUpdateEmployees || !canManageEmployeeFiles) {
+        setErrorMsg(
+          "\u0644\u064a\u0633\u062a \u0644\u062f\u064a\u0643 \u0635\u0644\u0627\u062d\u064a\u0629 \u0644\u062a\u0639\u062f\u064a\u0644 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629 \u0644\u0644\u0645\u0648\u0638\u0641\u0629."
+        );
+        return;
+      }
+
       const previousFileId = cleanText(avatarFileId);
       let uploadedFileId = "";
+      let pointerCommitted = false;
 
       setProfilePhotoBusy(true);
       setErrorMsg("");
@@ -5309,35 +5322,63 @@ function DashboardEmployeesContent() {
         uploadedFileId = uploaded.id;
         const publicAvatarUrl = coreEmployeeAvatarUrl(employeeId);
 
-        await CoreHrService.saveEmployee({
+        const savedEmployee = await CoreHrService.saveEmployee({
           id: employeeId,
           avatarFileId: uploaded.id,
           avatarUrl: publicAvatarUrl,
         });
 
-        if (previousFileId && previousFileId !== uploaded.id) {
-          await markCoreEmployeeProfilePhotoReplaced(
-            previousFileId,
-            uploaded.id
-          );
+        pointerCommitted = true;
+
+        const nextUpdatedAt = cleanText(savedEmployee.updatedAt);
+        if (nextUpdatedAt) {
+          coreEmployeeUpdatedAtBaselineRef.current = nextUpdatedAt;
         }
 
+        // The new file is canonical from this point forward.
+        // Never archive it because a later history/finalization step failed.
         setAvatarFileId(uploaded.id);
         setAvatarUrl(publicAvatarUrl);
-        await refreshProfilePhotos();
+
+        try {
+          if (previousFileId && previousFileId !== uploaded.id) {
+            await markCoreEmployeeProfilePhotoReplaced(
+              previousFileId,
+              uploaded.id
+            );
+          }
+
+          await refreshProfilePhotos();
+        } catch (finalizeError) {
+          console.error(
+            "[employee-profile-photo] history finalize failed",
+            finalizeError
+          );
+          setErrorMsg(
+            "\u062a\u0645 \u062a\u063a\u064a\u064a\u0631 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0631 \u062a\u062d\u062f\u064a\u062b \u0633\u062c\u0644 \u0627\u0644\u0635\u0648\u0631."
+          );
+        }
       } catch (error) {
-        if (uploadedFileId) {
+        // Roll back only when the employee pointer was never committed.
+        if (uploadedFileId && !pointerCommitted) {
           await archiveCoreEmployeeProfilePhoto(uploadedFileId).catch(() => {});
         }
 
         console.error("[employee-profile-photo] upload failed", error);
-        setErrorMsg("تعذر تحميل سجل الصور الشخصية. تم إبقاء الصورة الحالية.");
+
+        setErrorMsg(
+          pointerCommitted
+            ? "\u062a\u0645 \u062a\u063a\u064a\u064a\u0631 \u0627\u0644\u0635\u0648\u0631\u0629\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0631 \u0625\u0643\u0645\u0627\u0644 \u062a\u062d\u062f\u064a\u062b \u0627\u0644\u0633\u062c\u0644."
+            : "\u062a\u0639\u0630\u0631 \u062a\u063a\u064a\u064a\u0631 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629. \u062a\u0645 \u0625\u0628\u0642\u0627\u0621 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u062d\u0627\u0644\u064a\u0629."
+        );
       } finally {
         setProfilePhotoBusy(false);
       }
     },
     [
       avatarFileId,
+      canManageEmployeeFiles,
+      canUpdateEmployees,
       currentProfilePhotoEmployeeId,
       profilePhotoBusy,
       refreshProfilePhotos,
@@ -5348,13 +5389,22 @@ function DashboardEmployeesContent() {
     const employeeId = currentProfilePhotoEmployeeId;
     const currentFileId = cleanText(avatarFileId);
 
-    if (!employeeId || profilePhotoBusy || (!currentFileId && !avatarUrl)) return;
+    if (!employeeId || profilePhotoBusy || (!currentFileId && !avatarUrl)) {
+      return;
+    }
+
+    if (!canUpdateEmployees || !canManageEmployeeFiles) {
+      setErrorMsg(
+        "\u0644\u064a\u0633\u062a \u0644\u062f\u064a\u0643 \u0635\u0644\u0627\u062d\u064a\u0629 \u0644\u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629 \u0644\u0644\u0645\u0648\u0638\u0641\u0629."
+      );
+      return;
+    }
 
     const ok = await requestConfirmation({
-      title: "إزالة الصورة الشخصية",
+      title: "\u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629",
       description:
-        "سيتم إزالة الصورة الشخصية من ملف الموظفة مع الاحتفاظ بها في السجل كصورة مؤرشفة.",
-      confirmLabel: "إزالة الصورة",
+        "\u0633\u064a\u062a\u0645 \u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629 \u0645\u0646 \u0645\u0644\u0641 \u0627\u0644\u0645\u0648\u0638\u0641\u0629 \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0647\u0627 \u0641\u064a \u0627\u0644\u0633\u062c\u0644 \u0643\u0635\u0648\u0631\u0629 \u0645\u0624\u0631\u0634\u0641\u0629.",
+      confirmLabel: "\u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629",
       tone: "danger",
     });
 
@@ -5363,29 +5413,57 @@ function DashboardEmployeesContent() {
     setProfilePhotoBusy(true);
     setErrorMsg("");
 
+    let pointerCommitted = false;
+
     try {
-      await CoreHrService.saveEmployee({
+      const savedEmployee = await CoreHrService.saveEmployee({
         id: employeeId,
         avatarFileId: null,
         avatarUrl: null,
       });
 
-      if (currentFileId) {
-        await archiveCoreEmployeeProfilePhoto(currentFileId);
+      pointerCommitted = true;
+
+      const nextUpdatedAt = cleanText(savedEmployee.updatedAt);
+      if (nextUpdatedAt) {
+        coreEmployeeUpdatedAtBaselineRef.current = nextUpdatedAt;
       }
 
+      // The canonical pointer is already cleared.
       setAvatarFileId("");
       setAvatarUrl("");
+
+      if (currentFileId) {
+        try {
+          await archiveCoreEmployeeProfilePhoto(currentFileId);
+        } catch (archiveError) {
+          console.error(
+            "[employee-profile-photo] archive after remove failed",
+            archiveError
+          );
+          setErrorMsg(
+            "\u062a\u0645\u062a \u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0645\u0646 \u0645\u0644\u0641 \u0627\u0644\u0645\u0648\u0638\u0641\u0629\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0631 \u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0633\u0627\u0628\u0642."
+          );
+        }
+      }
+
       await refreshProfilePhotos();
     } catch (error) {
       console.error("[employee-profile-photo] remove failed", error);
-      setErrorMsg("تعذر إزالة الصورة الشخصية.");
+
+      setErrorMsg(
+        pointerCommitted
+          ? "\u062a\u0645\u062a \u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0631 \u0625\u0643\u0645\u0627\u0644 \u062a\u062d\u062f\u064a\u062b \u0627\u0644\u0633\u062c\u0644."
+          : "\u062a\u0639\u0630\u0631 \u0625\u0632\u0627\u0644\u0629 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0634\u062e\u0635\u064a\u0629."
+      );
     } finally {
       setProfilePhotoBusy(false);
     }
   }, [
     avatarFileId,
     avatarUrl,
+    canManageEmployeeFiles,
+    canUpdateEmployees,
     currentProfilePhotoEmployeeId,
     profilePhotoBusy,
     refreshProfilePhotos,
@@ -10275,7 +10353,11 @@ const canonicalSchedules =
                 reviewsCount={reviewsCount}
                 profilePhotoBusy={profilePhotoBusy}
                 profilePhotos={profilePhotos}
-                photoManagementEnabled={Boolean(currentProfilePhotoEmployeeId)}
+                photoManagementEnabled={Boolean(
+                  currentProfilePhotoEmployeeId &&
+                    canUpdateEmployees &&
+                    canManageEmployeeFiles
+                )}
                 resolveAvatarFromAssets={resolveAvatarFromAssets}
                 onProfilePhotoChange={changeEmployeeProfilePhoto}
                 onProfilePhotoRemove={removeEmployeeProfilePhoto}
