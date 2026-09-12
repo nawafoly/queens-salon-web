@@ -9,6 +9,7 @@ export type CoreEmployeeFile = {
   direction?: "inbound" | "outbound";
   title: string;
   fileType?: string;
+  documentType?: "identity" | "contract" | "certificate" | "other";
   fileName?: string;
   mimeType?: string;
   storageKey?: string;
@@ -44,6 +45,7 @@ function mapCoreEmployeeFile(metadata: CoreFileMetadata): CoreEmployeeFile {
     direction,
     title: cleanText(metadata.title) || metadata.fileName || "ملف داخلي",
     fileType: "general",
+    documentType: cleanText(metadata.documentType) as CoreEmployeeFile["documentType"] || undefined,
     fileName: metadata.fileName,
     mimeType: cleanText(metadata.contentType) || undefined,
     storageKey: metadata.storageKey,
@@ -56,11 +58,18 @@ function mapCoreEmployeeFile(metadata: CoreFileMetadata): CoreEmployeeFile {
   };
 }
 
-export async function listCoreEmployeeFiles(limitCount = 240): Promise<CoreEmployeeFile[]> {
-  const rows = await CoreFilesService.list();
+export async function listCoreEmployeeFiles(
+  limitCount = 240,
+  employeeId = "",
+  includeHistory = false,
+): Promise<CoreEmployeeFile[]> {
+  const targetEmployeeId = cleanText(employeeId);
+  const rows = await CoreFilesService.list(targetEmployeeId ? { employeeId: targetEmployeeId } : {});
+
   return rows
     .filter((row) => isEmployeeInternalCategory(row.category))
     .map(mapCoreEmployeeFile)
+    .filter((row) => includeHistory || (row.status !== "archived" && row.status !== "replaced"))
     .sort((a, b) => Date.parse(String(b.createdAt || "")) - Date.parse(String(a.createdAt || "")))
     .slice(0, Math.max(1, limitCount));
 }
@@ -81,6 +90,7 @@ export async function createCoreEmployeeFile(input: {
   direction?: CoreEmployeeFile["direction"];
   title: string;
   notes?: string;
+  documentType?: CoreEmployeeFile["documentType"];
   status?: CoreEmployeeFile["status"];
   file: File;
   replacesFileId?: string;
@@ -103,6 +113,7 @@ export async function createCoreEmployeeFile(input: {
       ? CORE_EMPLOYEE_FILE_INBOUND_CATEGORY
       : CORE_EMPLOYEE_FILE_OUTBOUND_CATEGORY,
     title,
+    documentType: cleanText(input.documentType) || null,
     description: cleanText(input.notes) || null,
     fileName: input.file.name || "attachment",
     contentType: input.file.type || "application/octet-stream",

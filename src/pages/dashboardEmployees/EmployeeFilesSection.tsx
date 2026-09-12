@@ -9,6 +9,7 @@ import {
   type CoreEmployeeFile,
 } from "../../services/employeeFilesCore";
 import {
+  DashboardConfirmV2,
   DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
@@ -73,10 +74,30 @@ function formatDate(value: unknown) {
 }
 
 function categoryOf(file: CoreEmployeeFile): FileCategory {
-  const text = `${cleanText(file.fileType)} ${cleanText(file.title)} ${cleanText(file.fileName)} ${cleanText(file.notes)}`.toLowerCase();
-  if (/identity|id|هوية|اقامة|إقامة|بطاقة/.test(text)) return "identity";
-  if (/contract|عقد|اتفاق/.test(text)) return "contract";
-  if (/certificate|cert|شهادة|صحية|مهنية/.test(text)) return "certificate";
+  const structured = cleanText(file.documentType).toLowerCase();
+
+  if (
+    structured === "identity" ||
+    structured === "contract" ||
+    structured === "certificate" ||
+    structured === "other"
+  ) {
+    return structured;
+  }
+
+  const legacyCategory = cleanText(file.notes).match(new RegExp("\u062a\u0635\u0646\u064a\u0641:\\s*(\u0647\u0648\u064a\u0629|\u0639\u0642\u0648\u062f|\u0634\u0647\u0627\u062f\u0627\u062a|\u0623\u062e\u0631\u0649)"))?.[1] || "";
+
+  if (legacyCategory === "\u0647\u0648\u064a\u0629") return "identity";
+  if (legacyCategory === "\u0639\u0642\u0648\u062f") return "contract";
+  if (legacyCategory === "\u0634\u0647\u0627\u062f\u0627\u062a") return "certificate";
+  if (legacyCategory === "\u0623\u062e\u0631\u0649") return "other";
+
+  const text = `${cleanText(file.fileType)} ${cleanText(file.title)} ${cleanText(file.fileName)}`.toLowerCase();
+
+  if (/identity|id/.test(text)) return "identity";
+  if (/contract/.test(text)) return "contract";
+  if (/certificate|cert/.test(text)) return "certificate";
+
   return "other";
 }
 
@@ -131,6 +152,7 @@ export default function EmployeeFilesSection({
   const [expiryDate, setExpiryDate] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [replacementId, setReplacementId] = useState("");
+  const [archiveTarget, setArchiveTarget] = useState<CoreEmployeeFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const targetEmployeeId = cleanText(employeeId);
@@ -140,7 +162,7 @@ export default function EmployeeFilesSection({
     setLoading(true);
     setError("");
     try {
-      const files = await listCoreEmployeeFiles(500);
+      const files = await listCoreEmployeeFiles(500, targetEmployeeId, true);
       setRows(files.filter((file) => cleanText(file.employeeId) === targetEmployeeId));
     } catch (err) {
       console.warn("employee core files load failed", err);
@@ -173,6 +195,10 @@ export default function EmployeeFilesSection({
     if (["archived", "replaced"].includes(cleanText(row.status).toLowerCase())) return false;
     return category === "all" || categoryOf(row) === category;
   });
+
+  const historyRows = rows.filter((row) =>
+    ["archived", "replaced"].includes(cleanText(row.status).toLowerCase())
+  );
 
   const visibleState: ViewState = loading && !rows.length
     ? "loading"
@@ -222,12 +248,12 @@ export default function EmployeeFilesSection({
     setError("");
     setMessage("");
     try {
-      const categoryName = categoryLabel(documentType);
-      const noteParts = [notes, expiryDate ? `تاريخ الانتهاء: ${expiryDate}` : "", `تصنيف: ${categoryName}`].filter(Boolean);
+      const noteParts = [notes, expiryDate ? `\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0627\u0646\u062a\u0647\u0627\u0621: ${expiryDate}` : ""].filter(Boolean);
       await createCoreEmployeeFile({
         employeeId: targetEmployeeId,
         direction: "outbound",
         title: cleanText(title),
+        documentType: documentType === "all" ? "other" : documentType,
         notes: noteParts.join(" | "),
         status: "active",
         file: selectedFile,
@@ -278,17 +304,37 @@ export default function EmployeeFilesSection({
 
   const archiveFile = async (file: CoreEmployeeFile) => {
     if (!canManage || saving) return;
-    const ok = confirm(`حذف ${file.title}؟\nسيتم أرشفته من القائمة النشطة مع بقاء السجل في Core.`);
-    if (!ok) return;
+
     setSaving(true);
     setError("");
+
     try {
       await updateCoreEmployeeFileStatus(file.id, "archived");
-      setMessage("تم أرشفة المستند في Core.");
+      setArchiveTarget(null);
+      setMessage("\u062a\u0645 \u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0633\u062c\u0644\u0647 \u0641\u064a Core.");
       await load();
     } catch (err) {
       console.warn("employee core file archive failed", err);
-      setError("تعذر أرشفة المستند.");
+      setError("\u062a\u0639\u0630\u0631 \u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restoreFile = async (file: CoreEmployeeFile) => {
+    if (!canManage || saving) return;
+    if (cleanText(file.status).toLowerCase() !== "archived") return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await updateCoreEmployeeFileStatus(file.id, "active");
+      setMessage("\u062a\u0645 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0646\u0634\u0637\u0629.");
+      await load();
+    } catch (err) {
+      console.warn("employee core file restore failed", err);
+      setError("\u062a\u0639\u0630\u0631 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f.");
     } finally {
       setSaving(false);
     }
@@ -310,8 +356,8 @@ export default function EmployeeFilesSection({
   return (
     <div className="dsv2-ew-tab-panel dsv2-ew-files-live">
       <WorkspaceTabHeaderV2
-        title="الملفات"
-        description="مستندات الموظفة محفوظة ببياناتها في Core D1 ومحتواها الثنائي في R2 مع تنزيل ومعاينة مصادق عليهما."
+        title="المستندات والسجل"
+        description="إدارة المستندات النشطة والنسخ المستبدلة والمؤرشفة من Core D1 وR2 ضمن مركز موحد."
         badge={<WorkspaceStatusBadgeV2 tone={counts.expiring ? "gold" : "success"}>{counts.expiring ? "ملف قريب الانتهاء" : "Core / R2"}</WorkspaceStatusBadgeV2>}
       />
 
@@ -412,7 +458,7 @@ export default function EmployeeFilesSection({
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void openCoreEmployeeFile(file.id, file.fileName || file.title)}>معاينة</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void downloadCoreEmployeeFile(file.id, file.fileName || file.title)}>تنزيل</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!canManage || saving} onClick={() => prefillReplacement(file)}>استبدال</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || saving} onClick={() => void archiveFile(file)}>حذف</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || saving} onClick={() => setArchiveTarget(file)}>حذف</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={saving || file.status === "read"} onClick={() => void markOneRead(file)}>مقروء</button>
                 </div>,
               ];
@@ -473,6 +519,88 @@ export default function EmployeeFilesSection({
           </DashboardFieldV2>
         </div>
       </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title={"\u0627\u0644\u0633\u062c\u0644"}
+        description={"\u0627\u0644\u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0627\u0644\u0645\u0624\u0631\u0634\u0641\u0629 \u0648\u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0645\u0633\u062a\u0628\u062f\u0644\u0629 \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0627\u0644\u0633\u062c\u0644 \u0641\u064a Core."}
+      >
+        {historyRows.length ? (
+          <WorkspaceTableV2
+            headers={[
+              "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u0646\u062f",
+              "\u0627\u0644\u0646\u0648\u0639",
+              "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0631\u0641\u0639",
+              "\u0627\u0644\u062d\u0627\u0644\u0629",
+              "\u0627\u0644\u0625\u062c\u0631\u0627\u0621\u0627\u062a",
+            ]}
+            emptyText={"\u0644\u0627 \u064a\u0648\u062c\u062f \u0633\u062c\u0644."}
+            rows={historyRows.map((file) => {
+              const status = cleanText(file.status).toLowerCase();
+              const meta = statusMeta(file);
+
+              return [
+                <strong>{file.title || file.fileName || file.id}</strong>,
+                categoryLabel(categoryOf(file)),
+                formatDate(file.createdAt),
+                <WorkspaceStatusBadgeV2 tone={meta.tone}>{meta.label}</WorkspaceStatusBadgeV2>,
+                <div className="dsv2-ew-file-actions">
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                    onClick={() => void openCoreEmployeeFile(file.id, file.fileName || file.title)}
+                  >
+                    {"\u0645\u0639\u0627\u064a\u0646\u0629"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                    onClick={() => void downloadCoreEmployeeFile(file.id, file.fileName || file.title)}
+                  >
+                    {"\u062a\u0646\u0632\u064a\u0644"}
+                  </button>
+
+                  {status === "archived" ? (
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                      disabled={!canManage || saving}
+                      onClick={() => void restoreFile(file)}
+                    >
+                      {"\u0627\u0633\u062a\u0639\u0627\u062f\u0629"}
+                    </button>
+                  ) : null}
+                </div>,
+              ];
+            })}
+          />
+        ) : (
+          <div className="dsv2-ew-inline-empty">
+            <strong>{"\u0627\u0644\u0633\u062c\u0644 \u0641\u0627\u0631\u063a"}</strong>
+            <span>{"\u0644\u0627 \u062a\u0648\u062c\u062f \u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0645\u0624\u0631\u0634\u0641\u0629 \u0623\u0648 \u0645\u0633\u062a\u0628\u062f\u0644\u0629."}</span>
+          </div>
+        )}
+      </WorkspaceCardV2>
+
+      <DashboardConfirmV2
+        open={Boolean(archiveTarget)}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={async () => {
+          if (archiveTarget) {
+            await archiveFile(archiveTarget);
+          }
+        }}
+        title={"\u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f\u061f"}
+        description={"\u0633\u064a\u062e\u062a\u0641\u064a \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0646\u0634\u0637\u0629\u060c \u0644\u0643\u0646 \u0644\u0646 \u064a\u062d\u0630\u0641 \u0645\u0646 Core \u0623\u0648 R2 \u0648\u064a\u0645\u0643\u0646 \u0627\u0633\u062a\u0639\u0627\u062f\u062a\u0647."}
+        tone="danger"
+        confirmLabel={"\u0623\u0631\u0634\u0641\u0629"}
+        cancelLabel={"\u062a\u0631\u0627\u062c\u0639"}
+        pendingLabel={"\u062c\u0627\u0631\u064a \u0627\u0644\u0623\u0631\u0634\u0641\u0629..."}
+      >
+        {archiveTarget ? (
+          <strong>{archiveTarget.title || archiveTarget.fileName || archiveTarget.id}</strong>
+        ) : null}
+      </DashboardConfirmV2>
     </div>
   );
 }

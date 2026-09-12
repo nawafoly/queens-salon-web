@@ -8497,7 +8497,7 @@ const canonicalSchedules =
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
     { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
-    { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
+    { key: "profile", label: "الملفات والصور", hint: "الصورة والمستندات والمرفقات والسجل", icon: faFileLines },
     { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
     { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
     ...(canViewAttendance
@@ -8514,9 +8514,6 @@ const canonicalSchedules =
       : []),
     ...(canViewEmployeeMessages
       ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
-      : []),
-    ...(canViewEmployeeFiles
-      ? [{ key: "files" as EmployeeSplitTab, label: "الملفات", hint: "المستندات", icon: faFileLines }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
@@ -10158,7 +10155,7 @@ const canonicalSchedules =
               ) : null}
               {editingStaff ? (
                 <EmployeeFilesSection
-                  isVisible={activeTab === "files" && canViewEmployeeFiles}
+                  isVisible={activeTab === "profile" && canViewEmployeeFiles}
                   employeeId={selectedEmployeeId || editingStaff.id}
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}

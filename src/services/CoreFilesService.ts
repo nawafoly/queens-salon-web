@@ -17,6 +17,7 @@ function mapMetadata(row: Record<string, unknown>): CoreFileMetadata {
     salonId: String(value("salonId", "salon_id") || "main"),
     employeeId: value("employeeId", "employee_id") as string | null | undefined,
     category: String(row.category || "general"),
+    documentType: value("documentType", "document_type") as string | null | undefined,
     title: row.title as string | null | undefined,
     description: row.description as string | null | undefined,
     fileName: String(value("fileName", "file_name") || "file"),

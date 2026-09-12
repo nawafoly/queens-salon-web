@@ -198,8 +198,8 @@ export function EmployeeProfileTabLiveV2({
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
-        title="الملف والصورة"
-        description="إدارة الصورة والنبذة والتقييم والسيرة الذاتية من واجهة V2 مرتبطة بالقيم الفعلية."
+        title="الصورة الشخصية والملف العام"
+        description="إدارة الصورة الشخصية والنبذة والتقييم والسيرة الذاتية ضمن مركز الملفات والصور."
         badge={<WorkspaceStatusBadgeV2 tone={resolvedAvatar ? "success" : "gold"}>{resolvedAvatar ? "الصورة جاهزة" : "بدون صورة"}</WorkspaceStatusBadgeV2>}
       />
 
