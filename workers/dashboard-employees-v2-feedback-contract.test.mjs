@@ -18,6 +18,7 @@ const operationalTabsSource = fs.readFileSync(
 
 test("dashboard employees uses canonical V2 feedback primitives", () => {
   assert.match(source, /DashboardToastProviderV2/);
+  assert.match(source, /position="top-center"/);
   assert.match(source, /useDashboardToastV2/);
   assert.match(source, /<DashboardConfirmV2[\s>]/);
   assert.match(source, /requestConfirmation/);

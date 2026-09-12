@@ -10225,7 +10225,7 @@ const canonicalSchedules =
 
 export default function DashboardEmployees() {
   return (
-    <DashboardToastProviderV2 position="top-start">
+    <DashboardToastProviderV2 position="top-center">
       <DashboardEmployeesContent />
     </DashboardToastProviderV2>
   );
