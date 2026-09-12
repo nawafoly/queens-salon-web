@@ -3884,8 +3884,14 @@ function DashboardEmployeesContent() {
         : routeSection === "files"
           ? "profile"
           : routeSection;
-    if (routeSection === "shifts") {
-      navigate(`/dashboard/employees/${encodeURIComponent(matched.id)}/booking`, { replace: true });
+    if (routeSection === "shifts" || routeSection === "files") {
+      const canonicalRouteSection =
+        routeSection === "shifts" ? "booking" : "profile";
+
+      navigate(
+        `/dashboard/employees/${encodeURIComponent(matched.id)}/${canonicalRouteSection}`,
+        { replace: true },
+      );
     }
     setActiveTab(resolvedRouteSection);
     if (["basic", "profile", "services", "booking"].includes(resolvedRouteSection)) {

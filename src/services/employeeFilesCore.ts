@@ -13,6 +13,7 @@ export type CoreEmployeeFile = {
   fileName?: string;
   mimeType?: string;
   storageKey?: string;
+  sizeBytes?: number | null;
   notes?: string;
   status?: "active" | "replaced" | "read" | "archived";
   createdByUid?: string;
@@ -49,6 +50,7 @@ function mapCoreEmployeeFile(metadata: CoreFileMetadata): CoreEmployeeFile {
     fileName: metadata.fileName,
     mimeType: cleanText(metadata.contentType) || undefined,
     storageKey: metadata.storageKey,
+    sizeBytes: metadata.sizeBytes ?? null,
     notes: cleanText(metadata.description) || undefined,
     status,
     createdByUid: cleanText(metadata.uploadedByUid) || undefined,
