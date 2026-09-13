@@ -1,4 +1,4 @@
-export type UserRole =
+﻿export type UserRole =
   | "owner"
   | "admin"
   | "hr"
@@ -190,6 +190,13 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "income.manage", label: "إدارة الإيرادات", hint: "إنشاء وتعديل وتسوية الإيرادات.", group: "finance", action: "manage", sensitive: true },
   { key: "expenses.view", label: "عرض المصروفات", hint: "عرض المصروفات والمرفقات.", group: "finance", action: "view", sensitive: true },
   { key: "expenses.manage", label: "إدارة المصروفات", hint: "إضافة وتعديل واعتماد المصروفات.", group: "finance", action: "manage", sensitive: true },
+  { key: "inventory.view", label: "عرض المخزون", hint: "عرض المواد والأرصدة.", group: "inventory", action: "view" },
+  { key: "inventory.items.manage", label: "إدارة المواد", hint: "إنشاء وتعديل المواد.", group: "inventory", action: "manage" },
+  { key: "inventory.recipes.manage", label: "إدارة وصفات الاستهلاك", hint: "إعداد المواد الافتراضية للخدمات.", group: "inventory", action: "manage" },
+  { key: "inventory.consume.confirm", label: "تأكيد استهلاك الخدمة", hint: "تأكيد الاستهلاك الفعلي عند التنفيذ.", group: "inventory", action: "use" },
+  { key: "inventory.movements.view", label: "عرض حركات المخزون", hint: "عرض دفتر حركات المخزون.", group: "inventory", action: "view", sensitive: true },
+  { key: "inventory.adjust", label: "تسوية المخزون", hint: "رصيد افتتاحي أو تصحيح معتمد.", group: "inventory", action: "manage", sensitive: true },
+  { key: "inventory.waste.record", label: "تسجيل الهدر", hint: "تسجيل الهدر والتلف.", group: "inventory", action: "manage", sensitive: true },
 
   { key: "employees.view", label: "عرض الموظفات", hint: "مشاهدة دليل الموظفات والملفات الأساسية.", group: "workforce", action: "view" },
   { key: "employees.create", label: "إضافة موظفة", hint: "إنشاء ملف موظفة وربطه بحساب.", group: "workforce", action: "create" },

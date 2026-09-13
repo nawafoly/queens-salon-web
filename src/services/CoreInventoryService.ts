@@ -1,0 +1,117 @@
+import { coreApiRequest } from "./coreApiClient";
+
+export type InventoryConsumptionPolicy =
+  | "SERVICE_TRACKED"
+  | "EMPLOYEE_ISSUED"
+  | "DIRECT_SALE"
+  | "SHARED_OPERATIONAL";
+
+export type InventoryItem = {
+  id: string;
+  salon_id: string;
+  category_id: string | null;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  unit: string;
+  consumption_policy: InventoryConsumptionPolicy;
+  track_batches: number;
+  min_stock_qty: number;
+  is_active: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventoryCategory = {
+  id: string;
+  salon_id: string;
+  name: string;
+  parent_id: string | null;
+  active: number;
+  sort_order: number;
+};
+
+export type InventoryStockLevel = {
+  id: string;
+  salon_id: string;
+  item_id: string;
+  location_id: string;
+  qty_on_hand: number;
+  item_name?: string;
+  item_unit?: string;
+  min_stock_qty?: number;
+  sku?: string | null;
+};
+
+export type InventoryItemInput = {
+  name: string;
+  unit: string;
+  categoryId?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
+  consumptionPolicy?: InventoryConsumptionPolicy;
+  minStockQty?: number;
+  isActive?: number;
+  notes?: string | null;
+};
+
+export const CoreInventoryService = {
+  listCategories(query: { active?: string } = {}) {
+    return coreApiRequest<InventoryCategory[]>(
+      "/api/core/inventory/categories",
+      { query }
+    );
+  },
+
+  createCategory(input: { name: string }) {
+    return coreApiRequest<InventoryCategory>(
+      "/api/core/inventory/categories",
+      { method: "POST", body: input }
+    );
+  },
+
+  listItems(query: {
+    search?: string;
+    active?: string;
+    categoryId?: string;
+    policy?: string;
+  } = {}) {
+    return coreApiRequest<InventoryItem[]>(
+      "/api/core/inventory/items",
+      { query }
+    );
+  },
+
+  createItem(input: InventoryItemInput) {
+    return coreApiRequest<InventoryItem>("/api/core/inventory/items", {
+      method: "POST",
+      body: input,
+    });
+  },
+
+  updateItem(id: string, input: Partial<InventoryItemInput>) {
+    return coreApiRequest<InventoryItem>(
+      `/api/core/inventory/items/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: input }
+    );
+  },
+
+  listStockLevels(query: { lowOnly?: string } = {}) {
+    return coreApiRequest<InventoryStockLevel[]>(
+      "/api/core/inventory/stock-levels",
+      { query }
+    );
+  },
+
+  recordOpeningBalance(input: {
+    itemId: string;
+    quantity: number;
+    note?: string;
+  }) {
+    return coreApiRequest("/api/core/inventory/opening-balance", {
+      method: "POST",
+      body: input,
+    });
+  },
+};

@@ -1,4 +1,4 @@
-import "../styles/AdminDashboardShell.css";
+﻿import "../styles/AdminDashboardShell.css";
 import "../styles/dashboard-v2/dashboard-v2.css";
 // ✅ src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +25,7 @@ import {
   faFingerprint,
   faTv,
   faStore,
+  faBoxesStacked,
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
@@ -38,6 +39,7 @@ import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
 import DashboardOffers from "../pages/DashboardOffers";
+import DashboardInventory from "./DashboardInventory";
 import DashboardReports from "./DashboardReports";
 import DashboardClients from "./DashboardClients";
 import DashboardLoyalty from "./DashboardLoyalty";
@@ -1058,6 +1060,7 @@ function getDashboardHeaderTitle(pathname: string) {
     partners: "الشركاء",
     loyalty: "الولاء (VIP)",
     offers: "العروض والكوبونات",
+    inventory: "المخزون",
     reports: "التقارير",
     income: "الإيرادات",
     expenses: "المصروفات",
@@ -2663,6 +2666,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {hasAnyPermission(["inventory.view", "inventory.items.manage"]) ? (
+                  <li>
+                    <NavLink to="/dashboard/inventory" className="nav-link" data-sidebar-tooltip="المخزون" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faBoxesStacked} />
+                      المخزون
+                    </NavLink>
+                  </li>
+                ) : null}
+
                 {hasPermission("reports.view") ? (
                   <li>
                     <NavLink to="/dashboard/reports" className="nav-link" data-sidebar-tooltip="التقارير" onClick={() => setIsSidebarOpen(false)}>
@@ -2891,6 +2903,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="partners" element={<PermissionRoute permission="partners.manage"><DashboardPartners /></PermissionRoute>} />
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty /></PermissionRoute>} />
                 <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers /></PermissionRoute>} />
+                <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><DashboardInventory /></PermissionRoute>} />
                 <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports /></PermissionRoute>} />
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
