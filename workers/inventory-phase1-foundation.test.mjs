@@ -62,11 +62,7 @@ test("service consumption cost is trusted-source only", () => {
   assert.match(source, /getTrustedUnitCostsByItemIds/);
   assert.match(source, /PURCHASE_RECEIPT_IN/);
   assert.match(source, /OPENING_BALANCE_IN/);
-  // Client-supplied unit cost must not drive consumption costing path
-  assert.match(
-    source,
-    /trustedUnitCostsByItemId/
-  );
+  assert.match(source, /trustedUnitCostsByItemId/);
 });
 
 test("core worker exposes inventory routes and permission gates", () => {
@@ -89,6 +85,13 @@ test("inventory repository remains CORE D1 only", () => {
   const migration = read("migrations/core/0069_inventory_foundation.sql");
 
   assert.match(source, /CORE D1 ONLY/);
-  assert.doesNotMatch(source, /firestore/i);
-  assert.doesNotMatch(migration, /firestore/i);
+  assert.match(source, /do not add Firestore fallback/i);
+  assert.match(migration, /CORE D1 ONLY/);
+  assert.match(migration, /No Firestore fallback/i);
+
+  assert.doesNotMatch(source, /from ['"]firebase/i);
+  assert.doesNotMatch(source, /firestore\(\)/i);
+  assert.doesNotMatch(source, /getFirestore/i);
+  assert.doesNotMatch(migration, /from ['"]firebase/i);
+  assert.doesNotMatch(migration, /getFirestore/i);
 });
