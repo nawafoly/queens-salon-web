@@ -178,16 +178,7 @@ export default function DashboardInventory() {
           <p className="text-muted mb-0">المواد والرصيد الحالي. الخصم يتم فقط عند تأكيد الاستهلاك لاحقاً.</p>
         </div>
         {canManage ? (
-          <button type="button" className="btn btn-dark" onClick={openCreate}>
-            <FontAwesomeIcon icon={faPlus} className="ms-2" />
-            مادة جديدة
-          </button>
-        ) : null}
-      </div>
-
-      <div className="d-flex gap-2 mb-3">
-        <button type="button" className={tn ${tab === "items" ? "btn-dark" : "btn-outline-dark"}} onClick={() => setTab("items")}>المواد</button>
-        <button type="button" className={tn ${tab === "recipes" ? "btn-dark" : "btn-outline-dark"}} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
+          <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
       </div>
 
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
