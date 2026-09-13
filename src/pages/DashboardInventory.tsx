@@ -207,7 +207,7 @@ export default function DashboardInventory() {
       </div>
 
       {error ? <DashboardErrorStateV2 title="تعذر تحميل المخزون" description={error} /> : null}
-      {loading ? <DashboardSkeletonV2 rows={6} /> : null}
+      {loading ? <DashboardSkeletonV2 lines={6} /> : null}
 
       {!loading && !items.length ? (
         <DashboardEmptyStateV2
@@ -264,7 +264,7 @@ export default function DashboardInventory() {
         </div>
       ) : null}
 
-      </>) : null}
+      ) : null}
       <DashboardModalV2
         open={modalOpen}
         title={editing ? "تعديل مادة" : "مادة جديدة"}
