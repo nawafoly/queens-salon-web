@@ -58,8 +58,7 @@ export default function DashboardInventoryMovements() {
             <th>المادة</th>
             <th>النوع</th>
             <th>الكمية</th>
-            <th>قبل</th>
-            <th>بعد</th>
+            <th>الرصيد بعد</th>
           </tr>
         </thead>
         <tbody>
@@ -68,9 +67,8 @@ export default function DashboardInventoryMovements() {
               <td>{String(row.created_at || "").replace("T", " ").slice(0, 19)}</td>
               <td>{nameById.get(row.item_id) || row.item_id}</td>
               <td>{TYPE_LABEL[row.movement_type] || row.movement_type}</td>
-              <td>{row.qty_delta}</td>
-              <td>{row.qty_before}</td>
-              <td>{row.qty_after}</td>
+              <td>{row.quantity_delta ?? row.qty_delta ?? (row as { quantityDelta?: number }).quantityDelta}</td>
+              <td>{row.balance_after ?? row.qty_after ?? (row as { balanceAfter?: number }).balanceAfter}</td>
             </tr>
           ))}
         </tbody>
