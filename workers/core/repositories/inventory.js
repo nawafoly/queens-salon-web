@@ -1,12 +1,14 @@
-// CORE D1 ONLY — do not add Firestore fallback.
-// Inventory Control Center — Phase 1 foundation repository.
+// CORE D1 ONLY ظ¤ do not add Firestore fallback.
+// Inventory Control Center ظ¤ Phase 1 foundation repository.
 
 import {
   activeFlag,
   cleanText,
   dbAll,
+  dbBatch,
   dbFirst,
   dbRun,
+  changes,
   generatedId,
   integer,
   nowIso,
@@ -68,6 +70,78 @@ function actorFields(actor = {}) {
     name: optionalText(actor.name || actor.displayName) || null,
   };
 }
+async function validateServiceConsumptionContext(
+  db,
+  salonId,
+  { bookingItemId, employeeId }
+) {
+  const context = await dbFirst(
+    db,
+    `SELECT
+       bi.id AS booking_item_id,
+       bi.booking_id,
+       bi.service_id,
+       bi.staff_id,
+       b.status AS booking_status,
+       b.deleted_at AS booking_deleted_at,
+       s.id AS service_exists,
+       s.active AS service_active,
+       ep.id AS employee_exists,
+       ep.status AS employee_status
+     FROM booking_items bi
+     JOIN bookings b
+       ON b.id = bi.booking_id
+      AND b.salon_id = bi.salon_id
+     JOIN services s
+       ON s.id = bi.service_id
+      AND s.salon_id = bi.salon_id
+     LEFT JOIN employee_profiles ep
+       ON ep.id = ?
+      AND ep.salon_id = bi.salon_id
+     WHERE bi.salon_id = ?
+       AND bi.id = ?
+     LIMIT 1`,
+    [employeeId, salonId, bookingItemId]
+  );
+
+  if (!context) {
+    throw new AppError(
+      404,
+      'inventory:booking_item_not_found',
+      'Booking item was not found'
+    );
+  }
+
+
+  if (
+    context.booking_deleted_at ||
+    cleanText(context.booking_status).toLowerCase() === 'cancelled'
+  ) {
+    throw new AppError(
+      409,
+      'inventory:booking_not_consumable',
+      'Inventory consumption is not allowed for this booking'
+    );
+  }
+
+  if (!context.employee_exists) {
+    throw new AppError(
+      404,
+      'inventory:employee_not_found',
+      'Employee was not found'
+    );
+  }
+
+  if (cleanText(context.employee_status).toLowerCase() !== 'active') {
+    throw new AppError(
+      409,
+      'inventory:employee_inactive',
+      'Inventory consumption cannot be confirmed by an inactive employee'
+    );
+  }
+
+  return context;
+}
 
 async function getStockLevelRow(db, salonId, itemId, locationId) {
   return dbFirst(
@@ -80,27 +154,29 @@ async function getStockLevelRow(db, salonId, itemId, locationId) {
 }
 
 async function ensureStockLevel(db, salonId, itemId, locationId, now) {
-  const existing = await getStockLevelRow(db, salonId, itemId, locationId);
-  if (existing) return existing;
-
   const id = generatedId('invlvl');
+
   await dbRun(
     db,
     `INSERT INTO inventory_stock_levels
       (id, salon_id, item_id, location_id, qty_on_hand, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?)`,
+     VALUES (?, ?, ?, ?, 0, ?)
+     ON CONFLICT(salon_id, item_id, location_id) DO NOTHING`,
     [id, salonId, itemId, locationId, now]
   );
-  return {
-    id,
-    salon_id: salonId,
-    item_id: itemId,
-    location_id: locationId,
-    qty_on_hand: 0,
-    updated_at: now,
-  };
-}
 
+  const level = await getStockLevelRow(db, salonId, itemId, locationId);
+
+  if (!level) {
+    throw new AppError(
+      500,
+      'inventory:stock_level_unavailable',
+      'Inventory stock level could not be initialized'
+    );
+  }
+
+  return level;
+}
 /**
  * Append a ledger movement and update the stock level read-model.
  * Never call from UI paths directly for arbitrary qty edits.
@@ -109,71 +185,170 @@ async function appendMovement(db, salonId, input, actor = {}) {
   const now = nowIso();
   const who = actorFields(actor);
   const itemId = requiredId(input.itemId || input.item_id, 'itemId');
-  const locationId = requiredId(input.locationId || input.location_id, 'locationId');
-  const movementType = requiredText(input.movementType || input.movement_type, 'movementType', 64);
-  const quantityDelta = Number(input.quantityDelta ?? input.quantity_delta);
-  if (!Number.isFinite(quantityDelta) || quantityDelta === 0) {
-    throw new AppError(400, 'core_validation:invalid_quantity', 'quantity_delta must be non-zero');
-  }
-  const unit = requireUnit(input.unit);
-  const sourceType = requiredText(input.sourceType || input.source_type, 'sourceType', 64);
-  const sourceId = requiredText(input.sourceId || input.source_id, 'sourceId', 128);
-  const lineKey = cleanText(input.lineKey || input.line_key || '0') || '0';
+  const locationId = requiredId(
+    input.locationId || input.location_id,
+    'locationId'
+  );
+  const movementType = requiredText(
+    input.movementType || input.movement_type,
+    'movementType',
+    64
+  );
+  const quantityDelta = Number(
+    input.quantityDelta ?? input.quantity_delta
+  );
 
-  const level = await ensureStockLevel(db, salonId, itemId, locationId, now);
-  const balanceAfter = Number(level.qty_on_hand || 0) + quantityDelta;
-  if (balanceAfter < -1e-9) {
-    throw new AppError(409, 'inventory:insufficient_stock', 'Insufficient stock for this movement');
+  if (!Number.isFinite(quantityDelta) || quantityDelta === 0) {
+    throw new AppError(
+      400,
+      'core_validation:invalid_quantity',
+      'quantity_delta must be non-zero'
+    );
   }
+
+  const unit = requireUnit(input.unit);
+  const sourceType = requiredText(
+    input.sourceType || input.source_type,
+    'sourceType',
+    64
+  );
+  const sourceId = requiredText(
+    input.sourceId || input.source_id,
+    'sourceId',
+    128
+  );
+  const lineKey =
+    cleanText(input.lineKey || input.line_key || '0') || '0';
+
+  const unitCostHalalas =
+    input.unitCostHalalas != null
+      ? integer(input.unitCostHalalas, 'unitCostHalalas', { min: 0 })
+      : null;
+
+  await ensureStockLevel(db, salonId, itemId, locationId, now);
 
   const movementId = generatedId('invmov');
-  await dbRun(
+
+  const results = await dbBatch(db, [
+    {
+      sql: `INSERT INTO inventory_stock_movements (
+        id, salon_id, item_id, location_id, movement_type,
+        quantity_delta, unit, unit_cost_halalas, balance_after,
+        source_type, source_id, line_key, operation_id,
+        employee_id, booking_id, booking_item_id, service_id,
+        reverses_movement_id, note,
+        created_by_uid, created_by_name, created_at
+      )
+      SELECT
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, sl.qty_on_hand + ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?
+      FROM inventory_stock_levels sl
+      WHERE sl.salon_id = ?
+        AND sl.item_id = ?
+        AND sl.location_id = ?
+        AND sl.qty_on_hand + ? >= 0`,
+      params: [
+        movementId,
+        salonId,
+        itemId,
+        locationId,
+        movementType,
+        quantityDelta,
+        unit,
+        unitCostHalalas,
+        quantityDelta,
+        sourceType,
+        sourceId,
+        lineKey,
+        optionalText(input.operationId || input.operation_id) || null,
+        optionalText(input.employeeId || input.employee_id) || null,
+        optionalText(input.bookingId || input.booking_id) || null,
+        optionalText(input.bookingItemId || input.booking_item_id) || null,
+        optionalText(input.serviceId || input.service_id) || null,
+        optionalText(
+          input.reversesMovementId || input.reverses_movement_id
+        ) || null,
+        optionalText(input.note) || null,
+        who.uid,
+        who.name,
+        now,
+        salonId,
+        itemId,
+        locationId,
+        quantityDelta,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_stock_levels
+              SET qty_on_hand = qty_on_hand + ?,
+                  updated_at = ?
+            WHERE salon_id = ?
+              AND item_id = ?
+              AND location_id = ?
+              AND EXISTS (
+                SELECT 1
+                  FROM inventory_stock_movements
+                 WHERE id = ?
+                   AND salon_id = ?
+              )`,
+      params: [
+        quantityDelta,
+        now,
+        salonId,
+        itemId,
+        locationId,
+        movementId,
+        salonId,
+      ],
+    },
+  ]);
+
+  const movementChanges = changes(results?.[0]);
+  const levelChanges = changes(results?.[1]);
+
+  if (movementChanges !== 1) {
+    throw new AppError(
+      409,
+      'inventory:insufficient_stock',
+      'Insufficient stock for this movement'
+    );
+  }
+
+  if (levelChanges !== 1) {
+    throw new AppError(
+      500,
+      'inventory:stock_level_update_failed',
+      'Inventory movement was created but stock level was not updated'
+    );
+  }
+
+  const movement = await dbFirst(
     db,
-    `INSERT INTO inventory_stock_movements (
-      id, salon_id, item_id, location_id, movement_type,
-      quantity_delta, unit, unit_cost_halalas, balance_after,
-      source_type, source_id, line_key, operation_id,
-      employee_id, booking_id, booking_item_id, service_id,
-      reverses_movement_id, note,
-      created_by_uid, created_by_name, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      movementId,
-      salonId,
-      itemId,
-      locationId,
-      movementType,
-      quantityDelta,
-      unit,
-      input.unitCostHalalas != null ? integer(input.unitCostHalalas, 'unitCostHalalas', { min: 0 }) : null,
-      balanceAfter,
-      sourceType,
-      sourceId,
-      lineKey,
-      optionalText(input.operationId || input.operation_id) || null,
-      optionalText(input.employeeId || input.employee_id) || null,
-      optionalText(input.bookingId || input.booking_id) || null,
-      optionalText(input.bookingItemId || input.booking_item_id) || null,
-      optionalText(input.serviceId || input.service_id) || null,
-      optionalText(input.reversesMovementId || input.reverses_movement_id) || null,
-      optionalText(input.note) || null,
-      who.uid,
-      who.name,
-      now,
-    ]
+    `SELECT balance_after, created_at
+       FROM inventory_stock_movements
+      WHERE salon_id = ? AND id = ?
+      LIMIT 1`,
+    [salonId, movementId]
   );
 
-  await dbRun(
-    db,
-    `UPDATE inventory_stock_levels
-        SET qty_on_hand = ?, updated_at = ?
-      WHERE salon_id = ? AND item_id = ? AND location_id = ?`,
-    [balanceAfter, now, salonId, itemId, locationId]
-  );
+  if (!movement) {
+    throw new AppError(
+      500,
+      'inventory:movement_not_found_after_write',
+      'Inventory movement could not be read after creation'
+    );
+  }
 
-  return { movementId, balanceAfter, createdAt: now };
+  return {
+    movementId,
+    balanceAfter: Number(movement.balance_after),
+    createdAt: movement.created_at || now,
+  };
 }
-
 // ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
@@ -319,6 +494,76 @@ export async function getItem(db, salonId, id) {
   );
   if (!row) rowNotFound('inventory_item');
   return row;
+}
+
+
+async function getItemsByIds(db, salonId, itemIds) {
+  const ids = [...new Set(itemIds.map((id) => requiredId(id)))];
+  if (!ids.length) return [];
+
+  const placeholders = ids.map(() => '?').join(', ');
+  return dbAll(
+    db,
+    `SELECT * FROM inventory_items
+      WHERE salon_id = ? AND id IN (${placeholders})`,
+    [salonId, ...ids]
+  );
+}
+
+async function getTrustedUnitCostsByItemIds(db, salonId, itemIds) {
+  const ids = [...new Set(itemIds.filter(Boolean))];
+
+  if (!ids.length) {
+    return new Map();
+  }
+
+  const placeholders = ids.map(() => '?').join(', ');
+
+  const rows = await dbAll(
+    db,
+    `SELECT
+       item_id,
+       unit_cost_halalas,
+       movement_type,
+       created_at
+     FROM inventory_stock_movements
+     WHERE salon_id = ?
+       AND item_id IN (${placeholders})
+       AND unit_cost_halalas IS NOT NULL
+       AND movement_type IN (
+         'PURCHASE_RECEIPT_IN',
+         'OPENING_BALANCE_IN'
+       )
+     ORDER BY
+       item_id,
+       CASE movement_type
+         WHEN 'PURCHASE_RECEIPT_IN' THEN 0
+         WHEN 'OPENING_BALANCE_IN' THEN 1
+         ELSE 2
+       END,
+       created_at DESC,
+       id DESC`,
+    [salonId, ...ids]
+  );
+
+  const costsByItemId = new Map();
+
+  for (const row of rows) {
+    if (costsByItemId.has(row.item_id)) {
+      continue;
+    }
+
+    const cost = Number(row.unit_cost_halalas);
+
+    if (
+      Number.isInteger(cost) &&
+      cost >= 0
+    ) {
+      costsByItemId.set(row.item_id, cost);
+    }
+  }
+
+  return costsByItemId;
 }
 
 export async function createItem(db, salonId, data, actor = {}) {
@@ -596,25 +841,66 @@ export async function upsertServiceRecipe(db, salonId, serviceId, data, actor = 
  * Protected by unique index on confirmed booking_item_id + optional operation_id.
  */
 export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
-  const bookingId = requiredId(preferred(data, 'bookingId', 'booking_id'), 'bookingId');
-  const bookingItemId = requiredId(preferred(data, 'bookingItemId', 'booking_item_id'), 'bookingItemId');
-  const serviceId = requiredId(preferred(data, 'serviceId', 'service_id'), 'serviceId');
-  const employeeId = requiredId(preferred(data, 'employeeId', 'employee_id'), 'employeeId');
-  const locationId =
-    optionalText(preferred(data, 'locationId', 'location_id')) ||
-    (await ensureDefaultLocation(db, salonId)).id;
+  const bookingItemId = requiredId(
+    preferred(data, 'bookingItemId', 'booking_item_id'),
+    'bookingItemId'
+  );
+  const employeeId = requiredId(
+    preferred(data, 'employeeId', 'employee_id'),
+    'employeeId'
+  );
+
+  const consumptionContext = await validateServiceConsumptionContext(
+    db,
+    salonId,
+    {
+      bookingItemId,
+      employeeId,
+    }
+  );
+
+  const bookingId = consumptionContext.booking_id;
+  const serviceId = consumptionContext.service_id;
+
+  const requestedLocationId = optionalText(
+    preferred(data, 'locationId', 'location_id')
+  );
+
+  const location = requestedLocationId
+    ? await getLocation(db, salonId, requestedLocationId)
+    : await ensureDefaultLocation(db, salonId);
+
+  if (Number(location.active) !== 1) {
+    throw new AppError(
+      409,
+      'inventory:location_inactive',
+      'Inventory location is inactive'
+    );
+  }
+
+  const locationId = location.id;
+
   const lines = Array.isArray(data.lines) ? data.lines : [];
+
   if (!lines.length) {
-    throw new AppError(400, 'core_validation:empty_consumption', 'Consumption requires at least one line');
+    throw new AppError(
+      400,
+      'core_validation:empty_consumption',
+      'Consumption requires at least one line'
+    );
   }
 
   const existing = await dbFirst(
     db,
-    `SELECT id FROM service_consumptions
-      WHERE salon_id = ? AND booking_item_id = ? AND status = 'confirmed'
+    `SELECT id
+       FROM service_consumptions
+      WHERE salon_id = ?
+        AND booking_item_id = ?
+        AND status = 'confirmed'
       LIMIT 1`,
     [salonId, bookingItemId]
   );
+
   if (existing) {
     throw new AppError(
       409,
@@ -627,26 +913,88 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
   const who = actorFields(actor);
   const consumptionId = generatedId('svccons');
   const operationId =
-    optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+    optionalText(preferred(data, 'operationId', 'operation_id')) ||
+    generatedId('invop');
+
+  const requestedItemIds = lines.map((line) =>
+    requiredId(
+      line.inventoryItemId || line.inventory_item_id,
+      'inventoryItemId'
+    )
+  );
+
+  const itemRows = await getItemsByIds(
+    db,
+    salonId,
+    requestedItemIds
+  );
+
+  const itemsById = new Map(
+    itemRows.map((item) => [item.id, item])
+  );
+
+  const trustedUnitCostsByItemId =
+    await getTrustedUnitCostsByItemIds(
+      db,
+      salonId,
+      requestedItemIds
+    );
 
   let totalCost = 0;
   const prepared = [];
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const itemId = requiredId(line.inventoryItemId || line.inventory_item_id, 'inventoryItemId');
-    const item = await getItem(db, salonId, itemId);
+    const itemId = requestedItemIds[i];
+    const item = itemsById.get(itemId);
+
+    if (!item) {
+      throw new AppError(
+        404,
+        'inventory:item_not_found',
+        `Inventory item ${itemId} was not found`
+      );
+    }
+
+    if (Number(item.is_active) !== 1) {
+      throw new AppError(
+        409,
+        'inventory:item_inactive',
+        `Inventory item ${item.name} is inactive`
+      );
+    }
+
+    if (item.consumption_policy !== 'SERVICE_TRACKED') {
+      throw new AppError(
+        409,
+        'inventory:item_policy_mismatch',
+        `Inventory item ${item.name} is not configured for service consumption`
+      );
+    }
+
     const qty = positiveQty(line.quantity, 'quantity');
     const unit = line.unit ? requireUnit(line.unit) : item.unit;
+
     if (unit !== item.unit) {
-      throw new AppError(400, 'core_validation:unit_mismatch', `Unit mismatch for item ${item.name}`);
+      throw new AppError(
+        400,
+        'core_validation:unit_mismatch',
+        `Unit mismatch for item ${item.name}`
+      );
     }
+
     const unitCost =
-      line.unitCostHalalas != null || line.unit_cost_halalas != null
-        ? integer(line.unitCostHalalas ?? line.unit_cost_halalas, 'unitCostHalalas', { min: 0 })
+      trustedUnitCostsByItemId.has(itemId)
+        ? trustedUnitCostsByItemId.get(itemId)
         : null;
-    const lineCost = unitCost != null ? Math.round(unitCost * qty) : 0;
+
+    const lineCost =
+      unitCost != null
+        ? Math.round(unitCost * qty)
+        : 0;
+
     totalCost += lineCost;
+
     prepared.push({
       item,
       itemId,
@@ -654,19 +1002,123 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
       unit,
       unitCost,
       lineCost,
-      recipeLineId: optionalText(line.recipeLineId || line.recipe_line_id) || null,
+      recipeLineId:
+        optionalText(
+          line.recipeLineId ||
+            line.recipe_line_id
+        ) || null,
       lineKey: String(i),
+      movementId: generatedId('invmov'),
+      consumptionLineId: generatedId('svcconsln'),
     });
   }
 
-  await dbRun(
-    db,
-    `INSERT INTO service_consumptions (
-      id, salon_id, booking_id, booking_item_id, service_id, employee_id, location_id,
-      status, total_material_cost_halalas, operation_id,
-      confirmed_at, confirmed_by_uid, confirmed_by_name, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?)`,
-    [
+  const uniqueItemIds = [
+    ...new Set(prepared.map((line) => line.itemId)),
+  ];
+
+  const requirementSelects = prepared
+    .map(() => 'SELECT ? AS item_id, ? AS required_qty')
+    .join(' UNION ALL ');
+
+  const requirementParams = prepared.flatMap((line) => [
+    line.itemId,
+    line.qty,
+  ]);
+
+  const statements = [];
+
+  // Initialize every stock-level row inside the same transaction.
+  // ON CONFLICT makes this safe when the read model already exists.
+  for (const itemId of uniqueItemIds) {
+    statements.push({
+      sql: `INSERT INTO inventory_stock_levels (
+        id,
+        salon_id,
+        item_id,
+        location_id,
+        qty_on_hand,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, 0, ?)
+      ON CONFLICT(salon_id, item_id, location_id)
+      DO NOTHING`,
+      params: [
+        generatedId('invlvl'),
+        salonId,
+        itemId,
+        locationId,
+        now,
+      ],
+    });
+  }
+
+  const ensureStatementCount = statements.length;
+
+  /*
+   * Transactional stock guard.
+   *
+   * Requirements are aggregated by inventory item so duplicate lines
+   * cannot independently pass against the same starting balance.
+   *
+   * If any requested total exceeds stock, status becomes NULL.
+   * service_consumptions.status is NOT NULL, so SQLite aborts this
+   * statement and D1 rolls back the entire batch.
+   */
+  statements.push({
+    sql: `INSERT INTO service_consumptions (
+      id,
+      salon_id,
+      booking_id,
+      booking_item_id,
+      service_id,
+      employee_id,
+      location_id,
+      status,
+      total_material_cost_halalas,
+      operation_id,
+      confirmed_at,
+      confirmed_by_uid,
+      confirmed_by_name,
+      created_at
+    )
+    SELECT
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      CASE
+        WHEN NOT EXISTS (
+          SELECT 1
+          FROM (
+            SELECT
+              requested.item_id,
+              SUM(requested.required_qty) AS required_qty
+            FROM (
+              ${requirementSelects}
+            ) requested
+            GROUP BY requested.item_id
+          ) required
+          LEFT JOIN inventory_stock_levels sl
+            ON sl.salon_id = ?
+           AND sl.item_id = required.item_id
+           AND sl.location_id = ?
+          WHERE COALESCE(sl.qty_on_hand, 0) + 0.000000001
+                < required.required_qty
+        )
+        THEN 'confirmed'
+        ELSE NULL
+      END,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?`,
+    params: [
       consumptionId,
       salonId,
       bookingId,
@@ -674,49 +1126,132 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
       serviceId,
       employeeId,
       locationId,
+      ...requirementParams,
+      salonId,
+      locationId,
       totalCost,
       operationId,
       now,
       who.uid,
       who.name,
       now,
-    ]
-  );
+    ],
+  });
 
-  const movementIds = [];
+  const headerStatementIndex = statements.length - 1;
+
   for (const line of prepared) {
-    const mov = await appendMovement(
-      db,
-      salonId,
-      {
-        itemId: line.itemId,
+    statements.push({
+      sql: `INSERT INTO inventory_stock_movements (
+        id,
+        salon_id,
+        item_id,
+        location_id,
+        movement_type,
+        quantity_delta,
+        unit,
+        unit_cost_halalas,
+        balance_after,
+        source_type,
+        source_id,
+        line_key,
+        operation_id,
+        employee_id,
+        booking_id,
+        booking_item_id,
+        service_id,
+        reverses_movement_id,
+        note,
+        created_by_uid,
+        created_by_name,
+        created_at
+      )
+      SELECT
+        ?,
+        ?,
+        ?,
+        ?,
+        'SERVICE_CONSUMPTION_OUT',
+        ?,
+        ?,
+        ?,
+        sl.qty_on_hand - ?,
+        'service_consumption',
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        NULL,
+        ?,
+        ?,
+        ?,
+        ?
+      FROM inventory_stock_levels sl
+      WHERE sl.salon_id = ?
+        AND sl.item_id = ?
+        AND sl.location_id = ?`,
+      params: [
+        line.movementId,
+        salonId,
+        line.itemId,
         locationId,
-        movementType: 'SERVICE_CONSUMPTION_OUT',
-        quantityDelta: -line.qty,
-        unit: line.unit,
-        unitCostHalalas: line.unitCost,
-        sourceType: 'service_consumption',
-        sourceId: consumptionId,
-        lineKey: line.lineKey,
+        -line.qty,
+        line.unit,
+        line.unitCost,
+        line.qty,
+        consumptionId,
+        line.lineKey,
         operationId,
         employeeId,
         bookingId,
         bookingItemId,
         serviceId,
-        note: `Service consumption ${serviceId}`,
-      },
-      actor
-    );
-    movementIds.push(mov.movementId);
+        `Service consumption ${serviceId}`,
+        who.uid,
+        who.name,
+        now,
+        salonId,
+        line.itemId,
+        locationId,
+      ],
+    });
 
-    await dbRun(
-      db,
-      `INSERT INTO service_consumption_lines (
-        id, salon_id, consumption_id, recipe_line_id, inventory_item_id,
-        quantity, unit, unit_cost_halalas, line_cost_halalas, stock_movement_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        generatedId('svcconsln'),
+    statements.push({
+      sql: `UPDATE inventory_stock_levels
+               SET qty_on_hand = qty_on_hand - ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND item_id = ?
+               AND location_id = ?`,
+      params: [
+        line.qty,
+        now,
+        salonId,
+        line.itemId,
+        locationId,
+      ],
+    });
+
+    statements.push({
+      sql: `INSERT INTO service_consumption_lines (
+        id,
+        salon_id,
+        consumption_id,
+        recipe_line_id,
+        inventory_item_id,
+        quantity,
+        unit,
+        unit_cost_halalas,
+        line_cost_halalas,
+        stock_movement_id,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        line.consumptionLineId,
         salonId,
         consumptionId,
         line.recipeLineId,
@@ -725,21 +1260,86 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
         line.unit,
         line.unitCost,
         line.lineCost,
-        mov.movementId,
+        line.movementId,
         now,
-      ]
+      ],
+    });
+  }
+
+  let results;
+
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    const message = String(
+      error?.message ||
+      error ||
+      ''
     );
+
+    if (
+      message.includes('service_consumptions.status') &&
+      message.toLowerCase().includes('not null')
+    ) {
+      throw new AppError(
+        409,
+        'inventory:insufficient_stock',
+        'Insufficient stock for this service consumption'
+      );
+    }
+
+    if (
+      message.includes('service_consumptions') &&
+      message.toLowerCase().includes('unique')
+    ) {
+      throw new AppError(
+        409,
+        'inventory:consumption_already_confirmed',
+        'Service consumption already confirmed for this booking item'
+      );
+    }
+
+    throw error;
+  }
+
+  if (changes(results?.[headerStatementIndex]) !== 1) {
+    throw new AppError(
+      500,
+      'inventory:consumption_write_failed',
+      'Service consumption was not created'
+    );
+  }
+
+  const firstLineStatementIndex =
+    ensureStatementCount + 1;
+
+  for (let i = 0; i < prepared.length; i += 1) {
+    const baseIndex =
+      firstLineStatementIndex + i * 3;
+
+    if (
+      changes(results?.[baseIndex]) !== 1 ||
+      changes(results?.[baseIndex + 1]) !== 1 ||
+      changes(results?.[baseIndex + 2]) !== 1
+    ) {
+      throw new AppError(
+        500,
+        'inventory:consumption_write_incomplete',
+        'Service consumption transaction returned an incomplete write result'
+      );
+    }
   }
 
   return {
     consumptionId,
     operationId,
     totalMaterialCostHalalas: totalCost,
-    movementIds,
+    movementIds: prepared.map(
+      (line) => line.movementId
+    ),
     confirmedAt: now,
   };
 }
-
 export async function getServiceConsumptionByBookingItem(db, salonId, bookingItemId) {
   const row = await dbFirst(
     db,

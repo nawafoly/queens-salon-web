@@ -1,4 +1,4 @@
-﻿// CORE D1 ONLY â€” do not add Firestore fallback.
+// CORE D1 ONLY â€” do not add Firestore fallback.
 
 import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
 import { expireClientPackagesD1 } from '../packages/d1.js';
@@ -2868,11 +2868,54 @@ export async function handleRequest(request, env) {
     }
     return jsonResponse(request, env, 200, { ok: true, data: response });
   }
+  let dispatchBody = body;
+
+  if (
+    route.name === "inventory:consumption-confirm" &&
+    String(request.method || "").toUpperCase() === "POST"
+  ) {
+    const rawHeaderOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+
+    const headerOperationId = rawHeaderOperationId
+      ? normalizeOperationId(rawHeaderOperationId)
+      : "";
+
+    const bodyOperationId = cleanText(
+      body?.operationId ?? body?.operation_id
+    );
+
+    const normalizedBodyOperationId = bodyOperationId
+      ? normalizeOperationId(bodyOperationId)
+      : "";
+
+    if (
+      headerOperationId &&
+      bodyOperationId &&
+      headerOperationId !== normalizedBodyOperationId
+    ) {
+      throw new AppError(
+        400,
+        "inventory:operation_id_mismatch"
+      );
+    }
+
+    if (headerOperationId) {
+      dispatchBody = {
+        ...body,
+        operationId: headerOperationId,
+      };
+
+      delete dispatchBody.operation_id;
+    }
+  }
+
   const data = await dispatch(
     ctx,
     route,
     request.method,
-    body,
+    dispatchBody,
     Object.fromEntries(url.searchParams.entries()),
     env
   );
