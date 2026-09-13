@@ -1,4 +1,4 @@
-// CORE D1 ONLY ظ¤ do not add Firestore fallback.
+﻿// CORE D1 ONLY ظ¤ do not add Firestore fallback.
 // Inventory Control Center ظ¤ Phase 1 foundation repository.
 
 import {
@@ -1013,9 +1013,80 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
     });
   }
 
+  // Recipe membership: actual item must match SPECIFIC_ITEM or belong to CATEGORY.
+  const recipeLineIds = [
+    ...new Set(
+      prepared
+        .map((line) => line.recipeLineId)
+        .filter(Boolean)
+    ),
+  ];
+
+  if (recipeLineIds.length) {
+    const placeholders = recipeLineIds.map(() => '?').join(', ');
+    const recipeLineRows = await dbAll(
+      db,
+      `SELECT id, line_type, inventory_item_id, category_id
+         FROM service_consumption_recipe_lines
+        WHERE salon_id = ?
+          AND id IN (${placeholders})`,
+      [salonId, ...recipeLineIds]
+    );
+
+    const recipeLinesById = new Map(
+      recipeLineRows.map((row) => [row.id, row])
+    );
+
+    for (const line of prepared) {
+      if (!line.recipeLineId) continue;
+
+      const recipeLine = recipeLinesById.get(line.recipeLineId);
+      if (!recipeLine) {
+        throw new AppError(
+          404,
+          'inventory:recipe_line_not_found',
+          `Recipe line ${line.recipeLineId} was not found`
+        );
+      }
+
+      const lineType = cleanText(recipeLine.line_type).toUpperCase();
+
+      if (lineType === 'SPECIFIC_ITEM') {
+        if (
+          cleanText(recipeLine.inventory_item_id) !==
+          cleanText(line.itemId)
+        ) {
+          throw new AppError(
+            409,
+            'inventory:item_not_matching_recipe_line',
+            `Item ${line.itemId} does not match recipe line ${line.recipeLineId}`
+          );
+        }
+      } else if (lineType === 'CATEGORY') {
+        if (
+          cleanText(line.item.category_id) !==
+          cleanText(recipeLine.category_id)
+        ) {
+          throw new AppError(
+            409,
+            'inventory:item_not_in_recipe_category',
+            `Item ${line.itemId} is not in recipe category ${recipeLine.category_id}`
+          );
+        }
+      } else {
+        throw new AppError(
+          400,
+          'inventory:invalid_recipe_line_type',
+          `Unsupported recipe line type: ${lineType}`
+        );
+      }
+    }
+  }
+
   const uniqueItemIds = [
     ...new Set(prepared.map((line) => line.itemId)),
   ];
+
 
   const requirementSelects = prepared
     .map(() => 'SELECT ? AS item_id, ? AS required_qty')
