@@ -168,7 +168,7 @@ export default function DashboardInventory() {
   }
 
   return (
-    <section className="dash-card" dir="rtl">
+          <section className="dash-card" dir="rtl">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <div>
           <h2 className="h5 mb-1">
@@ -177,10 +177,17 @@ export default function DashboardInventory() {
           </h2>
           <p className="text-muted mb-0">المواد والرصيد الحالي. الخصم يتم فقط عند تأكيد الاستهلاك لاحقاً.</p>
         </div>
-        {canManage ? (
-          <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
+        {canManage && tab === "items" ? (
+          <button type="button" className="btn btn-dark" onClick={openCreate}>
+            <FontAwesomeIcon icon={faPlus} className="ms-2" />
+            مادة جديدة
+          </button>
+        ) : null}
       </div>
-
+      <div className="d-flex gap-2 mb-3">
+        <button type="button" className={tab === "items" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("items")}>المواد</button>
+        <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
+      </div>
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
 
       {tab === "items" ? (
