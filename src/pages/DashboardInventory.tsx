@@ -191,6 +191,7 @@ export default function DashboardInventory() {
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
 
       {tab === "items" ? (
+      <>
       <div className="d-flex gap-2 mb-3">
         <input
           className="form-control"
