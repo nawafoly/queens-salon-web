@@ -24,7 +24,9 @@ function todayISO() {
 }
 
 function errorMessage(error: unknown) {
-  if (error instanceof CoreApiError) return error.message;
+  if (error instanceof CoreApiError) {
+    return [error.code, error.message].filter(Boolean).join(" — ");
+  }
   return "تعذر تأكيد الاستهلاك.";
 }
 
@@ -50,6 +52,7 @@ export default function DashboardInventoryConsumption() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [itemNames, setItemNames] = useState<Record<string, string>>({});
 
   const selectedBooking = useMemo(
     () => bookings.find((row) => row.id === bookingId) || null,
@@ -67,6 +70,10 @@ export default function DashboardInventoryConsumption() {
           CoreHrService.listEmployees({ status: "active" }),
         ]);
         setBookings(bookingRows || []);
+        const inventoryItems = await CoreInventoryService.listItems({ active: "1" });
+        const names: Record<string, string> = {};
+        for (const item of inventoryItems || []) names[item.id] = item.name;
+        setItemNames(names);
         setEmployees(
           (employeeRows || []).map((row: { id?: string; fullName?: string; name?: string; displayName?: string }) => ({
             id: String(row.id || ""),
@@ -104,7 +111,7 @@ export default function DashboardInventoryConsumption() {
           recipeLines.map((line) => ({
             recipeLineId: line.id,
             inventoryItemId: String(line.inventory_item_id),
-            itemName: line.inventory_item_id || "",
+            itemName: itemNames[String(line.inventory_item_id)] || String(line.inventory_item_id),
             quantity: String(line.default_qty),
             unit: line.unit,
           }))
