@@ -6,6 +6,7 @@ import {
   DashboardNumberInputV2,
   DashboardSelectV2,
   DashboardSkeletonV2,
+  DashboardDateInputV2,
 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreBookingService } from "../services/CoreBookingService";
@@ -147,7 +148,7 @@ export default function DashboardInventoryConsumption() {
       {notice ? <p className="text-success">{notice}</p> : null}
 
       <DashboardFieldV2 id="inv-cons-date" label="تاريخ الحجوزات">
-        <input className="form-control" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div dir="ltr"><DashboardDateInputV2 className="form-control" value={date} onChange={(e) => setDate(e.target.value)} /></div>
       </DashboardFieldV2>
       <DashboardFieldV2 id="inv-cons-booking" label="الحجز">
         <DashboardSelectV2
