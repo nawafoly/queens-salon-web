@@ -67,6 +67,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
+  const [tab, setTab] = useState<"items" | "recipes">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,13 +78,10 @@ export default function DashboardInventory() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [openingQty, setOpeningQty] = useState("");
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<"items" | "recipes">("items");
 
   const qtyByItem = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of levels) {
-      map.set(row.item_id, Number(row.qty_on_hand || 0));
-    }
+    for (const row of levels) map.set(row.item_id, Number(row.qty_on_hand || 0));
     return map;
   }, [levels]);
 
@@ -106,7 +104,6 @@ export default function DashboardInventory() {
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openCreate() {
@@ -148,7 +145,6 @@ export default function DashboardInventory() {
       const saved = editing
         ? await CoreInventoryService.updateItem(editing.id, payload)
         : await CoreInventoryService.createItem(payload);
-
       const qty = Number(openingQty);
       if (!editing && canAdjust && Number.isFinite(qty) && qty > 0) {
         await CoreInventoryService.recordOpeningBalance({
@@ -157,7 +153,6 @@ export default function DashboardInventory() {
           note: "Opening balance from inventory UI",
         });
       }
-
       setModalOpen(false);
       await load();
     } catch (err) {
@@ -168,7 +163,7 @@ export default function DashboardInventory() {
   }
 
   return (
-          <section className="dash-card" dir="rtl">
+    <section className="dash-card" dir="rtl">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <div>
           <h2 className="h5 mb-1">
@@ -184,169 +179,140 @@ export default function DashboardInventory() {
           </button>
         ) : null}
       </div>
+
       <div className="d-flex gap-2 mb-3">
         <button type="button" className={tab === "items" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("items")}>المواد</button>
         <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
       </div>
+
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
 
       {tab === "items" ? (
-      <>
-      <div className="d-flex gap-2 mb-3">
-        <input
-          className="form-control"
-          placeholder="بحث بالاسم أو SKU"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void load();
-          }}
-        />
-        <button type="button" className="btn btn-outline-secondary" onClick={() => void load()}>
-          تحديث
-        </button>
-      </div>
+        <>
+          <div className="d-flex gap-2 mb-3">
+            <input
+              className="form-control"
+              placeholder="بحث بالاسم أو SKU"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void load();
+              }}
+            />
+            <button type="button" className="btn btn-outline-secondary" onClick={() => void load()}>
+              تحديث
+            </button>
+          </div>
 
-      {error ? <DashboardErrorStateV2 title="تعذر تحميل المخزون" description={error} /> : null}
-      {loading ? <DashboardSkeletonV2 lines={6} /> : null}
+          {error ? <DashboardErrorStateV2 title="تعذر تحميل المخزون" description={error} /> : null}
+          {loading ? <DashboardSkeletonV2 lines={6} /> : null}
 
-      {!loading && !items.length ? (
-        <DashboardEmptyStateV2
-          title="لا توجد مواد بعد"
-          description="أضيفي المواد المستخدمة في الخدمات أولاً، ثم نربط الوصفات."
-        />
-      ) : null}
+          {!loading && !items.length ? (
+            <DashboardEmptyStateV2
+              title="لا توجد مواد بعد"
+              description="أضيفي المواد المستخدمة في الخدمات أولاً، ثم نربط الوصفات."
+            />
+          ) : null}
 
-      {!loading && items.length ? (
-        <div className="table-responsive">
-          <table className="table align-middle">
-            <thead>
-              <tr>
-                <th>المادة</th>
-                <th>الوحدة</th>
-                <th>السياسة</th>
-                <th>الرصيد</th>
-                <th>حد إعادة الطلب</th>
-                <th>الحالة</th>
-                {canManage ? <th></th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const qty = qtyByItem.get(item.id);
-                const low =
-                  qty != null && Number(item.min_stock_qty || 0) > 0 && qty <= Number(item.min_stock_qty);
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <div>{item.name}</div>
-                      {item.sku ? <small className="text-muted">{item.sku}</small> : null}
-                    </td>
-                    <td>{item.unit}</td>
-                    <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
-                    <td>
-                      {qty == null ? "—" : qty}
-                      {low ? <span className="badge bg-warning text-dark me-2">منخفض</span> : null}
-                    </td>
-                    <td>{item.min_stock_qty}</td>
-                    <td>{Number(item.is_active) === 1 ? "نشط" : "موقوف"}</td>
-                    {canManage ? (
-                      <td>
-                        <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(item)}>
-                          تعديل
-                        </button>
-                      </td>
-                    ) : null}
+          {!loading && items.length ? (
+            <div className="table-responsive">
+              <table className="table align-middle">
+                <thead>
+                  <tr>
+                    <th>المادة</th>
+                    <th>الوحدة</th>
+                    <th>السياسة</th>
+                    <th>الرصيد</th>
+                    <th>حد إعادة الطلب</th>
+                    <th>الحالة</th>
+                    {canManage ? <th></th> : null}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const qty = qtyByItem.get(item.id);
+                    const low = qty != null && Number(item.min_stock_qty || 0) > 0 && qty <= Number(item.min_stock_qty);
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <div>{item.name}</div>
+                          {item.sku ? <small className="text-muted">{item.sku}</small> : null}
+                        </td>
+                        <td>{item.unit}</td>
+                        <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
+                        <td>
+                          {qty == null ? "-" : qty}
+                          {low ? <span className="badge bg-warning text-dark me-2">منخفض</span> : null}
+                        </td>
+                        <td>{item.min_stock_qty}</td>
+                        <td>{Number(item.is_active) === 1 ? "نشط" : "موقوف"}</td>
+                        {canManage ? (
+                          <td>
+                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(item)}>
+                              تعديل
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      ) : null}
       <DashboardModalV2
         open={modalOpen}
         title={editing ? "تعديل مادة" : "مادة جديدة"}
         onClose={() => setModalOpen(false)}
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)}>إلغاء</button>
+            <button type="button" className="btn btn-dark" disabled={saving || !form.name.trim()} onClick={() => void save()}>
+              {saving ? "جاري الحفظ..." : "حفظ"}
+            </button>
+          </>
+        }
       >
-        <DashboardFieldV2 label="الاسم">
-          <input
-            className="form-control"
-            value={form.name}
-            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-          />
+        <DashboardFieldV2 id="inv-item-name" label="الاسم">
+          <input className="form-control" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
         </DashboardFieldV2>
-        <DashboardFieldV2 label="الوحدة">
-          <DashboardSelectV2
-            value={form.unit}
-            options={UNITS}
-            onChange={(value) => setForm((prev) => ({ ...prev, unit: String(value) }))}
-          />
+        <DashboardFieldV2 id="inv-item-unit" label="الوحدة">
+          <DashboardSelectV2 id="inv-item-unit" value={form.unit} options={UNITS} onChange={(value) => setForm((prev) => ({ ...prev, unit: value }))} />
         </DashboardFieldV2>
-        <DashboardFieldV2 label="سياسة الاستهلاك">
+        <DashboardFieldV2 id="inv-item-policy" label="سياسة الاستهلاك">
           <DashboardSelectV2
+            id="inv-item-policy"
             value={form.consumptionPolicy}
             options={POLICIES}
-            onChange={(value) =>
-              setForm((prev) => ({
-                ...prev,
-                consumptionPolicy: value as InventoryConsumptionPolicy,
-              }))
-            }
+            onChange={(value) => setForm((prev) => ({ ...prev, consumptionPolicy: value as InventoryConsumptionPolicy }))}
           />
         </DashboardFieldV2>
-        <DashboardFieldV2 label="حد إعادة الطلب">
-          <DashboardNumberInputV2
-            value={form.minStockQty}
-            onChange={(value) => setForm((prev) => ({ ...prev, minStockQty: Number(value || 0) }))}
-          />
+        <DashboardFieldV2 id="inv-item-min" label="حد إعادة الطلب">
+          <DashboardNumberInputV2 id="inv-item-min" value={form.minStockQty} onChange={(e) => setForm((prev) => ({ ...prev, minStockQty: Number(e.target.value || 0) }))} />
         </DashboardFieldV2>
-        <DashboardFieldV2 label="SKU">
-          <input
-            className="form-control"
-            value={form.sku}
-            onChange={(e) => setForm((prev) => ({ ...prev, sku: e.target.value }))}
-          />
+        <DashboardFieldV2 id="inv-item-sku" label="SKU">
+          <input className="form-control" value={form.sku} onChange={(e) => setForm((prev) => ({ ...prev, sku: e.target.value }))} />
         </DashboardFieldV2>
         {editing ? (
-          <DashboardFieldV2 label="الحالة">
+          <DashboardFieldV2 id="inv-item-active" label="الحالة">
             <DashboardSelectV2
+              id="inv-item-active"
               value={form.isActive}
-              options={[
-                { value: "1", label: "نشط" },
-                { value: "0", label: "موقوف" },
-              ]}
-              onChange={(value) => setForm((prev) => ({ ...prev, isActive: String(value) }))}
+              options={[{ value: "1", label: "نشط" }, { value: "0", label: "موقوف" }]}
+              onChange={(value) => setForm((prev) => ({ ...prev, isActive: value }))}
             />
           </DashboardFieldV2>
         ) : canAdjust ? (
-          <DashboardFieldV2 label="رصيد افتتاحي (اختياري)">
-            <input
-              className="form-control"
-              inputMode="decimal"
-              value={openingQty}
-              onChange={(e) => setOpeningQty(e.target.value)}
-            />
+          <DashboardFieldV2 id="inv-item-opening" label="رصيد افتتاحي (اختياري)">
+            <input className="form-control" inputMode="decimal" value={openingQty} onChange={(e) => setOpeningQty(e.target.value)} />
           </DashboardFieldV2>
         ) : null}
-        <DashboardFieldV2 label="ملاحظات">
-          <textarea
-            className="form-control"
-            rows={3}
-            value={form.notes}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
+        <DashboardFieldV2 id="inv-item-notes" label="ملاحظات">
+          <textarea className="form-control" rows={3} value={form.notes} onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))} />
         </DashboardFieldV2>
-        <div className="d-flex justify-content-end gap-2 mt-3">
-          <button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)}>
-            إلغاء
-          </button>
-          <button type="button" className="btn btn-dark" disabled={saving || !form.name.trim()} onClick={() => void save()}>
-            {saving ? "جاري الحفظ..." : "حفظ"}
-          </button>
-        </div>
       </DashboardModalV2>
     </section>
   );
