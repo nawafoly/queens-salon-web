@@ -44,6 +44,21 @@ export type InventoryStockLevel = {
   sku?: string | null;
 };
 
+export type InventoryMovement = {
+  id: string;
+  item_id: string;
+  movement_type: string;
+  qty_delta: number;
+  qty_before: number;
+  qty_after: number;
+  unit?: string | null;
+  booking_id?: string | null;
+  booking_item_id?: string | null;
+  employee_id?: string | null;
+  note?: string | null;
+  created_at: string;
+};
+
 export type InventoryItemInput = {
   name: string;
   unit: string;
@@ -103,6 +118,9 @@ export const CoreInventoryService = {
   },
   listStockLevels(query: { lowOnly?: string } = {}) {
     return coreApiRequest<InventoryStockLevel[]>("/api/core/inventory/stock-levels", { query });
+  },
+  listMovements(query: { itemId?: string; limit?: string } = {}) {
+    return coreApiRequest<InventoryMovement[]>("/api/core/inventory/movements", { query });
   },
   recordOpeningBalance(input: { itemId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/opening-balance", { method: "POST", body: input });
