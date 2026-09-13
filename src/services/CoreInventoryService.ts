@@ -112,6 +112,21 @@ export const CoreInventoryService = {
       `/api/core/inventory/recipes/by-service/${encodeURIComponent(serviceId)}`
     );
   },
+  getConsumptionByBookingItem(bookingItemId: string) {
+    return coreApiRequest(
+      `/api/core/inventory/consumptions/by-booking-item/${encodeURIComponent(bookingItemId)}`
+    );
+  },
+  confirmConsumption(input: {
+    bookingItemId: string;
+    employeeId: string;
+    lines: Array<{ inventoryItemId: string; quantity: number; unit?: string; recipeLineId?: string | null }>;
+  }) {
+    return coreApiRequest("/api/core/inventory/consumptions/confirm", {
+      method: "POST",
+      body: input,
+    });
+  },
   saveRecipe(serviceId: string, lines: ServiceRecipeLineInput[]) {
     return coreApiRequest<ServiceConsumptionRecipe>(
       `/api/core/inventory/recipes/by-service/${encodeURIComponent(serviceId)}`,
