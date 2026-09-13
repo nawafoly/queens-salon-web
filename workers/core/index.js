@@ -1,4 +1,4 @@
-// CORE D1 ONLY â€” do not add Firestore fallback.
+﻿// CORE D1 ONLY â€” do not add Firestore fallback.
 
 import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
 import { expireClientPackagesD1 } from '../packages/d1.js';
@@ -82,6 +82,23 @@ import {
   listDiscounts,
   patchDiscount,
 } from './repositories/discounts.js';
+import {
+  listCategories as listInventoryCategories,
+  createCategory as createInventoryCategory,
+  listItems as listInventoryItems,
+  getItem as getInventoryItem,
+  createItem as createInventoryItem,
+  updateItem as updateInventoryItem,
+  listLocations as listInventoryLocations,
+  ensureDefaultLocation,
+  listStockLevels,
+  recordOpeningBalance,
+  listMovements as listInventoryMovements,
+  getActiveRecipeForService,
+  upsertServiceRecipe,
+  confirmServiceConsumption,
+  getServiceConsumptionByBookingItem,
+} from './repositories/inventory.js';
 import {
   createCatalogRow,
   deleteCatalogRow,
@@ -826,6 +843,26 @@ function match(url, method) {
   if (path === "/api/core/payments") return { name: "payments" };
   if (path === "/api/core/income") return { name: "income" };
   if (path === "/api/core/health") return { name: "health" };
+  // Inventory Control Center
+  if (path === "/api/core/inventory/categories") return { name: "inventory:categories" };
+  if (path === "/api/core/inventory/items") return { name: "inventory:items" };
+  const invItem = /^\/api\/core\/inventory\/items\/([^/]+)$/.exec(path);
+  if (invItem) return { name: "inventory:item", id: invItem[1] };
+  if (path === "/api/core/inventory/locations") return { name: "inventory:locations" };
+  if (path === "/api/core/inventory/stock-levels") return { name: "inventory:stock-levels" };
+  if (path === "/api/core/inventory/movements") return { name: "inventory:movements" };
+  if (path === "/api/core/inventory/opening-balance" && method === "POST") {
+    return { name: "inventory:opening-balance" };
+  }
+  const invRecipe = /^\/api\/core\/inventory\/recipes\/by-service\/([^/]+)$/.exec(path);
+  if (invRecipe) return { name: "inventory:recipe-by-service", id: invRecipe[1] };
+  if (path === "/api/core/inventory/consumptions/confirm" && method === "POST") {
+    return { name: "inventory:consumption-confirm" };
+  }
+  const invConsByItem = /^\/api\/core\/inventory\/consumptions\/by-booking-item\/([^/]+)$/.exec(path);
+  if (invConsByItem && method === "GET") {
+    return { name: "inventory:consumption-by-booking-item", id: invConsByItem[1] };
+  }
   return null;
 }
 
@@ -2594,6 +2631,110 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
     }
+    case "inventory:categories":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        return listInventoryCategories(db, ctx.salonId, readQuery);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createInventoryCategory(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:items":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.items.manage",
+          "inventory.consume.confirm",
+        ]);
+        return listInventoryItems(db, ctx.salonId, readQuery);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createInventoryItem(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:item":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.items.manage",
+          "inventory.consume.confirm",
+        ]);
+        return getInventoryItem(db, ctx.salonId, route.id);
+      }
+      if (method === "PATCH") {
+        requirePermission(ctx, "inventory.items.manage");
+        return updateInventoryItem(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      break;
+
+    case "inventory:locations":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        const rows = await listInventoryLocations(db, ctx.salonId, readQuery);
+        if (!rows.length) return [await ensureDefaultLocation(db, ctx.salonId)];
+        return rows;
+      }
+      break;
+
+    case "inventory:stock-levels":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        return listStockLevels(db, ctx.salonId, readQuery);
+      }
+      break;
+
+    case "inventory:movements":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.movements.view", "inventory.view"]);
+        return listInventoryMovements(db, ctx.salonId, readQuery);
+      }
+      break;
+
+    case "inventory:opening-balance":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return recordOpeningBalance(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:recipe-by-service":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.recipes.manage",
+          "inventory.consume.confirm",
+        ]);
+        return getActiveRecipeForService(db, ctx.salonId, route.id);
+      }
+      if (method === "PUT" || method === "POST") {
+        requirePermission(ctx, "inventory.recipes.manage");
+        return upsertServiceRecipe(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumption-confirm":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.consume.confirm");
+        return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumption-by-booking-item":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.consume.confirm",
+          "inventory.movements.view",
+        ]);
+        return getServiceConsumptionByBookingItem(db, ctx.salonId, route.id);
+      }
+      break;
+
 
     default:
       break;
