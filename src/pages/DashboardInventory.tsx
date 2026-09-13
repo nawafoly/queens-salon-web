@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxesStacked, faPlus } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -18,6 +18,7 @@ import {
   type InventoryStockLevel,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
+import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -76,6 +77,7 @@ export default function DashboardInventory() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [openingQty, setOpeningQty] = useState("");
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<"items" | "recipes">("items");
 
   const qtyByItem = useMemo(() => {
     const map = new Map<string, number>();
@@ -184,6 +186,14 @@ export default function DashboardInventory() {
       </div>
 
       <div className="d-flex gap-2 mb-3">
+        <button type="button" className={tn ${tab === "items" ? "btn-dark" : "btn-outline-dark"}} onClick={() => setTab("items")}>المواد</button>
+        <button type="button" className={tn ${tab === "recipes" ? "btn-dark" : "btn-outline-dark"}} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
+      </div>
+
+      {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
+
+      {tab === "items" ? (
+      <div className="d-flex gap-2 mb-3">
         <input
           className="form-control"
           placeholder="بحث بالاسم أو SKU"
@@ -256,6 +266,7 @@ export default function DashboardInventory() {
         </div>
       ) : null}
 
+      </>) : null}
       <DashboardModalV2
         open={modalOpen}
         title={editing ? "تعديل مادة" : "مادة جديدة"}

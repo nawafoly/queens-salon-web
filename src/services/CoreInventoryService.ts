@@ -1,4 +1,4 @@
-import { coreApiRequest } from "./coreApiClient";
+﻿import { coreApiRequest } from "./coreApiClient";
 
 export type InventoryConsumptionPolicy =
   | "SERVICE_TRACKED"
@@ -56,62 +56,66 @@ export type InventoryItemInput = {
   notes?: string | null;
 };
 
+export type ServiceRecipeLineType = "SPECIFIC_ITEM" | "CATEGORY";
+
+export type ServiceRecipeLine = {
+  id: string;
+  recipe_id: string;
+  line_type: ServiceRecipeLineType;
+  inventory_item_id: string | null;
+  category_id: string | null;
+  default_qty: number;
+  unit: string;
+  sort_order: number;
+};
+
+export type ServiceConsumptionRecipe = {
+  id: string;
+  service_id: string;
+  version: number;
+  is_active: number;
+  lines: ServiceRecipeLine[];
+};
+
+export type ServiceRecipeLineInput = {
+  lineType: ServiceRecipeLineType;
+  inventoryItemId?: string | null;
+  categoryId?: string | null;
+  defaultQty: number;
+  unit: string;
+};
+
 export const CoreInventoryService = {
   listCategories(query: { active?: string } = {}) {
-    return coreApiRequest<InventoryCategory[]>(
-      "/api/core/inventory/categories",
-      { query }
-    );
+    return coreApiRequest<InventoryCategory[]>("/api/core/inventory/categories", { query });
   },
-
   createCategory(input: { name: string }) {
-    return coreApiRequest<InventoryCategory>(
-      "/api/core/inventory/categories",
-      { method: "POST", body: input }
-    );
+    return coreApiRequest<InventoryCategory>("/api/core/inventory/categories", { method: "POST", body: input });
   },
-
-  listItems(query: {
-    search?: string;
-    active?: string;
-    categoryId?: string;
-    policy?: string;
-  } = {}) {
-    return coreApiRequest<InventoryItem[]>(
-      "/api/core/inventory/items",
-      { query }
-    );
+  listItems(query: { search?: string; active?: string; categoryId?: string; policy?: string } = {}) {
+    return coreApiRequest<InventoryItem[]>("/api/core/inventory/items", { query });
   },
-
   createItem(input: InventoryItemInput) {
-    return coreApiRequest<InventoryItem>("/api/core/inventory/items", {
-      method: "POST",
-      body: input,
-    });
+    return coreApiRequest<InventoryItem>("/api/core/inventory/items", { method: "POST", body: input });
   },
-
   updateItem(id: string, input: Partial<InventoryItemInput>) {
-    return coreApiRequest<InventoryItem>(
-      `/api/core/inventory/items/${encodeURIComponent(id)}`,
-      { method: "PATCH", body: input }
-    );
+    return coreApiRequest<InventoryItem>(`/api/core/inventory/items/${encodeURIComponent(id)}`, { method: "PATCH", body: input });
   },
-
   listStockLevels(query: { lowOnly?: string } = {}) {
-    return coreApiRequest<InventoryStockLevel[]>(
-      "/api/core/inventory/stock-levels",
-      { query }
+    return coreApiRequest<InventoryStockLevel[]>("/api/core/inventory/stock-levels", { query });
+  },
+  recordOpeningBalance(input: { itemId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/opening-balance", { method: "POST", body: input });
+  },
+  getRecipeByService(serviceId: string) {
+    return coreApiRequest<ServiceConsumptionRecipe | null>(
+      `/api/core/inventory/recipes/by-service/${encodeURIComponent(serviceId)}`
     );
   },
-
-  recordOpeningBalance(input: {
-    itemId: string;
-    quantity: number;
-    note?: string;
-  }) {
-    return coreApiRequest("/api/core/inventory/opening-balance", {
-      method: "POST",
-      body: input,
-    });
+  saveRecipe(serviceId: string, lines: ServiceRecipeLineInput[]) {
+    return coreApiRequest<ServiceConsumptionRecipe>(
+      `/api/core/inventory/recipes/by-service/${encodeURIComponent(serviceId)}`,
+      { method: "PUT", body: { lines } }
+    );
   },
 };
