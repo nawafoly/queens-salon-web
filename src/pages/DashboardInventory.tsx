@@ -23,6 +23,7 @@ import DashboardInventoryConsumption from "./DashboardInventoryConsumption";
 import DashboardInventoryMovements from "./DashboardInventoryMovements";
 import DashboardInventoryIssue from "./DashboardInventoryIssue";
 import DashboardInventoryOps from "./DashboardInventoryOps";
+import DashboardInventoryTrade from "./DashboardInventoryTrade";
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -71,7 +72,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +192,7 @@ export default function DashboardInventory() {
         <button type="button" className={tab === "moves" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("moves")}>الحركات</button>
         <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
         <button type="button" className={tab === "ops" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("ops")}>هدر وجرد</button>
+        <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>شراء وبيع</button>
       </div>
 
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
@@ -198,6 +200,7 @@ export default function DashboardInventory() {
       {tab === "moves" ? <DashboardInventoryMovements /> : null}
       {tab === "issue" ? <DashboardInventoryIssue /> : null}
       {tab === "ops" ? <DashboardInventoryOps /> : null}
+      {tab === "trade" ? <DashboardInventoryTrade /> : null}
 
       {tab === "items" ? (
         <>

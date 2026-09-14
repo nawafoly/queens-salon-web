@@ -102,6 +102,9 @@ import {
   returnFromEmployee,
   recordWaste,
   adjustAfterStocktake,
+  receivePurchase,
+  sellProduct,
+  returnProduct,
 } from './repositories/inventory.js';
 import {
   createCatalogRow,
@@ -860,6 +863,15 @@ function match(url, method) {
   }
   const invRecipe = /^\/api\/core\/inventory\/recipes\/by-service\/([^/]+)$/.exec(path);
   if (invRecipe) return { name: "inventory:recipe-by-service", id: invRecipe[1] };
+  if (path === "/api/core/inventory/purchase-receipt" && method === "POST") {
+    return { name: "inventory:purchase-receipt" };
+  }
+  if (path === "/api/core/inventory/sell" && method === "POST") {
+    return { name: "inventory:sell" };
+  }
+  if (path === "/api/core/inventory/sale-return" && method === "POST") {
+    return { name: "inventory:sale-return" };
+  }
   if (path === "/api/core/inventory/waste" && method === "POST") {
     return { name: "inventory:waste" };
   }
@@ -2737,6 +2749,27 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.consume.confirm");
         return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:purchase-receipt":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return receivePurchase(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:sell":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return sellProduct(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:sale-return":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return returnProduct(db, ctx.salonId, body, actorInfo);
       }
       break;
 

@@ -145,6 +145,15 @@ export const CoreInventoryService = {
       body: input,
     });
   },
+  receivePurchase(input: { itemId: string; quantity: number; unitCostHalalas?: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/purchase-receipt", { method: "POST", body: input });
+  },
+  sellProduct(input: { itemId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/sell", { method: "POST", body: input });
+  },
+  returnProduct(input: { itemId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/sale-return", { method: "POST", body: input });
+  },
   recordWaste(input: { itemId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },

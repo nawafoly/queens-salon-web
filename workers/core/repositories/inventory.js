@@ -1567,3 +1567,89 @@ export async function adjustAfterStocktake(db, salonId, data, actor = {}) {
     note: optionalText(data.note) || 'Stocktake variance',
   }, actor);
 }
+
+
+export async function receivePurchase(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Purchase quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const unitCostHalalas = data.unitCostHalalas != null || data.unit_cost_halalas != null
+    ? integer(preferred(data, 'unitCostHalalas', 'unit_cost_halalas'), 'unitCostHalalas', { min: 0 })
+    : null;
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'PURCHASE_RECEIPT_IN',
+    quantityDelta: quantity,
+    unit: item.unit,
+    unitCostHalalas,
+    sourceType: 'PURCHASE',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    note: optionalText(data.note) || 'Purchase receipt',
+  }, actor);
+}
+
+export async function sellProduct(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Sale quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  if (cleanText(item.consumption_policy) !== 'DIRECT_SALE') {
+    throw new AppError(409, 'inventory:item_policy_mismatch', 'Only DIRECT_SALE items can be sold from inventory');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'DIRECT_SALE_OUT',
+    quantityDelta: -quantity,
+    unit: item.unit,
+    sourceType: 'DIRECT_SALE',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    note: optionalText(data.note) || 'Direct sale',
+  }, actor);
+}
+
+export async function returnProduct(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Return quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'DIRECT_SALE_RETURN_IN',
+    quantityDelta: quantity,
+    unit: item.unit,
+    sourceType: 'DIRECT_SALE_RETURN',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    note: optionalText(data.note) || 'Direct sale return',
+  }, actor);
+}

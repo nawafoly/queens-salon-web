@@ -12,6 +12,9 @@ const TYPE_LABEL: Record<string, string> = {
   EMPLOYEE_ISSUE_OUT: "صرف موظفة",
   EMPLOYEE_RETURN_IN: "إرجاع موظفة",
   STOCKTAKE_VARIANCE: "فرق جرد",
+  PURCHASE_RECEIPT_IN: "استلام شراء",
+  DIRECT_SALE_OUT: "بيع مباشر",
+  DIRECT_SALE_RETURN_IN: "مرتجع بيع",
 };
 
 function errorMessage(error: unknown) {
