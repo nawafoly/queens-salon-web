@@ -1429,3 +1429,82 @@ export async function getServiceConsumptionByBookingItem(db, salonId, bookingIte
   );
   return { ...row, lines };
 }
+
+
+export async function issueToEmployee(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const employeeId = requiredId(preferred(data, 'employeeId', 'employee_id'), 'employeeId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Issue quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  if (cleanText(item.consumption_policy) !== 'EMPLOYEE_ISSUED') {
+    throw new AppError(409, 'inventory:item_policy_mismatch', 'Only EMPLOYEE_ISSUED items can be issued to staff');
+  }
+  const employee = await dbFirst(
+    db,
+    'SELECT id, status FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, employeeId]
+  );
+  if (!employee) {
+    throw new AppError(404, 'inventory:employee_not_found', 'Employee was not found');
+  }
+  if (cleanText(employee.status).toLowerCase() !== 'active') {
+    throw new AppError(409, 'inventory:employee_inactive', 'Cannot issue stock to an inactive employee');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'EMPLOYEE_ISSUE_OUT',
+    quantityDelta: -quantity,
+    unit: item.unit,
+    sourceType: 'EMPLOYEE_ISSUE',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    employeeId,
+    note: optionalText(data.note) || 'Issued to employee',
+  }, actor);
+}
+
+export async function returnFromEmployee(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const employeeId = requiredId(preferred(data, 'employeeId', 'employee_id'), 'employeeId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Return quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const employee = await dbFirst(
+    db,
+    'SELECT id, status FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, employeeId]
+  );
+  if (!employee) {
+    throw new AppError(404, 'inventory:employee_not_found', 'Employee was not found');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'EMPLOYEE_RETURN_IN',
+    quantityDelta: quantity,
+    unit: item.unit,
+    sourceType: 'EMPLOYEE_RETURN',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    employeeId,
+    note: optionalText(data.note) || 'Returned from employee',
+  }, actor);
+}

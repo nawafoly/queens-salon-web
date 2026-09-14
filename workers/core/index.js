@@ -2724,6 +2724,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "inventory:employee-issue":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return issueToEmployee(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:employee-return":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return returnFromEmployee(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
     case "inventory:consumption-by-booking-item":
       if (method === "GET") {
         requireAnyPermission(ctx, [

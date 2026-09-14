@@ -21,6 +21,7 @@ import { CoreApiError } from "../services/coreApiClient";
 import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
 import DashboardInventoryConsumption from "./DashboardInventoryConsumption";
 import DashboardInventoryMovements from "./DashboardInventoryMovements";
+import DashboardInventoryIssue from "./DashboardInventoryIssue";
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -69,7 +70,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,11 +188,13 @@ export default function DashboardInventory() {
         <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
         <button type="button" className={tab === "consume" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("consume")}>تأكيد الاستهلاك</button>
         <button type="button" className={tab === "moves" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("moves")}>الحركات</button>
+        <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
       </div>
 
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
       {tab === "consume" ? <DashboardInventoryConsumption /> : null}
       {tab === "moves" ? <DashboardInventoryMovements /> : null}
+      {tab === "issue" ? <DashboardInventoryIssue /> : null}
 
       {tab === "items" ? (
         <>

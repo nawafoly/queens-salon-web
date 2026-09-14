@@ -145,6 +145,12 @@ export const CoreInventoryService = {
       body: input,
     });
   },
+  issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/employee-issue", { method: "POST", body: input });
+  },
+  returnFromEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/employee-return", { method: "POST", body: input });
+  },
   saveRecipe(serviceId: string, lines: ServiceRecipeLineInput[]) {
     return coreApiRequest<ServiceConsumptionRecipe>(
       `/api/core/inventory/recipes/by-service/${encodeURIComponent(serviceId)}`,
