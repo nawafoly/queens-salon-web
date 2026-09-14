@@ -92,10 +92,9 @@ import { logoutFirebase } from "../services/authService";
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
 
-import {
-  listAllBookings as listAllBookingsFS,
-  type BookingDocWithId,
-} from "../services/firestoreBookings";
+import type { BookingDocWithId } from "../services/firestoreBookings";
+import { CoreBookingService } from "../services/CoreBookingService";
+import { coreBookingToLegacy } from "../services/coreBookingMappers";
 
 import {
   listAllExpensesCore,
@@ -1292,8 +1291,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         console.warn("REFRESH -> migrateBookingsIfNeeded skipped:", err);
       }
 
-      step = "bookings:listAllBookings";
-      const docs = await listAllBookingsFS();
+      step = "bookings:CoreBookingService.list";
+      const docs = (await CoreBookingService.list()).map(coreBookingToLegacy);
       if (requestId !== refreshRequestIdRef.current) return;
 
       const bookingPaidById = docs.reduce((acc, b: any) => {
