@@ -57,3 +57,32 @@
   white-space: nowrap;
   border: 0;
 }
+
+
+/* contrast-lock: readable text on light surfaces */
+.dashboard-v2 .text-muted,
+.dashboard-v2 .form-text,
+.dashboard-v2 small,
+.dashboard-v2 .dsv2-modal p,
+.dashboard-v2 .dsv2-modal .text-muted {
+  color: var(--dsv2-muted) !important;
+}
+
+.dashboard-v2 input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.dashboard-v2 textarea,
+.dashboard-v2 select,
+.dashboard-v2 .form-control,
+.dashboard-v2 .dsv2-input,
+.dashboard-v2 .dsv2-textarea {
+  color: var(--dsv2-text) !important;
+  background-color: #ffffff !important;
+}
+
+.dashboard-v2 input::placeholder,
+.dashboard-v2 textarea::placeholder,
+.dashboard-v2 .form-control::placeholder,
+.dashboard-v2 .dsv2-input::placeholder,
+.dashboard-v2 .dsv2-textarea::placeholder {
+  color: var(--dsv2-muted) !important;
+  opacity: 1 !important;
+}
