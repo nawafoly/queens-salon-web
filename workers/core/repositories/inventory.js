@@ -1043,15 +1043,9 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
       );
     }
 
-    const unitCost =
-      trustedUnitCostsByItemId.has(itemId)
-        ? trustedUnitCostsByItemId.get(itemId)
-        : null;
-
-    const lineCost =
-      unitCost != null
-        ? Math.round(unitCost * qty)
-        : 0;
+    const fifo = await getFifoCostForQuantity(db, salonId, itemId, qty);
+    const unitCost = fifo.unitCostHalalas;
+    const lineCost = fifo.lineCostHalalas;
 
     totalCost += lineCost;
 
