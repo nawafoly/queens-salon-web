@@ -1,6 +1,7 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
+  AppError,
   activeFlag,
   dbAll,
   dbRun,
