@@ -381,12 +381,48 @@ const requiredChecks = [
     required: [/createManagedLeaveRequest/, /decideCanonicalEmployeeLeaveRequest/],
   },
   {
-    file: "src/services/employeeHub.ts",
+    file: "src/services/employeeLeaveRequestsCore.ts",
     required: [
       /listCoreEmployeeRequests\(\{ type: "leave"/,
       /listMyEmployeeRequests\(\{ type: "leave"/,
       /createManagedEmployeeRequest/,
     ],
+    forbidden: [/firebase\/firestore/, /employeeLeaveRequestsCol/, /hrDoc\(/],
+  },
+  {
+    file: "src/services/employeeNotificationsCore.ts",
+    required: [
+      /CoreWorkforceService\.listNotifications/,
+      /CoreWorkforceService\.createNotification/,
+      /CoreWorkforceService\.markNotificationRead/,
+      /CoreWorkforceService\.markAllNotificationsRead/,
+    ],
+    forbidden: [/firebase\/firestore/, /hrDoc\(/, /notificationsCol/],
+  },
+  {
+    file: "src/pages/EmployeePortal.tsx",
+    forbidden: [/services\/employeeHub/],
+    required: [/services\/employeeNotificationsCore/],
+  },
+  {
+    file: "src/pages/hr/EmployeeNotifications.tsx",
+    forbidden: [/services\/employeeHub/],
+    required: [/services\/employeeNotificationsCore/],
+  },
+  {
+    file: "src/pages/hr/EmployeeLeave.tsx",
+    forbidden: [/services\/employeeHub/],
+    required: [/services\/employeeLeaveRequestsCore/, /services\/employeeNotificationsCore/],
+  },
+  {
+    file: "src/pages/hr/EmployeePayroll.tsx",
+    forbidden: [/services\/employeeHub/],
+    required: [/services\/employeeNotificationsCore/],
+  },
+  {
+    file: "src/components/EmployeeNotificationBellMenu.tsx",
+    forbidden: [/services\/employeeHub/],
+    required: [/services\/employeeNotificationsCore/],
   },
   {
     file: "src/services/canonicalEmployeeLeaveRequests.ts",

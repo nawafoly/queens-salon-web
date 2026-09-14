@@ -2,10 +2,11 @@
 import { useNavigate } from "react-router-dom";
 
 import {
+  isEmployeeRequestNotificationId,
+  markAllEmployeeNotificationsRead,
   markEmployeeNotificationRead,
-  markEmployeeNotificationsRead,
   type EmployeeNotification,
-} from "../../services/employeeHub";
+} from "../../services/employeeNotificationsCore";
 import {
   markAllEmployeeRequestNotificationsRead,
   markEmployeeRequestNotificationRead,
@@ -67,13 +68,13 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
     if (!session.uid) return;
     const unread = notifications.filter((note) => !note.isRead);
     if (!unread.length) return;
-    const coreIds = unread.filter((note) => note.id.startsWith("request_notification_")).map((note) => note.id);
-    const legacyIds = unread.filter((note) => !note.id.startsWith("request_notification_")).map((note) => note.id);
+    const hasRequestUnread = unread.some((note) => isEmployeeRequestNotificationId(note.id));
+    const hasWorkforceUnread = unread.some((note) => !isEmployeeRequestNotificationId(note.id));
     setBusyId("all");
     try {
       await Promise.all([
-        legacyIds.length ? markEmployeeNotificationsRead({ notificationIds: legacyIds, readerUid: session.uid }) : Promise.resolve(),
-        coreIds.length ? markAllEmployeeRequestNotificationsRead() : Promise.resolve(),
+        hasWorkforceUnread ? markAllEmployeeNotificationsRead() : Promise.resolve(),
+        hasRequestUnread ? markAllEmployeeRequestNotificationsRead() : Promise.resolve(),
       ]);
       await Promise.resolve(onRefresh?.());
     } finally {
@@ -86,7 +87,7 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
     setBusyId(note.id);
     try {
       if (!note.isRead) {
-        if (note.id.startsWith("request_notification_")) {
+        if (isEmployeeRequestNotificationId(note.id)) {
           await markEmployeeRequestNotificationRead(note.id);
         } else {
           await markEmployeeNotificationRead({ notificationId: note.id, readerUid: session.uid });

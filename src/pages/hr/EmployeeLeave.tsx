@@ -15,12 +15,14 @@ import {
 
 import {
   createEmployeeNotification,
-  createManagedLeaveRequest,
   listEmployeeNotifications,
-  listLeaveRequestsByEmployee,
   markEmployeeNotificationsRead,
+} from "../../services/employeeNotificationsCore";
+import {
+  createManagedLeaveRequest,
+  listLeaveRequestsByEmployee,
   type EmployeeLeaveRequest,
-} from "../../services/employeeHub";
+} from "../../services/employeeLeaveRequestsCore";
 import { CoreHrService } from "../../services/CoreHrService";
 import {
   calculateLeaveDaysCount,

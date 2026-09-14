@@ -21,16 +21,22 @@ import {
   normalizeEmployeeAbsence,
   sortEmployeeAbsences,
 } from "../helpers/hr/employeeAbsence";
-import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
 import { CoreHrService } from "./CoreHrService";
 import { CoreAccountService } from "./CoreAccountService";
 import { CoreWorkforceService } from "./CoreWorkforceService";
 import {
-  createManagedEmployeeRequest,
-  listEmployeeRequests as listCoreEmployeeRequests,
-  listMyEmployeeRequests,
-  type EmployeeRequest as CoreEmployeeRequest,
-} from "./employeeRequests";
+  createEmployeeNotification as createEmployeeNotificationCore,
+  listEmployeeNotifications as listEmployeeNotificationsCore,
+  markEmployeeNotificationRead as markEmployeeNotificationReadCore,
+  markEmployeeNotificationsRead as markEmployeeNotificationsReadCore,
+  type EmployeeNotification as EmployeeNotificationCore,
+} from "./employeeNotificationsCore";
+import {
+  createManagedLeaveRequest as createManagedLeaveRequestCore,
+  listEmployeeLeaveRequests as listEmployeeLeaveRequestsCore,
+  listLeaveRequestsByEmployee as listLeaveRequestsByEmployeeCore,
+  type EmployeeLeaveRequest as EmployeeLeaveRequestCore,
+} from "./employeeLeaveRequestsCore";
 import { listEmployeeDirectory as listCoreEmployeeDirectory } from "./employeeDirectory";
 
 import {
@@ -143,39 +149,7 @@ export type EmployeeFile = {
   readBy?: string[];
 };
 
-export type EmployeeLeaveRequest = {
-  id: string;
-  employeeUid: string;
-  employeeId?: string;
-  employeeName?: string;
-  type?:
-    | "annual"
-    | "sick"
-    | "emergency"
-    | "unpaid"
-    | "rest"
-    | "weekly_rest_substitute_use"
-    | "other";
-  fromDate: string;
-  toDate: string;
-  days?: number;
-  durationKind?: "full_day" | "partial";
-  partialStartTime?: string;
-  partialEndTime?: string;
-  note?: string;
-  status?: "pending" | "approved" | "rejected" | "cancelled";
-  reviewerUid?: string;
-  reviewerName?: string;
-  createdByUid?: string;
-  createdByName?: string;
-  createdAt?: any;
-  updatedAt?: any;
-  reviewedAt?: any;
-  requestNumber?: string;
-  coreStatus?: string;
-  coreVersion?: number;
-  coreLeaveId?: string;
-};
+export type EmployeeLeaveRequest = EmployeeLeaveRequestCore;
 
 export type EmployeeAbsence = {
   id: string;
@@ -191,20 +165,7 @@ export type EmployeeAbsence = {
   updatedAt?: any;
 };
 
-export type EmployeeNotification = {
-  id: string;
-  targetUid?: string;
-  targetEmployeeId?: string;
-  type?: "leave" | "file" | "message" | "system" | "payroll" | "employee_request";
-  title: string;
-  body?: string;
-  route?: string;
-  isRead?: boolean;
-  createdAt?: any;
-  updatedAt?: any;
-  readAt?: any;
-  readBy?: string[];
-};
+export type EmployeeNotification = EmployeeNotificationCore;
 
 export type WeeklyReportRecord = {
   id: string;
@@ -1014,21 +975,8 @@ export async function listEmployeeNotifications(args: {
   targetEmployeeId?: string;
   limitCount?: number;
 }) {
-  const rows = await CoreWorkforceService.listNotifications(Math.max(1, Number(args.limitCount || 50)));
-  return rows.map((row): EmployeeNotification => ({
-    id: row.id,
-    targetUid: cleanText(row.target_uid || "") || undefined,
-    targetEmployeeId: cleanText(row.target_employee_id || "") || undefined,
-    type: row.type,
-    title: cleanText(row.title),
-    body: cleanText(row.body || "") || undefined,
-    route: cleanText(row.route || "") || undefined,
-    isRead: Boolean(row.read_at),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    readAt: row.read_at || undefined,
-    readBy: row.read_by_uid ? [row.read_by_uid] : [],
-  }));
+  // Operational notifications are Core D1 via CoreWorkforceService.listNotifications.
+  return listEmployeeNotificationsCore(args);
 }
 
 export async function createEmployeeNotification(input: {
@@ -1039,27 +987,18 @@ export async function createEmployeeNotification(input: {
   body?: string;
   route?: string;
 }) {
-  const row = await CoreWorkforceService.createNotification({
-    targetUid: cleanText(input.targetUid || "") || undefined,
-    targetEmployeeId: cleanText(input.targetEmployeeId || "") || undefined,
-    type: input.type || "system",
-    title: cleanText(input.title),
-    body: cleanText(input.body || "") || undefined,
-    route: cleanText(input.route || "") || undefined,
-  });
-  return { id: row.id };
+  // Operational notifications are Core D1 via CoreWorkforceService.createNotification.
+  return createEmployeeNotificationCore(input);
 }
 
 export async function markEmployeeNotificationRead(args: { notificationId: string; readerUid: string }) {
-  const notificationId = cleanText(args.notificationId);
-  if (!notificationId) return;
-  await CoreWorkforceService.markNotificationRead(notificationId);
+  // Operational notifications are Core D1 via CoreWorkforceService.markNotificationRead.
+  return markEmployeeNotificationReadCore(args);
 }
 
 export async function markEmployeeNotificationsRead(args: { notificationIds: string[]; readerUid: string }) {
-  const ids = Array.from(new Set((Array.isArray(args.notificationIds) ? args.notificationIds : []).map(cleanText).filter(Boolean)));
-  if (!ids.length) return;
-  await Promise.all(ids.map((id) => CoreWorkforceService.markNotificationRead(id)));
+  // Operational notifications are Core D1 via CoreWorkforceService.markNotificationRead.
+  return markEmployeeNotificationsReadCore(args);
 }
 
 export async function markEmployeeFileRead(args: { fileId: string; readerUid: string }) {
@@ -1136,54 +1075,6 @@ export async function createWeeklyReport(input: {
   });
 }
 
-function coreLeaveRequestStatus(status: unknown): EmployeeLeaveRequest["status"] {
-  const normalized = cleanText(status).toLowerCase();
-  if (normalized === "rejected") return "rejected";
-  if (normalized === "cancelled") return "cancelled";
-  if (["approved", "executing", "completed"].includes(normalized)) return "approved";
-  return "pending";
-}
-
-function mapCoreLeaveRequest(row: CoreEmployeeRequest): EmployeeLeaveRequest {
-  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
-  const fromDate = cleanText(payload.startDate || payload.fromDate);
-  const toDate = cleanText(payload.endDate || payload.toDate) || fromDate;
-  const explicitDays = Number(payload.days || payload.daysCount);
-  let days = Number.isFinite(explicitDays) && explicitDays > 0 ? explicitDays : undefined;
-  if (!days && fromDate && toDate) {
-    const start = Date.parse(`${fromDate}T12:00:00Z`);
-    const end = Date.parse(`${toDate}T12:00:00Z`);
-    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
-      days = Math.floor((end - start) / 86400000) + 1;
-    }
-  }
-  return {
-    id: cleanText(row.id),
-    employeeUid: cleanText(row.employee_uid || ""),
-    employeeId: cleanText(row.employee_id || "") || undefined,
-    employeeName: cleanText(row.employee_name_snapshot || "") || undefined,
-    type: (cleanText(payload.leaveType || payload.type || "annual") || "annual") as EmployeeLeaveRequest["type"],
-    fromDate,
-    toDate,
-    days,
-    durationKind: cleanText(payload.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",
-    partialStartTime: cleanText(payload.partialStartTime || "") || undefined,
-    partialEndTime: cleanText(payload.partialEndTime || "") || undefined,
-    note: cleanText(payload.reason || payload.note || "") || undefined,
-    status: coreLeaveRequestStatus(row.status),
-    createdAt: row.submitted_at,
-    updatedAt: row.updated_at,
-    reviewedAt: row.approved_at || row.rejected_at || undefined,
-    requestNumber: cleanText(row.request_number || "") || undefined,
-    coreStatus: cleanText(row.status || "") || undefined,
-    coreVersion: Number.isInteger(Number(row.version)) ? Number(row.version) : undefined,
-    coreLeaveId:
-      cleanText(row.source_reference_type || "") === "employee_leave"
-        ? cleanText(row.source_reference_id || "") || undefined
-        : undefined,
-  };
-}
-
 export async function createManagedLeaveRequest(input: {
   employeeUid?: string;
   employeeId: string;
@@ -1197,75 +1088,18 @@ export async function createManagedLeaveRequest(input: {
   partialStartTime?: string;
   partialEndTime?: string;
 }) {
-  const durationKind = cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day";
-  const row = await createManagedEmployeeRequest({
-    employeeId: cleanText(input.employeeId),
-    employeeUid: cleanText(input.employeeUid || "") || undefined,
-    employeeName: cleanText(input.employeeName || "") || undefined,
-    requestType: "leave",
-    title: "طلب إجازة",
-    payload: {
-      leaveType: cleanText(input.type || "annual") || "annual",
-      startDate: cleanText(input.fromDate),
-      endDate: cleanText(input.toDate),
-      durationKind,
-      ...(durationKind === "partial"
-        ? {
-            partialStartTime: cleanText(input.partialStartTime || ""),
-            partialEndTime: cleanText(input.partialEndTime || ""),
-          }
-        : {}),
-      reason: cleanText(input.note || "") || "تسجيل إجازة معتمدة من إدارة الموظفات",
-      ...(Number.isFinite(Number(input.days)) && Number(input.days) > 0 ? { days: Number(input.days) } : {}),
-    },
-  });
-  return mapCoreLeaveRequest(row);
-}
-
-function mapEmployeeLeaveRequestDoc(d: any): EmployeeLeaveRequest {
-  const data = d.data() as any;
-  const normalized = normalizeEmployeeLeaveRequest(d.id, {
-    ...data,
-    leaveType: data?.leaveType || data?.type,
-    startDate: data?.startDate || data?.fromDate,
-    endDate: data?.endDate || data?.toDate,
-    daysCount: data?.daysCount ?? data?.days,
-    employeeNote: data?.employeeNote || data?.note,
-    reviewedBy: data?.reviewedBy || data?.reviewerUid,
-    reviewedByName: data?.reviewedByName || data?.reviewerName,
-  });
-  return {
-    id: normalized.id,
-    employeeUid: cleanText(normalized.employeeUid || data?.employeeUid || ""),
-    employeeId: cleanText(normalized.employeeId || normalized.employeeDocId || data?.employeeId || "") || undefined,
-    employeeName: cleanText(normalized.employeeName || data?.employeeName || "") || undefined,
-    type: cleanText(normalized.leaveType || data?.type || "annual") as EmployeeLeaveRequest["type"],
-    fromDate: cleanText(data?.fromDate || normalized.startDate || ""),
-    toDate: cleanText(data?.toDate || normalized.endDate || ""),
-    days: Number.isFinite(Number(normalized.daysCount)) ? Number(normalized.daysCount) : undefined,
-    durationKind: cleanText(data?.durationKind || data?.duration_kind).toLowerCase() === "partial" ? "partial" : "full_day",
-    partialStartTime: cleanText(data?.partialStartTime || data?.partial_start_time) || undefined,
-    partialEndTime: cleanText(data?.partialEndTime || data?.partial_end_time) || undefined,
-    note: cleanText(normalized.employeeNote || data?.note || "") || undefined,
-    status: cleanText(normalized.status || data?.status || "pending") as EmployeeLeaveRequest["status"],
-    reviewerUid: cleanText(normalized.reviewedBy || data?.reviewerUid || "") || undefined,
-    reviewerName: cleanText(normalized.reviewedByName || data?.reviewerName || "") || undefined,
-    createdByUid: cleanText(data?.createdByUid || "") || undefined,
-    createdByName: cleanText(data?.createdByName || "") || undefined,
-    createdAt: normalized.createdAt ?? data?.createdAt,
-    updatedAt: normalized.updatedAt ?? data?.updatedAt,
-    reviewedAt: normalized.reviewedAt ?? data?.reviewedAt,
-  };
+  // Operational leave requests are Core employee_requests via createManagedEmployeeRequest.
+  return createManagedLeaveRequestCore(input);
 }
 
 export async function listLeaveRequestsByEmployee(_employeeUid: string, limitCount = 24) {
-  const rows = await listMyEmployeeRequests({ type: "leave", limit: Math.max(1, Number(limitCount || 24)) });
-  return rows.map(mapCoreLeaveRequest);
+  // Operational leave list is Core employee_requests via listMyEmployeeRequests.
+  return listLeaveRequestsByEmployeeCore(_employeeUid, limitCount);
 }
 
 export async function listEmployeeLeaveRequests(limitCount = 80): Promise<EmployeeLeaveRequest[]> {
-  const rows = await listCoreEmployeeRequests({ type: "leave", limit: Math.max(1, Number(limitCount || 80)) });
-  return rows.map(mapCoreLeaveRequest);
+  // Operational leave list is Core employee_requests via listCoreEmployeeRequests.
+  return listEmployeeLeaveRequestsCore(limitCount);
 }
 
 export async function approveEmployeeLeaveRequest(args: {
