@@ -199,6 +199,7 @@ function ToggleCard(props: {
 
 export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Props) {
   const [catalogMsg, setCatalogMsg] = useState("");
+  const [pendingSectionDeleteId, setPendingSectionDeleteId] = useState<string | null>(null);
   const [secLoading, setSecLoading] = useState(false);
   const [catLoading, setCatLoading] = useState(false);
   const [srvLoading, setSrvLoading] = useState(false);
@@ -922,7 +923,21 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
           title="غير مصرح"
           description="هذه الصفحة مخصصة للإدارة (Owner/Admin)."
         />
-      </main>
+        <DashboardModalV2
+        open={Boolean(pendingSectionDeleteId)}
+        onClose={() => setPendingSectionDeleteId(null)}
+        title="حذف القسم"
+        description="سيتم حذف القسم من الكتالوج. لا يمكن التراجع من هنا."
+        footer={
+          <div className="d-flex gap-2 justify-content-end">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setPendingSectionDeleteId(null)}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={secLoading} onClick={() => void confirmDeleteSection()}>حذف القسم</button>
+          </div>
+        }
+      >
+        <p className="text-muted mb-0">تأكد أن القسم لا يحتوي خدمات أو تصنيفات.</p>
+      </DashboardModalV2>
+    </main>
     );
   }
 
