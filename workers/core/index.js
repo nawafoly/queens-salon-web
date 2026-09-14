@@ -1,1 +1,1 @@
-@/workspace/agent-tools/core-index-contact.js
+PLACEHOLDER_RESTORE_ME
