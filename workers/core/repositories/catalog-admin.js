@@ -83,6 +83,12 @@ export async function patchCatalogRow(db, salonId, kind, id, data) {
 }
 
 export async function deleteCatalogRow(db, salonId, kind, id) {
-  await dbRun(db, `DELETE FROM ${tableFor(kind)} WHERE salon_id = ? AND id = ?`, [salonId, requiredId(id)]);
-  return { id, deleted: true };
+  let cleanId = requiredId(id);
+  try { cleanId = decodeURIComponent(cleanId); } catch {}
+  const result = await dbRun(db, `DELETE FROM ${tableFor(kind)} WHERE salon_id = ? AND id = ?`, [salonId, cleanId]);
+  const changes = Number(result?.meta?.changes ?? result?.changes ?? 0);
+  if (!changes) {
+    throw new AppError(404, 'core_not_found:catalog_row', 'Catalog row was not deleted');
+  }
+  return { id: cleanId, deleted: true, changes };
 }
