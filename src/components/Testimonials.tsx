@@ -1,5 +1,5 @@
 import { readVerifiedUserAccess } from "../services/authAccess";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
 
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -134,49 +134,52 @@ const Testimonials: React.FC = () => {
     setUserRoleLabel("عميلة");
   }, [auth]);
 
-  // ✅ Core D1 poll (no realtime Firestore listener)
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      setLoading(true);
-      setLoadError("");
-      try {
-        const rows = await CoreTestimonialsService.list(50);
-        if (!alive) return;
-        const list: TestimonialRow[] = rows
-          .map((data: CoreTestimonial) => ({
-            id: data.id,
-            name: safeStr(data.name) || "عميلة",
-            role: safeStr(data.role) || "عميلة",
-            image: safeStr(data.image) || "",
-            content: safeStr(data.content),
-            rating: Number(data.rating || 5),
-            createdAt: data.createdAt,
-            uid: data.uid ?? null,
-            vip: Boolean(data.vip),
-            approved: Boolean(data.approved),
-            hidden: Boolean(data.hidden),
-            adminReply: safeStr(data.adminReply || ""),
-          }))
-          .filter((t) => (isOwner ? true : t.hidden !== true))
-          .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-        setItems(list);
-      } catch (e) {
-        console.error(e);
-        if (!alive) return;
-        setItems([]);
-        setLoadError("❌ تعذر تحميل التعليقات.");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), 30000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
+  const refreshTestimonials = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const rows = await CoreTestimonialsService.list(50);
+      const list: TestimonialRow[] = rows
+        .map((data: CoreTestimonial) => ({
+          id: data.id,
+          name: safeStr(data.name) || "عميلة",
+          role: safeStr(data.role) || "عميلة",
+          image: safeStr(data.image) || "",
+          content: safeStr(data.content),
+          rating: Number(data.rating || 5),
+          createdAt: data.createdAt,
+          uid: data.uid ?? null,
+          vip: Boolean(data.vip),
+          approved: Boolean(data.approved),
+          hidden: Boolean(data.hidden),
+          adminReply: safeStr(data.adminReply || ""),
+        }))
+        .filter((t) => (isOwner ? true : t.hidden !== true))
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      setItems(list);
+    } catch (e) {
+      console.error(e);
+      setItems([]);
+      setLoadError("❌ تعذر تحميل التعليقات.");
+    } finally {
+      setLoading(false);
+    }
   }, [isOwner]);
+
+  // ✅ Core D1: load on mount + focus/visibility (no fixed-interval polling)
+  useEffect(() => {
+    void refreshTestimonials();
+    const onFocus = () => void refreshTestimonials();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshTestimonials();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshTestimonials]);
 
   const submit = async () => {
     setFormError("");
