@@ -601,7 +601,13 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
   const deleteSection = async (id: string) => {
     if (services.some((service) => String(service.sectionId || "").trim() === id)) return showMsg("❌ لا يمكن حذف القسم لأن عليه خدمات. انقليها أولًا.", 3200);
     if (categories.some((category) => String(category.sectionId || "").trim() === id)) return showMsg("❌ لا يمكن حذف القسم لأن عليه تصنيفات.", 3200);
-    if (!window.confirm("هل أنت متأكد من حذف هذا القسم؟")) return;
+    setPendingSectionDeleteId(id);
+    return;
+  };
+
+  const confirmDeleteSection = async () => {
+    const id = pendingSectionDeleteId;
+    if (!id) return;
     try { setSecLoading(true); await CoreAdminCatalogService.removeSection(id); showMsg("✅ تم حذف القسم"); await loadCatalog(); setSelectedId(null); }
     catch (error) { console.error("deleteSection error:", error); showMsg("❌ تعذر حذف القسم", 2500); }
     finally { setSecLoading(false); }
@@ -1487,6 +1493,20 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
         ) : (
           <div className="settings-catalog-v2-detail-loading"><DashboardSkeletonV2 width="100%" height={180} /></div>
         )}
+      </DashboardModalV2>
+      <DashboardModalV2
+        open={Boolean(pendingSectionDeleteId)}
+        onClose={() => setPendingSectionDeleteId(null)}
+        title="حذف القسم"
+        description="سيتم حذف القسم من الكتالوج."
+        footer={(
+          <div className="d-flex gap-2 justify-content-end">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setPendingSectionDeleteId(null)}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={secLoading} onClick={() => void confirmDeleteSection()}>حذف القسم</button>
+          </div>
+        )}
+      >
+        <p>تأكد أن القسم فارغ من الخدمات والتصنيفات.</p>
       </DashboardModalV2>
     </main>
   );
