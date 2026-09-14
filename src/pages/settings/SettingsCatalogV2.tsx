@@ -417,8 +417,8 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
       setPkgLoading(true);
 
       const [sectionRows, categoryRows, serviceRows, packageRows] = await Promise.all([
-        CoreAdminCatalogService.listSections(false),
-        CoreAdminCatalogService.listCategories(false),
+        CoreAdminCatalogService.listSections(),
+        CoreAdminCatalogService.listCategories(),
         CoreCatalogService.listServices({ activeOnly: false }),
         PackageService.getAll(),
       ]);
