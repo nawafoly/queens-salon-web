@@ -5,10 +5,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell, faChevronLeft } from "@fortawesome/free-solid-svg-icons";
 
 import {
+  isEmployeeRequestNotificationId,
   listEmployeeNotifications,
   markEmployeeNotificationRead,
   type EmployeeNotification,
-} from "../services/employeeHub";
+} from "../services/employeeNotificationsCore";
 import {
   listEmployeeRequestNotifications,
   markEmployeeRequestNotificationRead,
@@ -82,14 +83,14 @@ export default function EmployeeNotificationBellMenu({ initialUnreadCount = 0 }:
 
     setLoading(true);
     try {
-      const [legacyRows, requestRows] = await Promise.all([
+      const [workforceRows, requestRows] = await Promise.all([
         listEmployeeNotifications({ targetUid: uid, limitCount: 80 }).catch(() => []),
         hasPermission("employee_requests.own.view")
           ? listEmployeeRequestNotifications(80).catch(() => [])
           : Promise.resolve([]),
       ]);
 
-      const coreRows: EmployeeNotification[] = requestRows.map((row) => ({
+      const requestNotificationRows: EmployeeNotification[] = requestRows.map((row) => ({
         id: row.id,
         targetUid: row.target_uid,
         type: "employee_request",
@@ -103,7 +104,7 @@ export default function EmployeeNotificationBellMenu({ initialUnreadCount = 0 }:
       }));
 
       const merged = new Map<string, EmployeeNotification>();
-      [...coreRows, ...legacyRows].forEach((row) => merged.set(row.id, row));
+      [...requestNotificationRows, ...workforceRows].forEach((row) => merged.set(row.id, row));
       setNotifications(Array.from(merged.values()));
       setLoadedOnce(true);
     } finally {
@@ -150,7 +151,7 @@ export default function EmployeeNotificationBellMenu({ initialUnreadCount = 0 }:
     setBusyId(note.id);
     try {
       if (!note.isRead) {
-        if (note.id.startsWith("request_notification_")) {
+        if (isEmployeeRequestNotificationId(note.id)) {
           await markEmployeeRequestNotificationRead(note.id);
         } else {
           await markEmployeeNotificationRead({ notificationId: note.id, readerUid: uid });

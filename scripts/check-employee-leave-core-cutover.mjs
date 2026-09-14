@@ -3,11 +3,6 @@ import { readFileSync } from "node:fs";
 
 const checks = [
   {
-    file: "src/pages/hr/EmployeeLeave.tsx",
-    required: [/createManagedLeaveRequest/],
-    forbidden: [/\bcreateLeaveRequest\s*\(/],
-  },
-  {
     file: "src/pages/DashboardEmployees.tsx",
     required: [
       /createManagedLeaveRequest/,
@@ -49,13 +44,27 @@ const checks = [
   {
     file: "src/services/employeeHub.ts",
     required: [
-      /listCoreEmployeeRequests\(\{ type: "leave"/,
-      /listMyEmployeeRequests\(\{ type: "leave"/,
-      /createManagedEmployeeRequest/,
+      /createManagedLeaveRequestCore/,
+      /listLeaveRequestsByEmployeeCore/,
+      /listEmployeeLeaveRequestsCore/,
       /CoreHrService\.listAbsences/,
       /CoreHrService\.createAbsence/,
     ],
     forbidden: [],
+  },
+  {
+    file: "src/services/employeeLeaveRequestsCore.ts",
+    required: [
+      /listCoreEmployeeRequests\(\{ type: "leave"/,
+      /listMyEmployeeRequests\(\{ type: "leave"/,
+      /createManagedEmployeeRequest/,
+    ],
+    forbidden: [/firebase\/firestore/, /employeeLeaveRequestsCol/, /hrDoc\(/],
+  },
+  {
+    file: "src/pages/hr/EmployeeLeave.tsx",
+    required: [/employeeLeaveRequestsCore/, /employeeNotificationsCore/, /createManagedLeaveRequest/],
+    forbidden: [/services\/employeeHub/, /\bcreateLeaveRequest\s*\(/],
   },
   {
     file: "src/services/canonicalEmployeeLeaveRequests.ts",
@@ -152,10 +161,13 @@ for (const check of checks) {
 }
 
 const employeeHubSource = readFileSync("src/services/employeeHub.ts", "utf8");
+const employeeLeaveRequestsCoreSource = readFileSync("src/services/employeeLeaveRequestsCore.ts", "utf8");
 const activeEmployeeHubFunctions = [
   ["listEmployeeAbsences", /CoreHrService\.listAbsences/, /employeeAbsencesCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
   ["listEmployeeAbsencesByEmployee", /CoreHrService\.listAbsences/, /employeeAbsencesCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
   ["createEmployeeAbsenceRecord", /CoreHrService\.createAbsence/, /employeeAbsencesCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
+];
+const activeLeaveRequestCoreFunctions = [
   ["createManagedLeaveRequest", /createManagedEmployeeRequest/, /employeeLeaveRequestsCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
   ["listLeaveRequestsByEmployee", /listMyEmployeeRequests/, /employeeLeaveRequestsCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
   ["listEmployeeLeaveRequests", /listCoreEmployeeRequests/, /employeeLeaveRequestsCol|firebase\/firestore|\b(?:addDoc|getDocs|updateDoc)\(/],
@@ -169,6 +181,20 @@ for (const [name, required, forbidden] of activeEmployeeHubFunctions) {
   }
   if (!required.test(block)) failures.push(`src/services/employeeHub.ts:${name}: missing ${required}`);
   if (forbidden.test(block)) failures.push(`src/services/employeeHub.ts:${name}: forbidden legacy runtime ${forbidden}`);
+}
+
+for (const [name, required, forbidden] of activeLeaveRequestCoreFunctions) {
+  const block = exportedAsyncFunctionBlock(employeeLeaveRequestsCoreSource, name);
+  if (!block) {
+    failures.push(`src/services/employeeLeaveRequestsCore.ts: missing active function ${name}`);
+    continue;
+  }
+  if (!required.test(block)) failures.push(`src/services/employeeLeaveRequestsCore.ts:${name}: missing ${required}`);
+  if (forbidden.test(block)) failures.push(`src/services/employeeLeaveRequestsCore.ts:${name}: forbidden legacy runtime ${forbidden}`);
+}
+
+if (!/createManagedLeaveRequestCore/.test(employeeHubSource) || !/listLeaveRequestsByEmployeeCore/.test(employeeHubSource)) {
+  failures.push("src/services/employeeHub.ts: must delegate leave request ops to employeeLeaveRequestsCore");
 }
 
 if (failures.length) {

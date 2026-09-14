@@ -19,10 +19,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
-  markEmployeeNotificationRead,
   type EmployeeLeaveRequest,
+} from "../../services/employeeLeaveRequestsCore";
+import {
+  isEmployeeRequestNotificationId,
+  markEmployeeNotificationRead,
   type EmployeeNotification,
-} from "../../services/employeeHub";
+} from "../../services/employeeNotificationsCore";
+import { markEmployeeRequestNotificationRead } from "../../services/employeeRequests";
 import {
   getTodayAttendanceDateKey,
   type StaffAttendanceWithId,
@@ -991,7 +995,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const openNotification = async (note: EmployeeNotification) => {
     if (!session.uid) return;
     if (!note.isRead) {
-      await markEmployeeNotificationRead({ notificationId: note.id, readerUid: session.uid }).catch(() => {});
+      if (isEmployeeRequestNotificationId(note.id)) {
+        await markEmployeeRequestNotificationRead(note.id).catch(() => {});
+      } else {
+        await markEmployeeNotificationRead({ notificationId: note.id, readerUid: session.uid }).catch(() => {});
+      }
       await Promise.resolve(onRefresh?.());
     }
     if (note.route) {

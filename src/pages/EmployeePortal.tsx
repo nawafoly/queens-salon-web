@@ -25,7 +25,7 @@ import logo1 from "../assets/images/ssunnamed.png";
 import {
   listEmployeeNotifications,
   type EmployeeNotification,
-} from "../services/employeeHub";
+} from "../services/employeeNotificationsCore";
 import { logoutFirebase } from "../services/authService";
 import { listEmployeeRequestNotifications } from "../services/employeeRequests";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
@@ -288,7 +288,7 @@ export default function EmployeePortal() {
 
     setNotificationsLoading(true);
     try {
-      const [legacyRows, requestRows] = await Promise.all([
+      const [workforceRows, requestRows] = await Promise.all([
         listEmployeeNotifications({
           targetUid: session.uid,
           targetEmployeeId: session.employeeId,
@@ -299,7 +299,7 @@ export default function EmployeePortal() {
           : Promise.resolve([]),
       ]);
       if (requestId !== notificationsRequestRef.current) return;
-      const coreRows: EmployeeNotification[] = requestRows.map((row) => ({
+      const requestNotificationRows: EmployeeNotification[] = requestRows.map((row) => ({
         id: row.id,
         targetUid: row.target_uid,
         type: "employee_request",
@@ -312,7 +312,7 @@ export default function EmployeePortal() {
         readAt: row.read_at || undefined,
       }));
       const merged = new Map<string, EmployeeNotification>();
-      [...coreRows, ...legacyRows].forEach((row) => merged.set(row.id, row));
+      [...requestNotificationRows, ...workforceRows].forEach((row) => merged.set(row.id, row));
       setNotifications(Array.from(merged.values()));
     } catch {
       if (requestId !== notificationsRequestRef.current) return;

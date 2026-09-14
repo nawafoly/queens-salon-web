@@ -15,7 +15,7 @@ import {
 import {
   listEmployeeNotifications,
   markEmployeeNotificationsRead,
-} from "../../services/employeeHub";
+} from "../../services/employeeNotificationsCore";
 import { CoreHrService } from "../../services/CoreHrService";
 import type { CorePayrollEntry } from "../../types/hrCoreApi";
 import { cleanText, type HrSession } from "./shared";
