@@ -6,11 +6,6 @@
   "observability": {
     "enabled": true
   },
-  "triggers": {
-    "crons": [
-      "0 * * * *"
-    ]
-  },
   "d1_databases": [
     {
       "binding": "PACKAGES_DB",
@@ -31,4 +26,3 @@
     "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5174,https://queens-salon-web.vercel.app,https://queens-salon-web-gnxk.vercel.app"
   }
 }
-
