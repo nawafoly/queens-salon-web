@@ -98,6 +98,8 @@ import {
   upsertServiceRecipe,
   confirmServiceConsumption,
   getServiceConsumptionByBookingItem,
+  issueToEmployee,
+  returnFromEmployee,
 } from './repositories/inventory.js';
 import {
   createCatalogRow,
@@ -856,6 +858,12 @@ function match(url, method) {
   }
   const invRecipe = /^\/api\/core\/inventory\/recipes\/by-service\/([^/]+)$/.exec(path);
   if (invRecipe) return { name: "inventory:recipe-by-service", id: invRecipe[1] };
+  if (path === "/api/core/inventory/employee-issue" && method === "POST") {
+    return { name: "inventory:employee-issue" };
+  }
+  if (path === "/api/core/inventory/employee-return" && method === "POST") {
+    return { name: "inventory:employee-return" };
+  }
   if (path === "/api/core/inventory/consumptions/confirm" && method === "POST") {
     return { name: "inventory:consumption-confirm" };
   }
