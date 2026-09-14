@@ -12,7 +12,6 @@ const TYPE_LABEL: Record<string, string> = {
   EMPLOYEE_ISSUE_OUT: "صرف موظفة",
   EMPLOYEE_RETURN_IN: "إرجاع موظفة",
   STOCKTAKE_VARIANCE: "فرق جرد",
-  PURCHASE_RECEIPT_IN: "استلام شراء",
   DIRECT_SALE_OUT: "بيع مباشر",
   DIRECT_SALE_RETURN_IN: "مرتجع بيع",
 };
@@ -74,9 +73,9 @@ export default function DashboardInventoryMovements() {
               <td>{String(row.created_at || "").replace("T", " ").slice(0, 19)}</td>
               <td>{nameById.get(row.item_id) || row.item_id}</td>
               <td>{TYPE_LABEL[row.movement_type] || row.movement_type}</td>
-              <td>{row.quantity_delta ?? row.qty_delta ?? (row as { quantityDelta?: number }).quantityDelta}</td>
+              <td>{row.quantity_delta ?? row.qty_delta ?? 0}</td>
               <td>{row.unit_cost_halalas != null ? (Number(row.unit_cost_halalas) / 100).toFixed(2) : "—"}</td>
-              <td>{row.balance_after ?? row.qty_after ?? (row as { balanceAfter?: number }).balanceAfter}</td>
+              <td>{row.balance_after ?? row.qty_after ?? 0}</td>
             </tr>
           ))}
         </tbody>

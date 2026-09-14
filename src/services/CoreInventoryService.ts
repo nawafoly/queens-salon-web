@@ -48,9 +48,12 @@ export type InventoryMovement = {
   id: string;
   item_id: string;
   movement_type: string;
-  qty_delta: number;
-  qty_before: number;
-  qty_after: number;
+  quantity_delta?: number;
+  qty_delta?: number;
+  qty_before?: number;
+  qty_after?: number;
+  balance_after?: number;
+  unit_cost_halalas?: number | null;
   unit?: string | null;
   booking_id?: string | null;
   booking_item_id?: string | null;
