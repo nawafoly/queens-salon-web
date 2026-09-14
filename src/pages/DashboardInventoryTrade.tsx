@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardErrorStateV2, DashboardFieldV2, DashboardNumberInputV2, DashboardSelectV2, DashboardSkeletonV2 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreInventoryService, type InventoryItem } from "../services/CoreInventoryService";
@@ -14,6 +14,8 @@ export default function DashboardInventoryTrade() {
   const canAdjust = hasPermission("inventory.adjust");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemId, setItemId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [qty, setQty] = useState("1");
   const [costSar, setCostSar] = useState("");
   const [loading, setLoading] = useState(true);
@@ -31,6 +33,11 @@ export default function DashboardInventoryTrade() {
       setLoading(true);
       try {
         setItems((await CoreInventoryService.listItems({ active: "1" })) || []);
+        try {
+          setSuppliers((await CoreInventoryService.listSuppliers({ active: "1" })) || []);
+        } catch {
+          setSuppliers([]);
+        }
       } catch (err) {
         setError(errorMessage(err));
       } finally {
@@ -46,7 +53,7 @@ export default function DashboardInventoryTrade() {
     setNotice("");
     try {
       const unitCostHalalas = costSar === "" ? undefined : Math.round(Number(costSar) * 100);
-      await CoreInventoryService.receivePurchase({ itemId, quantity: Number(qty), unitCostHalalas });
+      await CoreInventoryService.receivePurchase({ itemId, quantity: Number(qty), unitCostHalalas, supplierId: supplierId || undefined });
       setNotice("تم استلام الشراء وإضافة الكمية إلى الدفتر.");
     } catch (err) {
       setError(errorMessage(err));
@@ -97,6 +104,9 @@ export default function DashboardInventoryTrade() {
       </DashboardFieldV2>
       <DashboardFieldV2 id="inv-trade-qty" label="الكمية">
         <DashboardNumberInputV2 value={qty} onChange={(e) => setQty(e.target.value)} />
+      </DashboardFieldV2>
+      <DashboardFieldV2 id="inv-trade-supplier" label="المورد (اختياري، للشراء فقط)">
+        <DashboardSelectV2 value={supplierId} options={[{ value: "", label: "بدون مورد" }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]} onChange={setSupplierId} />
       </DashboardFieldV2>
       <DashboardFieldV2 id="inv-trade-cost" label="تكلفة الوحدة بالريال (للشراء فقط، اختياري)">
         <DashboardNumberInputV2 value={costSar} onChange={(e) => setCostSar(e.target.value)} />

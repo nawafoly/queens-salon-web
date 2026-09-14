@@ -19,6 +19,7 @@ import {
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
+import DashboardInventorySuppliers from "./DashboardInventorySuppliers";
 import DashboardInventoryConsumption from "./DashboardInventoryConsumption";
 import DashboardInventoryMovements from "./DashboardInventoryMovements";
 import DashboardInventoryIssue from "./DashboardInventoryIssue";
@@ -72,7 +73,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,6 +194,7 @@ export default function DashboardInventory() {
         <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
         <button type="button" className={tab === "ops" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("ops")}>هدر وجرد</button>
         <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>شراء وبيع</button>
+        <button type="button" className={tab === "suppliers" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("suppliers")}>الموردون</button>
       </div>
 
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
@@ -201,6 +203,7 @@ export default function DashboardInventory() {
       {tab === "issue" ? <DashboardInventoryIssue /> : null}
       {tab === "ops" ? <DashboardInventoryOps /> : null}
       {tab === "trade" ? <DashboardInventoryTrade /> : null}
+      {tab === "suppliers" ? <DashboardInventorySuppliers /> : null}
 
       {tab === "items" ? (
         <>
