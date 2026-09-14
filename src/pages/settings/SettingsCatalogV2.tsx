@@ -592,8 +592,8 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
     if (!id) return showMsg("❌ تعذر توليد ID للقسم", 2200);
     try {
       setSecLoading(true);
-      await CoreAdminCatalogService.createSection({ id, name, active: newSection.active !== false, sortOrder: Number(newSection.order || 0) });
-      showMsg(`✅ تم إنشاء القسم (id: ${id})`); await loadCatalog(); setActiveListMode("sections"); setSelectedId(id); setComposerMode(null); setNewSection({ name: "", order: nextSectionOrder, active: true });
+      await CoreAdminCatalogService.createSection({ name, active: newSection.active !== false, sortOrder: Number(newSection.order || 0) });
+      showMsg("✅ تم إنشاء القسم"); await loadCatalog(); setActiveListMode("sections"); setComposerMode(null); setNewSection({ name: "", order: nextSectionOrder, active: true });
     } catch (error) { console.error("createSection error:", error); showMsg("❌ تعذر إنشاء القسم", 2500); }
     finally { setSecLoading(false); }
   };
