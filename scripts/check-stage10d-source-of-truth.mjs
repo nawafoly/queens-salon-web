@@ -103,7 +103,8 @@ requirePatterns("workers/core/index.js", [
 ]);
 
 // Dashboard operational summaries/logs are Core-owned.
-requirePatterns("src/pages/Dashboard.tsx", [/CoreStaffService/, /CoreAuditService/]);
+requirePatterns("src/pages/Dashboard.tsx", [/CoreStaffService/, /CoreAuditService/, /CoreBookingService\.list/, /coreBookingToLegacy/]);
+forbidPatterns("src/pages/Dashboard.tsx", [/listAllBookings/, /listAllBookingsFS/]);
 requirePatterns("src/pages/DashboardDayAudit.tsx", [/CoreBookingService/, /CoreIncomeService/]);
 requirePatterns("src/pages/DashboardLogs.tsx", [/CoreAuditService/]);
 for (const file of ["src/pages/DashboardDayAudit.tsx", "src/pages/DashboardLogs.tsx"]) {
