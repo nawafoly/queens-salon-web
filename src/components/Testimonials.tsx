@@ -4,20 +4,9 @@ import Modal from "./Modal";
 
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import { db } from "../services/firebase";
+  CoreTestimonialsService,
+  type CoreTestimonial,
+} from "../services/CoreTestimonialsService";
 
 type TestimonialRow = {
   id: string;
@@ -33,9 +22,6 @@ type TestimonialRow = {
   hidden?: boolean;
   adminReply?: string;
 };
-
-const SALON_ID = "main";
-const TESTIMONIALS_COL = ["salons", SALON_ID, "testimonials"] as const;
 
 const OWNER_EMAILS = ["nawafaaa0@gmail.com", "alolayan3@gmail.com"].map((x) =>
   x.toLowerCase()
@@ -148,73 +134,48 @@ const Testimonials: React.FC = () => {
     setUserRoleLabel("عميلة");
   }, [auth]);
 
-  // ✅ Listener
+  // ✅ Core D1 poll (no realtime Firestore listener)
   useEffect(() => {
-    setLoading(true);
-    setLoadError("");
-
-    const colRef = collection(db, ...TESTIMONIALS_COL);
-
-    // ✅ الآن: ما فيه approved إطلاقاً
-    // ✅ نخليها مثل ما كانت: owner يشوف الكل، العميل يشوف كل شيء غير مخفي
-    const qy = isOwner
-      ? query(colRef, orderBy("createdAt", "desc"), limit(50))
-      : query(
-          colRef,
-          where("approved", "==", true),
-          where("hidden", "==", false),
-          limit(50)
-        );
-
-    const unsub = onSnapshot(
-      qy,
-      (snap) => {
-        const list: TestimonialRow[] = snap.docs
-          .map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              name: safeStr(data.name) || "عميلة",
-              role: safeStr(data.role) || "عميلة",
-              image: safeStr(data.image) || "",
-              content: safeStr(data.content),
-              rating: Number(data.rating || 5),
-              createdAt: data.createdAt,
-              uid: data.uid ?? null,
-              vip: Boolean(data.vip),
-              approved: Boolean(data.approved),
-              hidden: Boolean(data.hidden),
-              adminReply: safeStr(data.adminReply || ""),
-            };
-          })
-          // ✅ فلترة hidden للعملاء فقط
+    let alive = true;
+    const load = async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const rows = await CoreTestimonialsService.list(50);
+        if (!alive) return;
+        const list: TestimonialRow[] = rows
+          .map((data: CoreTestimonial) => ({
+            id: data.id,
+            name: safeStr(data.name) || "عميلة",
+            role: safeStr(data.role) || "عميلة",
+            image: safeStr(data.image) || "",
+            content: safeStr(data.content),
+            rating: Number(data.rating || 5),
+            createdAt: data.createdAt,
+            uid: data.uid ?? null,
+            vip: Boolean(data.vip),
+            approved: Boolean(data.approved),
+            hidden: Boolean(data.hidden),
+            adminReply: safeStr(data.adminReply || ""),
+          }))
           .filter((t) => (isOwner ? true : t.hidden !== true))
-          .sort((a, b) => {
-            const at = Number(a.createdAt?.seconds || 0);
-            const bt = Number(b.createdAt?.seconds || 0);
-            return bt - at;
-          });
-
+          .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
         setItems(list);
-        setLoading(false);
-      },
-      (e) => {
+      } catch (e) {
         console.error(e);
+        if (!alive) return;
         setItems([]);
-        setLoading(false);
-
-        const msg = String((e as any)?.message || e);
-        setLoadError(
-          msg.includes("index")
-            ? "⚠️ يحتاج Index في Firestore للاستعلام."
-            : msg.includes("Missing or insufficient permissions")
-              ? "⚠️ الصلاحيات تمنع قراءة التعليقات (Rules)."
-              : "❌ تعذر تحميل التعليقات."
-        );
+        setLoadError("❌ تعذر تحميل التعليقات.");
+      } finally {
+        if (alive) setLoading(false);
       }
-    );
-
-    return () => unsub();
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 30000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
   }, [isOwner]);
 
   const submit = async () => {
@@ -233,7 +194,7 @@ const Testimonials: React.FC = () => {
       const name = userName || "عميلة";
       const role = userVip ? `VIP • ${userRoleLabel}` : userRoleLabel;
 
-      await addDoc(collection(db, ...TESTIMONIALS_COL), {
+      await CoreTestimonialsService.create({
         name,
         role,
         image: userPhoto || "",
@@ -241,19 +202,29 @@ const Testimonials: React.FC = () => {
         rating,
         uid: u.uid,
         vip: userVip,
-
-        // ✅ نشر مباشر
-        approved: true, // اختياري (تقدر تشيله لاحقاً)
-        hidden: false,
-
-        adminReply: "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       });
 
       setContent("");
       setRating(5);
       setShowSuccess(true);
+      // refresh list
+      const rows = await CoreTestimonialsService.list(50);
+      setItems(
+        rows.map((data) => ({
+          id: data.id,
+          name: safeStr(data.name) || "عميلة",
+          role: safeStr(data.role) || "عميلة",
+          image: safeStr(data.image) || "",
+          content: safeStr(data.content),
+          rating: Number(data.rating || 5),
+          createdAt: data.createdAt,
+          uid: data.uid ?? null,
+          vip: Boolean(data.vip),
+          approved: Boolean(data.approved),
+          hidden: Boolean(data.hidden),
+          adminReply: safeStr(data.adminReply || ""),
+        }))
+      );
     } catch (e: any) {
       console.error(e);
       setFormError("تعذر إرسال التعليق. جرّبي مرة ثانية.");
@@ -266,10 +237,8 @@ const Testimonials: React.FC = () => {
   const toggleHidden = async (t: TestimonialRow) => {
     if (!isOwner) return;
     try {
-      await updateDoc(doc(db, ...TESTIMONIALS_COL, t.id), {
-        hidden: !t.hidden,
-        updatedAt: serverTimestamp(),
-      });
+      const updated = await CoreTestimonialsService.patch(t.id, { hidden: !t.hidden });
+      setItems((prev) => prev.map((row) => (row.id === t.id ? { ...row, hidden: Boolean(updated.hidden) } : row)));
     } catch (e) {
       console.error(e);
     }
@@ -279,7 +248,8 @@ const Testimonials: React.FC = () => {
     if (!isOwner) return;
     if (!confirm("تبغى تحذف التعليق نهائي؟")) return;
     try {
-      await deleteDoc(doc(db, ...TESTIMONIALS_COL, id));
+      await CoreTestimonialsService.remove(id);
+      setItems((prev) => prev.filter((row) => row.id !== id));
     } catch (e) {
       console.error(e);
     }
@@ -288,10 +258,10 @@ const Testimonials: React.FC = () => {
   const saveReply = async (id: string, reply: string) => {
     if (!isOwner) return;
     try {
-      await updateDoc(doc(db, ...TESTIMONIALS_COL, id), {
-        adminReply: reply.trim(),
-        updatedAt: serverTimestamp(),
-      });
+      const updated = await CoreTestimonialsService.patch(id, { adminReply: reply.trim() });
+      setItems((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, adminReply: safeStr(updated.adminReply || "") } : row))
+      );
     } catch (e) {
       console.error(e);
     }

@@ -539,7 +539,15 @@ export async function getSelfProfile(db, salonId, identity) {
     const at = Date.parse(`${booking.booking_date || ''}T${booking.start_time || '00:00'}:00`);
     if (Number.isFinite(at) && at > now && !['cancelled', 'completed', 'refunded'].includes(status)) counts.upcoming += 1;
   }
-  return { ...client, counts };
+  return {
+    ...client,
+    city: client.city || '',
+    birthdate: client.birthdate || '',
+    avatarUrl: client.avatar_url || '',
+    membershipId: client.membership_id || '',
+    membershipPercent: Number(client.membership_percent || 0),
+    counts,
+  };
 }
 
 export async function patchSelfProfile(db, salonId, identity, data) {
@@ -549,11 +557,44 @@ export async function patchSelfProfile(db, salonId, identity, data) {
     ? client.phone_normalized
     : normalizePhone(data.phoneNormalized || data.phone) || null;
   const email = data.email === undefined ? client.email : optionalText(data.email)?.toLowerCase() || null;
+  const city = data.city === undefined ? (client.city || null) : (optionalText(data.city) || null);
+  const birthdate = data.birthdate === undefined ? (client.birthdate || null) : (optionalText(data.birthdate) || null);
+  const avatarUrl =
+    data.avatarUrl === undefined && data.avatar_url === undefined
+      ? (client.avatar_url || null)
+      : (optionalText(data.avatarUrl || data.avatar_url) || null);
+  const membershipId =
+    data.membershipId === undefined && data.membership_id === undefined
+      ? (client.membership_id || null)
+      : (optionalText(data.membershipId || data.membership_id) || null);
+  const membershipPercent =
+    data.membershipPercent === undefined && data.membership_percent === undefined
+      ? Number(client.membership_percent || 0)
+      : Number(data.membershipPercent ?? data.membership_percent ?? 0);
+  const now = nowIso();
   await dbRun(
     db,
-    'UPDATE clients SET name = ?, phone_normalized = ?, email = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-    [name, phone, email, nowIso(), salonId, client.id]
+    `UPDATE clients
+        SET name = ?, phone_normalized = ?, email = ?, city = ?, birthdate = ?,
+            avatar_url = ?, membership_id = ?, membership_percent = ?, updated_at = ?
+      WHERE salon_id = ? AND id = ?`,
+    [name, phone, email, city, birthdate, avatarUrl, membershipId, membershipPercent, now, salonId, client.id]
   );
+  // Keep app_users display fields in sync for the signed-in Firebase uid.
+  const uid = cleanText(identity?.uid);
+  if (uid) {
+    await dbRun(
+      db,
+      `UPDATE app_users
+          SET display_name = COALESCE(NULLIF(?, ''), display_name),
+              phone = COALESCE(?, phone),
+              photo_url = COALESCE(?, photo_url),
+              email = COALESCE(NULLIF(email, ''), ?),
+              updated_at = ?
+        WHERE salon_id = ? AND firebase_uid = ?`,
+      [name, phone, avatarUrl, email, now, salonId, uid]
+    );
+  }
   return getSelfProfile(db, salonId, identity);
 }
 

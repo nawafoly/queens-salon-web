@@ -47,6 +47,11 @@ export type ClientPortalProfile = {
   name: string;
   phoneNormalized?: string;
   email?: string;
+  city?: string;
+  birthdate?: string;
+  avatarUrl?: string;
+  membershipId?: string;
+  membershipPercent?: number;
   firebaseUid?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -187,6 +192,11 @@ function mapProfile(row: Record<string, unknown>): ClientPortalProfile {
     name: text(row.name) || "عميلة",
     phoneNormalized: text(row.phone_normalized) || undefined,
     email: text(row.email) || undefined,
+    city: text(row.city) || undefined,
+    birthdate: text(row.birthdate) || undefined,
+    avatarUrl: text(row.avatarUrl || row.avatar_url) || undefined,
+    membershipId: text(row.membershipId || row.membership_id) || undefined,
+    membershipPercent: number(row.membershipPercent ?? row.membership_percent),
     firebaseUid: text(row.firebase_uid) || undefined,
     createdAt: text(row.created_at) || undefined,
     updatedAt: text(row.updated_at) || undefined,
@@ -279,7 +289,16 @@ export const ClientPortalService = {
     return portalSnapshotRequest;
   },
 
-  async patchProfile(input: { name?: string; phone?: string; email?: string }): Promise<ClientPortalProfile> {
+  async patchProfile(input: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    city?: string;
+    birthdate?: string;
+    avatarUrl?: string;
+    membershipId?: string;
+    membershipPercent?: number;
+  }): Promise<ClientPortalProfile> {
     const raw = await coreApiRequest<Record<string, unknown>>("/api/core/client/me", {
       method: "PATCH",
       body: input,

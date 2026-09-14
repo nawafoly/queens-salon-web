@@ -8,18 +8,20 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import { auth } from "./firebase";
 import { clearStoredAuthSession } from "./localAuthSession";
+import { coreApiRequest } from "./coreApiClient";
 
 /**
  * هذا الملف مسؤول فقط عن:
  * - Firebase Auth login
- * - Firebase Auth register (client)
+ * - Firebase Auth register (client) + Core D1 profile provision
  *
- * ✅ لا يقرأ صلاحيات/roles للأدارة
+ * ✅ لا يقرأ صلاحيات/roles للإدارة
  * ✅ لا يبني Session محلي
  * (الـ session يتم في Login.tsx + userProfile.ts)
+ *
+ * CORE D1 ONLY for profile writes — no Firestore fallback.
  */
 
 function cleanEmail(v: string) {
@@ -47,7 +49,6 @@ export async function loginWithEmail(email: string, password: string): Promise<U
   if (!e || !p) throw new Error("اكتب البريد وكلمة المرور.");
 
   try {
-    // ✅ ثبّت الجلسة محليًا (مهم)
     await setPersistence(auth, browserLocalPersistence);
 
     const cred = await signInWithEmailAndPassword(auth, e, p);
@@ -93,42 +94,30 @@ export async function registerClientWithEmail(params: {
   }
   if (!password || password.length < 6) throw new Error("كلمة المرور لازم 6 أحرف على الأقل.");
 
-  // ✅ ثبّت الجلسة محليًا
   await setPersistence(auth, browserLocalPersistence);
 
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   const uid = cred.user.uid;
 
-  // ✅ حدّث displayName في Firebase Auth
   await updateProfile(cred.user, { displayName: name });
 
   const membershipId = `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
 
-  const profileDoc = {
-    uid,
-    role: "client",
-    name,
-    displayName: name,
-    email,
-    phone: params.phone ?? "",
-    city: params.city ?? "",
-    birthdate: params.birthdate ?? "",
-    membershipId,
-    membershipPercent: 0,
-    active: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
+  // Force a fresh ID token so Core ensure-client sees the new Auth user.
+  await cred.user.getIdToken(true);
 
-  // ✅ 1) المسار المعتمد عندك
-  await setDoc(doc(db, "salons", "main", "users", uid), profileDoc, { merge: true });
-
-  // مرآة توافقية فقط؛ قد تمنع القواعد العميل من الكتابة في المسار الجذري.
-  try {
-    await setDoc(doc(db, "users", uid), profileDoc, { merge: true });
-  } catch {
-    // المسار المعتمد salons/main/users/{uid} تم إنشاؤه بالفعل.
-  }
+  await coreApiRequest("/api/core/auth/ensure-client", {
+    method: "POST",
+    body: {
+      name,
+      email,
+      phone: params.phone ?? "",
+      city: params.city ?? "",
+      birthdate: params.birthdate ?? "",
+      membershipId,
+      membershipPercent: 0,
+    },
+  });
 
   return cred.user;
 }
