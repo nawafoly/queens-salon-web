@@ -100,6 +100,8 @@ import {
   getServiceConsumptionByBookingItem,
   issueToEmployee,
   returnFromEmployee,
+  recordWaste,
+  adjustAfterStocktake,
 } from './repositories/inventory.js';
 import {
   createCatalogRow,
@@ -858,6 +860,12 @@ function match(url, method) {
   }
   const invRecipe = /^\/api\/core\/inventory\/recipes\/by-service\/([^/]+)$/.exec(path);
   if (invRecipe) return { name: "inventory:recipe-by-service", id: invRecipe[1] };
+  if (path === "/api/core/inventory/waste" && method === "POST") {
+    return { name: "inventory:waste" };
+  }
+  if (path === "/api/core/inventory/stocktake" && method === "POST") {
+    return { name: "inventory:stocktake" };
+  }
   if (path === "/api/core/inventory/employee-issue" && method === "POST") {
     return { name: "inventory:employee-issue" };
   }
@@ -2729,6 +2737,20 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.consume.confirm");
         return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:waste":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.waste.record");
+        return recordWaste(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:stocktake":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return adjustAfterStocktake(db, ctx.salonId, body, actorInfo);
       }
       break;
 

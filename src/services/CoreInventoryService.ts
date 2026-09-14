@@ -145,6 +145,12 @@ export const CoreInventoryService = {
       body: input,
     });
   },
+  recordWaste(input: { itemId: string; quantity: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
+  },
+  adjustAfterStocktake(input: { itemId: string; countedQty: number; note?: string }) {
+    return coreApiRequest("/api/core/inventory/stocktake", { method: "POST", body: input });
+  },
   issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/employee-issue", { method: "POST", body: input });
   },

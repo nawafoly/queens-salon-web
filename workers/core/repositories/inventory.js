@@ -1508,3 +1508,62 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
     note: optionalText(data.note) || 'Returned from employee',
   }, actor);
 }
+
+
+export async function recordWaste(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Waste quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'WASTE_OUT',
+    quantityDelta: -quantity,
+    unit: item.unit,
+    sourceType: 'WASTE',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    note: optionalText(data.note) || 'Waste recorded',
+  }, actor);
+}
+
+export async function adjustAfterStocktake(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const counted = Number(preferred(data, 'countedQty', 'counted_qty'));
+  if (!Number.isFinite(counted) || counted < 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Counted quantity must be zero or more');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const location = await ensureDefaultLocation(db, salonId);
+  const level = await getStockLevelRow(db, salonId, itemId, location.id);
+  const current = Number(level?.qty_on_hand || 0);
+  const delta = counted - current;
+  if (delta === 0) {
+    throw new AppError(409, 'inventory:stocktake_no_variance', 'Counted quantity matches on-hand stock');
+  }
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  return appendMovement(db, salonId, {
+    itemId,
+    locationId: location.id,
+    movementType: 'STOCKTAKE_VARIANCE',
+    quantityDelta: delta,
+    unit: item.unit,
+    sourceType: 'STOCKTAKE',
+    sourceId: operationId,
+    lineKey: itemId,
+    operationId,
+    note: optionalText(data.note) || 'Stocktake variance',
+  }, actor);
+}

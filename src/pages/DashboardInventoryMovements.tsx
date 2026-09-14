@@ -9,6 +9,9 @@ const TYPE_LABEL: Record<string, string> = {
   SERVICE_CONSUMPTION_OUT: "استهلاك خدمة",
   ADJUSTMENT: "تسوية",
   WASTE_OUT: "هدر",
+  EMPLOYEE_ISSUE_OUT: "صرف موظفة",
+  EMPLOYEE_RETURN_IN: "إرجاع موظفة",
+  STOCKTAKE_VARIANCE: "فرق جرد",
 };
 
 function errorMessage(error: unknown) {
