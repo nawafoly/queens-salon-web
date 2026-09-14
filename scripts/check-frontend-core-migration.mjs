@@ -189,6 +189,30 @@ const forbiddenChecks = [
       /<EmployeePermissionRequestsPage/,
     ],
   },
+  {
+    file: "src/pages/Contact.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firebase/,
+      /onSnapshot/,
+      /addDoc/,
+      /setDoc/,
+      /updateDoc/,
+      /collection\(db/,
+    ],
+  },
+  {
+    file: "src/pages/settings/SettingsContact.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firebase/,
+      /onSnapshot/,
+      /addDoc/,
+      /setDoc/,
+      /updateDoc/,
+      /collection\(db/,
+    ],
+  },
 ];
 
 const requiredChecks = [
@@ -448,6 +472,20 @@ const requiredChecks = [
     required: [
       /files_r2:self_update_read_only/,
       /patchFileMetadata/,
+    ],
+  },
+  {
+    file: "src/pages/Contact.tsx",
+    required: [
+      /CoreContactService|\/api\/core\/contact-messages/,
+      /settings\/public|CoreSettingsService/,
+    ],
+  },
+  {
+    file: "src/pages/settings/SettingsContact.tsx",
+    required: [
+      /CoreContactService|\/api\/core\/contact-messages/,
+      /settings\/public|CoreSettingsService/,
     ],
   },
 ];

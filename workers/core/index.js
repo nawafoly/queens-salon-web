@@ -215,6 +215,11 @@ import {
 } from './repositories/employee-targets.js';
 import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
 import {
+  createContactMessage,
+  listContactMessages,
+  markContactMessageRead,
+} from './repositories/contact-messages.js';
+import {
   cancelShiftAssignment,
   createScheduleException,
   createShiftAssignment,
@@ -403,7 +408,7 @@ function isPublicRoute(route, method) {
     (method === "GET" &&
       ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track", "public:employee-avatar"].includes(route.name)) ||
     (method === "POST" &&
-      ["clients", "bookings", "discount:use"].includes(route.name))
+      ["clients", "bookings", "discount:use", "contact-messages"].includes(route.name))
   );
 }
 
@@ -811,6 +816,7 @@ function match(url, method) {
     ["payroll-entries", "/api/core/hr/payroll-entries"],
     ["employee-targets", "/api/core/hr/employee-targets"],
     ["settings", "/api/core/settings"],
+    ["contact-messages", "/api/core/contact-messages"],
     ["admin-profiles", "/api/core/admin-profiles"],
     ["files", "/api/core/files"],
   ]) {
@@ -2533,6 +2539,18 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       requireRole(ctx.role, ADMIN_ROLES);
       if (["POST", "PATCH"].includes(method)) return upsertSetting(db, ctx.salonId, route.id || body.settingKey || body.setting_key, body, actorInfo);
+      break;
+    }
+
+    case "contact-messages": {
+      if (method === "POST") return createContactMessage(db, ctx.salonId, body);
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listContactMessages(db, ctx.salonId, query);
+      if (method === "PATCH" && route.id) {
+        const status = cleanText(body.status || "");
+        if (status !== "read") throw new AppError(400, "core_validation:invalid_text", "status must be read");
+        return markContactMessageRead(db, ctx.salonId, route.id);
+      }
       break;
     }
 
