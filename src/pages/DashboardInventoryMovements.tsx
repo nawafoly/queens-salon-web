@@ -64,6 +64,7 @@ export default function DashboardInventoryMovements() {
             <th>المادة</th>
             <th>النوع</th>
             <th>الكمية</th>
+            <th>تكلفة الوحدة</th>
             <th>الرصيد بعد</th>
           </tr>
         </thead>
@@ -74,6 +75,7 @@ export default function DashboardInventoryMovements() {
               <td>{nameById.get(row.item_id) || row.item_id}</td>
               <td>{TYPE_LABEL[row.movement_type] || row.movement_type}</td>
               <td>{row.quantity_delta ?? row.qty_delta ?? (row as { quantityDelta?: number }).quantityDelta}</td>
+              <td>{row.unit_cost_halalas != null ? (Number(row.unit_cost_halalas) / 100).toFixed(2) : "—"}</td>
               <td>{row.balance_after ?? row.qty_after ?? (row as { balanceAfter?: number }).balanceAfter}</td>
             </tr>
           ))}

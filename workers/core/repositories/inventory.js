@@ -1564,7 +1564,7 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
 }
 
 
-export async function recordWaste(db, salonId, data, actor = {}) {
+export async function recordWaste(db, salonId, data, actor = {}) { // FIFO cost on waste/sale
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
   const quantity = Number(preferred(data, 'quantity', 'qty'));
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -1575,12 +1575,14 @@ export async function recordWaste(db, salonId, data, actor = {}) {
     throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
   }
   const location = await ensureDefaultLocation(db, salonId);
+  const fifo = await getFifoCostForQuantity(db, salonId, itemId, quantity);
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
   return appendMovement(db, salonId, {
     itemId,
     locationId: location.id,
     movementType: 'WASTE_OUT',
     quantityDelta: -quantity,
+    unitCostHalalas: fifo.unitCostHalalas,
     unit: item.unit,
     sourceType: 'WASTE',
     sourceId: operationId,
@@ -1667,12 +1669,14 @@ export async function sellProduct(db, salonId, data, actor = {}) {
     throw new AppError(409, 'inventory:item_policy_mismatch', 'Only DIRECT_SALE items can be sold from inventory');
   }
   const location = await ensureDefaultLocation(db, salonId);
+  const fifo = await getFifoCostForQuantity(db, salonId, itemId, quantity);
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
   return appendMovement(db, salonId, {
     itemId,
     locationId: location.id,
     movementType: 'DIRECT_SALE_OUT',
     quantityDelta: -quantity,
+    unitCostHalalas: fifo.unitCostHalalas,
     unit: item.unit,
     sourceType: 'DIRECT_SALE',
     sourceId: operationId,
