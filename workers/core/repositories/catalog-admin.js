@@ -11,6 +11,7 @@ import {
   requiredText,
   updateById,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 
 function tableFor(kind) {
   if (kind === 'sections') return 'service_sections';

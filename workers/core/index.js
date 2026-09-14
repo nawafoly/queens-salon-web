@@ -84,6 +84,30 @@ import {
   patchDiscount,
 } from './repositories/discounts.js';
 import {
+  listCategories as listInventoryCategories,
+  createCategory as createInventoryCategory,
+  listItems as listInventoryItems,
+  getItem as getInventoryItem,
+  createItem as createInventoryItem,
+  updateItem as updateInventoryItem,
+  listLocations as listInventoryLocations,
+  ensureDefaultLocation,
+  listStockLevels,
+  recordOpeningBalance,
+  listMovements as listInventoryMovements,
+  getActiveRecipeForService,
+  upsertServiceRecipe,
+  confirmServiceConsumption,
+  getServiceConsumptionByBookingItem,
+  issueToEmployee,
+  returnFromEmployee,
+  recordWaste,
+  adjustAfterStocktake,
+  receivePurchase,
+  sellProduct,
+  returnProduct,
+} from './repositories/inventory.js';
+import {
   createCatalogRow,
   deleteCatalogRow,
   listCatalogRows,
@@ -858,6 +882,47 @@ function match(url, method) {
   if (path === "/api/core/payments") return { name: "payments" };
   if (path === "/api/core/income") return { name: "income" };
   if (path === "/api/core/health") return { name: "health" };
+  // Inventory Control Center
+  if (path === "/api/core/inventory/categories") return { name: "inventory:categories" };
+  if (path === "/api/core/inventory/items") return { name: "inventory:items" };
+  const invItem = /^\/api\/core\/inventory\/items\/([^/]+)$/.exec(path);
+  if (invItem) return { name: "inventory:item", id: invItem[1] };
+  if (path === "/api/core/inventory/locations") return { name: "inventory:locations" };
+  if (path === "/api/core/inventory/stock-levels") return { name: "inventory:stock-levels" };
+  if (path === "/api/core/inventory/movements") return { name: "inventory:movements" };
+  if (path === "/api/core/inventory/opening-balance" && method === "POST") {
+    return { name: "inventory:opening-balance" };
+  }
+  const invRecipe = /^\/api\/core\/inventory\/recipes\/by-service\/([^/]+)$/.exec(path);
+  if (invRecipe) return { name: "inventory:recipe-by-service", id: invRecipe[1] };
+  if (path === "/api/core/inventory/purchase-receipt" && method === "POST") {
+    return { name: "inventory:purchase-receipt" };
+  }
+  if (path === "/api/core/inventory/sell" && method === "POST") {
+    return { name: "inventory:sell" };
+  }
+  if (path === "/api/core/inventory/sale-return" && method === "POST") {
+    return { name: "inventory:sale-return" };
+  }
+  if (path === "/api/core/inventory/waste" && method === "POST") {
+    return { name: "inventory:waste" };
+  }
+  if (path === "/api/core/inventory/stocktake" && method === "POST") {
+    return { name: "inventory:stocktake" };
+  }
+  if (path === "/api/core/inventory/employee-issue" && method === "POST") {
+    return { name: "inventory:employee-issue" };
+  }
+  if (path === "/api/core/inventory/employee-return" && method === "POST") {
+    return { name: "inventory:employee-return" };
+  }
+  if (path === "/api/core/inventory/consumptions/confirm" && method === "POST") {
+    return { name: "inventory:consumption-confirm" };
+  }
+  const invConsByItem = /^\/api\/core\/inventory\/consumptions\/by-booking-item\/([^/]+)$/.exec(path);
+  if (invConsByItem && method === "GET") {
+    return { name: "inventory:consumption-by-booking-item", id: invConsByItem[1] };
+  }
   return null;
 }
 
@@ -2665,6 +2730,159 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
     }
+    case "inventory:categories":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        return listInventoryCategories(db, ctx.salonId, readQuery);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createInventoryCategory(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:items":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.items.manage",
+          "inventory.consume.confirm",
+        ]);
+        return listInventoryItems(db, ctx.salonId, readQuery);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createInventoryItem(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:item":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.items.manage",
+          "inventory.consume.confirm",
+        ]);
+        return getInventoryItem(db, ctx.salonId, route.id);
+      }
+      if (method === "PATCH") {
+        requirePermission(ctx, "inventory.items.manage");
+        return updateInventoryItem(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      break;
+
+    case "inventory:locations":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        const rows = await listInventoryLocations(db, ctx.salonId, readQuery);
+        if (!rows.length) return [await ensureDefaultLocation(db, ctx.salonId)];
+        return rows;
+      }
+      break;
+
+    case "inventory:stock-levels":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        return listStockLevels(db, ctx.salonId, readQuery);
+      }
+      break;
+
+    case "inventory:movements":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.movements.view", "inventory.view"]);
+        return listInventoryMovements(db, ctx.salonId, readQuery);
+      }
+      break;
+
+    case "inventory:opening-balance":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return recordOpeningBalance(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:recipe-by-service":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.recipes.manage",
+          "inventory.consume.confirm",
+        ]);
+        return getActiveRecipeForService(db, ctx.salonId, route.id);
+      }
+      if (method === "PUT" || method === "POST") {
+        requirePermission(ctx, "inventory.recipes.manage");
+        return upsertServiceRecipe(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumption-confirm":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.consume.confirm");
+        return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:purchase-receipt":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return receivePurchase(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:sell":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return sellProduct(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:sale-return":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return returnProduct(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:waste":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.waste.record");
+        return recordWaste(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:stocktake":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return adjustAfterStocktake(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:employee-issue":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return issueToEmployee(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:employee-return":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return returnFromEmployee(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumption-by-booking-item":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.view",
+          "inventory.consume.confirm",
+          "inventory.movements.view",
+        ]);
+        return getServiceConsumptionByBookingItem(db, ctx.salonId, route.id);
+      }
+      break;
+
 
     default:
       break;
@@ -2799,11 +3017,54 @@ export async function handleRequest(request, env) {
     }
     return jsonResponse(request, env, 200, { ok: true, data: response });
   }
+  let dispatchBody = body;
+
+  if (
+    route.name === "inventory:consumption-confirm" &&
+    String(request.method || "").toUpperCase() === "POST"
+  ) {
+    const rawHeaderOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+
+    const headerOperationId = rawHeaderOperationId
+      ? normalizeOperationId(rawHeaderOperationId)
+      : "";
+
+    const bodyOperationId = cleanText(
+      body?.operationId ?? body?.operation_id
+    );
+
+    const normalizedBodyOperationId = bodyOperationId
+      ? normalizeOperationId(bodyOperationId)
+      : "";
+
+    if (
+      headerOperationId &&
+      bodyOperationId &&
+      headerOperationId !== normalizedBodyOperationId
+    ) {
+      throw new AppError(
+        400,
+        "inventory:operation_id_mismatch"
+      );
+    }
+
+    if (headerOperationId) {
+      dispatchBody = {
+        ...body,
+        operationId: headerOperationId,
+      };
+
+      delete dispatchBody.operation_id;
+    }
+  }
+
   const data = await dispatch(
     ctx,
     route,
     request.method,
-    body,
+    dispatchBody,
     Object.fromEntries(url.searchParams.entries()),
     env
   );

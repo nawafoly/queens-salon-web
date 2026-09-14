@@ -40,8 +40,8 @@
   /* Typography. */
   --dsv2-text: var(--dsv2-black);
   --dsv2-text-soft: #303641;
-  --dsv2-muted: #6f7784;
-  --dsv2-muted-soft: #9097a2;
+  --dsv2-muted: #4b5563;
+  --dsv2-muted-soft: #5b6470;
   --dsv2-on-dark: #ffffff;
   --dsv2-font-family: "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
 
