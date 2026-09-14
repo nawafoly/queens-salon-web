@@ -2,8 +2,10 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCommentDots } from "@fortawesome/free-solid-svg-icons";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { db } from "../services/firebase";
+import { AppSettingsService } from "../services/AppSettingsService";
+import { CoreCatalogService } from "../services/CoreCatalogService";
+import { CoreSettingsService } from "../services/CoreSettingsService";
+import { coreApiRequest } from "../services/coreApiClient";
 import { formatTime12 } from "../helpers/timeDisplay";
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 
@@ -135,7 +137,6 @@ const STORAGE = {
   ],
 };
 
-const SALON_ID = "main";
 const ACTION_SECTION_PREFIX = "section::";
 const ACTION_CATEGORY_PREFIX = "category::";
 const ACTION_CATEGORY_NAME_PREFIX = "category_name::";
@@ -564,32 +565,60 @@ const ChatBot: React.FC = () => {
     const loadData = async () => {
       setLoadingCatalog(true);
       try {
-        const appRef = doc(db, "salons", SALON_ID, "settings", "app");
-        const appSnap = await getDoc(appRef);
-        if (appSnap.exists()) {
-          const raw = (appSnap.data() as any)?.booking || {};
-          setBookingSettings({
-            slotStepMin: [5, 10, 15, 30].includes(Number(raw?.slotStepMin))
-              ? Number(raw.slotStepMin)
-              : 5,
-            businessHours: { ...defaultBusinessHours(), ...(raw?.businessHours || {}) },
-            bookingHourOverrides: readBookingHourOverrides(raw?.bookingHourOverrides),
-            holidays: Array.isArray(raw?.holidays) ? raw.holidays : [],
-            closures: Array.isArray(raw?.closures) ? raw.closures : [],
-            publicClosedMessage: String(raw?.publicClosedMessage || ""),
-          });
-        }
+        // CORE D1 ONLY — settings + catalog (no Firestore)
+        const [appSetting, sectionsRows, categoriesRows, servicesRows, publicSetting] =
+          await Promise.all([
+            AppSettingsService.fetchRemote(),
+            CoreCatalogService.listSections(false),
+            CoreCatalogService.listCategories(false),
+            CoreCatalogService.listServices({ activeOnly: false }),
+            CoreSettingsService.get<Record<string, unknown>>("public"),
+          ]);
 
-        const secSnap = await getDocs(collection(db, "salons", SALON_ID, "service_sections"));
-        setSections(secSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        const catSnap = await getDocs(collection(db, "salons", SALON_ID, "service_categories"));
-        setCategories(catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        const srvSnap = await getDocs(collection(db, "salons", SALON_ID, "services"));
-        setServices(srvSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+        const raw = (appSetting as any)?.booking || {};
+        setBookingSettings({
+          slotStepMin: [5, 10, 15, 30].includes(Number(raw?.slotStepMin))
+            ? Number(raw.slotStepMin)
+            : 5,
+          businessHours: { ...defaultBusinessHours(), ...(raw?.businessHours || {}) },
+          bookingHourOverrides: readBookingHourOverrides(raw?.bookingHourOverrides),
+          holidays: Array.isArray(raw?.holidays) ? raw.holidays : [],
+          closures: Array.isArray(raw?.closures) ? raw.closures : [],
+          publicClosedMessage: String(raw?.publicClosedMessage || ""),
+        });
 
-        const pubRef = doc(db, "salons", SALON_ID, "settings", "public");
-        const pubSnap = await getDoc(pubRef);
-        setPublicSettings(pubSnap.exists() ? (pubSnap.data() as any) : null);
+        setSections(
+          (sectionsRows || []).map((row: any) => ({
+            id: String(row.id || ""),
+            name: row.name,
+            title: row.name,
+            active: row.active !== false,
+          }))
+        );
+        setCategories(
+          (categoriesRows || []).map((row: any) => ({
+            id: String(row.id || ""),
+            sectionId: row.sectionId || row.section_id || "",
+            name: row.name,
+            title: row.name,
+            active: row.active !== false,
+          }))
+        );
+        setServices(
+          (servicesRows || []).map((row: any) => ({
+            id: String(row.id || ""),
+            name: row.name,
+            price: Number(row.priceHalalas ?? 0) / 100,
+            durationMin: Number(row.durationMinutes ?? row.durationMin ?? 0),
+            active: row.active !== false,
+            sectionId: row.sectionId || row.section_id || "",
+            categoryId: row.categoryId || row.category_id || "",
+            category: row.categoryName || row.category || "",
+            categoryName: row.categoryName || row.category || "",
+          }))
+        );
+
+        setPublicSettings((publicSetting?.value as any) || null);
       } catch (e) {
         console.error("ChatBot loadData error:", e);
       } finally {
@@ -848,9 +877,13 @@ const ChatBot: React.FC = () => {
   const getBookedTimesForDate = async (dateISO: string): Promise<string[]> => {
     if (bookingsCache[dateISO]) return bookingsCache[dateISO];
     try {
-      const qy = query(collection(db, "salons", SALON_ID, "bookings"), where("date", "==", dateISO));
-      const snap = await getDocs(qy);
-      const times = snap.docs.map((d) => String((d.data() as any)?.time || "").trim()).filter(Boolean);
+      const row = await coreApiRequest<{ times?: string[] }>(
+        "/api/core/bookings/taken-times",
+        { query: { date: dateISO } }
+      );
+      const times = (Array.isArray(row?.times) ? row.times : [])
+        .map((t) => String(t || "").trim())
+        .filter(Boolean);
       setBookingsCache((prev) => ({ ...prev, [dateISO]: times }));
       return times;
     } catch {

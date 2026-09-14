@@ -18,9 +18,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { isStaffOperationallyActiveForDate } from "../helpers/staffOperationalStatus";
 
-// ✅ Firestore
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../services/firebase";
+// ✅ Core D1 public about staff
+import { CoreStaffPublicService } from "../services/CoreStaffPublicService";
 
 type TeamMember = {
   id: string;
@@ -40,8 +39,6 @@ type TeamMember = {
   showOnAbout?: boolean; // ✅ NEW
 };
 
-const SALON_ID = "main";
-const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 const STAFF_IMAGE_MODULES = import.meta.glob("../assets/images/*.{png,jpg,jpeg,webp,avif,svg}", {
   eager: true,
   import: "default",
@@ -80,35 +77,7 @@ function buildPositionFromSpecialties(specialties: string[]) {
 }
 
 // ✅ يقرأ isActive أو active عشان ما ننكسر مع الداتا القديمة
-function readActiveFlag(x: any) {
-  if (typeof x?.isActive === "boolean") return x.isActive;
-  if (typeof x?.active === "boolean") return x.active;
-  // default true
-  return true;
-}
 
-function pickAvatarUrl(data: any): string {
-  const candidates = [
-    data?.avatarUrl,
-    data?.avatarURL,
-    data?.photoURL,
-    data?.photoUrl,
-    data?.imageUrl,
-    data?.imageURL,
-    data?.image,
-    data?.imgUrl,
-    data?.profileImage,
-    data?.profileImageUrl,
-    data?.picture,
-    data?.avatar,
-  ];
-
-  for (const c of candidates) {
-    const s = String(c ?? "").trim();
-    if (s) return s;
-  }
-  return "";
-}
 
 function resolveAvatarFromAssets(raw: string): string {
   const v = String(raw || "").trim();
@@ -160,36 +129,30 @@ const About = () => {
     },
   ];
 
-  // ✅ تحميل الفريق من staff_public
+  // ✅ تحميل الفريق من Core D1 (employee_profiles.show_on_about)
   const loadTeam = async () => {
     try {
       setTeamLoading(true);
       setTeamErr("");
 
-      const colRef = collection(db, ...STAFF_PUBLIC_COLLECTION);
-      const snap = await getDocs(colRef);
+      const staffRows = await CoreStaffPublicService.listAbout();
 
-      const rows: TeamMember[] = snap.docs
-        .map((d, idx) => {
-          const x: any = d.data();
-
+      const rows: TeamMember[] = staffRows
+        .map((x, idx) => {
           const name = String(x?.name || "").trim();
-          const active = readActiveFlag(x); // ✅ fixed
-          const showOnAbout = x?.showOnAbout !== false; // ✅ default true (fallback for old docs)
-
+          const active = x?.active !== false;
+          const showOnAbout = x?.showOnAbout !== false;
           const specialties = normalizeSpecialties(x?.specialties);
           const bio = String(x?.bio || "").trim();
-          const avatarUrl = resolveAvatarFromAssets(pickAvatarUrl(x)) || undefined;
+          const avatarUrl =
+            resolveAvatarFromAssets(String(x?.avatarUrl || "").trim()) ||
+            (String(x?.avatarUrl || "").trim() || undefined);
           const cvUrl = String(x?.cvUrl || "").trim() || undefined;
-
           const position = buildPositionFromSpecialties(specialties);
-
           const desc = bio || "خبيرة ضمن فريق صالون ملكات.";
 
-
-
           return {
-            id: d.id,
+            id: String(x.id || ""),
             name,
             active,
             showOnAbout,
@@ -198,21 +161,18 @@ const About = () => {
             avatarUrl,
             position,
             description: desc,
-            image: placeholders[idx % placeholders.length], // fallback
+            image: placeholders[idx % placeholders.length],
             cvUrl,
             employmentEndDate: String(x?.employmentEndDate || "").trim() || undefined,
           };
         })
-        // ✅ فقط اللي active + showOnAbout + عنده اسم
         .filter((m) => m.name && m.showOnAbout !== false && isStaffOperationallyActiveForDate(m as any));
 
-      // ✅ ترتيب محلي بالاسم
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
-
       setTeamMembers(rows);
 
       if (rows.length === 0) {
-        setTeamErr("لا يوجد فريق منشور في صفحة About حالياً. (staff_public)");
+        setTeamErr("لا يوجد فريق منشور في صفحة About حالياً.");
       }
     } catch (e: any) {
       console.error("About loadTeam error:", e);

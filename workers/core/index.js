@@ -48,6 +48,7 @@ import {
   listBookings,
   patchBooking,
   rescheduleBooking,
+  listTakenBookingTimes,
 } from './repositories/bookings.js';
 import {
   acknowledgeOwnBooking,
@@ -219,6 +220,14 @@ import {
   listContactMessages,
   markContactMessageRead,
 } from './repositories/contact-messages.js';
+import {
+  createTestimonial,
+  deleteTestimonial,
+  listTestimonials,
+  patchTestimonial,
+} from './repositories/testimonials.js';
+import { listPublicAboutStaff } from './repositories/staff-public.js';
+import { ensureClientAccount } from './repositories/auth-register.js';
 import {
   cancelShiftAssignment,
   createScheduleException,
@@ -406,9 +415,9 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track", "public:employee-avatar"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track", "public:employee-avatar", "staff:public-about", "bookings:taken-times", "testimonials"].includes(route.name)) ||
     (method === "POST" &&
-      ["clients", "bookings", "discount:use", "contact-messages"].includes(route.name))
+      ["clients", "bookings", "discount:use", "contact-messages", "auth:ensure-client"].includes(route.name))
   );
 }
 
@@ -468,6 +477,23 @@ function match(url, method) {
   }
   if (path === "/api/admin/permissions" || path === "/api/core/admin/permissions") {
     return { name: "admin:permissions" };
+  }
+
+  if ((path === "/api/core/auth/ensure-client" || path === "/api/auth/ensure-client") && method === "POST") {
+    return { name: "auth:ensure-client" };
+  }
+  if (path === "/api/core/staff/public-about" && method === "GET") {
+    return { name: "staff:public-about" };
+  }
+  if (path === "/api/core/bookings/taken-times" && method === "GET") {
+    return { name: "bookings:taken-times" };
+  }
+  const testimonialDetail = /^\/api\/core\/testimonials\/([^/]+)$/.exec(path);
+  if (testimonialDetail) {
+    return { name: "testimonials", id: testimonialDetail[1] };
+  }
+  if (path === "/api/core/testimonials") {
+    return { name: "testimonials" };
   }
 
   const clientPortalRoutes = new Map([
@@ -872,9 +898,10 @@ async function dispatch(ctx, route, method, body, query, env) {
     "client:offers",
   ]).has(route.name);
   const isAuthSelfRoute = route.name === "auth:me";
+  const isTestimonialWrite = route.name === "testimonials" && method === "POST";
   const publicRoute = isPublicRoute(route, method);
   const publicConsumer = publicRoute && (ctx.guestAccess || !OPERATIONS_ROLES.has(ctx.role));
-  if (!ctx.guestAccess && !isAuthSelfRoute && !isClientSelfRoute && !publicRoute) requireRole(ctx.role);
+  if (!ctx.guestAccess && !isAuthSelfRoute && !isClientSelfRoute && !publicRoute && !isTestimonialWrite) requireRole(ctx.role);
   const readQuery = publicConsumer ? publicBookingQuery(route.name, query) : query;
   const actorInfo = {
     uid: ctx.identity?.uid || "",
@@ -2542,6 +2569,32 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
     }
 
+    case "auth:ensure-client":
+      return ensureClientAccount(db, ctx.salonId, env, ctx.request, body);
+
+    case "staff:public-about":
+      if (method === "GET") return listPublicAboutStaff(db, ctx.salonId);
+      break;
+
+    case "bookings:taken-times":
+      if (method === "GET") return listTakenBookingTimes(db, ctx.salonId, query);
+      break;
+
+    case "testimonials": {
+      if (method === "GET") {
+        const includeHidden = ADMIN_ROLES.has(ctx.role) || ctx.role === "owner";
+        return listTestimonials(db, ctx.salonId, query, { includeHidden });
+      }
+      if (method === "POST") {
+        if (ctx.guestAccess || !ctx.identity?.uid) throw new AppError(401, "core_auth:login_required");
+        return createTestimonial(db, ctx.salonId, body, actorInfo);
+      }
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "PATCH" && route.id) return patchTestimonial(db, ctx.salonId, route.id, body);
+      if (method === "DELETE" && route.id) return deleteTestimonial(db, ctx.salonId, route.id);
+      break;
+    }
+
     case "contact-messages": {
       if (method === "POST") return createContactMessage(db, ctx.salonId, body);
       requireRole(ctx.role, ADMIN_ROLES);
@@ -2659,6 +2712,7 @@ export async function handleRequest(request, env) {
     touchLogin: route.name === "auth:me",
     allowBlockedAccount: route.name === "auth:me",
   });
+  ctx.request = request;
   if (route.name === "public:employee-avatar") {
     const profile = await getHrEmployeeAvatarProfile(ctx.coreDb, ctx.salonId, route.id);
     const avatarFileId = cleanText(profile.avatar_file_id);

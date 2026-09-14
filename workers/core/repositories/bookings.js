@@ -15,6 +15,7 @@ import {
   optionalText,
   placeholders,
   requiredId,
+  requiredText,
   rowNotFound,
   updateById,
   validDate,
@@ -1728,5 +1729,30 @@ export async function deleteBooking(db, salonId, id, actor = {}) {
     deleted: true,
     mode: "soft",
     financialRecordsPreserved: true,
+  };
+}
+
+
+/** Public slim readout: start times only (no client PII) for ChatBot day slots. */
+export async function listTakenBookingTimes(db, salonId, query = {}) {
+  const date = requiredText(query.date || query.bookingDate || query.booking_date, 'date', 32);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new AppError(400, 'core_validation:invalid_text', 'date must be YYYY-MM-DD');
+  }
+  const rows = await dbAll(
+    db,
+    `SELECT DISTINCT b.start_time AS start_time
+       FROM bookings b
+      WHERE b.salon_id = ?
+        AND b.booking_date = ?
+        AND b.deleted_at IS NULL
+        AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled', 'refunded')
+        AND TRIM(COALESCE(b.start_time, '')) <> ''
+      ORDER BY b.start_time`,
+    [salonId, date]
+  );
+  return {
+    date,
+    times: rows.map((row) => cleanText(row.start_time)).filter(Boolean),
   };
 }
