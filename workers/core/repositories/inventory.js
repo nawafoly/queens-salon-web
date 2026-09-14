@@ -510,6 +510,66 @@ async function getItemsByIds(db, salonId, itemIds) {
   );
 }
 
+
+async function getFifoCostForQuantity(db, salonId, itemId, quantity) {
+  const inbounds = await dbAll(
+    db,
+    `SELECT id, quantity_delta, unit_cost_halalas, created_at
+       FROM inventory_stock_movements
+      WHERE salon_id = ?
+        AND item_id = ?
+        AND movement_type IN ('PURCHASE_RECEIPT_IN', 'OPENING_BALANCE_IN')
+        AND quantity_delta > 0
+      ORDER BY created_at ASC, id ASC`,
+    [salonId, itemId]
+  );
+  const outbound = await dbFirst(
+    db,
+    `SELECT COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END), 0) AS consumed
+       FROM inventory_stock_movements
+      WHERE salon_id = ?
+        AND item_id = ?
+        AND movement_type NOT IN ('PURCHASE_RECEIPT_IN', 'OPENING_BALANCE_IN')`,
+    [salonId, itemId]
+  );
+  let alreadyConsumed = Number(outbound?.consumed || 0);
+  const layers = [];
+  for (const row of inbounds) {
+    let qty = Number(row.quantity_delta);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    if (alreadyConsumed >= qty) {
+      alreadyConsumed -= qty;
+      continue;
+    }
+    qty -= alreadyConsumed;
+    alreadyConsumed = 0;
+    const cost = Number(row.unit_cost_halalas);
+    layers.push({
+      qty,
+      unitCost: Number.isInteger(cost) && cost >= 0 ? cost : 0,
+    });
+  }
+  let left = Number(quantity);
+  let total = 0;
+  let used = 0;
+  const lastCost = layers.length ? layers[layers.length - 1].unitCost : 0;
+  for (const layer of layers) {
+    if (left <= 0) break;
+    const take = Math.min(left, layer.qty);
+    total += Math.round(layer.unitCost * take);
+    used += take;
+    left -= take;
+  }
+  if (left > 0) {
+    total += Math.round(lastCost * left);
+    used += left;
+  }
+  return {
+    unitCostHalalas: used > 0 ? Math.round(total / used) : null,
+    lineCostHalalas: total,
+  };
+}
+
 async function getTrustedUnitCostsByItemIds(db, salonId, itemIds) {
   const ids = [...new Set(itemIds.filter(Boolean))];
 
