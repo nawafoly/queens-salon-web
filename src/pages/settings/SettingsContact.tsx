@@ -1,21 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  doc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DashboardEmptyStateV2 } from "../../components/dashboard-v2";
-import { db } from "../../services/firebase";
+import {
+  CoreContactService,
+  type ContactMessage,
+} from "../../services/CoreContactService";
+import { CoreSettingsService } from "../../services/CoreSettingsService";
 import "../../styles/dashboard-v2/dashboard-v2.css";
-
-const SALON_ID = "main";
 
 type ContactPublic = {
   phone?: string;
@@ -26,17 +17,7 @@ type ContactPublic = {
   locationText?: string;
   hoursText?: string;
   mapEmbedUrl?: string;
-};
-
-type ContactMessage = {
-  id: string;
-  name?: string;
-  email?: string;
-  phone?: string;
-  subject?: string;
-  message?: string;
-  status?: "new" | "read";
-  createdAt?: any;
+  location?: string;
 };
 
 type SettingsContactProps = {
@@ -47,10 +28,10 @@ function safeStr(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function formatMessageDate(value: any) {
+function formatMessageDate(value: unknown) {
   if (!value) return "";
   try {
-    const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+    const date = new Date(String(value));
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
       dateStyle: "medium",
@@ -61,12 +42,21 @@ function formatMessageDate(value: any) {
   }
 }
 
-export default function SettingsContact({ hasAdminPower }: SettingsContactProps) {
-  const publicRef = useMemo(
-    () => doc(db, "salons", SALON_ID, "settings", "public"),
-    [],
-  );
+function mapPublicValue(data: ContactPublic | null | undefined): ContactPublic {
+  const row = data || {};
+  return {
+    phone: row.phone || "",
+    whatsapp: row.whatsapp || "",
+    email: row.email || "",
+    city: row.city || "",
+    address: row.address || "",
+    locationText: row.locationText || row.location || row.address || "",
+    hoursText: row.hoursText || "",
+    mapEmbedUrl: row.mapEmbedUrl || "",
+  };
+}
 
+export default function SettingsContact({ hasAdminPower }: SettingsContactProps) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [showMessages, setShowMessages] = useState(false);
@@ -138,71 +128,35 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
     [filledFields, messages.length, publicData.mapEmbedUrl, unreadCount],
   );
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      publicRef,
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          setPublicData((previous) => ({
-            phone: previous.phone ?? "",
-            whatsapp: previous.whatsapp ?? "",
-            email: previous.email ?? "",
-            city: previous.city ?? "",
-            address: previous.address ?? "",
-            locationText: previous.locationText ?? "",
-            hoursText: previous.hoursText ?? "",
-            mapEmbedUrl: previous.mapEmbedUrl ?? "",
-          }));
-          return;
-        }
-
-        const data = snapshot.data() as any;
-        setPublicData({
-          phone: data?.phone || "",
-          whatsapp: data?.whatsapp || "",
-          email: data?.email || "",
-          city: data?.city || "",
-          address: data?.address || "",
-          locationText: data?.locationText || data?.address || "",
-          hoursText: data?.hoursText || "",
-          mapEmbedUrl: data?.mapEmbedUrl || "",
-        });
-      },
-      (error) => console.error("public settings snapshot error:", error),
-    );
-
-    return () => unsubscribe();
-  }, [publicRef]);
-
-  useEffect(() => {
-    const messagesQuery = query(
-      collection(db, "salons", SALON_ID, "contact_messages"),
-      orderBy("createdAt", "desc"),
-      limit(20),
-    );
-
-    const unsubscribe = onSnapshot(
-      messagesQuery,
-      (snapshot) => {
-        setMessages(snapshot.docs.map((messageDoc) => {
-          const data = messageDoc.data() as any;
-          return {
-            id: messageDoc.id,
-            name: data?.name,
-            email: data?.email,
-            phone: data?.phone,
-            subject: data?.subject,
-            message: data?.message,
-            status: (data?.status as ContactMessage["status"]) || "new",
-            createdAt: data?.createdAt,
-          };
-        }));
-      },
-      (error) => console.error("messages snapshot error:", error),
-    );
-
-    return () => unsubscribe();
+  const loadPublic = useCallback(async () => {
+    try {
+      const setting = await CoreSettingsService.get<ContactPublic>("public");
+      setPublicData(mapPublicValue(setting?.value));
+    } catch (error) {
+      console.error("public settings load error:", error);
+    }
   }, []);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const rows = await CoreContactService.list(20);
+      setMessages(rows);
+    } catch (error) {
+      console.error("messages load error:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPublic();
+  }, [loadPublic]);
+
+  useEffect(() => {
+    void loadMessages();
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (showMessages) void loadMessages();
+  }, [showMessages, loadMessages]);
 
   const onChange = (key: keyof ContactPublic, value: string) => {
     setPublicData((previous) => ({ ...previous, [key]: value }));
@@ -216,7 +170,7 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
       const address = safeStr(publicData.address);
       const locationText = safeStr(publicData.locationText) || address;
 
-      await setDoc(publicRef, {
+      const payload: ContactPublic = {
         phone: safeStr(publicData.phone),
         whatsapp: safeStr(publicData.whatsapp),
         email: safeStr(publicData.email),
@@ -225,8 +179,11 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
         locationText,
         hoursText: safeStr(publicData.hoursText),
         mapEmbedUrl: safeStr(publicData.mapEmbedUrl),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      };
+
+      await CoreSettingsService.save("public", payload, "public");
+      setPublicData(mapPublicValue(payload));
+      await loadMessages();
 
       setSavedMsg("تم حفظ بيانات التواصل");
       window.setTimeout(() => setSavedMsg(""), 2000);
@@ -243,11 +200,8 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
     if (!hasAdminPower) return;
 
     try {
-      const messageRef = doc(db, "salons", SALON_ID, "contact_messages", id);
-      await updateDoc(messageRef, {
-        status: "read",
-        readAt: serverTimestamp(),
-      });
+      await CoreContactService.markRead(id);
+      await loadMessages();
     } catch (error) {
       console.error("mark read error:", error);
     }
