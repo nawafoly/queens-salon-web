@@ -63,34 +63,6 @@ export default function DashboardInventoryTrade() {
     }
   }
 
-  async function sell() {
-    if (!canAdjust || !itemId) return;
-    setSaving("sell");
-    setError("");
-    setNotice("");
-    try {
-      setNotice("تم بيع المادة وخصمها من الدفتر.");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSaving("");
-    }
-  }
-
-  async function ret() {
-    if (!canAdjust || !itemId) return;
-    setSaving("ret");
-    setError("");
-    setNotice("");
-    try {
-      setNotice("تم إرجاع البيع إلى المخزن.");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSaving("");
-    }
-  }
-
   if (loading) return <DashboardSkeletonV2 lines={6} />;
 
   return (
