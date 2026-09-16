@@ -28,6 +28,114 @@ const POLICIES = new Set([
 ]);
 const LINE_TYPES = new Set(['SPECIFIC_ITEM', 'CATEGORY']);
 
+
+const SALON_TZ = 'Asia/Riyadh';
+const CONSUMPTION_LIFECYCLES = new Set([
+  'UPCOMING',
+  'DUE_TODAY',
+  'PENDING_CONFIRMATION',
+  'CONFIRMED',
+  'OVERDUE',
+]);
+
+function salonTodayISO(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const read = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
+function salonNowHHMM(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const read = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${read('hour')}:${read('minute')}`;
+}
+
+function normalizeClock(value) {
+  const raw = cleanText(value);
+  if (!raw) return '';
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const hh = Math.min(23, Math.max(0, Number(match[1])));
+  const mm = Math.min(59, Math.max(0, Number(match[2])));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return '';
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function addMinutesToClock(clock, minutes) {
+  const normalized = normalizeClock(clock);
+  if (!normalized || !Number.isFinite(Number(minutes))) return '';
+  const [hh, mm] = normalized.split(':').map(Number);
+  const total = hh * 60 + mm + Math.max(0, Math.trunc(Number(minutes)));
+  const wrapped = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}
+
+function effectiveEndTime(row = {}) {
+  const explicit = normalizeClock(row.end_time || row.endTime);
+  if (explicit) return explicit;
+  const start = normalizeClock(row.start_time || row.startTime);
+  const duration = Number(row.duration_minutes ?? row.durationMinutes);
+  if (start && Number.isFinite(duration) && duration > 0) {
+    return addMinutesToClock(start, duration);
+  }
+  return '';
+}
+
+function shiftISODate(isoDate, deltaDays) {
+  const raw = cleanText(isoDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const [y, m, d] = raw.split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  utc.setUTCDate(utc.getUTCDate() + Number(deltaDays || 0));
+  return utc.toISOString().slice(0, 10);
+}
+
+function queryFlag(value) {
+  const raw = cleanText(value).toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+/**
+ * Derived same-day consumption lifecycle (booking-item grain).
+ * Prefer computed read-model — no persisted status column required.
+ */
+export function deriveServiceConsumptionLifecycle(row = {}, clock = {}) {
+  const today = cleanText(clock.today) || salonTodayISO();
+  const nowHHMM = normalizeClock(clock.nowHHMM) || salonNowHHMM();
+  if (
+    cleanText(row.consumption_status || row.consumptionStatus).toLowerCase() === 'confirmed' ||
+    row.confirmed === true ||
+    row.is_confirmed === 1
+  ) {
+    return 'CONFIRMED';
+  }
+
+  const bookingDate = cleanText(row.booking_date || row.bookingDate);
+  if (!bookingDate) return 'PENDING_CONFIRMATION';
+  if (bookingDate > today) return 'UPCOMING';
+  if (bookingDate < today) return 'OVERDUE';
+
+  const start = normalizeClock(row.start_time || row.startTime);
+  const end = effectiveEndTime(row);
+  const bookingStatus = cleanText(row.booking_status || row.bookingStatus).toLowerCase();
+  const executed = bookingStatus === 'completed' || bookingStatus === 'done';
+
+  if (end && nowHHMM > end) return 'OVERDUE';
+  if (executed || (start && nowHHMM >= start)) return 'PENDING_CONFIRMATION';
+  return 'DUE_TODAY';
+}
+
+
 function preferred(data, camel, snake) {
   return data[camel] !== undefined ? data[camel] : data[snake];
 }
@@ -82,6 +190,10 @@ async function validateServiceConsumptionContext(
        bi.booking_id,
        bi.service_id,
        bi.staff_id,
+       COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+       COALESCE(bi.start_time, b.start_time) AS start_time,
+       COALESCE(bi.end_time, b.end_time) AS end_time,
+       bi.duration_minutes,
        b.status AS booking_status,
        b.deleted_at AS booking_deleted_at,
        s.id AS service_exists,
@@ -121,6 +233,16 @@ async function validateServiceConsumptionContext(
       409,
       'inventory:booking_not_consumable',
       'Inventory consumption is not allowed for this booking'
+    );
+  }
+
+  const bookingDate = cleanText(context.booking_date);
+  const today = salonTodayISO();
+  if (bookingDate && bookingDate > today) {
+    throw new AppError(
+      409,
+      'inventory:consumption_not_due',
+      'Service consumption cannot be confirmed before the booking date'
     );
   }
 
@@ -1489,35 +1611,86 @@ export async function getServiceConsumptionByBookingItem(db, salonId, bookingIte
 }
 
 /**
- * Pending consumption worklist (booking-item grain).
- * Items with an active recipe and no confirmed service_consumptions row.
+ * Pending / same-day consumption worklist (booking-item grain).
+ * Lifecycle is a computed read-model from booking date/time + consumption row.
  * Online + internal/walk-in share booking_items — same confirm path.
+ *
+ * Query:
+ *  - date: optional exact-day filter (legacy) OR as-of day when scope=worklist
+ *  - scope=worklist | includeUpcoming/includeOverdue: mandatory same-day workflow window
+ *  - employeeId: employee owns executed item (bi.staff_id OR b.staff_id)
  */
 export async function listPendingServiceConsumptions(db, salonId, query = {}) {
-  const date =
-    optionalText(query.date || query.bookingDate || query.booking_date) ||
-    nowIso().slice(0, 10);
+  const today = salonTodayISO();
+  const asOf =
+    optionalText(query.date || query.bookingDate || query.booking_date) || today;
   const employeeId = optionalText(
     preferred(query, 'employeeId', 'employee_id')
   );
   const limit = integer(query.limit ?? 100, 'limit', { min: 1, max: 300 });
+  const scope = cleanText(query.scope).toLowerCase();
+  const worklist = scope === 'worklist';
+  const includeUpcoming =
+    worklist || queryFlag(query.includeUpcoming || query.include_upcoming);
+  const includeOverdue =
+    worklist || queryFlag(query.includeOverdue || query.include_overdue);
+  const upcomingExplicit = optionalText(query.includeUpcoming || query.include_upcoming);
+  const overdueExplicit = optionalText(query.includeOverdue || query.include_overdue);
+  const wantUpcoming = upcomingExplicit !== undefined ? queryFlag(upcomingExplicit) : includeUpcoming;
+  const wantOverdue = overdueExplicit !== undefined ? queryFlag(overdueExplicit) : includeOverdue;
+  const expanded = worklist || wantUpcoming || wantOverdue;
+  const upcomingDays = integer(
+    query.upcomingDays ?? query.upcoming_days ?? 7,
+    'upcomingDays',
+    { min: 0, max: 30 }
+  );
+  const overdueDays = integer(
+    query.overdueDays ?? query.overdue_days ?? 30,
+    'overdueDays',
+    { min: 1, max: 90 }
+  );
+  const lifecycleFilter = cleanText(
+    preferred(query, 'lifecycle', 'lifecycleStatus')
+  ).toUpperCase();
 
   const where = [
     'bi.salon_id = ?',
-    "LOWER(COALESCE(b.status, '')) <> 'cancelled'",
+    "LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled', 'rejected')",
     'b.deleted_at IS NULL',
-    'COALESCE(bi.booking_date, b.booking_date) = ?',
     'r.id IS NOT NULL',
     'sc.id IS NULL',
   ];
-  const params = [salonId, date];
+  const params = [salonId];
+
+  if (expanded) {
+    const dateClauses = ['COALESCE(bi.booking_date, b.booking_date) = ?'];
+    params.push(asOf);
+    if (wantUpcoming && upcomingDays > 0) {
+      const upcomingUntil = shiftISODate(asOf, upcomingDays);
+      dateClauses.push(
+        `(COALESCE(bi.booking_date, b.booking_date) > ? AND COALESCE(bi.booking_date, b.booking_date) <= ?)`
+      );
+      params.push(asOf, upcomingUntil);
+    }
+    if (wantOverdue) {
+      const overdueFrom = shiftISODate(asOf, -overdueDays);
+      dateClauses.push(
+        `(COALESCE(bi.booking_date, b.booking_date) < ? AND COALESCE(bi.booking_date, b.booking_date) >= ?)`
+      );
+      params.push(asOf, overdueFrom);
+    }
+    where.push(`(${dateClauses.join(' OR ')})`);
+  } else {
+    where.push('COALESCE(bi.booking_date, b.booking_date) = ?');
+    params.push(asOf);
+  }
 
   if (employeeId) {
     where.push('(bi.staff_id = ? OR b.staff_id = ?)');
     params.push(employeeId, employeeId);
   }
 
-  return dbAll(
+  const rows = await dbAll(
     db,
     `SELECT
        bi.id AS booking_item_id,
@@ -1525,12 +1698,14 @@ export async function listPendingServiceConsumptions(db, salonId, query = {}) {
        bi.service_id,
        bi.service_name_snapshot,
        bi.staff_id AS item_staff_id,
+       bi.duration_minutes,
        b.staff_id AS booking_staff_id,
        b.client_id,
        b.status AS booking_status,
        b.source AS booking_source,
        COALESCE(bi.booking_date, b.booking_date) AS booking_date,
        COALESCE(bi.start_time, b.start_time) AS start_time,
+       COALESCE(bi.end_time, b.end_time) AS end_time,
        COALESCE(c.name, '') AS client_name,
        r.id AS recipe_id
      FROM booking_items bi
@@ -1549,10 +1724,45 @@ export async function listPendingServiceConsumptions(db, salonId, query = {}) {
       AND sc.booking_item_id = bi.id
       AND sc.status = 'confirmed'
      WHERE ${where.join(' AND ')}
-     ORDER BY COALESCE(bi.start_time, b.start_time), bi.created_at, bi.id
+     ORDER BY COALESCE(bi.booking_date, b.booking_date),
+              COALESCE(bi.start_time, b.start_time),
+              bi.created_at,
+              bi.id
      LIMIT ${limit}`,
     params
   );
+
+  const nowHHMM = salonNowHHMM();
+  const enriched = (rows || []).map((row) => {
+    const lifecycle = deriveServiceConsumptionLifecycle(row, {
+      today: asOf,
+      nowHHMM,
+    });
+    const end = effectiveEndTime(row);
+    let delayMinutes = null;
+    if (lifecycle === 'OVERDUE' && row.booking_date && end) {
+      // Approximate delay from scheduled end on booking date (same-day clock compare).
+      if (row.booking_date < asOf) {
+        delayMinutes = null; // multi-day overdue — UI shows booking_date
+      } else if (nowHHMM > end) {
+        const [nh, nm] = nowHHMM.split(':').map(Number);
+        const [eh, em] = end.split(':').map(Number);
+        delayMinutes = nh * 60 + nm - (eh * 60 + em);
+      }
+    }
+    return {
+      ...row,
+      lifecycle,
+      can_confirm: lifecycle !== 'UPCOMING' && lifecycle !== 'CONFIRMED',
+      effective_end_time: end || null,
+      delay_minutes: delayMinutes,
+    };
+  });
+
+  if (lifecycleFilter && CONSUMPTION_LIFECYCLES.has(lifecycleFilter)) {
+    return enriched.filter((row) => row.lifecycle === lifecycleFilter);
+  }
+  return enriched;
 }
 
 

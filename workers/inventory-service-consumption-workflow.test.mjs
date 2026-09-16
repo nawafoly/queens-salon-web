@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { deriveServiceConsumptionLifecycle } from "./core/repositories/inventory.js";
 
 const read = (path) =>
   readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/g, "\n");
@@ -22,29 +23,42 @@ test("Guard: confirm binds booking item, SERVICE_TRACKED only, and is idempotent
   assert.match(inv, /idx_svc_consumptions_booking_item_confirmed|status = 'confirmed'/);
   assert.match(inv, /SERVICE_CONSUMPTION_OUT/);
   assert.match(inv, /source_type[\s\S]*service_consumption|'service_consumption'/);
+  assert.match(inv, /inventory:consumption_not_due/);
+  assert.match(inv, /cannot be confirmed before the booking date/);
 });
 
-test("Guard: pending worklist is booking-item grain and excludes confirmed", () => {
+test("Guard: pending worklist is booking-item grain with derived lifecycle", () => {
   const inv = read("workers/core/repositories/inventory.js");
   const worker = read("workers/core/index.js");
   const ui = read("src/pages/EmployeeServiceConsumption.tsx");
   const service = read("src/services/CoreInventoryService.ts");
 
   assert.match(inv, /export async function listPendingServiceConsumptions/);
+  assert.match(inv, /export function deriveServiceConsumptionLifecycle/);
   assert.match(inv, /sc\.status = 'confirmed'/);
   assert.match(inv, /sc\.id IS NULL/);
   assert.match(inv, /service_consumption_recipes/);
   assert.match(inv, /bi\.staff_id = \? OR b\.staff_id = \?/);
+  assert.match(inv, /UPCOMING|DUE_TODAY|PENDING_CONFIRMATION|OVERDUE/);
+  assert.match(inv, /scope === 'worklist'/);
+  assert.match(inv, /can_confirm/);
 
   assert.match(worker, /inventory:consumptions-pending/);
   assert.match(worker, /\/api\/core\/inventory\/consumptions\/pending/);
   assert.match(worker, /listPendingServiceConsumptions/);
 
   assert.match(service, /listPendingConsumptions/);
+  assert.match(service, /ServiceConsumptionLifecycle/);
   assert.match(ui, /listPendingConsumptions/);
+  assert.match(ui, /scope: "worklist"/);
   assert.match(ui, /booking_item_id/);
   assert.match(ui, /refreshPending|setPending/);
   assert.match(ui, /policy: "SERVICE_TRACKED"/);
+  assert.match(ui, /مطلوب اليوم/);
+  assert.match(ui, /بانتظار التأكيد/);
+  assert.match(ui, /متأخر/);
+  assert.match(ui, /UPCOMING/);
+  assert.match(ui, /can_confirm|selectedConfirmable/);
 });
 
 test("Guard: employee portal wires consumption confirm route", () => {
@@ -61,4 +75,108 @@ test("Guard: recipe default qty shown and product\/qty editable before confirm",
   assert.match(ui, /<select/);
   assert.match(ui, /quantity/);
   assert.match(ui, /confirmConsumption/);
+});
+
+test("Guard: admin consumption UI surfaces overdue without new dashboard", () => {
+  const admin = read("src/pages/DashboardInventoryConsumption.tsx");
+  assert.match(admin, /lifecycle: "OVERDUE"/);
+  assert.match(admin, /overdueRows/);
+  assert.match(admin, /متأخر بانتظار التأكيد/);
+  assert.match(admin, /item_staff_id|booking_staff_id/);
+});
+
+test("Lifecycle: next-week booking is UPCOMING and not confirmable", () => {
+  const lifecycle = deriveServiceConsumptionLifecycle(
+    {
+      booking_date: "2026-09-23",
+      start_time: "10:00",
+      end_time: "11:00",
+      booking_status: "confirmed",
+    },
+    { today: "2026-09-16", nowHHMM: "12:00" }
+  );
+  assert.equal(lifecycle, "UPCOMING");
+});
+
+test("Lifecycle: booking day before start is DUE_TODAY", () => {
+  const lifecycle = deriveServiceConsumptionLifecycle(
+    {
+      booking_date: "2026-09-16",
+      start_time: "15:00",
+      end_time: "16:00",
+      booking_status: "confirmed",
+    },
+    { today: "2026-09-16", nowHHMM: "10:00" }
+  );
+  assert.equal(lifecycle, "DUE_TODAY");
+});
+
+test("Lifecycle: after start becomes PENDING_CONFIRMATION", () => {
+  const lifecycle = deriveServiceConsumptionLifecycle(
+    {
+      booking_date: "2026-09-16",
+      start_time: "10:00",
+      end_time: "11:00",
+      booking_status: "confirmed",
+    },
+    { today: "2026-09-16", nowHHMM: "10:30" }
+  );
+  assert.equal(lifecycle, "PENDING_CONFIRMATION");
+});
+
+test("Lifecycle: after end without confirm is OVERDUE and sticky across days", () => {
+  assert.equal(
+    deriveServiceConsumptionLifecycle(
+      {
+        booking_date: "2026-09-16",
+        start_time: "10:00",
+        end_time: "11:00",
+        booking_status: "confirmed",
+      },
+      { today: "2026-09-16", nowHHMM: "11:01" }
+    ),
+    "OVERDUE"
+  );
+  assert.equal(
+    deriveServiceConsumptionLifecycle(
+      {
+        booking_date: "2026-09-15",
+        start_time: "10:00",
+        end_time: "11:00",
+        booking_status: "completed",
+      },
+      { today: "2026-09-16", nowHHMM: "09:00" }
+    ),
+    "OVERDUE"
+  );
+});
+
+test("Lifecycle: confirmed row stays CONFIRMED", () => {
+  assert.equal(
+    deriveServiceConsumptionLifecycle(
+      {
+        booking_date: "2026-09-16",
+        start_time: "10:00",
+        end_time: "11:00",
+        consumption_status: "confirmed",
+      },
+      { today: "2026-09-16", nowHHMM: "12:00" }
+    ),
+    "CONFIRMED"
+  );
+});
+
+test("Lifecycle: duration derives end time when end_time missing", () => {
+  assert.equal(
+    deriveServiceConsumptionLifecycle(
+      {
+        booking_date: "2026-09-16",
+        start_time: "10:00",
+        duration_minutes: 60,
+        booking_status: "confirmed",
+      },
+      { today: "2026-09-16", nowHHMM: "11:05" }
+    ),
+    "OVERDUE"
+  );
 });
