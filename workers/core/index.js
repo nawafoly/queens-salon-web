@@ -2935,10 +2935,12 @@ async function dispatch(ctx, route, method, body, query, env) {
         return receivePurchaseOrderLine(db, ctx.salonId, body || {}, actorInfo);
       }
       break;
-    case "inventory:transfer": {
-      requirePermission(actorInfo, "inventory.adjust");
-      return json(await transferStock(env.DB, tenantId, body || {}, actorInfo));
-    }
+    case "inventory:transfer":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return transferStock(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
     case "inventory:employee-issue":
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
