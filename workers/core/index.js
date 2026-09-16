@@ -109,6 +109,7 @@ import {
   issueToEmployee,
   returnFromEmployee,
   recordWaste,
+  transferStock,
   adjustAfterStocktake,
   receivePurchase,
   sellProduct,
@@ -929,6 +930,9 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/purchase-order-receive" && method === "POST") {
     return { name: "inventory:purchase-order-receive" };
+  }
+  if (path === "/api/core/inventory/transfer" && method === "POST") {
+    return { name: "inventory:transfer" };
   }
   if (path === "/api/core/inventory/employee-issue" && method === "POST") {
     return { name: "inventory:employee-issue" };
@@ -2926,6 +2930,10 @@ async function dispatch(ctx, route, method, body, query, env) {
         return receivePurchaseOrderLine(db, ctx.salonId, body || {}, actorInfo);
       }
       break;
+    case "inventory:transfer": {
+      requirePermission(actorInfo, "inventory.adjust");
+      return json(await transferStock(env.DB, tenantId, body || {}, actorInfo));
+    }
     case "inventory:employee-issue":
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");

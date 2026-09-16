@@ -226,6 +226,12 @@ export const CoreInventoryService = {
   returnProduct(input: { itemId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/sale-return", { method: "POST", body: input });
   },
+  listLocations() {
+    return coreApiRequest("/api/core/inventory/locations");
+  },
+  transferStock(input: { itemId: string; quantity: number; fromLocationId: string; toLocationId: string; note?: string }) {
+    return coreApiRequest("/api/core/inventory/transfer", { method: "POST", body: input });
+  },
   recordWaste(input: { itemId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },

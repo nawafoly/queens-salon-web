@@ -9,12 +9,18 @@ function errorMessage(error: unknown) {
   return "تعذر تنفيذ العملية.";
 }
 
+type LocationRow = { id: string; name?: string };
+
 export default function DashboardInventoryOps() {
   const { hasPermission } = usePermissions();
   const canWaste = hasPermission("inventory.waste.record");
   const canAdjust = hasPermission("inventory.adjust");
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [locations, setLocations] = useState<LocationRow[]>([]);
   const [itemId, setItemId] = useState("");
+  const [fromLocationId, setFromLocationId] = useState("");
+  const [toLocationId, setToLocationId] = useState("");
+  const [transferQty, setTransferQty] = useState("1");
   const [wasteQty, setWasteQty] = useState("1");
   const [countedQty, setCountedQty] = useState("");
   const [loading, setLoading] = useState(true);
@@ -26,7 +32,13 @@ export default function DashboardInventoryOps() {
     void (async () => {
       setLoading(true);
       try {
-        setItems((await CoreInventoryService.listItems({ active: "1" })) || []);
+        const [itemRows, locRows] = await Promise.all([
+          CoreInventoryService.listItems({ active: "1" }),
+          CoreInventoryService.listLocations().catch(() => []),
+        ]);
+        setItems(itemRows || []);
+        const locs = Array.isArray(locRows) ? locRows : [];
+        setLocations(locs as LocationRow[]);
       } catch (err) {
         setError(errorMessage(err));
       } finally {
@@ -65,11 +77,30 @@ export default function DashboardInventoryOps() {
     }
   }
 
-  if (loading) return <DashboardSkeletonV2 lines={6} />;
+  async function runTransfer() {
+    if (!canAdjust || !itemId || !fromLocationId || !toLocationId) return;
+    setSaving("transfer");
+    setError("");
+    setNotice("");
+    try {
+      await CoreInventoryService.transferStock({
+        itemId,
+        quantity: Number(transferQty),
+        fromLocationId,
+        toLocationId,
+      });
+      setNotice("تم تحويل الكمية بين المواقع.");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving("");
+    }
+  }
 
+  if (loading) return <DashboardSkeletonV2 lines={6} />;
   return (
     <div>
-      <p className="text-muted">الهدر يخصم مباشرة. الجرد يسجل الفرق بين العد الفعلي والرصيد في الدفتر.</p>
+      <p className="text-muted">الهدر يخصم مباشرة. الجرد يسجل الفرق. التحويل يحتاج موقعين مختلفين.</p>
       {error ? <DashboardErrorStateV2 title="تعذر التنفيذ" description={error} /> : null}
       {notice ? <p className="text-success">{notice}</p> : null}
       <DashboardFieldV2 id="inv-ops-item" label="المادة">
@@ -86,7 +117,7 @@ export default function DashboardInventoryOps() {
           </button>
         ) : <p className="text-muted">لا توجد صلاحية هدر.</p>}
       </div>
-      <div className="border rounded p-3">
+      <div className="border rounded p-3 mb-3">
         <h3 className="h6">جرد</h3>
         <DashboardFieldV2 id="inv-count-qty" label="الكمية المعدودة فعلياً">
           <DashboardNumberInputV2 value={countedQty} onChange={(e) => setCountedQty(e.target.value)} />
@@ -96,6 +127,23 @@ export default function DashboardInventoryOps() {
             {saving === "stocktake" ? "جاري التسجيل..." : "اعتماد فرق الجرد"}
           </button>
         ) : <p className="text-muted">لا توجد صلاحية جرد.</p>}
+      </div>
+      <div className="border rounded p-3">
+        <h3 className="h6">تحويل بين المواقع</h3>
+        <DashboardFieldV2 id="inv-from-loc" label="من موقع">
+          <DashboardSelectV2 value={fromLocationId} options={locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))} onChange={setFromLocationId} />
+        </DashboardFieldV2>
+        <DashboardFieldV2 id="inv-to-loc" label="إلى موقع">
+          <DashboardSelectV2 value={toLocationId} options={locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))} onChange={setToLocationId} />
+        </DashboardFieldV2>
+        <DashboardFieldV2 id="inv-transfer-qty" label="الكمية">
+          <DashboardNumberInputV2 value={transferQty} onChange={(e) => setTransferQty(e.target.value)} />
+        </DashboardFieldV2>
+        {canAdjust ? (
+          <button type="button" className="btn btn-dark" disabled={!!saving || !itemId || !fromLocationId || !toLocationId} onClick={() => void runTransfer()}>
+            {saving === "transfer" ? "جاري التحويل..." : "تحويل"}
+          </button>
+        ) : <p className="text-muted">لا توجد صلاحية تحويل.</p>}
       </div>
     </div>
   );

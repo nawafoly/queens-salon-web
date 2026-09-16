@@ -2143,3 +2143,55 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
   );
   return { lineId, received, movement };
 }
+
+
+export async function transferStock(db, salonId, data, actor = {}) {
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const fromLocationId = requiredId(preferred(data, 'fromLocationId', 'from_location_id'), 'fromLocationId');
+  const toLocationId = requiredId(preferred(data, 'toLocationId', 'to_location_id'), 'toLocationId');
+  if (fromLocationId === toLocationId) {
+    throw new AppError(400, 'inventory:same_location', 'Transfer locations must be different');
+  }
+  const quantity = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Transfer quantity must be greater than zero');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item || Number(item.is_active) !== 1) {
+    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  }
+  const fromLoc = await dbFirst(db, 'SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, fromLocationId]);
+  const toLoc = await dbFirst(db, 'SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, toLocationId]);
+  if (!fromLoc || !toLoc) {
+    throw new AppError(404, 'inventory:location_not_found', 'Inventory location was not found');
+  }
+  const fifo = await getFifoCostForQuantity(db, salonId, itemId, quantity);
+  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  const outbound = await appendMovement(db, salonId, {
+    itemId,
+    locationId: fromLocationId,
+    movementType: 'TRANSFER_OUT',
+    quantityDelta: -quantity,
+    unit: item.unit,
+    unitCostHalalas: fifo.unitCostHalalas,
+    sourceType: 'TRANSFER',
+    sourceId: operationId,
+    lineKey: itemId + ':out',
+    operationId,
+    note: optionalText(data.note) || 'Stock transfer out',
+  }, actor);
+  const inbound = await appendMovement(db, salonId, {
+    itemId,
+    locationId: toLocationId,
+    movementType: 'TRANSFER_IN',
+    quantityDelta: quantity,
+    unit: item.unit,
+    unitCostHalalas: fifo.unitCostHalalas,
+    sourceType: 'TRANSFER',
+    sourceId: operationId,
+    lineKey: itemId + ':in',
+    operationId,
+    note: optionalText(data.note) || 'Stock transfer in',
+  }, actor);
+  return { outbound, inbound, operationId };
+}
