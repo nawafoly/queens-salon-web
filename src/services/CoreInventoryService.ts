@@ -130,8 +130,8 @@ export const CoreInventoryService = {
   createCategory(input: { name: string }) {
     return coreApiRequest<InventoryCategory>("/api/core/inventory/categories", { method: "POST", body: input });
   },
-  listSuppliers() {
-    return coreApiRequest<InventorySupplier[]>("/api/core/inventory/suppliers");
+  listSuppliers(query: { active?: string } = {}) {
+    return coreApiRequest<InventorySupplier[]>("/api/core/inventory/suppliers", { query });
   },
   createSupplier(input: { name: string; phone?: string; notes?: string }) {
     return coreApiRequest("/api/core/inventory/suppliers", { method: "POST", body: input });
