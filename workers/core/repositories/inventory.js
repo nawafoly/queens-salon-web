@@ -2110,10 +2110,16 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
   if (qty > remaining + 1e-9) {
     throw new AppError(409, 'inventory:po_over_receive', 'Cannot receive more than ordered quantity');
   }
+  const po = await dbFirst(
+    db,
+    'SELECT supplier_id FROM inventory_purchase_orders WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, line.purchase_order_id]
+  );
   const movement = await receivePurchase(db, salonId, {
     itemId: line.item_id,
     quantity: qty,
     unitCostHalalas: line.unit_cost_halalas,
+    supplierId: po?.supplier_id || null,
     operationId: preferred(data, 'operationId', 'operation_id') || generatedId('invop'),
     note: `PO ${line.purchase_order_id}`,
   }, actor);
