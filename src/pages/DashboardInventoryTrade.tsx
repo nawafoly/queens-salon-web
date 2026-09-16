@@ -9,6 +9,7 @@ function errorMessage(error: unknown) {
   return "تعذر تنفيذ العملية.";
 }
 
+/* HIDE_DIRECT_SALE: salon is not retail POS */
 export default function DashboardInventoryTrade() {
   const { hasPermission } = usePermissions();
   const canAdjust = hasPermission("inventory.adjust");
@@ -96,7 +97,7 @@ export default function DashboardInventoryTrade() {
 
   return (
     <div>
-      <p className="text-muted">الشراء يضيف للمخزن ويحفظ تكلفة الوحدة. البيع فقط لمواد سياسة البيع المباشر.</p>
+      <p className="text-muted">استلام شراء يضيف للمخزن ويحفظ تكلفة الوحدة. البيع المباشر غير متاح من هذه الواجهة.</p>
       {error ? <DashboardErrorStateV2 title="تعذر التنفيذ" description={error} /> : null}
       {notice ? <p className="text-success">{notice}</p> : null}
       <DashboardFieldV2 id="inv-trade-item" label="المادة">
@@ -114,8 +115,8 @@ export default function DashboardInventoryTrade() {
       {canAdjust ? (
         <div className="d-flex flex-wrap gap-2">
           <button type="button" className="btn btn-dark" disabled={!!saving || !itemId} onClick={() => void buy()}>استلام شراء</button>
-          <button type="button" className="btn btn-outline-dark" disabled={!!saving || !itemId || !saleItems.some((item) => item.id === itemId)} onClick={() => void sell()}>بيع مباشر</button>
-          <button type="button" className="btn btn-outline-dark" disabled={!!saving || !itemId} onClick={() => void ret()}>مرتجع بيع</button>
+          
+          
         </div>
       ) : <p className="text-muted">لا توجد صلاحية تسوية.</p>}
     </div>
