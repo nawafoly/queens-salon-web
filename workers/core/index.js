@@ -99,6 +99,7 @@ import {
   upsertServiceRecipe,
   confirmServiceConsumption,
   getServiceConsumptionByBookingItem,
+  listPendingServiceConsumptions,
   listSuppliers,
   createSupplier,
   issueToEmployee,
@@ -921,6 +922,9 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/consumptions/confirm" && method === "POST") {
     return { name: "inventory:consumption-confirm" };
+  }
+  if (path === "/api/core/inventory/consumptions/pending" && method === "GET") {
+    return { name: "inventory:consumptions-pending" };
   }
   const invConsByItem = /^\/api\/core\/inventory\/consumptions\/by-booking-item\/([^/]+)$/.exec(path);
   if (invConsByItem && method === "GET") {
@@ -2833,6 +2837,17 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.consume.confirm");
         return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumptions-pending":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.consume.confirm",
+          "inventory.view",
+          "inventory.movements.view",
+        ]);
+        return listPendingServiceConsumptions(db, ctx.salonId, readQuery);
       }
       break;
 

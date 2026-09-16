@@ -107,6 +107,22 @@ export type ServiceRecipeLineInput = {
 
 export type InventorySupplier = { id: string; name: string; phone?: string | null; notes?: string | null; active?: number };
 
+export type PendingServiceConsumption = {
+  booking_item_id: string;
+  booking_id: string;
+  service_id: string;
+  service_name_snapshot?: string | null;
+  item_staff_id?: string | null;
+  booking_staff_id?: string | null;
+  client_id?: string | null;
+  client_name?: string | null;
+  booking_status?: string | null;
+  booking_source?: string | null;
+  booking_date?: string | null;
+  start_time?: string | null;
+  recipe_id?: string | null;
+};
+
 export const CoreInventoryService = {
   listCategories(query: { active?: string } = {}) {
     return coreApiRequest<InventoryCategory[]>("/api/core/inventory/categories", { query });
@@ -146,6 +162,12 @@ export const CoreInventoryService = {
   getConsumptionByBookingItem(bookingItemId: string) {
     return coreApiRequest(
       `/api/core/inventory/consumptions/by-booking-item/${encodeURIComponent(bookingItemId)}`
+    );
+  },
+  listPendingConsumptions(query: { employeeId?: string; date?: string; limit?: number | string } = {}) {
+    return coreApiRequest<PendingServiceConsumption[]>(
+      "/api/core/inventory/consumptions/pending",
+      { query }
     );
   },
   confirmConsumption(input: {

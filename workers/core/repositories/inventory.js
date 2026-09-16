@@ -1488,6 +1488,73 @@ export async function getServiceConsumptionByBookingItem(db, salonId, bookingIte
   return { ...row, lines };
 }
 
+/**
+ * Pending consumption worklist (booking-item grain).
+ * Items with an active recipe and no confirmed service_consumptions row.
+ * Online + internal/walk-in share booking_items — same confirm path.
+ */
+export async function listPendingServiceConsumptions(db, salonId, query = {}) {
+  const date =
+    optionalText(query.date || query.bookingDate || query.booking_date) ||
+    nowIso().slice(0, 10);
+  const employeeId = optionalText(
+    preferred(query, 'employeeId', 'employee_id')
+  );
+  const limit = integer(query.limit ?? 100, 'limit', { min: 1, max: 300 });
+
+  const where = [
+    'bi.salon_id = ?',
+    "LOWER(COALESCE(b.status, '')) <> 'cancelled'",
+    'b.deleted_at IS NULL',
+    'COALESCE(bi.booking_date, b.booking_date) = ?',
+    'r.id IS NOT NULL',
+    'sc.id IS NULL',
+  ];
+  const params = [salonId, date];
+
+  if (employeeId) {
+    where.push('(bi.staff_id = ? OR b.staff_id = ?)');
+    params.push(employeeId, employeeId);
+  }
+
+  return dbAll(
+    db,
+    `SELECT
+       bi.id AS booking_item_id,
+       bi.booking_id,
+       bi.service_id,
+       bi.service_name_snapshot,
+       bi.staff_id AS item_staff_id,
+       b.staff_id AS booking_staff_id,
+       b.client_id,
+       b.status AS booking_status,
+       b.source AS booking_source,
+       COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+       COALESCE(bi.start_time, b.start_time) AS start_time,
+       COALESCE(c.name, '') AS client_name,
+       r.id AS recipe_id
+     FROM booking_items bi
+     JOIN bookings b
+       ON b.id = bi.booking_id
+      AND b.salon_id = bi.salon_id
+     LEFT JOIN clients c
+       ON c.id = b.client_id
+      AND c.salon_id = b.salon_id
+     JOIN service_consumption_recipes r
+       ON r.salon_id = bi.salon_id
+      AND r.service_id = bi.service_id
+      AND r.is_active = 1
+     LEFT JOIN service_consumptions sc
+       ON sc.salon_id = bi.salon_id
+      AND sc.booking_item_id = bi.id
+      AND sc.status = 'confirmed'
+     WHERE ${where.join(' AND ')}
+     ORDER BY COALESCE(bi.start_time, b.start_time), bi.created_at, bi.id
+     LIMIT ${limit}`,
+    params
+  );
+}
+
 
 export async function issueToEmployee(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');

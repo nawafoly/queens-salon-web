@@ -32,7 +32,7 @@ test("inventory role grants are tenant-safe and not hard-coded to main only", ()
 
   assert.match(fix, /INSERT OR IGNORE INTO role_permissions/);
   assert.match(fix, /FROM roles r/);
-  assert.match(fix, /CROSS JOIN/);
+  assert.match(fix, /r\.salon_id IS NOT NULL/);
   assert.match(fix, /inventory\.view/);
   assert.match(fix, /inventory\.consume\.confirm/);
   assert.doesNotMatch(
@@ -75,6 +75,7 @@ test("core worker exposes inventory routes and permission gates", () => {
   assert.match(worker, /inventory:recipe-by-service/);
   assert.match(worker, /inventory:consumption-confirm/);
   assert.match(worker, /inventory:consumption-by-booking-item/);
+  assert.match(worker, /inventory:consumptions-pending/);
   assert.match(worker, /requirePermission\(ctx, "inventory\.consume\.confirm"\)/);
   assert.match(worker, /requirePermission\(ctx, "inventory\.items\.manage"\)/);
   assert.match(worker, /requirePermission\(ctx, "inventory\.adjust"\)/);

@@ -1,4 +1,4 @@
-﻿-- Inventory permissions: tenant-safe role grants.
+-- Inventory permissions: tenant-safe role grants.
 INSERT OR IGNORE INTO role_permissions (salon_id, role_key, permission_key, created_at)
 SELECT r.salon_id, r.role_key, 'inventory.view', '2026-09-14T00:00:00.000Z'
 FROM roles r
