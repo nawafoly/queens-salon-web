@@ -13,6 +13,7 @@ import { CoreBookingService } from "../services/CoreBookingService";
 import { CoreHrService } from "../services/CoreHrService";
 import {
   CoreInventoryService,
+  type PendingServiceConsumption,
   type ServiceRecipeLine,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
@@ -53,6 +54,7 @@ export default function DashboardInventoryConsumption() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
+  const [overdueRows, setOverdueRows] = useState<PendingServiceConsumption[]>([]);
 
   const selectedBooking = useMemo(
     () => bookings.find((row) => row.id === bookingId) || null,
@@ -65,11 +67,20 @@ export default function DashboardInventoryConsumption() {
       setLoading(true);
       setError("");
       try {
-        const [bookingRows, employeeRows] = await Promise.all([
+        const [bookingRows, employeeRows, overdue] = await Promise.all([
           CoreBookingService.list({ date }),
           CoreHrService.listEmployees({ status: "active" }),
+          CoreInventoryService.listPendingConsumptions({
+            scope: "worklist",
+            includeOverdue: "1",
+            includeUpcoming: "0",
+            lifecycle: "OVERDUE",
+            overdueDays: 30,
+            limit: 50,
+          }).catch(() => []),
         ]);
         setBookings(bookingRows || []);
+        setOverdueRows(overdue || []);
         const inventoryItems = await CoreInventoryService.listItems({ active: "1" });
         const names: Record<string, string> = {};
         for (const item of inventoryItems || []) names[item.id] = item.name;
@@ -153,6 +164,30 @@ export default function DashboardInventoryConsumption() {
       <p className="text-muted">التأكيد هنا يخصم المخزون فعلياً. لا تستخدمه عند إنشاء الحجز.</p>
       {error ? <DashboardErrorStateV2 title="تعذر تأكيد الاستهلاك" description={error} /> : null}
       {notice ? <p className="text-success">{notice}</p> : null}
+
+      {overdueRows.length ? (
+        <div className="border rounded p-3 mb-3" style={{ borderColor: "#fecaca", background: "#fef2f2" }}>
+          <strong style={{ color: "#7f1d1d" }}>متأخر بانتظار التأكيد ({overdueRows.length})</strong>
+          <p className="text-muted mb-2" style={{ fontSize: 13 }}>
+            يبقى ظاهراً حتى التأكيد — بدون إغلاق ودون خصم وهمي.
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {overdueRows.slice(0, 12).map((row) => (
+              <div key={row.booking_item_id} style={{ fontSize: 13 }}>
+                <strong>{row.client_name || "عميلة"}</strong>
+                {" — "}
+                {row.service_name_snapshot || row.service_id}
+                {" · "}
+                {row.booking_date} {row.start_time || "--:--"}
+                {row.effective_end_time || row.end_time ? `–${row.effective_end_time || row.end_time}` : ""}
+                {" · موظفة: "}
+                {row.item_staff_id || row.booking_staff_id || "—"}
+                {row.delay_minutes != null ? ` · تأخير ~${row.delay_minutes} د` : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <DashboardFieldV2 id="inv-cons-date" label="تاريخ الحجوزات">
         <div dir="ltr"><DashboardDateInputV2 className="form-control" value={date} onChange={(e) => setDate(e.target.value)} /></div>

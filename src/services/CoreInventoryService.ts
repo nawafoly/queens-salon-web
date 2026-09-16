@@ -107,6 +107,13 @@ export type ServiceRecipeLineInput = {
 
 export type InventorySupplier = { id: string; name: string; phone?: string | null; notes?: string | null; active?: number };
 
+export type ServiceConsumptionLifecycle =
+  | "UPCOMING"
+  | "DUE_TODAY"
+  | "PENDING_CONFIRMATION"
+  | "CONFIRMED"
+  | "OVERDUE";
+
 export type PendingServiceConsumption = {
   booking_item_id: string;
   booking_id: string;
@@ -120,7 +127,13 @@ export type PendingServiceConsumption = {
   booking_source?: string | null;
   booking_date?: string | null;
   start_time?: string | null;
+  end_time?: string | null;
+  duration_minutes?: number | null;
   recipe_id?: string | null;
+  lifecycle?: ServiceConsumptionLifecycle;
+  can_confirm?: boolean;
+  effective_end_time?: string | null;
+  delay_minutes?: number | null;
 };
 
 export const CoreInventoryService = {
@@ -164,7 +177,19 @@ export const CoreInventoryService = {
       `/api/core/inventory/consumptions/by-booking-item/${encodeURIComponent(bookingItemId)}`
     );
   },
-  listPendingConsumptions(query: { employeeId?: string; date?: string; limit?: number | string } = {}) {
+  listPendingConsumptions(
+    query: {
+      employeeId?: string;
+      date?: string;
+      limit?: number | string;
+      scope?: "worklist" | string;
+      includeUpcoming?: string | number | boolean;
+      includeOverdue?: string | number | boolean;
+      upcomingDays?: number | string;
+      overdueDays?: number | string;
+      lifecycle?: ServiceConsumptionLifecycle | string;
+    } = {}
+  ) {
     return coreApiRequest<PendingServiceConsumption[]>(
       "/api/core/inventory/consumptions/pending",
       { query }
