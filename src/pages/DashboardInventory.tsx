@@ -21,6 +21,7 @@ import { CoreApiError } from "../services/coreApiClient";
 import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
 import DashboardInventorySuppliers from "./DashboardInventorySuppliers";
 import DashboardInventoryConsumption from "./DashboardInventoryConsumption";
+import DashboardInventoryPurchaseOrders from "./DashboardInventoryPurchaseOrders";
 import DashboardInventoryMovements from "./DashboardInventoryMovements";
 import DashboardInventoryIssue from "./DashboardInventoryIssue";
 import DashboardInventoryOps from "./DashboardInventoryOps";
@@ -203,6 +204,7 @@ export default function DashboardInventory() {
         <button type="button" className={tab === "moves" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("moves")}>الحركات</button>
         <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
         <button type="button" className={tab === "ops" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("ops")}>هدر وجرد</button>
+        <button type="button" className={tab === "po" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("po")}>أوامر الشراء</button>
         <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>شراء وبيع</button>
         <button type="button" className={tab === "suppliers" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("suppliers")}>الموردون</button>
       </div>
@@ -213,6 +215,7 @@ export default function DashboardInventory() {
       {tab === "issue" ? <DashboardInventoryIssue /> : null}
       {tab === "ops" ? <DashboardInventoryOps /> : null}
       {tab === "trade" ? <DashboardInventoryTrade /> : null}
+      {tab === "po" ? <DashboardInventoryPurchaseOrders /> : null}
       {tab === "suppliers" ? <DashboardInventorySuppliers /> : null}
 
       {tab === "items" ? (

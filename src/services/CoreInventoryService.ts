@@ -164,6 +164,18 @@ export const CoreInventoryService = {
   listMovements(query: { itemId?: string; limit?: string } = {}) {
     return coreApiRequest<InventoryMovement[]>("/api/core/inventory/movements", { query });
   },
+  listPurchaseOrders() {
+    return coreApiRequest("/api/core/inventory/purchase-orders");
+  },
+  createPurchaseOrder(input: { supplierId?: string | null; note?: string }) {
+    return coreApiRequest("/api/core/inventory/purchase-orders", { method: "POST", body: input });
+  },
+  addPurchaseOrderLine(input: { purchaseOrderId: string; itemId: string; qtyOrdered: number; unitCostHalalas?: number | null }) {
+    return coreApiRequest("/api/core/inventory/purchase-order-lines", { method: "POST", body: input });
+  },
+  receivePurchaseOrderLine(input: { lineId: string; quantity: number }) {
+    return coreApiRequest("/api/core/inventory/purchase-order-receive", { method: "POST", body: input });
+  },
   recordOpeningBalance(input: { itemId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/opening-balance", { method: "POST", body: input });
   },
