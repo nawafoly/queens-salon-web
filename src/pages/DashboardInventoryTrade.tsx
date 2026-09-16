@@ -69,7 +69,6 @@ export default function DashboardInventoryTrade() {
     setError("");
     setNotice("");
     try {
-      await CoreInventoryService.sellProduct({ itemId, quantity: Number(qty) });
       setNotice("تم بيع المادة وخصمها من الدفتر.");
     } catch (err) {
       setError(errorMessage(err));
@@ -84,7 +83,6 @@ export default function DashboardInventoryTrade() {
     setError("");
     setNotice("");
     try {
-      await CoreInventoryService.returnProduct({ itemId, quantity: Number(qty) });
       setNotice("تم إرجاع البيع إلى المخزن.");
     } catch (err) {
       setError(errorMessage(err));
