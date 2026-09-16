@@ -91,6 +91,16 @@ export default function DashboardInventory() {
     return map;
   }, [levels]);
 
+  const lowStockItems = useMemo(() => {
+    return items.filter((item) => {
+      if (Number(item.is_active) !== 1) return false;
+      const min = Number(item.min_stock_qty || 0);
+      if (!(min > 0)) return false;
+      const qty = qtyByItem.get(item.id);
+      return qty != null && qty <= min;
+    });
+  }, [items, qtyByItem]);
+
   async function load() {
     setLoading(true);
     setError("");
@@ -222,6 +232,14 @@ export default function DashboardInventory() {
             </button>
           </div>
 
+          {!loading && lowStockItems.length ? (
+            <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div>
+                <strong>مواد تحتاج إعادة طلب: {lowStockItems.length}</strong>
+                <div className="small mb-0">{lowStockItems.map((item) => `${item.name} (${qtyByItem.get(item.id)} / حد ${item.min_stock_qty})`).join(" — ")}</div>
+              </div>
+            </div>
+          ) : null}
           {error ? <DashboardErrorStateV2 title="تعذر تحميل المخزون" description={error} /> : null}
           {loading ? <DashboardSkeletonV2 lines={6} /> : null}
 
