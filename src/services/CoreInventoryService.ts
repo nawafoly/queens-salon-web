@@ -229,6 +229,9 @@ export const CoreInventoryService = {
   listLocations() {
     return coreApiRequest("/api/core/inventory/locations");
   },
+  createLocation(input: { name: string }) {
+    return coreApiRequest("/api/core/inventory/locations", { method: "POST", body: input });
+  },
   transferStock(input: { itemId: string; quantity: number; fromLocationId: string; toLocationId: string; note?: string }) {
     return coreApiRequest("/api/core/inventory/transfer", { method: "POST", body: input });
   },

@@ -92,6 +92,7 @@ import {
   updateItem as updateInventoryItem,
   listLocations as listInventoryLocations,
   ensureDefaultLocation,
+  createLocation,
   listStockLevels,
   recordOpeningBalance,
   listMovements as listInventoryMovements,
@@ -2814,6 +2815,10 @@ async function dispatch(ctx, route, method, body, query, env) {
         const rows = await listInventoryLocations(db, ctx.salonId, readQuery);
         if (!rows.length) return [await ensureDefaultLocation(db, ctx.salonId)];
         return rows;
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createLocation(db, ctx.salonId, body || {}, actorInfo);
       }
       break;
 

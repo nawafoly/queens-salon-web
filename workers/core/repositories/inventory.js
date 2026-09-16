@@ -544,6 +544,20 @@ export async function listLocations(db, salonId, query = {}) {
   );
 }
 
+export async function createLocation(db, salonId, data, actor = {}) {
+  const name = requiredText(preferred(data, 'name', 'name'), 'name', 120);
+  const now = nowIso();
+  const id = generatedId('loc');
+  await dbRun(
+    db,
+    `INSERT INTO inventory_locations
+      (id, salon_id, name, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?)`,
+    [id, salonId, name, now, now]
+  );
+  return dbFirst(db, 'SELECT * FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
+}
+
 export async function ensureDefaultLocation(db, salonId) {
   const existing = await dbFirst(
     db,

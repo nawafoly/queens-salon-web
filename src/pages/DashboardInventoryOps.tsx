@@ -27,6 +27,7 @@ export default function DashboardInventoryOps() {
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [locationName, setLocationName] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -139,6 +140,22 @@ export default function DashboardInventoryOps() {
         <DashboardFieldV2 id="inv-transfer-qty" label="الكمية">
           <DashboardNumberInputV2 value={transferQty} onChange={(e) => setTransferQty(e.target.value)} />
         </DashboardFieldV2>
+        <DashboardFieldV2 id="inv-new-loc" label="موقع جديد">
+          <input className="form-control" value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="اسم الموقع" />
+        </DashboardFieldV2>
+        {canAdjust ? (
+          <button type="button" className="btn btn-outline-dark mb-2" disabled={!locationName.trim() || !!saving} onClick={() => void (async () => {
+            setSaving("location"); setError(""); setNotice("");
+            try {
+              const created = await CoreInventoryService.createLocation({ name: locationName.trim() });
+              const row = created as LocationRow;
+              if (row?.id) setLocations((prev) => [...prev, row]);
+              setLocationName("");
+              setNotice("تم إنشاء الموقع.");
+            } catch (err) { setError(errorMessage(err)); }
+            finally { setSaving(""); }
+          })()}>إضافة موقع</button>
+        ) : null}
         {canAdjust ? (
           <button type="button" className="btn btn-dark" disabled={!!saving || !itemId || !fromLocationId || !toLocationId} onClick={() => void runTransfer()}>
             {saving === "transfer" ? "جاري التحويل..." : "تحويل"}
