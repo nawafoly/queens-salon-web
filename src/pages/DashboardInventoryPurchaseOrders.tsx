@@ -9,6 +9,7 @@ function msg(error: unknown) {
 
 export default function DashboardInventoryPurchaseOrders() {
   const [orders, setOrders] = useState<any[]>([]);
+  const [supplierNameById, setSupplierNameById] = useState<Record<string, string>>({});
   const [items, setItems] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [supplierId, setSupplierId] = useState("");
@@ -47,7 +48,11 @@ export default function DashboardInventoryPurchaseOrders() {
     }
     try {
       const sup = await CoreInventoryService.listSuppliers();
-      setSuppliers(unwrap(sup) as any[]);
+      const list = unwrap(sup) as any[];
+      setSuppliers(list);
+      const map: Record<string, string> = {};
+      for (const row of list || []) map[String(row.id || row.supplier_id)] = String(row.name || row.supplier_name || row.id);
+      setSupplierNameById(map);
     } catch (e) {
       console.error("listSuppliers", e);
       setNotice(msg(e));
@@ -113,7 +118,7 @@ export default function DashboardInventoryPurchaseOrders() {
           <tbody>
             {orders.map((row) => (
               <tr key={row.id} onClick={() => setOrderId(row.id)} style={{ cursor: "pointer" }}>
-                <td>{row.id}</td><td>{row.supplier_id || "—"}</td><td>{row.status}</td><td>{row.note || "—"}</td>
+                <td>{row.id}</td><td>{supplierNameById[String(row.supplier_id)] || row.supplier_id || "—"}</td><td>{row.status}</td><td>{row.note || "—"}</td>
               </tr>
             ))}
           </tbody>
