@@ -7,6 +7,8 @@ const TYPE_LABEL: Record<string, string> = {
   OPENING_BALANCE_IN: "رصيد افتتاحي",
   PURCHASE_RECEIPT_IN: "استلام شراء",
   SERVICE_CONSUMPTION_OUT: "استهلاك خدمة",
+  TRANSFER_OUT: "تحويل صادر",
+  TRANSFER_IN: "تحويل وارد",
   ADJUSTMENT: "تسوية",
   WASTE_OUT: "هدر",
   EMPLOYEE_ISSUE_OUT: "صرف موظفة",
