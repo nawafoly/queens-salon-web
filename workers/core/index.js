@@ -99,6 +99,10 @@ import {
   upsertServiceRecipe,
   confirmServiceConsumption,
   getServiceConsumptionByBookingItem,
+  listPurchaseOrders,
+  createPurchaseOrder,
+  addPurchaseOrderLine,
+  receivePurchaseOrderLine,
   listPendingServiceConsumptions,
   listSuppliers,
   createSupplier,
@@ -913,6 +917,18 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/stocktake" && method === "POST") {
     return { name: "inventory:stocktake" };
+  }
+  if (path === "/api/core/inventory/purchase-orders" && method === "GET") {
+    return { name: "inventory:purchase-orders" };
+  }
+  if (path === "/api/core/inventory/purchase-orders" && method === "POST") {
+    return { name: "inventory:purchase-orders-create" };
+  }
+  if (path === "/api/core/inventory/purchase-order-lines" && method === "POST") {
+    return { name: "inventory:purchase-order-lines" };
+  }
+  if (path === "/api/core/inventory/purchase-order-receive" && method === "POST") {
+    return { name: "inventory:purchase-order-receive" };
   }
   if (path === "/api/core/inventory/employee-issue" && method === "POST") {
     return { name: "inventory:employee-issue" };
@@ -2886,6 +2902,22 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "inventory:purchase-orders": {
+      await requirePermission(env, actorInfo, "inventory.view");
+      return json(await listPurchaseOrders(env.CORE_DB, tenantId));
+    }
+    case "inventory:purchase-orders-create": {
+      await requirePermission(env, actorInfo, "inventory.items.manage");
+      return json(await createPurchaseOrder(env.CORE_DB, tenantId, body || {}, actorInfo), { status: 201 });
+    }
+    case "inventory:purchase-order-lines": {
+      await requirePermission(env, actorInfo, "inventory.items.manage");
+      return json(await addPurchaseOrderLine(env.CORE_DB, tenantId, body || {}, actorInfo), { status: 201 });
+    }
+    case "inventory:purchase-order-receive": {
+      await requirePermission(env, actorInfo, "inventory.adjust");
+      return json(await receivePurchaseOrderLine(env.CORE_DB, tenantId, body || {}, actorInfo));
+    }
     case "inventory:employee-issue":
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");

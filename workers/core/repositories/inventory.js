@@ -2041,3 +2041,99 @@ export async function createSupplier(db, salonId, data, actor = {}) {
   );
   return { id, name: data.name };
 }
+
+
+export async function listPurchaseOrders(db, salonId) {
+  return dbAll(
+    db,
+    `SELECT * FROM inventory_purchase_orders
+      WHERE salon_id = ?
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    [salonId]
+  );
+}
+
+export async function createPurchaseOrder(db, salonId, data, actor = {}) {
+  const now = nowIso();
+  const id = generatedId('invpo');
+  const supplierId = optionalText(preferred(data, 'supplierId', 'supplier_id'));
+  await dbRun(
+    db,
+    `INSERT INTO inventory_purchase_orders
+      (id, salon_id, supplier_id, status, note, created_at, updated_at)
+     VALUES (?, ?, ?, 'DRAFT', ?, ?, ?)`,
+    [id, salonId, supplierId || null, optionalText(data.note) || null, now, now]
+  );
+  return dbFirst(db, `SELECT * FROM inventory_purchase_orders WHERE id = ? AND salon_id = ?`, [id, salonId]);
+}
+
+export async function addPurchaseOrderLine(db, salonId, data, actor = {}) {
+  const poId = requiredId(preferred(data, 'purchaseOrderId', 'purchase_order_id'), 'purchaseOrderId');
+  const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
+  const qty = Number(preferred(data, 'qtyOrdered', 'qty_ordered'));
+  if (!Number.isFinite(qty) || qty <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Ordered quantity must be greater than zero');
+  }
+  const po = await dbFirst(db, `SELECT * FROM inventory_purchase_orders WHERE salon_id = ? AND id = ?`, [salonId, poId]);
+  if (!po) throw new AppError(404, 'inventory:po_not_found', 'Purchase order was not found');
+  if (String(po.status) === 'CANCELLED') {
+    throw new AppError(409, 'inventory:po_cancelled', 'Cannot add lines to a cancelled purchase order');
+  }
+  const item = await getItem(db, salonId, itemId);
+  if (!item) throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+  const now = nowIso();
+  const id = generatedId('invpol');
+  const unitCost = data.unitCostHalalas != null || data.unit_cost_halalas != null
+    ? integer(preferred(data, 'unitCostHalalas', 'unit_cost_halalas'), 'unitCostHalalas', { min: 0 })
+    : null;
+  await dbRun(
+    db,
+    `INSERT INTO inventory_purchase_order_lines
+      (id, salon_id, purchase_order_id, item_id, qty_ordered, qty_received, unit_cost_halalas, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+    [id, salonId, poId, itemId, qty, unitCost, now, now]
+  );
+  await dbRun(db, `UPDATE inventory_purchase_orders SET status = CASE WHEN status = 'DRAFT' THEN 'ORDERED' ELSE status END, updated_at = ? WHERE id = ? AND salon_id = ?`, [now, poId, salonId]);
+  return dbFirst(db, `SELECT * FROM inventory_purchase_order_lines WHERE id = ?`, [id]);
+}
+
+export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
+  const lineId = requiredId(preferred(data, 'lineId', 'line_id'), 'lineId');
+  const qty = Number(preferred(data, 'quantity', 'qty'));
+  if (!Number.isFinite(qty) || qty <= 0) {
+    throw new AppError(400, 'core_validation:invalid_quantity', 'Receive quantity must be greater than zero');
+  }
+  const line = await dbFirst(db, `SELECT * FROM inventory_purchase_order_lines WHERE salon_id = ? AND id = ?`, [salonId, lineId]);
+  if (!line) throw new AppError(404, 'inventory:po_line_not_found', 'Purchase order line was not found');
+  const remaining = Number(line.qty_ordered) - Number(line.qty_received || 0);
+  if (qty > remaining + 1e-9) {
+    throw new AppError(409, 'inventory:po_over_receive', 'Cannot receive more than ordered quantity');
+  }
+  const movement = await receivePurchase(db, salonId, {
+    itemId: line.item_id,
+    quantity: qty,
+    unitCostHalalas: line.unit_cost_halalas,
+    operationId: preferred(data, 'operationId', 'operation_id') || generatedId('invop'),
+    note: `PO ${line.purchase_order_id}`,
+  }, actor);
+  const now = nowIso();
+  const received = Number(line.qty_received || 0) + qty;
+  await dbRun(
+    db,
+    `UPDATE inventory_purchase_order_lines SET qty_received = ?, updated_at = ? WHERE id = ? AND salon_id = ?`,
+    [received, now, lineId, salonId]
+  );
+  const open = await dbFirst(
+    db,
+    `SELECT COUNT(*) AS open_lines FROM inventory_purchase_order_lines
+      WHERE salon_id = ? AND purchase_order_id = ? AND qty_received < qty_ordered`,
+    [salonId, line.purchase_order_id]
+  );
+  await dbRun(
+    db,
+    `UPDATE inventory_purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND salon_id = ?`,
+    [Number(open?.open_lines || 0) > 0 ? 'PARTIAL' : 'RECEIVED', now, line.purchase_order_id, salonId]
+  );
+  return { lineId, received, movement };
+}
