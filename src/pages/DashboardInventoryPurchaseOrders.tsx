@@ -23,14 +23,35 @@ export default function DashboardInventoryPurchaseOrders() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [po, inv, sup] = await Promise.all([
-      CoreInventoryService.listPurchaseOrders(),
-      CoreInventoryService.listItems({ active: "1" }),
-      CoreInventoryService.listSuppliers(),
-    ]);
-    setOrders(Array.isArray(po) ? po : []);
-    setItems(Array.isArray(inv) ? inv : []);
-    setSuppliers(Array.isArray(sup) ? sup : []);
+    const unwrap = (value: unknown) => {
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === "object") {
+        const rec = value as Record<string, unknown>;
+        for (const key of ["items", "suppliers", "orders", "data", "rows", "results"]) {
+          if (Array.isArray(rec[key])) return rec[key];
+        }
+      }
+      return [];
+    };
+    try {
+      const po = await CoreInventoryService.listPurchaseOrders();
+      setOrders(unwrap(po) as any[]);
+    } catch (e) {
+      console.error("listPurchaseOrders", e);
+    }
+    try {
+      const inv = await CoreInventoryService.listItems();
+      setItems(unwrap(inv) as any[]);
+    } catch (e) {
+      console.error("listItems", e);
+    }
+    try {
+      const sup = await CoreInventoryService.listSuppliers();
+      setSuppliers(unwrap(sup) as any[]);
+    } catch (e) {
+      console.error("listSuppliers", e);
+      setNotice(msg(e));
+    }
   }
 
   useEffect(() => { void load(); }, []);
@@ -43,7 +64,7 @@ export default function DashboardInventoryPurchaseOrders() {
         <div className="col-md-4">
           <select className="form-select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">بدون مورد</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {suppliers.map((s) => <option key={s.id || s.supplier_id} value={s.id || s.supplier_id}>{s.name || s.supplier_name || s.id}</option>)}
           </select>
         </div>
         <div className="col-md-5">
@@ -61,7 +82,7 @@ export default function DashboardInventoryPurchaseOrders() {
         <div className="col-md-3">
           <select className="form-select" value={itemId} onChange={(e) => setItemId(e.target.value)}>
             <option value="">مادة</option>
-            {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name || it.item_name || it.id}</option>)}
           </select>
         </div>
         <div className="col-md-2"><input className="form-control" value={qty} onChange={(e) => setQty(e.target.value)} /></div>

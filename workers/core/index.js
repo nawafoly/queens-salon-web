@@ -2902,22 +2902,30 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
-    case "inventory:purchase-orders": {
-      await requirePermission(env, actorInfo, "inventory.view");
-      return json(await listPurchaseOrders(env.CORE_DB, tenantId));
-    }
-    case "inventory:purchase-orders-create": {
-      await requirePermission(env, actorInfo, "inventory.items.manage");
-      return json(await createPurchaseOrder(env.CORE_DB, tenantId, body || {}, actorInfo), { status: 201 });
-    }
-    case "inventory:purchase-order-lines": {
-      await requirePermission(env, actorInfo, "inventory.items.manage");
-      return json(await addPurchaseOrderLine(env.CORE_DB, tenantId, body || {}, actorInfo), { status: 201 });
-    }
-    case "inventory:purchase-order-receive": {
-      await requirePermission(env, actorInfo, "inventory.adjust");
-      return json(await receivePurchaseOrderLine(env.CORE_DB, tenantId, body || {}, actorInfo));
-    }
+    case "inventory:purchase-orders":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage", "inventory.adjust"]);
+        return listPurchaseOrders(db, ctx.salonId);
+      }
+      break;
+    case "inventory:purchase-orders-create":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return createPurchaseOrder(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
+    case "inventory:purchase-order-lines":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return addPurchaseOrderLine(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
+    case "inventory:purchase-order-receive":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return receivePurchaseOrderLine(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
     case "inventory:employee-issue":
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
