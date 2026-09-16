@@ -1,4 +1,4 @@
-﻿import { coreApiRequest } from "./coreApiClient";
+import { coreApiRequest } from "./coreApiClient";
 
 export type InventoryConsumptionPolicy =
   | "SERVICE_TRACKED"
@@ -59,6 +59,8 @@ export type InventoryMovement = {
   booking_item_id?: string | null;
   employee_id?: string | null;
   note?: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
   created_at: string;
 };
 
@@ -103,12 +105,36 @@ export type ServiceRecipeLineInput = {
   unit: string;
 };
 
+export type InventorySupplier = { id: string; name: string; phone?: string | null; notes?: string | null; active?: number };
+
+export type PendingServiceConsumption = {
+  booking_item_id: string;
+  booking_id: string;
+  service_id: string;
+  service_name_snapshot?: string | null;
+  item_staff_id?: string | null;
+  booking_staff_id?: string | null;
+  client_id?: string | null;
+  client_name?: string | null;
+  booking_status?: string | null;
+  booking_source?: string | null;
+  booking_date?: string | null;
+  start_time?: string | null;
+  recipe_id?: string | null;
+};
+
 export const CoreInventoryService = {
   listCategories(query: { active?: string } = {}) {
     return coreApiRequest<InventoryCategory[]>("/api/core/inventory/categories", { query });
   },
   createCategory(input: { name: string }) {
     return coreApiRequest<InventoryCategory>("/api/core/inventory/categories", { method: "POST", body: input });
+  },
+  listSuppliers(query: { active?: string } = {}) {
+    return coreApiRequest<InventorySupplier[]>("/api/core/inventory/suppliers", { query });
+  },
+  createSupplier(input: { name: string; phone?: string; notes?: string }) {
+    return coreApiRequest("/api/core/inventory/suppliers", { method: "POST", body: input });
   },
   listItems(query: { search?: string; active?: string; categoryId?: string; policy?: string } = {}) {
     return coreApiRequest<InventoryItem[]>("/api/core/inventory/items", { query });
@@ -138,6 +164,12 @@ export const CoreInventoryService = {
       `/api/core/inventory/consumptions/by-booking-item/${encodeURIComponent(bookingItemId)}`
     );
   },
+  listPendingConsumptions(query: { employeeId?: string; date?: string; limit?: number | string } = {}) {
+    return coreApiRequest<PendingServiceConsumption[]>(
+      "/api/core/inventory/consumptions/pending",
+      { query }
+    );
+  },
   confirmConsumption(input: {
     bookingItemId: string;
     employeeId: string;
@@ -148,7 +180,7 @@ export const CoreInventoryService = {
       body: input,
     });
   },
-  receivePurchase(input: { itemId: string; quantity: number; unitCostHalalas?: number; note?: string }) {
+  receivePurchase(input: { itemId: string; quantity: number; unitCostHalalas?: number; supplierId?: string | null; note?: string }) {
     return coreApiRequest("/api/core/inventory/purchase-receipt", { method: "POST", body: input });
   },
   sellProduct(input: { itemId: string; quantity: number; note?: string }) {

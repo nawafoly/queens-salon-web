@@ -1,4 +1,4 @@
-﻿// CORE D1 ONLY ظ¤ do not add Firestore fallback.
+// CORE D1 ONLY ظ¤ do not add Firestore fallback.
 // Inventory Control Center ظ¤ Phase 1 foundation repository.
 
 import {
@@ -235,7 +235,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
         id, salon_id, item_id, location_id, movement_type,
         quantity_delta, unit, unit_cost_halalas, balance_after,
         source_type, source_id, line_key, operation_id,
-        employee_id, booking_id, booking_item_id, service_id,
+        employee_id, supplier_id, booking_id, booking_item_id, service_id,
         reverses_movement_id, note,
         created_by_uid, created_by_name, created_at
       )
@@ -243,7 +243,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
         ?, ?, ?, ?, ?,
         ?, ?, ?, sl.qty_on_hand + ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?
       FROM inventory_stock_levels sl
@@ -266,6 +266,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
         lineKey,
         optionalText(input.operationId || input.operation_id) || null,
         optionalText(input.employeeId || input.employee_id) || null,
+        optionalText(input.supplierId || input.supplier_id) || null,
         optionalText(input.bookingId || input.booking_id) || null,
         optionalText(input.bookingItemId || input.booking_item_id) || null,
         optionalText(input.serviceId || input.service_id) || null,
@@ -758,26 +759,29 @@ export async function recordOpeningBalance(db, salonId, data, actor = {}) {
 }
 
 export async function listMovements(db, salonId, query = {}) {
-  const where = ['salon_id = ?'];
+  const where = ['m.salon_id = ?'];
   const params = [salonId];
   if (optionalText(query.itemId || query.item_id)) {
-    where.push('item_id = ?');
+    where.push('m.item_id = ?');
     params.push(cleanText(query.itemId || query.item_id));
   }
   if (optionalText(query.bookingItemId || query.booking_item_id)) {
-    where.push('booking_item_id = ?');
+    where.push('m.booking_item_id = ?');
     params.push(cleanText(query.bookingItemId || query.booking_item_id));
   }
   if (optionalText(query.employeeId || query.employee_id)) {
-    where.push('employee_id = ?');
+    where.push('m.employee_id = ?');
     params.push(cleanText(query.employeeId || query.employee_id));
   }
   const limit = integer(query.limit ?? 100, 'limit', { min: 1, max: 500 });
   return dbAll(
     db,
-    `SELECT * FROM inventory_stock_movements
+    `SELECT m.*, s.name AS supplier_name
+       FROM inventory_stock_movements m
+       LEFT JOIN inventory_suppliers s
+         ON s.salon_id = m.salon_id AND s.id = m.supplier_id
       WHERE ${where.join(' AND ')}
-      ORDER BY created_at DESC
+      ORDER BY m.created_at DESC
       LIMIT ${limit}`,
     params
   );
@@ -1484,6 +1488,73 @@ export async function getServiceConsumptionByBookingItem(db, salonId, bookingIte
   return { ...row, lines };
 }
 
+/**
+ * Pending consumption worklist (booking-item grain).
+ * Items with an active recipe and no confirmed service_consumptions row.
+ * Online + internal/walk-in share booking_items — same confirm path.
+ */
+export async function listPendingServiceConsumptions(db, salonId, query = {}) {
+  const date =
+    optionalText(query.date || query.bookingDate || query.booking_date) ||
+    nowIso().slice(0, 10);
+  const employeeId = optionalText(
+    preferred(query, 'employeeId', 'employee_id')
+  );
+  const limit = integer(query.limit ?? 100, 'limit', { min: 1, max: 300 });
+
+  const where = [
+    'bi.salon_id = ?',
+    "LOWER(COALESCE(b.status, '')) <> 'cancelled'",
+    'b.deleted_at IS NULL',
+    'COALESCE(bi.booking_date, b.booking_date) = ?',
+    'r.id IS NOT NULL',
+    'sc.id IS NULL',
+  ];
+  const params = [salonId, date];
+
+  if (employeeId) {
+    where.push('(bi.staff_id = ? OR b.staff_id = ?)');
+    params.push(employeeId, employeeId);
+  }
+
+  return dbAll(
+    db,
+    `SELECT
+       bi.id AS booking_item_id,
+       bi.booking_id,
+       bi.service_id,
+       bi.service_name_snapshot,
+       bi.staff_id AS item_staff_id,
+       b.staff_id AS booking_staff_id,
+       b.client_id,
+       b.status AS booking_status,
+       b.source AS booking_source,
+       COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+       COALESCE(bi.start_time, b.start_time) AS start_time,
+       COALESCE(c.name, '') AS client_name,
+       r.id AS recipe_id
+     FROM booking_items bi
+     JOIN bookings b
+       ON b.id = bi.booking_id
+      AND b.salon_id = bi.salon_id
+     LEFT JOIN clients c
+       ON c.id = b.client_id
+      AND c.salon_id = b.salon_id
+     JOIN service_consumption_recipes r
+       ON r.salon_id = bi.salon_id
+      AND r.service_id = bi.service_id
+      AND r.is_active = 1
+     LEFT JOIN service_consumptions sc
+       ON sc.salon_id = bi.salon_id
+      AND sc.booking_item_id = bi.id
+      AND sc.status = 'confirmed'
+     WHERE ${where.join(' AND ')}
+     ORDER BY COALESCE(bi.start_time, b.start_time), bi.created_at, bi.id
+     LIMIT ${limit}`,
+    params
+  );
+}
+
 
 export async function issueToEmployee(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
@@ -1638,8 +1709,23 @@ export async function receivePurchase(db, salonId, data, actor = {}) {
   const unitCostHalalas = data.unitCostHalalas != null || data.unit_cost_halalas != null
     ? integer(preferred(data, 'unitCostHalalas', 'unit_cost_halalas'), 'unitCostHalalas', { min: 0 })
     : null;
+  const supplierId = optionalText(preferred(data, 'supplierId', 'supplier_id')) || null;
+  if (supplierId) {
+    const supplier = await dbFirst(
+      db,
+      `SELECT id FROM inventory_suppliers WHERE salon_id = ? AND id = ? LIMIT 1`,
+      [salonId, supplierId]
+    );
+    if (!supplier) {
+      throw new AppError(404, 'inventory:supplier_not_found', 'Supplier was not found');
+    }
+  }
   const location = await ensureDefaultLocation(db, salonId);
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
+  const baseNote = optionalText(data.note) || 'Purchase receipt';
+  const note = supplierId
+    ? (baseNote.includes('supplierId=') ? baseNote : (baseNote + ' | supplierId=' + supplierId))
+    : baseNote;
   return appendMovement(db, salonId, {
     itemId,
     locationId: location.id,
@@ -1651,7 +1737,8 @@ export async function receivePurchase(db, salonId, data, actor = {}) {
     sourceId: operationId,
     lineKey: itemId,
     operationId,
-    note: optionalText(data.note) || 'Purchase receipt',
+    supplierId,
+    note,
   }, actor);
 }
 
@@ -1710,4 +1797,37 @@ export async function returnProduct(db, salonId, data, actor = {}) {
     operationId,
     note: optionalText(data.note) || 'Direct sale return',
   }, actor);
+}
+
+
+export async function listSuppliers(db, salonId) {
+  return dbAll(
+    db,
+    `SELECT * FROM inventory_suppliers
+      WHERE salon_id = ?
+      ORDER BY name ASC
+      LIMIT 200`,
+    [salonId]
+  );
+}
+
+export async function createSupplier(db, salonId, data, actor = {}) {
+  const now = nowIso();
+  const id = generatedId("invsup");
+  await dbRun(
+    db,
+    `INSERT INTO inventory_suppliers
+      (id, salon_id, name, phone, notes, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+    [
+      id,
+      salonId,
+      requiredText(data.name, "name", 200),
+      optionalText(data.phone) || null,
+      optionalText(data.notes) || null,
+      now,
+      now,
+    ]
+  );
+  return { id, name: data.name };
 }

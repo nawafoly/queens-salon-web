@@ -32,6 +32,7 @@ import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeNotificationsPage from "./hr/EmployeeNotifications";
 import EmployeeOverviewPage from "./hr/EmployeeOverview";
+import EmployeeServiceConsumption from "./EmployeeServiceConsumption";
 import EmployeeRequestsPage from "./hr/EmployeeRequests";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeTargetsPage from "./hr/EmployeeTargets";
@@ -393,6 +394,7 @@ export default function EmployeePortal() {
   const bottomNavItems = [
     { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/consumption", label: "الاستهلاك", icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
     { to: "/employee/requests", label: "الطلبات", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
@@ -401,6 +403,7 @@ export default function EmployeePortal() {
   const desktopNavItems = [
     { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/consumption", label: "استهلاك الخدمات", description: "تأكيد الكميات بعد التنفيذ", icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
     { to: "/employee/requests", label: "طلباتي", description: "المتابعة والقرارات والتنفيذ", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/targets", label: "تارقتي", description: "المبيعات المؤهلة والبونص المتوقع", icon: faChartLine, permission: "targets.view_own" as AppPermission },
@@ -607,6 +610,7 @@ export default function EmployeePortal() {
             <Route path="permission" element={<Navigate to="/employee/requests?new=permission" replace />} />
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="targets" element={<PermissionRoute permission="targets.view_own"><EmployeeTargetsPage /></PermissionRoute>} />
+            <Route path="consumption" element={<PermissionRoute permission="inventory.consume.confirm"><EmployeeServiceConsumption session={session} /></PermissionRoute>} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
           </div>

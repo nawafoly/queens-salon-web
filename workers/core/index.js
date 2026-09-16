@@ -99,6 +99,9 @@ import {
   upsertServiceRecipe,
   confirmServiceConsumption,
   getServiceConsumptionByBookingItem,
+  listPendingServiceConsumptions,
+  listSuppliers,
+  createSupplier,
   issueToEmployee,
   returnFromEmployee,
   recordWaste,
@@ -884,6 +887,7 @@ function match(url, method) {
   if (path === "/api/core/health") return { name: "health" };
   // Inventory Control Center
   if (path === "/api/core/inventory/categories") return { name: "inventory:categories" };
+  if (path === "/api/core/inventory/suppliers") return { name: "inventory:suppliers" };
   if (path === "/api/core/inventory/items") return { name: "inventory:items" };
   const invItem = /^\/api\/core\/inventory\/items\/([^/]+)$/.exec(path);
   if (invItem) return { name: "inventory:item", id: invItem[1] };
@@ -918,6 +922,9 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/consumptions/confirm" && method === "POST") {
     return { name: "inventory:consumption-confirm" };
+  }
+  if (path === "/api/core/inventory/consumptions/pending" && method === "GET") {
+    return { name: "inventory:consumptions-pending" };
   }
   const invConsByItem = /^\/api\/core\/inventory\/consumptions\/by-booking-item\/([^/]+)$/.exec(path);
   if (invConsByItem && method === "GET") {
@@ -2730,6 +2737,16 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
     }
+    case "inventory:suppliers":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
+        return listSuppliers(db, ctx.salonId);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return createSupplier(db, ctx.salonId, body, actorInfo);
+      }
+      break;
     case "inventory:categories":
       if (method === "GET") {
         requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
@@ -2820,6 +2837,17 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.consume.confirm");
         return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:consumptions-pending":
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "inventory.consume.confirm",
+          "inventory.view",
+          "inventory.movements.view",
+        ]);
+        return listPendingServiceConsumptions(db, ctx.salonId, readQuery);
       }
       break;
 

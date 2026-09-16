@@ -34,11 +34,18 @@ export async function listCatalogRows(db, salonId, kind, query = {}) {
   );
 }
 
+function safeCatalogId(kind, requested) {
+  const raw = String(requested || '').trim();
+  const latin = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(raw);
+  if (latin) return requiredId(raw);
+  return generatedId(kind === 'sections' ? 'section' : 'category');
+}
+
 export async function createCatalogRow(db, salonId, kind, data) {
   const table = tableFor(kind);
   const now = nowIso();
   const row = {
-    id: requiredId(data.id || generatedId(kind === 'sections' ? 'section' : 'category')),
+    id: safeCatalogId(kind, data.id),
     salon_id: salonId,
     name: requiredText(data.name || data.title || data['الاسم'], 'name', 300),
     ...(kind === 'categories' ? { section_id: String(data.sectionId || data.section_id || '').trim() || null } : {}),
