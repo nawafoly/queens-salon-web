@@ -15,6 +15,14 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/logo192.png" />
   <link rel="icon" href="/favicon.ico" />
+  <script>
+    (() => {
+      const standalone =
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        window.navigator.standalone === true;
+      if (standalone) document.documentElement.classList.add('webapp-standalone');
+    })();
+  </script>
 
   <!-- ✅ Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-K158N8662B"></script>
