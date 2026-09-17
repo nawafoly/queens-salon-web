@@ -328,6 +328,12 @@ import {
   patchRecruitmentApplication,
 } from './repositories/workforce-communications.js';
 import {
+  flushEmployeeWebPushOutbox,
+  getEmployeePushPublicConfig,
+  removeEmployeePushSubscription,
+  upsertEmployeePushSubscription,
+} from './repositories/web-push.js';
+import {
   addEmployeeRequestAttachment,
   addEmployeeRequestComment,
   createEmployeeRequest,
@@ -581,6 +587,9 @@ function match(url, method) {
   if (path === "/api/core/hr/messages" && ["GET", "POST"].includes(method)) return { name: "employee-messages" };
   const employeeMessageThreadRead = /^\/api\/core\/hr\/messages\/thread\/([^/]+)\/read$/.exec(path);
   if (employeeMessageThreadRead && method === "POST") return { name: "employee-message-thread:read", id: employeeMessageThreadRead[1] };
+  if (path === "/api/core/hr/push/config" && method === "GET") return { name: "employee-push:config" };
+  if (path === "/api/core/hr/push/subscriptions" && method === "POST") return { name: "employee-push:subscribe" };
+  if (path === "/api/core/hr/push/unsubscribe" && method === "POST") return { name: "employee-push:unsubscribe" };
   if (path === "/api/core/hr/notifications/read-all" && method === "POST") return { name: "employee-notifications:read-all" };
   const employeeNotificationRead = /^\/api\/core\/hr\/notifications\/([^/]+)\/read$/.exec(path);
   if (employeeNotificationRead && method === "POST") return { name: "employee-notification:read", id: employeeNotificationRead[1] };
@@ -1495,6 +1504,18 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "employee-message-thread:read":
       requireAnyPermission(ctx, ["messages.view", "messages.manage"]);
       return markEmployeeThreadRead(db, ctx.salonId, route.id, actorInfo);
+
+    case "employee-push:config":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      return getEmployeePushPublicConfig(env);
+
+    case "employee-push:subscribe":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      return upsertEmployeePushSubscription(db, ctx.salonId, body, actorInfo);
+
+    case "employee-push:unsubscribe":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      return removeEmployeePushSubscription(db, ctx.salonId, body, actorInfo);
 
     case "employee-notifications": {
       requireAnyPermission(ctx, [
@@ -3211,7 +3232,7 @@ function structuredRequestLog(fields) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, executionCtx) {
     const startedAt = Date.now();
     const requestId = normalizeRequestId(
       request.headers.get("X-Request-Id")
@@ -3421,19 +3442,35 @@ export default {
       replayed,
     });
 
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+      executionCtx?.waitUntil(
+        flushEmployeeWebPushOutbox(
+          requireDb(env),
+          tenantId || "main",
+          env
+        ).catch((error) => {
+          console.warn("employee_web_push_flush_failed", {
+            message: cleanText(error?.message || error?.name || "push_flush_failed").slice(0, 200),
+          });
+        })
+      );
+    }
+
     return finalResponse;
   },
   async scheduled(event, env, ctx) {
     const salonId = cleanText(env.SALON_ID) || "main";
     if (event?.cron === "*/5 * * * *") {
-      ctx.waitUntil(
-        markClosedCheckInWindowsAbsent(env.CORE_DB, env.ATTENDANCE_DB, salonId)
-      );
+      ctx.waitUntil(Promise.all([
+        markClosedCheckInWindowsAbsent(env.CORE_DB, env.ATTENDANCE_DB, salonId),
+        flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null),
+      ]));
       return;
     }
     ctx.waitUntil(Promise.all([
       expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
       notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
+      flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null),
     ]));
   },
 };
