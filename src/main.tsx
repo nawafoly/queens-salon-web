@@ -8,6 +8,7 @@ import "./index.css";
 import "./styles/DashboardSkin.css";
 import "./styles/MadanAdminTheme.css";
 import "./styles/EmployeePortalMobileUxV2.css";
+import "./styles/EmployeePortalStandalone.css";
 
 import App from "./App";
 import AndroidBackButtonHandler from "./components/AndroidBackButtonHandler";
