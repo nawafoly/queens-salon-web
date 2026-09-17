@@ -415,3 +415,57 @@
     width: 100%;
   }
 }
+
+
+/* Mobile employee portal logout */
+.employee-more-logout {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(185, 28, 28, 0.16);
+  border-radius: 18px;
+  color: #991b1b;
+  background: #fffafa;
+  text-align: right;
+  font: inherit;
+  cursor: pointer;
+}
+
+.employee-more-logout__icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  color: #b91c1c;
+  background: #fee2e2;
+  font-size: 1rem;
+}
+
+.employee-more-logout__copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.employee-more-logout__copy strong {
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.employee-more-logout__copy small {
+  color: #7f1d1d;
+  font-size: 0.61rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.employee-more-logout:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
