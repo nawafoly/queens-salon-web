@@ -4305,7 +4305,6 @@ function DashboardEmployeesContent() {
             active: combined?.active !== false && combined?.isActive !== false,
             showOnAbout: source === "core_hr" ? combined?.showOnAbout !== false : false,
             showOnBooking:
-              !administrative &&
               source === "core_staff" &&
               specialties.length > 0
                 ? combined?.showOnBooking !== false

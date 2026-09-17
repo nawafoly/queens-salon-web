@@ -447,26 +447,27 @@ runCoreEmployeeMasterRegressions();
 if (!errors.length) {
   const source = readFileSync(dashboardEmployeesPath, "utf8").replace(/\r\n/g, "\n");
 
+  // CORE_D1_EMPLOYEE_RELOAD_CONTRACT_V1
   requireIncludes(
     source,
-    "getDocFromServer",
-    "DashboardEmployees must retain server reads for compatibility mirror verification."
+    "CoreHrService.listEmployees",
+    "DashboardEmployees reload must read employee master state from Core D1."
   );
   requireIncludes(
     source,
-    "getDocsFromServer",
-    "DashboardEmployees must use getDocsFromServer for strict post-save reloads."
+    "CoreStaffService.list",
+    "DashboardEmployees reload must read booking staff state from Core D1."
   );
-  requireIncludes(
+  requireAbsent(
     source,
-    "const readDocs = loadOptions.fromServer ? getDocsFromServer : getDocs;",
-    "load() must support server-read mode without forcing all normal reads to server."
+    "staffPublicCol()",
+    "DashboardEmployees must not restore staff_public as employee runtime authority."
   );
-  requireIncludes(
-    source,
-    "readDocs(staffPublicCol())",
-    "staff_public reload must go through the server-aware read helper."
-  );
+
+
+
+
+
   requireRegex(
     source,
     /load\(saveVerificationServiceOptions,\s*\{\s*fromServer:\s*true,\s*strict:\s*true,\s*\}\)/s,
@@ -558,11 +559,7 @@ if (!errors.length) {
     'verifyEmployeeSaveSnapshot(\n        "staff_public"',
     "staff_public must not define canonical post-save success."
   );
-  requireIncludes(
-    source,
-    "staff_public compatibility mirror differs from canonical save.",
-    "staff_public verification, if retained, must be compatibility-only."
-  );
+
 
   requireIncludes(
     source,
