@@ -8,10 +8,11 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUserTie } from "@fortawesome/free-solid-svg-icons";
+import { faTableColumns, faUserTie } from "@fortawesome/free-solid-svg-icons";
 
 import EmployeeNotificationBellMenu from "./EmployeeNotificationBellMenu";
 import AdminUnifiedNotificationBell from "./AdminUnifiedNotificationBell";
+import { usePermissions } from "../security/PermissionContext";
 import "../styles/DashboardHeader.css";
 
 type DashboardHeaderTheme = "dashboard" | "admin" | "employee";
@@ -95,8 +96,17 @@ export default function DashboardHeader({
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { hasPermission } = usePermissions();
   const isEmployeePortal = location.pathname.startsWith("/employee");
   const isProfilePage = location.pathname === "/employee/overview";
+  const isEmployeeMobileShell =
+    theme === "employee" &&
+    isEmployeePortal &&
+    String(className || "")
+      .split(/\s+/)
+      .includes("dashboard-header--mobile-shell");
+  const shouldShowDashboardReturn =
+    isEmployeeMobileShell && hasPermission("workspace.dashboard.view");
   const shouldShowProfileButton = showProfileButton && !isEmployeePortal;
   const shouldUseEmployeeNotificationMenu = theme === "employee" && isEmployeePortal;
   const shouldUseDashboardNotificationBell =
@@ -138,7 +148,7 @@ export default function DashboardHeader({
       </div>
 
       <div className="dashboard-header__meta dash-topbar-right">
-        {shouldShowProfileButton || visibleActions || shouldUseEmployeeNotificationMenu || shouldUseDashboardNotificationBell ? (
+        {shouldShowProfileButton || shouldShowDashboardReturn || visibleActions || shouldUseEmployeeNotificationMenu || shouldUseDashboardNotificationBell ? (
           <div
             className={joinClassNames(
               "dashboard-header__actions",
@@ -156,6 +166,18 @@ export default function DashboardHeader({
               >
                 <FontAwesomeIcon icon={faUserTie} />
                 <span>{profileLabel}</span>
+              </button>
+            ) : null}
+
+            {shouldShowDashboardReturn ? (
+              <button
+                type="button"
+                className="employee-app-topbar__action employee-app-topbar__action--dashboard"
+                onClick={() => navigate("/dashboard/overview")}
+                aria-label="العودة إلى لوحة التحكم"
+                title="لوحة التحكم"
+              >
+                <FontAwesomeIcon icon={faTableColumns} />
               </button>
             ) : null}
 
