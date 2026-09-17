@@ -171,6 +171,14 @@ function EmployeeMorePage({
   const { hasPermission } = usePermissions();
   const items = [
     {
+      to: "/employee/profile",
+      label: "الملف الشخصي",
+      description: "بياناتك الشخصية والوظيفية",
+      icon: faUser,
+      badge: notificationCounts.profile,
+      permission: "workspace.employee_portal.view" as AppPermission,
+    },
+    {
       to: "/employee/notifications",
       label: "التنبيهات",
       description: "آخر التحديثات والتنبيهات",
@@ -396,7 +404,6 @@ export default function EmployeePortal() {
     { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
     { to: "/employee/consumption", label: "حجوزاتي", icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
     { to: "/employee/requests", label: "الطلبات", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
-    { to: "/employee/profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
 
@@ -424,7 +431,25 @@ export default function EmployeePortal() {
     { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
   const employeeHeaderTitle = getEmployeePortalTitle(location.pathname);
-  const renderEmployeeHeaderActions = () => (
+
+  const renderNotificationAction = () =>
+    hasPermission("workspace.employee_portal.view") ? (
+      <Link
+        to="/employee/notifications"
+        className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
+        aria-label="التنبيهات"
+        title="التنبيهات"
+      >
+        <FontAwesomeIcon icon={faBell} />
+        {notificationCounts.all > 0 ? (
+          <span className="employee-header-notification__badge employee-app-topbar__badge">
+            {notificationCounts.all}
+          </span>
+        ) : null}
+      </Link>
+    ) : null;
+
+  const renderDesktopHeaderActions = () => (
     <>
       <InternalPortalSwitcher
         canOpenDashboard={canOpenDashboard}
@@ -432,22 +457,7 @@ export default function EmployeePortal() {
         loggingOut={loggingOut}
         onLogout={handleLogout}
       />
-
-      {hasPermission("workspace.employee_portal.view") ? (
-        <Link
-          to="/employee/notifications"
-          className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
-          aria-label="التنبيهات"
-          title="التنبيهات"
-        >
-          <FontAwesomeIcon icon={faBell} />
-          {notificationCounts.all > 0 ? (
-            <span className="employee-header-notification__badge employee-app-topbar__badge">
-              {notificationCounts.all}
-            </span>
-          ) : null}
-        </Link>
-      ) : null}
+      {renderNotificationAction()}
     </>
   );
 
@@ -471,7 +481,7 @@ export default function EmployeePortal() {
         title={employeeHeaderTitle}
         subtitle="Queens Salon"
         className="employee-workspace-header--mobile dashboard-header--mobile-shell"
-        actions={renderEmployeeHeaderActions()}
+        actions={renderNotificationAction()}
       />
 
       <div className="employee-portal-layout employee-portal-layout--app">
@@ -558,7 +568,7 @@ export default function EmployeePortal() {
             title={employeeHeaderTitle}
             subtitle="Queens Salon"
             className="employee-workspace-header--desktop dashboard-header--desktop-shell"
-            actions={renderEmployeeHeaderActions()}
+            actions={renderDesktopHeaderActions()}
           />
 
           <div className="employee-app-route-scroll">
@@ -616,19 +626,6 @@ export default function EmployeePortal() {
           </div>
         </main>
       </div>
-
-      {hasPermission("employee_requests.own.create") ? (
-        <button
-          type="button"
-          className="employee-floating-request"
-          onClick={() => setRequestSheetOpen(true)}
-          aria-label="إنشاء طلب جديد"
-          title="طلب جديد"
-        >
-          <FontAwesomeIcon icon={faPlus} />
-          <span>طلب جديد</span>
-        </button>
-      ) : null}
 
       <nav className="employee-bottom-nav" aria-label="تنقل بوابة الموظف">
         {bottomNavItems.map((item) => (
