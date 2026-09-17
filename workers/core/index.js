@@ -3467,10 +3467,12 @@ export default {
       ]));
       return;
     }
-    ctx.waitUntil(Promise.all([
-      expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
-      notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
-      flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null),
-    ]));
+    ctx.waitUntil((async () => {
+      await Promise.all([
+        expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
+        notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
+      ]);
+      await flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null);
+    })());
   },
 };
