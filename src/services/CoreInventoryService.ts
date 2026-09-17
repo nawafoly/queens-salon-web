@@ -44,7 +44,16 @@ export type InventoryStockLevel = {
   sku?: string | null;
 };
 
+export type InventoryLocation = {
+  id: string;
+  name: string;
+  is_default?: number;
+  active?: number;
+};
+
 export type InventoryMovement = {
+  location_id?: string;
+  location_name?: string;
   id: string;
   item_id: string;
   movement_type: string;

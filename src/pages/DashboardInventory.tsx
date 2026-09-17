@@ -77,6 +77,7 @@ export default function DashboardInventory() {
   const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -88,9 +89,15 @@ export default function DashboardInventory() {
 
   const qtyByItem = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of levels) map.set(row.item_id, Number(row.qty_on_hand || 0));
+    for (const row of levels) { map.set(row.item_id, Number(map.get(row.item_id) || 0) + Number(row.qty_on_hand || 0)); }
     return map;
   }, [levels]);
+  function locationName(id) { return locations.find((row) => row.id === id)?.name || id || "-"; }
+  function locationStockLabel(itemId) {
+    const rows = levels.filter((row) => row.item_id === itemId);
+    if (!rows.length) return "0";
+    return rows.map((row) => locationName(row.location_id) + ": " + String(row.qty_on_hand ?? 0)).join(" | ");
+  }
 
   const lowStockItems = useMemo(() => {
     return items.filter((item) => {
@@ -106,12 +113,14 @@ export default function DashboardInventory() {
     setLoading(true);
     setError("");
     try {
-      const [itemRows, levelRows] = await Promise.all([
+      const [itemRows, levelRows, locationRows] = await Promise.all([
         CoreInventoryService.listItems({ search: search || undefined }),
         CoreInventoryService.listStockLevels(),
+        CoreInventoryService.listLocations(),
       ]);
       setItems(itemRows || []);
       setLevels(levelRows || []);
+      setLocations(locationRows || []);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -261,7 +270,7 @@ export default function DashboardInventory() {
                     <th>المادة</th>
                     <th>الوحدة</th>
                     <th>السياسة</th>
-                    <th>الرصيد</th>
+                    <th>الرصيد حسب الموقع</th>
                     <th>حد إعادة الطلب</th>
                     <th>الحالة</th>
                     {canManage ? <th></th> : null}
@@ -280,7 +289,7 @@ export default function DashboardInventory() {
                         <td>{item.unit}</td>
                         <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
                         <td>
-                          {qty == null ? "-" : qty}
+                          {locationStockLabel(item.id) + " / الإجمالي: " + (qty == null ? "-" : qty)}
                           {low ? <span className="badge bg-warning text-dark me-2">منخفض</span> : null}
                         </td>
                         <td>{item.min_stock_qty}</td>

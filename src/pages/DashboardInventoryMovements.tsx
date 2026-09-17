@@ -63,6 +63,7 @@ export default function DashboardInventoryMovements() {
           <tr>
             <th>الوقت</th>
             <th>المادة</th>
+            <th>الموقع</th>
             <th>النوع</th>
             <th>المورد</th>
             <th>الكمية</th>
