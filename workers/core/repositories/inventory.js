@@ -558,6 +558,41 @@ export async function createLocation(db, salonId, data, actor = {}) {
   return dbFirst(db, 'SELECT * FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
 }
 
+async function resolveStaffHomeLocationId(db, salonId, employeeId) {
+  if (!employeeId) return (await ensureDefaultLocation(db, salonId)).id;
+  const mapped = await dbFirst(
+    db,
+    `SELECT location_id FROM inventory_staff_locations WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, employeeId]
+  );
+  if (mapped?.location_id) return mapped.location_id;
+  return (await ensureDefaultLocation(db, salonId)).id;
+}
+
+export async function setStaffHomeLocation(db, salonId, data, actor = {}) {
+  const employeeId = requiredId(preferred(data, "employeeId", "employee_id"), "employeeId");
+  const locationId = requiredId(preferred(data, "locationId", "location_id"), "locationId");
+  const loc = await dbFirst(db, "SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, locationId]);
+  if (!loc) throw new AppError(404, "inventory:location_not_found", "Location was not found");
+  await dbRun(
+    db,
+    `INSERT INTO inventory_staff_locations (salon_id, employee_id, location_id, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(salon_id, employee_id) DO UPDATE SET location_id = excluded.location_id, updated_at = excluded.updated_at`,
+    [salonId, employeeId, locationId, nowIso()]
+  );
+  return { employeeId, locationId };
+}
+
+export async function getStaffHomeLocation(db, salonId, employeeId) {
+  const row = await dbFirst(
+    db,
+    `SELECT location_id FROM inventory_staff_locations WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, employeeId]
+  );
+  return { locationId: row?.location_id || null };
+}
+
 async function resolveLocationId(db, salonId, data) {
   const requested = optionalText(preferred(data, "locationId", "location_id"));
   if (requested) return requested;

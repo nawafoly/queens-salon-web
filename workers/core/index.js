@@ -92,6 +92,8 @@ import {
   updateItem as updateInventoryItem,
   listLocations as listInventoryLocations,
   ensureDefaultLocation,
+  setStaffHomeLocation,
+  getStaffHomeLocation,
   createLocation,
   listStockLevels,
   recordOpeningBalance,
@@ -2809,6 +2811,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "inventory:staff-home-location": {
+      requirePermission(actorInfo, "inventory.locations.manage");
+      const saved = await setStaffHomeLocation(env.D1, tenantId, body || {}, actorInfo);
+      return json({ ok: true, data: saved });
+    }
     case "inventory:locations":
       if (method === "GET") {
         requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
