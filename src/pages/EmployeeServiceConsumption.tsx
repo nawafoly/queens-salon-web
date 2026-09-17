@@ -300,15 +300,15 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   }
 
   if (loading) {
-    return <section className="employee-portal-card">جاري تجهيز قائمة الاستهلاك الإلزامي...</section>;
+    return <section className="employee-portal-card">جاري تحميل حجوزاتك...</section>;
   }
 
   return (
     <section className="employee-portal-card" dir="rtl" style={{ maxWidth: 760, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 16 }}>
         <div>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>استهلاك إلزامي لنفس اليوم — بند الحجز</p>
-          <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>تأكيد استهلاك الخدمات</h2>
+          <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>حجوزاتك اليوم والمتأخرة</p>
+          <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>حجوزاتي</h2>
         </div>
         <span style={{ background: "#111", color: "#fff", borderRadius: 999, padding: "6px 12px", fontSize: 12 }}>
           {salonTodayISO()} · {pending.length}
@@ -327,22 +327,22 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
             fontWeight: 600,
           }}
         >
-          تنبيه متأخر: لديك {overdueCount} بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.
+          لديك حجوزات متأخرة بدون تأكيد مواد: {overdueCount} بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.
         </div>
       ) : null}
 
       {error ? <div className="alert alert-danger">{error}</div> : null}
       {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-      {renderSection("1. مطلوب اليوم", sections.dueToday, { empty: "لا يوجد مطلوب اليوم." })}
-      {renderSection("2. بانتظار التأكيد", sections.awaiting, { empty: "لا يوجد بانتظار التأكيد." })}
-      {renderSection("3. متأخر", sections.overdue, { sticky: true, empty: "لا يوجد متأخر." })}
-      {sections.upcoming.length ? renderSection("قادم (معاينة)", sections.upcoming, { empty: "" }) : null}
+      {renderSection("حجوزات اليوم", sections.dueToday, { empty: "لا يوجد مطلوب اليوم." })}
+      {renderSection("بانتظار التأكيد", sections.awaiting, { empty: "لا يوجد بانتظار التأكيد." })}
+      {renderSection("متأخرة", sections.overdue, { sticky: true, empty: "لا يوجد متأخر." })}
+      {sections.upcoming.length ? renderSection("قادمة", sections.upcoming, { empty: "" }) : null}
 
       {selected ? (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <p style={{ margin: 0, fontWeight: 600 }}>الاستهلاك الافتراضي (قابل للتعديل)</p>
+            <p style={{ margin: 0, fontWeight: 600 }}>مواد هذا الحجز</p>
             <Badge lifecycle={selected.lifecycle} />
           </div>
           {!selectedConfirmable ? (
@@ -444,7 +444,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           ? "جاري التأكيد..."
           : !selectedConfirmable && selected
             ? "التأكيد غير متاح قبل يوم الخدمة"
-            : "تأكيد وخصم المخزون"}
+            : "تأكيد الحجز وخصم المواد"}
       </button>
     </section>
   );
