@@ -35,6 +35,96 @@
     scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
 
+  /* Requests workspace: mobile-first hierarchy, less chrome, clearer primary action. */
+  .employee-requests-page {
+    width: min(100%, 720px) !important;
+    margin-inline: auto !important;
+    padding: 10px 12px 24px !important;
+  }
+
+  .employee-requests-hero {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 14px !important;
+    border-radius: 18px !important;
+  }
+
+  .employee-requests-hero small {
+    display: none !important;
+  }
+
+  .employee-requests-hero h1 {
+    margin: 0 !important;
+    font-size: 1.3rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .employee-requests-hero p {
+    margin: 4px 0 0 !important;
+    max-width: 34ch;
+    font-size: 0.78rem !important;
+    line-height: 1.5 !important;
+  }
+
+  .employee-requests-hero > button {
+    min-height: 44px !important;
+    white-space: nowrap !important;
+    border-radius: 14px !important;
+    padding-inline: 14px !important;
+  }
+
+  .employee-requests-filters {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px !important;
+    gap: 8px !important;
+    margin-block: 12px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .employee-requests-filters > span {
+    display: none !important;
+  }
+
+  .employee-requests-filters select,
+  .employee-requests-filters button {
+    min-height: 44px !important;
+    border-radius: 12px !important;
+  }
+
+  .employee-requests-list {
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  .employee-request-card {
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    gap: 10px !important;
+    min-width: 0 !important;
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .employee-request-card > div {
+    min-width: 0 !important;
+  }
+
+  .employee-request-card strong,
+  .employee-request-card p,
+  .employee-request-card small {
+    overflow-wrap: anywhere;
+  }
+
+  .employee-request-card > .employee-request-status {
+    grid-column: 2 !important;
+    justify-self: start !important;
+    margin-top: 4px !important;
+  }
+
   /* Request creation becomes a task-focused mobile surface. */
   .employee-request-modal {
     position: fixed !important;
@@ -144,5 +234,17 @@
     width: 17px !important;
     height: 17px !important;
     padding: 6px !important;
+  }
+
+  .employee-requests-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .employee-requests-hero > button {
+    width: 100% !important;
+  }
+
+  .employee-requests-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px !important;
   }
 }
