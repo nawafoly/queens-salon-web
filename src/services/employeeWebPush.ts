@@ -146,14 +146,18 @@ export async function enableEmployeeWebPush() {
     );
   }
 
+  // iOS requires the permission prompt to stay inside the user's click.
+  // Do not put a network await before this call.
+  const permission = Notification.permission === "granted"
+    ? "granted"
+    : await Notification.requestPermission();
+  if (permission !== "granted") {
+    throw new Error("يجب السماح بالتنبيهات من إعدادات الجهاز.");
+  }
+
   const config = await getPushConfig();
   if (!config.enabled || !config.publicKey) {
     throw new Error("خدمة التنبيهات لم تُفعّل على الخادم بعد.");
-  }
-
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") {
-    throw new Error("يجب السماح بالتنبيهات من إعدادات الجهاز.");
   }
 
   const registration = await registerWorker();
