@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "work:start": "node scripts/work-session.mjs start",
+    "work:finish": "node scripts/work-session.mjs finish",
     "dev": "node scripts/dev-with-partners.mjs",
     "dev:full": "node scripts/dev-with-partners.mjs",
     "dev:setup": "node scripts/dev-setup.mjs",

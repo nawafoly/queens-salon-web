@@ -92,3 +92,9 @@ vite-*.err.log
 master/
 
 .chatgpt-backups/
+
+# Cross-device local-only files
+/scripts/habat-native-login-test.json
+/wrangler.core.dev.jsonc
+/wrangler.partners.dev.jsonc
+/.work-sync-state.json
