@@ -1,0 +1,148 @@
+/*
+ * Malikat Employee Portal — Mobile UX V2
+ * Shell and request-flow overrides only.
+ * IMPORTANT: attendance punch visual/button styles are intentionally untouched.
+ */
+
+@media (max-width: 820px) {
+  /* Five primary destinations only; keep safe-area spacing deterministic. */
+  .employee-portal.madan-employee-portal .employee-bottom-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    min-height: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-bottom-nav__item {
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-bottom-nav__item > span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* No floating CTA may overlap the navigation bar on mobile. */
+  .employee-portal.madan-employee-portal .employee-floating-request {
+    display: none !important;
+  }
+
+  /* One scroll owner for route content; reserve bottom-nav safe area. */
+  .employee-portal.madan-employee-portal .employee-app-route-scroll {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Request creation becomes a task-focused mobile surface. */
+  .employee-request-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1400 !important;
+    display: block !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #f6f7f9 !important;
+    backdrop-filter: none !important;
+  }
+
+  .employee-request-modal__panel {
+    display: flex !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .employee-request-modal__panel > header {
+    position: relative !important;
+    z-index: 5 !important;
+    top: auto !important;
+    flex: 0 0 auto !important;
+    min-height: calc(66px + env(safe-area-inset-top, 0px));
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px !important;
+    border-bottom: 1px solid #e8ebef !important;
+    background: #fff !important;
+    backdrop-filter: none !important;
+  }
+
+  .employee-request-modal__panel form {
+    display: grid !important;
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+    align-content: start !important;
+    gap: 14px !important;
+    padding: 16px 14px 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .employee-request-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .employee-request-field,
+  .employee-request-field--wide {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+  }
+
+  .employee-request-field input,
+  .employee-request-field select,
+  .employee-request-field textarea {
+    min-height: 48px !important;
+    font-size: 16px !important;
+  }
+
+  /* Primary action is always reachable, including on iPhone safe areas. */
+  .employee-request-modal__panel form > footer {
+    position: sticky !important;
+    z-index: 6 !important;
+    bottom: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 10px !important;
+    margin: 4px -14px 0 !important;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid #e8ebef !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 -12px 30px rgba(15, 23, 42, 0.08) !important;
+    backdrop-filter: blur(16px);
+  }
+
+  .employee-request-modal__panel form > footer button {
+    min-height: 50px !important;
+    border-radius: 14px !important;
+  }
+
+  .employee-request-modal__panel form > footer button[type="submit"] {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .employee-request-modal__panel form > footer button.is-secondary {
+    min-width: 82px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .employee-portal.madan-employee-portal .employee-bottom-nav__item {
+    font-size: 0.49rem !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-bottom-nav__item svg {
+    width: 17px !important;
+    height: 17px !important;
+    padding: 6px !important;
+  }
+}
