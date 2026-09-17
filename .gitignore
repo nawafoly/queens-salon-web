@@ -98,3 +98,4 @@ master/
 /wrangler.core.dev.jsonc
 /wrangler.partners.dev.jsonc
 /.work-sync-state.json
+/.web-push-vapid.local.json
