@@ -1,0 +1,117 @@
+/*
+ * Malikat Employee Portal — installed web-app shell
+ *
+ * Applies only when iOS/other browsers launch the site in standalone mode.
+ * The employee portal then behaves as an app viewport: fixed app chrome with
+ * one internal route scroller. Attendance punch visuals are intentionally
+ * untouched.
+ */
+
+@media (max-width: 820px) {
+  html.webapp-standalone:has(body .employee-portal.madan-employee-portal) {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    background: #f4f5f6 !important;
+  }
+
+  html.webapp-standalone body:has(.employee-portal.madan-employee-portal),
+  html.webapp-standalone body:has(.employee-portal.madan-employee-portal) #root {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    background: #f4f5f6 !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal {
+    position: relative !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    background: #f4f5f6 !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-portal-layout--app {
+    position: absolute !important;
+    top: calc(68px + env(safe-area-inset-top, 0px)) !important;
+    right: 0 !important;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-portal-main {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 8px 8px 0 !important;
+    overflow: hidden !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-app-route-scroll {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding: 0 0 18px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-x: none !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-app-route-scroll::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-app-route-scroll > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-app-topbar,
+  html.webapp-standalone body #root .employee-portal.madan-employee-portal
+    .employee-bottom-nav {
+    position: fixed !important;
+    touch-action: manipulation !important;
+  }
+}
