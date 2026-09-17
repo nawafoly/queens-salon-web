@@ -558,6 +558,30 @@ export async function createLocation(db, salonId, data, actor = {}) {
   return dbFirst(db, 'SELECT * FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
 }
 
+
+async function resolveLocationFromAttendanceZone(db, salonId, employeeId) {
+  if (!employeeId) return null;
+  const punch = await dbFirst(
+    db,
+    `SELECT zone_id
+       FROM attendance_records
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND zone_id IS NOT NULL
+        AND TRIM(zone_id) <> ''
+      ORDER BY recorded_at DESC, created_at DESC
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+  if (!punch?.zone_id) return null;
+  const loc = await dbFirst(
+    db,
+    `SELECT id FROM inventory_locations WHERE salon_id = ? AND attendance_zone_id = ? LIMIT 1`,
+    [salonId, punch.zone_id]
+  );
+  return loc?.id || null;
+}
+
 async function resolveStaffHomeLocationId(db, salonId, employeeId) {
   if (!employeeId) return (await ensureDefaultLocation(db, salonId)).id;
   const mapped = await dbFirst(
@@ -566,6 +590,8 @@ async function resolveStaffHomeLocationId(db, salonId, employeeId) {
     [salonId, employeeId]
   );
   if (mapped?.location_id) return mapped.location_id;
+  const fromZone = await resolveLocationFromAttendanceZone(db, salonId, employeeId);
+  if (fromZone) return fromZone;
   return (await ensureDefaultLocation(db, salonId)).id;
 }
 
