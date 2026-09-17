@@ -74,7 +74,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -92,8 +92,8 @@ export default function DashboardInventory() {
     for (const row of levels) { map.set(row.item_id, Number(map.get(row.item_id) || 0) + Number(row.qty_on_hand || 0)); }
     return map;
   }, [levels]);
-  function locationName(id) { return locations.find((row) => row.id === id)?.name || id || "-"; }
-  function locationStockLabel(itemId) {
+  function locationName(id: string) { return locations.find((row) => row.id === id)?.name || id || "-"; }
+  function locationStockLabel(itemId: string) {
     const rows = levels.filter((row) => row.item_id === itemId);
     if (!rows.length) return "0";
     return rows.map((row) => locationName(row.location_id) + ": " + String(row.qty_on_hand ?? 0)).join(" | ");
@@ -120,7 +120,7 @@ export default function DashboardInventory() {
       ]);
       setItems(itemRows || []);
       setLevels(levelRows || []);
-      setLocations(locationRows || []);
+      setLocations(Array.isArray(locationRows) ? locationRows : []);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

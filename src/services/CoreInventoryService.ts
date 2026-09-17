@@ -226,7 +226,7 @@ export const CoreInventoryService = {
       body: input,
     });
   },
-  receivePurchase(input: { itemId: string; quantity: number; unitCostHalalas?: number; supplierId?: string | null; note?: string }) {
+  receivePurchase(input: { itemId: string; quantity: number; unitCostHalalas?: number; supplierId?: string | null; note?: string; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/purchase-receipt", { method: "POST", body: input });
   },
   sellProduct(input: { itemId: string; quantity: number; note?: string }) {

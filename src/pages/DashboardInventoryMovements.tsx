@@ -43,7 +43,7 @@ export default function DashboardInventoryMovements() {
         ]);
         setRows(movements || []);
         setItems(itemRows || []);
-        setLocations(locationRows || []);
+        setLocations(Array.isArray(locationRows) ? locationRows : []);
       } catch (err) {
         setError(errorMessage(err));
       } finally {
