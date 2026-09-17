@@ -363,6 +363,13 @@ export async function getStaff(db, salonId, id) {
 }
 
 export async function patchStaff(db, salonId, id, data) {
+  const existingForGuard = await getStaff(db, salonId, id).catch(() => null);
+  const nextFlag = data.showOnBooking === undefined && data.show_on_booking === undefined
+    ? undefined
+    : (data.showOnBooking ?? data.show_on_booking);
+  if (nextFlag !== undefined) {
+    assertCanEnableShowOnBooking(existingForGuard || {}, nextFlag ? 1 : 0);
+  }
   return updateById(db, "staff", salonId, requiredId(id), {
     name:
       data.name === undefined
@@ -424,6 +431,13 @@ export function staffIsActive(row) {
     Number(row?.active) === 1 &&
     statuses.every((status) => !inactiveEmploymentStatuses.has(status))
   );
+}
+
+export function assertCanEnableShowOnBooking(row, nextFlag) {
+  if (Number(nextFlag) !== 1) return;
+  if (!staffIsActive(row)) {
+    throw new AppError(409, "core_staff:inactive_cannot_show_on_booking", "الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز.");
+  }
 }
 
 export function staffIsPubliclyBookable(row) {

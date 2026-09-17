@@ -21,6 +21,7 @@ export type EmployeeBasicTabLiveV2Props = {
   active: boolean;
   showOnAbout: boolean;
   showOnBooking: boolean;
+  accountStatus?: string;
   includeInEmployeeManagement: boolean;
   employmentStartDate: string;
   weeklyOffLabel: string;
@@ -38,6 +39,7 @@ export function EmployeeBasicTabLiveV2({
   active,
   showOnAbout,
   showOnBooking,
+    accountStatus,
   includeInEmployeeManagement,
   employmentStartDate,
   weeklyOffLabel,
@@ -116,7 +118,14 @@ export function EmployeeBasicTabLiveV2({
               disabled={readOnly}
               label="الظهور في صفحة الحجز"
               description="إتاحة اختيار الموظفة للخدمات المسندة."
-              onChange={onShowOnBookingChange}
+              onChange={(value) => {
+                const status = String(accountStatus || "").toLowerCase();
+                if (value && ["inactive","disabled","offboarded","archived","suspended"].includes(status)) {
+                  window.alert("الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز.");
+                  return;
+                }
+                onShowOnBookingChange(value);
+              }}
             />
           </div>
 
