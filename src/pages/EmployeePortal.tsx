@@ -169,6 +169,8 @@ type EmployeeMorePageProps = {
     profile: number;
     requests: number;
   };
+  onLogout: () => void | Promise<void>;
+  loggingOut: boolean;
 };
 
 function EmployeeMorePage({
@@ -176,6 +178,8 @@ function EmployeeMorePage({
   roleLabel,
   avatarUrl,
   notificationCounts,
+  onLogout,
+  loggingOut,
 }: EmployeeMorePageProps) {
   const { hasPermission } = usePermissions();
   const [pushState, setPushState] = useState<EmployeeWebPushState | null>(null);
@@ -368,6 +372,21 @@ function EmployeeMorePage({
           </Link>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="employee-more-logout"
+        onClick={() => void onLogout()}
+        disabled={loggingOut}
+      >
+        <span className="employee-more-logout__icon" aria-hidden="true">
+          <FontAwesomeIcon icon={faRightFromBracket} />
+        </span>
+        <span className="employee-more-logout__copy">
+          <strong>{loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}</strong>
+          <small>الخروج من حساب الموظفة على هذا الجهاز</small>
+        </span>
+      </button>
 
     </section>
   );
@@ -716,6 +735,8 @@ export default function EmployeePortal() {
                     roleLabel={roleLabel}
                     avatarUrl={avatarUrl}
                     notificationCounts={notificationCounts}
+                    onLogout={handleLogout}
+                    loggingOut={loggingOut}
                   />
                 </PermissionRoute>
               }
