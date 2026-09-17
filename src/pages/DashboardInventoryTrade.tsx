@@ -16,6 +16,8 @@ export default function DashboardInventoryTrade() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemId, setItemId] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [locations, setLocations] = useState<{ id: string; name?: string }[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [qty, setQty] = useState("1");
   const [costSar, setCostSar] = useState("");
@@ -54,7 +56,7 @@ export default function DashboardInventoryTrade() {
     setNotice("");
     try {
       const unitCostHalalas = costSar === "" ? undefined : Math.round(Number(costSar) * 100);
-      await CoreInventoryService.receivePurchase({ itemId, quantity: Number(qty), unitCostHalalas, supplierId: supplierId || undefined });
+      await CoreInventoryService.receivePurchase({ itemId, quantity: Number(qty), unitCostHalalas, supplierId: supplierId || undefined, locationId: locationId || undefined });
       setNotice("تم استلام الشراء وإضافة الكمية إلى الدفتر.");
     } catch (err) {
       setError(errorMessage(err));
@@ -72,6 +74,9 @@ export default function DashboardInventoryTrade() {
       {notice ? <p className="text-success">{notice}</p> : null}
       <DashboardFieldV2 id="inv-trade-item" label="المادة">
         <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: `${item.name} — ${item.consumption_policy}` }))} onChange={setItemId} />
+      </DashboardFieldV2>
+      <DashboardFieldV2 id="inv-trade-loc" label="الموقع">
+        <DashboardSelectV2 value={locationId} options={[{ value: "", label: "الموقع الافتراضي" }, ...locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))]} onChange={setLocationId} />
       </DashboardFieldV2>
       <DashboardFieldV2 id="inv-trade-qty" label="الكمية">
         <DashboardNumberInputV2 value={qty} onChange={(e) => setQty(e.target.value)} />

@@ -244,7 +244,7 @@ export const CoreInventoryService = {
   transferStock(input: { itemId: string; quantity: number; fromLocationId: string; toLocationId: string; note?: string }) {
     return coreApiRequest("/api/core/inventory/transfer", { method: "POST", body: input });
   },
-  recordWaste(input: { itemId: string; quantity: number; note?: string }) {
+  recordWaste(input: { itemId: string; quantity: number; note?: string; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },
   adjustAfterStocktake(input: { itemId: string; countedQty: number; note?: string }) {

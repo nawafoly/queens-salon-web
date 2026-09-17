@@ -558,6 +558,12 @@ export async function createLocation(db, salonId, data, actor = {}) {
   return dbFirst(db, 'SELECT * FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
 }
 
+async function resolveLocationId(db, salonId, data) {
+  const requested = optionalText(preferred(data, "locationId", "location_id"));
+  if (requested) return requested;
+  return (await ensureDefaultLocation(db, salonId)).id;
+}
+
 export async function ensureDefaultLocation(db, salonId) {
   const existing = await dbFirst(
     db,
@@ -1859,7 +1865,7 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
 }
 
 
-export async function recordWaste(db, salonId, data, actor = {}) { // FIFO cost on waste/sale
+export async function recordWaste(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
   const quantity = Number(preferred(data, 'quantity', 'qty'));
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -1869,7 +1875,8 @@ export async function recordWaste(db, salonId, data, actor = {}) { // FIFO cost 
   if (!item || Number(item.is_active) !== 1) {
     throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
   }
-  const location = await ensureDefaultLocation(db, salonId);
+  const locationId = await resolveLocationId(db, salonId, data);
+  const location = { id: locationId };
   const fifo = await getFifoCostForQuantity(db, salonId, itemId, quantity);
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
   return appendMovement(db, salonId, {

@@ -18,6 +18,7 @@ export default function DashboardInventoryOps() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [itemId, setItemId] = useState("");
+  const [wasteLocationId, setWasteLocationId] = useState("");
   const [fromLocationId, setFromLocationId] = useState("");
   const [toLocationId, setToLocationId] = useState("");
   const [transferQty, setTransferQty] = useState("1");
@@ -54,7 +55,7 @@ export default function DashboardInventoryOps() {
     setError("");
     setNotice("");
     try {
-      await CoreInventoryService.recordWaste({ itemId, quantity: Number(wasteQty), note: "UI waste" });
+      await CoreInventoryService.recordWaste({ itemId, quantity: Number(wasteQty), note: "UI waste", locationId: wasteLocationId || undefined });
       setNotice("تم تسجيل الهدر وخصم الكمية من الدفتر.");
     } catch (err) {
       setError(errorMessage(err));
@@ -109,6 +110,9 @@ export default function DashboardInventoryOps() {
       </DashboardFieldV2>
       <div className="border rounded p-3 mb-3">
         <h3 className="h6">هدر</h3>
+        <DashboardFieldV2 id="inv-waste-loc" label="الموقع">
+          <DashboardSelectV2 value={wasteLocationId} options={locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))} onChange={setWasteLocationId} />
+        </DashboardFieldV2>
         <DashboardFieldV2 id="inv-waste-qty" label="الكمية الهالكة">
           <DashboardNumberInputV2 value={wasteQty} onChange={(e) => setWasteQty(e.target.value)} />
         </DashboardFieldV2>
