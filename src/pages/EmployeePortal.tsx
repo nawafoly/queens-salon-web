@@ -27,6 +27,15 @@ import {
   type EmployeeNotification,
 } from "../services/employeeNotificationsCore";
 import { logoutFirebase } from "../services/authService";
+import {
+  detachEmployeeWebPushSubscription,
+  disableEmployeeWebPush,
+  enableEmployeeWebPush,
+  getEmployeeWebPushState,
+  syncEmployeeAppBadge,
+  syncExistingEmployeeWebPushSubscription,
+  type EmployeeWebPushState,
+} from "../services/employeeWebPush";
 import { listEmployeeRequestNotifications } from "../services/employeeRequests";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
@@ -169,6 +178,69 @@ function EmployeeMorePage({
   notificationCounts,
 }: EmployeeMorePageProps) {
   const { hasPermission } = usePermissions();
+  const [pushState, setPushState] = useState<EmployeeWebPushState | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    void getEmployeeWebPushState()
+      .then((state) => {
+        if (alive) setPushState(state);
+      })
+      .catch(() => {
+        if (alive) setPushState(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handlePushEnable = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushMessage("");
+    try {
+      const state = await enableEmployeeWebPush();
+      setPushState(state);
+      await syncEmployeeAppBadge(notificationCounts.all);
+      setPushMessage("تم تفعيل تنبيهات Queens Salon على هذا الجهاز.");
+    } catch (error) {
+      setPushMessage(cleanPortalText((error as Error)?.message || "تعذر تفعيل التنبيهات."));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handlePushDisable = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushMessage("");
+    try {
+      const state = await disableEmployeeWebPush();
+      setPushState(state);
+      setPushMessage("تم إيقاف تنبيهات التطبيق على هذا الجهاز.");
+    } catch (error) {
+      setPushMessage(cleanPortalText((error as Error)?.message || "تعذر إيقاف التنبيهات."));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const pushSummary = !pushState
+    ? "جاري التحقق من حالة التنبيهات..."
+    : !pushState.supported
+      ? pushState.standalone
+        ? "هذا الجهاز لا يوفّر Web Push لهذا التطبيق."
+        : "افتح Queens Salon من أيقونة الشاشة الرئيسية ثم فعّل التنبيهات."
+      : !pushState.serverEnabled
+        ? "خدمة Web Push تحتاج تفعيل مفاتيح الخادم."
+        : pushState.permission === "denied"
+          ? "التنبيهات مرفوضة من إعدادات الجهاز."
+          : pushState.subscribed
+            ? "مفعلة على هذا الجهاز، وسيظهر عدد التنبيهات على الأيقونة."
+            : "غير مفعلة على هذا الجهاز.";
+
   const items = [
     {
       to: "/employee/profile",
@@ -247,6 +319,33 @@ function EmployeeMorePage({
         </div>
       </header>
 
+      <section className="employee-push-settings" aria-label="تنبيهات التطبيق">
+        <span className="employee-push-settings__icon">
+          <FontAwesomeIcon icon={faBell} />
+        </span>
+        <div className="employee-push-settings__copy">
+          <strong>تنبيهات التطبيق</strong>
+          <span>{pushSummary}</span>
+          {pushMessage ? <small>{pushMessage}</small> : null}
+        </div>
+        <div className="employee-push-settings__actions">
+          {pushState?.subscribed ? (
+            <button type="button" onClick={() => void handlePushDisable()} disabled={pushBusy}>
+              {pushBusy ? "جارٍ التنفيذ..." : "إيقاف"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="is-primary"
+              onClick={() => void handlePushEnable()}
+              disabled={pushBusy || pushState?.serverEnabled === false || pushState?.supported === false}
+            >
+              {pushBusy ? "جارٍ التفعيل..." : "تفعيل"}
+            </button>
+          )}
+        </div>
+      </section>
+
       <div className="employee-more-grid">
         {items.filter((item) => hasPermission(item.permission)).map((item) => (
           <Link
@@ -322,7 +421,11 @@ export default function EmployeePortal() {
       }));
       const merged = new Map<string, EmployeeNotification>();
       [...requestNotificationRows, ...workforceRows].forEach((row) => merged.set(row.id, row));
-      setNotifications(Array.from(merged.values()));
+      const mergedNotifications = Array.from(merged.values());
+      setNotifications(mergedNotifications);
+      void syncEmployeeAppBadge(
+        mergedNotifications.filter((note) => !note.isRead).length
+      );
     } catch {
       if (requestId !== notificationsRequestRef.current) return;
       setNotifications([]);
@@ -342,6 +445,11 @@ export default function EmployeePortal() {
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [loadNotifications]);
+
+  useEffect(() => {
+    if (!session.uid) return;
+    void syncExistingEmployeeWebPushSubscription().catch(() => false);
+  }, [session.uid]);
 
   useEffect(() => {
     if (!requestSheetOpen) return;
@@ -364,6 +472,7 @@ export default function EmployeePortal() {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
+      await detachEmployeeWebPushSubscription();
       await logoutFirebase();
     } finally {
       navigate("/hr", { replace: true });
