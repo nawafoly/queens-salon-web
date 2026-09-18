@@ -307,7 +307,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                       canManageGeneralSettings && setSettings({ ...(settings as any), salonName: event.target.value })
                     }
                     disabled={!canManageGeneralSettings}
-                    placeholder="مثال: Queens Salon"
+                    placeholder="مثال: MALIKAT"
                   />
                 </label>
 

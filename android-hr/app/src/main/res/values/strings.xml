@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Malikat HR</string>
-    <string name="title_activity_main">Malikat HR</string>
+    <string name="app_name">MALIKAT HR</string>
+    <string name="title_activity_main">MALIKAT HR</string>
     <string name="package_name">com.Malikatsalon.staff</string>
     <string name="custom_url_scheme">com.Malikatsalon.staff</string>
 </resources>

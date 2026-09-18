@@ -36,6 +36,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
 import SuccessInternal from "./pages/SuccessInternal";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Install from "./pages/Install";
 import PartnerLogin from "./pages/PartnerLogin";
 import PartnerPortal from "./pages/PartnerPortal";
 
@@ -773,6 +774,7 @@ const App: React.FC = () => {
         />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
+        <Route path="/install" element={<Install />} />
         <Route path="/chat" element={<Navigate to="/" replace />} />
 
         {/* Track */}
@@ -969,5 +971,4 @@ const App: React.FC = () => {
 };
 
 export default App;
-
 

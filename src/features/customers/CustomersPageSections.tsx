@@ -46,7 +46,7 @@ export function CustomersPageHeader({ visibleCount, totalCount }: { visibleCount
   return (
     <header className="dsv2-page-head dsv2-customers-page-head">
       <div className="dsv2-customers-heading">
-        <p className="dsv2-customers-eyebrow">Queens Salon</p>
+        <p className="dsv2-customers-eyebrow">MALIKAT</p>
         <h1 className="dsv2-page-title">إدارة العملاء</h1>
         <p className="dsv2-page-subtitle">ملفات العميلات وحجوزاتهن وبيانات التواصل في مساحة واحدة منظّمة.</p>
       </div>

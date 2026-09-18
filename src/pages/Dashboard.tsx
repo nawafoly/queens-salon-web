@@ -2777,7 +2777,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             <DashboardHeader
               theme="dashboard"
               title={dashboardHeaderTitle}
-              subtitle={settings.salonName || "Queens Salon"}
+              subtitle={settings.salonName || "MALIKAT"}
               className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}
               showProfileButton={hasPermission("workspace.dashboard.view")}
               leading={

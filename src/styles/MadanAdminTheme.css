@@ -1049,7 +1049,7 @@
 }
 
 .dashboard-skin.madan-admin-shell .madan-overview-v2 .overview-header::after {
-  content: "QUEENS SALON" !important;
+  content: "MALIKAT" !important;
   position: absolute !important;
   inset-inline-start: clamp(24px, 3.3vw, 42px) !important;
   bottom: 20px !important;

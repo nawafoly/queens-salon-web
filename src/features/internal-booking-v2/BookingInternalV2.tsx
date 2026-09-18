@@ -1367,7 +1367,7 @@ export default function BookingInternalV2() {
     <div className="bk2-page" dir="rtl">
       <header className="bk2-heading">
         <div>
-          <p className="bk2-eyebrow">Queens Salon</p>
+          <p className="bk2-eyebrow">MALIKAT</p>
           <h1>الحجز الإداري</h1>
           <p>إنشاء حجز جديد بخطوات واضحة وسريعة.</p>
         </div>

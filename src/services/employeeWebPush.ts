@@ -142,7 +142,7 @@ export async function enableEmployeeWebPush() {
     throw new Error(
       isStandaloneMode()
         ? "هذا الجهاز لا يدعم تنبيهات الويب."
-        : "افتح Queens Salon من أيقونة الشاشة الرئيسية لتفعيل التنبيهات."
+        : "افتح MALIKAT من أيقونة الشاشة الرئيسية لتفعيل التنبيهات."
     );
   }
 

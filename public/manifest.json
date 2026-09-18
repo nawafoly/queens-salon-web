@@ -1,9 +1,11 @@
 {
   "id": "/",
-  "name": "Queens Salon",
-  "short_name": "Queens Salon",
+  "name": "MALIKAT",
+  "short_name": "MALIKAT",
+  "description": "نظام MALIKAT لإدارة خدمات الصالون والحجوزات",
   "lang": "ar",
   "dir": "rtl",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone"],

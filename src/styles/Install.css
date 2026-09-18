@@ -1,0 +1,219 @@
+.malikat-install {
+  --install-black: #05080d;
+  --install-gold: #d9a50b;
+  --install-gold-soft: rgba(217, 165, 11, 0.12);
+  --install-border: rgba(5, 8, 13, 0.1);
+  position: relative;
+  display: grid;
+  min-height: min(820px, calc(100dvh - 80px));
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(28px, 6vw, 72px) 18px;
+  color: var(--install-black);
+  background:
+    radial-gradient(circle at 15% 15%, rgba(217, 165, 11, 0.11), transparent 34%),
+    linear-gradient(145deg, #f5f5f5 0%, #ffffff 58%, #f3f3f3 100%);
+}
+
+.malikat-install__glow {
+  position: absolute;
+  inset: auto -120px -160px auto;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: rgba(217, 165, 11, 0.13);
+  filter: blur(70px);
+  pointer-events: none;
+}
+
+.malikat-install__card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 900px);
+  padding: clamp(24px, 5vw, 54px);
+  border: 1px solid var(--install-border);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 28px 80px rgba(5, 8, 13, 0.11);
+  backdrop-filter: blur(16px);
+}
+
+.malikat-install__brand {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(22px, 4vw, 42px);
+}
+
+.malikat-install__logo {
+  display: block;
+  width: 144px;
+  height: 144px;
+  border-radius: 30px;
+  object-fit: cover;
+  box-shadow: 0 18px 44px rgba(5, 8, 13, 0.2);
+}
+
+.malikat-install__eyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #956d00;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.malikat-install h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.75rem);
+  font-weight: 950;
+  line-height: 1.08;
+}
+
+.malikat-install__brand p {
+  max-width: 620px;
+  margin: 14px 0 0;
+  color: #4b5563;
+  font-size: clamp(0.95rem, 2vw, 1.08rem);
+  line-height: 1.9;
+}
+
+.malikat-install__primary {
+  display: inline-flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 34px;
+  padding: 12px 22px;
+  border: 1px solid var(--install-black);
+  border-radius: 16px;
+  color: #ffffff;
+  background: var(--install-black);
+  box-shadow: 0 16px 32px rgba(5, 8, 13, 0.17);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.malikat-install__primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 38px rgba(5, 8, 13, 0.22);
+}
+
+.malikat-install__primary:focus-visible {
+  outline: 3px solid rgba(217, 165, 11, 0.35);
+  outline-offset: 3px;
+}
+
+.malikat-install__primary:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.malikat-install__notice,
+.malikat-install__instructions {
+  margin: 18px 0 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(217, 165, 11, 0.35);
+  border-radius: 16px;
+  background: var(--install-gold-soft);
+  line-height: 1.8;
+}
+
+.malikat-install__notice--success {
+  border-color: rgba(23, 115, 72, 0.28);
+  color: #0e633c;
+  background: rgba(23, 115, 72, 0.08);
+}
+
+.malikat-install__instructions h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.malikat-install__instructions ol {
+  margin: 0;
+  padding-inline-start: 24px;
+}
+
+.malikat-install__instructions li + li {
+  margin-top: 6px;
+}
+
+.malikat-install__benefits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.malikat-install__benefits > div {
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--install-border);
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.malikat-install__benefits span {
+  display: block;
+  margin-bottom: 14px;
+  color: #9a7407;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.malikat-install__benefits strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.malikat-install__benefits p {
+  margin: 7px 0 0;
+  color: #5b6470;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+@media (max-width: 680px) {
+  .malikat-install {
+    min-height: auto;
+    padding: 20px 12px 34px;
+  }
+
+  .malikat-install__card {
+    padding: 24px 18px;
+    border-radius: 22px;
+  }
+
+  .malikat-install__brand {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .malikat-install__logo {
+    width: 118px;
+    height: 118px;
+    border-radius: 26px;
+  }
+
+  .malikat-install__benefits {
+    grid-template-columns: 1fr;
+  }
+
+  .malikat-install__benefits > div {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .malikat-install__primary {
+    transition: none;
+  }
+}

@@ -12,6 +12,9 @@ import "./styles/EmployeePortalStandalone.css";
 
 import App from "./App";
 import AndroidBackButtonHandler from "./components/AndroidBackButtonHandler";
+import { registerMalikatServiceWorker } from "./services/appInstall";
+
+registerMalikatServiceWorker();
 
 if (import.meta.env.DEV) {
   void import("./services/firestoreDebug");

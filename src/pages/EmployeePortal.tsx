@@ -208,7 +208,7 @@ function EmployeeMorePage({
       const state = await enableEmployeeWebPush();
       setPushState(state);
       await syncEmployeeAppBadge(notificationCounts.all);
-      setPushMessage("تم تفعيل تنبيهات Queens Salon على هذا الجهاز.");
+      setPushMessage("تم تفعيل تنبيهات MALIKAT على هذا الجهاز.");
     } catch (error) {
       setPushMessage(cleanPortalText((error as Error)?.message || "تعذر تفعيل التنبيهات."));
     } finally {
@@ -236,7 +236,7 @@ function EmployeeMorePage({
     : !pushState.supported
       ? pushState.standalone
         ? "هذا الجهاز لا يوفّر Web Push لهذا التطبيق."
-        : "افتح Queens Salon من أيقونة الشاشة الرئيسية ثم فعّل التنبيهات."
+        : "افتح MALIKAT من أيقونة الشاشة الرئيسية ثم فعّل التنبيهات."
       : !pushState.serverEnabled
         ? "خدمة Web Push تحتاج تفعيل مفاتيح الخادم."
         : pushState.permission === "denied"
@@ -607,7 +607,7 @@ export default function EmployeePortal() {
       <DashboardHeader
         theme="employee"
         title={employeeHeaderTitle}
-        subtitle="Queens Salon"
+        subtitle="MALIKAT"
         className="employee-workspace-header--mobile dashboard-header--mobile-shell"
         actions={renderNotificationAction()}
       />
@@ -694,7 +694,7 @@ export default function EmployeePortal() {
           <DashboardHeader
             theme="employee"
             title={employeeHeaderTitle}
-            subtitle="Queens Salon"
+            subtitle="MALIKAT"
             className="employee-workspace-header--desktop dashboard-header--desktop-shell"
             actions={renderDesktopHeaderActions()}
           />

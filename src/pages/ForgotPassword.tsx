@@ -172,7 +172,7 @@ const ForgotPassword: React.FC = () => {
   return (
     <div className="fp-page madan-auth-shell">
       <div className="fp-card">
-        <div className="madan-auth-kicker">QUEENS SALON · ACCOUNT RECOVERY</div>
+        <div className="madan-auth-kicker">MALIKAT · ACCOUNT RECOVERY</div>
         <h2 className="fp-title">
           {step === 1 && "نسيت كلمة المرور؟"}
           {step === 2 && "أدخل الكود المرسل"}

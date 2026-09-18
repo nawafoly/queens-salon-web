@@ -1,4 +1,4 @@
-/* Queens Salon employee Web Push service worker. */
+/* MALIKAT employee Web Push and install service worker. */
 const DEFAULT_ROUTE = "/employee/notifications";
 
 function safePayload(event) {
@@ -40,7 +40,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("push", (event) => {
   const data = safePayload(event);
-  const title = String(data.title || "Queens Salon").trim() || "Queens Salon";
+  const title = String(data.title || "MALIKAT").trim() || "MALIKAT";
   const body = String(data.body || "لديك تحديث جديد").trim();
   const url = resolveTarget(data.url);
   const badge = Math.max(0, Number(data.badge || 0));
@@ -51,7 +51,7 @@ self.addEventListener("push", (event) => {
       self.registration.showNotification(title, {
         body,
         icon: "/logo192.png",
-        tag: String(data.tag || "queens-salon-update"),
+        tag: String(data.tag || "malikat-update"),
         data: { url },
         dir: "rtl",
         lang: "ar",
