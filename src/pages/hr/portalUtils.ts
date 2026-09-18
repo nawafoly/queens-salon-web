@@ -21,19 +21,19 @@ export function toMillis(value: unknown) {
   return 0;
 }
 
-export function formatNotificationTime(value: unknown) {
+export function formatNotificationTime(value: unknown, language: "ar" | "en" = "ar") {
   const ms = toMillis(value);
-  if (!ms) return "الآن";
+  if (!ms) return language === "ar" ? "الآن" : "Now";
   const diff = Date.now() - ms;
   const abs = Math.abs(diff);
-  const rtf = new Intl.RelativeTimeFormat("ar", { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
 
-  if (abs < 60_000) return "الآن";
+  if (abs < 60_000) return language === "ar" ? "الآن" : "Now";
   if (abs < 3_600_000) return rtf.format(-Math.round(diff / 60_000), "minute");
   if (abs < 86_400_000) return rtf.format(-Math.round(diff / 3_600_000), "hour");
   if (abs < 7 * 86_400_000) return rtf.format(-Math.round(diff / 86_400_000), "day");
 
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -42,8 +42,16 @@ export function formatNotificationTime(value: unknown) {
   }).format(new Date(ms));
 }
 
-export function notificationTypeLabel(type?: string) {
+export function notificationTypeLabel(type?: string, language: "ar" | "en" = "ar") {
   const normalized = cleanText(type).toLowerCase();
+  if (language === "en") {
+    if (normalized === "message") return "Message";
+    if (normalized === "file") return "File";
+    if (normalized === "leave") return "Leave";
+    if (normalized === "payroll") return "Payroll";
+    if (normalized === "employee_request") return "Employee request";
+    return "Alert";
+  }
   if (normalized === "message") return "رسالة";
   if (normalized === "file") return "ملف";
   if (normalized === "leave") return "إجازة";

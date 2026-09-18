@@ -14,6 +14,10 @@
   direction: ltr;
 }
 
+.employee-portal--en .employee-hr-info-arrow {
+  transform: rotate(180deg);
+}
+
 .employee-more-page {
   display: grid;
   width: 100%;

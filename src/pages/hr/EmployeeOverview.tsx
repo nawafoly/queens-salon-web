@@ -74,6 +74,7 @@ import {
   type EmployeeTargetMine,
 } from "../../services/CoreEmployeeTargetService";
 import { usePermissions } from "../../security/PermissionContext";
+import { useEmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 
 type Props = {
   session: HrSession;
@@ -82,32 +83,86 @@ type Props = {
   attendanceOnly?: boolean;
 };
 
-function roleLabel(role: string) {
+const overviewCopy = {
+  ar: {
+    evening: "مساء الخير", morning: "صباح الخير", afternoon: "نهارك سعيد",
+    noDepartment: "بدون قسم", noTitle: "بدون مسمى وظيفي",
+    owner: "مالك", admin: "مدير", hr: "موارد بشرية", reception: "استقبال", employee: "موظف",
+    leaveUntil: "في إجازة حتى", onLeave: "في إجازة", checkingLeave: "جاري التحقق من الإجازات", leaveUnavailable: "حالة الإجازة غير متاحة", active: "نشط",
+    runtimeUnavailable: "بعض البيانات التشغيلية غير متاحة الآن.", runtimeLegacy: "لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.",
+    notificationSummary: "ملخص التنبيهات", unreadNotifications: "التنبيهات غير المقروءة", messages: "الرسائل", fileUpdates: "تحديثات الملفات", leavePayroll: "الإجازات والرواتب",
+    attendance: "الحضور والانصراف", attendanceEntry: "تسجيل الدوام", gps: "GPS + تصوير حسب الفرع",
+    checkIn: "الحضور", checkedIn: "تم الحضور", notCheckedIn: "لم يتم الحضور", checkOut: "الانصراف", checkedOut: "تم الانصراف", notCheckedOut: "لم يتم الانصراف",
+    registering: "جاري التسجيل", updatingToday: "جاري تحديث حالة اليوم...", attendanceComplete: "تم تسجيل الحضور والانصراف", attendanceRecorded: "تم تسجيل الحضور", attendanceNotRecorded: "لم يتم تسجيل الحضور",
+    punchOutHint: "اضغط البصمة لتسجيل الانصراف وإكمال دوام اليوم.", completedHint: "تم اكتمال دوام اليوم وحفظ الحضور والانصراف.", punchInHint: "اضغط البصمة لتسجيل الحضور، والضغطة التالية في نفس اليوم تسجل الانصراف تلقائيًا.",
+    verificationData: "بيانات التحقق من الحضور", acceptableAccuracy: "دقة الموقع مقبولة", weakAccuracy: "دقة الموقع ضعيفة", distance: "المسافة", meter: "م",
+    myTarget: "تارقتي", targetSubtitle: "تقدم المبيعات والبونص", viewDetails: "عرض التفاصيل", targetLoading: "جاري تحميل تارقتك...", noTargetPlan: "لا توجد خطة تارقت مخصصة لهذه الدورة حتى الآن.",
+    collectedSales: "المبيعات المحصلة", target: "التارقت", currentBonus: "البونص الحالي", noTier: "لم تتحقق شريحة بعد", remaining: "متبقي", bonusGoal: "للحصول على بونص", topTier: "تم تحقيق أعلى شريحة في الخطة الحالية.", payrollClosed: "دورة الراتب مغلقة", currentPayroll: "دورة الراتب الحالية", lastUpdated: "آخر تحديث", neverUpdated: "لم يحدث بعد",
+    quickActions: "اختصارات سريعة", quickActionsSubtitle: "وصول سريع لأكثر الإجراءات استخدامًا", fingerprintCorrection: "تصحيح البصمة", leaveRequest: "طلب إجازة", permissionRequest: "طلب استئذان",
+    hrInfo: "معلومات الموارد البشرية", hrInfoSubtitle: "عناصر تنقل فقط، كل قسم يفتح في صفحة داخلية مستقلة",
+    personal: "شخصي", personalDescription: "المعلومات الشخصية، الهوية، العنوان", employment: "البيانات الوظيفية", employmentDescription: "تاريخ الالتحاق، المسمى الوظيفي، نوع التوظيف", schedule: "جدول الدوام", scheduleDescription: "بداية ونهاية الدوام، أيام الراحة، ونطاق الحضور", salaryData: "بيانات الراتب", salaryDataDescription: "الراتب الأساسي، التأمينات، البدلات، والخصومات الثابتة", payrollDetails: "الراتب والتفاصيل المالية", payrollDetailsDescription: "سجل رواتب نهاية الشهر والراتب النهائي المقفل", contracts: "العقود", contractsDescription: "العقود الحالية والمنتهية", leaves: "الإجازات", leavesDescription: "الرصيد، الطلبات، والإجازات المعتمدة", documents: "مستندات", documentsDescription: "الإقامة، الجواز والمستندات الأخرى",
+    upcomingBookings: "حجوزاتي القادمة", upcomingBookingsSubtitle: "الحجوزات المرتبطة بملفك كموظفة داخل نفس البروفايل.", booking: "حجز", client: "عميلة", bookingsLoading: "جاري تحميل الحجوزات...", noBookings: "لا توجد حجوزات قادمة مرتبطة بملفك.", confirmed: "مؤكد", completed: "مكتمل", cancelled: "ملغي", pendingConfirmation: "بانتظار التأكيد",
+    latestRequests: "آخر الطلبات", latestRequestsSubtitle: "آخر التحديثات المسجلة في النظام الحالي", noRequests: "لا توجد طلبات مسجلة حتى الآن.",
+    remainingBalance: "الرصيد المتبقي", remainingBalanceSubtitle: "يعرض الرصيد الحالي من بيانات الموظف الموجودة", leaveBalance: "رصيد الإجازات", coreBalance: "الرصيد التشغيلي المعتمد من Core", loading: "جاري...", day: "يوم",
+    announcements: "الإعلانات", announcementsSubtitle: "لا توجد إعلانات مرتبطة حاليًا.", noAnnouncements: "لا توجد إعلانات حاليًا.",
+    targetSessionExpired: "انتهت جلسة الدخول.", targetLinkRequired: "الحساب غير مربوط بملف موظفة.", targetForbidden: "لا توجد صلاحية لعرض التارقت.", targetLoadFailed: "تعذر تحميل التارقت.",
+    shiftLoadingBlocked: "انتظري حتى يكتمل تحميل شفت اليوم.", noShiftBlocked: "لا يوجد شفت منشور لهذا اليوم.", approvedLeaveBlocked: "اليوم مسجل كإجازة معتمدة، لذلك لا يمكن تسجيل حضور جديد.", offDayBlocked: "اليوم مسجل كيوم راحة، لذلك لا يمكن تسجيل حضور جديد.", windowClosedBlocked: "انتهت مهلة تسجيل الحضور. تم إغلاق بصمة الحضور، ويرجى مراجعة الإدارة.", attendanceDisabled: "تسجيل الحضور متوقف من إعدادات الإدارة.", locating: "جاري الحصول على موقعك بدقة...", biometric: "افتح التحقق بالبصمة من جهازك...", sendingIn: "جاري إرسال الحضور إلى Cloudflare...", sendingOut: "جاري إرسال الانصراف إلى Cloudflare...", saveFailed: "تعذر حفظ عملية الحضور.",
+    dutyCompleted: "تم اكتمال الدوام", registerOut: "تسجيل انصراف", loadingShift: "جاري تحميل الشفت", approvedLeave: "إجازة معتمدة", offDay: "يوم راحة", noShift: "لا يوجد شفت اليوم", windowClosed: "انتهت مهلة الحضور", registerIn: "تسجيل حضور", savedToday: "تم حفظ الحضور والانصراف لهذا اليوم", readingShift: "جاري قراءة الشفت المنشور من النظام المركزي.", shiftFallback: "تعذر عرض بيانات الشفت في التقويم. عند تسجيل الحضور سيتم التحقق من الشفت مباشرة من Core داخل خادم الحضور.", leaveCovered: "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية.", noDuty: "لا يوجد دوام مطلوب لهذا اليوم حسب الشفت المنشور.", noPublishedShift: "لا يوجد شفت منشور لهذا اليوم. راجعي الإدارة إذا كان يفترض وجود دوام.", autoAbsence: "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر.", keepOpen: "لا تغلق الصفحة أثناء التحقق",
+  },
+  en: {
+    evening: "Good evening", morning: "Good morning", afternoon: "Good afternoon",
+    noDepartment: "No department", noTitle: "No job title",
+    owner: "Owner", admin: "Manager", hr: "Human Resources", reception: "Reception", employee: "Employee",
+    leaveUntil: "On leave until", onLeave: "On leave", checkingLeave: "Checking leave status", leaveUnavailable: "Leave status unavailable", active: "Active",
+    runtimeUnavailable: "Some operational data is currently unavailable.", runtimeLegacy: "No legacy schedule or leave status was used as a fallback.",
+    notificationSummary: "Notification summary", unreadNotifications: "Unread notifications", messages: "Messages", fileUpdates: "File updates", leavePayroll: "Leave and payroll",
+    attendance: "Attendance", attendanceEntry: "Clock in and out", gps: "GPS + branch photo verification",
+    checkIn: "Clock in", checkedIn: "Clocked in", notCheckedIn: "Not clocked in", checkOut: "Clock out", checkedOut: "Clocked out", notCheckedOut: "Not clocked out",
+    registering: "Recording...", updatingToday: "Updating today’s status...", attendanceComplete: "Clock-in and clock-out recorded", attendanceRecorded: "Clock-in recorded", attendanceNotRecorded: "No clock-in recorded",
+    punchOutHint: "Tap the fingerprint to clock out and complete today’s shift.", completedHint: "Today’s attendance has been completed and saved.", punchInHint: "Tap the fingerprint to clock in. The next tap today will clock you out automatically.",
+    verificationData: "Attendance verification details", acceptableAccuracy: "Location accuracy accepted", weakAccuracy: "Low location accuracy", distance: "Distance", meter: "m",
+    myTarget: "My Targets", targetSubtitle: "Sales and bonus progress", viewDetails: "View details", targetLoading: "Loading your targets...", noTargetPlan: "No target plan has been assigned for this period yet.",
+    collectedSales: "Collected sales", target: "Target", currentBonus: "Current bonus", noTier: "No tier achieved yet", remaining: "Remaining", bonusGoal: "to earn a bonus of", topTier: "You reached the highest tier in the current plan.", payrollClosed: "Payroll period closed", currentPayroll: "Current payroll period", lastUpdated: "Last updated", neverUpdated: "Not updated yet",
+    quickActions: "Quick actions", quickActionsSubtitle: "Fast access to frequently used actions", fingerprintCorrection: "Attendance correction", leaveRequest: "Request leave", permissionRequest: "Request permission",
+    hrInfo: "HR information", hrInfoSubtitle: "Navigation links; each section opens on its own page",
+    personal: "Personal", personalDescription: "Personal details, ID and address", employment: "Employment details", employmentDescription: "Start date, job title and employment type", schedule: "Work schedule", scheduleDescription: "Working hours, rest days and attendance zone", salaryData: "Salary information", salaryDataDescription: "Base salary, insurance, allowances and fixed deductions", payrollDetails: "Payroll and financial details", payrollDetailsDescription: "Month-end payroll history and finalized salary", contracts: "Contracts", contractsDescription: "Current and expired contracts", leaves: "Leave", leavesDescription: "Balance, requests and approved leave", documents: "Documents", documentsDescription: "Residence permit, passport and other documents",
+    upcomingBookings: "Upcoming bookings", upcomingBookingsSubtitle: "Bookings linked to your employee profile.", booking: "Booking", client: "Client", bookingsLoading: "Loading bookings...", noBookings: "No upcoming bookings are linked to your profile.", confirmed: "Confirmed", completed: "Completed", cancelled: "Cancelled", pendingConfirmation: "Pending confirmation",
+    latestRequests: "Latest requests", latestRequestsSubtitle: "Latest updates recorded in the system", noRequests: "No requests have been recorded yet.",
+    remainingBalance: "Remaining balance", remainingBalanceSubtitle: "Your current balance from the employee record", leaveBalance: "Leave balance", coreBalance: "Approved operational balance from Core", loading: "Loading...", day: "day",
+    announcements: "Announcements", announcementsSubtitle: "No announcements are currently linked.", noAnnouncements: "No announcements right now.",
+    targetSessionExpired: "Your session has expired.", targetLinkRequired: "This account is not linked to an employee profile.", targetForbidden: "You do not have permission to view targets.", targetLoadFailed: "Could not load targets.",
+    shiftLoadingBlocked: "Wait until today’s shift finishes loading.", noShiftBlocked: "No shift is published for today.", approvedLeaveBlocked: "Today is approved leave, so a new clock-in cannot be recorded.", offDayBlocked: "Today is a rest day, so a new clock-in cannot be recorded.", windowClosedBlocked: "The clock-in window has closed. Please contact management.", attendanceDisabled: "Attendance is disabled in management settings.", locating: "Getting your precise location...", biometric: "Open biometric verification on your device...", sendingIn: "Sending clock-in to Cloudflare...", sendingOut: "Sending clock-out to Cloudflare...", saveFailed: "Could not save attendance.",
+    dutyCompleted: "Shift completed", registerOut: "Clock out", loadingShift: "Loading shift", approvedLeave: "Approved leave", offDay: "Rest day", noShift: "No shift today", windowClosed: "Clock-in window closed", registerIn: "Clock in", savedToday: "Today’s clock-in and clock-out are saved", readingShift: "Reading the published shift from the central system.", shiftFallback: "Shift details are unavailable. On clock-in, Core will verify the shift through the attendance server.", leaveCovered: "This day is covered by approved leave in the HR system.", noDuty: "No work is required today according to the published shift.", noPublishedShift: "No shift is published today. Contact management if you should be working.", autoAbsence: "The clock-in window is closed and absence will be recorded automatically. Contact management if you have an excuse.", keepOpen: "Keep this page open during verification",
+  },
+} as const;
+
+type OverviewCopy = { [K in keyof typeof overviewCopy.ar]: string };
+
+function roleLabel(role: string, copy: OverviewCopy) {
   const normalized = cleanText(role).toLowerCase();
-  if (normalized === "owner") return "مالك";
-  if (normalized === "admin") return "مدير";
-  if (normalized === "hr") return "موارد بشرية";
-  if (normalized === "reception") return "استقبال";
-  if (normalized === "staff") return "موظف";
-  return "موظف";
+  if (normalized === "owner") return copy.owner;
+  if (normalized === "admin") return copy.admin;
+  if (normalized === "hr") return copy.hr;
+  if (normalized === "reception") return copy.reception;
+  return copy.employee;
 }
 
-function getGreeting() {
+function getGreeting(copy: OverviewCopy) {
   const hour = new Date().getHours();
-  if (hour < 5) return "مساء الخير";
-  if (hour < 12) return "صباح الخير";
-  if (hour < 17) return "نهارك سعيد";
-  return "مساء الخير";
+  if (hour < 5) return copy.evening;
+  if (hour < 12) return copy.morning;
+  if (hour < 17) return copy.afternoon;
+  return copy.evening;
 }
 
 function displayInitial(value: unknown) {
   return cleanText(value || "م").slice(0, 1).toUpperCase();
 }
 
-function formatAttendanceDateLabel(dateKey: string) {
+function formatAttendanceDateLabel(dateKey: string, language: "ar" | "en") {
   const parsed = new Date(`${dateKey}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return dateKey;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-SA", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -310,36 +365,36 @@ function isApprovedFullDayLeaveForDate(
   return Boolean(fromDate && fromDate <= dateKey && toDate && toDate >= dateKey);
 }
 
-function formatAttendanceTime(value: unknown) {
+function formatAttendanceTime(value: unknown, language: "ar" | "en") {
   const raw = cleanText(value);
   if (!raw) return "--:--";
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(parsed));
 }
 
-function formatTargetMoney(halalas: number | undefined | null) {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
+function formatTargetMoney(halalas: number | undefined | null, language: "ar" | "en") {
+  return new Intl.NumberFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 0,
   }).format(Number(halalas || 0) / 100);
 }
 
-function formatTargetPercent(value: number | undefined | null) {
-  return `${(Number(value || 0) * 100).toLocaleString("ar-SA-u-nu-latn", {
+function formatTargetPercent(value: number | undefined | null, language: "ar" | "en") {
+  return `${(Number(value || 0) * 100).toLocaleString(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     maximumFractionDigits: 1,
   })}%`;
 }
 
-function formatTargetUpdatedAt(value: string | undefined | null) {
-  if (!value) return "لم يحدث بعد";
+function formatTargetUpdatedAt(value: string | undefined | null, language: "ar" | "en", copy: OverviewCopy) {
+  if (!value) return copy.neverUpdated;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return String(value).slice(0, 10);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-SA", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -347,32 +402,28 @@ function formatTargetUpdatedAt(value: string | undefined | null) {
   }).format(new Date(parsed));
 }
 
-function employeeTargetErrorMessage(error: unknown) {
+function employeeTargetErrorMessage(error: unknown, copy: OverviewCopy) {
   if (error instanceof CoreApiError) {
-    if (error.status === 401) return "انتهت جلسة الدخول.";
-    if (error.code.includes("employee_link_required")) return "الحساب غير مربوط بملف موظفة.";
-    if (error.status === 403) return "لا توجد صلاحية لعرض التارقت.";
+    if (error.status === 401) return copy.targetSessionExpired;
+    if (error.code.includes("employee_link_required")) return copy.targetLinkRequired;
+    if (error.status === 403) return copy.targetForbidden;
   }
-  return "تعذر تحميل التارقت.";
+  return copy.targetLoadFailed;
 }
 
-function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
-  if (status === "checked_out") return "انصرف";
-  if (status === "checked_in") return "حاضر";
-  return "لم يسجل حضور";
-}
-
-function getBookingStatusLabel(status: string | undefined) {
+function getBookingStatusLabel(status: string | undefined, copy: OverviewCopy) {
   const normalized = cleanText(status || "pending").toLowerCase();
-  if (normalized === "confirmed") return "مؤكد";
-  if (normalized === "completed") return "مكتمل";
-  if (normalized === "cancelled") return "ملغي";
-  return "بانتظار التأكيد";
+  if (normalized === "confirmed") return copy.confirmed;
+  if (normalized === "completed") return copy.completed;
+  if (normalized === "cancelled") return copy.cancelled;
+  return copy.pendingConfirmation;
 }
 
 export default function EmployeeOverviewPage({ session, notifications, onRefresh, attendanceOnly = false }: Props) {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
+  const { language } = useEmployeePortalLanguage();
+  const copy = overviewCopy[language];
   const profile = getProfileSource(session);
   const displayName = cleanText(profile.displayName || profile.name || session.displayName || session.email || "Employee");
   const department = cleanText(profile.department || "");
@@ -919,7 +970,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       } catch (error) {
         if (alive) {
           setEmployeeTarget(null);
-          setEmployeeTargetError(employeeTargetErrorMessage(error));
+          setEmployeeTargetError(employeeTargetErrorMessage(error, copy));
         }
       } finally {
         if (alive) setEmployeeTargetLoading(false);
@@ -931,7 +982,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [canViewOwnTarget, currentTargetPeriod.payrollMonth]);
+  }, [canViewOwnTarget, copy, currentTargetPeriod.payrollMonth]);
 
   const loadAttendancePermissions = useCallback(async () => {
     if (!session.uid) {
@@ -973,23 +1024,23 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
   const quickActions = [
     ...(canViewAttendance
-      ? [{ label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint }]
+      ? [{ label: copy.fingerprintCorrection, href: "/employee/attendance", icon: faFingerprint }]
       : []),
-    { label: "طلب إجازة", href: "/employee/leave", icon: faCalendarDays },
-    { label: "طلب استئذان", href: "/employee/permission", icon: faPaperPlane },
+    { label: copy.leaveRequest, href: "/employee/leave", icon: faCalendarDays },
+    { label: copy.permissionRequest, href: "/employee/permission", icon: faPaperPlane },
   ];
 
   const hrInfoItems = [
-    { label: "شخصي", description: "المعلومات الشخصية، الهوية، العنوان", href: "/employee/profile", icon: faUser },
-    { label: "البيانات الوظيفية", description: "تاريخ الالتحاق، المسمى الوظيفي، نوع التوظيف", href: "/employee/profile", icon: faBriefcase },
+    { label: copy.personal, description: copy.personalDescription, href: "/employee/profile", icon: faUser },
+    { label: copy.employment, description: copy.employmentDescription, href: "/employee/profile", icon: faBriefcase },
     ...(canViewAttendance
-      ? [{ label: "جدول الدوام", description: "بداية ونهاية الدوام، أيام الراحة، ونطاق الحضور", href: "/employee/attendance", icon: faClock }]
+      ? [{ label: copy.schedule, description: copy.scheduleDescription, href: "/employee/attendance", icon: faClock }]
       : []),
-    { label: "بيانات الراتب", description: "الراتب الأساسي، التأمينات، البدلات، والخصومات الثابتة", href: "/employee/payroll", icon: faMoneyBillWave },
-    { label: "الراتب والتفاصيل المالية", description: "سجل رواتب نهاية الشهر والراتب النهائي المقفل", href: "/employee/payroll", icon: faMoneyBillWave },
-    { label: "العقود", description: "العقود الحالية والمنتهية", href: "/employee/files", icon: faFileLines },
-    { label: "الإجازات", description: "الرصيد، الطلبات، والإجازات المعتمدة", href: "/employee/leave", icon: faCalendarCheck },
-    { label: "مستندات", description: "الإقامة، الجواز والمستندات الأخرى", href: "/employee/files", icon: faIdBadge },
+    { label: copy.salaryData, description: copy.salaryDataDescription, href: "/employee/payroll", icon: faMoneyBillWave },
+    { label: copy.payrollDetails, description: copy.payrollDetailsDescription, href: "/employee/payroll", icon: faMoneyBillWave },
+    { label: copy.contracts, description: copy.contractsDescription, href: "/employee/files", icon: faFileLines },
+    { label: copy.leaves, description: copy.leavesDescription, href: "/employee/leave", icon: faCalendarCheck },
+    { label: copy.documents, description: copy.documentsDescription, href: "/employee/files", icon: faIdBadge },
   ];
 
   const openNotification = async (note: EmployeeNotification) => {
@@ -1014,9 +1065,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       return;
     }
     if (type === "check_in" && todayResolvedShiftLoading) {
-      setAttendanceMessage(
-        "???? ????? ???? ?????? ???????."
-      );
+      setAttendanceMessage(copy.shiftLoadingBlocked);
       return;
     }
 
@@ -1025,21 +1074,17 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       !todayResolvedShiftError &&
       !hasResolvedWorkShift
     ) {
-      setAttendanceMessage(
-        "?? ???? ??? ??? ????? ???? ?????."
-      );
+      setAttendanceMessage(copy.noShiftBlocked);
       return;
     }
     if (type === "check_in" && (attendanceDayStatus === "leave" || attendanceDayStatus === "off_day")) {
       setAttendanceMessage(
-        attendanceDayStatus === "leave"
-          ? "اليوم مسجل كإجازة معتمدة، لذلك لا يمكن تسجيل حضور جديد."
-          : "اليوم مسجل كيوم راحة، لذلك لا يمكن تسجيل حضور جديد."
+        attendanceDayStatus === "leave" ? copy.approvedLeaveBlocked : copy.offDayBlocked
       );
       return;
     }
     if (type === "check_in" && isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule)) {
-      setAttendanceMessage("انتهت مهلة تسجيل الحضور. تم إغلاق بصمة الحضور، ويرجى مراجعة الإدارة.");
+      setAttendanceMessage(copy.windowClosedBlocked);
       return;
     }
 
@@ -1054,14 +1099,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         AppSettingsService.getDefaults().attendance!;
 
       if (effectiveAttendanceSettings.enabled === false) {
-        throw new Error(
-          "تسجيل الحضور متوقف من إعدادات الإدارة."
-        );
+        throw new Error(copy.attendanceDisabled);
       }
 
-      setAttendanceMessage(
-        "جاري الحصول على موقعك بدقة..."
-      );
+      setAttendanceMessage(copy.locating);
 
       const location: AttendanceLocation =
         await getBrowserPosition({
@@ -1078,9 +1119,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setLastLocation(location);
 
       if (effectiveAttendanceSettings.requireBiometric) {
-        setAttendanceMessage(
-          "افتح التحقق بالبصمة من جهازك..."
-        );
+        setAttendanceMessage(copy.biometric);
 
         await requestAttendanceBiometric({
           employeeId: attendanceEmployeeId,
@@ -1090,9 +1129,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       }
 
       setAttendanceMessage(
-        type === "check_in"
-          ? "جاري إرسال الحضور إلى Cloudflare..."
-          : "جاري إرسال الانصراف إلى Cloudflare..."
+        type === "check_in" ? copy.sendingIn : copy.sendingOut
       );
 
       const response = await submitAttendanceToWorker({
@@ -1133,8 +1170,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
       setAttendanceMessage(
         cleanText(
-          attendanceError?.message ||
-            "تعذر حفظ عملية الحضور."
+          attendanceError?.message || copy.saveFailed
         )
       );
     } finally {
@@ -1144,13 +1180,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
   const statusLabel = onLeave
     ? leaveUntil
-      ? `في إجازة حتى ${formatShortDate(leaveUntil)}`
-      : "في إجازة"
+      ? `${copy.leaveUntil} ${formatShortDate(leaveUntil)}`
+      : copy.onLeave
     : employeeLeaveLoading
-      ? "جاري التحقق من الإجازات"
+      ? copy.checkingLeave
       : employeeLeaveError
-        ? "حالة الإجازة غير متاحة"
-        : "نشط";
+        ? copy.leaveUnavailable
+        : copy.active;
   const attendanceStatus = attendance?.status || "not_started";
   const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
   const canAttemptCheckInWithServerValidation =
@@ -1175,23 +1211,23 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const punchAction = canCheckOut ? "check_out" : "check_in";
   const punchDisabled = !canCheckIn && !canCheckOut;
   const punchLabel = attendanceStatus === "checked_out"
-    ? "تم اكتمال الدوام"
+    ? copy.dutyCompleted
     : canCheckOut
-      ? "تسجيل انصراف"
+      ? copy.registerOut
       : todayResolvedShiftLoading
-        ? "جاري تحميل الشفت"
+        ? copy.loadingShift
         : attendanceDayStatus === "leave"
-            ? "إجازة معتمدة"
+            ? copy.approvedLeave
             : attendanceDayStatus === "off_day"
-              ? "يوم راحة"
+              ? copy.offDay
               : !hasResolvedWorkShift
-                ? "لا يوجد شفت اليوم"
+                ? copy.noShift
                 : checkInWindowClosed
-                  ? "انتهت مهلة الحضور"
-                  : "تسجيل حضور";
+                  ? copy.windowClosed
+                  : copy.registerIn;
   const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
-  const checkInTime = formatAttendanceTime(attendance?.checkInAtClient);
-  const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient);
+  const checkInTime = formatAttendanceTime(attendance?.checkInAtClient, language);
+  const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient, language);
   const latestVerification =
     attendance?.checkOutVerification ||
     attendance?.checkInVerification ||
@@ -1209,8 +1245,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     visibleAccuracy === null
       ? ""
       : visibleAccuracy <= 150
-        ? `دقة الموقع مقبولة: ${visibleAccuracy} م`
-        : `دقة الموقع ضعيفة: ${visibleAccuracy} م`;
+        ? `${copy.acceptableAccuracy}: ${visibleAccuracy} ${copy.meter}`
+        : `${copy.weakAccuracy}: ${visibleAccuracy} ${copy.meter}`;
   const hasAttendanceVerificationMeta =
     Boolean(visibleZoneName) ||
     Boolean(visibleAccuracyLabel) ||
@@ -1220,27 +1256,27 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     hasAttendanceVerificationMeta;
   const leaveBalanceValue =
     employeeLeaveBalanceLoading
-      ? "جاري..."
+      ? copy.loading
       : employeeLeaveBalance === null
         ? "—"
-        : `${employeeLeaveBalance} يوم`;
-  const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
+        : `${employeeLeaveBalance} ${copy.day}`;
+  const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate, language);
   const punchHint = attendanceStatus === "checked_out"
-    ? "تم حفظ الحضور والانصراف لهذا اليوم"
+    ? copy.savedToday
     : todayResolvedShiftLoading
-      ? "جاري قراءة الشفت المنشور من النظام المركزي."
+      ? copy.readingShift
       : todayResolvedShiftError
-        ? "تعذر عرض بيانات الشفت في التقويم. عند تسجيل الحضور سيتم التحقق من الشفت مباشرة من Core داخل خادم الحضور."
+        ? copy.shiftFallback
         : attendanceDayStatus === "leave"
-          ? "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية."
+          ? copy.leaveCovered
           : attendanceDayStatus === "off_day"
-            ? "لا يوجد دوام مطلوب لهذا اليوم حسب الشفت المنشور."
+            ? copy.noDuty
             : !hasResolvedWorkShift
-              ? "لا يوجد شفت منشور لهذا اليوم. راجعي الإدارة إذا كان يفترض وجود دوام."
+              ? copy.noPublishedShift
               : checkInWindowClosed && attendanceStatus === "not_started"
-                ? "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر."
+                ? copy.autoAbsence
                 : attendanceBusy
-                  ? "لا تغلق الصفحة أثناء التحقق"
+                  ? copy.keepOpen
                   : "";
   const targetSummary = employeeTarget?.summary;
   const targetAmount = Number(targetSummary?.currentTargetAmount || employeeTarget?.targetCalculation?.targetAmount || 0);
@@ -1323,47 +1359,47 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             loading="eager"
           />
           <div>
-            <p>{getGreeting()}</p>
+            <p>{getGreeting(copy)}</p>
             <h1>{displayName}</h1>
-            <span>{department || "بدون قسم"} · {title || "بدون مسمى وظيفي"}</span>
+            <span>{department || copy.noDepartment} · {title || copy.noTitle}</span>
           </div>
         </div>
         <div className="employee-app-intro__meta">
           <span className={`employee-status-pill ${onLeave ? "is-leave" : employeeLeaveError ? "is-inactive" : "is-active"}`}>{statusLabel}</span>
-          <span>{roleLabel(session.role)}</span>
+          <span>{roleLabel(session.role, copy)}</span>
           <span>{attendanceDateLabel}</span>
         </div>
       </section>
 
       {employeeLeaveError || (canViewAttendance && todayResolvedShiftError) ? (
         <div className="employee-overview-runtime-alert" role="status" aria-live="polite">
-          <strong>بعض البيانات التشغيلية غير متاحة الآن.</strong>
+          <strong>{copy.runtimeUnavailable}</strong>
           <span>{employeeLeaveError || todayResolvedShiftError}</span>
-          <small>لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.</small>
+          <small>{copy.runtimeLegacy}</small>
         </div>
       ) : null}
 
-      <section className="employee-overview-kpis" aria-label="ملخص التنبيهات">
+      <section className="employee-overview-kpis" aria-label={copy.notificationSummary}>
         <Link to="/employee/notifications" className="employee-overview-kpi">
           <FontAwesomeIcon icon={faBell} />
-          <span>التنبيهات غير المقروءة</span>
+          <span>{copy.unreadNotifications}</span>
           <strong>{summary.all}</strong>
         </Link>
         {canViewMessages ? (
           <Link to="/employee/messages" className="employee-overview-kpi">
             <FontAwesomeIcon icon={faPaperPlane} />
-            <span>الرسائل</span>
+            <span>{copy.messages}</span>
             <strong>{summary.message}</strong>
           </Link>
         ) : null}
         <Link to="/employee/files" className="employee-overview-kpi">
           <FontAwesomeIcon icon={faFileLines} />
-          <span>تحديثات الملفات</span>
+          <span>{copy.fileUpdates}</span>
           <strong>{summary.file}</strong>
         </Link>
         <Link to="/employee/leave" className="employee-overview-kpi">
           <FontAwesomeIcon icon={faCalendarCheck} />
-          <span>الإجازات والرواتب</span>
+          <span>{copy.leavePayroll}</span>
           <strong>{summary.leave + summary.payroll}</strong>
         </Link>
       </section>
@@ -1372,18 +1408,18 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       <section className={`employee-attendance-card employee-attendance-card--${attendanceStatus}`} data-status={attendanceStatus}>
         <div className="employee-section-title">
           <div>
-            <small><FontAwesomeIcon icon={faClock} /> الحضور والانصراف</small>
-            <h2>تسجيل الدوام</h2>
+            <small><FontAwesomeIcon icon={faClock} /> {copy.attendance}</small>
+            <h2>{copy.attendanceEntry}</h2>
           </div>
-          <span className="employee-gps-chip"><i aria-hidden="true" /> GPS + تصوير حسب الفرع</span>
+          <span className="employee-gps-chip"><i aria-hidden="true" /> {copy.gps}</span>
         </div>
 
         <div className="employee-attendance-console">
           <div className="employee-attendance-side employee-attendance-side--in">
-            <span>الحضور</span>
+            <span>{copy.checkIn}</span>
             <strong>{checkInTime}</strong>
             <em className={attendance?.checkInAtClient ? "is-done" : ""}>
-              {attendance?.checkInAtClient ? "تم الحضور" : "لم يتم الحضور"}
+              {attendance?.checkInAtClient ? copy.checkedIn : copy.notCheckedIn}
             </em>
           </div>
 
@@ -1393,19 +1429,19 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
               className={`employee-punch-button employee-punch-button--${punchTone}`}
               onClick={() => void handleAttendancePunch(punchAction)}
               disabled={punchDisabled}
-              aria-label={attendanceBusy ? "جاري التسجيل" : punchLabel}
+              aria-label={attendanceBusy ? copy.registering : punchLabel}
               aria-describedby="employee-punch-hint"
             >
               <span><FontAwesomeIcon icon={faFingerprint} /></span>
             </button>
-            <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
+            <strong>{attendanceBusy ? `${copy.registering}...` : punchLabel}</strong>
           </div>
 
           <div className="employee-attendance-side employee-attendance-side--out">
-            <span>الانصراف</span>
+            <span>{copy.checkOut}</span>
             <strong>{checkOutTime}</strong>
             <em className={attendance?.checkOutAtClient ? "is-done" : ""}>
-              {attendance?.checkOutAtClient ? "تم الانصراف" : "لم يتم الانصراف"}
+              {attendance?.checkOutAtClient ? copy.checkedOut : copy.notCheckedOut}
             </em>
           </div>
         </div>
@@ -1414,12 +1450,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <span>
             {attendanceMessage || (
               attendanceLoading
-                ? "جاري تحديث حالة اليوم..."
+                ? copy.updatingToday
                 : attendanceStatus === "checked_out"
-                  ? "تم تسجيل الحضور والانصراف"
+                  ? copy.attendanceComplete
                   : attendanceStatus === "checked_in"
-                    ? "تم تسجيل الحضور"
-                    : "لم يتم تسجيل الحضور"
+                    ? copy.attendanceRecorded
+                    : copy.attendanceNotRecorded
             )}
           </span>
         </div>
@@ -1427,19 +1463,19 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         <div className="employee-attendance-hint" id="employee-punch-hint">
           {punchHint || (
             attendanceStatus === "checked_in"
-              ? "اضغط البصمة لتسجيل الانصراف وإكمال دوام اليوم."
+              ? copy.punchOutHint
               : attendanceStatus === "checked_out"
-                ? "تم اكتمال دوام اليوم وحفظ الحضور والانصراف."
-                : "اضغط البصمة لتسجيل الحضور، والضغطة التالية في نفس اليوم تسجل الانصراف تلقائيًا."
+                ? copy.completedHint
+                : copy.punchInHint
           )}
         </div>
 
         {shouldShowAttendanceNote && hasAttendanceVerificationMeta ? (
-          <div className="employee-attendance-note is-meta-only" aria-label="بيانات التحقق من الحضور">
+          <div className="employee-attendance-note is-meta-only" aria-label={copy.verificationData}>
             <div>
               {visibleZoneName ? <small>{visibleZoneName}</small> : null}
               {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
-              {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
+              {visibleDistance !== null ? <small>{copy.distance}: {visibleDistance} {copy.meter}</small> : null}
             </div>
           </div>
         ) : null}
@@ -1447,36 +1483,36 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       ) : null}
 
       {canViewOwnTarget ? (
-      <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label="تارقتي">
+      <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label={copy.myTarget}>
         <div className="employee-target-home-card__head">
           <span><FontAwesomeIcon icon={faChartLine} /></span>
           <div>
-            <small>تارقتي</small>
-            <h2>تقدم المبيعات والبونص</h2>
+            <small>{copy.myTarget}</small>
+            <h2>{copy.targetSubtitle}</h2>
           </div>
-          <Link to="/employee/targets">عرض التفاصيل</Link>
+          <Link to="/employee/targets">{copy.viewDetails}</Link>
         </div>
 
         {employeeTargetLoading ? (
-          <p className="employee-target-home-card__message">جاري تحميل تارقتك...</p>
+          <p className="employee-target-home-card__message">{copy.targetLoading}</p>
         ) : employeeTargetError ? (
           <p className="employee-target-home-card__message">{employeeTargetError}</p>
         ) : !targetHasPlan ? (
-          <p className="employee-target-home-card__message">لا توجد خطة تارقت مخصصة لهذه الدورة حتى الآن.</p>
+          <p className="employee-target-home-card__message">{copy.noTargetPlan}</p>
         ) : (
           <>
             <div className="employee-target-home-card__numbers">
               <div>
-                <span>المبيعات المحصلة</span>
-                <strong>{formatTargetMoney(targetSales)}</strong>
+                <span>{copy.collectedSales}</span>
+                <strong>{formatTargetMoney(targetSales, language)}</strong>
               </div>
               <div>
-                <span>التارقت</span>
-                <strong>{formatTargetMoney(targetAmount)}</strong>
+                <span>{copy.target}</span>
+                <strong>{formatTargetMoney(targetAmount, language)}</strong>
               </div>
               <div>
-                <span>البونص الحالي</span>
-                <strong>{formatTargetMoney(targetSummary?.earnedBonusAmount)}</strong>
+                <span>{copy.currentBonus}</span>
+                <strong>{formatTargetMoney(targetSummary?.earnedBonusAmount, language)}</strong>
               </div>
             </div>
 
@@ -1485,18 +1521,18 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             </div>
 
             <div className="employee-target-home-card__foot">
-              <strong>{formatTargetPercent(targetProgress)}</strong>
-              <span>{targetAchievedTier?.tierName || "لم تتحقق شريحة بعد"}</span>
+              <strong>{formatTargetPercent(targetProgress, language)}</strong>
+              <span>{targetAchievedTier?.tierName || copy.noTier}</span>
               <small>
                 {targetNextTier
-                  ? `متبقي ${formatTargetMoney(targetRemaining)} للحصول على بونص ${formatTargetMoney(targetNextTier.bonusAmount)}`
-                  : "تم تحقيق أعلى شريحة في الخطة الحالية."}
+                  ? `${copy.remaining} ${formatTargetMoney(targetRemaining, language)} ${copy.bonusGoal} ${formatTargetMoney(targetNextTier.bonusAmount, language)}`
+                  : copy.topTier}
               </small>
             </div>
 
             <div className="employee-target-home-card__updated">
-              <span>{targetClosed ? "دورة الراتب مغلقة" : "دورة الراتب الحالية"}</span>
-              <span>آخر تحديث: {formatTargetUpdatedAt(employeeTarget?.lastUpdatedAt || targetSummary?.lastUpdatedAt)}</span>
+              <span>{targetClosed ? copy.payrollClosed : copy.currentPayroll}</span>
+              <span>{copy.lastUpdated}: {formatTargetUpdatedAt(employeeTarget?.lastUpdatedAt || targetSummary?.lastUpdatedAt, language, copy)}</span>
             </div>
           </>
         )}
@@ -1505,8 +1541,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
       <section className="employee-overview-block">
         <div className="employee-block-head">
-          <h2>اختصارات سريعة</h2>
-          <p>وصول سريع لأكثر الإجراءات استخدامًا</p>
+          <h2>{copy.quickActions}</h2>
+          <p>{copy.quickActionsSubtitle}</p>
         </div>
         <div className="employee-shortcuts-grid">
           {quickActions.map((action) => (
@@ -1520,8 +1556,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
       <section className="employee-overview-block">
         <div className="employee-block-head">
-          <h2>معلومات الموارد البشرية</h2>
-          <p>عناصر تنقل فقط، كل قسم يفتح في صفحة داخلية مستقلة</p>
+          <h2>{copy.hrInfo}</h2>
+          <p>{copy.hrInfoSubtitle}</p>
         </div>
         <div className="employee-hr-info-list">
           {hrInfoItems.map((item) => (
@@ -1540,34 +1576,34 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       </section>
       <section className="employee-overview-block">
         <div className="employee-block-head">
-          <h2>حجوزاتي القادمة</h2>
-          <p>الحجوزات المرتبطة بملفك كموظفة داخل نفس البروفايل.</p>
+          <h2>{copy.upcomingBookings}</h2>
+          <p>{copy.upcomingBookingsSubtitle}</p>
         </div>
         <div className="employee-request-list">
           {upcomingBookings.map((booking) => (
             <div key={booking.id} className="employee-request-row">
               <span className={`employee-notification-tone employee-notification-tone--${booking.status === "confirmed" ? "success" : "info"}`}>
-                {getBookingStatusLabel(booking.status)}
+                {getBookingStatusLabel(booking.status, copy)}
               </span>
               <div>
-                <strong>{cleanText(booking.serviceName || booking.serviceSnapshot?.serviceNameAtBooking || "حجز")}</strong>
+                <strong>{cleanText(booking.serviceName || booking.serviceSnapshot?.serviceNameAtBooking || copy.booking)}</strong>
                 <small>
-                  {cleanText(booking.date) || "-"} | {cleanText(booking.time || booking.startTime) || "-"} | {cleanText(booking.clientName) || "عميلة"}
+                  {cleanText(booking.date) || "-"} | {cleanText(booking.time || booking.startTime) || "-"} | {cleanText(booking.clientName) || copy.client}
                 </small>
               </div>
             </div>
           ))}
-          {employeeBookingsLoading ? <div className="employee-empty-box">جاري تحميل الحجوزات...</div> : null}
+          {employeeBookingsLoading ? <div className="employee-empty-box">{copy.bookingsLoading}</div> : null}
           {!employeeBookingsLoading && !upcomingBookings.length ? (
-            <div className="employee-empty-box">لا توجد حجوزات قادمة مرتبطة بملفك.</div>
+            <div className="employee-empty-box">{copy.noBookings}</div>
           ) : null}
         </div>
       </section>
 
       <section className="employee-overview-block">
         <div className="employee-block-head">
-          <h2>آخر الطلبات</h2>
-          <p>آخر التحديثات المسجلة في النظام الحالي</p>
+          <h2>{copy.latestRequests}</h2>
+          <p>{copy.latestRequestsSubtitle}</p>
         </div>
         <div className="employee-request-list">
           {latestNotes.slice(0, 4).map((note) => (
@@ -1578,30 +1614,30 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
               onClick={() => void openNotification(note)}
             >
               <span className={`employee-notification-tone employee-notification-tone--${notificationTone(note.type)}`}>
-                {notificationTypeLabel(note.type)}
+                {notificationTypeLabel(note.type, language)}
               </span>
               <div>
                 <strong>{note.title}</strong>
-                <small>{formatNotificationTime(note.createdAt)}</small>
+                <small>{formatNotificationTime(note.createdAt, language)}</small>
               </div>
             </button>
           ))}
-          {!latestNotes.length ? <div className="employee-empty-box">لا توجد طلبات مسجلة حتى الآن.</div> : null}
+          {!latestNotes.length ? <div className="employee-empty-box">{copy.noRequests}</div> : null}
         </div>
       </section>
 
       <section className="employee-overview-bottom-grid">
         <div className="employee-overview-block">
           <div className="employee-block-head">
-            <h2>الرصيد المتبقي</h2>
-            <p>يعرض الرصيد الحالي من بيانات الموظف الموجودة</p>
+            <h2>{copy.remainingBalance}</h2>
+            <p>{copy.remainingBalanceSubtitle}</p>
           </div>
           <div className="employee-balance-card">
             <div>
-              <span>رصيد الإجازات</span>
+              <span>{copy.leaveBalance}</span>
               <small>
                 {employeeLeaveBalanceError ||
-                  "الرصيد التشغيلي المعتمد من Core"}
+                  copy.coreBalance}
               </small>
             </div>
             <strong>{leaveBalanceValue}</strong>
@@ -1610,12 +1646,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
         <div className="employee-overview-block">
           <div className="employee-block-head">
-            <h2>الإعلانات</h2>
-            <p>لا توجد إعلانات مرتبطة حاليًا.</p>
+            <h2>{copy.announcements}</h2>
+            <p>{copy.announcementsSubtitle}</p>
           </div>
           <div className="employee-empty-box">
             <FontAwesomeIcon icon={faBell} />
-            <span>لا توجد إعلانات حاليًا.</span>
+            <span>{copy.noAnnouncements}</span>
           </div>
         </div>
       </section>
