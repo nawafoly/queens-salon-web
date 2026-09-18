@@ -63,9 +63,11 @@
   letter-spacing: 0.18em;
 }
 
-.malikat-install h1 {
+.malikat-install .malikat-install__brand h1 {
   margin: 0;
-  font-size: clamp(2rem, 5vw, 3.75rem);
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: clamp(2.15rem, 5vw, 3.75rem);
   font-weight: 950;
   line-height: 1.08;
 }
@@ -130,9 +132,11 @@
   background: rgba(23, 115, 72, 0.08);
 }
 
-.malikat-install__instructions h2 {
+.malikat-install .malikat-install__instructions h2 {
   margin: 0 0 10px;
-  font-size: 1rem;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 1.15rem;
   font-weight: 900;
 }
 
