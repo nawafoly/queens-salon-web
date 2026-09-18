@@ -240,6 +240,38 @@ test("account APIs enforce owner protection, last-owner safety and permission-gr
   assert.equal(audit.user_agent, "account-test");
 });
 
+test("admin can reduce a lower-role account without re-granting retained legacy permissions", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+
+  await db.prepare(`
+    INSERT INTO user_permissions
+      (id, salon_id, user_id, permission_key, effect, created_at, updated_at)
+    VALUES
+      ('perm-admin-manage-lower', 'main', 'user-admin', 'permissions.manage', 'allow', '2026-07-20', '2026-07-20'),
+      ('perm-staff-owner-grant', 'main', 'user-staff', 'accounts.delete', 'allow', '2026-07-20', '2026-07-20')
+  `).run();
+
+  let response = await worker.fetch(req("/api/admin/accounts/user-staff/permissions", {
+    method: "PUT",
+    uid: "uid-admin",
+    body: { permissions: ["accounts.delete"] },
+  }), testEnv);
+  let body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.permissions, ["accounts.delete"]);
+
+  response = await worker.fetch(req("/api/admin/accounts/user-staff/permissions", {
+    method: "PUT",
+    uid: "uid-admin",
+    body: { permissions: [] },
+  }), testEnv);
+  body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.permissions, []);
+});
+
 test("direct deny wins over role permissions and employee links are D1 records", async (t) => {
   const { db, env: testEnv } = await setup(t);
 
