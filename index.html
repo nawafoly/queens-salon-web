@@ -20,7 +20,12 @@
       const standalone =
         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
         window.navigator.standalone === true;
-      if (standalone) document.documentElement.classList.add('webapp-standalone');
+      if (standalone) {
+        document.documentElement.classList.add('webapp-standalone');
+        if (window.location.pathname === '/' || window.location.pathname === '/install') {
+          window.location.replace('/hr');
+        }
+      }
     })();
   </script>
 

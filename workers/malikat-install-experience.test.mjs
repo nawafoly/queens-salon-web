@@ -30,6 +30,7 @@ test("installed app uses the MALIKAT product name and branded icons", async () =
   assert.equal(appleIcon[25], 2, "Apple touch icon must be opaque RGB without transparent corners");
   assert.match(html, /apple-touch-icon-v2\.png/);
   assert.match(html, /malikat-icon-192-v2\.png/);
+  assert.match(html, /window\.location\.replace\('\/hr'\)/);
 });
 
 test("native Android launcher labels use the MALIKAT brand", async () => {
