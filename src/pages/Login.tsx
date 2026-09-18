@@ -479,7 +479,7 @@ const Login: React.FC = () => {
                 className="login-logo-img"
               />
             </div>
-            <div className="madan-auth-kicker">QUEENS SALON · SECURE ACCESS</div>
+            <div className="madan-auth-kicker">MALIKAT · SECURE ACCESS</div>
             <h1 className="login-title">
               {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
             </h1>

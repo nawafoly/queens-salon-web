@@ -9,7 +9,7 @@ const isCustomerApp = requestedVariant === "customer" || requestedVariant === "c
 const config: CapacitorConfig = isStaffApp
   ? {
       appId: "com.Malikatsalon.staff",
-      appName: "Malikat HR",
+      appName: "MALIKAT HR",
       webDir: "dist-staff",
       backgroundColor: "#05093f",
       android: {
@@ -19,7 +19,7 @@ const config: CapacitorConfig = isStaffApp
     }
   : {
       appId: "com.queenssalon.app",
-      appName: "Queens Salon",
+      appName: "MALIKAT",
       webDir: isCustomerApp ? "dist-customer" : "dist",
       android: {
         path: "android",

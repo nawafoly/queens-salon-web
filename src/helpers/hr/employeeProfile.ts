@@ -38,7 +38,7 @@ function buildR2DownloadUrl(filePath: string, download = false) {
   const normalized = String(filePath || "").trim();
   if (!normalized) return "";
   if (/^https?:\/\//i.test(normalized)) return normalized;
-  // TODO: Wire this to Queens Salon src/services/r2Upload.ts or a signed-download service when HR avatars/files need private downloads.
+  // TODO: Wire this to MALIKAT src/services/r2Upload.ts or a signed-download service when HR avatars/files need private downloads.
   return download ? normalized : normalized;
 }
 
@@ -506,4 +506,3 @@ export function buildEmployeeAvatarPatch(avatar: EmployeeAvatarDoc | null) {
 }
 
 export { EMPLOYEE_AVATAR_CATEGORY, EMPTY_VALUE as EMPLOYEE_EMPTY_VALUE };
-

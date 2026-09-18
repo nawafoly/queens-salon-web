@@ -1611,7 +1611,7 @@ export default function AdminHrDashboard({
           <DashboardHeader
             theme="admin"
             title={isCompactWorkspaceRoute ? routeMeta.title : "جاري تحميل لوحة الموارد البشرية..."}
-            subtitle="Queens Salon"
+            subtitle="MALIKAT"
             className="hr-shell-header hr-shell-header--unified"
             showProfileButton={false}
           />
@@ -1684,7 +1684,7 @@ export default function AdminHrDashboard({
       <DashboardHeader
         theme="admin"
         title={isCompactWorkspaceRoute ? compactWorkspaceTitle : routeMeta.title}
-        subtitle="Queens Salon"
+        subtitle="MALIKAT"
         className={`hr-mobile-appbar dashboard-header--mobile-shell${embedded ? " hr-embedded-hidden" : ""}`}
         actions={
           <>
@@ -1703,7 +1703,7 @@ export default function AdminHrDashboard({
         {!embedded && !isEmployeeProfileRoute ? <DashboardHeader
           theme="admin"
           title={routeMeta.title}
-          subtitle="Queens Salon"
+          subtitle="MALIKAT"
           className="hr-shell-header hr-shell-header--unified"
           actions={
             <>

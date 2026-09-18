@@ -179,7 +179,7 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
           <span className="madan-pending-brand__pulse" />
         </div>
 
-        <div className="madan-pending-kicker">Queens Salon · إدارة الحسابات</div>
+        <div className="madan-pending-kicker">MALIKAT · إدارة الحسابات</div>
         <h1 className="madan-pending-title">
           {isDisabledMode ? "حساب الدخول غير مفعل" : "حسابك بانتظار التفعيل"}
         </h1>

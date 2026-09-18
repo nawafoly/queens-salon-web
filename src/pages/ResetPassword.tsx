@@ -104,7 +104,7 @@ const ResetPassword: React.FC = () => {
     return (
         <div className="fp-page madan-auth-shell">
             <div className="fp-card">
-                <div className="madan-auth-kicker">QUEENS SALON · NEW PASSWORD</div>
+                <div className="madan-auth-kicker">MALIKAT · NEW PASSWORD</div>
                 <h2 className="fp-title">تعيين كلمة مرور جديدة</h2>
 
                 <p className="fp-subtitle">
