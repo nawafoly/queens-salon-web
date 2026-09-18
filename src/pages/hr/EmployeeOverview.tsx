@@ -581,10 +581,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setAttendance(row);
     } catch (error) {
       setAttendanceMessage(
-        cleanText(
-          (error as any)?.message ||
-            "تعذر تحميل حالة الحضور من Cloudflare."
-        )
+        language === "ar"
+          ? cleanText((error as any)?.message || "تعذر تحميل حالة الحضور من Cloudflare.")
+          : "Could not load today’s attendance status."
       );
     } finally {
       setAttendanceLoading(false);
@@ -627,19 +626,20 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setAttendanceMonthRows([]);
       setAttendanceMessage(
         cleanText(
-          (error as any)?.message ||
-            "تعذر تحميل سجل الحضور الشهري من Cloudflare."
+          language === "ar"
+            ? (error as any)?.message || "تعذر تحميل سجل الحضور الشهري من Cloudflare."
+            : "Could not load the monthly attendance record."
         )
       );
     } finally {
       setAttendanceMonthLoading(false);
     }
-  }, [attendanceEmployeeId, attendanceMonth, canViewAttendance, session.uid]);
+  }, [attendanceEmployeeId, attendanceMonth, canViewAttendance, language, session.uid]);
 
   useEffect(() => {
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewAttendance, attendanceEmployeeId, attendanceDate]);
+  }, [canViewAttendance, attendanceEmployeeId, attendanceDate, language]);
 
   useEffect(() => {
     if (
@@ -703,9 +703,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
         setAttendanceAbsenceDateKeys([]);
 
-        setAttendanceAbsenceError(
-          "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u063a\u064a\u0627\u0628 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Core."
-        );
+        setAttendanceAbsenceError(language === "ar"
+          ? "تعذر تحميل الغياب المعتمد من Core."
+          : "Could not load approved absences from Core.");
       } finally {
         if (alive) {
           setAttendanceAbsenceLoading(
@@ -724,6 +724,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     attendanceAbsenceReloadKey,
     attendanceEmployeeId,
     canViewAttendance,
+    language,
   ]);
 
   useEffect(() => {
@@ -750,7 +751,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         if (alive) {
           setTodayResolvedShift(null);
           setTodayResolvedShiftError(
-            cleanText((error as any)?.message || "تعذر تحميل جدول الدوام المعتمد من النظام المركزي.")
+            language === "ar"
+              ? cleanText((error as any)?.message || "تعذر تحميل جدول الدوام المعتمد من النظام المركزي.")
+              : "Could not load the approved schedule from the central system."
           );
         }
       } finally {
@@ -763,7 +766,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceDate, canViewAttendance]);
+  }, [attendanceDate, canViewAttendance, language]);
 
   useEffect(() => {
     if (!attendanceOnly || !canViewAttendance) {
@@ -810,7 +813,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           error,
         });
         setAttendanceMonthResolvedShifts({});
-        setAttendanceMonthResolvedShiftsError("تعذر تحميل شفتات الشهر من Core.");
+        setAttendanceMonthResolvedShiftsError(language === "ar"
+          ? "تعذر تحميل شفتات الشهر من Core."
+          : "Could not load this month’s shifts from Core.");
       } finally {
         if (alive) setAttendanceMonthResolvedShiftsLoading(false);
       }
@@ -821,7 +826,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance]);
+  }, [attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance, language]);
 
   useEffect(() => {
     if (!session.uid) {
@@ -1311,9 +1316,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           }
           monthKey={attendanceMonth}
           selectedDate={attendanceSelectedDate}
-          title="سجل حضور الموظفة"
-          subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
+          title={language === "ar" ? "سجل حضور الموظفة" : "Employee attendance record"}
+          subtitle={language === "ar" ? "اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل." : "Choose a month to view daily attendance, then select a day to review its record."}
+          emptySummaryText={language === "ar" ? "اختر يومًا من التقويم لعرض تفاصيل الحضور." : "Choose a day from the calendar to view attendance details."}
           viewerMode="employee"
+          language={language}
           coreResolvedShifts={attendanceMonthResolvedShifts}
           coreResolvedShiftsLoading={attendanceMonthResolvedShiftsLoading}
           coreResolvedShiftsError={

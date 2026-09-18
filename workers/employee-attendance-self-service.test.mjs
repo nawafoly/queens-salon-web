@@ -212,6 +212,18 @@ test("employee calendar keeps attendance result primary and shift exception seco
   );
 });
 
+test("employee attendance calendar follows the employee portal language", async () => {
+  const [view, overview] = await Promise.all([
+    source("src/components/AttendanceMonthView.tsx"),
+    source("src/pages/hr/EmployeeOverview.tsx"),
+  ]);
+
+  assert.match(view, /language\?: "ar" \| "en"/);
+  assert.match(view, /Employee attendance record|Attendance management/);
+  assert.match(view, /dir=\{language === "ar" \? "rtl" : "ltr"\}/);
+  assert.match(overview, /language=\{language\}/);
+});
+
 test("weekly off uses a pale yellow distinct from late", async () => {
   const css = await source(
     "src/styles/dashboard-v2/components/employee-attendance-month-status.css"

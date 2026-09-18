@@ -22,7 +22,6 @@ import {
   type AttendanceStatus,
 } from "../helpers/hr/attendanceCalculations";
 import {
-  attendanceResolvedShiftSourceLabel,
   computeResolvedAttendanceDay,
   recordsFromAttendanceRow,
 } from "../helpers/hr/attendanceShiftResolver";
@@ -42,6 +41,7 @@ type AttendanceMonthViewProps = {
   className?: string;
   emptySummaryText?: string;
   viewerMode?: AttendanceViewerMode;
+  language?: "ar" | "en";
   canEdit?: boolean;
   canDelete?: boolean;
   canReview?: boolean;
@@ -65,7 +65,36 @@ type AttendanceMonthViewProps = {
   onCancelLeave?: (dateKey: string) => void;
 };
 
-const WEEK_LABELS = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
+const attendanceCopy = {
+  ar: {
+    week: ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"],
+    hour: "ساعة", minute: "دقيقة", and: "و", in: "دخول", out: "خروج", record: "سجل", meter: "م",
+    presentComplete: "حضور مكتمل", late: "متأخر", missingHours: "ناقص ساعات", waitingOut: "بانتظار الانصراف", needsCompletion: "بصمة تحتاج إكمال", absent: "غياب", offDay: "يوم راحة", leave: "إجازة", notRecorded: "لم يسجل بعد", scheduleUnavailable: "الدوام المعتمد غير متاح", future: "يوم قادم",
+    exception: "استثناء", noDuty: "لا يوجد دوام", weeklyRest: "راحة أسبوعية",
+    attendanceManagement: "إدارة الدوام", updating: "جاري التحديث...", refresh: "تحديث السجلات", selectedDay: "اليوم المحدد", loading: "تحميل", shiftUsed: "الشفت المستخدم للحساب",
+    attendanceCalendar: "تقويم الحضور", chooseMonth: "اختيار الشهر", year: "السنة", chooseYear: "اختيار السنة", previousYear: "السنة السابقة", nextYear: "السنة التالية", today: "اليوم",
+    legend: "دليل حالات الحضور", present: "حاضر", needsReview: "يحتاج مراجعة", records: "السجلات", rest: "راحة",
+    review: "مراجعة", registerLeave: "تسجيل إجازة", editPunch: "تعديل البصمة", addPunch: "إضافة بصمة", deletePunch: "مسح البصمة", oneRecord: "سجل واحد", recordsCount: "سجل",
+    undefined: "غير محدد", notFound: "غير موجود", no: "لا", yes: "نعم", none: "لا يوجد", date: "التاريخ", startTime: "وقت البداية", endTime: "وقت النهاية", lateGrace: "سماح التأخير", shiftName: "اسم الشفت", source: "المصدر", sourceType: "نوع المصدر", sourceDocument: "مستند المصدر", coreShift: "Core resolved shift", exceptionType: "نوع الاستثناء", active: "نشط", fromPunch: "من سجل البصمة", fromCore: "من Core", calculationTime: "وقت الحساب", coreError: "خطأ Core",
+    cancelLeave: "إلغاء الإجازة", scheduleUnavailableDetails: "تعذر الحصول على الشفت المعتمد من Malikat Core. لم يتم استخدام أي جدول قديم كبديل.", recordOptions: "خيارات السجل", status: "الحالة", checkInTime: "وقت الحضور", checkOutTime: "وقت الانصراف", workDuration: "مدة العمل", recordStatus: "حالة السجل", needsFinish: "يحتاج إكمال", delay: "التأخير", coveredPermission: "استئذان محتسب", requestDuration: "مدة الطلب", shortage: "نقص الساعات", overtime: "وقت إضافي", commitment: "الالتزام", committed: "ملتزم",
+    noCoreShift: "Core: لا يوجد شفت", exceptionalRestWork: "عمل استثنائي في يوم الراحة", exceptionOff: "استثناء: يوم راحة", exceptionCustom: "استثناء: وقت مخصص", exceptionAlternative: "استثناء: شفت بديل", publishedShift: "شفت منشور", weeklyCore: "جدول أسبوعي من Core", attendanceRecord: "سجل البصمة", core: "Core",
+  },
+  en: {
+    week: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
+    hour: "hour", minute: "minute", and: "and", in: "Clock in", out: "Clock out", record: "Record", meter: "m",
+    presentComplete: "Complete attendance", late: "Late", missingHours: "Missing hours", waitingOut: "Awaiting clock-out", needsCompletion: "Attendance needs completion", absent: "Absent", offDay: "Rest day", leave: "Leave", notRecorded: "Not recorded yet", scheduleUnavailable: "Approved schedule unavailable", future: "Upcoming day",
+    exception: "Exception", noDuty: "No shift", weeklyRest: "Weekly rest",
+    attendanceManagement: "Attendance management", updating: "Updating...", refresh: "Refresh records", selectedDay: "Selected day", loading: "Loading", shiftUsed: "Shift used for calculation",
+    attendanceCalendar: "Attendance calendar", chooseMonth: "Choose month", year: "Year", chooseYear: "Choose year", previousYear: "Previous year", nextYear: "Next year", today: "Today",
+    legend: "Attendance status guide", present: "Present", needsReview: "Needs review", records: "Records", rest: "Rest",
+    review: "Review", registerLeave: "Record leave", editPunch: "Edit attendance", addPunch: "Add attendance", deletePunch: "Delete attendance", oneRecord: "1 record", recordsCount: "records",
+    undefined: "Not specified", notFound: "Not found", no: "No", yes: "Yes", none: "None", date: "Date", startTime: "Start time", endTime: "End time", lateGrace: "Late grace", shiftName: "Shift name", source: "Source", sourceType: "Source type", sourceDocument: "Source document", coreShift: "Core resolved shift", exceptionType: "Exception type", active: "Active", fromPunch: "From attendance record", fromCore: "From Core", calculationTime: "Calculation time", coreError: "Core error",
+    cancelLeave: "Cancel leave", scheduleUnavailableDetails: "The approved shift could not be retrieved from Malikat Core. No legacy schedule was used as a fallback.", recordOptions: "Record options", status: "Status", checkInTime: "Clock-in time", checkOutTime: "Clock-out time", workDuration: "Work duration", recordStatus: "Record status", needsFinish: "Needs completion", delay: "Late time", coveredPermission: "Covered permission", requestDuration: "Request duration", shortage: "Missing hours", overtime: "Overtime", commitment: "Commitment", committed: "Committed",
+    noCoreShift: "Core: no shift", exceptionalRestWork: "Exceptional work on a rest day", exceptionOff: "Exception: rest day", exceptionCustom: "Exception: custom time", exceptionAlternative: "Exception: alternate shift", publishedShift: "Published shift", weeklyCore: "Weekly schedule from Core", attendanceRecord: "Attendance record", core: "Core",
+  },
+} as const;
+
+type AttendanceCopy = { [K in keyof typeof attendanceCopy.ar]: K extends "week" ? readonly string[] : string };
 function normalizeMonthKey(value: string) {
   const s = String(value || "").trim();
   return /^\d{4}-\d{2}$/.test(s) ? s : new Date().toISOString().slice(0, 7);
@@ -80,17 +109,17 @@ function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function monthLabel(monthKey: string) {
+function monthLabel(monthKey: string, language: "ar" | "en") {
   const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     calendar: "gregory",
     month: "long",
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-function monthYearLabel(monthKey: string) {
+function monthYearLabel(monthKey: string, language: "ar" | "en") {
   const [year] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
+  return new Intl.NumberFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
 }
 
 function daysInMonth(monthKey: string) {
@@ -120,20 +149,20 @@ function formatTime(value: unknown) {
   }).format(date);
 }
 
-function formatHours(value: number) {
+function formatHours(value: number, copy: AttendanceCopy) {
   if (!Number.isFinite(value) || value <= 0) return "--";
   const totalMinutes = Math.round(value * 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours && minutes) return `${hours} ساعة و ${minutes} دقيقة`;
-  if (hours) return `${hours} ساعة`;
-  return `${minutes} دقيقة`;
+  if (hours && minutes) return `${hours} ${copy.hour} ${copy.and} ${minutes} ${copy.minute}`;
+  if (hours) return `${hours} ${copy.hour}`;
+  return `${minutes} ${copy.minute}`;
 }
 
-function fullDateLabel(dateKey: string) {
+function fullDateLabel(dateKey: string, language: "ar" | "en") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) return dateKey;
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", {
     timeZone: "Asia/Riyadh",
     calendar: "gregory",
     weekday: "long",
@@ -156,14 +185,14 @@ function selectedEventCount(row: StaffAttendanceWithId | null) {
   return recordsFromRow(row).length;
 }
 
-function recordTypeLabel(type: unknown) {
+function recordTypeLabel(type: unknown, copy: AttendanceCopy) {
   const clean = cleanText(type);
-  if (clean === "check_in") return "دخول";
-  if (clean === "check_out") return "خروج";
-  return clean || "سجل";
+  if (clean === "check_in") return copy.in;
+  if (clean === "check_out") return copy.out;
+  return clean || copy.record;
 }
 
-function recordLocationLabel(record: AttendanceRecord) {
+function recordLocationLabel(record: AttendanceRecord, copy: AttendanceCopy) {
   const location = record.location as
     | { lat?: number; lng?: number; accuracy?: number }
     | undefined;
@@ -182,7 +211,7 @@ function recordLocationLabel(record: AttendanceRecord) {
     );
   }
   if (Number.isFinite(distance)) {
-    parts.push(`${Math.round(distance)} م`);
+    parts.push(`${Math.round(distance)} ${copy.meter}`);
   }
 
   return parts.join(" - ") || "--";
@@ -206,23 +235,22 @@ function statusTone(status: AttendanceStatus) {
   return "none";
 }
 
-function statusLabel(status: AttendanceStatus) {
-  if (status === "present") return "\u062d\u0636\u0648\u0631 \u0645\u0643\u062a\u0645\u0644";
-  if (status === "late") return "\u0645\u062a\u0623\u062e\u0631";
-  if (status === "missing_hours") return "\u0646\u0627\u0642\u0635 \u0633\u0627\u0639\u0627\u062a";
-  if (status === "in_progress") return "\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u0627\u0644\u0627\u0646\u0635\u0631\u0627\u0641";
-  if (status === "partial") return "\u0628\u0635\u0645\u0629 \u062a\u062d\u062a\u0627\u062c \u0625\u0643\u0645\u0627\u0644";
-  if (status === "absent") return "\u063a\u064a\u0627\u0628";
-  if (status === "off_day") return "\u064a\u0648\u0645 \u0631\u0627\u062d\u0629";
-  if (status === "leave") return "\u0625\u062c\u0627\u0632\u0629";
-  if (status === "today_pending") return "\u0644\u0645 \u064a\u0633\u062c\u0644 \u0628\u0639\u062f";
-  if (status === "schedule_unavailable") {
-    return "\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d";
-  }
-  return "\u064a\u0648\u0645 \u0642\u0627\u062f\u0645";
+function statusLabel(status: AttendanceStatus, copy: AttendanceCopy) {
+  if (status === "present") return copy.presentComplete;
+  if (status === "late") return copy.late;
+  if (status === "missing_hours") return copy.missingHours;
+  if (status === "in_progress") return copy.waitingOut;
+  if (status === "partial") return copy.needsCompletion;
+  if (status === "absent") return copy.absent;
+  if (status === "off_day") return copy.offDay;
+  if (status === "leave") return copy.leave;
+  if (status === "today_pending") return copy.notRecorded;
+  if (status === "schedule_unavailable") return copy.scheduleUnavailable;
+  return copy.future;
 }
 
 function employeeOffDayPresentation(
+  copy: AttendanceCopy,
   coreShift?: CoreResolvedShift | null
 ) {
   const source = cleanText(
@@ -231,20 +259,20 @@ function employeeOffDayPresentation(
 
   if (source === "exception") {
     return {
-      label: "استثناء",
+      label: copy.exception,
       tone: "exception",
     };
   }
 
   if (source === "none") {
     return {
-      label: "لا يوجد دوام",
+      label: copy.noDuty,
       tone: "off-day",
     };
   }
 
   return {
-    label: "راحة أسبوعية",
+    label: copy.weeklyRest,
     tone: "off-day",
   };
 }
@@ -252,6 +280,7 @@ function employeeOffDayPresentation(
 function displayStatusLabel(
   status: AttendanceStatus,
   viewerMode: AttendanceViewerMode,
+  copy: AttendanceCopy,
   coreShift?: CoreResolvedShift | null
 ) {
   if (
@@ -259,16 +288,18 @@ function displayStatusLabel(
     status === "off_day"
   ) {
     return employeeOffDayPresentation(
+      copy,
       coreShift
     ).label;
   }
 
-  return statusLabel(status);
+  return statusLabel(status, copy);
 }
 
 function displayStatusTone(
   status: AttendanceStatus,
   viewerMode: AttendanceViewerMode,
+  copy: AttendanceCopy,
   coreShift?: CoreResolvedShift | null
 ) {
   if (
@@ -276,11 +307,32 @@ function displayStatusTone(
     status === "off_day"
   ) {
     return employeeOffDayPresentation(
+      copy,
       coreShift
     ).tone;
   }
 
   return statusTone(status);
+}
+
+function localizedCoreShiftSourceLabel(row: CoreResolvedShift | null | undefined, copy: AttendanceCopy) {
+  const source = cleanText((row as Record<string, unknown> | null | undefined)?.source).toLowerCase();
+  const exceptionType = cleanText(
+    (row as Record<string, unknown> | null | undefined)?.exceptionType ||
+      (row as Record<string, unknown> | null | undefined)?.exception_type
+  ).toLowerCase();
+  if (!source) return copy.notFound;
+  if (source === "none") return copy.noCoreShift;
+  if (source === "weekly_rest_work_assignment") return copy.exceptionalRestWork;
+  if (source === "exception") {
+    if (exceptionType === "off") return copy.exceptionOff;
+    if (exceptionType === "custom") return copy.exceptionCustom;
+    return copy.exceptionAlternative;
+  }
+  if (source === "assignment") return copy.publishedShift;
+  if (source === "weekly_schedule") return copy.weeklyCore;
+  if (source === "attendance_record") return copy.attendanceRecord;
+  return copy.core;
 }
 
 
@@ -294,6 +346,7 @@ export default function AttendanceMonthView({
   subtitle = "اختر الشهر واليوم لعرض حالة الحضور وتفاصيل السجل.",
   emptySummaryText = "اختر يومًا من التقويم لعرض تفاصيل الحضور.",
   viewerMode = "employee",
+  language = "ar",
   canEdit,
   canDelete,
   canReview,
@@ -316,6 +369,7 @@ export default function AttendanceMonthView({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceMonthViewProps) {
+  const copy = attendanceCopy[language] as AttendanceCopy;
   const safeMonthKey = normalizeMonthKey(monthKey);
   const todayKey = getTodayAttendanceDateKey();
   const leaveDateKeys =
@@ -374,30 +428,39 @@ export default function AttendanceMonthView({
   const selectedComputation = selectedResolvedDay.computation;
   const selectedStatus = selectedResolvedDay.status;
   const selectedShiftResolution = selectedResolvedDay.shiftResolution;
+  const selectedShiftName = selectedShiftResolution.source === "core_unavailable"
+    ? copy.scheduleUnavailable
+    : selectedShiftResolution.shiftName;
+  const selectedShiftSourceLabel = selectedCoreShift
+    ? localizedCoreShiftSourceLabel(selectedCoreShift, copy)
+    : selectedShiftResolution.source === "core_unavailable"
+      ? copy.scheduleUnavailable
+      : selectedShiftResolution.sourceLabel;
   const selectedTone = displayStatusTone(
     selectedStatus,
     viewerMode,
+    copy,
     selectedCoreShift
   );
   const selectedCount = selectedEventCount(selectedRow);
   const selectedShiftDebugRows: Array<[string, string]> = [
-    ["التاريخ", selectedShiftResolution.dateKey],
-    ["وقت البداية", selectedShiftResolution.startTime || "غير محدد"],
-    ["وقت النهاية", selectedShiftResolution.endTime || "غير محدد"],
-    ["سماح التأخير", `${selectedShiftResolution.lateGraceMinutes || 0} دقيقة`],
-    ["اسم الشفت", selectedShiftResolution.shiftName || "غير محدد"],
-    ["المصدر", selectedShiftResolution.sourceLabel || "غير محدد"],
-    ["نوع المصدر", selectedShiftResolution.sourceType || "غير محدد"],
-    ["مستند المصدر", selectedShiftResolution.sourceDoc || "غير موجود"],
-    ["Core resolved shift", selectedCoreShift ? attendanceResolvedShiftSourceLabel(selectedCoreShift) : coreResolvedShiftsLoading ? "جاري التحميل" : "غير موجود"],
-    ["نوع الاستثناء", selectedShiftResolution.exceptionType || "لا يوجد"],
-    ["نشط", selectedShiftResolution.active === null ? "غير محدد" : selectedShiftResolution.active ? "نعم" : "لا"],
-    ["من سجل البصمة", selectedShiftResolution.recordResolvedShiftPresent ? "نعم" : "لا"],
-    ["من Core", selectedShiftResolution.coreResolvedShiftPresent ? "نعم" : "لا"],
-    ["Fallback used", selectedShiftResolution.fallbackUsed ? "نعم" : "لا"],
-    ["Fallback source", selectedShiftResolution.fallbackSource || "لا يوجد"],
-    ["وقت الحساب", selectedShiftResolution.calculationTime],
-    ...(coreResolvedShiftsError ? [["خطأ Core", coreResolvedShiftsError] as [string, string]] : []),
+    [copy.date, selectedShiftResolution.dateKey],
+    [copy.startTime, selectedShiftResolution.startTime || copy.undefined],
+    [copy.endTime, selectedShiftResolution.endTime || copy.undefined],
+    [copy.lateGrace, `${selectedShiftResolution.lateGraceMinutes || 0} ${copy.minute}`],
+    [copy.shiftName, selectedShiftName || copy.undefined],
+    [copy.source, selectedShiftSourceLabel || copy.undefined],
+    [copy.sourceType, selectedShiftResolution.sourceType || copy.undefined],
+    [copy.sourceDocument, selectedShiftResolution.sourceDoc || copy.notFound],
+    [copy.coreShift, selectedCoreShift ? localizedCoreShiftSourceLabel(selectedCoreShift, copy) : coreResolvedShiftsLoading ? copy.loading : copy.notFound],
+    [copy.exceptionType, selectedShiftResolution.exceptionType || copy.none],
+    [copy.active, selectedShiftResolution.active === null ? copy.undefined : selectedShiftResolution.active ? copy.yes : copy.no],
+    [copy.fromPunch, selectedShiftResolution.recordResolvedShiftPresent ? copy.yes : copy.no],
+    [copy.fromCore, selectedShiftResolution.coreResolvedShiftPresent ? copy.yes : copy.no],
+    ["Fallback used", selectedShiftResolution.fallbackUsed ? copy.yes : copy.no],
+    ["Fallback source", selectedShiftResolution.fallbackSource || copy.none],
+    [copy.calculationTime, selectedShiftResolution.calculationTime],
+    ...(coreResolvedShiftsError ? [[copy.coreError, coreResolvedShiftsError] as [string, string]] : []),
   ];
   const dayCount = daysInMonth(safeMonthKey);
   const blanks = firstWeekday(safeMonthKey);
@@ -431,6 +494,7 @@ export default function AttendanceMonthView({
         tone: displayStatusTone(
           status,
           viewerMode,
+          copy,
           dayCoreShift
         ),
         coreShift: dayCoreShift,
@@ -506,13 +570,13 @@ export default function AttendanceMonthView({
     .sort((left, right) => right - left);
   const newestPickerYear = pickerYears[0] ?? currentYear;
   const oldestPickerYear = pickerYears[pickerYears.length - 1] ?? selectedYear;
-  const pickerYearLabel = new Intl.NumberFormat("ar-SA-u-nu-latn", { useGrouping: false }).format(pickerYear);
+  const pickerYearLabel = new Intl.NumberFormat(language === "ar" ? "ar-SA-u-nu-latn" : "en-SA", { useGrouping: false }).format(pickerYear);
   const pickerMonths = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1;
     const key = `${pickerYear}-${pad2(month)}`;
     return {
       key,
-      label: monthLabel(key),
+      label: monthLabel(key, language),
       disabled: key > currentMonthKey,
       selected: key === safeMonthKey,
     };
@@ -549,7 +613,7 @@ export default function AttendanceMonthView({
   };
 
   return (
-    <section className={["attendance-month", "attendance-month--premium-v3", className].filter(Boolean).join(" ")} dir="rtl">
+    <section className={["attendance-month", "attendance-month--premium-v3", className].filter(Boolean).join(" ")} dir={language === "ar" ? "rtl" : "ltr"} lang={language}>
       {showSummaryTools ? (
         <div className="attendance-month__summary attendance-month__command-center">
           <div className="attendance-month__command-intro">
@@ -557,7 +621,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faFingerprint} />
             </span>
             <div className="attendance-month__command-copy">
-              <span className="attendance-month__eyebrow">إدارة الدوام</span>
+              <span className="attendance-month__eyebrow">{copy.attendanceManagement}</span>
               <h2>{title}</h2>
               <p>{subtitle}</p>
             </div>
@@ -571,22 +635,22 @@ export default function AttendanceMonthView({
               disabled={loading || !onGenerateSummary}
             >
               <FontAwesomeIcon icon={faRotate} spin={loading} />
-              <span>{loading ? "جاري التحديث..." : "تحديث السجلات"}</span>
+              <span>{loading ? copy.updating : copy.refresh}</span>
             </button>
           </div>
 
           <div className="attendance-month__selected-overview">
             <div className="attendance-month__selected-overview-head">
-              <span>اليوم المحدد</span>
+              <span>{copy.selectedDay}</span>
               <span className={`attendance-month__selected-status is-${selectedTone}`}>
-                {loading ? "تحميل" : displayStatusLabel(selectedStatus, viewerMode, selectedCoreShift)}
+                {loading ? copy.loading : displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}
               </span>
             </div>
-            <strong>{fullDateLabel(safeSelectedDate)}</strong>
+            <strong>{fullDateLabel(safeSelectedDate, language)}</strong>
             <small>{emptySummaryText}</small>
             {selectedShiftResolution ? (
               <small>
-                الشفت المستخدم للحساب: {selectedShiftResolution.shiftName} — {selectedShiftResolution.sourceLabel}
+                {copy.shiftUsed}: {selectedShiftName} — {selectedShiftSourceLabel}
               </small>
             ) : null}
           </div>
@@ -596,8 +660,8 @@ export default function AttendanceMonthView({
       <div className="attendance-month__calendar-shell attendance-month__calendar-card">
         <div className="attendance-month__calendar-head">
           <div className="attendance-month__title">
-            <span>تقويم الحضور</span>
-            <h3>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</h3>
+            <span>{copy.attendanceCalendar}</span>
+            <h3>{monthLabel(safeMonthKey, language)} {monthYearLabel(safeMonthKey, language)}</h3>
           </div>
           <div className="attendance-month__calendar-month-control attendance-month__month-control" ref={monthPickerRef}>
             <button
@@ -608,19 +672,19 @@ export default function AttendanceMonthView({
               aria-expanded={monthPickerOpen}
             >
               <FontAwesomeIcon icon={faCalendarDay} />
-              <span className="attendance-month__month-picker-label">اختيار الشهر</span>
+              <span className="attendance-month__month-picker-label">{copy.chooseMonth}</span>
             </button>
             {monthPickerOpen ? (
-              <div className="attendance-month__month-menu" role="dialog" aria-label="اختيار الشهر">
+              <div className="attendance-month__month-menu" role="dialog" aria-label={copy.chooseMonth}>
                 <div className="attendance-month__month-menu-head">
-                  <span>السنة</span>
-                  <div className="attendance-month__year-switcher" aria-label="اختيار السنة">
+                  <span>{copy.year}</span>
+                  <div className="attendance-month__year-switcher" aria-label={copy.chooseYear}>
                     <button
                       type="button"
                       className="attendance-month__year-button"
                       onClick={() => setPickerYear((year) => Math.max(oldestPickerYear, year - 1))}
                       disabled={pickerYear <= oldestPickerYear}
-                      aria-label="السنة السابقة"
+                      aria-label={copy.previousYear}
                     >
                       <FontAwesomeIcon icon={faChevronRight} />
                     </button>
@@ -630,7 +694,7 @@ export default function AttendanceMonthView({
                       className="attendance-month__year-button"
                       onClick={() => setPickerYear((year) => Math.min(newestPickerYear, year + 1))}
                       disabled={pickerYear >= newestPickerYear}
-                      aria-label="السنة التالية"
+                      aria-label={copy.nextYear}
                     >
                       <FontAwesomeIcon icon={faChevronLeft} />
                     </button>
@@ -658,13 +722,13 @@ export default function AttendanceMonthView({
           <div className="attendance-month__calendar-actions">
             <button type="button" className="attendance-month__today-button" onClick={goToToday}>
               <FontAwesomeIcon icon={faCalendarDay} />
-              <span>اليوم</span>
+              <span>{copy.today}</span>
             </button>
           </div>
         </div>
 
         <div className="attendance-month__weekdays">
-          {WEEK_LABELS.map((label, index) => (
+          {copy.week.map((label, index) => (
             <span key={`${label}-${index}`}>{label}</span>
           ))}
         </div>
@@ -683,7 +747,7 @@ export default function AttendanceMonthView({
                   safeSelectedDate === cell.dateKey ? "is-selected" : ""
                 } ${todayKey === cell.dateKey ? "is-today" : ""}`}
                 onClick={() => onSelectedDateChange(cell.dateKey)}
-                title={`${cell.dateKey} - ${displayStatusLabel(cell.status, viewerMode, cell.coreShift)}`}
+                title={`${cell.dateKey} - ${displayStatusLabel(cell.status, viewerMode, copy, cell.coreShift)}`}
                 aria-current={todayKey === cell.dateKey ? "date" : undefined}
                 aria-selected={safeSelectedDate === cell.dateKey}
               >
@@ -691,48 +755,48 @@ export default function AttendanceMonthView({
                 <strong>{cell.day}</strong>
                 {viewerMode === "employee" ? (
                   <span className="attendance-month__primary-status-label">
-                    {displayStatusLabel(cell.status, viewerMode, cell.coreShift)}
+                    {displayStatusLabel(cell.status, viewerMode, copy, cell.coreShift)}
                   </span>
                 ) : null}
                 {cell.isException && cell.status !== "off_day" ? (
                   <span className="attendance-month__exception-label">
-                    {"استثناء"}
+                    {copy.exception}
                   </span>
                 ) : null}
-                {todayKey === cell.dateKey ? <span className="attendance-month__today-label">اليوم</span> : null}
+                {todayKey === cell.dateKey ? <span className="attendance-month__today-label">{copy.today}</span> : null}
               </button>
             )
           )}
         </div>
-        <div className="attendance-month__legend" aria-label="دليل حالات الحضور">
-          <span className="is-complete">حاضر</span>
-          <span className="is-late">متأخر</span>
-          <span className="is-partial">يحتاج مراجعة</span>
-          <span className="is-absent">غياب</span>
-          <span className="is-leave">إجازة</span>
-          {viewerMode === "employee" ? <span className="is-off-day">راحة أسبوعية</span> : null}
-          {viewerMode === "employee" ? <span className="is-exception">استثناء</span> : null}
-          {viewerMode === "admin" ? <span className="is-off-day">يوم راحة</span> : null}
+        <div className="attendance-month__legend" aria-label={copy.legend}>
+          <span className="is-complete">{copy.present}</span>
+          <span className="is-late">{copy.late}</span>
+          <span className="is-partial">{copy.needsReview}</span>
+          <span className="is-absent">{copy.absent}</span>
+          <span className="is-leave">{copy.leave}</span>
+          {viewerMode === "employee" ? <span className="is-off-day">{copy.weeklyRest}</span> : null}
+          {viewerMode === "employee" ? <span className="is-exception">{copy.exception}</span> : null}
+          {viewerMode === "admin" ? <span className="is-off-day">{copy.offDay}</span> : null}
         </div>
       </div>
 
       <div className="attendance-month__detail">
         <div className="attendance-month__detail-head">
           <div className="attendance-month__selected-date">
-            <strong>{fullDateLabel(safeSelectedDate)}</strong>
-            {safeSelectedDate === todayKey ? <span>اليوم</span> : null}
+            <strong>{fullDateLabel(safeSelectedDate, language)}</strong>
+            {safeSelectedDate === todayKey ? <span>{copy.today}</span> : null}
           </div>
           <div className="attendance-month__records-tab">
-            <span>السجلات</span>
+            <span>{copy.records}</span>
           </div>
         </div>
 
         <div className="attendance-month__records-meta">
           {selectedShiftResolution ? (
             <div className="attendance-month__shift-chip">
-              <span>{selectedShiftResolution.sourceLabel}</span>
-              <strong>{selectedShiftResolution.shiftName}</strong>
-              <small>{selectedShiftResolution.isOff ? "راحة" : `${selectedSchedule.startTime || "-"} — ${selectedSchedule.endTime || "-"}`}</small>
+              <span>{selectedShiftSourceLabel}</span>
+              <strong>{selectedShiftName}</strong>
+              <small>{selectedShiftResolution.isOff ? copy.rest : `${selectedSchedule.startTime || "-"} — ${selectedSchedule.endTime || "-"}`}</small>
             </div>
           ) : null}
           {canShowAdminControls &&
@@ -741,20 +805,20 @@ export default function AttendanceMonthView({
             <div className="attendance-month__actions">
               {shouldShowReview ? (
                 <button type="button" onClick={() => (onReviewDay || onEditPunch)?.(safeSelectedDate)}>
-                  <FontAwesomeIcon icon={faCheck} /> مراجعة
+                  <FontAwesomeIcon icon={faCheck} /> {copy.review}
                 </button>
               ) : null}
               {shouldShowEmergencyLeave && selectedDayRecords.length === 0 ? (
                 <button type="button" onClick={() => onCreateEmergencyLeave?.(safeSelectedDate)}>
-                  <FontAwesomeIcon icon={faCalendarDay} /> تسجيل إجازة
+                  <FontAwesomeIcon icon={faCalendarDay} /> {copy.registerLeave}
                 </button>
               ) : null}
               {shouldShowEdit ? (
                 <button type="button" onClick={() => onEditPunch?.(safeSelectedDate)} disabled={!onEditPunch}>
                   <FontAwesomeIcon icon={faPenToSquare} />
                   {selectedCount > 0
-                    ? "تعديل البصمة"
-                    : "إضافة بصمة"}
+                    ? copy.editPunch
+                    : copy.addPunch}
                 </button>
               ) : null}
               {shouldShowDelete ? (
@@ -764,7 +828,7 @@ export default function AttendanceMonthView({
                   onClick={() => onDeletePunch?.(safeSelectedDate)}
                   disabled={!onDeletePunch}
                 >
-                  <FontAwesomeIcon icon={faTrash} /> مسح البصمة
+                  <FontAwesomeIcon icon={faTrash} /> {copy.deletePunch}
                 </button>
               ) : null}
             </div>
@@ -776,31 +840,31 @@ export default function AttendanceMonthView({
               <span
                 className={`attendance-month__badge is-${selectedTone}`}
               >
-                {displayStatusLabel(selectedStatus, viewerMode, selectedCoreShift)}
+                {displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}
               </span>
 
               <span className="attendance-month__record-count">
                 <FontAwesomeIcon icon={faFingerprint} />
 
                 {selectedCount === 1
-                  ? "سجل واحد"
-                  : `${selectedCount} سجل`}
+                  ? copy.oneRecord
+                  : `${selectedCount} ${copy.recordsCount}`}
               </span>
             </div>
           ) : null}
         </div>
 
         {viewerMode === "employee" ? (
-          <div className="attendance-month__shift-debug" aria-label="الشفت المستخدم للحساب">
+          <div className="attendance-month__shift-debug" aria-label={copy.shiftUsed}>
             <div className="attendance-month__shift-debug-head">
-              <strong>الشفت المستخدم للحساب</strong>
+              <strong>{copy.shiftUsed}</strong>
               <span>{selectedShiftResolution.fallbackUsed ? "Fallback" : "Canonical"}</span>
             </div>
             <dl>
               {selectedShiftDebugRows.map(([label, value]) => (
                 <div key={label}>
                   <dt>{label}</dt>
-                  <dd>{value || "غير محدد"}</dd>
+                  <dd>{value || copy.undefined}</dd>
                 </div>
               ))}
             </dl>
@@ -813,7 +877,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>{displayStatusLabel(selectedStatus, viewerMode, selectedCoreShift)}</strong>
+            <strong>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</strong>
           </div>
         ) : isLeaveDay ? (
           <div className="attendance-month__state-card is-leave">
@@ -821,14 +885,14 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>إجازة</strong>
+            <strong>{copy.leave}</strong>
             {shouldShowCancelLeave ? (
               <button
                 type="button"
                 className="attendance-month__state-action is-danger"
                 onClick={() => onCancelLeave?.(safeSelectedDate)}
               >
-                إلغاء الإجازة
+                {copy.cancelLeave}
               </button>
             ) : null}
           </div>
@@ -838,7 +902,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>غياب</strong>
+            <strong>{copy.absent}</strong>
           </div>
         ) : isScheduleUnavailable ? (
           <div className="attendance-month__state-card is-pending">
@@ -847,11 +911,11 @@ export default function AttendanceMonthView({
             </div>
 
             <strong>
-              {"\u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u063a\u064a\u0631 \u0645\u062a\u0627\u062d"}
+              {copy.scheduleUnavailable}
             </strong>
 
             <span>
-              {"\u062a\u0639\u0630\u0631 \u0627\u0644\u062d\u0635\u0648\u0644 \u0639\u0644\u0649 \u0627\u0644\u0634\u0641\u062a \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Malikat Core. \u0644\u0645 \u064a\u062a\u0645 \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0623\u064a \u062c\u062f\u0648\u0644 \u0642\u062f\u064a\u0645 \u0643\u0628\u062f\u064a\u0644."}
+              {copy.scheduleUnavailableDetails}
             </span>
           </div>
         ) : isPendingDay ? (
@@ -860,7 +924,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>{displayStatusLabel(selectedStatus, viewerMode, selectedCoreShift)}</strong>
+            <strong>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</strong>
           </div>
         ) : (
           <div className="attendance-month__worked-day">
@@ -870,7 +934,7 @@ export default function AttendanceMonthView({
               <div className="attendance-month__record-main">
                 <button
                   type="button"
-                  aria-label="خيارات السجل"
+                  aria-label={copy.recordOptions}
                 >
                   <FontAwesomeIcon
                     icon={faEllipsisVertical}
@@ -890,9 +954,7 @@ export default function AttendanceMonthView({
                 <span>
                   <FontAwesomeIcon icon={faClock} />
 
-                  {formatHours(
-                    selectedComputation.actualHours
-                  )}
+                  {formatHours(selectedComputation.actualHours, copy)}
                 </span>
               </div>
             </div>
@@ -903,12 +965,12 @@ export default function AttendanceMonthView({
           <div className="attendance-month__worked-details">
             <div className="attendance-month__worked-metrics">
               <div className="attendance-month__worked-metric">
-                <span>الحالة</span>
-                <b>{displayStatusLabel(selectedStatus, viewerMode, selectedCoreShift)}</b>
+                <span>{copy.status}</span>
+                <b>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</b>
               </div>
 
               <div className="attendance-month__worked-metric">
-                <span>وقت الحضور</span>
+                <span>{copy.checkInTime}</span>
                 <b>
                   {formatTime(
                     selectedRow?.checkInAtClient
@@ -917,7 +979,7 @@ export default function AttendanceMonthView({
               </div>
 
               <div className="attendance-month__worked-metric">
-                <span>وقت الانصراف</span>
+                <span>{copy.checkOutTime}</span>
                 <b>
                   {formatTime(
                     selectedRow?.checkOutAtClient
@@ -926,11 +988,9 @@ export default function AttendanceMonthView({
               </div>
 
               <div className="attendance-month__worked-metric">
-                <span>مدة العمل</span>
+                <span>{copy.workDuration}</span>
                 <b>
-                  {formatHours(
-                    selectedComputation.actualHours
-                  )}
+                  {formatHours(selectedComputation.actualHours, copy)}
                 </b>
               </div>
             </div>
@@ -942,9 +1002,9 @@ export default function AttendanceMonthView({
                     key={`${record.id || record.type}-${record.serverTime}`}
                     className="attendance-month__raw-record"
                   >
-                    <span>{recordTypeLabel(record.type)}</span>
+                    <span>{recordTypeLabel(record.type, copy)}</span>
                     <b>{formatTime(record.serverTime)}</b>
-                    <small>{recordLocationLabel(record)}</small>
+                    <small>{recordLocationLabel(record, copy)}</small>
                   </div>
                 ))}
               </div>
@@ -954,48 +1014,42 @@ export default function AttendanceMonthView({
               {isPartialDay ? (
                 <div className="attendance-month__performance-item is-review">
                   <FontAwesomeIcon icon={faClock} />
-                  <span>حالة السجل</span>
-                  <b>يحتاج إكمال</b>
+                  <span>{copy.recordStatus}</span>
+                  <b>{copy.needsFinish}</b>
                 </div>
               ) : (
                 <>
                   {hasLate ? (
                     <div className="attendance-month__performance-item is-late">
-                      <span>التأخير</span>
+                      <span>{copy.delay}</span>
                       <b>
-                        {formatHours(
-                          selectedComputation.lateHours
-                        )}
+                        {formatHours(selectedComputation.lateHours, copy)}
                       </b>
                     </div>
                   ) : null}
 
                   {hasPermissionCoverage ? (
                     <div className="attendance-month__performance-item is-review">
-                      <span>استئذان محتسب</span>
-                      <b>{formatHours(selectedComputation.permissionCoveredHours)}</b>
-                      <small>مدة الطلب: {formatHours(selectedComputation.permissionRequestedHours)}</small>
+                      <span>{copy.coveredPermission}</span>
+                      <b>{formatHours(selectedComputation.permissionCoveredHours, copy)}</b>
+                      <small>{copy.requestDuration}: {formatHours(selectedComputation.permissionRequestedHours, copy)}</small>
                     </div>
                   ) : null}
 
                   {hasMissingHours ? (
                     <div className="attendance-month__performance-item is-missing">
-                      <span>نقص الساعات</span>
+                      <span>{copy.shortage}</span>
                       <b>
-                        {formatHours(
-                          selectedComputation.missingHours
-                        )}
+                        {formatHours(selectedComputation.missingHours, copy)}
                       </b>
                     </div>
                   ) : null}
 
                   {hasOvertime ? (
                     <div className="attendance-month__performance-item is-overtime">
-                      <span>وقت إضافي</span>
+                      <span>{copy.overtime}</span>
                       <b>
-                        {formatHours(
-                          selectedComputation.overtimeHours
-                        )}
+                        {formatHours(selectedComputation.overtimeHours, copy)}
                       </b>
                     </div>
                   ) : null}
@@ -1005,8 +1059,8 @@ export default function AttendanceMonthView({
                   !hasOvertime ? (
                     <div className="attendance-month__performance-item is-committed">
                       <FontAwesomeIcon icon={faCheck} />
-                      <span>الالتزام</span>
-                      <b>ملتزم</b>
+                      <span>{copy.commitment}</span>
+                      <b>{copy.committed}</b>
                     </div>
                   ) : null}
                 </>
