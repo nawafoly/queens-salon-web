@@ -8,6 +8,20 @@ import {
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 import type { HrSession } from "./hr/shared";
+import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeePortalLanguage";
+
+const bookingCopy = {
+  ar: {
+    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد مسموح فقط في يوم الخدمة أو بعده (متأخر).", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد بنود SPECIFIC_ITEM في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل يوم الخدمة", confirm: "تأكيد الحجز وخصم المواد",
+    UPCOMING: "قادم", DUE_TODAY: "مطلوب اليوم", PENDING_CONFIRMATION: "بانتظار التأكيد", OVERDUE: "متأخر", CONFIRMED: "مؤكد",
+  },
+  en: {
+    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation is allowed only on or after the service date.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no SPECIFIC_ITEM lines.", confirming: "Confirming...", unavailable: "Confirmation unavailable before the service date", confirm: "Confirm booking and deduct materials",
+    UPCOMING: "Upcoming", DUE_TODAY: "Due today", PENDING_CONFIRMATION: "Awaiting confirmation", OVERDUE: "Overdue", CONFIRMED: "Confirmed",
+  },
+} as const;
+
+type BookingCopy = { [K in keyof typeof bookingCopy.ar]: string };
 
 function salonTodayISO() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -20,9 +34,9 @@ function salonTodayISO() {
   return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
-function errorMessage(error: unknown) {
-  if (error instanceof CoreApiError) return [error.code, error.message].filter(Boolean).join(" — ");
-  return "تعذر تأكيد الاستهلاك.";
+function errorMessage(error: unknown, language: "ar" | "en", copy: BookingCopy) {
+  if (language === "ar" && error instanceof CoreApiError) return [error.code, error.message].filter(Boolean).join(" — ");
+  return copy.loadError;
 }
 
 type DraftLine = {
@@ -47,7 +61,7 @@ const LIFECYCLE_META: Record<
   CONFIRMED: { label: "مؤكد", tone: "#14532d", bg: "#f0fdf4", border: "#bbf7d0" },
 };
 
-function Badge({ lifecycle }: { lifecycle?: ServiceConsumptionLifecycle }) {
+function Badge({ lifecycle, copy }: { lifecycle?: ServiceConsumptionLifecycle; copy: BookingCopy }) {
   const key = lifecycle || "PENDING_CONFIRMATION";
   const meta = LIFECYCLE_META[key] || LIFECYCLE_META.PENDING_CONFIRMATION;
   return (
@@ -63,12 +77,14 @@ function Badge({ lifecycle }: { lifecycle?: ServiceConsumptionLifecycle }) {
         border: `1px solid ${meta.border}`,
       }}
     >
-      {meta.label}
+      {copy[key]}
     </span>
   );
 }
 
 export default function EmployeeServiceConsumption({ session }: { session: HrSession }) {
+  const { language } = useEmployeePortalLanguage();
+  const copy = bookingCopy[language] as BookingCopy;
   const employeeId = String(session.employeeId || session.uid || "");
   const [pending, setPending] = useState<PendingServiceConsumption[]>([]);
   const [trackedItems, setTrackedItems] = useState<InventoryItem[]>([]);
@@ -139,12 +155,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         );
         if (actionable.length === 1) setBookingItemId(actionable[0].booking_item_id);
       } catch (err) {
-        setError(errorMessage(err));
+        setError(errorMessage(err, language, copy));
       } finally {
         setLoading(false);
       }
     })();
-  }, [employeeId]);
+  }, [copy, employeeId, language]);
 
   useEffect(() => {
     setLines([]);
@@ -176,12 +192,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           })
         );
       } catch (err) {
-        setError(errorMessage(err));
+        setError(errorMessage(err, language, copy));
       } finally {
         setLoadingRecipe(false);
       }
     })();
-  }, [bookingItemId, pending, itemNames]);
+  }, [bookingItemId, pending, itemNames, language, copy]);
 
   async function confirm() {
     if (!employeeId || !bookingItemId || !lines.length || !selectedConfirmable) return;
@@ -202,12 +218,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           };
         }),
       });
-      setNotice("تم تأكيد الاستهلاك وخصم المخزون.");
+      setNotice(copy.success);
       setBookingItemId("");
       setLines([]);
       await refreshPending();
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, language, copy));
     } finally {
       setSaving(false);
     }
@@ -247,7 +263,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         type="button"
         onClick={() => setBookingItemId(row.booking_item_id)}
         style={{
-          textAlign: "right",
+          textAlign: language === "ar" ? "right" : "left",
           border: active ? "2px solid #111" : `1px solid ${LIFECYCLE_META[row.lifecycle || "PENDING_CONFIRMATION"]?.border || "#e5e7eb"}`,
           background: active ? "#111" : "#fff",
           color: active ? "#fff" : "#111",
@@ -257,8 +273,8 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <strong style={{ display: "block", fontSize: 16 }}>{row.client_name || "عميلة"}</strong>
-          {!active ? <Badge lifecycle={row.lifecycle} /> : null}
+          <strong style={{ display: "block", fontSize: 16 }}>{row.client_name || copy.client}</strong>
+          {!active ? <Badge lifecycle={row.lifecycle} copy={copy} /> : null}
         </div>
         <span style={{ opacity: 0.85, fontSize: 13 }}>
           {row.booking_date || "—"} · {row.start_time || "--:--"}
@@ -266,10 +282,10 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           {row.service_name_snapshot || row.service_id}
         </span>
         {row.booking_source ? (
-          <span style={{ display: "block", opacity: 0.7, fontSize: 11, marginTop: 4 }}>المصدر: {row.booking_source}</span>
+          <span style={{ display: "block", opacity: 0.7, fontSize: 11, marginTop: 4 }}>{copy.source}: {row.booking_source}</span>
         ) : null}
         {locked ? (
-          <span style={{ display: "block", opacity: 0.75, fontSize: 11, marginTop: 6 }}>للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة</span>
+          <span style={{ display: "block", opacity: 0.75, fontSize: 11, marginTop: 6 }}>{copy.previewOnly}</span>
         ) : null}
       </button>
     );
@@ -288,27 +304,27 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
             <span style={{ fontWeight: 500, color: "#6b7280", fontSize: 13 }}>({rows.length})</span>
           </p>
           {opts.sticky && rows.length ? (
-            <span style={{ color: "#b91c1c", fontSize: 12, fontWeight: 700 }}>يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة</span>
+            <span style={{ color: "#b91c1c", fontSize: 12, fontWeight: 700 }}>{copy.sticky}</span>
           ) : null}
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           {rows.map(renderItemButton)}
-          {!rows.length ? <p className="text-muted" style={{ margin: 0 }}>{opts.empty || "لا يوجد."}</p> : null}
+          {!rows.length ? <p className="text-muted" style={{ margin: 0 }}>{opts.empty || copy.none}</p> : null}
         </div>
       </div>
     );
   }
 
   if (loading) {
-    return <section className="employee-portal-card">جاري تحميل حجوزاتك...</section>;
+    return <section className="employee-portal-card">{copy.loadingBookings}</section>;
   }
 
   return (
-    <section className="employee-portal-card" dir="rtl" style={{ maxWidth: 760, margin: "0 auto" }}>
+    <section className="employee-portal-card" dir={language === "ar" ? "rtl" : "ltr"} lang={language} style={{ maxWidth: 760, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 16 }}>
         <div>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>حجوزاتك اليوم والمتأخرة</p>
-          <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>حجوزاتي</h2>
+          <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>{copy.subtitle}</p>
+          <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>{copy.title}</h2>
         </div>
         <span style={{ background: "#111", color: "#fff", borderRadius: 999, padding: "6px 12px", fontSize: 12 }}>
           {salonTodayISO()} · {pending.length}
@@ -327,30 +343,30 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
             fontWeight: 600,
           }}
         >
-          لديك حجوزات متأخرة بدون تأكيد مواد: {overdueCount} بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.
+          {copy.overdueAlert}: {overdueCount} {copy.overdueTail}
         </div>
       ) : null}
 
       {error ? <div className="alert alert-danger">{error}</div> : null}
       {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-      {renderSection("حجوزات اليوم", sections.dueToday, { empty: "لا يوجد مطلوب اليوم." })}
-      {renderSection("بانتظار التأكيد", sections.awaiting, { empty: "لا يوجد بانتظار التأكيد." })}
-      {renderSection("متأخرة", sections.overdue, { sticky: true, empty: "لا يوجد متأخر." })}
-      {sections.upcoming.length ? renderSection("قادمة", sections.upcoming, { empty: "" }) : null}
+      {renderSection(copy.todayBookings, sections.dueToday, { empty: copy.noneToday })}
+      {renderSection(copy.awaiting, sections.awaiting, { empty: copy.noneAwaiting })}
+      {renderSection(copy.overdue, sections.overdue, { sticky: true, empty: copy.noneOverdue })}
+      {sections.upcoming.length ? renderSection(copy.upcoming, sections.upcoming, { empty: "" }) : null}
 
       {selected ? (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <p style={{ margin: 0, fontWeight: 600 }}>مواد هذا الحجز</p>
-            <Badge lifecycle={selected.lifecycle} />
+            <p style={{ margin: 0, fontWeight: 600 }}>{copy.materials}</p>
+            <Badge lifecycle={selected.lifecycle} copy={copy} />
           </div>
           {!selectedConfirmable ? (
             <p className="text-muted" style={{ marginBottom: 12 }}>
-              هذا البند قادم في {selected.booking_date}. التأكيد مسموح فقط في يوم الخدمة أو بعده (متأخر).
+              {copy.upcomingPrefix} {selected.booking_date}. {copy.confirmRule}
             </p>
           ) : null}
-          {loadingRecipe ? <p className="text-muted">جاري تحميل الوصفة...</p> : null}
+          {loadingRecipe ? <p className="text-muted">{copy.loadingRecipe}</p> : null}
           {lines.length ? (
             <div style={{ display: "grid", gap: 12, marginBottom: 22 }}>
               {lines.map((line) => (
@@ -367,7 +383,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>المنتج</label>
+                      <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{copy.product}</label>
                       <select
                         value={line.inventoryItemId}
                         disabled={!selectedConfirmable}
@@ -388,12 +404,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                         ))}
                       </select>
                       <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
-                        الافتراضي: {itemNames[line.defaultInventoryItemId] || line.defaultInventoryItemId} · {line.defaultQty}{" "}
+                        {copy.default}: {itemNames[line.defaultInventoryItemId] || line.defaultInventoryItemId} · {line.defaultQty}{" "}
                         {line.unit}
                       </div>
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>الكمية</label>
+                      <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{copy.quantity}</label>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <button
                           type="button"
@@ -428,7 +444,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
               ))}
             </div>
           ) : !loadingRecipe ? (
-            <p className="text-muted">لا توجد بنود SPECIFIC_ITEM في وصفة هذه الخدمة.</p>
+            <p className="text-muted">{copy.noRecipe}</p>
           ) : null}
         </>
       ) : null}
@@ -441,10 +457,10 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         onClick={() => void confirm()}
       >
         {saving
-          ? "جاري التأكيد..."
+          ? copy.confirming
           : !selectedConfirmable && selected
-            ? "التأكيد غير متاح قبل يوم الخدمة"
-            : "تأكيد الحجز وخصم المواد"}
+            ? copy.unavailable
+            : copy.confirm}
       </button>
     </section>
   );
