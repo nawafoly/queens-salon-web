@@ -106,7 +106,8 @@
 .dashboard-header__profile-button,
 .dashboard-header__clock,
 .dashboard-header .internal-portal-switcher__item,
-.dashboard-header .employee-header-notification {
+.dashboard-header .employee-header-notification,
+.dashboard-header .employee-language-toggle {
   min-height: 40px;
   border: 1px solid var(--workspace-header-action-border);
   border-radius: var(--workspace-header-button-radius);
@@ -193,6 +194,29 @@
   color: #64748b;
   background: #ffffff;
   text-decoration: none;
+}
+
+.employee-language-toggle {
+  display: inline-flex;
+  min-width: 48px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--workspace-header-action-border, rgba(15, 23, 42, 0.11));
+  border-radius: var(--workspace-header-button-radius, 12px);
+  color: #6d5100;
+  background: #fff8da;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.employee-language-toggle:focus-visible {
+  outline: 3px solid rgba(217, 165, 11, 0.3);
+  outline-offset: 2px;
 }
 
 .employee-header-notification__badge {

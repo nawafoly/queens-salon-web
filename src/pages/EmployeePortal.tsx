@@ -55,6 +55,11 @@ import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
 import { usePermissions } from "../security/PermissionContext";
 import type { AppPermission } from "../helpers/permissions";
+import {
+  EmployeePortalLanguageProvider,
+  useEmployeePortalLanguage,
+  type EmployeePortalMessageKey,
+} from "../features/employee-portal/EmployeePortalLanguage";
 import "../styles/EmployeePortalMobileNav.css";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
@@ -127,33 +132,36 @@ function resolvePortalAvatarUrl(session: HrSession) {
   return cleanPortalText(session.user?.photoURL);
 }
 
-function portalRoleLabel(role: unknown) {
+type EmployeePortalTranslate = (key: EmployeePortalMessageKey) => string;
+
+function portalRoleLabel(role: unknown, t: EmployeePortalTranslate) {
   const normalized = cleanPortalText(role).toLowerCase();
-  if (normalized === "owner") return "المالك";
-  if (normalized === "admin") return "الإدارة";
-  if (normalized === "hr") return "الموارد البشرية";
-  if (normalized === "reception") return "الاستقبال";
-  return "موظفة";
+  if (normalized === "owner") return t("role.owner");
+  if (normalized === "admin") return t("role.admin");
+  if (normalized === "hr") return t("role.hr");
+  if (normalized === "reception") return t("role.reception");
+  return t("role.staff");
 }
 
-function getEmployeePortalTitle(pathname: string) {
+function getEmployeePortalTitle(pathname: string, t: EmployeePortalTranslate) {
   const section = pathname.replace(/^\/employee\/?/, "").split("/")[0] || "overview";
-  const titles: Record<string, string> = {
-    overview: "بوابة الموظف",
-    attendance: "الحضور والانصراف",
-    notifications: "التنبيهات",
-    more: "المزيد",
-    profile: "الملف الشخصي",
-    messages: "الرسائل",
-    files: "الملفات",
-    leave: "الإجازات والطلبات",
-    permission: "الاستئذانات",
-    requests: "طلباتي",
-    payroll: "الراتب",
-    targets: "تارقتي",
+  const titleKeys: Record<string, EmployeePortalMessageKey> = {
+    overview: "title.overview",
+    attendance: "title.attendance",
+    notifications: "title.notifications",
+    more: "title.more",
+    profile: "title.profile",
+    messages: "title.messages",
+    files: "title.files",
+    leave: "title.leave",
+    permission: "title.permission",
+    requests: "title.requests",
+    payroll: "title.payroll",
+    targets: "title.targets",
+    consumption: "title.consumption",
   };
 
-  return titles[section] || "بوابة الموظف";
+  return t(titleKeys[section] || "title.overview");
 }
 
 type EmployeeMorePageProps = {
@@ -392,8 +400,9 @@ function EmployeeMorePage({
   );
 }
 
-export default function EmployeePortal() {
+function EmployeePortalContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const { direction, language, t, toggleLanguage } = useEmployeePortalLanguage();
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
@@ -512,11 +521,11 @@ export default function EmployeePortal() {
     };
   }, [notifications]);
 
-  const displayName = cleanPortalText(session.displayName) || cleanPortalText(session.email) || "الموظفة";
+  const displayName = cleanPortalText(session.displayName) || cleanPortalText(session.email) || t("role.staff");
   const avatarUrl = resolvePortalAvatarUrl(session);
   const role = cleanPortalText(session.role).toLowerCase();
-  const roleLabel = portalRoleLabel(role);
-  const portalSubtitle = "الدوام، الطلبات، الملفات والرسائل";
+  const roleLabel = portalRoleLabel(role, t);
+  const portalSubtitle = t("portal.subtitle");
   const canOpenHr = hasAnyPermission([
     "employees.view",
     "attendance.view",
@@ -528,24 +537,24 @@ export default function EmployeePortal() {
   const canOpenDashboard = hasPermission("workspace.dashboard.view");
 
   const bottomNavItems = [
-    { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
-    { to: "/employee/consumption", label: "حجوزاتي", icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
-    { to: "/employee/requests", label: "الطلبات", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
-    { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/overview", label: t("nav.home"), icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/attendance", label: t("nav.attendance"), icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/consumption", label: t("nav.bookings"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
+    { to: "/employee/requests", label: t("nav.requests"), icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
+    { to: "/employee/more", label: t("nav.more"), icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
 
   const desktopNavItems = [
-    { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
-    { to: "/employee/consumption", label: "حجوزاتي", description: "حجوزاتك وتأكيد المواد بعد التنفيذ", icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
-    { to: "/employee/requests", label: "طلباتي", description: "المتابعة والقرارات والتنفيذ", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
-    { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/targets", label: "تارقتي", description: "المبيعات المؤهلة والبونص المتوقع", icon: faChartLine, permission: "targets.view_own" as AppPermission },
-    { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
-    { to: "/employee/files", label: "الملفات", description: "المستندات والعقود", icon: faFileLines, badge: notificationCounts.files, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/profile", label: "الملف الشخصي", description: "البيانات الوظيفية", icon: faUser, badge: notificationCounts.profile, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/notifications", label: "التنبيهات", description: "آخر التحديثات", icon: faBell, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/overview", label: t("nav.home"), description: t("nav.homeDescription"), icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/attendance", label: t("nav.attendanceFull"), description: t("nav.attendanceDescription"), icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/consumption", label: t("nav.bookings"), description: t("nav.bookingsDescription"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
+    { to: "/employee/requests", label: t("nav.myRequests"), description: t("nav.requestsDescription"), icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
+    { to: "/employee/payroll", label: t("nav.payroll"), description: t("nav.payrollDescription"), icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/targets", label: t("nav.targets"), description: t("nav.targetsDescription"), icon: faChartLine, permission: "targets.view_own" as AppPermission },
+    { to: "/employee/messages", label: t("nav.messages"), description: t("nav.messagesDescription"), icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
+    { to: "/employee/files", label: t("nav.files"), description: t("nav.filesDescription"), icon: faFileLines, badge: notificationCounts.files, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/profile", label: t("nav.profile"), description: t("nav.profileDescription"), icon: faUser, badge: notificationCounts.profile, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/notifications", label: t("nav.notifications"), description: t("nav.notificationsDescription"), icon: faBell, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
 
   const requestItems = [
@@ -558,15 +567,27 @@ export default function EmployeePortal() {
     { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/requests?new=exit_return", permission: "employee_requests.own.create" as AppPermission },
     { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
-  const employeeHeaderTitle = getEmployeePortalTitle(location.pathname);
+  const employeeHeaderTitle = getEmployeePortalTitle(location.pathname, t);
+
+  const renderLanguageAction = () => (
+    <button
+      type="button"
+      className="employee-language-toggle employee-app-topbar__action"
+      onClick={toggleLanguage}
+      aria-label={t("language.switchAria")}
+      title={t("language.switchAria")}
+    >
+      {t("language.switch")}
+    </button>
+  );
 
   const renderNotificationAction = () =>
     hasPermission("workspace.employee_portal.view") ? (
       <Link
         to="/employee/notifications"
         className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
-        aria-label="التنبيهات"
-        title="التنبيهات"
+        aria-label={t("portal.notifications")}
+        title={t("portal.notifications")}
       >
         <FontAwesomeIcon icon={faBell} />
         {notificationCounts.all > 0 ? (
@@ -585,17 +606,22 @@ export default function EmployeePortal() {
         loggingOut={loggingOut}
         onLogout={handleLogout}
       />
+      {renderLanguageAction()}
       {renderNotificationAction()}
     </>
   );
 
   if (session.loading) {
     return (
-      <div className="employee-portal madan-employee-portal dashboard-v2" dir="rtl">
+      <div
+        className={`employee-portal madan-employee-portal dashboard-v2 employee-portal--${language}`}
+        dir={direction}
+        lang={language}
+      >
         <div className="employee-portal-layout employee-portal-layout--loading">
           <PortalSkeleton
-            title="جاري تحميل بوابة الموظف"
-            subtitle="نستعد لعرض الرسائل والملفات والإجازات والتنبيهات الخاصة بك."
+            title={t("portal.loading")}
+            subtitle={t("portal.loadingSubtitle")}
           />
         </div>
       </div>
@@ -603,13 +629,22 @@ export default function EmployeePortal() {
   }
 
   return (
-    <div className={`employee-portal madan-employee-portal dashboard-v2 malikat-portal-shell-v2${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+    <div
+      className={`employee-portal madan-employee-portal dashboard-v2 malikat-portal-shell-v2 employee-portal--${language}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}
+      dir={direction}
+      lang={language}
+    >
       <DashboardHeader
         theme="employee"
         title={employeeHeaderTitle}
         subtitle="MALIKAT"
         className="employee-workspace-header--mobile dashboard-header--mobile-shell"
-        actions={renderNotificationAction()}
+        actions={(
+          <>
+            {renderLanguageAction()}
+            {renderNotificationAction()}
+          </>
+        )}
       />
 
       <div className="employee-portal-layout employee-portal-layout--app">
@@ -619,7 +654,7 @@ export default function EmployeePortal() {
           logoSrc={logo1}
           collapsed={isSidebarCollapsed}
           onToggleCollapsed={() => setIsSidebarCollapsed((value) => !value)}
-          ariaLabel="التنقل داخل بوابة الموظف"
+          ariaLabel={t("portal.aria")}
           profileTooltip={`${displayName} — ${roleLabel}`}
           profile={
             <div className="malikat-sidebar-identity employee-portal-sidebar__profile">
@@ -632,13 +667,13 @@ export default function EmployeePortal() {
                 />
               </span>
               <div className="malikat-sidebar-identity__copy">
-                <small>بوابة الموظف</small>
+                <small>{t("portal.profileLabel")}</small>
                 <strong>{displayName}</strong>
                 <span>{roleLabel}</span>
               </div>
             </div>
           }
-          primaryActionTooltip="إنشاء طلب جديد"
+          primaryActionTooltip={t("portal.newRequest")}
           primaryAction={
             <button
               type="button"
@@ -646,7 +681,7 @@ export default function EmployeePortal() {
               onClick={() => setRequestSheetOpen(true)}
             >
               <FontAwesomeIcon icon={faPlus} />
-              <span>إنشاء طلب جديد</span>
+              <span>{t("portal.newRequest")}</span>
             </button>
           }
           navigation={
@@ -673,18 +708,18 @@ export default function EmployeePortal() {
           }
           footer={
             <div className="employee-portal-sidebar__footer">
-              <span>{notificationsLoading ? "جاري تحديث التنبيهات..." : portalSubtitle}</span>
+              <span>{notificationsLoading ? t("portal.notificationsUpdating") : portalSubtitle}</span>
               <div className="employee-portal-sidebar__switches">
                 {canOpenHr ? (
-                  <Link to="/dashboard/hr"><FontAwesomeIcon icon={faUserShield} /> لوحة HR</Link>
+                  <Link to="/dashboard/hr"><FontAwesomeIcon icon={faUserShield} /> {t("portal.hr")}</Link>
                 ) : null}
                 {canOpenDashboard ? (
-                  <Link to="/dashboard/overview"><FontAwesomeIcon icon={faTableColumns} /> الداشبورد</Link>
+                  <Link to="/dashboard/overview"><FontAwesomeIcon icon={faTableColumns} /> {t("portal.dashboard")}</Link>
                 ) : null}
               </div>
               <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}>
                 <FontAwesomeIcon icon={faRightFromBracket} />
-                {loggingOut ? "جاري الخروج..." : "تسجيل الخروج"}
+                {loggingOut ? t("portal.loggingOut") : t("portal.logout")}
               </button>
             </div>
           }
@@ -757,7 +792,7 @@ export default function EmployeePortal() {
         </main>
       </div>
 
-      <nav className="employee-bottom-nav" aria-label="تنقل بوابة الموظف">
+      <nav className="employee-bottom-nav" aria-label={t("portal.aria")}>
         {bottomNavItems.map((item) => (
           <NavLink
             key={`${item.to}-${item.label}`}
@@ -816,5 +851,13 @@ export default function EmployeePortal() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function EmployeePortal() {
+  return (
+    <EmployeePortalLanguageProvider>
+      <EmployeePortalContent />
+    </EmployeePortalLanguageProvider>
   );
 }

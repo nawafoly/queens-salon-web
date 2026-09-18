@@ -2,6 +2,18 @@
    Employee mobile application navigation
    ========================================================= */
 
+.employee-portal--en .dashboard-header {
+  direction: ltr;
+}
+
+.employee-portal--en .dashboard-header__copy {
+  text-align: left;
+}
+
+.employee-portal--en .dashboard-header__actions {
+  direction: ltr;
+}
+
 .employee-more-page {
   display: grid;
   width: 100%;
