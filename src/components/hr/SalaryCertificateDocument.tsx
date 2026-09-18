@@ -1,4 +1,5 @@
 import type { EmployeeRequest } from "../../services/employeeRequests";
+import type { EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import { printSalaryCertificateDocument } from "../../services/salaryCertificateExport";
 import { DOCUMENT_BRANDING } from "../../documents/core/documentBranding";
 import {
@@ -11,19 +12,19 @@ import {
 } from "../../documents/core/DocumentPage";
 import "../../styles/LeaveRequestDocument.css";
 
-function money(value: unknown) {
-  return `${(Number(value || 0) / 100).toLocaleString("ar-SA-u-nu-latn", {
+function money(value: unknown, language: EmployeePortalLanguage = "ar") {
+  return `${(Number(value || 0) / 100).toLocaleString(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} ريال`;
+  })} ${language === "en" ? "SAR" : "ريال"}`;
 }
 
-function formatDate(value: unknown) {
+function formatDate(value: unknown, language: EmployeePortalLanguage = "ar") {
   const text = String(value || "").trim();
   if (!text) return "—";
   const parsed = Date.parse(text);
   if (!Number.isFinite(parsed)) return text;
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     timeZone: "Asia/Riyadh",
     year: "numeric",
     month: "long",
@@ -44,19 +45,22 @@ function approvalPayload(request: EmployeeRequest) {
   }
 }
 
-function SignatureBlock({ signature }: { signature: string }) {
+function SignatureBlock({ signature, language = "ar" }: { signature: string; language?: EmployeePortalLanguage }) {
+  const english = language === "en";
   if (!signature.startsWith("data:image/")) {
-    return <div className="leave-doc-signature-cell"><span>التوقيع</span><strong>بانتظار التوقيع اليدوي</strong></div>;
+    return <div className="leave-doc-signature-cell"><span>{english ? "Signature" : "التوقيع"}</span><strong>{english ? "Awaiting handwritten signature" : "بانتظار التوقيع اليدوي"}</strong></div>;
   }
   return (
     <div className="leave-doc-signature-cell">
-      <span>التوقيع</span>
-      <img src={signature} alt="توقيع المعتمد" style={{ maxWidth: 180, maxHeight: 72, objectFit: "contain" }} />
+      <span>{english ? "Signature" : "التوقيع"}</span>
+      <img src={signature} alt={english ? "Approver signature" : "توقيع المعتمد"} style={{ maxWidth: 180, maxHeight: 72, objectFit: "contain" }} />
     </div>
   );
 }
 
-export default function SalaryCertificateDocument({ request }: { request: EmployeeRequest }) {
+export default function SalaryCertificateDocument({ request, language = "ar" }: { request: EmployeeRequest; language?: EmployeePortalLanguage }) {
+  const english = language === "en";
+  const text = (ar: string, en: string) => english ? en : ar;
   const payload = request.payload || {};
   const approval = approvalPayload(request);
   const signerName = String(approval.reviewerName || approval.certificateSignerName || "").trim();
@@ -67,10 +71,10 @@ export default function SalaryCertificateDocument({ request }: { request: Employ
     <>
       <div className="leave-request-export-toolbar salary-certificate-export-toolbar">
         <button type="button" className="is-primary" onClick={() => void printSalaryCertificateDocument()}>
-          طباعة / حفظ PDF
+          {text("طباعة / حفظ PDF", "Print / save PDF")}
         </button>
       </div>
-      <DocumentPage className="leave-doc salary-certificate-print-root" labelledBy="salary-certificate-document-title">
+      <DocumentPage dir={english ? "ltr" : "rtl"} className="leave-doc salary-certificate-print-root" labelledBy="salary-certificate-document-title">
         <DocumentWatermark src={DOCUMENT_BRANDING.watermarkSource} />
         <header className="leave-doc-header">
           <img
@@ -79,68 +83,68 @@ export default function SalaryCertificateDocument({ request }: { request: Employ
             className="leave-doc-logo salary-certificate-logo"
             style={{ filter: DOCUMENT_BRANDING.lightSurfaceLogoFilter }}
           />
-          <h2 id="salary-certificate-document-title">تعريف بالراتب</h2>
+          <h2 id="salary-certificate-document-title">{text("تعريف بالراتب", "Salary certificate")}</h2>
         </header>
 
-        <div className="leave-doc-number">رقم الخطاب: <strong>{request.request_number}</strong></div>
+        <div className="leave-doc-number">{text("رقم الخطاب", "Letter number")}: <strong>{request.request_number}</strong></div>
 
         <div className="leave-doc-letter">
-          <p className="leave-doc-addressee">إلى: {String(payload.addressee || "—")}</p>
-          <p>الموقرين</p>
-          <p className="leave-doc-greeting">السلام عليكم ورحمة الله وبركاته،،</p>
+          <p className="leave-doc-addressee">{text("إلى", "To")}: {String(payload.addressee || "—")}</p>
+          <p>{text("الموقرين", "Dear Sir/Madam")}</p>
+          <p className="leave-doc-greeting">{text("السلام عليكم ورحمة الله وبركاته،،", "Greetings,")}</p>
           <p>
-            تشهد {DOCUMENT_BRANDING.companyName} بأن الموظف/ة
+            {text("تشهد", "This is to certify that")} {DOCUMENT_BRANDING.companyName} {text("بأن الموظف/ة", "employs")}
             <strong className="leave-doc-inline-value"> {request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} </strong>
-            يعمل/تعمل لدينا بمسمى
+            {text("يعمل/تعمل لدينا بمسمى", "as")}
             <strong className="leave-doc-inline-value"> {String(payload.jobTitleSnapshot || "—")} </strong>
-            {payload.employmentStartDateSnapshot ? <> منذ تاريخ <strong className="leave-doc-inline-value">{formatDate(payload.employmentStartDateSnapshot)}</strong></> : null}.
-            وقد صدر له/لها هذا التعريف بناءً على طلبه/طلبها لتقديمه إلى
+            {payload.employmentStartDateSnapshot ? <> {text("منذ تاريخ", "since")} <strong className="leave-doc-inline-value">{formatDate(payload.employmentStartDateSnapshot, language)}</strong></> : null}.
+            {text("وقد صدر له/لها هذا التعريف بناءً على طلبه/طلبها لتقديمه إلى", "This certificate is issued at the employee's request for submission to")}
             <strong className="leave-doc-inline-value"> {String(payload.addressee || "—")} </strong>
-            دون أدنى مسؤولية على المنشأة تجاه الغير.
+            {text("دون أدنى مسؤولية على المنشأة تجاه الغير.", "without any liability to the company toward third parties.")}
           </p>
         </div>
 
         <DocumentFieldGrid>
-          <DocumentField label="اسم الموظف/ة" value={request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} />
-          <DocumentField label="المسمى الوظيفي" value={String(payload.jobTitleSnapshot || "—")} />
-          <DocumentField label="تاريخ الالتحاق" value={formatDate(payload.employmentStartDateSnapshot)} />
-          <DocumentField label="تاريخ الإصدار" value={formatDate(request.approved_at || request.submitted_at)} />
+          <DocumentField label={text("اسم الموظف/ة", "Employee name")} value={request.employee_name_snapshot || String(payload.employeeNameSnapshot || "—")} />
+          <DocumentField label={text("المسمى الوظيفي", "Job title")} value={String(payload.jobTitleSnapshot || "—")} />
+          <DocumentField label={text("تاريخ الالتحاق", "Start date")} value={formatDate(payload.employmentStartDateSnapshot, language)} />
+          <DocumentField label={text("تاريخ الإصدار", "Issue date")} value={formatDate(request.approved_at || request.submitted_at, language)} />
         </DocumentFieldGrid>
 
-        <DocumentSection title="بيانات الراتب">
+        <DocumentSection title={text("بيانات الراتب", "Salary details")}>
           <DocumentFieldGrid>
-            <DocumentField label="الراتب الأساسي" value={money(payload.baseSalaryHalalas)} />
-            <DocumentField label="بدل السكن" value={money(payload.housingAllowanceHalalas)} />
-            <DocumentField label="بدل النقل" value={money(payload.transportationAllowanceHalalas)} />
-            <DocumentField label="بدلات أخرى" value={money(payload.otherAllowancesHalalas)} />
-            <DocumentField label="إجمالي البدلات" value={money(payload.allowancesHalalas)} />
-            <DocumentField label="إجمالي الراتب الشهري" value={money(payload.totalSalaryHalalas)} />
+            <DocumentField label={text("الراتب الأساسي", "Base salary")} value={money(payload.baseSalaryHalalas, language)} />
+            <DocumentField label={text("بدل السكن", "Housing allowance")} value={money(payload.housingAllowanceHalalas, language)} />
+            <DocumentField label={text("بدل النقل", "Transportation allowance")} value={money(payload.transportationAllowanceHalalas, language)} />
+            <DocumentField label={text("بدلات أخرى", "Other allowances")} value={money(payload.otherAllowancesHalalas, language)} />
+            <DocumentField label={text("إجمالي البدلات", "Total allowances")} value={money(payload.allowancesHalalas, language)} />
+            <DocumentField label={text("إجمالي الراتب الشهري", "Total monthly salary")} value={money(payload.totalSalaryHalalas, language)} />
           </DocumentFieldGrid>
         </DocumentSection>
 
-        {payload.reason ? <DocumentLongText label="غرض الطلب" value={String(payload.reason)} /> : null}
+        {payload.reason ? <DocumentLongText label={text("غرض الطلب", "Purpose")} value={String(payload.reason)} /> : null}
 
-        <DocumentSection title="الاعتماد" className="leave-doc-manager-opinion">
+        <DocumentSection title={text("الاعتماد", "Approval")} className="leave-doc-manager-opinion">
           <div className="leave-doc-signature-row">
             <div className="leave-doc-signature-cell">
-              <span>اسم المعتمد</span>
-              <strong>{approved ? signerName || "—" : "بانتظار الاعتماد"}</strong>
+              <span>{text("اسم المعتمد", "Approver name")}</span>
+              <strong>{approved ? signerName || "—" : text("بانتظار الاعتماد", "Awaiting approval")}</strong>
             </div>
-            <SignatureBlock signature={approved ? signature : ""} />
+            <SignatureBlock signature={approved ? signature : ""} language={language} />
           </div>
         </DocumentSection>
 
-        <DocumentSection title="ختم المنشأة" className="leave-doc-admin-block salary-certificate-stamp-section">
+        <DocumentSection title={text("ختم المنشأة", "Company stamp")} className="leave-doc-admin-block salary-certificate-stamp-section">
           <div className="salary-certificate-stamp-space">
             <img
               src={DOCUMENT_BRANDING.stampSource}
-              alt="ختم المنشأة"
+              alt={text("ختم المنشأة", "Company stamp")}
               className="salary-certificate-stamp-image"
             />
           </div>
         </DocumentSection>
 
-        <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات • {request.request_number}</footer>
+        <footer className="leave-doc-copy-note">{text("نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات", "Electronic copy stored in the employee requests system")} • {request.request_number}</footer>
       </DocumentPage>
     </>
   );

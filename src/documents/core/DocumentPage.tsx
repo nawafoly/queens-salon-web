@@ -5,6 +5,7 @@ type DocumentPageProps = {
   children: ReactNode;
   className?: string;
   labelledBy?: string;
+  dir?: "rtl" | "ltr";
 };
 
 type DocumentSectionProps = {
@@ -18,11 +19,11 @@ type DocumentWatermarkProps = {
   className?: string;
 };
 
-export function DocumentPage({ children, className = "", labelledBy }: DocumentPageProps) {
+export function DocumentPage({ children, className = "", labelledBy, dir = "rtl" }: DocumentPageProps) {
   return (
     <section
       className={`document-a4-page ${className}`.trim()}
-      dir="rtl"
+      dir={dir}
       aria-labelledby={labelledBy}
       data-document-page="a4"
     >
