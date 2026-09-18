@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  setPersistence,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faLock } from "@fortawesome/free-solid-svg-icons";
 
@@ -144,6 +148,7 @@ export default function HrEntry() {
     setLoginError("");
 
     try {
+      await setPersistence(auth, browserLocalPersistence);
       const credential = await signInWithEmailAndPassword(auth, email, password);
       const access = await readVerifiedUserAccess(credential.user.uid);
 

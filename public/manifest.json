@@ -1,17 +1,17 @@
 {
-  "id": "/",
+  "id": "/hr",
   "name": "MALIKAT",
   "short_name": "MALIKAT",
   "description": "نظام MALIKAT لإدارة خدمات الصالون والحجوزات",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/",
+  "start_url": "/hr",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone"],
   "orientation": "portrait-primary",
-  "theme_color": "#ffffff",
-  "background_color": "#f4f5f6",
+  "theme_color": "#0b0b0d",
+  "background_color": "#0b0b0d",
   "icons": [
     {
       "src": "/malikat-icon-192-v2.png",

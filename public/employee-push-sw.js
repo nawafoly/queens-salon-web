@@ -50,7 +50,7 @@ self.addEventListener("push", (event) => {
       syncBadge(badge),
       self.registration.showNotification(title, {
         body,
-        icon: "/logo192.png",
+        icon: "/malikat-icon-192-v2.png",
         tag: String(data.tag || "malikat-update"),
         data: { url },
         dir: "rtl",

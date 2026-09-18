@@ -48,7 +48,7 @@ export default function Install() {
 
   const handlePrimaryAction = async () => {
     if (installed) {
-      window.location.assign("/");
+      window.location.assign("/hr");
       return;
     }
 
@@ -73,7 +73,7 @@ export default function Install() {
   };
 
   const actionLabel = installed
-    ? "فتح MALIKAT"
+    ? "فتح تسجيل الدخول الإداري"
     : busy
       ? "جاري فتح التثبيت..."
       : "تثبيت MALIKAT على هذا الجهاز";

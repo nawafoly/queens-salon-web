@@ -10,7 +10,10 @@ test("installed app uses the MALIKAT product name and branded icons", async () =
 
   assert.equal(manifest.name, "MALIKAT");
   assert.equal(manifest.short_name, "MALIKAT");
-  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.id, "/hr");
+  assert.equal(manifest.start_url, "/hr");
+  assert.equal(manifest.theme_color, "#0b0b0d");
+  assert.equal(manifest.background_color, "#0b0b0d");
   assert.equal(manifest.display, "standalone");
   assert.ok(manifest.icons.some((icon) => icon.src === "/malikat-icon-192-v2.png" && icon.sizes === "192x192"));
   assert.ok(manifest.icons.some((icon) => icon.src === "/malikat-icon-512-v2.png" && icon.sizes === "512x512"));
@@ -26,6 +29,7 @@ test("installed app uses the MALIKAT product name and branded icons", async () =
   assert.equal(icon512[25], 2, "512px icon must be opaque RGB without transparent corners");
   assert.equal(appleIcon[25], 2, "Apple touch icon must be opaque RGB without transparent corners");
   assert.match(html, /apple-touch-icon-v2\.png/);
+  assert.match(html, /malikat-icon-192-v2\.png/);
 });
 
 test("native Android launcher labels use the MALIKAT brand", async () => {
@@ -48,6 +52,7 @@ test("the public app exposes a dedicated install route and prompt flow", async (
   assert.match(app, /path="\/install"/);
   assert.match(installPage, /تثبيت MALIKAT على هذا الجهاز/);
   assert.match(installPage, /إضافة إلى الشاشة الرئيسية/);
+  assert.match(installPage, /window\.location\.assign\("\/hr"\)/);
   assert.match(installService, /beforeinstallprompt/);
   assert.match(installService, /appinstalled/);
 });
