@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+const readBuffer = (path) => readFile(new URL(`../${path}`, import.meta.url));
 
 test("installed app uses the MALIKAT product name and branded icons", async () => {
   const manifest = JSON.parse(await read("public/manifest.json"));
@@ -11,9 +12,20 @@ test("installed app uses the MALIKAT product name and branded icons", async () =
   assert.equal(manifest.short_name, "MALIKAT");
   assert.equal(manifest.start_url, "/");
   assert.equal(manifest.display, "standalone");
-  assert.ok(manifest.icons.some((icon) => icon.src === "/logo192.png" && icon.sizes === "192x192"));
-  assert.ok(manifest.icons.some((icon) => icon.src === "/logo512.png" && icon.sizes === "512x512"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "/malikat-icon-192-v2.png" && icon.sizes === "192x192"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "/malikat-icon-512-v2.png" && icon.sizes === "512x512"));
   assert.ok(manifest.icons.every((icon) => icon.purpose === "any"));
+
+  const [icon192, icon512, appleIcon, html] = await Promise.all([
+    readBuffer("public/malikat-icon-192-v2.png"),
+    readBuffer("public/malikat-icon-512-v2.png"),
+    readBuffer("public/apple-touch-icon-v2.png"),
+    read("index.html"),
+  ]);
+  assert.equal(icon192[25], 2, "192px icon must be opaque RGB without transparent corners");
+  assert.equal(icon512[25], 2, "512px icon must be opaque RGB without transparent corners");
+  assert.equal(appleIcon[25], 2, "Apple touch icon must be opaque RGB without transparent corners");
+  assert.match(html, /apple-touch-icon-v2\.png/);
 });
 
 test("native Android launcher labels use the MALIKAT brand", async () => {

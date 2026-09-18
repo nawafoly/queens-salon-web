@@ -85,7 +85,7 @@ export default function Install() {
         <div className="malikat-install__brand">
           <img
             className="malikat-install__logo"
-            src="/logo512.png"
+            src="/malikat-icon-512-v2.png"
             alt="شعار MALIKAT"
             width="144"
             height="144"

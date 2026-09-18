@@ -14,13 +14,13 @@
   "background_color": "#f4f5f6",
   "icons": [
     {
-      "src": "/logo192.png",
+      "src": "/malikat-icon-192-v2.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/logo512.png",
+      "src": "/malikat-icon-512-v2.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
