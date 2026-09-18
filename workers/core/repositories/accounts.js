@@ -653,7 +653,15 @@ export async function replaceAccountPermissions(db, salonId, id, data = {}, acto
   await validatePermissions(db, [...allow, ...deny]);
   const actorPermissionSet = new Set(actor?.permissions || []);
   if (actor?.role !== 'owner') {
-    const forbiddenGrant = allow.find((permission) => !actorPermissionSet.has(permission));
+    const previousEffectivePermissions = new Set(before.effectivePermissions || []);
+    const nextEffectivePermissions = new Set(rolePermissions);
+    allow.forEach((permission) => nextEffectivePermissions.add(permission));
+    deny.forEach((permission) => nextEffectivePermissions.delete(permission));
+    const forbiddenGrant = [...nextEffectivePermissions].find(
+      (permission) =>
+        !previousEffectivePermissions.has(permission) &&
+        !actorPermissionSet.has(permission)
+    );
     if (forbiddenGrant) throw new AppError(403, 'ACCOUNT_PERMISSION_GRANT_FORBIDDEN', forbiddenGrant);
   }
 
