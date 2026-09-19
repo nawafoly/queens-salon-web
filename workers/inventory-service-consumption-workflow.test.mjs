@@ -247,3 +247,30 @@ test("Guard: service consumption deducts from the employee home inventory locati
   assert.match(confirm, /ensureDefaultLocation\(/);
   assert.doesNotMatch(confirm, /preferred\(data, 'locationId', 'location_id'\)/);
 });
+
+
+test("Guard: consumption cannot be confirmed before execution or by another employee", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  const worker = read("workers/core/index.js");
+  const ui = read("src/pages/EmployeeServiceConsumption.tsx");
+
+  const validationStart = inv.indexOf("async function validateServiceConsumptionContext");
+  const validationEnd = inv.indexOf("async function getStockLevelRow", validationStart);
+  assert.notEqual(validationStart, -1);
+  assert.notEqual(validationEnd, -1);
+  const validation = inv.slice(validationStart, validationEnd);
+
+  assert.match(validation, /booking_staff_id/);
+  assert.match(validation, /inventory:booking_employee_mismatch/);
+  assert.match(validation, /deriveServiceConsumptionLifecycle/);
+  assert.match(validation, /lifecycle === 'UPCOMING'/);
+  assert.match(validation, /lifecycle === 'DUE_TODAY'/);
+  assert.match(validation, /inventory:consumption_not_due/);
+
+  assert.match(worker, /ctx\.role === "staff"/);
+  assert.match(worker, /employeeId: ctx\.employeeId/);
+
+  assert.match(ui, /selected\?\.can_confirm === true/);
+  assert.match(ui, /selected\?\.lifecycle === "PENDING_CONFIRMATION"/);
+  assert.match(ui, /selected\?\.lifecycle === "OVERDUE"/);
+});
