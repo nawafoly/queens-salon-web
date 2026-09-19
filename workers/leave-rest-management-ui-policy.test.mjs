@@ -43,6 +43,9 @@ test("weekly rest assignment time is 12-hour for users and canonical for Core", 
   assert.match(timePicker, /period === "pm"/);
   assert.match(timePicker, /<option value="am">ص<\/option>/);
   assert.match(timePicker, /<option value="pm">م<\/option>/);
+  assert.match(timePicker, /editing12Ref\.current/);
+  assert.match(timePicker, /normalizeTimeTyping\(nextDraft, "12h"\)/);
+  assert.match(timePicker, /digits\.length === 3/);
 });
 
 test("frontend calls Core leave/rest contracts without duplicating business rules", () => {
