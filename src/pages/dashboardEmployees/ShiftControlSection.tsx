@@ -521,6 +521,7 @@ export default function ShiftControlSection({
   const assignmentEditorRef = useRef<HTMLDivElement | null>(null);
   const loadRequestRef = useRef(0);
   const resolvedRequestRef = useRef(0);
+  const previewRequestRef = useRef(0);
 
   const focusAssignmentEditor = useCallback(() => {
     window.setTimeout(() => {
@@ -699,6 +700,8 @@ export default function ShiftControlSection({
   }, [shiftEmployeeIdsKey]);
 
   useEffect(() => {
+    previewRequestRef.current += 1;
+    setPreviewing(false);
     setPreview(null);
     setPreviewKind(null);
   }, [
@@ -729,6 +732,8 @@ export default function ShiftControlSection({
     const previewTo = assignmentForm.assignmentType === "permanent"
       ? assignmentForm.effectiveFrom
       : assignmentForm.effectiveTo || assignmentForm.effectiveFrom;
+    const requestId = ++previewRequestRef.current;
+    setPreviewKind("assignment");
     setPreviewing(true);
     try {
       const result = await CoreHrService.previewShiftChange({
@@ -737,16 +742,18 @@ export default function ShiftControlSection({
         effectiveFrom: assignmentForm.effectiveFrom,
         effectiveTo: previewTo,
       });
+      if (requestId !== previewRequestRef.current) return null;
       setPreview(result);
       setPreviewKind("assignment");
       setError("");
       return result;
     } catch (err) {
+      if (requestId !== previewRequestRef.current) return null;
       console.warn("shift assignment preview failed", err);
       setError("تعذر فحص تأثير تعيين الشفت من Core. لم يتم تنفيذ أي تغيير.");
       throw err;
     } finally {
-      setPreviewing(false);
+      if (requestId === previewRequestRef.current) setPreviewing(false);
     }
   };
 
@@ -766,6 +773,8 @@ export default function ShiftControlSection({
       setError("أدخل وقت بداية ونهاية صحيحين ومختلفين للاستثناء المخصص.");
       return null;
     }
+    const requestId = ++previewRequestRef.current;
+    setPreviewKind("exception");
     setPreviewing(true);
     try {
       const result = await CoreHrService.previewShiftChange({
@@ -774,16 +783,18 @@ export default function ShiftControlSection({
         dateFrom: exceptionForm.dateFrom,
         dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
       });
+      if (requestId !== previewRequestRef.current) return null;
       setPreview(result);
       setPreviewKind("exception");
       setError("");
       return result;
     } catch (err) {
+      if (requestId !== previewRequestRef.current) return null;
       console.warn("shift exception preview failed", err);
       setError("تعذر فحص تأثير الاستثناء من Core. لم يتم تنفيذ أي تغيير.");
       throw err;
     } finally {
-      setPreviewing(false);
+      if (requestId === previewRequestRef.current) setPreviewing(false);
     }
   };
 
