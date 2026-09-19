@@ -9,6 +9,8 @@ const legacyPath = path.join(root, "src/pages/hr/EmployeeMessagesLegacy.tsx");
 const stylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-messages.css");
 const metricStylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-messages-metrics.css");
 const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
+const employeeHubPath = path.join(root, "src/services/employeeHub.ts");
+const workforceRepoPath = path.join(root, "workers/core/repositories/workforce-communications.js");
 
 const router = fs.readFileSync(routerPath, "utf8");
 const admin = fs.readFileSync(adminPath, "utf8");
@@ -16,6 +18,8 @@ const legacy = fs.readFileSync(legacyPath, "utf8");
 const style = fs.readFileSync(stylePath, "utf8");
 const metricStyle = fs.readFileSync(metricStylePath, "utf8");
 const entry = fs.readFileSync(entryPath, "utf8");
+const employeeHub = fs.readFileSync(employeeHubPath, "utf8");
+const workforceRepo = fs.readFileSync(workforceRepoPath, "utf8");
 
 const failures = [];
 const requireText = (content, needle, message) => {
@@ -40,19 +44,38 @@ rejectText(admin, "hr-comms-", "Legacy communications classes remain in AdminMes
 
 for (const guard of [
   "listEmployeeDirectory()",
-  'orderBy("createdAt", "desc")',
-  "limit(500)",
+  "listEmployeeMessages(500)",
   "listEmployeeNotifications",
   "markEmployeeNotificationsRead",
   "markEmployeeThreadRead",
   "createEmployeeMessage",
-  "createEmployeeNotification",
-  'route: "/employee/messages"',
+  'item.route === "/employee/messages"',
   "makeConversationId(session.uid, toUid)",
 ]) {
   requireText(admin, guard, `Admin messages business-logic guard missing: ${guard}`);
   requireText(legacy, guard, `Employee messages legacy guard missing: ${guard}`);
 }
+
+requireText(
+  employeeHub,
+  "CoreWorkforceService.listMessages(limitCount)",
+  "Employee message listing must stay on CoreWorkforceService."
+);
+requireText(
+  employeeHub,
+  "CoreWorkforceService.createMessage({",
+  "Employee message creation must stay on CoreWorkforceService."
+);
+requireText(
+  workforceRepo,
+  "route: '/employee/messages'",
+  "Core workforce messaging must keep the employee messages notification route."
+);
+requireText(
+  workforceRepo,
+  "INSERT INTO employee_notifications",
+  "Core workforce messaging must create the notification transactionally."
+);
 
 requireText(legacy, "onPortalChange", "Employee legacy messages must retain onPortalChange behavior.");
 requireText(legacy, "hr-comms-page", "Employee legacy messages presentation must remain preserved.");
