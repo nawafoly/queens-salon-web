@@ -117,6 +117,10 @@ test("reopening approved payroll restores inbound carryovers and blocks consumed
   );
   assert.match(
     fn,
+    /payroll_historical_settlements[\s\S]*status = 'recorded'[\s\S]*reopen_has_recorded_historical_settlement/
+  );
+  assert.match(
+    fn,
     /SET status = 'pending',[\s\S]*target_payroll_entry_id = NULL,[\s\S]*applied_at = NULL/
   );
   assert.match(
