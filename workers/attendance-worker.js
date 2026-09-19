@@ -2,6 +2,9 @@ import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
   resolveAttendanceWorkAuthorization,
 } from "./core/repositories/leave-rest-workflows.js";
+import {
+  reconcileLockedPayrollImpactForEmployeeDate,
+} from "./core/repositories/payroll.js";
 
 const ATTENDANCE_ALLOWED_ROLES = new Set([
   "owner",
@@ -1868,6 +1871,45 @@ export function parseRiyadhDateTime(value, time) {
   ).toISOString();
 }
 
+async function reconcileAdminAttendancePayroll({
+  directoryDb,
+  attendanceDb,
+  salonId,
+  employeeId,
+  date,
+  requester,
+  sourceId = null,
+  reason = null,
+}) {
+  if (!directoryDb || !employeeId || !date) return null;
+
+  return reconcileLockedPayrollImpactForEmployeeDate(
+    directoryDb,
+    salonId,
+    {
+      employeeId,
+      date,
+      sourceType: "attendance_admin_adjustment",
+      sourceId,
+      reason:
+        reason ||
+        `Canonical attendance admin correction for ${date}.`,
+    },
+    {
+      uid: normalizeText(requester?.uid) || null,
+      email: normalizeText(requester?.email) || null,
+      name:
+        normalizeText(requester?.runtime?.displayName) ||
+        normalizeText(requester?.runtime?.name) ||
+        null,
+      role: normalizeText(requester?.runtime?.role) || null,
+    },
+    {
+      externalAttendanceDb: attendanceDb,
+    }
+  );
+}
+
 export async function adjustAttendanceRecords(request, db, directoryDb, salonId, requester) {
   const input = await readJsonBody(request);
   if (!input.ok) return input.response;
@@ -1914,8 +1956,11 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
 
     return clearAttendanceRecordsForDay({
       db,
+      directoryDb,
+      salonId,
       requester,
       employeeUid,
+      employeeDocId,
       date,
       recordIds: clearRecordIds,
       serverTimes: clearServerTimes,
@@ -2139,6 +2184,20 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       ).catch(() => {});
     }
 
+    const payrollReconciliation =
+      await reconcileAdminAttendancePayroll({
+        directoryDb,
+        attendanceDb: db,
+        salonId,
+        employeeId: employeeDocId,
+        date,
+        requester,
+        sourceId: `attendance-admin:${employeeDocId}:${date}`,
+        reason:
+          note ||
+          `Attendance admin adjustment for ${employeeDocId} on ${date}.`,
+      });
+
     return json(200, {
       ok: true,
       date,
@@ -2148,6 +2207,7 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
         ...(clearCheckIn ? ["check_in"] : []),
         ...(clearCheckOut ? ["check_out"] : []),
       ],
+      payrollReconciliation,
     });
   } catch (error) {
     return serverError("attendance_admin_adjustment_failed", error);
@@ -2156,8 +2216,11 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
 
 export async function clearAttendanceRecordsForDay({
   db,
+  directoryDb = null,
+  salonId = "main",
   requester,
   employeeUid,
+  employeeDocId = "",
   date,
   recordIds = [],
   serverTimes = [],
@@ -2232,12 +2295,28 @@ export async function clearAttendanceRecordsForDay({
     }
 
     if (!idsToClear.length) {
+      const payrollReconciliation =
+        await reconcileAdminAttendancePayroll({
+          directoryDb,
+          attendanceDb: db,
+          salonId,
+          employeeId: employeeDocId,
+          date,
+          requester,
+          sourceId:
+            `attendance-admin-clear:${employeeDocId || employeeUid}:${date}`,
+          reason:
+            note ||
+            `Attendance admin clear replay for ${employeeDocId || employeeUid} on ${date}.`,
+        });
+
       return json(200, {
         ok: true,
         action: "clear",
         date,
         clearedRecords: 0,
         source: safeJsonObject(source),
+        payrollReconciliation,
       });
     }
 
@@ -2271,12 +2350,28 @@ export async function clearAttendanceRecordsForDay({
     const result = results[1];
     await rebuildAttendanceState(db, employeeUid);
 
+    const payrollReconciliation =
+      await reconcileAdminAttendancePayroll({
+        directoryDb,
+        attendanceDb: db,
+        salonId,
+        employeeId: employeeDocId,
+        date,
+        requester,
+        sourceId:
+          `attendance-admin-clear:${employeeDocId || employeeUid}:${date}`,
+        reason:
+          note ||
+          `Attendance admin clear for ${employeeDocId || employeeUid} on ${date}.`,
+      });
+
     return json(200, {
       ok: true,
       action: "clear",
       date,
       clearedRecords: Number(result?.meta?.changes || 0),
       source: safeJsonObject(source),
+      payrollReconciliation,
     });
   } catch (error) {
     return serverError("attendance_admin_clear_failed", error);
