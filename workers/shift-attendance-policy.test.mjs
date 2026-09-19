@@ -153,7 +153,7 @@ test("weekly off rejects check-in even when the lock option is disabled", () => 
   assert.equal(result.rejectionReason, "not_scheduled_workday");
 });
 
-test("late grace is pending compensation while the shift is open", () => {
+test("late grace is never classified as lateness and becomes missing time if not compensated", () => {
   const openShift = calculateAttendanceLatePresentation({
     actualLateMinutes: 10,
     earlyLeaveMinutes: 0,
@@ -175,7 +175,7 @@ test("late grace is pending compensation while the shift is open", () => {
     hasCheckOut: true,
   });
   assert.equal(leftOnTime.pendingCompensationMinutes, 0);
-  assert.equal(leftOnTime.displayLateMinutes, 10);
+  assert.equal(leftOnTime.displayLateMinutes, 0);
   assert.equal(leftOnTime.missingMinutes, 10);
 
   const compensated = calculateAttendanceLatePresentation({
