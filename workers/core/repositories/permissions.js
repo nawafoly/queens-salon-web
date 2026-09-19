@@ -259,6 +259,34 @@ export async function permissionPayrollSummary(db, salonId, query = {}) {
   };
 }
 
+async function reconcilePermissionPayroll(
+  db,
+  salonId,
+  permission,
+  actor = {},
+  options = {},
+  action = 'updated'
+) {
+  const {
+    reconcileLockedPayrollImpactForEmployeeDate,
+  } = await import('./payroll.js');
+
+  return reconcileLockedPayrollImpactForEmployeeDate(
+    db,
+    salonId,
+    {
+      employeeId: permission.employee_id,
+      date: permission.date_key,
+      sourceType: 'permission',
+      sourceId: permission.id,
+      reason:
+        `Canonical permission ${action} for ${permission.date_key} (${permission.id}).`,
+    },
+    actor,
+    options
+  );
+}
+
 async function refreshPayrollEntries(db, salonId, employeeId, dateKey) {
   const entries = await dbAll(
     db,
@@ -344,7 +372,13 @@ export async function listPermissionRequests(db, salonId, query = {}) {
   );
 }
 
-export async function createPermissionRequest(db, salonId, data, actor = {}) {
+export async function createPermissionRequest(
+  db,
+  salonId,
+  data,
+  actor = {},
+  options = {}
+) {
   const source = normalizedChoice(data.source, VALID_SOURCES, 'employee_request');
   const identity = await resolveEmployeeIdentity(db, salonId, data, actor, source);
   const dateKey = validDate(data.date || data.dateKey || data.date_key, 'date');
@@ -420,6 +454,14 @@ export async function createPermissionRequest(db, salonId, data, actor = {}) {
     await insertAttendanceEvent(db, salonId, row, 'permission_return', expectedReturnTime, actor);
     await syncPermissionBookingBlock(db, salonId, row, actor);
     await refreshPayrollEntries(db, salonId, row.employee_id, row.date_key);
+    const payrollReconciliation = await reconcilePermissionPayroll(
+      db,
+      salonId,
+      row,
+      actor,
+      options,
+      'created'
+    );
     await notifyEmployee(
       db,
       salonId,
@@ -427,18 +469,41 @@ export async function createPermissionRequest(db, salonId, data, actor = {}) {
       'تم اعتماد استئذان من الإدارة',
       `${dateKey} • من ${requestedExitTime} إلى ${expectedReturnTime} • المدة ${approvedMinutes} دقيقة`
     );
+    return {
+      ...row,
+      payrollReconciliation,
+    };
   }
   return row;
 }
 
-export async function decidePermissionRequest(db, salonId, idValue, decision, actor = {}) {
+export async function decidePermissionRequest(
+  db,
+  salonId,
+  idValue,
+  decision,
+  actor = {},
+  options = {}
+) {
   const row = await getPermission(db, salonId, idValue);
   const status = normalizedChoice(decision.status, VALID_STATUSES, '');
   if (!['approved', 'rejected', 'cancelled'].includes(status)) {
     throw new AppError(400, 'core_permission:invalid_decision');
   }
   if (row.status === status || (status === 'approved' && row.status === 'returned')) {
-    return { ...row, idempotent: true };
+    const payrollReconciliation = await reconcilePermissionPayroll(
+      db,
+      salonId,
+      row,
+      actor,
+      options,
+      'decision_replayed'
+    );
+    return {
+      ...row,
+      idempotent: true,
+      payrollReconciliation,
+    };
   }
   if (row.status !== 'pending' && status !== 'cancelled') {
     throw new AppError(409, 'core_permission:invalid_transition');
@@ -475,6 +540,14 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
     });
     const updated = await getPermission(db, salonId, row.id);
     await syncPermissionBookingBlock(db, salonId, updated, actor);
+    const payrollReconciliation = await reconcilePermissionPayroll(
+      db,
+      salonId,
+      updated,
+      actor,
+      options,
+      'approved'
+    );
     await notifyEmployee(
       db,
       salonId,
@@ -482,7 +555,10 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
       'تمت الموافقة على طلب الاستئذان',
       `${updated.date_key} • من ${exitTime} إلى ${approvedReturnTime}`
     );
-    return updated;
+    return {
+      ...updated,
+      payrollReconciliation,
+    };
   }
 
   await dbRun(
@@ -508,16 +584,48 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
     await cancelPermissionBookingBlock(db, salonId, row.id, actor, status === 'cancelled' ? 'تم إلغاء الاستئذان' : 'تم رفض الاستئذان');
     await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
   }
+  const payrollReconciliation = await reconcilePermissionPayroll(
+    db,
+    salonId,
+    updated,
+    actor,
+    options,
+    status
+  );
   const title = status === 'rejected'
     ? 'تم رفض طلب الاستئذان'
     : 'تم إلغاء طلب الاستئذان';
   await notifyEmployee(db, salonId, updated, title);
-  return updated;
+  return {
+    ...updated,
+    payrollReconciliation,
+  };
 }
 
-export async function markPermissionOut(db, salonId, idValue, data, actor = {}) {
+export async function markPermissionOut(
+  db,
+  salonId,
+  idValue,
+  data,
+  actor = {},
+  options = {}
+) {
   const row = await getPermission(db, salonId, idValue);
-  if (row.status === 'out') return { ...row, idempotent: true };
+  if (row.status === 'out') {
+    const payrollReconciliation = await reconcilePermissionPayroll(
+      db,
+      salonId,
+      row,
+      actor,
+      options,
+      'out_replayed'
+    );
+    return {
+      ...row,
+      idempotent: true,
+      payrollReconciliation,
+    };
+  }
   if (!['pending', 'approved'].includes(row.status)) {
     throw new AppError(409, 'core_permission:invalid_transition');
   }
@@ -544,13 +652,45 @@ export async function markPermissionOut(db, salonId, idValue, data, actor = {}) 
   const updated = await getPermission(db, salonId, row.id);
   if (cleanText(updated.expected_return_time)) await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_out', actualExitTime, actor);
+  const payrollReconciliation = await reconcilePermissionPayroll(
+    db,
+    salonId,
+    updated,
+    actor,
+    options,
+    'out'
+  );
   await notifyEmployee(db, salonId, updated, 'تم تسجيل خروجك للاستئذان', `${updated.date_key} • ${actualExitTime}`);
-  return updated;
+  return {
+    ...updated,
+    payrollReconciliation,
+  };
 }
 
-export async function markPermissionReturned(db, salonId, idValue, data, actor = {}) {
+export async function markPermissionReturned(
+  db,
+  salonId,
+  idValue,
+  data,
+  actor = {},
+  options = {}
+) {
   const row = await getPermission(db, salonId, idValue);
-  if (row.status === 'returned') return { ...row, idempotent: true };
+  if (row.status === 'returned') {
+    const payrollReconciliation = await reconcilePermissionPayroll(
+      db,
+      salonId,
+      row,
+      actor,
+      options,
+      'return_replayed'
+    );
+    return {
+      ...row,
+      idempotent: true,
+      payrollReconciliation,
+    };
+  }
   if (row.status !== 'out') throw new AppError(409, 'core_permission:not_out');
   const actualReturnTime = validTime(data.actualReturnTime || data.actual_return_time, 'actualReturnTime');
   const exitTime = validTime(row.actual_exit_time || row.requested_exit_time, 'actualExitTime');
@@ -579,6 +719,14 @@ export async function markPermissionReturned(db, salonId, idValue, data, actor =
   await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_return', actualReturnTime, actor);
   await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
+  const payrollReconciliation = await reconcilePermissionPayroll(
+    db,
+    salonId,
+    updated,
+    actor,
+    options,
+    'returned'
+  );
   await notifyEmployee(
     db,
     salonId,
@@ -586,5 +734,8 @@ export async function markPermissionReturned(db, salonId, idValue, data, actor =
     'تم تسجيل العودة من الاستئذان',
     `${updated.date_key} • عودة ${actualReturnTime} • المدة ${minutes} دقيقة`
   );
-  return updated;
+  return {
+    ...updated,
+    payrollReconciliation,
+  };
 }
