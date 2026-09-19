@@ -561,6 +561,9 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "core_payroll:reopen_has_applied_downstream_carryover") {
     return "لا يمكن إعادة فتح هذه المسيرة لأن فرقًا منها تم تطبيقه بالفعل في مسيرة لاحقة. يجب معالجة المسيرة اللاحقة أولًا.";
   }
+  if (message === "core_payroll:reopen_has_recorded_historical_settlement") {
+    return "لا يمكن إعادة فتح هذه المسيرة لأن عليها تسوية تاريخية مدفوعة/محصلة. ألغِ التسوية المسجلة أولًا ثم أعد المحاولة.";
+  }
   if (message === "core_payroll:reopen_concurrent_mutation") {
     return "تغيّرت حالة المسيرة أثناء إعادة الفتح. حدّث الصفحة وحاول مرة أخرى.";
   }
