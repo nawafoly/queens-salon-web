@@ -30,7 +30,7 @@ function normalizeTimeDraft(value: string) {
     .slice(0, 5);
 }
 
-function normalizeTimeTyping(value: string) {
+function normalizeTimeTyping(value: string, clock: "24h" | "12h" = "24h") {
   const clean = normalizeWesternDigits(value).replace(/[^0-9:]/g, "");
   if (clean.includes(":")) {
     const [hour = "", minute = ""] = clean.split(":");
@@ -38,6 +38,15 @@ function normalizeTimeTyping(value: string) {
   }
 
   const digits = clean.replace(/\D/g, "").slice(0, 4);
+  if (clock === "12h") {
+    if (digits.length <= 2) return digits;
+    if (digits.length === 3) {
+      const firstTwo = Number(digits.slice(0, 2));
+      return firstTwo >= 1 && firstTwo <= 12
+        ? `${digits.slice(0, 2)}:${digits.slice(2)}`
+        : `${digits.slice(0, 1)}:${digits.slice(1)}`;
+    }
+  }
   if (digits.length <= 2) return digits;
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
@@ -131,7 +140,7 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
   };
 
   const commit12Draft = (nextDraft: string, nextPeriod = period12) => {
-    const normalizedDraft = normalizeTimeTyping(nextDraft);
+    const normalizedDraft = normalizeTimeTyping(nextDraft, "12h");
     setDraft12(normalizedDraft);
 
     if (!normalizedDraft) {
