@@ -3877,5 +3877,49 @@ export async function reversePayrollEntryPayment(
   statements.push(...obligationStatements);
 
   await dbBatch(db, statements);
-  return getPayrollEntry(db, salonId, existing.id);
+
+  const approvedEntry = await getPayrollEntry(db, salonId, existing.id);
+  if (cleanText(approvedEntry.status) !== 'approved') {
+    throw new AppError(
+      409,
+      'core_payroll:payment_reversal_concurrent_mutation'
+    );
+  }
+
+  const staleDeductedAdvance = await dbFirst(
+    db,
+    `SELECT id
+       FROM salary_advance_installments
+      WHERE salon_id = ?
+        AND payroll_entry_id = ?
+        AND payroll_month = ?
+        AND status = 'deducted'
+      LIMIT 1`,
+    [salonId, existing.id, existing.payroll_month]
+  );
+  if (staleDeductedAdvance) {
+    throw new AppError(
+      409,
+      'core_payroll:payment_reversal_advance_incomplete'
+    );
+  }
+
+  const staleAppliedObligation = await dbFirst(
+    db,
+    `SELECT id
+       FROM employee_payroll_obligation_installments
+      WHERE salon_id = ?
+        AND applied_payroll_entry_id = ?
+        AND status = 'applied'
+      LIMIT 1`,
+    [salonId, existing.id]
+  );
+  if (staleAppliedObligation) {
+    throw new AppError(
+      409,
+      'core_payroll:payment_reversal_obligation_incomplete'
+    );
+  }
+
+  return approvedEntry;
 }
