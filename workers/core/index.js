@@ -194,6 +194,9 @@ import {
   listPayrollAdvanceDeductions,
   listPayrollPeriods,
   listPayrollCarryoverAdjustments,
+  listPayrollHistoricalSettlements,
+  recordPayrollHistoricalSettlement,
+  voidPayrollHistoricalSettlement,
   reconcilePayrollCarryoversBatch,
   markPayrollEntryPaid,
   reversePayrollEntryPayment,
@@ -840,6 +843,17 @@ function match(url, method) {
     return { name: "salary-advance-installment:defer", id: salaryAdvanceInstallmentDefer[1] };
   }
   if (path === "/api/core/hr/payroll-carryovers" && method === "GET") return { name: "payroll-carryovers" };
+  if (path === "/api/core/hr/payroll-historical-settlements") {
+    return { name: "payroll-historical-settlements" };
+  }
+  const payrollHistoricalSettlementVoid =
+    /^\/api\/core\/hr\/payroll-historical-settlements\/([^/]+)\/void$/.exec(path);
+  if (payrollHistoricalSettlementVoid && method === "POST") {
+    return {
+      name: "payroll-historical-settlement:void",
+      id: payrollHistoricalSettlementVoid[1],
+    };
+  }
   if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|late-approve|paid|unpay|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
@@ -2323,6 +2337,34 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return listPayrollCarryoverAdjustments(db, ctx.salonId, query);
       break;
 
+    case "payroll-historical-settlements":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listPayrollHistoricalSettlements(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return recordPayrollHistoricalSettlement(
+          db,
+          ctx.salonId,
+          body,
+          actorInfo,
+          { externalAttendanceDb: env.ATTENDANCE_DB || null }
+        );
+      }
+      break;
+
+    case "payroll-historical-settlement:void":
+      requirePermission(ctx, "payroll.manage");
+      return voidPayrollHistoricalSettlement(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
+
     case "payroll-reconciliations:batch":
       requirePermission(ctx, "payroll.manage");
       if (method === "POST") return reconcilePayrollCarryoversBatch(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
@@ -3147,6 +3189,7 @@ export async function handleRequest(request, env) {
       "inventory:consumption-confirm",
       "inventory:purchase-order-receive",
       "inventory:transfer",
+      "payroll-historical-settlements",
     ].includes(route.name) &&
     String(request.method || "").toUpperCase() === "POST"
   ) {
@@ -3173,7 +3216,9 @@ export async function handleRequest(request, env) {
     ) {
       throw new AppError(
         400,
-        "inventory:operation_id_mismatch"
+        route.name === "payroll-historical-settlements"
+          ? "core_payroll:historical_settlement_operation_mismatch"
+          : "inventory:operation_id_mismatch"
       );
     }
 
