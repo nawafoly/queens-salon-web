@@ -3787,7 +3787,23 @@ export async function reversePayrollEntryPayment(
                    END,
                    updated_at = ?
              WHERE salon_id = ?
-               AND id = ?`,
+               AND id = ?
+               AND EXISTS (
+                 SELECT 1
+                   FROM salary_advance_installments sai
+                  WHERE sai.salon_id = ?
+                    AND sai.advance_id = ?
+                    AND sai.payroll_entry_id = ?
+                    AND sai.payroll_month = ?
+                    AND sai.status = 'deducted'
+               )
+               AND EXISTS (
+                 SELECT 1
+                   FROM payroll_entries pe
+                  WHERE pe.salon_id = ?
+                    AND pe.id = ?
+                    AND pe.status = 'approved'
+               )`,
       params: [
         amount,
         amount,
@@ -3795,6 +3811,12 @@ export async function reversePayrollEntryPayment(
         now,
         salonId,
         installment.advance_id,
+        salonId,
+        installment.advance_id,
+        existing.id,
+        existing.payroll_month,
+        salonId,
+        existing.id,
       ],
     });
   }
@@ -3807,12 +3829,21 @@ export async function reversePayrollEntryPayment(
            WHERE salon_id = ?
              AND payroll_entry_id = ?
              AND payroll_month = ?
-             AND status = 'deducted'`,
+             AND status = 'deducted'
+             AND EXISTS (
+               SELECT 1
+                 FROM payroll_entries pe
+                WHERE pe.salon_id = ?
+                  AND pe.id = ?
+                  AND pe.status = 'approved'
+             )`,
     params: [
       now,
       salonId,
       existing.id,
       existing.payroll_month,
+      salonId,
+      existing.id,
     ],
   });
 
