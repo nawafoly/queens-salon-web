@@ -219,7 +219,7 @@ test("payroll approval only locks mutable rows and verifies the winner", () => {
   );
   assert.match(
     fn,
-    /cleanText\(current\.status\) === 'approved'/
+    /\['approved', 'paid'\]\.includes\(cleanText\(current\.status\)\)/
   );
   assert.match(fn, /approval_concurrent_mutation/);
 });
