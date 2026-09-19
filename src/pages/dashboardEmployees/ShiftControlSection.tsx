@@ -318,10 +318,12 @@ function isAssignmentActiveOnDate(assignment: CoreShiftAssignment, dateKey: stri
 function resolvedShiftRank(row?: CoreResolvedShift | null) {
   const source = cleanText(row?.source).toLowerCase();
   const exceptionType = cleanText(row?.exceptionType || row?.exception_type).toLowerCase();
-  if (source === "exception" && exceptionType === "off") return 5;
+  if (source === "exception" && exceptionType === "off") return 6;
+  if (source === "weekly_rest_work_assignment") return 5;
   if (source === "exception") return 4;
-  if (source === "assignment") return 3;
-  if (source && source !== "none") return 2;
+  if (source === "weekly_schedule") return 3;
+  if (source === "assignment") return 2;
+  if (source && source !== "none") return 1;
   return 0;
 }
 
@@ -1177,11 +1179,13 @@ export default function ShiftControlSection({
   const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : "لا يوجد";
   const resolvedLabel = source === "exception"
     ? "استثناء يومي"
-    : source === "weekly_schedule"
-      ? "جدول الدوام الأسبوعي"
-      : source === "assignment"
-        ? "شفت افتراضي"
-        : "لا يوجد";
+    : source === "weekly_rest_work_assignment"
+      ? "عمل استثنائي في يوم الراحة"
+      : source === "weekly_schedule"
+        ? "جدول الدوام الأسبوعي"
+        : source === "assignment"
+          ? "شفت افتراضي"
+          : "لا يوجد";
   const resolvedStatus = resolvedExceptionType === "off" || (source === "weekly_schedule" && Number(resolvedShift?.active) !== 1)
     ? "مغلق اليوم"
     : source === "none" || !source
@@ -1265,10 +1269,10 @@ export default function ShiftControlSection({
             label="الشفت"
             value={resolvedShiftName || (source === "assignment" ? openAssignmentName : "") || (resolvedStatus === "مغلق اليوم" ? "راحة أسبوعية" : "لا يوجد")}
             note={source === "assignment" && openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || "مفتوح"}` : resolvedStatus}
-            tone={source === "exception" ? "gold" : source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"}
+            tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"}
           />
           <WorkspaceMetricV2 label="الوقت" value={resolvedStatus === "مغلق اليوم" ? "راحة" : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note={resolvedStatus === "مغلق اليوم" ? "لا يوجد دوام مطلوب" : "وقت الدوام الفعلي"} tone="dark" />
-          <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} note={source === "exception" ? exceptionTypeLabel(resolvedExceptionType) : "الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي"} tone={source === "exception" ? "gold" : source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
+          <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} note={source === "exception" ? exceptionTypeLabel(resolvedExceptionType) : "الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي"} tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
           <WorkspaceMetricV2
             label="مرونة الحضور"
             value={`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} دقيقة`}
