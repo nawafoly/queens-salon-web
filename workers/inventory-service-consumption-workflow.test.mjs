@@ -262,6 +262,8 @@ test("Guard: consumption cannot be confirmed before execution or by another empl
 
   assert.match(validation, /booking_staff_id/);
   assert.match(validation, /inventory:booking_employee_mismatch/);
+  assert.match(validation, /booking_staff_acknowledgements/);
+  assert.match(validation, /inventory:booking_acknowledgement_required/);
   assert.match(validation, /deriveServiceConsumptionLifecycle/);
   assert.match(validation, /lifecycle === 'UPCOMING'/);
   assert.match(validation, /lifecycle === 'DUE_TODAY'/);
@@ -269,6 +271,7 @@ test("Guard: consumption cannot be confirmed before execution or by another empl
 
   assert.match(worker, /ctx\.role === "staff"/);
   assert.match(worker, /employeeId: ctx\.employeeId/);
+  assert.match(worker, /requireBookingAcknowledgement: true/);
 
   assert.match(ui, /selected\?\.can_confirm === true/);
   assert.match(ui, /selected\?\.lifecycle === "PENDING_CONFIRMATION"/);
