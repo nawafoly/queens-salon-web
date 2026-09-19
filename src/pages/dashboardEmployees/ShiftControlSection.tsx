@@ -366,8 +366,10 @@ function crossesMidnight(startTime: string, endTime: string) {
 
 function shiftPreviewDescription(preview: CoreShiftChangePreview) {
   const affectedDays = readNumber(preview.affectedDays ?? preview.affected_days);
-  const overlaps = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
+  const overlappingAssignments = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
+  const overlappingExceptions = readNumber(preview.overlappingExceptionsCount ?? preview.overlapping_exceptions_count);
   const lockedPeriods = readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count);
+  const changeType = cleanText(preview.changeType ?? preview.change_type);
 
   const affectedText = affectedDays === 1
     ? "سيتم تعديل يوم واحد فقط."
@@ -375,15 +377,25 @@ function shiftPreviewDescription(preview: CoreShiftChangePreview) {
       ? `سيتم تعديل ${affectedDays} أيام.`
       : "لن تتغير أيام حضور حالية حسب الفحص.";
 
-  const overlapText = overlaps
-    ? `يوجد ${overlaps} تعيين شفت متداخل وسيتم إغلاقه تلقائيًا لنفس الموظفة فقط.`
-    : "لا توجد تعيينات شفت متداخلة.";
+  const assignmentText = changeType === "exception"
+    ? overlappingAssignments
+      ? `يوجد ${overlappingAssignments} تعيين شفت في نفس الفترة؛ سيبقى محفوظًا لكن الاستثناء يتقدم عليه أثناء مدته.`
+      : "لا يوجد تعيين شفت متداخل في هذه الفترة."
+    : overlappingAssignments
+      ? `يوجد ${overlappingAssignments} تعيين شفت متداخل وسيعالج Core التداخل عند حفظ التعيين الجديد.`
+      : "لا توجد تعيينات شفت متداخلة.";
+
+  const exceptionText = overlappingExceptions
+    ? changeType === "exception"
+      ? `يوجد ${overlappingExceptions} استثناء نشط متداخل؛ يجب إلغاؤه أو تعديل الفترة قبل الحفظ.`
+      : `يوجد ${overlappingExceptions} استثناء نشط في نفس الفترة، وسيظل أعلى أولوية من التعيين الاحتياطي.`
+    : "لا توجد استثناءات نشطة متداخلة.";
 
   const lockedText = lockedPeriods
-    ? `تنبيه: يوجد ${lockedPeriods} فترة مقفلة. راجع أثر التعديل على الرواتب أو الحضور قبل الحفظ.`
-    : "لا توجد فترات مقفلة تمنع الحفظ.";
+    ? `تنبيه: يوجد ${lockedPeriods} فترة رواتب مقفلة. يتطلب الحفظ تفعيل تسجيل تسوية بعد الإقفال.`
+    : "لا توجد فترات رواتب مقفلة ضمن نطاق التغيير.";
 
-  return `${affectedText} ${overlapText} ${lockedText}`;
+  return `${affectedText} ${assignmentText} ${exceptionText} ${lockedText}`;
 }
 
 function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException | CoreResolvedShift> | null) {
@@ -772,6 +784,11 @@ export default function ShiftControlSection({
       return false;
     }
     const lockedCount = readNumber(result.lockedPeriodsCount ?? result.locked_periods_count);
+    const overlappingExceptions = readNumber(result.overlappingExceptionsCount ?? result.overlapping_exceptions_count);
+    if (previewKind === "exception" && overlappingExceptions > 0) {
+      setError("يوجد استثناء نشط متداخل مع الفترة المحددة. ألغِ الاستثناء المتداخل أو غيّر الفترة قبل الحفظ.");
+      return false;
+    }
     if (lockedCount > 0 && !allowLockedPeriodAdjustment) {
       setError("يوجد فترة رواتب مقفلة. فعّل خيار تسجيل تسوية بعد الإقفال قبل الحفظ.");
       return false;
