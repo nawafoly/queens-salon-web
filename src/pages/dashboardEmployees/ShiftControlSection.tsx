@@ -790,14 +790,17 @@ export default function ShiftControlSection({
     }
   };
 
-  const previewAllowsSave = (result: CoreShiftChangePreview | null) => {
+  const previewAllowsSave = (
+    result: CoreShiftChangePreview | null,
+    kind: "assignment" | "exception",
+  ) => {
     if (!result) {
       setError("تعذر إكمال فحص تأثير التغيير؛ لم يتم الحفظ.");
       return false;
     }
     const lockedCount = readNumber(result.lockedPeriodsCount ?? result.locked_periods_count);
     const overlappingExceptions = readNumber(result.overlappingExceptionsCount ?? result.overlapping_exceptions_count);
-    if (previewKind === "exception" && overlappingExceptions > 0) {
+    if (kind === "exception" && overlappingExceptions > 0) {
       setError("يوجد استثناء نشط متداخل مع الفترة المحددة. ألغِ الاستثناء المتداخل أو غيّر الفترة قبل الحفظ.");
       return false;
     }
@@ -958,7 +961,7 @@ export default function ShiftControlSection({
     setMessage("");
     try {
       const result = await previewAssignment();
-      if (!previewAllowsSave(result)) return;
+      if (!previewAllowsSave(result, "assignment")) return;
       const normalizedEffectiveTo = assignmentForm.assignmentType === "permanent" ? null : assignmentForm.effectiveTo || null;
       const payload = {
         employeeId: assignmentTargetEmployeeId,
