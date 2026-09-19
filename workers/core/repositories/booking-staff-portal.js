@@ -229,6 +229,27 @@ async function acknowledgementForEmployee(db, salonId, bookingId, employeeId) {
   );
 }
 
+async function assertBookingAcknowledged(
+  db,
+  salonId,
+  bookingId,
+  employeeId
+) {
+  const acknowledgement = await acknowledgementForEmployee(
+    db,
+    salonId,
+    bookingId,
+    employeeId
+  );
+  if (acknowledgement) return acknowledgement;
+
+  throw new AppError(
+    409,
+    'core_booking:staff_acknowledgement_required',
+    'Receive the booking before changing its execution status.'
+  );
+}
+
 async function projectedBookingById(db, salonId, bookingId, employeeId) {
   await assignedBooking(db, salonId, bookingId, employeeId);
   const [booking, acknowledgement] = await Promise.all([
@@ -390,6 +411,15 @@ export async function updateOwnBookingStatus(
       409,
       'core_booking:invalid_staff_status_transition',
       'The requested staff booking status transition is not allowed.'
+    );
+  }
+
+  if (toStatus === 'confirmed' || toStatus === 'completed') {
+    await assertBookingAcknowledged(
+      db,
+      salonId,
+      before.id,
+      employeeId
     );
   }
 
