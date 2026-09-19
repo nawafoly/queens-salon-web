@@ -16,11 +16,11 @@ import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeeP
 
 const bookingCopy = {
   ar: {
-    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد يتاح بعد بدء تنفيذ الخدمة أو إذا أصبح الحجز متأخرًا.", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد بنود SPECIFIC_ITEM في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل بدء تنفيذ الخدمة", confirm: "تأكيد المواد وخصم المخزون", bookingWorkspace: "مسار تنفيذ الحجوزات", bookingWorkspaceHint: "اختاري الحجز ثم نفّذي المواد المطلوبة قبل إكماله.", noActiveBookings: "لا توجد حجوزات مفتوحة حاليًا.", bookingStatus: "حالة الحجز", pendingBooking: "بانتظار التأكيد", bookedBooking: "مؤكد للحجز", confirmedBooking: "مؤكد", completedBooking: "مكتمل", cancelledBooking: "ملغي", confirmBooking: "تأكيد الحجز", confirmingBooking: "جاري تأكيد الحجز...", completeBooking: "إكمال الحجز", completingBooking: "جاري إكمال الحجز...", bookingConfirmed: "تم تأكيد الحجز وأصبح جاهزًا للتنفيذ.", bookingCompleted: "تم إكمال الحجز بنجاح.", materialsRemaining: "لا يزال هناك مواد تحتاج تأكيد قبل إكمال الحجز.", executionNotStarted: "لا يمكن إكمال الحجز قبل بدء جميع الخدمات.", readyToComplete: "تمت معالجة المواد المطلوبة ويمكن إكمال الحجز.", services: "الخدمات",
+    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد يتاح بعد بدء تنفيذ الخدمة أو إذا أصبح الحجز متأخرًا.", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد مواد قابلة للتأكيد في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل بدء تنفيذ الخدمة", confirm: "تأكيد المواد وخصم المخزون", bookingWorkspace: "مسار تنفيذ الحجوزات", bookingWorkspaceHint: "اختاري الحجز ثم نفّذي المواد المطلوبة قبل إكماله.", noActiveBookings: "لا توجد حجوزات مفتوحة حاليًا.", bookingStatus: "حالة الحجز", pendingBooking: "بانتظار التأكيد", bookedBooking: "مؤكد للحجز", confirmedBooking: "مؤكد", completedBooking: "مكتمل", cancelledBooking: "ملغي", confirmBooking: "تأكيد الحجز", confirmingBooking: "جاري تأكيد الحجز...", completeBooking: "إكمال الحجز", completingBooking: "جاري إكمال الحجز...", bookingConfirmed: "تم تأكيد الحجز وأصبح جاهزًا للتنفيذ.", bookingCompleted: "تم إكمال الحجز بنجاح.", materialsRemaining: "لا يزال هناك مواد تحتاج تأكيد قبل إكمال الحجز.", executionNotStarted: "لا يمكن إكمال الحجز قبل بدء جميع الخدمات.", readyToComplete: "تمت معالجة المواد المطلوبة ويمكن إكمال الحجز.", services: "الخدمات",
     UPCOMING: "قادم", DUE_TODAY: "مطلوب اليوم", PENDING_CONFIRMATION: "بانتظار التأكيد", OVERDUE: "متأخر", CONFIRMED: "مؤكد",
   },
   en: {
-    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation becomes available after service execution starts or when the booking is overdue.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no SPECIFIC_ITEM lines.", confirming: "Confirming...", unavailable: "Confirmation is unavailable before service execution starts", confirm: "Confirm materials and deduct inventory", bookingWorkspace: "Booking workflow", bookingWorkspaceHint: "Select a booking, then confirm required materials before completing it.", noActiveBookings: "There are no open bookings right now.", bookingStatus: "Booking status", pendingBooking: "Pending confirmation", bookedBooking: "Booked", confirmedBooking: "Confirmed", completedBooking: "Completed", cancelledBooking: "Cancelled", confirmBooking: "Confirm booking", confirmingBooking: "Confirming booking...", completeBooking: "Complete booking", completingBooking: "Completing booking...", bookingConfirmed: "The booking is confirmed and ready for execution.", bookingCompleted: "The booking was completed successfully.", materialsRemaining: "Required materials must still be confirmed before completing this booking.", executionNotStarted: "The booking cannot be completed before all services have started.", readyToComplete: "Required materials are handled and the booking can be completed.", services: "Services",
+    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation becomes available after service execution starts or when the booking is overdue.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no confirmable material lines.", confirming: "Confirming...", unavailable: "Confirmation is unavailable before service execution starts", confirm: "Confirm materials and deduct inventory", bookingWorkspace: "Booking workflow", bookingWorkspaceHint: "Select a booking, then confirm required materials before completing it.", noActiveBookings: "There are no open bookings right now.", bookingStatus: "Booking status", pendingBooking: "Pending confirmation", bookedBooking: "Booked", confirmedBooking: "Confirmed", completedBooking: "Completed", cancelledBooking: "Cancelled", confirmBooking: "Confirm booking", confirmingBooking: "Confirming booking...", completeBooking: "Complete booking", completingBooking: "Completing booking...", bookingConfirmed: "The booking is confirmed and ready for execution.", bookingCompleted: "The booking was completed successfully.", materialsRemaining: "Required materials must still be confirmed before completing this booking.", executionNotStarted: "The booking cannot be completed before all services have started.", readyToComplete: "Required materials are handled and the booking can be completed.", services: "Services",
     UPCOMING: "Upcoming", DUE_TODAY: "Due today", PENDING_CONFIRMATION: "Awaiting confirmation", OVERDUE: "Overdue", CONFIRMED: "Confirmed",
   },
 } as const;
@@ -112,6 +112,8 @@ function errorMessage(error: unknown, language: "ar" | "en", copy: BookingCopy) 
 type DraftLine = {
   key: string;
   recipeLineId: string | null;
+  lineType: ServiceRecipeLine["line_type"];
+  categoryId: string | null;
   defaultInventoryItemId: string;
   inventoryItemId: string;
   itemName: string;
@@ -220,6 +222,14 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
     selectedBookingAccepted &&
     selectedBookingExecutionReady &&
     selectedBookingPending.length === 0;
+  const materialLinesReady =
+    lines.length > 0 &&
+    lines.every(
+      (line) =>
+        Boolean(line.inventoryItemId) &&
+        Number.isFinite(Number(line.quantity)) &&
+        Number(line.quantity) > 0
+    );
 
   const refreshWorkspace = useCallback(async () => {
     if (!employeeId) {
@@ -299,15 +309,31 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
       try {
         const recipe = await CoreInventoryService.getRecipeByService(row.service_id);
         const recipeLines = ((recipe as { lines?: ServiceRecipeLine[] } | null)?.lines || []).filter(
-          (line) => line.line_type === "SPECIFIC_ITEM" && line.inventory_item_id
+          (line) =>
+            (line.line_type === "SPECIFIC_ITEM" && line.inventory_item_id) ||
+            (line.line_type === "CATEGORY" && line.category_id)
         );
         setLines(
           recipeLines.map((line, index) => {
-            const inventoryItemId = String(line.inventory_item_id);
+            const categoryId = line.category_id ? String(line.category_id) : null;
+            const specificItemId = line.inventory_item_id ? String(line.inventory_item_id) : "";
+            const categoryDefault = categoryId
+              ? trackedItems.find(
+                  (item) =>
+                    item.category_id === categoryId &&
+                    item.unit === line.unit
+                )?.id || ""
+              : "";
+            const inventoryItemId =
+              line.line_type === "SPECIFIC_ITEM"
+                ? specificItemId
+                : categoryDefault;
             return {
-              key: line.id || `${inventoryItemId}-${index}`,
+              key: line.id || `${inventoryItemId || categoryId || "recipe"}-${index}`,
               recipeLineId: line.id,
-              defaultInventoryItemId: inventoryItemId,
+              lineType: line.line_type,
+              categoryId,
+              defaultInventoryItemId: specificItemId || categoryDefault,
               inventoryItemId,
               itemName: itemNames[inventoryItemId] || inventoryItemId,
               quantity: String(line.default_qty),
@@ -322,10 +348,10 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         setLoadingRecipe(false);
       }
     })();
-  }, [bookingItemId, pending, itemNames, language, copy]);
+  }, [bookingItemId, pending, itemNames, trackedItems, language, copy]);
 
   async function confirm() {
-    if (!employeeId || !bookingItemId || !lines.length || !selectedConfirmable) return;
+    if (!employeeId || !bookingItemId || !materialLinesReady || !selectedConfirmable) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -333,15 +359,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
       await CoreInventoryService.confirmConsumption({
         bookingItemId,
         employeeId,
-        lines: lines.map((line) => {
-          const sameDefault = line.inventoryItemId === line.defaultInventoryItemId;
-          return {
-            inventoryItemId: line.inventoryItemId,
-            quantity: Number(line.quantity),
-            unit: line.unit,
-            recipeLineId: sameDefault ? line.recipeLineId : null,
-          };
-        }),
+        lines: lines.map((line) => ({
+          inventoryItemId: line.inventoryItemId,
+          quantity: Number(line.quantity),
+          unit: line.unit,
+          recipeLineId: line.recipeLineId,
+        })),
       });
       const confirmedBookingId = selected?.booking_id || activeBookingId;
       setNotice(copy.success);
@@ -363,6 +386,19 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         const next = Math.max(0, Number(row.quantity || 0) + delta);
         return { ...row, quantity: String(Number.isInteger(next) ? next : next.toFixed(1)) };
       })
+    );
+  }
+
+  function productOptions(line: DraftLine) {
+    if (line.lineType === "SPECIFIC_ITEM") {
+      return trackedItems.filter(
+        (item) => item.id === line.defaultInventoryItemId
+      );
+    }
+    return trackedItems.filter(
+      (item) =>
+        item.category_id === line.categoryId &&
+        item.unit === line.unit
     );
   }
 
@@ -673,7 +709,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                       <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{copy.product}</label>
                       <select
                         value={line.inventoryItemId}
-                        disabled={!selectedConfirmable}
+                        disabled={!selectedConfirmable || line.lineType === "SPECIFIC_ITEM"}
                         onChange={(e) => changeProduct(line.key, e.target.value)}
                         style={{
                           width: "100%",
@@ -684,14 +720,21 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                           background: "#fff",
                         }}
                       >
-                        {trackedItems.map((item) => (
+                        {!line.inventoryItemId ? (
+                          <option value="">
+                            {language === "ar" ? "اختاري المنتج" : "Select product"}
+                          </option>
+                        ) : null}
+                        {productOptions(line).map((item) => (
                           <option key={item.id} value={item.id}>
                             {item.name}
                           </option>
                         ))}
                       </select>
                       <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
-                        {copy.default}: {itemNames[line.defaultInventoryItemId] || line.defaultInventoryItemId} · {line.defaultQty}{" "}
+                        {copy.default}: {line.lineType === "CATEGORY"
+                          ? (language === "ar" ? "اختيار من الفئة المحددة" : "Choose from the configured category")
+                          : (itemNames[line.defaultInventoryItemId] || line.defaultInventoryItemId)} · {line.defaultQty}{" "}
                         {line.unit}
                       </div>
                     </div>
@@ -740,7 +783,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         type="button"
         className="dsv2-btn dsv2-btn--primary"
         style={{ width: "100%", height: 48, borderRadius: 14 }}
-        disabled={saving || !employeeId || !bookingItemId || !lines.length || !selectedConfirmable}
+        disabled={saving || !employeeId || !bookingItemId || !materialLinesReady || !selectedConfirmable}
         onClick={() => void confirm()}
       >
         {saving
