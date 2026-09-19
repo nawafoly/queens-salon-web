@@ -77,7 +77,7 @@ test("employee booking acknowledgement and staff status are Core-owned and ident
 });
 
 
-test("employee cannot complete a booking before service execution and material confirmation", () => {
+test("employee completion only requires material confirmation when recipe lines are configured", () => {
   const repo = read("workers/core/repositories/booking-staff-portal.js");
 
   assert.match(repo, /assertBookingCompletionReady/);
@@ -85,6 +85,14 @@ test("employee cannot complete a booking before service execution and material c
   assert.match(repo, /core_booking:materials_confirmation_required/);
   assert.match(repo, /service_consumption_recipes/);
   assert.match(repo, /service_consumption_recipe_lines/);
+  assert.match(
+    repo,
+    /JOIN service_consumption_recipe_lines rl[\s\S]*THEN 1[\s\S]*ELSE 0[\s\S]*requires_material_confirmation/
+  );
+  assert.match(
+    repo,
+    /Number\(row\.requires_material_confirmation\) === 1[\s\S]*Number\(row\.materials_confirmed\) !== 1/
+  );
   assert.match(repo, /service_consumptions/);
   assert.match(repo, /status = 'confirmed'/);
   assert.match(
