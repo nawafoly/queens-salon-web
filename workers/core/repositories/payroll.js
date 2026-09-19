@@ -3694,7 +3694,34 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
 
   statements.push(...obligationStatements);
   await dbBatch(db, statements);
-  return getPayrollEntry(db, salonId, existing.id);
+
+  const paidEntry = await getPayrollEntry(db, salonId, existing.id);
+  if (cleanText(paidEntry.status) !== 'paid') {
+    throw new AppError(409, 'core_payroll:payment_concurrent_mutation');
+  }
+
+  const staleScheduledAdvance = await dbFirst(
+    db,
+    `SELECT sai.id
+       FROM salary_advance_installments sai
+       JOIN salary_advances sa
+         ON sa.salon_id = sai.salon_id
+        AND sa.id = sai.advance_id
+      WHERE sai.salon_id = ?
+        AND sa.employee_id = ?
+        AND sai.payroll_month = ?
+        AND sai.status = 'scheduled'
+      LIMIT 1`,
+    [salonId, existing.employee_id, existing.payroll_month]
+  );
+  if (staleScheduledAdvance) {
+    throw new AppError(
+      409,
+      'core_payroll:payment_advance_settlement_incomplete'
+    );
+  }
+
+  return paidEntry;
 }
 
 
