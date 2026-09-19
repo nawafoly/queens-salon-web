@@ -4,6 +4,33 @@
 import { cleanText, dbAll, dbFirst, dbRun, generatedId, nowIso, optionalText, requiredId, validDate } from '../d1.js';
 import { AppError } from '../errors.js';
 
+async function reconcileAbsencePayroll(
+  db,
+  salonId,
+  absence,
+  actor = {},
+  options = {}
+) {
+  const {
+    reconcileLockedPayrollImpactForEmployeeDate,
+  } = await import('./payroll.js');
+
+  return reconcileLockedPayrollImpactForEmployeeDate(
+    db,
+    salonId,
+    {
+      employeeId: absence.employee_id,
+      date: absence.date_key,
+      sourceType: 'absence',
+      sourceId: absence.id,
+      reason:
+        `Canonical absence correction for ${absence.date_key} (${absence.id}).`,
+    },
+    actor,
+    options
+  );
+}
+
 async function resolveAbsenceEmployeeIdentity(db, salonId, data) {
   const employeeIdInput = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const employeeUidInput = optionalText(data.employeeUid || data.employee_uid) || null;
@@ -40,7 +67,13 @@ export async function listAbsences(db, salonId, query = {}) {
   );
 }
 
-export async function createAbsence(db, salonId, data, actor = {}) {
+export async function createAbsence(
+  db,
+  salonId,
+  data,
+  actor = {},
+  options = {}
+) {
   const now = nowIso();
   const identity = await resolveAbsenceEmployeeIdentity(db, salonId, data);
   const row = {
@@ -76,17 +109,83 @@ export async function createAbsence(db, salonId, data, actor = {}) {
       throw new AppError(409, 'core_absence:permission_conflict');
     }
   }
-  const existing = await dbFirst(db, 'SELECT * FROM employee_absences WHERE salon_id = ? AND employee_id = ? AND date_key = ? LIMIT 1', [salonId, row.employee_id, row.date_key]);
-  if (existing) return { ...existing, idempotent: true };
-  await dbRun(db, `INSERT INTO employee_absences
-    (id, salon_id, employee_id, employee_uid, date_key, absence_type, note, created_by_uid, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(row));
-  return row;
+  const existing = await dbFirst(
+    db,
+    'SELECT * FROM employee_absences WHERE salon_id = ? AND employee_id = ? AND date_key = ? LIMIT 1',
+    [salonId, row.employee_id, row.date_key]
+  );
+  if (existing) {
+    const payrollReconciliation = await reconcileAbsencePayroll(
+      db,
+      salonId,
+      existing,
+      actor,
+      options
+    );
+    return {
+      ...existing,
+      idempotent: true,
+      payrollReconciliation,
+    };
+  }
+
+  await dbRun(
+    db,
+    `INSERT INTO employee_absences
+      (id, salon_id, employee_id, employee_uid, date_key, absence_type, note, created_by_uid, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    Object.values(row)
+  );
+
+  const payrollReconciliation = await reconcileAbsencePayroll(
+    db,
+    salonId,
+    row,
+    actor,
+    options
+  );
+
+  return {
+    ...row,
+    payrollReconciliation,
+  };
 }
 
-export async function deleteAbsence(db, salonId, idValue) {
+export async function deleteAbsence(
+  db,
+  salonId,
+  idValue,
+  actor = {},
+  options = {}
+) {
   const id = requiredId(idValue);
-  const result = await dbRun(db, 'DELETE FROM employee_absences WHERE salon_id = ? AND id = ?', [salonId, id]);
-  if (!Number(result?.meta?.changes ?? result?.changes ?? 0)) throw new AppError(404, 'core_absence:not_found');
-  return { id, deleted: true };
+  const existing = await dbFirst(
+    db,
+    'SELECT * FROM employee_absences WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, id]
+  );
+  if (!existing) throw new AppError(404, 'core_absence:not_found');
+
+  const result = await dbRun(
+    db,
+    'DELETE FROM employee_absences WHERE salon_id = ? AND id = ?',
+    [salonId, id]
+  );
+  if (!Number(result?.meta?.changes ?? result?.changes ?? 0)) {
+    throw new AppError(409, 'core_absence:delete_conflict');
+  }
+
+  const payrollReconciliation = await reconcileAbsencePayroll(
+    db,
+    salonId,
+    existing,
+    actor,
+    options
+  );
+
+  return {
+    id,
+    deleted: true,
+    payrollReconciliation,
+  };
 }
