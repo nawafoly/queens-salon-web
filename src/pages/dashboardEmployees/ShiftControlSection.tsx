@@ -26,7 +26,6 @@ import {
   getScheduleExceptionAction,
   getScheduleExceptionRestoreConfirmationMessage,
   isCancelledScheduleException,
-  isOperationalScheduleException,
   type ScheduleExceptionFilter,
 } from "./shiftExceptionRestore";
 import type {
@@ -228,7 +227,6 @@ type AssignmentForm = {
   effectiveFrom: string;
   effectiveTo: string;
   assignmentType: "permanent" | "temporary";
-  replaceOverlaps: boolean;
   reason: string;
 };
 
@@ -475,7 +473,6 @@ function emptyAssignmentForm(): AssignmentForm {
     effectiveFrom: todayKey(),
     effectiveTo: "",
     assignmentType: "permanent",
-    replaceOverlaps: true,
     reason: "تعيين شفت من إدارة الموظفات",
   };
 }
@@ -903,7 +900,6 @@ export default function ShiftControlSection({
       effectiveFrom: cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from) || todayKey(),
       effectiveTo: assignmentEnd,
       assignmentType: assignmentEnd ? "temporary" : cleanText(assignment.assignmentType || (assignment as Record<string, unknown>).assignment_type) === "temporary" ? "temporary" : "permanent",
-      replaceOverlaps: true,
       reason: cleanText(assignment.reason) || "تعديل تعيين شفت من إدارة الموظفات",
     });
     setPreview(null);
@@ -1179,7 +1175,6 @@ export default function ShiftControlSection({
   const resolvedShiftName = cleanText(resolvedShift?.shiftName || resolvedShift?.shift_name);
   const openAssignmentName = assignmentShiftName(openAssignment, templates);
   const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : "لا يوجد";
-  const selectedTemplateWindow = selectedTemplate ? formatWindow(selectedTemplate) : "اختر شفت";
   const resolvedLabel = source === "exception"
     ? "استثناء يومي"
     : source === "weekly_schedule"
@@ -1192,10 +1187,6 @@ export default function ShiftControlSection({
     : source === "none" || !source
       ? "لا يوجد شفت Core"
       : "مطبق";
-  const nextException = employeeExceptions
-    .filter(isOperationalScheduleException)
-    .filter((exception) => cleanText(exception.dateFrom || (exception as Record<string, unknown>).date_from) >= todayKey())
-    .sort((left, right) => cleanText(left.dateFrom || (left as Record<string, unknown>).date_from).localeCompare(cleanText(right.dateFrom || (right as Record<string, unknown>).date_from)))[0] || null;
   const activeOrUpcomingAssignments = employeeAssignments.filter((assignment) => {
     const label = assignmentStatus(assignment);
     return label === "نشط" || label === "مجدول";
