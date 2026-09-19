@@ -147,7 +147,14 @@ export async function listAnnualLeaveRecalls(db, salonId, query = {}) {
   );
 }
 
-export async function createAnnualLeaveRecall(db, salonId, leaveIdValue, data = {}, actor = {}) {
+export async function createAnnualLeaveRecall(
+  db,
+  salonId,
+  leaveIdValue,
+  data = {},
+  actor = {},
+  options = {}
+) {
   const leaveId = requiredId(leaveIdValue, 'leaveId');
   const leave = await dbFirst(
     db,
@@ -183,9 +190,33 @@ export async function createAnnualLeaveRecall(db, salonId, leaveIdValue, data = 
     [salonId, leaveId, recallDate]
   );
   if (existing) {
+    const {
+      reconcileLockedPayrollImpactForEmployeeDate,
+    } = await import('./payroll.js');
+    const payrollReconciliation =
+      await reconcileLockedPayrollImpactForEmployeeDate(
+        db,
+        salonId,
+        {
+          employeeId: leave.employee_id,
+          date: recallDate,
+          sourceType: 'annual_leave_recall',
+          sourceId: existing.id,
+          reason:
+            `Annual leave recall replay for ${recallDate} (${existing.id}).`,
+        },
+        actor,
+        options
+      );
     return {
       recall: existing,
-      state: await getAnnualLeaveState(db, salonId, leave.employee_id, { asOfDate: today }),
+      state: await getAnnualLeaveState(
+        db,
+        salonId,
+        leave.employee_id,
+        { asOfDate: today }
+      ),
+      payrollReconciliation,
       idempotent: true,
     };
   }
@@ -292,14 +323,52 @@ export async function createAnnualLeaveRecall(db, salonId, leaveIdValue, data = 
     throw new AppError(409, 'core_annual_leave:recall_concurrency_conflict');
   }
 
+  const recall = await dbFirst(
+    db,
+    'SELECT * FROM employee_leave_recalls WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, recallId]
+  );
+  const {
+    reconcileLockedPayrollImpactForEmployeeDate,
+  } = await import('./payroll.js');
+  const payrollReconciliation =
+    await reconcileLockedPayrollImpactForEmployeeDate(
+      db,
+      salonId,
+      {
+        employeeId: leave.employee_id,
+        date: recallDate,
+        sourceType: 'annual_leave_recall',
+        sourceId: recallId,
+        reason:
+          `Annual leave recalled on ${recallDate} (${recallId}).`,
+      },
+      actor,
+      options
+    );
+
   return {
-    recall: await dbFirst(db, 'SELECT * FROM employee_leave_recalls WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, recallId]),
-    state: await getAnnualLeaveState(db, salonId, leave.employee_id, { asOfDate: today }),
+    recall,
+    state: await getAnnualLeaveState(
+      db,
+      salonId,
+      leave.employee_id,
+      { asOfDate: today }
+    ),
+    payrollReconciliation,
     idempotent: false,
   };
 }
 
-export async function cancelAnnualLeaveRecall(db, salonId, leaveIdValue, recallIdValue, data = {}, actor = {}) {
+export async function cancelAnnualLeaveRecall(
+  db,
+  salonId,
+  leaveIdValue,
+  recallIdValue,
+  data = {},
+  actor = {},
+  options = {}
+) {
   const leaveId = requiredId(leaveIdValue, 'leaveId');
   const recallId = requiredId(recallIdValue, 'recallId');
   const recall = await dbFirst(
@@ -310,9 +379,33 @@ export async function cancelAnnualLeaveRecall(db, salonId, leaveIdValue, recallI
   if (!recall) throw new AppError(404, 'core_annual_leave:recall_not_found');
   const today = riyadhDateKey();
   if (cleanText(recall.status).toLowerCase() === 'cancelled') {
+    const {
+      reconcileLockedPayrollImpactForEmployeeDate,
+    } = await import('./payroll.js');
+    const payrollReconciliation =
+      await reconcileLockedPayrollImpactForEmployeeDate(
+        db,
+        salonId,
+        {
+          employeeId: recall.employee_id,
+          date: recall.recall_date,
+          sourceType: 'annual_leave_recall_cancel',
+          sourceId: recall.id,
+          reason:
+            `Annual leave recall cancellation replay for ${recall.recall_date} (${recall.id}).`,
+        },
+        actor,
+        options
+      );
     return {
       recall,
-      state: await getAnnualLeaveState(db, salonId, recall.employee_id, { asOfDate: today }),
+      state: await getAnnualLeaveState(
+        db,
+        salonId,
+        recall.employee_id,
+        { asOfDate: today }
+      ),
+      payrollReconciliation,
       idempotent: true,
     };
   }
@@ -406,9 +499,39 @@ export async function cancelAnnualLeaveRecall(db, salonId, leaveIdValue, recallI
   if (changes(results?.[0]) !== 1 || changes(results?.[1]) !== 1 || changes(results?.[2]) !== 1) {
     throw new AppError(409, 'core_annual_leave:recall_cancellation_concurrency_conflict');
   }
+  const cancelledRecall = await dbFirst(
+    db,
+    'SELECT * FROM employee_leave_recalls WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, recallId]
+  );
+  const {
+    reconcileLockedPayrollImpactForEmployeeDate,
+  } = await import('./payroll.js');
+  const payrollReconciliation =
+    await reconcileLockedPayrollImpactForEmployeeDate(
+      db,
+      salonId,
+      {
+        employeeId: recall.employee_id,
+        date: recall.recall_date,
+        sourceType: 'annual_leave_recall_cancel',
+        sourceId: recallId,
+        reason:
+          `Annual leave recall cancelled for ${recall.recall_date} (${recallId}).`,
+      },
+      actor,
+      options
+    );
+
   return {
-    recall: await dbFirst(db, 'SELECT * FROM employee_leave_recalls WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, recallId]),
-    state: await getAnnualLeaveState(db, salonId, recall.employee_id, { asOfDate: today }),
+    recall: cancelledRecall,
+    state: await getAnnualLeaveState(
+      db,
+      salonId,
+      recall.employee_id,
+      { asOfDate: today }
+    ),
+    payrollReconciliation,
     idempotent: false,
   };
 }
