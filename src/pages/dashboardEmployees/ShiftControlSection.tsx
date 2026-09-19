@@ -583,15 +583,10 @@ export default function ShiftControlSection({
         return groups;
       };
 
-      const [templateRows, assignmentGroups, exceptionGroups, resolvedBatch] = await Promise.all([
+      const [templateRows, assignmentGroups, exceptionGroups] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
         loadAcrossEmployeeIds((id) => CoreHrService.listShiftAssignments({ employeeId: id })),
         loadAcrossEmployeeIds((id) => CoreHrService.listScheduleExceptions({ employeeId: id })),
-        CoreHrService.resolveEmployeeShiftsRange({
-          employeeIds: shiftEmployeeIds,
-          dateFrom: resolvedDate,
-          dateTo: resolvedDate,
-        }),
       ]);
 
       const mergeById = <T extends { id: string }>(groups: T[][]) => Array.from(
@@ -601,7 +596,6 @@ export default function ShiftControlSection({
       setTemplates(templateRows);
       setAssignments(mergeById(assignmentGroups));
       setExceptions(mergeById(exceptionGroups));
-      setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
 
       const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || "";
       setAssignmentForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
@@ -612,11 +606,39 @@ export default function ShiftControlSection({
     } finally {
       setLoading(false);
     }
+  }, [isVisible, shiftEmployeeIds]);
+
+  const loadResolvedShift = useCallback(async () => {
+    if (!isVisible || !shiftEmployeeIds.length) {
+      setResolvedShift(null);
+      return;
+    }
+    try {
+      const resolvedBatch = await CoreHrService.resolveEmployeeShiftsRange({
+        employeeIds: shiftEmployeeIds,
+        dateFrom: resolvedDate,
+        dateTo: resolvedDate,
+      });
+      setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
+    } catch (err) {
+      console.warn("resolved shift load failed", err);
+      setResolvedShift(null);
+      setError("تعذر تحميل الشفت المطبق من Core.");
+    }
   }, [isVisible, resolvedDate, shiftEmployeeIds]);
+
+  const refreshAll = useCallback(async () => {
+    await refreshAll();
+    await loadResolvedShift();
+  }, [load, loadResolvedShift]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadResolvedShift();
+  }, [loadResolvedShift]);
 
   useEffect(() => {
     setAssignmentForm(emptyAssignmentForm());
@@ -796,7 +818,7 @@ export default function ShiftControlSection({
       setPreview(null);
       setPreviewKind(null);
       setMessage("تم حفظ قالب الشفت.");
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("save shift template failed", err);
       setError("تعذر حفظ قالب الشفت.");
@@ -903,7 +925,7 @@ export default function ShiftControlSection({
         setMessage("تم تعيين الشفت للموظفة.");
       }
       setAssignmentForm(emptyAssignmentForm());
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("save shift assignment failed", err);
       const detail = cleanText((err as Error)?.message);
@@ -926,7 +948,7 @@ export default function ShiftControlSection({
       setPreview(null);
       setPreviewKind(null);
       setMessage("تم إلغاء تعيين الشفت.");
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("cancel assignment failed", err);
       const detail = cleanText((err as Error)?.message);
@@ -964,7 +986,7 @@ export default function ShiftControlSection({
       setPreview(null);
       setPreviewKind(null);
       setMessage("تم إنهاء الشفت.");
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("close assignment failed", err);
       setError("تعذر إنهاء الشفت.");
@@ -1022,7 +1044,7 @@ export default function ShiftControlSection({
       });
       setExceptionForm(emptyExceptionForm());
       setMessage("تم حفظ الاستثناء.");
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("create exception failed", err);
       setError("تعذر حفظ الاستثناء.");
@@ -1051,7 +1073,7 @@ export default function ShiftControlSection({
       setPreview(null);
       setPreviewKind(null);
       setMessage("تم إلغاء الاستثناء.");
-      await load();
+      await refreshAll();
     } catch (err) {
       console.warn("cancel exception failed", err);
       setError("تعذر إلغاء الاستثناء.");
@@ -1077,7 +1099,7 @@ export default function ShiftControlSection({
         ...payload,
         allowLockedPeriodAdjustment,
       });
-      await load();
+      await refreshAll();
       window.dispatchEvent(
         new CustomEvent(SCHEDULE_EXCEPTION_CHANGED_EVENT, {
           detail: {
@@ -1179,7 +1201,7 @@ export default function ShiftControlSection({
         actions={
           <>
             <WorkspaceHelpButtonV2 label="شرح الشفت المطبق الآن" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.appliedShift)} />
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void load()} disabled={loading || saving}>تحديث</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void refreshAll()} disabled={loading || saving}>تحديث</button>
           </>
         }
       >
