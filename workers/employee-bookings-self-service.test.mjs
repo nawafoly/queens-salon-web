@@ -101,3 +101,14 @@ test("staff completion workflow accepts canonical booked status", () => {
     /\['booked', new Set\(\['completed', 'cancelled'\]\)\]/
   );
 });
+
+
+test("employee booking workspace follows confirm-materials-complete sequence", () => {
+  const ui = read("src/pages/EmployeeServiceConsumption.tsx");
+  assert.match(ui, /CoreBookingService\.mine\(\)/);
+  assert.match(ui, /CoreBookingService\.updateMineStatus/);
+  assert.match(ui, /updateBookingStatus\("confirmed"\)/);
+  assert.match(ui, /updateBookingStatus\("completed"\)/);
+  assert.match(ui, /selectedBookingPending\.length === 0/);
+  assert.match(ui, /bookingExecutionReady/);
+});
