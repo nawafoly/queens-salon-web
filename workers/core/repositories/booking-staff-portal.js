@@ -20,6 +20,128 @@ const SELF_STATUS_TRANSITIONS = new Map([
   ['confirmed', new Set(['completed', 'cancelled'])],
 ]);
 
+const SALON_TZ = 'Asia/Riyadh';
+
+function salonClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const read = (type) =>
+    parts.find((part) => part.type === type)?.value || '';
+  return {
+    date: `${read('year')}-${read('month')}-${read('day')}`,
+    time: `${read('hour')}:${read('minute')}`,
+  };
+}
+
+async function assertBookingCompletionReady(
+  db,
+  salonId,
+  booking,
+  employeeId
+) {
+  const rows = await dbAll(
+    db,
+    `SELECT
+       bi.id AS booking_item_id,
+       COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+       COALESCE(bi.start_time, b.start_time) AS start_time,
+       CASE
+         WHEN EXISTS (
+           SELECT 1
+             FROM service_consumption_recipes r
+             JOIN service_consumption_recipe_lines rl
+               ON rl.salon_id = r.salon_id
+              AND rl.recipe_id = r.id
+            WHERE r.salon_id = bi.salon_id
+              AND r.service_id = bi.service_id
+              AND r.is_active = 1
+         )
+         THEN 1
+         ELSE 0
+       END AS requires_material_confirmation,
+       CASE
+         WHEN EXISTS (
+           SELECT 1
+             FROM service_consumptions sc
+            WHERE sc.salon_id = bi.salon_id
+              AND sc.booking_item_id = bi.id
+              AND sc.status = 'confirmed'
+         )
+         THEN 1
+         ELSE 0
+       END AS materials_confirmed
+     FROM booking_items bi
+     JOIN bookings b
+       ON b.salon_id = bi.salon_id
+      AND b.id = bi.booking_id
+     WHERE bi.salon_id = ?
+       AND bi.booking_id = ?
+     ORDER BY
+       COALESCE(bi.booking_date, b.booking_date),
+       COALESCE(bi.start_time, b.start_time),
+       bi.created_at,
+       bi.id`,
+    [salonId, booking.id]
+  );
+
+  if (!rows.length) {
+    throw new AppError(
+      409,
+      'core_booking:completion_items_missing',
+      'Booking cannot be completed because it has no service items.'
+    );
+  }
+
+  const clock = salonClock();
+  const notStarted = rows.filter((row) => {
+    const date = cleanText(row.booking_date);
+    const time = cleanText(row.start_time);
+    if (!date) return true;
+    if (date > clock.date) return true;
+    if (date < clock.date) return false;
+    return !time || time > clock.time;
+  });
+
+  if (notStarted.length) {
+    throw new AppError(
+      409,
+      'core_booking:service_not_started',
+      'Booking cannot be completed before all assigned services have started.',
+      {
+        employeeId,
+        bookingItemIds: notStarted.map((row) => row.booking_item_id),
+      }
+    );
+  }
+
+  const missingMaterials = rows.filter(
+    (row) =>
+      Number(row.requires_material_confirmation) === 1 &&
+      Number(row.materials_confirmed) !== 1
+  );
+
+  if (missingMaterials.length) {
+    throw new AppError(
+      409,
+      'core_booking:materials_confirmation_required',
+      'Confirm the actual materials used before completing this booking.',
+      {
+        employeeId,
+        bookingItemIds: missingMaterials.map(
+          (row) => row.booking_item_id
+        ),
+      }
+    );
+  }
+}
+
 function projectOwnBooking(row, employeeId, acknowledgement = null) {
   const ownEmployeeId = cleanText(employeeId);
   const topLevelAssigned = cleanText(row?.staff_id) === ownEmployeeId;
@@ -267,6 +389,15 @@ export async function updateOwnBookingStatus(
       409,
       'core_booking:invalid_staff_status_transition',
       'The requested staff booking status transition is not allowed.'
+    );
+  }
+
+  if (toStatus === 'completed') {
+    await assertBookingCompletionReady(
+      db,
+      salonId,
+      before,
+      employeeId
     );
   }
 
