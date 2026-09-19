@@ -3588,7 +3588,8 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
     db,
     salonId,
     existing,
-    now
+    now,
+    { requirePayrollPaid: true }
   );
 
   const statements = [
@@ -3720,7 +3721,8 @@ export async function reversePayrollEntryPayment(
       db,
       salonId,
       existing,
-      now
+      now,
+      { requirePayrollApproved: true }
     );
 
   const auditLog = appendAuditEntry(existing, {
