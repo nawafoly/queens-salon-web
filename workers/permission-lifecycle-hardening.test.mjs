@@ -14,5 +14,8 @@ test('approved permission preserves actual out and return lifecycle', () => {
   assert.match(block, /'employee_request', 'approved'/);
   assert.doesNotMatch(block, /permission_out/);
   assert.doesNotMatch(block, /permission_return/);
-  assert.match(requests, /after: \{ status: 'approved' \}/);
+  assert.match(
+    requests,
+    /after:\s*\{\s*status: 'approved',\s*payrollReconciliation,\s*\}/
+  );
 });
