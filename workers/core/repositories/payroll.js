@@ -3601,6 +3601,23 @@ export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {})
     );
   }
 
+  const recordedHistoricalSettlement = await dbFirst(
+    db,
+    `SELECT id
+       FROM payroll_historical_settlements
+      WHERE salon_id = ?
+        AND source_payroll_entry_id = ?
+        AND status = 'recorded'
+      LIMIT 1`,
+    [salonId, existing.id]
+  );
+  if (recordedHistoricalSettlement) {
+    throw new AppError(
+      409,
+      'core_payroll:reopen_has_recorded_historical_settlement'
+    );
+  }
+
   const now = nowIso();
   const reason = optionalText(data.reason) || 'recalculate_approved_payroll';
   const statements = [
