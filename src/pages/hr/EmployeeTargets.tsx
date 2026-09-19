@@ -15,6 +15,7 @@ import {
 
 import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
 import { CoreApiError } from "../../services/coreApiClient";
+import { useEmployeePortalLanguage, type EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import {
   CoreEmployeeTargetService,
   type EmployeeTargetLedgerRow,
@@ -27,36 +28,36 @@ function currentPayrollParts() {
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
-function formatMoney(halalas: number | undefined | null) {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
+function formatMoney(halalas: number | undefined | null, language: EmployeePortalLanguage) {
+  return new Intl.NumberFormat(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     style: "currency",
     currency: "SAR",
     maximumFractionDigits: 0,
   }).format(Number(halalas || 0) / 100);
 }
 
-function formatPercent(value: number | undefined | null) {
-  return `${(Number(value || 0) * 100).toLocaleString("ar-SA-u-nu-latn", {
+function formatPercent(value: number | undefined | null, language: EmployeePortalLanguage) {
+  return `${(Number(value || 0) * 100).toLocaleString(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     maximumFractionDigits: 1,
   })}%`;
 }
 
-function formatDate(value: string | undefined | null) {
+function formatDate(value: string | undefined | null, language: EmployeePortalLanguage) {
   if (!value) return "—";
   const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA-u-ca-gregory" : "ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "long",
     year: "numeric",
   }).format(parsed);
 }
 
-function formatDateTime(value: string | undefined | null) {
+function formatDateTime(value: string | undefined | null, language: EmployeePortalLanguage) {
   if (!value) return "—";
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return formatDate(value);
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  if (!Number.isFinite(parsed)) return formatDate(value, language);
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA-u-ca-gregory" : "ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -64,25 +65,46 @@ function formatDateTime(value: string | undefined | null) {
   }).format(new Date(parsed));
 }
 
-function transactionLabel(row: EmployeeTargetLedgerRow) {
+function transactionLabel(row: EmployeeTargetLedgerRow, language: EmployeePortalLanguage) {
   if (row.serviceName) return row.serviceName;
   if (row.reason) return row.reason;
-  if (row.transactionType === "serviceRefund") return "استرجاع";
-  if (row.transactionType === "manualAdjustment") return "تسوية يدوية";
-  if (row.transactionType === "packageSession") return "جلسة باقة";
-  return "خدمة محتسبة";
+  if (row.transactionType === "serviceRefund") return language === "en" ? "Refund" : "استرجاع";
+  if (row.transactionType === "manualAdjustment") return language === "en" ? "Manual adjustment" : "تسوية يدوية";
+  if (row.transactionType === "packageSession") return language === "en" ? "Package session" : "جلسة باقة";
+  return language === "en" ? "Counted service" : "خدمة محتسبة";
 }
 
-function targetErrorMessage(error: unknown) {
+function targetErrorMessage(error: unknown, language: EmployeePortalLanguage) {
   if (error instanceof CoreApiError) {
-    if (error.status === 401) return "انتهت جلسة الدخول. سجلي الدخول مرة أخرى لعرض التارقت.";
+    if (error.status === 401) return language === "en" ? "Your session has expired. Sign in again to view your targets." : "انتهت جلسة الدخول. سجلي الدخول مرة أخرى لعرض التارقت.";
     if (error.code.includes("employee_link_required")) {
-      return "حسابك غير مربوط بملف موظفة نشط. تواصلي مع الإدارة لتفعيل الربط.";
+      return language === "en" ? "Your account is not linked to an active employee profile. Contact management to set up the link." : "حسابك غير مربوط بملف موظفة نشط. تواصلي مع الإدارة لتفعيل الربط.";
     }
-    if (error.status === 403) return "لا تملكين صلاحية عرض التارقت لهذا الحساب.";
+    if (error.status === 403) return language === "en" ? "You do not have permission to view this account's targets." : "لا تملكين صلاحية عرض التارقت لهذا الحساب.";
   }
-  return error instanceof Error ? error.message : "تعذر تحميل بيانات التارقت.";
+  return language === "en" ? "Could not load your targets." : error instanceof Error ? error.message : "تعذر تحميل بيانات التارقت.";
 }
+
+const targetCopy = {
+  ar: {
+    myTarget: "تارقتي", progressBonus: "تقدم المبيعات والبونص", payrollPeriod: "دورة الراتب من", to: "إلى", refresh: "تحديث", year: "السنة", payrollMonth: "شهر الراتب",
+    loading: "جاري تحميل التارقت", loadingNote: "نراجع مبيعاتك المحصلة لهذه الدورة.", failed: "تعذر عرض التارقت", noPlan: "لا توجد خطة تارقت", noPlanNote: "لم يتم تعيين خطة تارقت لهذه الدورة حتى الآن.",
+    closed: "دورة الراتب مغلقة. الأرقام المعروضة للقراءة فقط.", sales: "المبيعات المحصلة", target: "التارقت", progress: "نسبة الإنجاز", tier: "الشريحة الحالية", notAchieved: "لم تتحقق بعد",
+    bonus: "البونص الحالي", remaining: "متبقي", nextBonus: "للحصول على بونص", highestTier: "تم تحقيق أعلى شريحة في الخطة الحالية.", bookings: "الحجوزات المحتسبة", serviceItems: "بنود الخدمات", refundsDeducted: "خصم الاسترجاعات", updated: "آخر تحديث",
+    noSales: "لا توجد مبيعات مؤهلة بعد", noSalesNote: "أي حجز مدفوع ومكتمل سيظهر هنا بعد تحديث السجل.", counted: "الحركات المحتسبة", countedNote: "الخدمات والباقات التي دخلت في حساب التارقت.", noCounted: "لا توجد خدمات محتسبة في هذه الدورة.",
+    refunds: "الاسترجاعات", refundsNote: "أي استرجاع يقلل المبيعات المؤهلة.", noRefunds: "لا توجد استرجاعات على تارقت هذه الدورة.", adjustments: "التسويات اليدوية", adjustmentsNote: "تعديلات الإدارة إن وجدت، للقراءة فقط.", noAdjustments: "لا توجد تسويات يدوية.",
+    excluded: "الحركات المستبعدة", excludedNote: "حركات مرتبطة بحسابك لكنها لم تدخل في التارقت مع سبب الاستبعاد.", noExcluded: "لا توجد حركات مستبعدة لهذه الدورة.", service: "خدمة", noBooking: "بدون حجز",
+  },
+  en: {
+    myTarget: "My targets", progressBonus: "Sales progress and bonus", payrollPeriod: "Payroll period from", to: "to", refresh: "Refresh", year: "Year", payrollMonth: "Payroll month",
+    loading: "Loading targets", loadingNote: "Checking your collected sales for this period.", failed: "Could not show targets", noPlan: "No target plan", noPlanNote: "No target plan has been assigned for this period yet.",
+    closed: "This payroll period is closed. The figures are read only.", sales: "Collected sales", target: "Target", progress: "Progress", tier: "Current tier", notAchieved: "Not achieved yet",
+    bonus: "Current bonus", remaining: "Remaining", nextBonus: "to earn a bonus of", highestTier: "You have reached the highest tier in this plan.", bookings: "Counted bookings", serviceItems: "Service items", refundsDeducted: "Refund deductions", updated: "Last updated",
+    noSales: "No eligible sales yet", noSalesNote: "Paid, completed bookings appear here after the ledger is updated.", counted: "Counted transactions", countedNote: "Services and packages included in your target.", noCounted: "No services counted this period.",
+    refunds: "Refunds", refundsNote: "Refunds reduce eligible sales.", noRefunds: "No refunds for this period.", adjustments: "Manual adjustments", adjustmentsNote: "Management adjustments, if any, shown for your information.", noAdjustments: "No manual adjustments.",
+    excluded: "Excluded transactions", excludedNote: "Transactions linked to your account that did not count toward the target, with their exclusion reasons.", noExcluded: "No excluded transactions this period.", service: "Service", noBooking: "No booking",
+  },
+} as const;
 
 function TargetState({
   icon,
@@ -107,12 +129,15 @@ function LedgerSection({
   subtitle,
   rows,
   empty,
+  language,
 }: {
   title: string;
   subtitle: string;
   rows: EmployeeTargetLedgerRow[];
   empty: string;
+  language: EmployeePortalLanguage;
 }) {
+  const copy = targetCopy[language];
   return (
     <section className="employee-target-detail-panel">
       <header>
@@ -127,10 +152,10 @@ function LedgerSection({
         {rows.length ? rows.map((row) => (
           <article key={row.id}>
             <div>
-              <strong>{transactionLabel(row)}</strong>
-              <small>{formatDateTime(row.performedAt)} · {row.bookingId || "بدون حجز"}</small>
+              <strong>{transactionLabel(row, language)}</strong>
+              <small>{formatDateTime(row.performedAt, language)} · {row.bookingId || copy.noBooking}</small>
             </div>
-            <span>{formatMoney(row.eligibleAmount)}</span>
+            <span>{formatMoney(row.eligibleAmount, language)}</span>
           </article>
         )) : (
           <p>{empty}</p>
@@ -141,6 +166,8 @@ function LedgerSection({
 }
 
 export default function EmployeeTargetsPage() {
+  const { language } = useEmployeePortalLanguage();
+  const copy = targetCopy[language];
   const initial = currentPayrollParts();
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
@@ -156,11 +183,11 @@ export default function EmployeeTargetsPage() {
       setData(await CoreEmployeeTargetService.mine({ payrollMonth: payrollBounds.payrollMonth }));
     } catch (loadError) {
       setData(null);
-      setError(targetErrorMessage(loadError));
+      setError(targetErrorMessage(loadError, language));
     } finally {
       setLoading(false);
     }
-  }, [payrollBounds.payrollMonth]);
+  }, [payrollBounds.payrollMonth, language]);
 
   useEffect(() => {
     void load();
@@ -178,28 +205,28 @@ export default function EmployeeTargetsPage() {
   const isClosed = Boolean(data?.isPayrollClosed || data?.period?.isClosed);
 
   return (
-    <section className="targets-page employee-targets-page employee-targets-page--staff" dir="rtl">
+    <section className="targets-page employee-targets-page employee-targets-page--staff" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <header className="employee-target-hero">
         <div>
-          <span>تارقتي</span>
-          <h1>تقدم المبيعات والبونص</h1>
+          <span>{copy.myTarget}</span>
+          <h1>{copy.progressBonus}</h1>
           <p>
-            دورة الراتب من {formatDate(payrollBounds.monthStart)} إلى {formatDate(payrollBounds.monthEnd)}
+            {copy.payrollPeriod} {formatDate(payrollBounds.monthStart, language)} {copy.to} {formatDate(payrollBounds.monthEnd, language)}
           </p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           <FiRefreshCw className={loading ? "is-spinning" : ""} />
-          تحديث
+          {copy.refresh}
         </button>
       </header>
 
       <div className="employee-target-month-switcher">
         <label>
-          <span>السنة</span>
+          <span>{copy.year}</span>
           <DashboardNumberInputV2 value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
         </label>
         <label>
-          <span>شهر الراتب</span>
+          <span>{copy.payrollMonth}</span>
           <DashboardSelectBridgeV2 value={month} onChange={(event) => setMonth(Number(event.target.value))}>
             {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
               <option key={value} value={value}>{String(value).padStart(2, "0")}</option>
@@ -209,31 +236,31 @@ export default function EmployeeTargetsPage() {
         <div>
           <FiCalendar />
           <span>{payrollBounds.payrollMonth}</span>
-          <strong>{payrollBounds.monthStart} إلى {payrollBounds.monthEnd}</strong>
+          <strong>{payrollBounds.monthStart} {copy.to} {payrollBounds.monthEnd}</strong>
         </div>
       </div>
 
       {loading ? (
-        <TargetState icon={<FiClock />} title="جاري تحميل التارقت" text="نراجع مبيعاتك المحصلة لهذه الدورة." />
+        <TargetState icon={<FiClock />} title={copy.loading} text={copy.loadingNote} />
       ) : error ? (
-        <TargetState icon={<FiAlertCircle />} title="تعذر عرض التارقت" text={error} />
+        <TargetState icon={<FiAlertCircle />} title={copy.failed} text={error} />
       ) : !hasPlan ? (
-        <TargetState icon={<FiTarget />} title="لا توجد خطة تارقت" text="لم يتم تعيين خطة تارقت لهذه الدورة حتى الآن." />
+        <TargetState icon={<FiTarget />} title={copy.noPlan} text={copy.noPlanNote} />
       ) : (
         <>
           {isClosed ? (
-            <div className="targets-alert is-readonly">دورة الراتب مغلقة. الأرقام المعروضة للقراءة فقط.</div>
+            <div className="targets-alert is-readonly">{copy.closed}</div>
           ) : null}
 
           <section className="employee-target-summary-card">
             <div className="employee-target-summary-card__top">
               <div>
-                <span>المبيعات المحصلة</span>
-                <strong>{formatMoney(eligibleSales)}</strong>
+                <span>{copy.sales}</span>
+                <strong>{formatMoney(eligibleSales, language)}</strong>
               </div>
               <div>
-                <span>التارقت</span>
-                <strong>{formatMoney(targetAmount)}</strong>
+                <span>{copy.target}</span>
+                <strong>{formatMoney(targetAmount, language)}</strong>
               </div>
             </div>
 
@@ -242,71 +269,74 @@ export default function EmployeeTargetsPage() {
             </div>
 
             <div className="employee-target-summary-card__meta">
-              <span>نسبة الإنجاز: {formatPercent(progressRatio)}</span>
-              <span>الشريحة الحالية: {achievedTier?.tierName || "لم تتحقق بعد"}</span>
-              <span>البونص الحالي: {formatMoney(summary?.earnedBonusAmount)}</span>
+              <span>{copy.progress}: {formatPercent(progressRatio, language)}</span>
+              <span>{copy.tier}: {achievedTier?.tierName || copy.notAchieved}</span>
+              <span>{copy.bonus}: {formatMoney(summary?.earnedBonusAmount, language)}</span>
             </div>
 
             <p>
               {nextTier
-                ? `متبقي ${formatMoney(remaining)} للحصول على بونص ${formatMoney(nextTier.bonusAmount)}`
-                : "تم تحقيق أعلى شريحة في الخطة الحالية."}
+                ? `${copy.remaining} ${formatMoney(remaining, language)} ${copy.nextBonus} ${formatMoney(nextTier.bonusAmount, language)}`
+                : copy.highestTier}
             </p>
           </section>
 
           <section className="employee-target-metrics">
             <article>
               <FiCheckCircle />
-              <span>الحجوزات المحتسبة</span>
+              <span>{copy.bookings}</span>
               <strong>{summary?.countedBookingCount || 0}</strong>
             </article>
             <article>
               <FiFileText />
-              <span>بنود الخدمات</span>
+              <span>{copy.serviceItems}</span>
               <strong>{summary?.countedServiceItemCount || 0}</strong>
             </article>
             <article>
               <FiTrendingUp />
-              <span>خصم الاسترجاعات</span>
-              <strong>{formatMoney(summary?.refundDeductionAmount)}</strong>
+              <span>{copy.refundsDeducted}</span>
+              <strong>{formatMoney(summary?.refundDeductionAmount, language)}</strong>
             </article>
             <article>
               <FiTarget />
-              <span>آخر تحديث</span>
-              <strong>{formatDateTime(data?.lastUpdatedAt || summary?.lastUpdatedAt)}</strong>
+              <span>{copy.updated}</span>
+              <strong>{formatDateTime(data?.lastUpdatedAt || summary?.lastUpdatedAt, language)}</strong>
             </article>
           </section>
 
           {!hasSales ? (
-            <TargetState icon={<FiTarget />} title="لا توجد مبيعات مؤهلة بعد" text="أي حجز مدفوع ومكتمل سيظهر هنا بعد تحديث السجل." />
+            <TargetState icon={<FiTarget />} title={copy.noSales} text={copy.noSalesNote} />
           ) : null}
 
           <LedgerSection
-            title="الحركات المحتسبة"
-            subtitle="الخدمات والباقات التي دخلت في حساب التارقت."
+            title={copy.counted}
+            subtitle={copy.countedNote}
             rows={data?.countedTransactions || []}
-            empty="لا توجد خدمات محتسبة في هذه الدورة."
+            empty={copy.noCounted}
+            language={language}
           />
 
           <LedgerSection
-            title="الاسترجاعات"
-            subtitle="أي استرجاع يقلل المبيعات المؤهلة."
+            title={copy.refunds}
+            subtitle={copy.refundsNote}
             rows={data?.refundDeductions || []}
-            empty="لا توجد استرجاعات على تارقت هذه الدورة."
+            empty={copy.noRefunds}
+            language={language}
           />
 
           <LedgerSection
-            title="التسويات اليدوية"
-            subtitle="تعديلات الإدارة إن وجدت، للقراءة فقط."
+            title={copy.adjustments}
+            subtitle={copy.adjustmentsNote}
             rows={data?.manualAdjustments || []}
-            empty="لا توجد تسويات يدوية."
+            empty={copy.noAdjustments}
+            language={language}
           />
 
           <section className="employee-target-detail-panel">
             <header>
               <div>
-                <h2>الحركات المستبعدة</h2>
-                <p>حركات مرتبطة بحسابك لكنها لم تدخل في التارقت مع سبب الاستبعاد.</p>
+                <h2>{copy.excluded}</h2>
+                <p>{copy.excludedNote}</p>
               </div>
               <strong>{data?.excludedTransactions?.length || 0}</strong>
             </header>
@@ -314,13 +344,13 @@ export default function EmployeeTargetsPage() {
               {data?.excludedTransactions?.length ? data.excludedTransactions.map((row) => (
                 <article key={`${row.bookingId}-${row.bookingItemId}-${row.exclusionReason}`}>
                   <div>
-                    <strong>{row.serviceName || "خدمة"}</strong>
-                    <small>{formatDate(row.transactionDate || row.performedAt)} · {row.exclusionReason}</small>
+                    <strong>{row.serviceName || copy.service}</strong>
+                    <small>{formatDate(row.transactionDate || row.performedAt, language)} · {row.exclusionReason}</small>
                   </div>
-                  <span>{formatMoney(row.eligibleAmount)}</span>
+                  <span>{formatMoney(row.eligibleAmount, language)}</span>
                 </article>
               )) : (
-                <p>لا توجد حركات مستبعدة لهذه الدورة.</p>
+                <p>{copy.noExcluded}</p>
               )}
             </div>
           </section>
