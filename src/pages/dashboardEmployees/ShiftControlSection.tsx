@@ -373,7 +373,18 @@ function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | Co
   const start = cleanText(record?.templateStartTime || record?.template_start_time || record?.startTime || record?.start_time);
   const end = cleanText(record?.templateEndTime || record?.template_end_time || record?.endTime || record?.end_time);
   if (!start && !end) return "بدون وقت";
-  return `${start || "--:--"} - ${end || "--:--"}`;
+  const to12Hour = (value: string) => {
+    const match = /^(\\d{1,2}):(\\d{2})/.exec(value);
+    if (!match) return value || "--:--";
+    const hour24 = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isFinite(hour24) || hour24 < 0 || hour24 > 23 || minute < 0 || minute > 59) {
+      return value || "--:--";
+    }
+    const hour12 = hour24 % 12 || 12;
+    return `${hour12}:${String(minute).padStart(2, "0")} ${hour24 >= 12 ? "م" : "ص"}`;
+  };
+  return `${to12Hour(start)} - ${to12Hour(end)}`;
 }
 
 function statusLabel(value: unknown) {
