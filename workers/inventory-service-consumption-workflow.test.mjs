@@ -180,3 +180,24 @@ test("Lifecycle: duration derives end time when end_time missing", () => {
     "OVERDUE"
   );
 });
+
+
+test("Guard: stock transfer is one atomic D1 batch with idempotent replay", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  const start = inv.indexOf("export async function transferStock");
+  assert.notEqual(start, -1);
+  const transfer = inv.slice(start);
+
+  assert.match(transfer, /const statements = \[/);
+  assert.match(transfer, /results = await dbBatch\(db, statements\)/);
+  assert.doesNotMatch(transfer, /await appendMovement\(/);
+  assert.match(transfer, /TRANSFER_OUT/);
+  assert.match(transfer, /TRANSFER_IN/);
+  assert.match(
+    transfer,
+    /source_movement\.movement_type = 'TRANSFER_OUT'/
+  );
+  assert.match(transfer, /inventory:insufficient_stock/);
+  assert.match(transfer, /inventory:operation_id_reused/);
+  assert.match(transfer, /replayed: true/);
+});
