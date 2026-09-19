@@ -3276,7 +3276,9 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
       sql: `UPDATE payroll_entries
          SET status = 'approved', approved_at = COALESCE(approved_at, ?),
              approved_by_uid = COALESCE(approved_by_uid, ?), audit_log_json = ?, updated_at = ?
-       WHERE salon_id = ? AND id = ?`,
+       WHERE salon_id = ?
+         AND id = ?
+         AND status IN ('draft', 'reviewed')`,
       params: [now, optionalText(actor.uid) || null, appendAudit(existing, 'approved', actor), now, salonId, existing.id],
     },
   ];
@@ -3293,8 +3295,21 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
     });
   }
 
-  await dbBatch(db, statements);
-  return getPayrollEntry(db, salonId, existing.id);
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    const current = await getPayrollEntry(db, salonId, existing.id);
+    if (cleanText(current.status) === 'approved') {
+      return current;
+    }
+    throw error;
+  }
+
+  const approvedEntry = await getPayrollEntry(db, salonId, existing.id);
+  if (cleanText(approvedEntry.status) !== 'approved') {
+    throw new AppError(409, 'core_payroll:approval_concurrent_mutation');
+  }
+  return approvedEntry;
 }
 
 export async function recordLatePayrollApproval(
