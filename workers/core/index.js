@@ -3131,7 +3131,11 @@ export async function handleRequest(request, env) {
   let dispatchBody = body;
 
   if (
-    route.name === "inventory:consumption-confirm" &&
+    [
+      "inventory:consumption-confirm",
+      "inventory:purchase-order-receive",
+      "inventory:transfer",
+    ].includes(route.name) &&
     String(request.method || "").toUpperCase() === "POST"
   ) {
     const rawHeaderOperationId = cleanText(
