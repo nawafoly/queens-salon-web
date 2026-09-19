@@ -3479,6 +3479,10 @@ export async function recordLatePayrollApproval(
     },
   };
 
+  const lateApprovalAuditLog = appendAuditEntry(
+    existing,
+    auditEntry
+  );
   const snapshotStatement = await buildApprovalSnapshotStatement(
     db,
     salonId,
@@ -3489,11 +3493,15 @@ export async function recordLatePayrollApproval(
       approvedNetHalalas,
       createdAt: now,
       entrySnapshot: historicalSnapshotEntry,
+      transitionGuard: {
+        status: 'approved',
+        auditLogJson: lateApprovalAuditLog,
+        updatedAt: now,
+      },
     }
   );
 
   const statements = [
-    { sql: snapshotStatement.sql, params: snapshotStatement.params },
     {
       sql: `UPDATE payroll_entries
                SET status = 'approved',
@@ -3507,12 +3515,13 @@ export async function recordLatePayrollApproval(
       params: [
         approvalDate,
         optionalText(actor.uid) || null,
-        appendAuditEntry(existing, auditEntry),
+        lateApprovalAuditLog,
         now,
         salonId,
         existing.id,
       ],
     },
+    { sql: snapshotStatement.sql, params: snapshotStatement.params },
   ];
 
   // Carryovers already present in this payroll month are considered applied by
@@ -3540,7 +3549,28 @@ export async function recordLatePayrollApproval(
   }
 
   await dbBatch(db, statements);
-  return getPayrollEntry(db, salonId, existing.id);
+
+  const current = await getPayrollEntry(db, salonId, existing.id);
+  const latestSnapshot = await latestPayrollApprovalSnapshot(
+    db,
+    salonId,
+    existing.id
+  );
+  const matchesRequestedHistoricalApproval =
+    cleanText(current.status) === 'approved' &&
+    cleanText(current.approved_at) === approvalDate &&
+    Number(latestSnapshot?.approved_net_halalas ?? -1) ===
+      approvedNetHalalas &&
+    cleanText(latestSnapshot?.approved_at) === approvalDate;
+
+  if (!matchesRequestedHistoricalApproval) {
+    throw new AppError(
+      409,
+      'core_payroll:late_approval_concurrent_mutation'
+    );
+  }
+
+  return current;
 }
 
 export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {}) {
