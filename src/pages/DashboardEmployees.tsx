@@ -10233,26 +10233,6 @@ const canonicalSchedules =
                 className="attendance-punch-editor-modal-v2"
                 closeOnBackdrop={!saving}
                 closeOnEscape={!saving}
-                footer={
-                  <>
-                    <button
-                      type="button"
-                      className="dsv2-btn dsv2-btn--secondary"
-                      onClick={closeAttendancePunchEditor}
-                      disabled={saving}
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      className="dsv2-btn dsv2-btn--primary"
-                      onClick={() => void saveAttendancePunchEditor()}
-                      disabled={saving}
-                    >
-                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
-                    </button>
-                  </>
-                }
               >
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
                   <DashboardFieldV2
@@ -10315,6 +10295,24 @@ const canonicalSchedules =
                       rows={4}
                     />
                   </DashboardFieldV2>
+                  <div className="attendance-punch-editor-actions-v2">
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--secondary"
+                      onClick={closeAttendancePunchEditor}
+                      disabled={saving}
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--primary"
+                      onClick={() => void saveAttendancePunchEditor()}
+                      disabled={saving}
+                    >
+                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                    </button>
+                  </div>
                 </div>
               </DashboardModalV2>
               <BasicInfoSection
