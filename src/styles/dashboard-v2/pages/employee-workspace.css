@@ -1395,23 +1395,23 @@
 }
 
 .dashboard-v2 .dsv2-employee-workspace [data-leave-type="weekly_rest"] {
-  --calendar-leave-accent: #2563eb;
-  --calendar-leave-soft: rgb(37 99 235 / 10%);
+  --calendar-leave-accent: var(--dsv2-info);
+  --calendar-leave-soft: color-mix(in srgb, var(--dsv2-info) 10%, transparent);
 }
 
 .dashboard-v2 .dsv2-employee-workspace [data-leave-type="compensatory"] {
-  --calendar-leave-accent: #0f9f8f;
-  --calendar-leave-soft: rgb(15 159 143 / 10%);
+  --calendar-leave-accent: var(--dsv2-green);
+  --calendar-leave-soft: var(--dsv2-green-soft);
 }
 
 .dashboard-v2 .dsv2-employee-workspace [data-leave-type="annual"] {
-  --calendar-leave-accent: #7c3aed;
-  --calendar-leave-soft: rgb(124 58 237 / 10%);
+  --calendar-leave-accent: var(--dsv2-gold);
+  --calendar-leave-soft: var(--dsv2-gold-soft);
 }
 
 .dashboard-v2 .dsv2-employee-workspace [data-leave-type="exceptional"] {
-  --calendar-leave-accent: #db2777;
-  --calendar-leave-soft: rgb(219 39 119 / 10%);
+  --calendar-leave-accent: var(--dsv2-burgundy);
+  --calendar-leave-soft: var(--dsv2-burgundy-soft);
 }
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="weekly_rest"],
