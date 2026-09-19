@@ -508,6 +508,8 @@ export default function ShiftControlSection({
   const [error, setError] = useState("");
   const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const assignmentEditorRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestRef = useRef(0);
+  const resolvedRequestRef = useRef(0);
 
   const focusAssignmentEditor = useCallback(() => {
     window.setTimeout(() => {
@@ -551,6 +553,7 @@ export default function ShiftControlSection({
   );
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     if (!isVisible) return;
     if (!shiftEmployeeIds.length) {
       setTemplates([]);
@@ -593,6 +596,7 @@ export default function ShiftControlSection({
         new Map(groups.flat().filter((row) => cleanText(row.id)).map((row) => [row.id, row])).values()
       );
 
+      if (requestId !== loadRequestRef.current) return;
       setTemplates(templateRows);
       setAssignments(mergeById(assignmentGroups));
       setExceptions(mergeById(exceptionGroups));
@@ -601,14 +605,16 @@ export default function ShiftControlSection({
       setAssignmentForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
       setExceptionForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       console.warn("shift control load failed", err);
       setError("تعذر تحميل الشفتات من Core.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [isVisible, shiftEmployeeIds]);
 
   const loadResolvedShift = useCallback(async () => {
+    const requestId = ++resolvedRequestRef.current;
     if (!isVisible || !shiftEmployeeIds.length) {
       setResolvedShift(null);
       return;
@@ -619,8 +625,10 @@ export default function ShiftControlSection({
         dateFrom: resolvedDate,
         dateTo: resolvedDate,
       });
+      if (requestId !== resolvedRequestRef.current) return;
       setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
     } catch (err) {
+      if (requestId !== resolvedRequestRef.current) return;
       console.warn("resolved shift load failed", err);
       setResolvedShift(null);
       setError("تعذر تحميل الشفت المطبق من Core.");
