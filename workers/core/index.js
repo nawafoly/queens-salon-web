@@ -2235,11 +2235,26 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") {
         return listAnnualLeaveRecalls(db, ctx.salonId, { leaveId: route.id });
       }
-      return createAnnualLeaveRecall(db, ctx.salonId, route.id, body, actorInfo);
+      return createAnnualLeaveRecall(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "leave:recall-cancel":
       requirePermission(ctx, "attendance.leaves.manage");
-      return cancelAnnualLeaveRecall(db, ctx.salonId, route.id, route.recallId, body, actorInfo);
+      return cancelAnnualLeaveRecall(
+        db,
+        ctx.salonId,
+        route.id,
+        route.recallId,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
