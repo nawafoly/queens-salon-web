@@ -75,3 +75,20 @@ test("employee booking acknowledgement and staff status are Core-owned and ident
   assert.match(repo, /staff_status_requires_exclusive_assignment/);
   assert.doesNotMatch(migration, /ALTER TABLE bookings ADD COLUMN staff_ack/);
 });
+
+
+test("employee cannot complete a booking before service execution and material confirmation", () => {
+  const repo = read("workers/core/repositories/booking-staff-portal.js");
+
+  assert.match(repo, /assertBookingCompletionReady/);
+  assert.match(repo, /core_booking:service_not_started/);
+  assert.match(repo, /core_booking:materials_confirmation_required/);
+  assert.match(repo, /service_consumption_recipes/);
+  assert.match(repo, /service_consumption_recipe_lines/);
+  assert.match(repo, /service_consumptions/);
+  assert.match(repo, /status = 'confirmed'/);
+  assert.match(
+    repo,
+    /if \(toStatus === 'completed'\)[\s\S]*assertBookingCompletionReady/
+  );
+});
