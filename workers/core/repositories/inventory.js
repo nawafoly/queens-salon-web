@@ -226,14 +226,27 @@ async function validateServiceConsumptionContext(
   }
 
 
+  const bookingStatus =
+    cleanText(context.booking_status).toLowerCase();
+
   if (
     context.booking_deleted_at ||
-    cleanText(context.booking_status).toLowerCase() === 'cancelled'
+    ['cancelled', 'canceled', 'rejected'].includes(bookingStatus)
   ) {
     throw new AppError(
       409,
       'inventory:booking_not_consumable',
       'Inventory consumption is not allowed for this booking'
+    );
+  }
+
+  if (
+    !['booked', 'confirmed', 'completed'].includes(bookingStatus)
+  ) {
+    throw new AppError(
+      409,
+      'inventory:booking_not_confirmed',
+      'Confirm the booking before recording material consumption'
     );
   }
 
@@ -1864,12 +1877,22 @@ export async function listPendingServiceConsumptions(db, salonId, query = {}) {
         delayMinutes = nh * 60 + nm - (eh * 60 + em);
       }
     }
+    const bookingStatus =
+      cleanText(row.booking_status).toLowerCase();
+    const bookingAllowsConsumption =
+      ['booked', 'confirmed', 'completed'].includes(
+        bookingStatus
+      );
+
     return {
       ...row,
       lifecycle,
       can_confirm:
-        lifecycle === 'PENDING_CONFIRMATION' ||
-        lifecycle === 'OVERDUE',
+        bookingAllowsConsumption &&
+        (
+          lifecycle === 'PENDING_CONFIRMATION' ||
+          lifecycle === 'OVERDUE'
+        ),
       effective_end_time: end || null,
       delay_minutes: delayMinutes,
     };
