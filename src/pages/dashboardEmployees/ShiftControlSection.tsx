@@ -550,7 +550,17 @@ export default function ShiftControlSection({
   }, [employeeId, openAssignment, shiftEmployeeIds]);
 
   const load = useCallback(async () => {
-    if (!isVisible || !shiftEmployeeIds.length) return;
+    if (!isVisible) return;
+    if (!shiftEmployeeIds.length) {
+      setTemplates([]);
+      setAssignments([]);
+      setExceptions([]);
+      setLocks([]);
+      setAdjustments([]);
+      setResolvedShift(null);
+      setError("لا توجد هوية Core صالحة لهذه الموظفة.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -716,6 +726,7 @@ export default function ShiftControlSection({
         reason: "تحديث قالب شفت من مساحة الموظفة V2",
       });
       setTemplateForm(emptyTemplateForm());
+      setPreview(null);
       setMessage("تم حفظ قالب الشفت.");
       await load();
     } catch (err) {
@@ -727,6 +738,8 @@ export default function ShiftControlSection({
   };
 
   const editTemplate = (template: CoreShiftTemplate) => {
+    setError("");
+    setMessage("");
     setTemplateForm({
       id: template.id,
       name: template.name || "",
@@ -743,6 +756,8 @@ export default function ShiftControlSection({
   };
 
   const editAssignment = (assignment: CoreShiftAssignment) => {
+    setError("");
+    setMessage("");
     if (assignmentStatus(assignment) === "ملغي") {
       setError("لا يمكن تعديل تعيين ملغي. أنشئ تعيينًا جديدًا بدلًا من تعديل سجل ملغي.");
       return;
@@ -775,6 +790,10 @@ export default function ShiftControlSection({
 
   const saveAssignment = async () => {
     if (!canManage) return;
+    if (!targetShiftEmployeeId) {
+      setError("تعذر تحديد هوية الموظفة في Core. أعد تحميل الملف قبل الحفظ.");
+      return;
+    }
     if (!assignmentForm.shiftTemplateId || !assignmentForm.effectiveFrom || !assignmentForm.reason.trim()) {
       setError("الشفت وتاريخ البداية وسبب التغيير مطلوبة.");
       return;
@@ -849,13 +868,24 @@ export default function ShiftControlSection({
 
   const closeAssignment = async (assignment: CoreShiftAssignment) => {
     if (!canManage) return;
-    if (!window.confirm(`إنهاء تعيين الشفت بتاريخ ${todayKey()}؟`)) return;
+    const today = todayKey();
+    const effectiveFrom = cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from);
+    const closeDate = (() => {
+      const date = new Date(`${today}T00:00:00`);
+      date.setDate(date.getDate() - 1);
+      return date.toISOString().slice(0, 10);
+    })();
+    if (effectiveFrom && closeDate < effectiveFrom) {
+      setError("لا يمكن إنهاء هذا التعيين قبل تاريخ بدايته. استخدم الإلغاء بدلًا من ذلك.");
+      return;
+    }
+    if (!window.confirm(`إنهاء تعيين الشفت ابتداءً من اليوم ${today}؟ آخر يوم عمل بهذا التعيين سيكون ${closeDate}.`)) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
       await CoreHrService.updateShiftAssignment(assignment.id, {
-        effectiveTo: todayKey(),
+        effectiveTo: closeDate,
         reason: "إنهاء شفت من مساحة الموظفة V2",
         allowLockedPeriodAdjustment,
       });
@@ -871,6 +901,10 @@ export default function ShiftControlSection({
 
   const createException = async () => {
     if (!canManage) return;
+    if (!targetShiftEmployeeId) {
+      setError("تعذر تحديد هوية الموظفة في Core. أعد تحميل الملف قبل الحفظ.");
+      return;
+    }
     if (!exceptionForm.dateFrom || !exceptionForm.dateTo) {
       setError("تاريخ الاستثناء مطلوب.");
       return;
