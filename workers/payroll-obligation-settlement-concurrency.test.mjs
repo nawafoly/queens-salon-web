@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 
-import { payrollObligationPaidStatements } from './core/repositories/payroll-obligations.js';
+import {
+  payrollObligationPaidStatements,
+  payrollObligationPaymentReversalStatements,
+} from './core/repositories/payroll-obligations.js';
 
 function splitMigrationStatements(sql) {
   const statements = [];
@@ -159,4 +162,90 @@ test('same-timestamp duplicate settlement is also idempotent', async (t) => {
   assert.equal(state.obligation.remaining_amount_halalas, 1000);
   assert.equal(state.obligation.status, 'partially_settled');
   assert.equal(state.installment.status, 'applied');
+});
+
+
+test('losing concurrent payment reversal cannot restore obligation twice', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedObligation(db);
+
+  const paidAt = '2026-08-27T08:20:02.000Z';
+  const payment = await payrollObligationPaidStatements(
+    db,
+    'main',
+    payrollEntry(),
+    paidAt
+  );
+  await runStatements(db, payment);
+
+  let state = await readState(db);
+  assert.equal(state.obligation.remaining_amount_halalas, 1000);
+  assert.equal(state.installment.status, 'applied');
+
+  const winner = await payrollObligationPaymentReversalStatements(
+    db,
+    'main',
+    payrollEntry(),
+    '2026-08-27T08:21:00.100Z'
+  );
+  const loser = await payrollObligationPaymentReversalStatements(
+    db,
+    'main',
+    payrollEntry(),
+    '2026-08-27T08:21:00.200Z'
+  );
+
+  await runStatements(db, winner);
+  state = await readState(db);
+  assert.equal(state.obligation.remaining_amount_halalas, 2000);
+  assert.equal(state.obligation.status, 'scheduled');
+  assert.equal(state.installment.status, 'scheduled');
+
+  await runStatements(db, loser);
+  state = await readState(db);
+  assert.equal(state.obligation.remaining_amount_halalas, 2000);
+  assert.equal(state.obligation.status, 'scheduled');
+  assert.equal(
+    state.obligation.updated_at,
+    '2026-08-27T08:21:00.100Z'
+  );
+  assert.equal(state.installment.status, 'scheduled');
+});
+
+test('same-timestamp duplicate payment reversal is idempotent', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedObligation(db);
+
+  const payment = await payrollObligationPaidStatements(
+    db,
+    'main',
+    payrollEntry(),
+    '2026-08-27T08:22:00.000Z'
+  );
+  await runStatements(db, payment);
+
+  const reversedAt = '2026-08-27T08:23:00.000Z';
+  const first = await payrollObligationPaymentReversalStatements(
+    db,
+    'main',
+    payrollEntry(),
+    reversedAt
+  );
+  const duplicate = await payrollObligationPaymentReversalStatements(
+    db,
+    'main',
+    payrollEntry(),
+    reversedAt
+  );
+
+  await runStatements(db, first);
+  await runStatements(db, duplicate);
+
+  const state = await readState(db);
+  assert.equal(state.obligation.remaining_amount_halalas, 2000);
+  assert.equal(state.obligation.status, 'scheduled');
+  assert.equal(state.obligation.updated_at, reversedAt);
+  assert.equal(state.installment.status, 'scheduled');
 });
