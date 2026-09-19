@@ -3326,18 +3326,42 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
     if (!targetSchemaUnavailable(error)) throw error;
   }
 
-  const snapshotStatement = await buildApprovalSnapshotStatement(db, salonId, existing, actor, now);
+  const approvalAuditLog = appendAudit(existing, 'approved', actor);
+  const snapshotStatement = await buildApprovalSnapshotStatement(
+    db,
+    salonId,
+    existing,
+    actor,
+    now,
+    {
+      transitionGuard: {
+        status: 'approved',
+        auditLogJson: approvalAuditLog,
+        updatedAt: now,
+      },
+    }
+  );
   const statements = [
-    { sql: snapshotStatement.sql, params: snapshotStatement.params },
     {
       sql: `UPDATE payroll_entries
-         SET status = 'approved', approved_at = COALESCE(approved_at, ?),
-             approved_by_uid = COALESCE(approved_by_uid, ?), audit_log_json = ?, updated_at = ?
+         SET status = 'approved',
+             approved_at = COALESCE(approved_at, ?),
+             approved_by_uid = COALESCE(approved_by_uid, ?),
+             audit_log_json = ?,
+             updated_at = ?
        WHERE salon_id = ?
          AND id = ?
          AND status IN ('draft', 'reviewed')`,
-      params: [now, optionalText(actor.uid) || null, appendAudit(existing, 'approved', actor), now, salonId, existing.id],
+      params: [
+        now,
+        optionalText(actor.uid) || null,
+        approvalAuditLog,
+        now,
+        salonId,
+        existing.id,
+      ],
     },
+    { sql: snapshotStatement.sql, params: snapshotStatement.params },
   ];
 
   for (const carryoverId of carryoverSourceIds(existing)) {
@@ -3356,14 +3380,14 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
     await dbBatch(db, statements);
   } catch (error) {
     const current = await getPayrollEntry(db, salonId, existing.id);
-    if (cleanText(current.status) === 'approved') {
+    if (['approved', 'paid'].includes(cleanText(current.status))) {
       return current;
     }
     throw error;
   }
 
   const approvedEntry = await getPayrollEntry(db, salonId, existing.id);
-  if (cleanText(approvedEntry.status) !== 'approved') {
+  if (!['approved', 'paid'].includes(cleanText(approvedEntry.status))) {
     throw new AppError(409, 'core_payroll:approval_concurrent_mutation');
   }
   return approvedEntry;
