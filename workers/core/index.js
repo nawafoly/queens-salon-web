@@ -2328,8 +2328,24 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "absences":
       requirePermission(ctx, "attendance.absences.manage");
       if (method === "GET") return listAbsences(db, ctx.salonId, query);
-      if (method === "POST") return createAbsence(db, ctx.salonId, body, actorInfo);
-      if (method === "DELETE" && route.id) return deleteAbsence(db, ctx.salonId, route.id);
+      if (method === "POST") {
+        return createAbsence(
+          db,
+          ctx.salonId,
+          body,
+          actorInfo,
+          { externalAttendanceDb: env.ATTENDANCE_DB || null }
+        );
+      }
+      if (method === "DELETE" && route.id) {
+        return deleteAbsence(
+          db,
+          ctx.salonId,
+          route.id,
+          actorInfo,
+          { externalAttendanceDb: env.ATTENDANCE_DB || null }
+        );
+      }
       break;
 
     case "payroll-carryovers":
