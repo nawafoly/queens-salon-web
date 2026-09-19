@@ -2416,3 +2416,37 @@
     margin: 0;
   }
 }
+
+
+.dashboard-v2 .attendance-punch-editor-actions-v2 {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: var(--dsv2-space-3);
+  padding-block-start: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .attendance-punch-editor-actions-v2 .dsv2-btn {
+  flex: 1 1 0;
+  min-height: 46px;
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-modal.attendance-punch-editor-modal-v2 {
+    height: auto;
+    max-height: 92dvh;
+  }
+
+  .dashboard-v2 .attendance-punch-editor-actions-v2 {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+    margin-inline: calc(var(--dsv2-space-4) * -1);
+    margin-block-end: calc(var(--dsv2-space-4) * -1);
+    padding: var(--dsv2-space-3) var(--dsv2-space-4) max(var(--dsv2-space-3), env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--dsv2-divider);
+    background: var(--dsv2-surface);
+    box-shadow: 0 -10px 24px rgb(5 8 13 / 10%);
+  }
+}
