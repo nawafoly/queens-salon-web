@@ -1252,6 +1252,69 @@ function carryoverSignedAmount(row) {
   return cleanText(row?.direction) === 'addition' ? amount : -amount;
 }
 
+function historicalSettlementSignedAmount(row) {
+  const amount = Math.max(0, Number(row?.amount_halalas || 0));
+  return cleanText(row?.direction) === 'addition' ? amount : -amount;
+}
+
+async function recordedHistoricalSettlements(db, salonId, sourceSnapshotId) {
+  try {
+    return await dbAll(
+      db,
+      `SELECT *
+         FROM payroll_historical_settlements
+        WHERE salon_id = ?
+          AND source_snapshot_id = ?
+          AND status = 'recorded'
+        ORDER BY created_at, id`,
+      [salonId, sourceSnapshotId]
+    );
+  } catch (error) {
+    if (carryoverSchemaUnavailable(error)) return [];
+    throw error;
+  }
+}
+
+export async function listPayrollHistoricalSettlements(db, salonId, query = {}) {
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const sourcePayrollMonth = cleanText(
+    query.sourcePayrollMonth || query.source_payroll_month
+  );
+  const sourcePayrollEntryId = cleanText(
+    query.sourcePayrollEntryId || query.source_payroll_entry_id
+  );
+  const status = cleanText(query.status);
+
+  const predicates = ['salon_id = ?'];
+  const params = [salonId];
+
+  if (employeeId) {
+    predicates.push('employee_id = ?');
+    params.push(employeeId);
+  }
+  if (sourcePayrollMonth) {
+    predicates.push('source_payroll_month = ?');
+    params.push(sourcePayrollMonth);
+  }
+  if (sourcePayrollEntryId) {
+    predicates.push('source_payroll_entry_id = ?');
+    params.push(sourcePayrollEntryId);
+  }
+  if (status) {
+    predicates.push('status = ?');
+    params.push(status);
+  }
+
+  return dbAll(
+    db,
+    `SELECT *
+       FROM payroll_historical_settlements
+      WHERE ${predicates.join('\n        AND ')}
+      ORDER BY source_payroll_month DESC, settlement_date DESC, created_at DESC`,
+    params
+  );
+}
+
 function carryoverSourceIds(row) {
   return [...new Set([
     ...parseJsonArray(row?.additions_json),
@@ -1529,11 +1592,25 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   const appliedSigned = rows
     .filter((row) => cleanText(row.status) === 'applied')
     .reduce((total, row) => total + carryoverSignedAmount(row), 0);
+  const historicalSettlementRows =
+    await recordedHistoricalSettlements(db, salonId, snapshot.id);
+  const persistedHistoricalSettledSigned =
+    historicalSettlementRows.reduce(
+      (total, row) => total + historicalSettlementSignedAmount(row),
+      0
+    );
+  const virtualSettlementSigned = Number(
+    options.virtualSettlementSignedHalalas || 0
+  );
+  const historicalSettledSigned =
+    persistedHistoricalSettledSigned + virtualSettlementSigned;
+  const carryoverDesiredSigned =
+    desired.signedDeltaHalalas - historicalSettledSigned;
   const pendingRows = rows.filter((row) => cleanText(row.status) === 'pending');
   const pending = pendingRows.find(
     (row) => cleanText(row.status) === 'pending' && cleanText(row.target_payroll_month) === targetPayrollMonth
   );
-  const residualSigned = desired.signedDeltaHalalas - appliedSigned;
+  const residualSigned = carryoverDesiredSigned - appliedSigned;
   const now = nowIso();
   const sourceDate = optionalText(data.sourceDate || data.source_date) || null;
   const reason = optionalText(data.reason) ||
@@ -1542,7 +1619,11 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   // Carryover state changes are one D1 transaction. A reconciliation must
   // never void an old pending adjustment without also writing the replacement
   // residual (or completing the zero-residual cleanup) in the same batch.
-  const carryoverStatements = [];
+  const carryoverStatements = [
+    ...(Array.isArray(options.prependStatements)
+      ? options.prependStatements
+      : []),
+  ];
 
   for (const obsolete of pendingRows) {
     if (residualSigned !== 0 && obsolete.id === pending?.id) continue;
@@ -1582,14 +1663,23 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
     const pendingStillActive = activeAfterVoid.some(
       (row) => cleanText(row.status) === 'pending'
     );
-    if (activeSigned !== desired.signedDeltaHalalas || pendingStillActive) {
+    if (activeSigned !== carryoverDesiredSigned || pendingStillActive) {
       if (retryDepth >= 3) {
         throw new AppError(409, 'core_payroll:carryover_concurrent_mutation');
       }
-      return reconcilePayrollCarryover(db, salonId, data, actor, {
+      const retryOptions = {
         ...options,
         carryoverRetryDepth: retryDepth + 1,
-      });
+      };
+      delete retryOptions.prependStatements;
+      delete retryOptions.virtualSettlementSignedHalalas;
+      return reconcilePayrollCarryover(
+        db,
+        salonId,
+        data,
+        actor,
+        retryOptions
+      );
     }
     return {
       sourcePayrollEntryId,
@@ -1600,6 +1690,7 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
       recalculatedNetHalalas: desired.recalculatedNetHalalas,
       desiredSignedDeltaHalalas: desired.signedDeltaHalalas,
       appliedSignedHalalas: appliedSigned,
+      historicalSettledSignedHalalas: historicalSettledSigned,
       residualSignedHalalas: 0,
       adjustment: null,
     };
@@ -1682,10 +1773,19 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
     if (retryDepth >= 3) {
       throw new AppError(409, 'core_payroll:carryover_concurrent_mutation');
     }
-    return reconcilePayrollCarryover(db, salonId, data, actor, {
-      ...options,
-      carryoverRetryDepth: retryDepth + 1,
-    });
+    const retryOptions = {
+        ...options,
+        carryoverRetryDepth: retryDepth + 1,
+      };
+      delete retryOptions.prependStatements;
+      delete retryOptions.virtualSettlementSignedHalalas;
+      return reconcilePayrollCarryover(
+        db,
+        salonId,
+        data,
+        actor,
+        retryOptions
+      );
   }
   return {
     sourcePayrollEntryId,
@@ -1696,6 +1796,7 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
     recalculatedNetHalalas: desired.recalculatedNetHalalas,
     desiredSignedDeltaHalalas: desired.signedDeltaHalalas,
     appliedSignedHalalas: appliedSigned,
+    historicalSettledSignedHalalas: historicalSettledSigned,
     residualSignedHalalas: residualSigned,
     adjustment,
   };
@@ -1709,6 +1810,360 @@ export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, ac
     results.push(await reconcilePayrollCarryover(db, salonId, item, actor, options));
   }
   return { results };
+}
+
+async function historicalSettlementPosition(
+  db,
+  salonId,
+  sourceEntry,
+  actor = {},
+  options = {}
+) {
+  const canonical = await canonicalRecalculatedNetForLockedEntry(
+    db,
+    salonId,
+    sourceEntry,
+    options
+  );
+  const snapshot = await ensureApprovalSnapshotExists(
+    db,
+    salonId,
+    sourceEntry,
+    actor
+  );
+  if (!snapshot) {
+    throw new AppError(409, 'core_payroll:approval_snapshot_missing');
+  }
+
+  const desired = payrollCarryoverDelta(
+    snapshot.approved_net_halalas,
+    canonical.netSalaryHalalas
+  );
+  const [carryovers, settlements] = await Promise.all([
+    dbAll(
+      db,
+      `SELECT *
+         FROM payroll_carryover_adjustments
+        WHERE salon_id = ?
+          AND source_snapshot_id = ?
+          AND status <> 'void'
+        ORDER BY created_at`,
+      [salonId, snapshot.id]
+    ),
+    recordedHistoricalSettlements(db, salonId, snapshot.id),
+  ]);
+  const appliedSignedHalalas = carryovers
+    .filter((row) => cleanText(row.status) === 'applied')
+    .reduce((total, row) => total + carryoverSignedAmount(row), 0);
+  const historicalSettledSignedHalalas = settlements.reduce(
+    (total, row) => total + historicalSettlementSignedAmount(row),
+    0
+  );
+
+  return {
+    snapshot,
+    desired,
+    recalculatedNetHalalas: canonical.netSalaryHalalas,
+    appliedSignedHalalas,
+    historicalSettledSignedHalalas,
+    outstandingSignedHalalas:
+      desired.signedDeltaHalalas -
+      appliedSignedHalalas -
+      historicalSettledSignedHalalas,
+  };
+}
+
+export async function recordPayrollHistoricalSettlement(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const sourcePayrollEntryId = requiredId(
+    data.sourcePayrollEntryId || data.source_payroll_entry_id,
+    'sourcePayrollEntryId'
+  );
+  const sourceEntry = await getPayrollEntry(
+    db,
+    salonId,
+    sourcePayrollEntryId
+  );
+  if (!['approved', 'paid'].includes(cleanText(sourceEntry.status))) {
+    throw new AppError(
+      409,
+      'core_payroll:historical_settlement_source_not_locked'
+    );
+  }
+
+  const direction = cleanText(data.direction).toLowerCase();
+  if (!['addition', 'deduction'].includes(direction)) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_direction_invalid'
+    );
+  }
+  const amountHalalas = Number(
+    data.amountHalalas ?? data.amount_halalas
+  );
+  if (!Number.isSafeInteger(amountHalalas) || amountHalalas <= 0) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_amount_invalid'
+    );
+  }
+  const settlementMethod = cleanText(
+    data.settlementMethod || data.settlement_method || 'other'
+  ).toLowerCase();
+  if (!['cash', 'bank_transfer', 'other'].includes(settlementMethod)) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_method_invalid'
+    );
+  }
+  const settlementDate = validDate(
+    data.settlementDate || data.settlement_date,
+    'settlementDate'
+  );
+  if (settlementDate > payrollRiyadhTodayKey()) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_date_future'
+    );
+  }
+  const reason = optionalText(data.reason);
+  if (!reason) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_reason_required'
+    );
+  }
+  const operationId =
+    optionalText(data.operationId || data.operation_id) ||
+    generatedId('payroll_settlement_op');
+
+  const existingOperation = await dbFirst(
+    db,
+    `SELECT *
+       FROM payroll_historical_settlements
+      WHERE salon_id = ?
+        AND operation_id = ?
+      LIMIT 1`,
+    [salonId, operationId]
+  );
+  if (existingOperation) {
+    const matches =
+      cleanText(existingOperation.source_payroll_entry_id) ===
+        sourcePayrollEntryId &&
+      cleanText(existingOperation.direction) === direction &&
+      Number(existingOperation.amount_halalas) === amountHalalas;
+    if (!matches) {
+      throw new AppError(
+        409,
+        'core_payroll:historical_settlement_operation_reused'
+      );
+    }
+    return {
+      settlement: existingOperation,
+      replayed: true,
+    };
+  }
+
+  const position = await historicalSettlementPosition(
+    db,
+    salonId,
+    sourceEntry,
+    actor,
+    options
+  );
+  const outstanding = position.outstandingSignedHalalas;
+  if (outstanding === 0) {
+    throw new AppError(
+      409,
+      'core_payroll:no_historical_settlement_outstanding'
+    );
+  }
+  const expectedDirection =
+    outstanding > 0 ? 'addition' : 'deduction';
+  if (direction !== expectedDirection) {
+    throw new AppError(
+      409,
+      'core_payroll:historical_settlement_direction_mismatch'
+    );
+  }
+  if (amountHalalas > Math.abs(outstanding)) {
+    throw new AppError(
+      409,
+      'core_payroll:historical_settlement_exceeds_outstanding'
+    );
+  }
+
+  const now = nowIso();
+  const settlementId = generatedId('payroll_settlement');
+  const signedAmount =
+    direction === 'addition' ? amountHalalas : -amountHalalas;
+  const insertStatement = {
+    sql: `INSERT INTO payroll_historical_settlements (
+      id, salon_id, employee_id, source_payroll_month,
+      source_payroll_entry_id, source_snapshot_id,
+      direction, amount_halalas, settlement_method,
+      settlement_date, reference, reason, note, status,
+      operation_id, recorded_by_uid, recorded_by_name,
+      voided_at, voided_by_uid, void_reason,
+      created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recorded',
+      ?, ?, ?, NULL, NULL, NULL, ?, ?
+    )`,
+    params: [
+      settlementId,
+      salonId,
+      sourceEntry.employee_id,
+      sourceEntry.payroll_month,
+      sourceEntry.id,
+      position.snapshot.id,
+      direction,
+      amountHalalas,
+      settlementMethod,
+      settlementDate,
+      optionalText(data.reference) || null,
+      reason,
+      optionalText(data.note) || null,
+      operationId,
+      optionalText(actor.uid) || null,
+      optionalText(actor.name || actor.email) || null,
+      now,
+      now,
+    ],
+  };
+
+  const reconciliation = await reconcilePayrollCarryover(
+    db,
+    salonId,
+    {
+      sourcePayrollEntryId: sourceEntry.id,
+      sourceDate: settlementDate,
+      reason: `Direct historical settlement: ${reason}`,
+    },
+    actor,
+    {
+      ...options,
+      prependStatements: [insertStatement],
+      virtualSettlementSignedHalalas: signedAmount,
+    }
+  );
+  const settlement = await dbFirst(
+    db,
+    `SELECT *
+       FROM payroll_historical_settlements
+      WHERE salon_id = ? AND id = ?
+      LIMIT 1`,
+    [salonId, settlementId]
+  );
+
+  return {
+    settlement,
+    reconciliation,
+    replayed: false,
+  };
+}
+
+export async function voidPayrollHistoricalSettlement(
+  db,
+  salonId,
+  id,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const settlementId = requiredId(id, 'settlementId');
+  const existing = await dbFirst(
+    db,
+    `SELECT *
+       FROM payroll_historical_settlements
+      WHERE salon_id = ? AND id = ?
+      LIMIT 1`,
+    [salonId, settlementId]
+  );
+  if (!existing) {
+    throw new AppError(
+      404,
+      'core_payroll:historical_settlement_not_found'
+    );
+  }
+  if (cleanText(existing.status) === 'void') {
+    return { settlement: existing, replayed: true };
+  }
+
+  const reason = optionalText(data.reason);
+  if (!reason) {
+    throw new AppError(
+      400,
+      'core_payroll:historical_settlement_void_reason_required'
+    );
+  }
+  const sourceEntry = await getPayrollEntry(
+    db,
+    salonId,
+    existing.source_payroll_entry_id
+  );
+  if (!['approved', 'paid'].includes(cleanText(sourceEntry.status))) {
+    throw new AppError(
+      409,
+      'core_payroll:historical_settlement_source_not_locked'
+    );
+  }
+
+  const now = nowIso();
+  const voidStatement = {
+    sql: `UPDATE payroll_historical_settlements
+             SET status = 'void',
+                 voided_at = ?,
+                 voided_by_uid = ?,
+                 void_reason = ?,
+                 updated_at = ?
+           WHERE salon_id = ?
+             AND id = ?
+             AND status = 'recorded'`,
+    params: [
+      now,
+      optionalText(actor.uid) || null,
+      reason,
+      now,
+      salonId,
+      settlementId,
+    ],
+  };
+  const signedAmount = historicalSettlementSignedAmount(existing);
+  const reconciliation = await reconcilePayrollCarryover(
+    db,
+    salonId,
+    {
+      sourcePayrollEntryId: sourceEntry.id,
+      sourceDate: existing.settlement_date,
+      reason: `Historical settlement voided: ${reason}`,
+    },
+    actor,
+    {
+      ...options,
+      prependStatements: [voidStatement],
+      virtualSettlementSignedHalalas: -signedAmount,
+    }
+  );
+  const settlement = await dbFirst(
+    db,
+    `SELECT *
+       FROM payroll_historical_settlements
+      WHERE salon_id = ? AND id = ?
+      LIMIT 1`,
+    [salonId, settlementId]
+  );
+
+  return {
+    settlement,
+    reconciliation,
+    replayed: false,
+  };
 }
 
 export async function reconcileLockedPayrollImpactForHrCorrection(
