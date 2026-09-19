@@ -779,8 +779,8 @@ function EmployeePortalContent() {
                 </PermissionRoute>
               }
             />
-            <Route path="requests" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
-            <Route path="requests/:requestId" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="requests" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} onNewRequest={() => setRequestSheetOpen(true)} /></PermissionRoute>} />
+            <Route path="requests/:requestId" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} onNewRequest={() => setRequestSheetOpen(true)} /></PermissionRoute>} />
             <Route path="profile" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeProfilePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="messages" element={<PermissionRoute permission="messages.view"><EmployeeMessagesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeFilesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
@@ -794,6 +794,18 @@ function EmployeePortalContent() {
           </div>
         </main>
       </div>
+
+      {hasPermission("employee_requests.own.create") && location.pathname !== "/employee/requests" ? (
+        <button
+          type="button"
+          className="employee-floating-request"
+          onClick={() => setRequestSheetOpen(true)}
+          aria-label={t("portal.newRequest")}
+        >
+          <FontAwesomeIcon icon={faPlus} />
+          <span>{t("portal.newRequest")}</span>
+        </button>
+      ) : null}
 
       <nav className="employee-bottom-nav" aria-label={t("portal.aria")}>
         {bottomNavItems.map((item) => (

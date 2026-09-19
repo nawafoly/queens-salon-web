@@ -104,9 +104,23 @@
     white-space: nowrap;
   }
 
-  /* No floating CTA may overlap the navigation bar on mobile. */
+  /* Keep the request action visible above the fixed mobile navigation. */
   .employee-portal.madan-employee-portal .employee-floating-request {
-    display: none !important;
+    display: inline-flex !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    right: 14px !important;
+    left: auto !important;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+    gap: 8px !important;
+    padding: 0 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-floating-request span {
+    display: inline !important;
   }
 
   /* Requests workspace: mobile-first hierarchy, less chrome, clearer primary action. */

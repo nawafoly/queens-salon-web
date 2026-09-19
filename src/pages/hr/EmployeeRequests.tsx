@@ -45,7 +45,7 @@ import { CoreFilesService } from "../../services/CoreFilesService";
 import { useEmployeePortalLanguage, type EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import "../../styles/EmployeeRequests.css";
 
-type Props = { session: HrSession; onPortalChange?: () => void | Promise<void> };
+type Props = { session: HrSession; onPortalChange?: () => void | Promise<void>; onNewRequest?: () => void };
 type FormState = Record<string, string | boolean>;
 
 const REQUEST_TYPES: EmployeeRequestType[] = (Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[])
@@ -650,7 +650,7 @@ function RequestDetail({ requestId, language, onBack, onChanged }: { requestId: 
   );
 }
 
-export default function EmployeeRequestsPage({ session, onPortalChange }: Props) {
+export default function EmployeeRequestsPage({ session, onPortalChange, onNewRequest }: Props) {
   const navigate = useNavigate();
   const { language } = useEmployeePortalLanguage();
   const { requestId } = useParams();
@@ -678,7 +678,7 @@ export default function EmployeeRequestsPage({ session, onPortalChange }: Props)
 
   return (
     <div className="employee-requests-page" dir={language === "ar" ? "rtl" : "ltr"} lang={language}>
-      <header className="employee-requests-hero"><div><small>{pick(language, "الخدمة الذاتية", "Self-service")}</small><h1>{pick(language, "طلباتي", "My Requests")}</h1><p>{pick(language, "أنشئ الطلب وتابع الاستلام والمراجعة والقرار والتنفيذ من مكان واحد.", "Create requests and track receipt, review, decisions and execution in one place.")}</p></div><button type="button" onClick={() => setSearchParams({ new: "attendance_correction" })}><FontAwesomeIcon icon={faPlus} /> {pick(language, "طلب جديد", "New request")}</button></header>
+      <header className="employee-requests-hero"><div><small>{pick(language, "الخدمة الذاتية", "Self-service")}</small><h1>{pick(language, "طلباتي", "My Requests")}</h1><p>{pick(language, "أنشئ الطلب وتابع الاستلام والمراجعة والقرار والتنفيذ من مكان واحد.", "Create requests and track receipt, review, decisions and execution in one place.")}</p></div><button type="button" onClick={() => onNewRequest ? onNewRequest() : setSearchParams({ new: "attendance_correction" })}><FontAwesomeIcon icon={faPlus} /> {pick(language, "طلب جديد", "New request")}</button></header>
       <div className="employee-requests-filters"><span><FontAwesomeIcon icon={faFilter} /> {pick(language, "تصفية", "Filter")}</span><DashboardSelectBridgeV2 value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as EmployeeRequestType | "")}><option value="">{pick(language, "كل الأنواع", "All types")}</option>{REQUEST_TYPES.map((type) => <option value={type} key={type}>{requestTypeLabel(type, language)}</option>)}</DashboardSelectBridgeV2><DashboardSelectBridgeV2 value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as EmployeeRequestStatus | "")}><option value="">{pick(language, "كل الحالات", "All statuses")}</option>{STATUS_OPTIONS.map((status) => <option value={status} key={status}>{requestStatusLabel(status, language)}</option>)}</DashboardSelectBridgeV2><button type="button" onClick={() => void load()} aria-label={pick(language, "تحديث", "Refresh")}><FontAwesomeIcon icon={faRotate} /></button></div>
       {error ? <div className="employee-request-error">{error}</div> : null}
       {loading ? <div className="employee-requests-loading">{pick(language, "جاري تحميل الطلبات...", "Loading requests...")}</div> : rows.length ? <div className="employee-requests-list">{rows.map((request) => <button type="button" className={`employee-request-card ${request.status === "cancelled" ? "is-closed" : ""}`} key={request.id} onClick={() => navigate(`/employee/requests/${request.id}`)}><span className="employee-request-card__icon"><FontAwesomeIcon icon={request.status === "completed" ? faCheckCircle : request.status === "cancelled" ? faXmark : faFileCircleCheck} /></span><div><small>{request.request_number}</small><strong>{requestTypeLabel(request.request_type, language)}</strong><p>{request.status === "cancelled" ? `${pick(language, "تم إغلاق الطلب", "Request closed")} • ${formatDateTime(request.cancelled_at || request.updated_at, language)}` : `${formatDateTime(request.submitted_at, language)} • ${pick(language, "آخر تحديث", "Last updated")} ${formatDateTime(request.updated_at, language)}`}</p></div><span className={`employee-request-status is-${statusTone(request.status)}`}>{requestStatusLabel(request.status, language)}</span></button>)}</div> : <div className="employee-requests-empty"><FontAwesomeIcon icon={faCalendarDays} /><h2>{pick(language, "لا توجد طلبات", "No requests")}</h2><p>{pick(language, "أنشئ أول طلب ليصل مباشرة إلى إدارة الموارد البشرية.", "Create your first request and send it directly to HR.")}</p></div>}
