@@ -339,3 +339,32 @@ test('historical locked payroll is the only path allowed to bypass current activ
     /return !cleanText\(row\.end_date\) \|\| date <= cleanText\(row\.end_date\)/
   );
 });
+
+
+test('payroll carryover reconciliation mutates pending state atomically', async () => {
+  const source = await readFile(
+    new URL('./core/repositories/payroll.js', import.meta.url),
+    'utf8'
+  );
+
+  const start = source.indexOf(
+    'async function reconcilePayrollCarryover('
+  );
+  const end = source.indexOf(
+    '\nexport async function reconcilePayrollCarryoversBatch',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = source.slice(start, end);
+
+  assert.match(fn, /const carryoverStatements = \[\]/);
+  assert.match(fn, /carryoverStatements\.push\(/);
+  assert.match(fn, /await dbBatch\(db, carryoverStatements\)/);
+  assert.doesNotMatch(
+    fn,
+    /for \(const obsolete of pendingRows\)[\s\S]*?await dbRun\(/
+  );
+});
