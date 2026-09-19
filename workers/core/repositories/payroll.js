@@ -1539,21 +1539,33 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
   const reason = optionalText(data.reason) ||
     `تسوية فرق مسيرة ${sourceEntry.payroll_month} بعد إعادة الاحتساب النهائي للحضور والإجازات والخصومات.`;
 
-  // A pending residual may move forward when its former target becomes locked.
-  // Applied rows are immutable evidence; only obsolete pending rows are voided.
+  // Carryover state changes are one D1 transaction. A reconciliation must
+  // never void an old pending adjustment without also writing the replacement
+  // residual (or completing the zero-residual cleanup) in the same batch.
+  const carryoverStatements = [];
+
   for (const obsolete of pendingRows) {
     if (residualSigned !== 0 && obsolete.id === pending?.id) continue;
-    await dbRun(
-      db,
-      `UPDATE payroll_carryover_adjustments
+    carryoverStatements.push({
+      sql: `UPDATE payroll_carryover_adjustments
           SET status = 'void', amount_halalas = 0,
               recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
         WHERE salon_id = ? AND id = ? AND status = 'pending'`,
-      [recalculatedNetHalalas, reason, sourceDate, now, salonId, obsolete.id]
-    );
+      params: [
+        recalculatedNetHalalas,
+        reason,
+        sourceDate,
+        now,
+        salonId,
+        obsolete.id,
+      ],
+    });
   }
 
   if (residualSigned === 0) {
+    if (carryoverStatements.length) {
+      await dbBatch(db, carryoverStatements);
+    }
     const activeAfterVoid = await dbAll(
       db,
       `SELECT *
@@ -1595,15 +1607,15 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
 
   const direction = residualSigned > 0 ? 'addition' : 'deduction';
   const amountHalalas = Math.abs(residualSigned);
-  let adjustmentId = pending?.id || generatedId('payroll_carryover');
+  const adjustmentId = pending?.id || generatedId('payroll_carryover');
+
   if (pending) {
-    await dbRun(
-      db,
-      `UPDATE payroll_carryover_adjustments
+    carryoverStatements.push({
+      sql: `UPDATE payroll_carryover_adjustments
           SET direction = ?, amount_halalas = ?, approved_net_halalas = ?,
               recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
         WHERE salon_id = ? AND id = ? AND status = 'pending'`,
-      [
+      params: [
         direction,
         amountHalalas,
         desired.approvedNetHalalas,
@@ -1613,18 +1625,17 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
         now,
         salonId,
         pending.id,
-      ]
-    );
+      ],
+    });
   } else {
-    await dbRun(
-      db,
-      `INSERT OR IGNORE INTO payroll_carryover_adjustments
+    carryoverStatements.push({
+      sql: `INSERT OR IGNORE INTO payroll_carryover_adjustments
         (id, salon_id, employee_id, source_payroll_month, target_payroll_month,
          source_payroll_entry_id, source_snapshot_id, direction, amount_halalas,
          approved_net_halalas, recalculated_net_halalas, reason, source_date,
          status, target_payroll_entry_id, applied_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
-      [
+      params: [
         adjustmentId,
         salonId,
         sourceEntry.employee_id,
@@ -1640,9 +1651,11 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options 
         sourceDate,
         now,
         now,
-      ]
-    );
+      ],
+    });
   }
+
+  await dbBatch(db, carryoverStatements);
 
   const adjustment = await dbFirst(
     db,
