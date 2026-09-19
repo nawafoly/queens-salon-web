@@ -1573,6 +1573,28 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster .dsv2-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-segmented {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-segmented button {
+    min-width: 0;
+    white-space: normal;
+  }
+
 }
 
 
