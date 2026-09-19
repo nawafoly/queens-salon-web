@@ -1931,3 +1931,25 @@ test("weekly-rest work uses the one canonical effective-shift resolver", () => {
     "Attendance shift labels must understand the canonical weekly-rest work source"
   );
 });
+
+
+test("Shift Control UI is Core-only, fail-closed, and uses canonical time controls", () => {
+  const source = readFileSync(
+    "src/pages/dashboardEmployees/ShiftControlSection.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /CoreHrService\.listShiftTemplates/);
+  assert.match(source, /CoreHrService\.resolveEmployeeShiftsRange/);
+  assert.match(source, /CoreHrService\.previewShiftChange/);
+  assert.equal((source.match(/clock="12h"/g) || []).length >= 4, true);
+  assert.match(source, /crossesMidnight:\s*crossesMidnight\(/);
+  assert.match(source, /مدة الاستراحة يجب أن تكون أقل من مدة الشفت الفعلية/);
+  assert.doesNotMatch(
+    source,
+    /resolveEmployeeShiftsRange\([\s\S]{0,300}\.catch\(\(\) => \(\{ rows: \[\]/,
+    "Shift Control must not hide canonical resolver failures as empty schedules"
+  );
+  assert.doesNotMatch(source, /listShiftPayrollPeriodLocks\(/);
+  assert.doesNotMatch(source, /listShiftPayrollAdjustments\(/);
+});
