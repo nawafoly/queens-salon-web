@@ -260,10 +260,6 @@ function uniqueCleanTexts(values: unknown[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
-function isFullShiftIdentifier(value: unknown) {
-  return /^[A-Za-z0-9_-]{20,}$/.test(cleanText(value));
-}
-
 function isCoreEmployeeIdentifier(value: unknown) {
   const id = cleanText(value);
   return Boolean(
@@ -273,10 +269,6 @@ function isCoreEmployeeIdentifier(value: unknown) {
   );
 }
 
-function readAliasValue(row: unknown, camelKey: string, snakeKey: string = camelKey) {
-  const record = (row || {}) as Record<string, unknown>;
-  return record[camelKey] ?? record[snakeKey];
-}
 
 function parseSnapshot(value: unknown) {
   const raw = cleanText(value);
