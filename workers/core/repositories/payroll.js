@@ -3458,32 +3458,94 @@ export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {})
     throw new AppError(400, 'core_payroll:invalid_reopen_status');
   }
 
+  const downstreamAppliedCarryover = await dbFirst(
+    db,
+    `SELECT id, target_payroll_entry_id, target_payroll_month
+       FROM payroll_carryover_adjustments
+      WHERE salon_id = ?
+        AND source_payroll_entry_id = ?
+        AND status = 'applied'
+      LIMIT 1`,
+    [salonId, existing.id]
+  );
+  if (downstreamAppliedCarryover) {
+    throw new AppError(
+      409,
+      'core_payroll:reopen_has_applied_downstream_carryover'
+    );
+  }
+
   const now = nowIso();
   const reason = optionalText(data.reason) || 'recalculate_approved_payroll';
-  await dbRun(
-    db,
-    `UPDATE payroll_entries
-       SET status = ?, approved_at = NULL, approved_by_uid = NULL,
-           audit_log_json = ?, updated_at = ?
-     WHERE salon_id = ? AND id = ?`,
-    [
-      nextStatus,
-      appendAuditEntry(existing, {
-        action: 'reopened',
-        byUid: optionalText(actor.uid) || null,
-        byEmail: optionalText(actor.email) || null,
-        at: now,
-        reason,
-        previousStatus: currentStatus,
-        previousApprovedAt: existing.approved_at || null,
-        previousApprovedByUid: existing.approved_by_uid || null,
-      }),
-      now,
-      salonId,
-      existing.id,
-    ]
-  );
-  return getPayrollEntry(db, salonId, existing.id);
+  const statements = [
+    {
+      sql: `UPDATE payroll_entries
+               SET status = ?,
+                   approved_at = NULL,
+                   approved_by_uid = NULL,
+                   audit_log_json = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status = 'approved'`,
+      params: [
+        nextStatus,
+        appendAuditEntry(existing, {
+          action: 'reopened',
+          byUid: optionalText(actor.uid) || null,
+          byEmail: optionalText(actor.email) || null,
+          at: now,
+          reason,
+          previousStatus: currentStatus,
+          previousApprovedAt: existing.approved_at || null,
+          previousApprovedByUid: existing.approved_by_uid || null,
+        }),
+        now,
+        salonId,
+        existing.id,
+      ],
+    },
+    {
+      sql: `UPDATE payroll_carryover_adjustments
+               SET status = 'pending',
+                   target_payroll_entry_id = NULL,
+                   applied_at = NULL,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND target_payroll_entry_id = ?
+               AND target_payroll_month = ?
+               AND status = 'applied'`,
+      params: [
+        now,
+        salonId,
+        existing.id,
+        existing.payroll_month,
+      ],
+    },
+    {
+      sql: `UPDATE payroll_carryover_adjustments
+               SET status = 'void',
+                   amount_halalas = 0,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND source_payroll_entry_id = ?
+               AND status = 'pending'`,
+      params: [
+        now,
+        salonId,
+        existing.id,
+      ],
+    },
+  ];
+
+  await dbBatch(db, statements);
+
+  const reopened = await getPayrollEntry(db, salonId, existing.id);
+  if (cleanText(reopened.status) !== nextStatus) {
+    throw new AppError(409, 'core_payroll:reopen_concurrent_mutation');
+  }
+
+  return reopened;
 }
 
 export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
