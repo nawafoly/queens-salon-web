@@ -23,6 +23,7 @@ import {
   type EmployeeMessage,
 } from "../../services/employeeHub";
 import { cleanText, type HrSession } from "./shared";
+import { useEmployeePortalLanguage, type EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 
 type Props = {
   session: HrSession;
@@ -56,30 +57,30 @@ function toMillis(value: unknown) {
   return 0;
 }
 
-function formatMessageTime(value: unknown, includeDate = true) {
+function formatMessageTime(value: unknown, language: EmployeePortalLanguage, includeDate = true) {
   const ms = toMillis(value);
-  if (!ms) return "الآن";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  if (!ms) return language === "en" ? "Now" : "الآن";
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     hour: "numeric",
     minute: "2-digit",
     ...(includeDate ? { year: "numeric", month: "short", day: "numeric" } : {}),
   }).format(new Date(ms));
 }
 
-function initials(value: unknown) {
+function initials(value: unknown, language: EmployeePortalLanguage) {
   const text = cleanText(value);
-  if (!text) return "؟";
+  if (!text) return language === "en" ? "?" : "؟";
   const parts = text.split(/\s+/).filter(Boolean);
   return (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
 }
 
-function roleLabel(value: unknown) {
+function roleLabel(value: unknown, language: EmployeePortalLanguage) {
   const role = cleanText(value).toLowerCase();
-  if (role === "owner") return "المالك";
-  if (role === "admin") return "الإدارة";
-  if (role === "hr") return "الموارد البشرية";
-  if (role === "reception") return "الاستقبال";
-  return "موظف";
+  if (role === "owner") return language === "en" ? "Owner" : "المالك";
+  if (role === "admin") return language === "en" ? "Management" : "الإدارة";
+  if (role === "hr") return language === "en" ? "Human Resources" : "الموارد البشرية";
+  if (role === "reception") return language === "en" ? "Reception" : "الاستقبال";
+  return language === "en" ? "Employee" : "موظف";
 }
 
 function isManagementRole(value: unknown) {
@@ -87,6 +88,8 @@ function isManagementRole(value: unknown) {
 }
 
 export default function EmployeeMessagesLegacy({ session, onPortalChange }: Props) {
+  const { language } = useEmployeePortalLanguage();
+  const tr = (ar: string, en: string) => language === "en" ? en : ar;
   const [items, setItems] = useState<EmployeeMessage[]>([]);
   const [directory, setDirectory] = useState<EmployeeDirectoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +143,7 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
         await Promise.resolve(onPortalChange?.());
       }
     } catch (error) {
-      setNotice(cleanText((error as any)?.message || "تعذر تحميل الرسائل الداخلية."));
+      setNotice(language === "en" ? "Could not load internal messages." : cleanText((error as Error)?.message || "تعذر تحميل الرسائل الداخلية."));
     } finally {
       setLoading(false);
     }
@@ -187,7 +190,7 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
           cleanText(other?.name) ||
           (latest?.senderUid === session.uid ? recipientDisplay : senderName) ||
           [senderName, recipientDisplay].filter(Boolean).join(" ↔ ") ||
-          "محادثة داخلية";
+          (language === "en" ? "Internal conversation" : "محادثة داخلية");
         const unreadCount = sortedDesc.filter((item) => {
           const readBy = Array.isArray(item.readBy) ? item.readBy.map(cleanText) : [];
           return item.senderUid !== session.uid && !readBy.includes(session.uid);
@@ -198,7 +201,7 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
           messages: [...sortedDesc].reverse(),
           latest,
           title,
-          subtitle: cleanText(other?.title || roleLabel(other?.role)),
+          subtitle: cleanText(other?.title || roleLabel(other?.role, language)),
           otherUid: preferredOtherUid,
           unreadCount,
           kind,
@@ -206,7 +209,7 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
         };
       })
       .sort((a, b) => b.latestAt - a.latestAt);
-  }, [directoryByUid, session.uid, visibleMessages]);
+  }, [directoryByUid, session.uid, visibleMessages, language]);
 
   const filteredConversations = useMemo(() => {
     const q = cleanText(search).toLowerCase();
@@ -279,11 +282,11 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
     const toUid = cleanText(replyUid);
     const text = cleanText(body);
     if (!toUid || !text) {
-      setNotice("اختر المستلم واكتب نص الرسالة أولًا.");
+      setNotice(tr("اختر المستلم واكتب نص الرسالة أولًا.", "Select a recipient and enter a message first."));
       return;
     }
     if (toUid === session.uid) {
-      setNotice("لا يمكن إرسال رسالة إلى الحساب نفسه.");
+      setNotice(tr("لا يمكن إرسال رسالة إلى الحساب نفسه.", "You cannot send a message to your own account."));
       return;
     }
 
@@ -314,9 +317,9 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
       setCreating(false);
       await loadAll();
       setSelectedConversationId(conversationId);
-      setNotice("تم إرسال الرسالة بنجاح.");
+      setNotice(tr("تم إرسال الرسالة بنجاح.", "Message sent successfully."));
     } catch (error) {
-      setNotice(cleanText((error as any)?.message || "تعذر إرسال الرسالة."));
+      setNotice(language === "en" ? "Could not send the message." : cleanText((error as Error)?.message || "تعذر إرسال الرسالة."));
     } finally {
       setBusy(false);
     }
@@ -330,35 +333,35 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
   }), [conversations]);
 
   if (!session.user) {
-    return <div className="employee-card">لا توجد جلسة موظف نشطة.</div>;
+    return <div className="employee-card" dir={language === "en" ? "ltr" : "rtl"} lang={language}>{tr("لا توجد جلسة موظف نشطة.", "No active employee session.")}</div>;
   }
 
   return (
-    <div className={`hr-ops-page hr-comms-page ${canManage ? "is-admin-view" : "is-employee-view"} ${mobileThreadOpen ? "is-mobile-thread-open" : ""}`} dir="rtl">
+    <div className={`hr-ops-page hr-comms-page ${canManage ? "is-admin-view" : "is-employee-view"} ${mobileThreadOpen ? "is-mobile-thread-open" : ""}`} dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="hr-ops-hero">
         <div className="hr-ops-hero__icon"><FontAwesomeIcon icon={faEnvelope} /></div>
         <div>
-          <span>التواصل الداخلي</span>
-          <h2>صندوق الرسائل</h2>
-          <p>محادثات الموارد البشرية والتواصل الداخلي بين الموظفين في مساحة واحدة.</p>
+          <span>{tr("التواصل الداخلي", "Internal communication")}</span>
+          <h2>{tr("صندوق الرسائل", "Inbox")}</h2>
+          <p>{tr("محادثات الموارد البشرية والتواصل الداخلي بين الموظفين في مساحة واحدة.", "HR and employee conversations in one place.")}</p>
         </div>
         <div className="hr-ops-hero__actions">
           <button className="hr-ops-button hr-ops-button--ghost" type="button" onClick={() => void loadAll()} disabled={loading || busy}>
             <FontAwesomeIcon icon={faRotate} />
-            <span>{loading ? "جارٍ التحديث" : "تحديث"}</span>
+            <span>{loading ? tr("جارٍ التحديث", "Refreshing") : tr("تحديث", "Refresh")}</span>
           </button>
           <button className="hr-ops-button hr-ops-button--primary" type="button" onClick={startNewConversation}>
             <FontAwesomeIcon icon={faPlus} />
-            <span>رسالة جديدة</span>
+            <span>{tr("رسالة جديدة", "New message")}</span>
           </button>
         </div>
       </section>
 
-      <section className="hr-ops-stats" aria-label="إحصاءات الرسائل">
-        <article><span>إجمالي المحادثات</span><strong>{stats.total}</strong><FontAwesomeIcon icon={faEnvelope} /></article>
-        <article><span>رسائل HR</span><strong>{stats.hr}</strong><FontAwesomeIcon icon={faBuilding} /></article>
-        <article><span>محادثات داخلية</span><strong>{stats.internal}</strong><FontAwesomeIcon icon={faUserGroup} /></article>
-        <article className={stats.unread ? "is-warning" : ""}><span>غير مقروءة</span><strong>{stats.unread}</strong><FontAwesomeIcon icon={faCheckDouble} /></article>
+      <section className="hr-ops-stats" aria-label={tr("إحصاءات الرسائل", "Message statistics")}>
+        <article><span>{tr("إجمالي المحادثات", "Total conversations")}</span><strong>{stats.total}</strong><FontAwesomeIcon icon={faEnvelope} /></article>
+        <article><span>{tr("رسائل HR", "HR messages")}</span><strong>{stats.hr}</strong><FontAwesomeIcon icon={faBuilding} /></article>
+        <article><span>{tr("محادثات داخلية", "Internal conversations")}</span><strong>{stats.internal}</strong><FontAwesomeIcon icon={faUserGroup} /></article>
+        <article className={stats.unread ? "is-warning" : ""}><span>{tr("غير مقروءة", "Unread")}</span><strong>{stats.unread}</strong><FontAwesomeIcon icon={faCheckDouble} /></article>
       </section>
 
       {notice ? <div className="hr-ops-alert">{notice}</div> : null}
@@ -366,20 +369,20 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
       <section className="hr-comms-shell">
         <aside className="hr-comms-inbox">
           <div className="hr-comms-inbox__head">
-            <div><span>صندوق الرسائل</span><strong>{filteredConversations.length} محادثة</strong></div>
+            <div><span>{tr("صندوق الرسائل", "Inbox")}</span><strong>{filteredConversations.length} {tr("محادثة", "conversations")}</strong></div>
           </div>
 
           <label className="hr-ops-search">
             <FontAwesomeIcon icon={faMagnifyingGlass} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو نص الرسالة..." />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tr("ابحث بالاسم أو نص الرسالة...", "Search by name or message...")} />
           </label>
 
           <div className="hr-comms-filters">
             {([
-              ["all", "الكل", stats.total],
-              ["unread", "غير مقروء", stats.unread],
+              ["all", tr("الكل", "All"), stats.total],
+              ["unread", tr("غير مقروء", "Unread"), stats.unread],
               ["hr", "HR", stats.hr],
-              ["internal", "داخلي", stats.internal],
+              ["internal", tr("داخلي", "Internal"), stats.internal],
             ] as Array<[ConversationFilter, string, number]>).map(([value, label, count]) => (
               <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>
                 <span>{label}</span><em>{count}</em>
@@ -395,22 +398,22 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
                 className={selectedConversationId === conversation.id && !creating ? "is-active" : ""}
                 onClick={() => openConversation(conversation.id, conversation.otherUid)}
               >
-                <span className="hr-comms-avatar">{initials(conversation.title)}</span>
+                <span className="hr-comms-avatar">{initials(conversation.title, language)}</span>
                 <span className="hr-comms-list__copy">
                   <strong>{conversation.title}</strong>
-                  <small>{conversation.kind === "hr" ? "محادثة موارد بشرية" : "محادثة داخلية"}</small>
-                  <p>{conversation.latest?.body || "لا توجد رسالة"}</p>
+                  <small>{conversation.kind === "hr" ? tr("محادثة موارد بشرية", "HR conversation") : tr("محادثة داخلية", "Internal conversation")}</small>
+                  <p>{conversation.latest?.body || tr("لا توجد رسالة", "No message")}</p>
                 </span>
                 <span className="hr-comms-list__meta">
-                  <time>{formatMessageTime(conversation.latest?.createdAt, false)}</time>
+                  <time>{formatMessageTime(conversation.latest?.createdAt, language, false)}</time>
                   {conversation.unreadCount ? <em>{conversation.unreadCount}</em> : null}
                 </span>
               </button>
             ))}
             {!loading && !filteredConversations.length ? (
-              <div className="hr-ops-empty"><FontAwesomeIcon icon={faEnvelope} /><strong>لا توجد محادثات مطابقة</strong><span>ابدأ محادثة جديدة أو غيّر الفلتر.</span></div>
+              <div className="hr-ops-empty"><FontAwesomeIcon icon={faEnvelope} /><strong>{tr("لا توجد محادثات مطابقة", "No matching conversations")}</strong><span>{tr("ابدأ محادثة جديدة أو غيّر الفلتر.", "Start a new conversation or change the filter.")}</span></div>
             ) : null}
-            {loading ? <div className="hr-ops-loading">جارٍ تحميل المحادثات...</div> : null}
+            {loading ? <div className="hr-ops-loading">{tr("جارٍ تحميل المحادثات...", "Loading conversations...")}</div> : null}
           </div>
         </aside>
 
@@ -422,34 +425,34 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
                   setCreating(false);
                   setMobileThreadOpen(false);
                 }}><FontAwesomeIcon icon={faArrowRight} /></button>
-                <div><span>محادثة جديدة</span><strong>اختر المستلم واكتب رسالتك</strong></div>
+                <div><span>{tr("محادثة جديدة", "New conversation")}</span><strong>{tr("اختر المستلم واكتب رسالتك", "Select a recipient and write your message")}</strong></div>
               </div>
               <div className="hr-comms-new__body">
                 <label className="hr-ops-field">
-                  <span>المستلم</span>
+                  <span>{tr("المستلم", "Recipient")}</span>
                   <select value={recipientUid} onChange={(event) => setRecipientUid(event.target.value)}>
-                    <option value="">اختر موظفًا</option>
+                    <option value="">{tr("اختر موظفًا", "Select an employee")}</option>
                     {directory
                       .filter((item) => ![item.employeeKey, item.linkedUid, item.employeeId].map(cleanText).includes(session.uid))
                       .map((item) => (
                         <option key={item.employeeId} value={item.employeeKey || item.linkedUid || item.employeeId}>
-                          {item.name || item.email || item.employeeId} — {roleLabel(item.role)}
+                          {item.name || item.email || item.employeeId} — {roleLabel(item.role, language)}
                         </option>
                       ))}
                   </select>
                 </label>
                 <label className="hr-ops-field">
-                  <span>اسم بديل للمستلم <small>اختياري</small></span>
-                  <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="يُستخدم فقط إذا لم يظهر الاسم" />
+                  <span>{tr("اسم بديل للمستلم", "Alternative recipient name")} <small>{tr("اختياري", "Optional")}</small></span>
+                  <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder={tr("يُستخدم فقط إذا لم يظهر الاسم", "Use only if no name appears")} />
                 </label>
                 <label className="hr-ops-field hr-ops-field--wide">
-                  <span>نص الرسالة</span>
-                  <textarea rows={9} value={body} onChange={(event) => setBody(event.target.value)} placeholder="اكتب الرسالة هنا..." />
+                  <span>{tr("نص الرسالة", "Message")}</span>
+                  <textarea rows={9} value={body} onChange={(event) => setBody(event.target.value)} placeholder={tr("اكتب الرسالة هنا...", "Write your message here...")} />
                 </label>
               </div>
               <div className="hr-comms-compose-actions">
                 <button className="hr-ops-button hr-ops-button--primary" type="button" onClick={() => void handleSend()} disabled={busy || !recipientUid || !cleanText(body)}>
-                  <FontAwesomeIcon icon={faPaperPlane} /><span>{busy ? "جارٍ الإرسال" : "إرسال الرسالة"}</span>
+                  <FontAwesomeIcon icon={faPaperPlane} /><span>{busy ? tr("جارٍ الإرسال", "Sending") : tr("إرسال الرسالة", "Send message")}</span>
                 </button>
               </div>
             </div>
@@ -460,13 +463,13 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
                   type="button"
                   className="hr-comms-back"
                   onClick={() => setMobileThreadOpen(false)}
-                  aria-label="العودة إلى قائمة المحادثات"
+                  aria-label={tr("العودة إلى قائمة المحادثات", "Back to conversations")}
                 >
                   <FontAwesomeIcon icon={faArrowRight} />
                 </button>
-                <span className="hr-comms-avatar hr-comms-avatar--large">{initials(activeConversation.title)}</span>
+                <span className="hr-comms-avatar hr-comms-avatar--large">{initials(activeConversation.title, language)}</span>
                 <div>
-                  <span>{activeConversation.kind === "hr" ? "محادثة موارد بشرية" : "محادثة داخلية"}</span>
+                  <span>{activeConversation.kind === "hr" ? tr("محادثة موارد بشرية", "HR conversation") : tr("محادثة داخلية", "Internal conversation")}</span>
                   <strong>{activeConversation.title}</strong>
                   <small>{activeConversation.subtitle}</small>
                 </div>
@@ -477,11 +480,11 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
                   const mine = item.senderUid === session.uid;
                   return (
                     <article key={item.id} className={mine ? "is-mine" : "is-other"}>
-                      <span className="hr-comms-avatar">{initials(item.senderName || item.senderUid)}</span>
+                      <span className="hr-comms-avatar">{initials(item.senderName || item.senderUid, language)}</span>
                       <div className="hr-comms-bubble">
-                        <header><strong>{mine ? "أنت" : item.senderName || directoryByUid.get(item.senderUid)?.name || "مستخدم"}</strong><span>{item.kind === "hr_to_employee" ? "رسالة HR" : "رسالة داخلية"}</span></header>
+                        <header><strong>{mine ? tr("أنت", "You") : item.senderName || directoryByUid.get(item.senderUid)?.name || tr("مستخدم", "User")}</strong><span>{item.kind === "hr_to_employee" ? tr("رسالة HR", "HR message") : tr("رسالة داخلية", "Internal message")}</span></header>
                         <p>{item.body}</p>
-                        <footer><time>{formatMessageTime(item.createdAt)}</time>{mine ? <span><FontAwesomeIcon icon={faCheckDouble} /> تم الإرسال</span> : null}</footer>
+                        <footer><time>{formatMessageTime(item.createdAt, language)}</time>{mine ? <span><FontAwesomeIcon icon={faCheckDouble} /> {tr("تم الإرسال", "Sent")}</span> : null}</footer>
                       </div>
                     </article>
                   );
@@ -489,14 +492,14 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
               </div>
 
               <div className="hr-comms-composer">
-                <textarea rows={3} value={body} onChange={(event) => setBody(event.target.value)} placeholder={`اكتب ردًا إلى ${replyRecipient?.name || activeConversation.title}...`} />
-                <button type="button" onClick={() => void handleSend()} disabled={busy || !replyUid || !cleanText(body)} aria-label="إرسال">
+                <textarea rows={3} value={body} onChange={(event) => setBody(event.target.value)} placeholder={`${tr("اكتب ردًا إلى", "Reply to")} ${replyRecipient?.name || activeConversation.title}...`} />
+                <button type="button" onClick={() => void handleSend()} disabled={busy || !replyUid || !cleanText(body)} aria-label={tr("إرسال", "Send")}>
                   <FontAwesomeIcon icon={faPaperPlane} />
                 </button>
               </div>
             </>
           ) : (
-            <div className="hr-ops-empty hr-ops-empty--large"><FontAwesomeIcon icon={faEnvelope} /><strong>اختر محادثة</strong><span>حدد محادثة من القائمة أو ابدأ رسالة جديدة.</span></div>
+            <div className="hr-ops-empty hr-ops-empty--large"><FontAwesomeIcon icon={faEnvelope} /><strong>{tr("اختر محادثة", "Select a conversation")}</strong><span>{tr("حدد محادثة من القائمة أو ابدأ رسالة جديدة.", "Select a conversation from the list or start a new message.")}</span></div>
           )}
         </main>
       </section>

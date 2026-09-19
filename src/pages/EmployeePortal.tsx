@@ -189,6 +189,8 @@ function EmployeeMorePage({
   onLogout,
   loggingOut,
 }: EmployeeMorePageProps) {
+  const { language, t } = useEmployeePortalLanguage();
+  const tr = (ar: string, en: string) => language === "en" ? en : ar;
   const { hasPermission } = usePermissions();
   const [pushState, setPushState] = useState<EmployeeWebPushState | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
@@ -216,9 +218,9 @@ function EmployeeMorePage({
       const state = await enableEmployeeWebPush();
       setPushState(state);
       await syncEmployeeAppBadge(notificationCounts.all);
-      setPushMessage("تم تفعيل تنبيهات MALIKAT على هذا الجهاز.");
+      setPushMessage(tr("تم تفعيل تنبيهات MALIKAT على هذا الجهاز.", "MALIKAT notifications are enabled on this device."));
     } catch (error) {
-      setPushMessage(cleanPortalText((error as Error)?.message || "تعذر تفعيل التنبيهات."));
+      setPushMessage(language === "en" ? "Could not enable notifications." : cleanPortalText((error as Error)?.message || "تعذر تفعيل التنبيهات."));
     } finally {
       setPushBusy(false);
     }
@@ -231,81 +233,81 @@ function EmployeeMorePage({
     try {
       const state = await disableEmployeeWebPush();
       setPushState(state);
-      setPushMessage("تم إيقاف تنبيهات التطبيق على هذا الجهاز.");
+      setPushMessage(tr("تم إيقاف تنبيهات التطبيق على هذا الجهاز.", "App notifications are turned off on this device."));
     } catch (error) {
-      setPushMessage(cleanPortalText((error as Error)?.message || "تعذر إيقاف التنبيهات."));
+      setPushMessage(language === "en" ? "Could not turn off notifications." : cleanPortalText((error as Error)?.message || "تعذر إيقاف التنبيهات."));
     } finally {
       setPushBusy(false);
     }
   };
 
   const pushSummary = !pushState
-    ? "جاري التحقق من حالة التنبيهات..."
+    ? tr("جاري التحقق من حالة التنبيهات...", "Checking notification status...")
     : !pushState.supported
       ? pushState.standalone
-        ? "هذا الجهاز لا يوفّر Web Push لهذا التطبيق."
-        : "افتح MALIKAT من أيقونة الشاشة الرئيسية ثم فعّل التنبيهات."
+        ? tr("هذا الجهاز لا يوفّر Web Push لهذا التطبيق.", "This device does not support push notifications for this app.")
+        : tr("افتح MALIKAT من أيقونة الشاشة الرئيسية ثم فعّل التنبيهات.", "Open MALIKAT from the home screen icon to enable notifications.")
       : !pushState.serverEnabled
-        ? "خدمة Web Push تحتاج تفعيل مفاتيح الخادم."
+        ? tr("خدمة Web Push تحتاج تفعيل مفاتيح الخادم.", "Push notifications need server setup.")
         : pushState.permission === "denied"
-          ? "التنبيهات مرفوضة من إعدادات الجهاز."
+          ? tr("التنبيهات مرفوضة من إعدادات الجهاز.", "Notifications are blocked in device settings.")
           : pushState.subscribed
-            ? "مفعلة على هذا الجهاز، وسيظهر عدد التنبيهات على الأيقونة."
-            : "غير مفعلة على هذا الجهاز.";
+            ? tr("مفعلة على هذا الجهاز، وسيظهر عدد التنبيهات على الأيقونة.", "Enabled on this device. The app icon will show the notification count.")
+            : tr("غير مفعلة على هذا الجهاز.", "Not enabled on this device.");
 
   const items = [
     {
       to: "/employee/profile",
-      label: "الملف الشخصي",
-      description: "بياناتك الشخصية والوظيفية",
+      label: t("nav.profile"),
+      description: tr("بياناتك الشخصية والوظيفية", "Your personal and employment details"),
       icon: faUser,
       badge: notificationCounts.profile,
       permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/notifications",
-      label: "التنبيهات",
-      description: "آخر التحديثات والتنبيهات",
+      label: t("nav.notifications"),
+      description: tr("آخر التحديثات والتنبيهات", "Latest updates and alerts"),
       icon: faBell,
       badge: notificationCounts.all,
       permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/requests",
-      label: "طلباتي",
-      description: "متابعة الطلبات والقرارات والتنفيذ",
+      label: t("nav.myRequests"),
+      description: tr("متابعة الطلبات والقرارات والتنفيذ", "Track requests, decisions and execution"),
       icon: faPaperPlane,
       badge: notificationCounts.requests,
       permission: "employee_requests.own.view" as AppPermission,
     },
     {
       to: "/employee/messages",
-      label: "الرسائل",
-      description: "التواصل الداخلي مع الإدارة",
+      label: t("nav.messages"),
+      description: tr("التواصل الداخلي مع الإدارة", "Internal communication with management"),
       icon: faPaperPlane,
       badge: notificationCounts.messages,
       permission: "messages.view" as AppPermission,
     },
     {
       to: "/employee/files",
-      label: "الملفات",
-      description: "العقود والمستندات والمرفقات",
+      label: t("nav.files"),
+      description: tr("العقود والمستندات والمرفقات", "Contracts, documents and attachments"),
       icon: faFileLines,
       badge: notificationCounts.files,
       permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/payroll",
-      label: "الراتب",
-      description: "التفاصيل والسجلات المالية",
+      label: t("nav.payroll"),
+      description: tr("التفاصيل والسجلات المالية", "Pay details and records"),
       icon: faWallet,
       badge: notificationCounts.payroll,
       permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/targets",
-      label: "تارقتي",
-      description: "المبيعات المؤهلة والبونص المتوقع",
+      label: t("nav.targets"),
+      description: t("nav.targetsDescription"),
       icon: faChartLine,
       badge: 0,
       permission: "targets.view_own" as AppPermission,
@@ -313,7 +315,7 @@ function EmployeeMorePage({
   ];
 
   return (
-    <section className="employee-more-page">
+    <section className="employee-more-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <header className="employee-more-hero">
         <span className="employee-more-hero__avatar">
           <EmployeeAvatar
@@ -325,25 +327,25 @@ function EmployeeMorePage({
         </span>
 
         <div>
-          <small>حساب الموظفة</small>
+          <small>{tr("حساب الموظفة", "Employee account")}</small>
           <h1>{displayName}</h1>
           <p>{roleLabel}</p>
         </div>
       </header>
 
-      <section className="employee-push-settings" aria-label="تنبيهات التطبيق">
+      <section className="employee-push-settings" aria-label={tr("تنبيهات التطبيق", "App notifications")}>
         <span className="employee-push-settings__icon">
           <FontAwesomeIcon icon={faBell} />
         </span>
         <div className="employee-push-settings__copy">
-          <strong>تنبيهات التطبيق</strong>
+          <strong>{tr("تنبيهات التطبيق", "App notifications")}</strong>
           <span>{pushSummary}</span>
           {pushMessage ? <small>{pushMessage}</small> : null}
         </div>
         <div className="employee-push-settings__actions">
           {pushState?.subscribed ? (
             <button type="button" onClick={() => void handlePushDisable()} disabled={pushBusy}>
-              {pushBusy ? "جارٍ التنفيذ..." : "إيقاف"}
+              {pushBusy ? tr("جارٍ التنفيذ...", "Updating...") : tr("إيقاف", "Turn off")}
             </button>
           ) : (
             <button
@@ -352,7 +354,7 @@ function EmployeeMorePage({
               onClick={() => void handlePushEnable()}
               disabled={pushBusy || pushState?.serverEnabled === false || pushState?.supported === false}
             >
-              {pushBusy ? "جارٍ التفعيل..." : "تفعيل"}
+              {pushBusy ? tr("جارٍ التفعيل...", "Enabling...") : tr("تفعيل", "Enable")}
             </button>
           )}
         </div>
@@ -391,8 +393,8 @@ function EmployeeMorePage({
           <FontAwesomeIcon icon={faRightFromBracket} />
         </span>
         <span className="employee-more-logout__copy">
-          <strong>{loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}</strong>
-          <small>الخروج من حساب الموظفة على هذا الجهاز</small>
+          <strong>{loggingOut ? tr("جاري تسجيل الخروج...", "Signing out...") : tr("تسجيل الخروج", "Sign out")}</strong>
+          <small>{tr("الخروج من حساب الموظفة على هذا الجهاز", "Sign out of your employee account on this device")}</small>
         </span>
       </button>
 
@@ -403,6 +405,7 @@ function EmployeeMorePage({
 function EmployeePortalContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { direction, language, t, toggleLanguage } = useEmployeePortalLanguage();
+  const tr = (ar: string, en: string) => language === "en" ? en : ar;
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
@@ -558,14 +561,14 @@ function EmployeePortalContent() {
   ].filter((item) => hasPermission(item.permission));
 
   const requestItems = [
-    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/requests?new=attendance_correction", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/requests?new=permission", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/requests?new=overtime", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب سلفة", description: "طلب سلفة يراجع من الموارد البشرية", icon: faWallet, to: "/employee/requests?new=salary_advance", permission: "employee_requests.own.create" as AppPermission },
-    { label: "تعريف بالراتب", description: "طلب إصدار تعريف بالراتب", icon: faFileLines, to: "/employee/requests?new=salary_certificate", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/requests?new=leave", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/requests?new=exit_return", permission: "employee_requests.own.create" as AppPermission },
-    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب تصحيح", "Attendance correction"), description: tr("تصحيح بصمة أو وقت حضور", "Correct a check-in or attendance time"), icon: faFingerprint, to: "/employee/requests?new=attendance_correction", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب استئذان", "Permission request"), description: tr("طلب خروج مؤقت أو تأخير", "Request a temporary exit or late arrival"), icon: faTriangleExclamation, to: "/employee/requests?new=permission", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب أوفرتايم", "Overtime request"), description: tr("تسجيل ساعات عمل إضافية", "Request additional working hours"), icon: faChartLine, to: "/employee/requests?new=overtime", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب سلفة", "Salary advance"), description: tr("طلب سلفة يراجع من الموارد البشرية", "Request an advance for HR review"), icon: faWallet, to: "/employee/requests?new=salary_advance", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("تعريف بالراتب", "Salary certificate"), description: tr("طلب إصدار تعريف بالراتب", "Request a salary certificate"), icon: faFileLines, to: "/employee/requests?new=salary_certificate", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب إجازة", "Leave request"), description: tr("رفع طلب إجازة جديد", "Submit a new leave request"), icon: faPaperPlane, to: "/employee/requests?new=leave", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب خروج وعودة", "Exit and return request"), description: tr("طلب إداري للمتابعة", "Submit a request for management review"), icon: faRightFromBracket, to: "/employee/requests?new=exit_return", permission: "employee_requests.own.create" as AppPermission },
+    { label: tr("طلب استقالة", "Resignation request"), description: tr("يرسل للإدارة للمراجعة", "Send to management for review"), icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
   const employeeHeaderTitle = getEmployeePortalTitle(location.pathname, t);
 
@@ -810,6 +813,8 @@ function EmployeePortalContent() {
       {requestSheetOpen ? (
         <div
           className="employee-request-sheet"
+          dir={direction}
+          lang={language}
           role="dialog"
           aria-modal="true"
           aria-labelledby="employee-request-title"
@@ -820,7 +825,7 @@ function EmployeePortalContent() {
               type="button"
               className="employee-request-sheet__close"
               onClick={() => setRequestSheetOpen(false)}
-              aria-label="إغلاق"
+              aria-label={tr("إغلاق", "Close")}
             >
               <FontAwesomeIcon icon={faXmark} />
             </button>
@@ -829,8 +834,8 @@ function EmployeePortalContent() {
                 <FontAwesomeIcon icon={faPaperPlane} />
               </span>
               <div>
-                <h2 id="employee-request-title">طلب جديد</h2>
-                <p>اختر نوع الطلب الذي تريد إرساله إلى الإدارة</p>
+                <h2 id="employee-request-title">{tr("طلب جديد", "New request")}</h2>
+                <p>{tr("اختر نوع الطلب الذي تريد إرساله إلى الإدارة", "Choose the request you want to send to management")}</p>
               </div>
             </div>
             <div className="employee-request-sheet__grid">

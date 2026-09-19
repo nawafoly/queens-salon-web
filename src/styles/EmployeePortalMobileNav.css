@@ -2226,7 +2226,7 @@
   color: #0f172a !important;
   background: #fff !important;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.045) !important;
-  text-align: right;
+  text-align: start;
   font-family: inherit;
   cursor: pointer;
 }
@@ -3386,7 +3386,7 @@
   border-radius: 15px;
   color: #0f172a;
   background: transparent;
-  text-align: right;
+  text-align: start;
   font-family: inherit;
   cursor: pointer;
 }

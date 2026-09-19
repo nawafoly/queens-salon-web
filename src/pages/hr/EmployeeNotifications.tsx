@@ -13,6 +13,7 @@ import {
 } from "../../services/employeeRequests";
 import { cleanText, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
+import { useEmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 
 type Props = {
   session: HrSession;
@@ -22,18 +23,20 @@ type Props = {
 
 type FilterKey = "all" | "unread" | "message" | "file" | "leave" | "payroll" | "employee_request" | "system";
 
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: "all", label: "الكل" },
-  { key: "unread", label: "غير مقروء" },
-  { key: "message", label: "رسائل" },
-  { key: "file", label: "ملفات" },
-  { key: "leave", label: "إجازات" },
-  { key: "payroll", label: "رواتب" },
-  { key: "employee_request", label: "الطلبات" },
-  { key: "system", label: "تنبيهات" },
+const FILTERS: Array<{ key: FilterKey; ar: string; en: string }> = [
+  { key: "all", ar: "الكل", en: "All" },
+  { key: "unread", ar: "غير مقروء", en: "Unread" },
+  { key: "message", ar: "رسائل", en: "Messages" },
+  { key: "file", ar: "ملفات", en: "Files" },
+  { key: "leave", ar: "إجازات", en: "Leave" },
+  { key: "payroll", ar: "رواتب", en: "Payroll" },
+  { key: "employee_request", ar: "الطلبات", en: "Requests" },
+  { key: "system", ar: "تنبيهات", en: "Alerts" },
 ];
 
 export default function EmployeeNotificationsPage({ session, notifications, onRefresh }: Props) {
+  const { language } = useEmployeePortalLanguage();
+  const tr = (ar: string, en: string) => language === "en" ? en : ar;
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [busyId, setBusyId] = useState("");
@@ -103,19 +106,19 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
   };
 
   return (
-    <div className="employee-panel employee-notifications-page">
+    <div className="employee-panel employee-notifications-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <div className="employee-panel-head">
         <div>
-          <p className="employee-panel-kicker">مركز التنبيهات</p>
-          <h2>التنبيهات</h2>
+          <p className="employee-panel-kicker">{tr("مركز التنبيهات", "Notification center")}</p>
+          <h2>{tr("التنبيهات", "Notifications")}</h2>
           <p className="employee-panel-subtitle">
-            راقب كل ما يصل إليك من رسائل وملفات وإجازات ورواتب في مساحة واحدة.
+            {tr("راقب كل ما يصل إليك من رسائل وملفات وإجازات ورواتب في مساحة واحدة.", "Keep track of your messages, files, leave and payroll in one place.")}
           </p>
         </div>
 
         <div className="employee-panel-actions">
           <button className="employee-button" type="button" onClick={() => void onRefresh?.()} disabled={busyId === "all"}>
-            تحديث
+            {tr("تحديث", "Refresh")}
           </button>
           <button
             className="employee-button employee-button--accent"
@@ -123,38 +126,38 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
             onClick={() => void markAllRead()}
             disabled={busyId === "all" || !notifications.some((note) => !note.isRead)}
           >
-            تأكيد الكل مقروء
+            {tr("تأكيد الكل مقروء", "Mark all as read")}
           </button>
         </div>
       </div>
 
       <section className="employee-summary-grid">
         <article className="employee-summary-card">
-          <span>كل التنبيهات</span>
+          <span>{tr("كل التنبيهات", "All notifications")}</span>
           <strong>{stats.all}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>غير مقروء</span>
+          <span>{tr("غير مقروء", "Unread")}</span>
           <strong>{stats.unread}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>رسائل</span>
+          <span>{tr("رسائل", "Messages")}</span>
           <strong>{stats.message}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>ملفات</span>
+          <span>{tr("ملفات", "Files")}</span>
           <strong>{stats.file}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>إجازات</span>
+          <span>{tr("إجازات", "Leave")}</span>
           <strong>{stats.leave}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>رواتب</span>
+          <span>{tr("رواتب", "Payroll")}</span>
           <strong>{stats.payroll}</strong>
         </article>
         <article className="employee-summary-card">
-          <span>الطلبات</span>
+          <span>{tr("الطلبات", "Requests")}</span>
           <strong>{stats.employee_request}</strong>
         </article>
       </section>
@@ -167,7 +170,7 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
             className={`employee-filter-chip ${filter === item.key ? "is-active" : ""}`}
             onClick={() => setFilter(item.key)}
           >
-            {item.label}
+            {item[language]}
           </button>
         ))}
       </div>
@@ -183,21 +186,20 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
           >
             <div className="employee-notification-card__head">
               <span className={`employee-notification-tone employee-notification-tone--${notificationTone(note.type)}`}>
-                {notificationTypeLabel(note.type)}
+                {notificationTypeLabel(note.type, language)}
               </span>
-              <small>{formatNotificationTime(note.createdAt)}</small>
+              <small>{formatNotificationTime(note.createdAt, language)}</small>
             </div>
             <strong>{note.title}</strong>
             {note.body ? <p>{note.body}</p> : null}
             <div className="employee-notification-card__foot">
-              <span>{note.route || "بدون رابط"}</span>
-              <em>{note.isRead ? "مقروء" : "غير مقروء"}</em>
+              <span>{note.route || tr("بدون رابط", "No link")}</span>
+              <em>{note.isRead ? tr("مقروء", "Read") : tr("غير مقروء", "Unread")}</em>
             </div>
           </button>
         ))}
-        {!filtered.length ? <div className="employee-muted">لا توجد تنبيهات مطابقة لهذا الفلتر.</div> : null}
+        {!filtered.length ? <div className="employee-muted">{tr("لا توجد تنبيهات مطابقة لهذا الفلتر.", "No notifications match this filter.")}</div> : null}
       </section>
     </div>
   );
 }
-
