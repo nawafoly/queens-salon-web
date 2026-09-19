@@ -158,6 +158,7 @@ function getEmployeePortalTitle(pathname: string, t: EmployeePortalTranslate) {
     requests: "title.requests",
     payroll: "title.payroll",
     targets: "title.targets",
+    bookings: "title.consumption",
     consumption: "title.consumption",
   };
 
