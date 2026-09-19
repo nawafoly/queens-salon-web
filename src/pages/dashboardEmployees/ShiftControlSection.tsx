@@ -1425,7 +1425,7 @@ export default function ShiftControlSection({
                   options={[{ value: "shift", label: "شفت بديل" }, { value: "custom", label: "وقت مخصص" }, { value: "off", label: "راحة" }]}
                   value={exceptionForm.exceptionType}
                   onChange={(value) => setExceptionForm((current) => {
-                    const exceptionType: ScheduleExceptionType = value === "custom" ? "custom" : value === "off" ? "off" : "shift";
+                    const exceptionType: ExceptionForm["exceptionType"] = value === "custom" ? "custom" : value === "off" ? "off" : "shift";
                     return {
                       ...current,
                       exceptionType,
