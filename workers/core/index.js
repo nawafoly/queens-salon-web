@@ -3003,6 +3003,7 @@ async function dispatch(ctx, route, method, body, query, env) {
             ? {
                 ...body,
                 employeeId: ctx.employeeId,
+                requireBookingAcknowledgement: true,
               }
             : body;
         return confirmServiceConsumption(
