@@ -2166,7 +2166,7 @@ export async function voidPayrollHistoricalSettlement(
   };
 }
 
-export async function reconcileLockedPayrollImpactForAttendanceCorrection(
+export async function reconcileLockedPayrollImpactForEmployeeDate(
   db,
   salonId,
   data = {},
@@ -2182,6 +2182,12 @@ export async function reconcileLockedPayrollImpactForAttendanceCorrection(
     'date'
   );
   const payrollMonth = date.slice(0, 7);
+  const sourceType =
+    optionalText(data.sourceType || data.source_type) ||
+    'hr_correction';
+  const sourceId =
+    optionalText(data.sourceId || data.source_id) || null;
+
   const lockedEntries = await dbAll(
     db,
     `SELECT *
@@ -2196,9 +2202,8 @@ export async function reconcileLockedPayrollImpactForAttendanceCorrection(
 
   if (!lockedEntries.length) {
     return {
-      sourceType: 'attendance_correction',
-      sourceId:
-        optionalText(data.sourceId || data.source_id) || null,
+      sourceType,
+      sourceId,
       employeeId,
       correctionDate: date,
       affectedPayrollMonth: payrollMonth,
@@ -2207,11 +2212,9 @@ export async function reconcileLockedPayrollImpactForAttendanceCorrection(
     };
   }
 
-  const sourceId =
-    optionalText(data.sourceId || data.source_id) || null;
   const reason =
     optionalText(data.reason) ||
-    `Canonical attendance correction for ${date}${
+    `Canonical ${sourceType} correction for ${date}${
       sourceId ? ` (${sourceId})` : ''
     }.`;
 
@@ -2230,7 +2233,7 @@ export async function reconcileLockedPayrollImpactForAttendanceCorrection(
   );
 
   return {
-    sourceType: 'attendance_correction',
+    sourceType,
     sourceId,
     employeeId,
     correctionDate: date,
@@ -2239,6 +2242,25 @@ export async function reconcileLockedPayrollImpactForAttendanceCorrection(
       lockedEntries.map((entry) => entry.payroll_month),
     results: reconciled.results,
   };
+}
+
+export async function reconcileLockedPayrollImpactForAttendanceCorrection(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  return reconcileLockedPayrollImpactForEmployeeDate(
+    db,
+    salonId,
+    {
+      ...data,
+      sourceType: 'attendance_correction',
+    },
+    actor,
+    options
+  );
 }
 
 export async function reconcileLockedPayrollImpactForHrCorrection(
