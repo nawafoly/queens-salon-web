@@ -1254,10 +1254,62 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
 async function executeAttendanceCorrection(db, salonId, row, payload, actor, input, options = {}) {
   const externalDb = options.externalAttendanceDb || null;
   if (externalDb) {
-    const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
+    const reconcileEffect = async (effect) => {
+    const {
+      reconcileLockedPayrollImpactForAttendanceCorrection,
+    } = await import('./payroll.js');
+    const payrollReconciliation =
+      await reconcileLockedPayrollImpactForAttendanceCorrection(
+        db,
+        salonId,
+        {
+          employeeId: row.employee_id,
+          date: payload.date,
+          sourceId: row.id,
+          reason:
+            `Attendance correction ${row.request_number}: ${payload.reason}`,
+        },
+        actor,
+        options
+      );
+    return {
+      ...effect,
+      payrollReconciliation,
+    };
+  };
+
+  const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
     const externalTarget = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
     const shouldUseExternal = payload.correctionType.startsWith('add_') || Boolean(externalTarget);
-    if (shouldUseExternal) return executeExternalAttendanceCorrection(externalDb, row, payload, actor);
+    if (shouldUseExternal) {
+      const effect = await executeExternalAttendanceCorrection(
+        externalDb,
+        row,
+        payload,
+        actor
+      );
+      const {
+        reconcileLockedPayrollImpactForAttendanceCorrection,
+      } = await import('./payroll.js');
+      const payrollReconciliation =
+        await reconcileLockedPayrollImpactForAttendanceCorrection(
+          db,
+          salonId,
+          {
+            employeeId: row.employee_id,
+            date: payload.date,
+            sourceId: row.id,
+            reason:
+              `Attendance correction ${row.request_number}: ${payload.reason}`,
+          },
+          actor,
+          options
+        );
+      return {
+        ...effect,
+        payrollReconciliation,
+      };
+    }
   }
 
   const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
@@ -1296,7 +1348,12 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
     if (!after || cleanText(after.record_type).toLowerCase() !== `voided_${originalType}`) {
       throw new AppError(409, 'core_employee_request:attendance_void_failed');
     }
-    return { sourceType: 'attendance_record', sourceId: before.id, before, after };
+    return reconcileEffect({
+      sourceType: 'attendance_record',
+      sourceId: before.id,
+      before,
+      after,
+    });
   }
   const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
@@ -1308,7 +1365,12 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
       [recordedAt, `${payload.reason} • ${row.request_number}`, salonId, before.id]
     );
     const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ?', [salonId, before.id]);
-    return { sourceType: 'attendance_record', sourceId: before.id, before, after };
+    return reconcileEffect({
+      sourceType: 'attendance_record',
+      sourceId: before.id,
+      before,
+      after,
+    });
   }
   const id = generatedId('attendance');
   await dbRun(
@@ -1321,7 +1383,12 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
       `${payload.reason} • ${row.request_number}`, `employee-request:${row.id}:attendance`, nowIso()]
   );
   const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND idempotency_key = ? LIMIT 1', [salonId, `employee-request:${row.id}:attendance`]);
-  return { sourceType: 'attendance_record', sourceId: after?.id || id, before: null, after };
+  return reconcileEffect({
+    sourceType: 'attendance_record',
+    sourceId: after?.id || id,
+    before: null,
+    after,
+  });
 }
 
 async function refreshPayrollFinancials(db, salonId, employeeId, payrollMonth) {
