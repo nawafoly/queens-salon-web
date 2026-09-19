@@ -537,6 +537,12 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "payroll_reopen_reason_required") {
     return "سبب إعادة فتح الراتب مطلوب.";
   }
+  if (message === "core_payroll:reopen_has_applied_downstream_carryover") {
+    return "لا يمكن إعادة فتح هذه المسيرة لأن فرقًا منها تم تطبيقه بالفعل في مسيرة لاحقة. يجب معالجة المسيرة اللاحقة أولًا.";
+  }
+  if (message === "core_payroll:reopen_concurrent_mutation") {
+    return "تغيّرت حالة المسيرة أثناء إعادة الفتح. حدّث الصفحة وحاول مرة أخرى.";
+  }
   if (message === "core_payroll:no_historical_settlement_outstanding") {
     return "لا يوجد فرق مالي متبقٍ على هذه الفترة المقفلة.";
   }
