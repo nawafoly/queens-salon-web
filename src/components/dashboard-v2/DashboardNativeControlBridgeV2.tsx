@@ -180,6 +180,7 @@ type DashboardInputBridgeBaseProps = Omit<
   value?: string | number | readonly string[];
   defaultValue?: string | number | readonly string[];
   onChange?: ChangeEventHandler<HTMLInputElement>;
+  clock?: "24h" | "12h";
 };
 
 function scalarInputValue(
@@ -238,6 +239,7 @@ export const DashboardTimeInputV2 = forwardRef<HTMLInputElement, DashboardInputB
   min,
   max,
   step,
+  clock,
   placeholder,
   disabled,
   required,
@@ -264,6 +266,7 @@ export const DashboardTimeInputV2 = forwardRef<HTMLInputElement, DashboardInputB
         min={min !== undefined ? String(min) : undefined}
         max={max !== undefined ? String(max) : undefined}
         step={step}
+        clock={clock}
         placeholder={placeholder}
         disabled={disabled}
         required={required}
