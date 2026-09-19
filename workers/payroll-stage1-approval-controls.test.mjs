@@ -130,3 +130,92 @@ test("reopening approved payroll restores inbound carryovers and blocks consumed
   assert.match(fn, /await dbBatch\(db, statements\)/);
   assert.match(fn, /reopen_concurrent_mutation/);
 });
+
+
+test("payroll payment and reversal are coupled to their authoritative states", () => {
+  const repo = read("workers/core/repositories/payroll.js");
+  const obligations = read(
+    "workers/core/repositories/payroll-obligations.js"
+  );
+
+  const paidStart = repo.indexOf(
+    "export async function markPayrollEntryPaid"
+  );
+  const reverseStart = repo.indexOf(
+    "export async function reversePayrollEntryPayment",
+    paidStart
+  );
+  assert.ok(paidStart >= 0);
+  assert.ok(reverseStart > paidStart);
+
+  const paidFn = repo.slice(paidStart, reverseStart);
+  const reverseFn = repo.slice(reverseStart);
+
+  assert.match(paidFn, /requirePayrollPaid: true/);
+  assert.match(
+    paidFn,
+    /pe\.status = 'paid'/
+  );
+  assert.match(
+    paidFn,
+    /payment_concurrent_mutation/
+  );
+  assert.match(
+    paidFn,
+    /payment_advance_settlement_incomplete/
+  );
+
+  assert.match(reverseFn, /requirePayrollApproved: true/);
+  assert.match(
+    reverseFn,
+    /sai\.status = 'deducted'/
+  );
+  assert.match(
+    reverseFn,
+    /pe\.status = 'approved'/
+  );
+  assert.match(
+    reverseFn,
+    /payment_reversal_concurrent_mutation/
+  );
+  assert.match(
+    reverseFn,
+    /payment_reversal_advance_incomplete/
+  );
+  assert.match(
+    reverseFn,
+    /payment_reversal_obligation_incomplete/
+  );
+
+  assert.match(obligations, /requirePayrollPaid/);
+  assert.match(obligations, /requirePayrollApproved/);
+  assert.match(
+    obligations,
+    /COALESCE\(updated_at, ''\) <> \?/
+  );
+});
+
+test("payroll approval only locks mutable rows and verifies the winner", () => {
+  const repo = read("workers/core/repositories/payroll.js");
+  const start = repo.indexOf(
+    "export async function approvePayrollEntry"
+  );
+  const end = repo.indexOf(
+    "\nexport async function recordLatePayrollApproval",
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = repo.slice(start, end);
+  assert.match(
+    fn,
+    /AND status IN \('draft', 'reviewed'\)/
+  );
+  assert.match(
+    fn,
+    /cleanText\(current\.status\) === 'approved'/
+  );
+  assert.match(fn, /approval_concurrent_mutation/);
+});
