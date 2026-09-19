@@ -10241,7 +10241,7 @@ const canonicalSchedules =
                     hint="اختاري ساعة ودقيقة الحضور فقط."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
-                      <DashboardTimeInputV2 id="employee-attendance-edit-check-in" className="dsv2-input" step={300} value={ attendanceEditCheckIn ? attendanceEditCheckIn.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckIn( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
+                      <DashboardTimeInputV2 id="employee-attendance-edit-check-in" className="dsv2-input" step={300} clock="12h" value={ attendanceEditCheckIn ? attendanceEditCheckIn.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckIn( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
 
                       {attendanceEditCheckIn && canDeleteAttendance ? (
                         <button
@@ -10262,7 +10262,7 @@ const canonicalSchedules =
                     hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
-                      <DashboardTimeInputV2 id="employee-attendance-edit-check-out" className="dsv2-input" step={300} value={ attendanceEditCheckOut ? attendanceEditCheckOut.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckOut( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
+                      <DashboardTimeInputV2 id="employee-attendance-edit-check-out" className="dsv2-input" step={300} clock="12h" value={ attendanceEditCheckOut ? attendanceEditCheckOut.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckOut( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
 
                       {attendanceEditCheckOut && canDeleteAttendance ? (
                         <button
