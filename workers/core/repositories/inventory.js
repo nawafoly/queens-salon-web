@@ -1785,6 +1785,12 @@ export async function listPendingServiceConsumptions(db, salonId, query = {}) {
     "LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled', 'rejected')",
     'b.deleted_at IS NULL',
     'r.id IS NOT NULL',
+    `EXISTS (
+      SELECT 1
+        FROM service_consumption_recipe_lines rl
+       WHERE rl.salon_id = r.salon_id
+         AND rl.recipe_id = r.id
+    )`,
     'sc.id IS NULL',
   ];
   const params = [salonId];
