@@ -2166,6 +2166,81 @@ export async function voidPayrollHistoricalSettlement(
   };
 }
 
+export async function reconcileLockedPayrollImpactForAttendanceCorrection(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const employeeId = requiredId(
+    data.employeeId || data.employee_id,
+    'employeeId'
+  );
+  const date = validDate(
+    data.date || data.dateKey || data.date_key,
+    'date'
+  );
+  const payrollMonth = date.slice(0, 7);
+  const lockedEntries = await dbAll(
+    db,
+    `SELECT *
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+        AND status IN ('approved', 'paid')
+      ORDER BY id`,
+    [salonId, employeeId, payrollMonth]
+  );
+
+  if (!lockedEntries.length) {
+    return {
+      sourceType: 'attendance_correction',
+      sourceId:
+        optionalText(data.sourceId || data.source_id) || null,
+      employeeId,
+      correctionDate: date,
+      affectedPayrollMonth: payrollMonth,
+      lockedSourcePayrollMonths: [],
+      results: [],
+    };
+  }
+
+  const sourceId =
+    optionalText(data.sourceId || data.source_id) || null;
+  const reason =
+    optionalText(data.reason) ||
+    `Canonical attendance correction for ${date}${
+      sourceId ? ` (${sourceId})` : ''
+    }.`;
+
+  const reconciled = await reconcilePayrollCarryoversBatch(
+    db,
+    salonId,
+    {
+      items: lockedEntries.map((entry) => ({
+        sourcePayrollEntryId: entry.id,
+        sourceDate: date,
+        reason,
+      })),
+    },
+    actor,
+    options
+  );
+
+  return {
+    sourceType: 'attendance_correction',
+    sourceId,
+    employeeId,
+    correctionDate: date,
+    affectedPayrollMonth: payrollMonth,
+    lockedSourcePayrollMonths:
+      lockedEntries.map((entry) => entry.payroll_month),
+    results: reconciled.results,
+  };
+}
+
 export async function reconcileLockedPayrollImpactForHrCorrection(
   db,
   salonId,
