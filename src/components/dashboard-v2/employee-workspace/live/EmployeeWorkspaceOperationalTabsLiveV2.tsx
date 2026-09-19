@@ -150,9 +150,17 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   if (type === "leave") return "إجازة";
   if (type === "absent" || row.absentFullDay || rawStatus === "absent") return "غياب";
   if (rawStatus === "partial" || rawStatus === "incomplete") return "بصمة ناقصة";
-  if (Number(row.pendingCompensationMinutes || 0) > 0) return "ضمن مهلة التعويض";
-  if (Number(row.lateMinutes || 0) > 0) return "تأخير";
-  if (Number(row.earlyLeaveMinutes || 0) > 0) return "خروج مبكر";
+
+  const late = Number(row.lateMinutes || 0) > 0;
+  const early = Number(row.earlyLeaveMinutes || 0) > 0;
+  const missing = Number(row.missingMinutes || 0) > 0;
+  const issues = [
+    late ? "تأخير" : "",
+    early ? "خروج مبكر" : "",
+    missing ? "نقص ساعات" : "",
+  ].filter(Boolean);
+
+  if (issues.length) return issues.join(" / ");
   if (cleanText(row.checkInAtClient || row.checkOutAtClient)) return "حضور";
   if (rawStatus === "checked_in" || rawStatus === "checked_out") return "حضور";
   return cleanText(row.status) || "حضور";
@@ -161,7 +169,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status === "تأخير" || status === "ضمن مهلة التعويض" || status === "بصمة ناقصة" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
+  if (status.includes("تأخير") || status.includes("نقص ساعات") || status.includes("خروج مبكر") || status === "بصمة ناقصة" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
@@ -174,9 +182,14 @@ function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" |
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
   if (status === "غياب") return "يحتاج مراجعة";
   if (status === "بصمة ناقصة") return "بصمة ناقصة — يجب مراجعتها قبل اعتماد الراتب";
-  if (status === "ضمن مهلة التعويض") return `تأخير ${formatNumber(row?.pendingCompensationMinutes || 0)} دقيقة — بانتظار التعويض عند الانصراف`;
-  if (status === "تأخير") return `تأخير ${formatNumber(row?.lateMinutes || 0)} دقيقة`;
-  if (status === "خروج مبكر") return `خروج مبكر ${formatNumber(row?.earlyLeaveMinutes || 0)} دقيقة`;
+  if (status.includes("تأخير") || status.includes("خروج مبكر") || status.includes("نقص ساعات")) {
+    const details = [
+      Number(row?.lateMinutes || 0) > 0 ? `تأخير ${formatNumber(row?.lateMinutes)} دقيقة` : "",
+      Number(row?.earlyLeaveMinutes || 0) > 0 ? `خروج مبكر ${formatNumber(row?.earlyLeaveMinutes)} دقيقة` : "",
+      Number(row?.missingMinutes || 0) > 0 ? `نقص ساعات ${formatNumber(row?.missingMinutes)} دقيقة` : "",
+    ].filter(Boolean);
+    return details.join(" • ");
+  }
   if (status === "راحة") return "راحة معتمدة";
   if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
   if (status === "راحة أسبوعية") return "راحة أسبوعية حسب جدول الدوام";
@@ -399,9 +412,13 @@ function buildAttendanceCalendar(
             "غياب",
             "إجازة",
             "بصمة ناقصة",
-            "ضمن مهلة التعويض",
             "تأخير",
             "خروج مبكر",
+            "نقص ساعات",
+            "تأخير / نقص ساعات",
+            "تأخير / خروج مبكر",
+            "خروج مبكر / نقص ساعات",
+            "تأخير / خروج مبكر / نقص ساعات",
           ].includes(
             rowStatus
           )
@@ -824,6 +841,7 @@ export type EmployeeAttendanceRowLiveV2 = {
   lateMinutes?: number;
   pendingCompensationMinutes?: number;
   earlyLeaveMinutes?: number;
+  missingMinutes?: number;
   shiftName?: string;
   shiftSourceLabel?: string;
   shiftStatusLabel?: string;
