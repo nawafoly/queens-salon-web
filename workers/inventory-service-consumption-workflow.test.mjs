@@ -274,3 +274,11 @@ test("Guard: consumption cannot be confirmed before execution or by another empl
   assert.match(ui, /selected\?\.lifecycle === "PENDING_CONFIRMATION"/);
   assert.match(ui, /selected\?\.lifecycle === "OVERDUE"/);
 });
+
+
+test("Guard: material use requires an accepted booking state", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  assert.match(inv, /inventory:booking_not_confirmed/);
+  assert.match(inv, /'booked', 'confirmed', 'completed'/);
+  assert.match(inv, /bookingAllowsConsumption/);
+});
