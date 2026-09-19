@@ -368,3 +368,66 @@ test('payroll carryover reconciliation mutates pending state atomically', async 
     /for \(const obsolete of pendingRows\)[\s\S]*?await dbRun\(/
   );
 });
+
+
+test('historical direct settlements reduce carryover without mutating locked payroll', async () => {
+  const [source, migration, ui] = await Promise.all([
+    readFile(
+      new URL('./core/repositories/payroll.js', import.meta.url),
+      'utf8'
+    ),
+    readFile(
+      new URL(
+        '../migrations/core/0077_payroll_historical_settlements.sql',
+        import.meta.url
+      ),
+      'utf8'
+    ),
+    readFile(
+      new URL('../src/pages/DashboardPayroll.tsx', import.meta.url),
+      'utf8'
+    ),
+  ]);
+
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS payroll_historical_settlements/
+  );
+  assert.match(
+    source,
+    /desired\.signedDeltaHalalas - historicalSettledSigned/
+  );
+  assert.match(
+    source,
+    /export async function recordPayrollHistoricalSettlement/
+  );
+  assert.match(
+    source,
+    /prependStatements: \[insertStatement\]/
+  );
+  assert.match(
+    source,
+    /virtualSettlementSignedHalalas: signedAmount/
+  );
+
+  const start = source.indexOf(
+    'export async function recordPayrollHistoricalSettlement('
+  );
+  const end = source.indexOf(
+    '\nexport async function voidPayrollHistoricalSettlement(',
+    start
+  );
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  const recordFn = source.slice(start, end);
+
+  assert.doesNotMatch(recordFn, /UPDATE payroll_entries/);
+  assert.match(
+    ui,
+    /تسويات بعد إقفال هذه الفترة/
+  );
+  assert.match(
+    ui,
+    /الراتب الأصلي لن يتغير/
+  );
+});
