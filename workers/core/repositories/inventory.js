@@ -181,7 +181,11 @@ function actorFields(actor = {}) {
 async function validateServiceConsumptionContext(
   db,
   salonId,
-  { bookingItemId, employeeId }
+  {
+    bookingItemId,
+    employeeId,
+    requireBookingAcknowledgement = false,
+  }
 ) {
   const context = await dbFirst(
     db,
@@ -200,7 +204,18 @@ async function validateServiceConsumptionContext(
        s.id AS service_exists,
        s.active AS service_active,
        ep.id AS employee_exists,
-       ep.status AS employee_status
+       ep.status AS employee_status,
+       CASE
+         WHEN EXISTS (
+           SELECT 1
+             FROM booking_staff_acknowledgements bsa
+            WHERE bsa.salon_id = bi.salon_id
+              AND bsa.booking_id = bi.booking_id
+              AND bsa.employee_id = ?
+         )
+         THEN 1
+         ELSE 0
+       END AS booking_acknowledged
      FROM booking_items bi
      JOIN bookings b
        ON b.id = bi.booking_id
@@ -214,7 +229,7 @@ async function validateServiceConsumptionContext(
      WHERE bi.salon_id = ?
        AND bi.id = ?
      LIMIT 1`,
-    [employeeId, salonId, bookingItemId]
+    [employeeId, employeeId, salonId, bookingItemId]
   );
 
   if (!context) {
@@ -262,6 +277,17 @@ async function validateServiceConsumptionContext(
       403,
       'inventory:booking_employee_mismatch',
       'Inventory consumption can only be confirmed by the employee assigned to this booking item'
+    );
+  }
+
+  if (
+    requireBookingAcknowledgement &&
+    Number(context.booking_acknowledged) !== 1
+  ) {
+    throw new AppError(
+      409,
+      'inventory:booking_acknowledgement_required',
+      'Receive the booking before confirming service materials'
     );
   }
 
@@ -1158,6 +1184,9 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
     {
       bookingItemId,
       employeeId,
+      requireBookingAcknowledgement:
+        data.requireBookingAcknowledgement === true ||
+        data.require_booking_acknowledgement === true,
     }
   );
 
