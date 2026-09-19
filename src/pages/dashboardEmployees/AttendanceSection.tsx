@@ -659,6 +659,22 @@ function toLiveAttendanceRow(
             0
           ),
 
+    missingMinutes:
+      resolvedDay
+        ? Math.max(
+            0,
+            Math.round(
+              resolvedDay
+                .computation
+                .missingHours *
+                60
+            )
+          )
+        : Number(
+            record.missingMinutes ||
+            0
+          ),
+
     shiftName:
       cleanText(
         resolvedDay
