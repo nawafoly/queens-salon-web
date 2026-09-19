@@ -46,7 +46,11 @@ import {
   previewPayrollEntrySnapshot,
   type PayrollEntryView,
 } from "../services/CorePayrollService";
-import type { CoreHrEmployee } from "../types/hrCoreApi";
+import type {
+  CoreHrEmployee,
+  CorePayrollCarryoverAdjustment,
+  CorePayrollHistoricalSettlement,
+} from "../types/hrCoreApi";
 import {
   assertManualPayrollItem,
   formatPayrollMoney,
@@ -121,6 +125,22 @@ type PayrollLateApprovalDraft = {
 type PayrollPaymentControlDraft = {
   mode: "pay-batch" | "unpay-batch" | "unpay-one";
   entry: PayrollEntryView | null;
+  reason: string;
+};
+
+type PayrollHistoricalSettlementDraft = {
+  entry: PayrollEntryView;
+  direction: "addition" | "deduction";
+  amountRiyals: string;
+  settlementMethod: "cash" | "bank_transfer" | "other";
+  settlementDate: string;
+  reason: string;
+  reference: string;
+  note: string;
+};
+
+type PayrollHistoricalSettlementVoidDraft = {
+  settlement: CorePayrollHistoricalSettlement;
   reason: string;
 };
 
@@ -517,6 +537,24 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "payroll_reopen_reason_required") {
     return "سبب إعادة فتح الراتب مطلوب.";
   }
+  if (message === "core_payroll:no_historical_settlement_outstanding") {
+    return "لا يوجد فرق مالي متبقٍ على هذه الفترة المقفلة.";
+  }
+  if (message === "core_payroll:historical_settlement_exceeds_outstanding") {
+    return "مبلغ التسوية أكبر من الفرق المالي المتبقي.";
+  }
+  if (message === "core_payroll:historical_settlement_direction_mismatch") {
+    return "اتجاه التسوية لا يطابق الفرق المالي الحالي.";
+  }
+  if (message === "core_payroll:historical_settlement_reason_required") {
+    return "سبب التسوية اللاحقة مطلوب.";
+  }
+  if (message === "core_payroll:historical_settlement_void_reason_required") {
+    return "سبب إلغاء التسوية مطلوب.";
+  }
+  if (message === "core_payroll:historical_settlement_date_future") {
+    return "تاريخ التسوية لا يمكن أن يكون في المستقبل.";
+  }
   return String((error as any)?.message || fallback);
 }
 
@@ -545,6 +583,14 @@ export default function DashboardPayroll() {
   const [reopenDraft, setReopenDraft] = useState<ReopenPayrollDraft | null>(null);
   const [paymentControl, setPaymentControl] =
     useState<PayrollPaymentControlDraft | null>(null);
+  const [sourceCarryovers, setSourceCarryovers] =
+    useState<CorePayrollCarryoverAdjustment[]>([]);
+  const [historicalSettlements, setHistoricalSettlements] =
+    useState<CorePayrollHistoricalSettlement[]>([]);
+  const [historicalSettlementDraft, setHistoricalSettlementDraft] =
+    useState<PayrollHistoricalSettlementDraft | null>(null);
+  const [historicalSettlementVoidDraft, setHistoricalSettlementVoidDraft] =
+    useState<PayrollHistoricalSettlementVoidDraft | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     entry: PayrollEntryView;
     top: number;
@@ -568,6 +614,40 @@ export default function DashboardPayroll() {
     String(currentPeriod.month).padStart(2, "0");
 
   const isFuturePayrollPeriod = payrollMonth > currentPayrollMonth;
+
+  const refreshHistoricalSettlementState = async (
+    entry: PayrollEntryView | null
+  ) => {
+    if (
+      !entry?.id ||
+      !["approved", "paid"].includes(String(entry.status || ""))
+    ) {
+      setSourceCarryovers([]);
+      setHistoricalSettlements([]);
+      return;
+    }
+
+    const [settlements, carryovers] = await Promise.all([
+      CoreHrService.listPayrollHistoricalSettlements({
+        sourcePayrollEntryId: entry.id,
+      }),
+      CoreHrService.listPayrollCarryovers({
+        employeeId: entry.employeeId,
+        sourcePayrollMonth: entry.payrollMonth,
+      }),
+    ]);
+
+    setHistoricalSettlements(
+      settlements.filter(
+        (row) => row.sourcePayrollEntryId === entry.id
+      )
+    );
+    setSourceCarryovers(
+      carryovers.filter(
+        (row) => row.sourcePayrollEntryId === entry.id
+      )
+    );
+  };
 
   const futureExportExclusionReason = (entry: PayrollEntryView) => {
     if (!entry.payrollSetupComplete) {
@@ -664,6 +744,57 @@ export default function DashboardPayroll() {
       loadGenerationRef.current += 1;
     };
   }, [year, month]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (
+      !selectedEntry?.id ||
+      !["approved", "paid"].includes(String(selectedEntry.status || ""))
+    ) {
+      setSourceCarryovers([]);
+      setHistoricalSettlements([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    Promise.all([
+      CoreHrService.listPayrollHistoricalSettlements({
+        sourcePayrollEntryId: selectedEntry.id,
+      }),
+      CoreHrService.listPayrollCarryovers({
+        employeeId: selectedEntry.employeeId,
+        sourcePayrollMonth: selectedEntry.payrollMonth,
+      }),
+    ])
+      .then(([settlements, carryovers]) => {
+        if (cancelled) return;
+        setHistoricalSettlements(
+          settlements.filter(
+            (row) => row.sourcePayrollEntryId === selectedEntry.id
+          )
+        );
+        setSourceCarryovers(
+          carryovers.filter(
+            (row) => row.sourcePayrollEntryId === selectedEntry.id
+          )
+        );
+      })
+      .catch((settlementError: any) => {
+        if (cancelled) return;
+        setError(
+          String(
+            settlementError?.message ||
+              "تعذر تحميل تسويات الفترة المقفلة."
+          )
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEntry?.id, selectedEntry?.status]);
 
   const visibleEntries = useMemo(
     () =>
@@ -1362,6 +1493,118 @@ export default function DashboardPayroll() {
       setMessage("تم تسجيل الراتب كمدفوع.");
     } catch (actionError: any) {
       setError(payrollActionErrorMessage(actionError, "تعذر تسجيل الدفع."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const openHistoricalSettlement = (entry: PayrollEntryView) => {
+    if (!canManage || !entry.id) return;
+
+    const pending = sourceCarryovers.find(
+      (row) => row.status === "pending"
+    );
+    if (!pending) {
+      setError(
+        "لا يوجد فرق مالي معلّق لهذه الفترة. التعديلات غير المالية لا تنشئ مبالغ للترحيل."
+      );
+      return;
+    }
+
+    setError("");
+    setHistoricalSettlementDraft({
+      entry,
+      direction: pending.direction,
+      amountRiyals: (
+        Math.max(0, Number(pending.amountHalalas || 0)) / 100
+      ).toFixed(2),
+      settlementMethod: "bank_transfer",
+      settlementDate: riyadhTodayDateKey(),
+      reason: pending.reason || "تسوية مباشرة لفرق فترة مقفلة.",
+      reference: "",
+      note: "",
+    });
+  };
+
+  const submitHistoricalSettlement = async () => {
+    if (!historicalSettlementDraft || !canManage) return;
+    const amountRiyals = Number(
+      historicalSettlementDraft.amountRiyals
+    );
+    if (!Number.isFinite(amountRiyals) || amountRiyals <= 0) {
+      setError("مبلغ التسوية يجب أن يكون أكبر من صفر.");
+      return;
+    }
+    if (!historicalSettlementDraft.reason.trim()) {
+      setError("سبب التسوية اللاحقة مطلوب.");
+      return;
+    }
+
+    setBusy("historical-settlement");
+    setError("");
+    try {
+      await CoreHrService.recordPayrollHistoricalSettlement({
+        sourcePayrollEntryId:
+          historicalSettlementDraft.entry.id!,
+        direction: historicalSettlementDraft.direction,
+        amountHalalas: Math.round(amountRiyals * 100),
+        settlementMethod:
+          historicalSettlementDraft.settlementMethod,
+        settlementDate:
+          historicalSettlementDraft.settlementDate,
+        reason: historicalSettlementDraft.reason.trim(),
+        reference:
+          historicalSettlementDraft.reference.trim() || null,
+        note: historicalSettlementDraft.note.trim() || null,
+      });
+
+      await refreshHistoricalSettlementState(
+        historicalSettlementDraft.entry
+      );
+      setHistoricalSettlementDraft(null);
+      setMessage(
+        "تم تسجيل التسوية على الفترة الأصلية بدون تغيير الراتب المقفل، وتم تحديث أي مبلغ متبقٍ للترحيل."
+      );
+    } catch (actionError: any) {
+      setError(
+        payrollActionErrorMessage(
+          actionError,
+          "تعذر تسجيل التسوية اللاحقة."
+        )
+      );
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitHistoricalSettlementVoid = async () => {
+    if (!historicalSettlementVoidDraft || !canManage) return;
+    const reason =
+      historicalSettlementVoidDraft.reason.trim();
+    if (!reason) {
+      setError("سبب إلغاء التسوية مطلوب.");
+      return;
+    }
+
+    setBusy("historical-settlement-void");
+    setError("");
+    try {
+      await CoreHrService.voidPayrollHistoricalSettlement(
+        historicalSettlementVoidDraft.settlement.id,
+        reason
+      );
+      await refreshHistoricalSettlementState(selectedEntry);
+      setHistoricalSettlementVoidDraft(null);
+      setMessage(
+        "تم إلغاء تسجيل التسوية وإعادة احتساب الفرق المتبقي للترحيل."
+      );
+    } catch (actionError: any) {
+      setError(
+        payrollActionErrorMessage(
+          actionError,
+          "تعذر إلغاء التسوية."
+        )
+      );
     } finally {
       setBusy("");
     }
@@ -2085,6 +2328,18 @@ export default function DashboardPayroll() {
           entry={selectedEntry}
           onClose={() => setSelectedEntry(null)}
           onAdd={(mode) => openAdjustment(selectedEntry, mode)}
+          canManage={canManage}
+          sourceCarryovers={sourceCarryovers}
+          historicalSettlements={historicalSettlements}
+          onRecordHistoricalSettlement={() =>
+            openHistoricalSettlement(selectedEntry)
+          }
+          onVoidHistoricalSettlement={(settlement) =>
+            setHistoricalSettlementVoidDraft({
+              settlement,
+              reason: "",
+            })
+          }
           onExportPayslipPdf={() => {
             const exclusionReason =
               selectedPeriodExportExclusionReason(selectedEntry);
@@ -2141,6 +2396,217 @@ export default function DashboardPayroll() {
           }}
           payrollBounds={payrollBounds}
         />
+      ) : null}
+
+      {historicalSettlementDraft ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setHistoricalSettlementDraft(null)}
+        >
+          <aside
+            className="payroll-modal payroll-adjustment-modal dsv2-workflow-reference"
+            role="dialog"
+            aria-modal="true"
+            aria-label="تسجيل تسوية لاحقة"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>تسوية بعد إقفال الفترة</span>
+                <h2>{historicalSettlementDraft.entry.employeeName}</h2>
+                <p>
+                  الراتب الأصلي لن يتغير. سيتم فقط توثيق الدفع/التحصيل
+                  وتخفيض الفرق المعلّق.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoricalSettlementDraft(null)}
+                aria-label="إغلاق"
+              >
+                <FiX />
+              </button>
+            </header>
+
+            <label>
+              <span>نوع التسوية</span>
+              <input
+                readOnly
+                value={
+                  historicalSettlementDraft.direction === "addition"
+                    ? "دفع فرق للموظفة"
+                    : "تحصيل فرق من الموظفة"
+                }
+              />
+            </label>
+
+            <label>
+              <span>المبلغ</span>
+              <DashboardNumberInputV2
+                min="0.01"
+                step="0.01"
+                value={historicalSettlementDraft.amountRiyals}
+                onChange={(event) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    amountRiyals: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span>طريقة التسوية</span>
+              <DashboardSelectV2
+                value={historicalSettlementDraft.settlementMethod}
+                options={[
+                  { value: "bank_transfer", label: "تحويل بنكي" },
+                  { value: "cash", label: "نقدًا" },
+                  { value: "other", label: "طريقة أخرى" },
+                ]}
+                onChange={(value) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    settlementMethod:
+                      value as PayrollHistoricalSettlementDraft["settlementMethod"],
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span>تاريخ الدفع/التحصيل</span>
+              <DashboardDatePickerV2
+                value={historicalSettlementDraft.settlementDate}
+                max={riyadhTodayDateKey()}
+                onChange={(value) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    settlementDate: value,
+                  })
+                }
+                clearable={false}
+              />
+            </label>
+
+            <label>
+              <span>السبب</span>
+              <textarea
+                value={historicalSettlementDraft.reason}
+                onChange={(event) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    reason: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span>مرجع التحويل / السند</span>
+              <input
+                value={historicalSettlementDraft.reference}
+                onChange={(event) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    reference: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span>ملاحظة اختيارية</span>
+              <textarea
+                value={historicalSettlementDraft.note}
+                onChange={(event) =>
+                  setHistoricalSettlementDraft({
+                    ...historicalSettlementDraft,
+                    note: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <footer>
+              <button
+                type="button"
+                onClick={() => setHistoricalSettlementDraft(null)}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={busy === "historical-settlement"}
+                onClick={() => void submitHistoricalSettlement()}
+              >
+                تسجيل التسوية
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
+      {historicalSettlementVoidDraft ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setHistoricalSettlementVoidDraft(null)}
+        >
+          <aside
+            className="payroll-modal payroll-adjustment-modal dsv2-workflow-reference"
+            role="dialog"
+            aria-modal="true"
+            aria-label="إلغاء تسوية لاحقة"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>تصحيح سجل التسوية</span>
+                <h2>إلغاء التسوية</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoricalSettlementVoidDraft(null)}
+                aria-label="إغلاق"
+              >
+                <FiX />
+              </button>
+            </header>
+            <label>
+              <span>سبب الإلغاء</span>
+              <textarea
+                value={historicalSettlementVoidDraft.reason}
+                onChange={(event) =>
+                  setHistoricalSettlementVoidDraft({
+                    ...historicalSettlementVoidDraft,
+                    reason: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <footer>
+              <button
+                type="button"
+                onClick={() => setHistoricalSettlementVoidDraft(null)}
+              >
+                رجوع
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={busy === "historical-settlement-void"}
+                onClick={() => void submitHistoricalSettlementVoid()}
+              >
+                تأكيد الإلغاء
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
       ) : null}
 
       {paymentControl ? createPortal(
@@ -2675,6 +3141,11 @@ function PayrollDetailsModal({
   entry,
   onClose,
   onAdd,
+  canManage,
+  sourceCarryovers,
+  historicalSettlements,
+  onRecordHistoricalSettlement,
+  onVoidHistoricalSettlement,
   onExportPayslipPdf,
   onExportPayslipExcel,
   onExportPayslipMobileExcel,
@@ -2683,6 +3154,13 @@ function PayrollDetailsModal({
   entry: PayrollEntryView;
   onClose: () => void;
   onAdd: (mode: AdjustmentMode) => void;
+  canManage: boolean;
+  sourceCarryovers: CorePayrollCarryoverAdjustment[];
+  historicalSettlements: CorePayrollHistoricalSettlement[];
+  onRecordHistoricalSettlement: () => void;
+  onVoidHistoricalSettlement: (
+    settlement: CorePayrollHistoricalSettlement
+  ) => void;
   onExportPayslipPdf: () => void;
   onExportPayslipExcel: () => void;
   onExportPayslipMobileExcel: () => void;
@@ -2864,6 +3342,79 @@ function PayrollDetailsModal({
             </div>
           ) : null}
         </section>
+
+        {["approved", "paid"].includes(entry.status) ? (
+          <section className="payroll-adjustment-list">
+            <h3>تسويات بعد إقفال هذه الفترة</h3>
+
+            {sourceCarryovers.some((row) => row.status === "pending") ? (
+              sourceCarryovers
+                .filter((row) => row.status === "pending")
+                .map((row) => (
+                  <article key={row.id}>
+                    <strong>
+                      {row.direction === "addition"
+                        ? "فرق مستحق للموظفة"
+                        : "فرق مستحق على الموظفة"}
+                    </strong>
+                    <span>{formatPayrollMoney(row.amountHalalas)}</span>
+                    <small>
+                      سيترحل إلى {row.targetPayrollMonth} إذا لم تتم تسويته مباشرة.
+                    </small>
+                  </article>
+                ))
+            ) : (
+              <p>لا يوجد فرق مالي معلّق للترحيل من هذه الفترة.</p>
+            )}
+
+            {historicalSettlements.length ? (
+              historicalSettlements.map((settlement) => (
+                <article key={settlement.id}>
+                  <strong>
+                    {settlement.direction === "addition"
+                      ? "تم دفع فرق للموظفة"
+                      : "تم تحصيل فرق من الموظفة"}
+                    {settlement.status === "void" ? " — ملغاة" : ""}
+                  </strong>
+                  <span>
+                    {formatPayrollMoney(settlement.amountHalalas)}
+                  </span>
+                  <small>
+                    {settlement.settlementDate} · {settlement.reason}
+                    {settlement.reference
+                      ? ` · مرجع: ${settlement.reference}`
+                      : ""}
+                  </small>
+                  {canManage && settlement.status === "recorded" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onVoidHistoricalSettlement(settlement)
+                      }
+                    >
+                      إلغاء تسجيل التسوية
+                    </button>
+                  ) : null}
+                </article>
+              ))
+            ) : null}
+
+            {canManage &&
+            sourceCarryovers.some((row) => row.status === "pending") ? (
+              <button
+                type="button"
+                onClick={onRecordHistoricalSettlement}
+              >
+                <FiDollarSign /> تسجيل دفع/تحصيل الفرق مباشرة
+              </button>
+            ) : null}
+
+            <small>
+              الراتب المعتمد أو المدفوع نفسه يبقى كما هو. هذه السجلات
+              توثق فقط الفروقات التي ظهرت بعد الإقفال.
+            </small>
+          </section>
+        ) : null}
 
         <section className="payroll-adjustment-list">
           <h3>البنود اليدوية</h3>
