@@ -111,12 +111,25 @@ test("staff completion workflow accepts canonical booked status", () => {
 });
 
 
-test("employee booking workspace follows confirm-materials-complete sequence", () => {
+test("employee booking workspace follows receive-confirm-materials-complete sequence", () => {
   const ui = read("src/pages/EmployeeServiceConsumption.tsx");
+  const portal = read("src/pages/EmployeePortal.tsx");
+
   assert.match(ui, /CoreBookingService\.mine\(\)/);
+  assert.match(ui, /CoreBookingService\.acknowledgeMine/);
   assert.match(ui, /CoreBookingService\.updateMineStatus/);
   assert.match(ui, /updateBookingStatus\("confirmed"\)/);
   assert.match(ui, /updateBookingStatus\("completed"\)/);
   assert.match(ui, /selectedBookingPending\.length === 0/);
   assert.match(ui, /bookingExecutionReady/);
+  assert.match(ui, /employee-booking-steps/);
+  assert.match(ui, /employee-booking-services/);
+  assert.match(ui, /employee-booking-materials/);
+
+  assert.match(portal, /to: "\/employee\/bookings"/);
+  assert.match(portal, /path="bookings"/);
+  assert.match(
+    portal,
+    /path="consumption"[\s\S]*Navigate to="\/employee\/bookings"/
+  );
 });
