@@ -232,3 +232,18 @@ test("Guard: inventory ledger writes inherit the HTTP idempotency key", () => {
   assert.match(worker, /request\.headers\.get\("Idempotency-Key"\)/);
   assert.match(worker, /operationId: headerOperationId/);
 });
+
+
+test("Guard: service consumption deducts from the employee home inventory location", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  const start = inv.indexOf("export async function confirmServiceConsumption");
+  const end = inv.indexOf("export async function getServiceConsumptionByBookingItem", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const confirm = inv.slice(start, end);
+
+  assert.match(confirm, /getStaffHomeLocation\(/);
+  assert.match(confirm, /staffHomeLocation\.locationId/);
+  assert.match(confirm, /ensureDefaultLocation\(/);
+  assert.doesNotMatch(confirm, /preferred\(data, 'locationId', 'location_id'\)/);
+});
