@@ -10230,6 +10230,7 @@ const canonicalSchedules =
                 }
                 eyebrow="الحضور والانصراف"
                 size="md"
+                className="attendance-punch-editor-modal-v2"
                 closeOnBackdrop={!saving}
                 closeOnEscape={!saving}
                 footer={
