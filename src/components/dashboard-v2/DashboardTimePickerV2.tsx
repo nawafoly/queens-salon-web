@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { normalizeWesternDigits } from "../../helpers/displayLocalePolicy";
 
 export type DashboardTimePickerV2Props = {
@@ -112,9 +112,10 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
   const initial12 = to12HourParts(current || normalizedDefault);
   const [draft12, setDraft12] = useState(initial12.draft);
   const [period12, setPeriod12] = useState<TimePeriod>(initial12.period);
+  const editing12Ref = useRef(false);
 
   useEffect(() => {
-    if (clock !== "12h") return;
+    if (clock !== "12h" || editing12Ref.current) return;
     if (!current) {
       setDraft12("");
       return;
@@ -179,6 +180,9 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
         data-min={min}
         data-max={max}
         data-step={step}
+        onFocus={() => {
+          if (clock === "12h") editing12Ref.current = true;
+        }}
         onChange={(event) => {
           if (clock === "12h") {
             commit12Draft(event.target.value);
@@ -188,6 +192,7 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
         }}
         onBlur={(event) => {
           if (clock === "12h") {
+            editing12Ref.current = false;
             const canonical = to24HourTime(event.target.value, period12);
             if (canonical) {
               const normalized = to12HourParts(canonical);
