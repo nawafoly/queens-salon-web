@@ -760,11 +760,11 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         id, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot, payload.date,
-        payload.startTime, payload.endTime, NULL, NULL,
+        payload.startTime, payload.endTime, null, null,
         payload.reason, optionalText(payload.notes) || null,
         row.created_by_uid, row.employee_name_snapshot, cleanText(actor.uid) || null,
-        cleanText(actor.name) || null, NULL, NULL,
-        now, NULL, NULL, now, now, row.id,
+        cleanText(actor.name) || null, null, null,
+        now, null, null, now, now, row.id,
       ],
     },
     {
@@ -773,7 +773,7 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
          leave_type, start_date, end_date, days_count, employee_note, hr_note, decided_at,
          decided_by_uid, decided_by_email, decided_by_name, created_at, updated_at,
          duration_kind, partial_start_time, partial_end_time, request_id)
-       VALUES (?, ?, ?, ?, ?, NULL, 'approved', 'permission', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'partial', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, null, 'approved', 'permission', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'partial', ?, ?, ?)`,
       params: [
         bookingLeaveId, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot,
         payload.date, payload.date, payload.reason, 'استئذان معتمد — يحجب فترة الحجز المحددة فقط',
