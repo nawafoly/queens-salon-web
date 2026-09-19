@@ -219,3 +219,34 @@ test("payroll approval only locks mutable rows and verifies the winner", () => {
   );
   assert.match(fn, /approval_concurrent_mutation/);
 });
+
+
+test("late approval snapshot is bound to the winning historical transition", () => {
+  const repo = read("workers/core/repositories/payroll.js");
+  const start = repo.indexOf(
+    "export async function recordLatePayrollApproval"
+  );
+  const end = repo.indexOf(
+    "\nexport async function reopenPayrollEntry",
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = repo.slice(start, end);
+  assert.match(fn, /transitionGuard/);
+  assert.match(fn, /lateApprovalAuditLog/);
+  assert.match(
+    fn,
+    /cleanText\(current\.approved_at\) === approvalDate/
+  );
+  assert.match(
+    fn,
+    /latestSnapshot\?\.approved_net_halalas/
+  );
+  assert.match(
+    fn,
+    /late_approval_concurrent_mutation/
+  );
+});
