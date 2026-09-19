@@ -544,10 +544,10 @@ export default function ShiftControlSection({
     [assignments, resolvedDate],
   );
 
-  const targetShiftEmployeeId = useMemo(() => {
-    const currentAssignmentEmployeeId = cleanText(openAssignment?.employeeId || (openAssignment as Record<string, unknown> | null)?.employee_id);
-    return currentAssignmentEmployeeId || shiftEmployeeIds.find(isFullShiftIdentifier) || shiftEmployeeIds[0] || employeeId;
-  }, [employeeId, openAssignment, shiftEmployeeIds]);
+  const targetShiftEmployeeId = useMemo(
+    () => shiftEmployeeIds.find(isFullShiftIdentifier) || shiftEmployeeIds[0] || employeeId,
+    [employeeId, shiftEmployeeIds],
+  );
 
   const load = useCallback(async () => {
     if (!isVisible) return;
@@ -604,6 +604,15 @@ export default function ShiftControlSection({
   }, [load]);
 
   useEffect(() => {
+    setAssignmentForm(emptyAssignmentForm());
+    setExceptionForm(emptyExceptionForm());
+    setPreview(null);
+    setMessage("");
+    setError("");
+    setAllowLockedPeriodAdjustment(false);
+  }, [shiftEmployeeIdsKey]);
+
+  useEffect(() => {
     setPreview(null);
   }, [
     assignmentForm.shiftTemplateId,
@@ -619,6 +628,7 @@ export default function ShiftControlSection({
   ]);
 
   const previewAssignment = async () => {
+    setPreview(null);
     if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
     if (assignmentForm.assignmentType === "temporary" && !assignmentForm.effectiveTo) {
       setError("التعيين المؤقت يحتاج تاريخ نهاية.");
@@ -642,6 +652,7 @@ export default function ShiftControlSection({
   };
 
   const previewException = async () => {
+    setPreview(null);
     if (!targetShiftEmployeeId || !exceptionForm.dateFrom) return null;
     if (exceptionForm.dateTo && exceptionForm.dateTo < exceptionForm.dateFrom) {
       setError("تاريخ نهاية الاستثناء لا يمكن أن يكون قبل تاريخ البداية.");
@@ -853,6 +864,7 @@ export default function ShiftControlSection({
     setMessage("");
     try {
       await CoreHrService.cancelShiftAssignment(assignment.id, "إلغاء من مساحة الموظفة V2", { allowLockedPeriodAdjustment });
+      setPreview(null);
       setMessage("تم إلغاء تعيين الشفت.");
       await load();
     } catch (err) {
@@ -889,6 +901,7 @@ export default function ShiftControlSection({
         reason: "إنهاء شفت من مساحة الموظفة V2",
         allowLockedPeriodAdjustment,
       });
+      setPreview(null);
       setMessage("تم إنهاء الشفت.");
       await load();
     } catch (err) {
@@ -974,6 +987,7 @@ export default function ShiftControlSection({
         },
         targetShiftEmployeeId
       );
+      setPreview(null);
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {
