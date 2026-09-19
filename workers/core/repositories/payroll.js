@@ -163,9 +163,28 @@ function payrollLeaveIsUnpaid(row) {
   return cleanText(row?.leave_type).toLowerCase() === 'unpaid';
 }
 
-function payrollLeaveCoversDate(row, dateKey) {
-  return cleanText(row?.status).toLowerCase() === 'approved' &&
-    cleanText(row?.start_date) <= dateKey && cleanText(row?.end_date) >= dateKey;
+function payrollLeaveCoversDate(
+  row,
+  dateKey,
+  recalledLeaveDates = null
+) {
+  if (
+    cleanText(row?.status).toLowerCase() !== 'approved' ||
+    cleanText(row?.start_date) > dateKey ||
+    cleanText(row?.end_date) < dateKey
+  ) {
+    return false;
+  }
+
+  if (
+    recalledLeaveDates?.has(
+      `${cleanText(row?.id)}|${dateKey}`
+    )
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function payrollShiftSchedule(row) {
@@ -292,11 +311,28 @@ async function buildCanonicalAttendanceSummary(
   const completedPeriodEnd =
     completedThrough < bounds.monthEnd ? completedThrough : bounds.monthEnd;
   const attendanceMode = cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt' ? 'exempt' : 'required';
-  const [attendanceRows, leaveRows, absenceRows, permissionRows, shiftBatch] = await Promise.all([
+  const [
+    attendanceRows,
+    leaveRows,
+    absenceRows,
+    permissionRows,
+    activeRecallRows,
+    shiftBatch,
+  ] = await Promise.all([
     listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
     listLeaves(db, salonId, { employeeId, status: 'approved' }),
     listAbsences(db, salonId, { employeeId }),
     dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, bounds.monthStart, bounds.monthEnd]).catch(() => []),
+    dbAll(
+      db,
+      `SELECT leave_id, recall_date
+         FROM employee_leave_recalls
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND status = 'active'
+          AND recall_date BETWEEN ? AND ?`,
+      [salonId, employeeId, bounds.monthStart, bounds.monthEnd]
+    ).catch(() => []),
     resolveEmployeeShiftsBatch(
       db,
       salonId,
@@ -309,6 +345,12 @@ async function buildCanonicalAttendanceSummary(
     ),
   ]);
 
+  const recalledLeaveDates = new Set(
+    (activeRecallRows || []).map(
+      (row) =>
+        `${cleanText(row.leave_id)}|${cleanText(row.recall_date)}`
+    )
+  );
   const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= bounds.monthStart && cleanText(row.date_key) <= bounds.monthEnd);
   const punchRecordCount = periodAttendance.filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase())).length;
   const paidFullDayLeaveDates = new Set();
@@ -323,6 +365,9 @@ async function buildCanonicalAttendanceSummary(
         : cleanText(leave.end_date);
     if (!from || !to || from > to) continue;
     for (const dateKey of payrollDateKeys(from, to)) {
+      if (!payrollLeaveCoversDate(leave, dateKey, recalledLeaveDates)) {
+        continue;
+      }
       if (payrollLeaveIsUnpaid(leave)) approvedAbsenceDays += 1;
       else {
         approvedLeaveDays += 1;
@@ -405,7 +450,7 @@ async function buildCanonicalAttendanceSummary(
 
       if (paidFullDayLeaveDates.has(dateKey)) continue;
 
-      const fullUnpaidLeave = (leaveRows || []).some((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsUnpaid(row) && !payrollLeaveIsPartial(row));
+      const fullUnpaidLeave = (leaveRows || []).some((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsUnpaid(row) && !payrollLeaveIsPartial(row));
       const recordedAbsenceUnit = (absenceRows || [])
         .filter((row) => cleanText(row.date_key) === dateKey)
         .reduce((total, row) => Math.max(total, payrollAbsenceUnit(row.absence_type)), 0);
@@ -421,7 +466,7 @@ async function buildCanonicalAttendanceSummary(
         absentDays += 1;
         const permission = payrollPermissionMinutesForDate(permissionRows, dateKey);
         totalPermissionRequestedMinutes += permission.paid + permission.unpaid;
-        const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
+        const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
           .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
         const cover = Math.min(scheduledMinutes, permission.paid + partialPaidMinutes);
         totalPermissionCoveredMinutes += cover;
@@ -452,9 +497,9 @@ async function buildCanonicalAttendanceSummary(
       const rawMissing = Math.max(0, scheduledMinutes - workedMinutes);
       const permission = payrollPermissionMinutesForDate(permissionRows, dateKey);
       totalPermissionRequestedMinutes += permission.paid + permission.unpaid;
-      const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
+      const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
         .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
-      const partialUnpaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && payrollLeaveIsUnpaid(row))
+      const partialUnpaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsPartial(row) && payrollLeaveIsUnpaid(row))
         .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
       if (partialUnpaidMinutes > 0) absenceDeductionOverlapHours += Math.min(scheduledHours, partialUnpaidMinutes / 60);
       const covered = Math.min(rawMissing, permission.paid + partialPaidMinutes);
