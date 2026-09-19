@@ -2450,3 +2450,34 @@
     box-shadow: 0 -10px 24px rgb(5 8 13 / 10%);
   }
 }
+
+
+/* Punch actions are a direct modal-body child so they cannot disappear below a tall grid. */
+.dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body > .attendance-punch-editor-actions-v2 {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: var(--dsv2-space-4);
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body {
+    padding-bottom: 0;
+  }
+
+  .dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body > .emp-attendance-edit-form-v2 {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body > .attendance-punch-editor-actions-v2 {
+    position: sticky;
+    bottom: 0;
+    inset-block-end: 0;
+    margin: var(--dsv2-space-4) calc(var(--dsv2-space-4) * -1) 0;
+    width: calc(100% + (var(--dsv2-space-4) * 2));
+  }
+}
