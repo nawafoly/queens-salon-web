@@ -97,6 +97,11 @@ test("employee completion only requires material confirmation when recipe lines 
   assert.match(repo, /status = 'confirmed'/);
   assert.match(
     repo,
+    /if \(toStatus === 'confirmed' \|\| toStatus === 'completed'\)[\s\S]*assertBookingAcknowledged/
+  );
+  assert.match(repo, /core_booking:staff_acknowledgement_required/);
+  assert.match(
+    repo,
     /if \(toStatus === 'completed'\)[\s\S]*assertBookingCompletionReady/
   );
 });
@@ -121,7 +126,9 @@ test("employee booking workspace follows receive-confirm-materials-complete sequ
   assert.match(ui, /updateBookingStatus\("confirmed"\)/);
   assert.match(ui, /updateBookingStatus\("completed"\)/);
   assert.match(ui, /selectedBookingPending\.length === 0/);
+  assert.match(ui, /selectedBooking\?\.staffAck === true/);
   assert.match(ui, /bookingExecutionReady/);
+  assert.match(ui, /copy\.stepReceipt/);
   assert.match(ui, /employee-booking-steps/);
   assert.match(ui, /employee-booking-services/);
   assert.match(ui, /employee-booking-materials/);
