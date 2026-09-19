@@ -34,8 +34,6 @@ import type {
   CoreScheduleException,
   CoreShiftAssignment,
   CoreShiftChangePreview,
-  CoreShiftPayrollAdjustment,
-  CoreShiftPayrollPeriodLock,
   CoreShiftTemplate,
 } from "../../types/hrCoreApi";
 
@@ -494,8 +492,6 @@ export default function ShiftControlSection({
   const [templates, setTemplates] = useState<CoreShiftTemplate[]>([]);
   const [assignments, setAssignments] = useState<CoreShiftAssignment[]>([]);
   const [exceptions, setExceptions] = useState<CoreScheduleException[]>([]);
-  const [locks, setLocks] = useState<CoreShiftPayrollPeriodLock[]>([]);
-  const [adjustments, setAdjustments] = useState<CoreShiftPayrollAdjustment[]>([]);
   const [resolvedDate, setResolvedDate] = useState(todayKey());
   const [resolvedShift, setResolvedShift] = useState<CoreResolvedShift | null>(null);
   const [preview, setPreview] = useState<CoreShiftChangePreview | null>(null);
@@ -555,8 +551,6 @@ export default function ShiftControlSection({
       setTemplates([]);
       setAssignments([]);
       setExceptions([]);
-      setLocks([]);
-      setAdjustments([]);
       setResolvedShift(null);
       setError("لا توجد هوية Core صالحة لهذه الموظفة.");
       return;
@@ -564,12 +558,10 @@ export default function ShiftControlSection({
     setLoading(true);
     setError("");
     try {
-      const [templateRows, assignmentGroups, exceptionGroups, lockRows, adjustmentGroups, resolvedBatch] = await Promise.all([
+      const [templateRows, assignmentGroups, exceptionGroups, resolvedBatch] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
         Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }))),
         Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }))),
-        CoreHrService.listShiftPayrollPeriodLocks(),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftPayrollAdjustments({ employeeId: id }))),
         CoreHrService.resolveEmployeeShiftsRange({
           employeeIds: shiftEmployeeIds,
           dateFrom: resolvedDate,
@@ -584,8 +576,6 @@ export default function ShiftControlSection({
       setTemplates(templateRows);
       setAssignments(mergeById(assignmentGroups));
       setExceptions(mergeById(exceptionGroups));
-      setLocks(lockRows);
-      setAdjustments(mergeById(adjustmentGroups));
       setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
 
       const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || templateRows[0]?.id || "";
