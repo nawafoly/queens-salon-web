@@ -2295,7 +2295,8 @@ async function dispatch(ctx, route, method, body, query, env) {
                 employeeId: ctx.employeeId || "",
                 employeeUid: ctx.identity?.uid || "",
               },
-          permissionActor
+          permissionActor,
+          { externalAttendanceDb: env.ATTENDANCE_DB || null }
         );
       }
       break;
@@ -2303,23 +2304,58 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "permission:approve":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
-      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "approved" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+      return decidePermissionRequest(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, status: "approved" },
+        { ...actorInfo, employeeId: ctx.employeeId || "" },
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permission:reject":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
-      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "rejected" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+      return decidePermissionRequest(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, status: "rejected" },
+        { ...actorInfo, employeeId: ctx.employeeId || "" },
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permission:cancel":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
-      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "cancelled" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+      return decidePermissionRequest(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, status: "cancelled" },
+        { ...actorInfo, employeeId: ctx.employeeId || "" },
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permission:out":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
-      return markPermissionOut(db, ctx.salonId, route.id, body, { ...actorInfo, employeeId: ctx.employeeId || "" });
+      return markPermissionOut(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        { ...actorInfo, employeeId: ctx.employeeId || "" },
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permission:return":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
-      return markPermissionReturned(db, ctx.salonId, route.id, body, { ...actorInfo, employeeId: ctx.employeeId || "" });
+      return markPermissionReturned(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        { ...actorInfo, employeeId: ctx.employeeId || "" },
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "permission:payroll-summary":
       requireRole(ctx.role, PAYROLL_MANAGEMENT_ROLES);
