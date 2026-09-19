@@ -40,12 +40,18 @@ export function calculateAttendanceLatePresentation(input = {}) {
   const compensationWindowOpen = input.compensationWindowOpen === true;
   const hasCheckOut = input.hasCheckOut === true;
 
+  const insideLateGrace =
+    lateGraceMinutes > 0 &&
+    policy.actualLateMinutes > 0 &&
+    policy.actualLateMinutes <= lateGraceMinutes;
+
+  // Grace is an attendance-classification allowance, not free paid time.
+  // An arrival inside grace is never labelled as lateness. If those minutes
+  // are not made up by checkout, they remain missing hours only.
   const pendingCompensationMinutes =
     compensationWindowOpen &&
     !hasCheckOut &&
-    lateGraceMinutes > 0 &&
-    policy.actualLateMinutes > 0 &&
-    policy.actualLateMinutes <= lateGraceMinutes
+    insideLateGrace
       ? policy.actualLateMinutes
       : 0;
 
@@ -54,7 +60,7 @@ export function calculateAttendanceLatePresentation(input = {}) {
     lateGraceMinutes,
     pendingCompensationMinutes,
     displayLateMinutes:
-      pendingCompensationMinutes > 0
+      insideLateGrace
         ? 0
         : policy.uncompensatedLateMinutes,
   };
