@@ -603,7 +603,7 @@ export default function ShiftControlSection({
       setExceptions(mergeById(exceptionGroups));
       setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
 
-      const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || templateRows[0]?.id || "";
+      const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || "";
       setAssignmentForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
       setExceptionForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
     } catch (err) {
@@ -669,7 +669,12 @@ export default function ShiftControlSection({
       });
       setPreview(result);
       setPreviewKind("assignment");
+      setError("");
       return result;
+    } catch (err) {
+      console.warn("shift assignment preview failed", err);
+      setError("تعذر فحص تأثير تعيين الشفت من Core. لم يتم تنفيذ أي تغيير.");
+      throw err;
     } finally {
       setPreviewing(false);
     }
@@ -701,14 +706,23 @@ export default function ShiftControlSection({
       });
       setPreview(result);
       setPreviewKind("exception");
+      setError("");
       return result;
+    } catch (err) {
+      console.warn("shift exception preview failed", err);
+      setError("تعذر فحص تأثير الاستثناء من Core. لم يتم تنفيذ أي تغيير.");
+      throw err;
     } finally {
       setPreviewing(false);
     }
   };
 
   const previewAllowsSave = (result: CoreShiftChangePreview | null) => {
-    const lockedCount = readNumber(result?.lockedPeriodsCount ?? result?.locked_periods_count);
+    if (!result) {
+      setError("تعذر إكمال فحص تأثير التغيير؛ لم يتم الحفظ.");
+      return false;
+    }
+    const lockedCount = readNumber(result.lockedPeriodsCount ?? result.locked_periods_count);
     if (lockedCount > 0 && !allowLockedPeriodAdjustment) {
       setError("يوجد فترة رواتب مقفلة. فعّل خيار تسجيل تسوية بعد الإقفال قبل الحفظ.");
       return false;
@@ -781,7 +795,6 @@ export default function ShiftControlSection({
       setTemplateForm(emptyTemplateForm());
       setPreview(null);
       setPreviewKind(null);
-    setPreviewKind(null);
       setMessage("تم حفظ قالب الشفت.");
       await load();
     } catch (err) {
@@ -837,7 +850,7 @@ export default function ShiftControlSection({
   const startNewAssignment = () => {
     setAssignmentForm((current) => ({
       ...emptyAssignmentForm(),
-      shiftTemplateId: current.shiftTemplateId || selectedTemplate?.id || activeTemplates[0]?.id || templates[0]?.id || "",
+      shiftTemplateId: current.shiftTemplateId || (selectedTemplate && boolish(selectedTemplate.active) ? selectedTemplate.id : "") || activeTemplates[0]?.id || "",
     }));
     setPreview(null);
     setPreviewKind(null);
@@ -912,7 +925,6 @@ export default function ShiftControlSection({
       await CoreHrService.cancelShiftAssignment(assignment.id, "إلغاء من مساحة الموظفة V2", { allowLockedPeriodAdjustment });
       setPreview(null);
       setPreviewKind(null);
-    setPreviewKind(null);
       setMessage("تم إلغاء تعيين الشفت.");
       await load();
     } catch (err) {
@@ -951,7 +963,6 @@ export default function ShiftControlSection({
       });
       setPreview(null);
       setPreviewKind(null);
-    setPreviewKind(null);
       setMessage("تم إنهاء الشفت.");
       await load();
     } catch (err) {
@@ -1039,7 +1050,6 @@ export default function ShiftControlSection({
       );
       setPreview(null);
       setPreviewKind(null);
-    setPreviewKind(null);
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {
@@ -1275,7 +1285,7 @@ export default function ShiftControlSection({
             />
           ) : null}
           <div className="dsv2-cluster">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment()} disabled={!canManage || saving || previewing || !assignmentForm.shiftTemplateId}>{previewing && previewKind !== "exception" ? "جاري الفحص..." : "فحص قبل الحفظ"}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment().catch(() => undefined)} disabled={!canManage || saving || previewing || !assignmentForm.shiftTemplateId}>{previewing && previewKind !== "exception" ? "جاري الفحص..." : "فحص قبل الحفظ"}</button>
             {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={startNewAssignment} disabled={saving}>إلغاء التعديل</button> : null}
             <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? "حفظ تعديل الشفت" : "تعيين الشفت"}</button>
           </div>
@@ -1424,7 +1434,7 @@ export default function ShiftControlSection({
               />
             ) : null}
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException()} disabled={!canManage || saving || previewing}>{previewing && previewKind !== "assignment" ? "جاري الفحص..." : "فحص الاستثناء"}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException().catch(() => undefined)} disabled={!canManage || saving || previewing}>{previewing && previewKind !== "assignment" ? "جاري الفحص..." : "فحص الاستثناء"}</button>
               <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void createException()} disabled={!canManage || saving}>حفظ الاستثناء</button>
             </div>
           </WorkspaceCardV2>
