@@ -2321,3 +2321,34 @@
     width: 100%;
   }
 }
+
+
+/* Attendance punch editor: mobile usability */
+@media (max-width: 767.98px) {
+  .dashboard-v2 .emp-attendance-edit-form-v2 {
+    padding-bottom: 8px;
+  }
+
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 {
+    gap: 8px;
+  }
+
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-native-bridge-v2,
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-time-v2,
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-time-v2__input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-time-v2__input {
+    min-height: 48px;
+    font-size: 16px;
+    direction: ltr;
+    text-align: right;
+  }
+
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-btn {
+    width: 100%;
+    min-height: 40px;
+  }
+}
