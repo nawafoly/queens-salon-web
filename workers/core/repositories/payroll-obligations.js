@@ -1073,12 +1073,32 @@ export async function canonicalizePayrollObligationDeductions(db, salonId, data,
   };
 }
 
-export async function payrollObligationPaidStatements(db, salonId, entry, paidAt = nowIso()) {
+export async function payrollObligationPaidStatements(
+  db,
+  salonId,
+  entry,
+  paidAt = nowIso(),
+  options = {}
+) {
   await assertPayrollObligationSnapshotCurrent(db, salonId, entry);
   const items = obligationItemsFromEntry(entry);
   if (!items.length) return [];
-  const installmentIds = Array.from(new Set(items.map((item) => cleanText(item.installmentId ?? item.installment_id ?? item.sourceRef ?? item.source_ref)).filter(Boolean)));
+  const installmentIds = Array.from(
+    new Set(
+      items
+        .map((item) =>
+          cleanText(
+            item.installmentId ??
+              item.installment_id ??
+              item.sourceRef ??
+              item.source_ref
+          )
+        )
+        .filter(Boolean)
+    )
+  );
   if (!installmentIds.length) return [];
+
   const placeholders = installmentIds.map(() => '?').join(',');
   const rows = await dbAll(
     db,
@@ -1089,52 +1109,128 @@ export async function payrollObligationPaidStatements(db, salonId, entry, paidAt
       WHERE i.salon_id = ? AND i.id IN (${placeholders})`,
     [salonId, ...installmentIds]
   );
-  if (rows.length !== installmentIds.length) throw new AppError(409, 'core_payroll:obligation_installment_missing');
-  const snapshotTotal = payrollObligationDeductionTotal(items);
-  const canonicalTotal = rows.reduce((sum, row) => sum + money(row.amount_halalas), 0);
-  if (snapshotTotal !== canonicalTotal) throw new AppError(409, 'core_payroll:obligation_deduction_mismatch');
-  for (const row of rows) {
-    if (cleanText(row.status) !== 'scheduled') throw new AppError(409, 'core_payroll:obligation_installment_not_scheduled');
-    if (cleanText(row.employee_id) !== cleanText(entry.employee_id)) throw new AppError(409, 'core_payroll:obligation_employee_mismatch');
-    if (cleanText(row.target_payroll_month) !== cleanText(entry.payroll_month)) throw new AppError(409, 'core_payroll:obligation_month_mismatch');
+  if (rows.length !== installmentIds.length) {
+    throw new AppError(
+      409,
+      'core_payroll:obligation_installment_missing'
+    );
   }
+
+  const snapshotTotal = payrollObligationDeductionTotal(items);
+  const canonicalTotal = rows.reduce(
+    (sum, row) => sum + money(row.amount_halalas),
+    0
+  );
+  if (snapshotTotal !== canonicalTotal) {
+    throw new AppError(
+      409,
+      'core_payroll:obligation_deduction_mismatch'
+    );
+  }
+
+  for (const row of rows) {
+    if (cleanText(row.status) !== 'scheduled') {
+      throw new AppError(
+        409,
+        'core_payroll:obligation_installment_not_scheduled'
+      );
+    }
+    if (cleanText(row.employee_id) !== cleanText(entry.employee_id)) {
+      throw new AppError(
+        409,
+        'core_payroll:obligation_employee_mismatch'
+      );
+    }
+    if (
+      cleanText(row.target_payroll_month) !==
+      cleanText(entry.payroll_month)
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:obligation_month_mismatch'
+      );
+    }
+  }
+
+  const requirePayrollPaid = options.requirePayrollPaid === true;
+  const payrollPaidGuard = requirePayrollPaid
+    ? ` AND EXISTS (
+          SELECT 1
+            FROM payroll_entries pe
+           WHERE pe.salon_id = ?
+             AND pe.id = ?
+             AND pe.status = 'paid'
+        )`
+    : '';
 
   const byObligation = new Map();
   for (const row of rows) {
-    byObligation.set(row.obligation_id, (byObligation.get(row.obligation_id) || 0) + money(row.amount_halalas));
+    byObligation.set(
+      row.obligation_id,
+      (byObligation.get(row.obligation_id) || 0) +
+        money(row.amount_halalas)
+    );
   }
+
   const statements = rows.map((row) => ({
     sql: `UPDATE employee_payroll_obligation_installments
-             SET status = 'applied', applied_payroll_entry_id = ?, applied_at = ?, updated_at = ?
-           WHERE salon_id = ? AND id = ? AND status = 'scheduled'`,
-    params: [entry.id, paidAt, paidAt, salonId, row.id],
+             SET status = 'applied',
+                 applied_payroll_entry_id = ?,
+                 applied_at = ?,
+                 updated_at = ?
+           WHERE salon_id = ?
+             AND id = ?
+             AND status = 'scheduled'${payrollPaidGuard}`,
+    params: [
+      entry.id,
+      paidAt,
+      paidAt,
+      salonId,
+      row.id,
+      ...(requirePayrollPaid ? [salonId, entry.id] : []),
+    ],
   }));
+
   for (const [obligationId, amountHalalas] of byObligation.entries()) {
     statements.push({
       sql: `UPDATE employee_payroll_obligations
-               SET remaining_amount_halalas = MAX(0, remaining_amount_halalas - ?),
+               SET remaining_amount_halalas =
+                     MAX(0, remaining_amount_halalas - ?),
                    status = CASE
-                     WHEN remaining_amount_halalas <= ? THEN 'settled'
+                     WHEN remaining_amount_halalas <= ?
+                       THEN 'settled'
                      ELSE 'partially_settled'
                    END,
                    updated_at = ?
-             WHERE salon_id = ? AND id = ?`,
-      params: [amountHalalas, amountHalalas, paidAt, salonId, obligationId],
+             WHERE salon_id = ?
+               AND id = ?${payrollPaidGuard}`,
+      params: [
+        amountHalalas,
+        amountHalalas,
+        paidAt,
+        salonId,
+        obligationId,
+        ...(requirePayrollPaid ? [salonId, entry.id] : []),
+      ],
     });
   }
+
   return statements;
 }
-
 
 export async function payrollObligationPaymentReversalStatements(
   db,
   salonId,
   entry,
-  reversedAt = nowIso()
+  reversedAt = nowIso(),
+  options = {}
 ) {
   const payrollEntryId = cleanText(entry?.id);
   if (!payrollEntryId) {
-    throw new AppError(400, 'core_payroll:payment_reversal_entry_required');
+    throw new AppError(
+      400,
+      'core_payroll:payment_reversal_entry_required'
+    );
   }
 
   const rows = await dbAll(
@@ -1163,19 +1259,43 @@ export async function payrollObligationPaymentReversalStatements(
 
   for (const row of rows) {
     if (cleanText(row.employee_id) !== cleanText(entry.employee_id)) {
-      throw new AppError(409, 'core_payroll:payment_reversal_obligation_employee_mismatch');
+      throw new AppError(
+        409,
+        'core_payroll:payment_reversal_obligation_employee_mismatch'
+      );
     }
     if (cleanText(row.obligation_status) === 'cancelled') {
-      throw new AppError(409, 'core_payroll:payment_reversal_obligation_cancelled');
+      throw new AppError(
+        409,
+        'core_payroll:payment_reversal_obligation_cancelled'
+      );
     }
   }
 
+  const requirePayrollApproved =
+    options.requirePayrollApproved === true;
+  const payrollApprovedGuard = requirePayrollApproved
+    ? ` AND EXISTS (
+          SELECT 1
+            FROM payroll_entries pe
+           WHERE pe.salon_id = ?
+             AND pe.id = ?
+             AND pe.status = 'approved'
+        )`
+    : '';
+
   const byObligation = new Map();
+  const installmentIdsByObligation = new Map();
   for (const row of rows) {
     byObligation.set(
       row.obligation_id,
-      (byObligation.get(row.obligation_id) || 0) + money(row.amount_halalas)
+      (byObligation.get(row.obligation_id) || 0) +
+        money(row.amount_halalas)
     );
+    const ids =
+      installmentIdsByObligation.get(row.obligation_id) || [];
+    ids.push(row.id);
+    installmentIdsByObligation.set(row.obligation_id, ids);
   }
 
   const statements = rows.map((row) => ({
@@ -1187,30 +1307,65 @@ export async function payrollObligationPaymentReversalStatements(
            WHERE salon_id = ?
              AND id = ?
              AND status = 'applied'
-             AND applied_payroll_entry_id = ?`,
-    params: [reversedAt, salonId, row.id, payrollEntryId],
+             AND applied_payroll_entry_id = ?${payrollApprovedGuard}`,
+    params: [
+      reversedAt,
+      salonId,
+      row.id,
+      payrollEntryId,
+      ...(requirePayrollApproved
+        ? [salonId, payrollEntryId]
+        : []),
+    ],
   }));
 
   for (const [obligationId, amountHalalas] of byObligation.entries()) {
+    const installmentIds =
+      installmentIdsByObligation.get(obligationId) || [];
+    const placeholders = installmentIds.map(() => '?').join(',');
+
     statements.push({
       sql: `UPDATE employee_payroll_obligations
                SET remaining_amount_halalas =
-                     MIN(original_amount_halalas, remaining_amount_halalas + ?),
+                     MIN(
+                       original_amount_halalas,
+                       remaining_amount_halalas + ?
+                     ),
                    status = CASE
-                     WHEN remaining_amount_halalas + ? >= original_amount_halalas
+                     WHEN remaining_amount_halalas + ? >=
+                          original_amount_halalas
                        THEN 'scheduled'
                      ELSE 'partially_settled'
                    END,
                    updated_at = ?
              WHERE salon_id = ?
                AND id = ?
-               AND status <> 'cancelled'`,
+               AND status <> 'cancelled'
+               AND COALESCE(updated_at, '') <> ?
+               AND EXISTS (
+                 SELECT 1
+                   FROM employee_payroll_obligation_installments i
+                  WHERE i.salon_id = ?
+                    AND i.obligation_id = ?
+                    AND i.id IN (${placeholders})
+                    AND i.status = 'scheduled'
+                    AND i.applied_payroll_entry_id IS NULL
+                    AND i.updated_at = ?
+               )${payrollApprovedGuard}`,
       params: [
         amountHalalas,
         amountHalalas,
         reversedAt,
         salonId,
         obligationId,
+        reversedAt,
+        salonId,
+        obligationId,
+        ...installmentIds,
+        reversedAt,
+        ...(requirePayrollApproved
+          ? [salonId, payrollEntryId]
+          : []),
       ],
     });
   }
