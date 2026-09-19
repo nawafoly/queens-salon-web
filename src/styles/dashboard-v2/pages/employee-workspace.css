@@ -2380,3 +2380,39 @@
     min-height: 46px;
   }
 }
+
+
+/* Attendance punch editor mobile: body owns scrolling, footer is always reserved. */
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-modal.attendance-punch-editor-modal-v2 {
+    height: 92dvh;
+    max-height: 92dvh;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .dashboard-v2 .dsv2-modal.attendance-punch-editor-modal-v2 > .dsv2-dialog__body {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .dashboard-v2 .dsv2-modal.attendance-punch-editor-modal-v2 > .dsv2-dialog__foot {
+    position: relative;
+    inset: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-height: 78px;
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
+
+  .dashboard-v2 .dsv2-modal.attendance-punch-editor-modal-v2 > .dsv2-dialog__foot .dsv2-btn {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+}
