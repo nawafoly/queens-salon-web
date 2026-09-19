@@ -3639,6 +3639,13 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
                       AND advance_id = ?
                       AND payroll_month = ?
                       AND status = 'scheduled'
+                 )
+                 AND EXISTS (
+                   SELECT 1
+                     FROM payroll_entries pe
+                    WHERE pe.salon_id = ?
+                      AND pe.id = ?
+                      AND pe.status = 'paid'
                  )`,
         params: [
           amount,
@@ -3650,6 +3657,8 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
           salonId,
           installment.advance_id,
           existing.payroll_month,
+          salonId,
+          existing.id,
         ],
       },
       {
@@ -3661,7 +3670,14 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
                WHERE salon_id = ?
                  AND advance_id = ?
                  AND payroll_month = ?
-                 AND status = 'scheduled'`,
+                 AND status = 'scheduled'
+                 AND EXISTS (
+                   SELECT 1
+                     FROM payroll_entries pe
+                    WHERE pe.salon_id = ?
+                      AND pe.id = ?
+                      AND pe.status = 'paid'
+                 )`,
         params: [
           existing.id,
           now,
@@ -3669,6 +3685,8 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
           salonId,
           installment.advance_id,
           existing.payroll_month,
+          salonId,
+          existing.id,
         ],
       }
     );
