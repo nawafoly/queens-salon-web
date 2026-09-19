@@ -1252,9 +1252,7 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
 }
 
 async function executeAttendanceCorrection(db, salonId, row, payload, actor, input, options = {}) {
-  const externalDb = options.externalAttendanceDb || null;
-  if (externalDb) {
-    const reconcileEffect = async (effect) => {
+  const reconcileEffect = async (effect) => {
     const {
       reconcileLockedPayrollImpactForAttendanceCorrection,
     } = await import('./payroll.js');
@@ -1278,7 +1276,9 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
     };
   };
 
-  const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
+  const externalDb = options.externalAttendanceDb || null;
+  if (externalDb) {
+    const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
     const externalTarget = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
     const shouldUseExternal = payload.correctionType.startsWith('add_') || Boolean(externalTarget);
     if (shouldUseExternal) {
