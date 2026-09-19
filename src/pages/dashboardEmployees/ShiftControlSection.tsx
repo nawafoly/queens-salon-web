@@ -628,7 +628,7 @@ export default function ShiftControlSection({
   }, [isVisible, resolvedDate, shiftEmployeeIds]);
 
   const refreshAll = useCallback(async () => {
-    await refreshAll();
+    await load();
     await loadResolvedShift();
   }, [load, loadResolvedShift]);
 
