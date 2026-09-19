@@ -99,3 +99,34 @@ test("payroll compliance ignores stale employee/month loads before replacing sta
     "stale-load guard must run before compliance arrays are replaced"
   );
 });
+
+
+test("reopening approved payroll restores inbound carryovers and blocks consumed downstream carryovers", () => {
+  const repo = read("workers/core/repositories/payroll.js");
+  const start = repo.indexOf("export async function reopenPayrollEntry");
+  const end = repo.indexOf("\nexport async function markPayrollEntryPaid", start);
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const fn = repo.slice(start, end);
+
+  assert.match(
+    fn,
+    /source_payroll_entry_id = \?[\s\S]*status = 'applied'[\s\S]*reopen_has_applied_downstream_carryover/
+  );
+  assert.match(
+    fn,
+    /SET status = 'pending',[\s\S]*target_payroll_entry_id = NULL,[\s\S]*applied_at = NULL/
+  );
+  assert.match(
+    fn,
+    /source_payroll_entry_id = \?[\s\S]*status = 'pending'/
+  );
+  assert.match(
+    fn,
+    /SET status = 'void',[\s\S]*amount_halalas = 0/
+  );
+  assert.match(fn, /await dbBatch\(db, statements\)/);
+  assert.match(fn, /reopen_concurrent_mutation/);
+});
