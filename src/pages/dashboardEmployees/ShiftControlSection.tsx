@@ -1203,6 +1203,23 @@ export default function ShiftControlSection({
       {error ? <WorkspaceNoticeV2 title="تعذر تنفيذ العملية" description={error} tone="danger" /> : null}
       {message ? <WorkspaceNoticeV2 title="تم التحديث" description={message} tone="success" /> : null}
 
+      {canManage ? (
+        <WorkspaceCardV2
+          title="تغييرات تمس فترة رواتب مقفلة"
+          description="اترك هذا الخيار مغلقًا في الوضع الطبيعي. فعّله فقط عندما تريد السماح لـ Core بحفظ التغيير مع إنشاء تسوية بعد الإقفال بدل تعديل الراتب المقفل بصمت."
+        >
+          <WorkspaceSwitchV2
+            checked={allowLockedPeriodAdjustment}
+            onChange={setAllowLockedPeriodAdjustment}
+            disabled={saving}
+            label="السماح بتسجيل تسوية بعد إقفال الرواتب"
+            description={allowLockedPeriodAdjustment
+              ? "مفعّل: إذا مسّ التغيير فترة مقفلة فسيُسجّل Core تسوية مستقلة للمراجعة."
+              : "غير مفعّل: أي تغيير يمس فترة مقفلة سيتم رفضه."}
+          />
+        </WorkspaceCardV2>
+      ) : null}
+
       <WorkspaceCardV2
         title="الشفت المطبق الآن"
         description="هذه هي المعلومة الأساسية: الشفت الذي سيُستخدم في الحضور والراتب لهذا اليوم."
