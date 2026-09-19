@@ -2481,3 +2481,15 @@
     width: calc(100% + (var(--dsv2-space-4) * 2));
   }
 }
+
+
+/* Attendance editor: reserve clear space above sticky actions for the final field hint. */
+@media (max-width: 767.98px) {
+  .dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body > .emp-attendance-edit-form-v2 {
+    padding-bottom: 76px;
+  }
+
+  .dashboard-v2 .attendance-punch-editor-modal-v2 > .dsv2-dialog__body > .attendance-punch-editor-actions-v2 {
+    margin-top: -60px;
+  }
+}
