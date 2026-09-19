@@ -2466,8 +2466,40 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
   switch (row.request_type) {
     case 'attendance_correction': return executeAttendanceCorrection(db, salonId, row, payload, actor, input, options);
     case 'permission': {
-      const id = await createPermissionEffect(db, salonId, row, payload, actor);
-      return { sourceType: 'employee_permission_request', sourceId: id, before: null, after: { status: 'approved' } };
+      const id = await createPermissionEffect(
+        db,
+        salonId,
+        row,
+        payload,
+        actor
+      );
+      const {
+        reconcileLockedPayrollImpactForEmployeeDate,
+      } = await import('./payroll.js');
+      const payrollReconciliation =
+        await reconcileLockedPayrollImpactForEmployeeDate(
+          db,
+          salonId,
+          {
+            employeeId: row.employee_id,
+            date: payload.date,
+            sourceType: 'permission',
+            sourceId: id,
+            reason:
+              `Employee permission ${row.request_number} executed for ${payload.date}.`,
+          },
+          actor,
+          options
+        );
+      return {
+        sourceType: 'employee_permission_request',
+        sourceId: id,
+        before: null,
+        after: {
+          status: 'approved',
+          payrollReconciliation,
+        },
+      };
     }
     case 'leave': {
       const effect = await createLeaveEffect(db, salonId, row, payload, actor, options);
@@ -2539,7 +2571,8 @@ async function cancelExecutedLeaveRequest(db, salonId, row, input, actor, option
         status: 'cancelled',
         financialEffect: permission.financial_effect,
       },
-      actor
+      actor,
+      options
     );
   }
 
