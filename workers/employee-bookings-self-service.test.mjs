@@ -92,3 +92,12 @@ test("employee cannot complete a booking before service execution and material c
     /if \(toStatus === 'completed'\)[\s\S]*assertBookingCompletionReady/
   );
 });
+
+
+test("staff completion workflow accepts canonical booked status", () => {
+  const repo = read("workers/core/repositories/booking-staff-portal.js");
+  assert.match(
+    repo,
+    /\['booked', new Set\(\['completed', 'cancelled'\]\)\]/
+  );
+});
