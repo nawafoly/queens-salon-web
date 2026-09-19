@@ -18,26 +18,54 @@ import {
 } from "../../services/employeeNotificationsCore";
 import { CoreHrService } from "../../services/CoreHrService";
 import type { CorePayrollEntry } from "../../types/hrCoreApi";
+import { useEmployeePortalLanguage, type EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import { cleanText, type HrSession } from "./shared";
 import {
   getMyEmployeeRequestPayrollImpact,
   type EmployeeRequestPayrollImpact,
 } from "../../services/employeeRequests";
 
-function money(value: unknown) {
+function money(value: unknown, language: EmployeePortalLanguage) {
   const amount = Number(value || 0);
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
+  return new Intl.NumberFormat(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
-function monthLabel(monthKey: string) {
+function monthLabel(monthKey: string, language: EmployeePortalLanguage) {
   const normalized = cleanText(monthKey);
   if (!/^\d{4}-\d{2}$/.test(normalized)) return normalized || "—";
   const [year, month] = normalized.split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { year: "numeric", month: "long" }).format(new Date(year, month - 1, 1));
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA" : "ar-SA-u-nu-latn", { year: "numeric", month: "long" }).format(new Date(year, month - 1, 1));
 }
+
+const payrollCopy = {
+  ar: {
+    title: "الراتب", noSession: "لم يتم العثور على جلسة موظف مسجلة.", loadError: "تعذر تحميل سجلات الرواتب.",
+    heading: "تفاصيلك المالية", intro: "راجع الراتب الأساسي، الإضافي، الخصومات وصافي كل شهر بطريقة واضحة ومنفصلة.", refresh: "تحديث السجلات",
+    latestNet: "صافي آخر راتب", noRecord: "لا يوجد سجل حتى الآن", baseSalary: "الراتب الأساسي", baseNote: "القيمة الأساسية المسجلة",
+    overtime: "الساعات الإضافية", overtimeNote: "قيمة الأوفر تايم في آخر سجل", deductions: "إجمالي الخصومات", deductionsNote: "يشمل GOSI والغياب وبقية الخصومات المحفوظة في المسير",
+    financialHistory: "السجل المالي", payrollRuns: "مسيرات الرواتب", historyNote: "كل سجل يمثل شهرًا مستقلًا وتفاصيله المالية المعتمدة.", month: "عرض الشهر", allMonths: "كل الأشهر",
+    base: "الأساسي", extra: "الإضافي", gosiDeduction: "خصم GOSI", employerGosi: "مساهمة المنشأة GOSI", employerNote: "لا تخصم من صافي الراتب", net: "الصافي",
+    download: "تحميل المستند", noDocument: "لا يوجد مستند مرفق", noPayroll: "لا توجد سجلات رواتب", noPayrollNote: "سيظهر السجل هنا بعد اعتماد راتب الشهر من الإدارة.",
+    approvedRequests: "الطلبات المالية المعتمدة", overtimeAdvance: "الأوفرتايم والصرف المعجل", requestNote: "تظهر هنا الآثار التشغيلية التي تم تنفيذها من مركز طلبات الموظفات.",
+    approvedOvertime: "أوفر تايم معتمد", advanceBalance: "رصيد السلف المتبقي", scheduledInstallments: "أقساط مجدولة", overtimeRecords: "سجلات الأوفرتايم",
+    approvedMinutes: "دقيقة معتمدة", noOvertime: "لا يوجد أوفرتايم معتمد من الطلبات.", advances: "الصرف المعجل والأقساط", remaining: "المتبقي", installment: "قسط", noAdvances: "لا توجد سلف منفذة.", hours: "س", minutes: "د", currency: "ر.س",
+  },
+  en: {
+    title: "Pay", noSession: "No employee session found.", loadError: "Could not load payroll records.",
+    heading: "Your pay details", intro: "Review your base pay, overtime, deductions and net pay for each month.", refresh: "Refresh records",
+    latestNet: "Latest net pay", noRecord: "No record yet", baseSalary: "Base salary", baseNote: "Recorded base amount",
+    overtime: "Overtime", overtimeNote: "Overtime pay in the latest record", deductions: "Total deductions", deductionsNote: "Includes GOSI, absence and other deductions recorded in payroll",
+    financialHistory: "Pay history", payrollRuns: "Payroll records", historyNote: "Each record shows one month's approved pay details.", month: "Show month", allMonths: "All months",
+    base: "Base", extra: "Overtime pay", gosiDeduction: "GOSI deduction", employerGosi: "Employer GOSI contribution", employerNote: "Not deducted from net pay", net: "Net pay",
+    download: "Download document", noDocument: "No document attached", noPayroll: "No payroll records", noPayrollNote: "A record will appear here once management approves the month's pay.",
+    approvedRequests: "Approved financial requests", overtimeAdvance: "Overtime and salary advances", requestNote: "This shows the processed effects of employee requests.",
+    approvedOvertime: "Approved overtime", advanceBalance: "Remaining advance balance", scheduledInstallments: "Scheduled installments", overtimeRecords: "Overtime records",
+    approvedMinutes: "approved minutes", noOvertime: "No overtime approved through requests.", advances: "Salary advances and installments", remaining: "Remaining", installment: "installments", noAdvances: "No processed advances.", hours: "h", minutes: "m", currency: "SAR",
+  },
+} as const;
 
 type EmployeePayrollView = {
   id: string;
@@ -86,6 +114,8 @@ type Props = {
 };
 
 export default function EmployeePayrollPage({ session, onPortalChange }: Props) {
+  const { language } = useEmployeePortalLanguage();
+  const copy = payrollCopy[language];
   const [records, setRecords] = useState<EmployeePayrollView[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -106,11 +136,11 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
       setRecords(rows.map(mapCorePayrollRecord).slice(0, 24));
       setRequestImpact(impact);
     } catch (error) {
-      setMessage(cleanText((error as any)?.message || "تعذر تحميل سجلات الرواتب."));
+      setMessage(language === "ar" ? cleanText((error as Error)?.message || copy.loadError) : copy.loadError);
     } finally {
       setLoading(false);
     }
-  }, [session.uid]);
+  }, [session.uid, language, copy.loadError]);
 
   useEffect(() => {
     void load();
@@ -153,24 +183,24 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
 
   if (!session.user) {
     return (
-      <div className="employee-workspace employee-workspace--empty">
-        <h2>الراتب</h2>
-        <p>لم يتم العثور على جلسة موظف مسجلة.</p>
+      <div className="employee-workspace employee-workspace--empty" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
+        <h2>{copy.title}</h2>
+        <p>{copy.noSession}</p>
       </div>
     );
   }
 
   return (
-    <div className="employee-workspace employee-payroll-workspace" dir="rtl">
+    <div className="employee-workspace employee-payroll-workspace" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="employee-workspace-hero employee-workspace-hero--payroll">
         <div className="employee-workspace-hero__copy">
-          <span className="employee-workspace-kicker">الراتب</span>
-          <h1>تفاصيلك المالية</h1>
-          <p>راجع الراتب الأساسي، الإضافي، الخصومات وصافي كل شهر بطريقة واضحة ومنفصلة.</p>
+          <span className="employee-workspace-kicker">{copy.title}</span>
+          <h1>{copy.heading}</h1>
+          <p>{copy.intro}</p>
         </div>
         <button className="employee-secondary-action employee-secondary-action--light" type="button" onClick={() => void load()} disabled={loading}>
           <FontAwesomeIcon icon={faArrowRotateRight} spin={loading} />
-          تحديث السجلات
+          {copy.refresh}
         </button>
       </section>
 
@@ -178,27 +208,27 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
 
       <section className="employee-kpi-grid employee-kpi-grid--four">
         <article className="employee-kpi-card is-accent">
-          <span>صافي آخر راتب</span>
-          <strong>{latest ? `${money(latestNet)} ر.س` : "—"}</strong>
-          <small>{latest ? monthLabel(latest.monthKey) : "لا يوجد سجل حتى الآن"}</small>
+          <span>{copy.latestNet}</span>
+          <strong>{latest ? `${money(latestNet, language)} ${copy.currency}` : "—"}</strong>
+          <small>{latest ? monthLabel(latest.monthKey, language) : copy.noRecord}</small>
           <FontAwesomeIcon icon={faWallet} />
         </article>
         <article className="employee-kpi-card">
-          <span>الراتب الأساسي</span>
-          <strong>{money(latest?.baseSalary ?? currentBaseSalary)} ر.س</strong>
-          <small>القيمة الأساسية المسجلة</small>
+          <span>{copy.baseSalary}</span>
+          <strong>{money(latest?.baseSalary ?? currentBaseSalary, language)} {copy.currency}</strong>
+          <small>{copy.baseNote}</small>
           <FontAwesomeIcon icon={faMoneyBillWave} />
         </article>
         <article className="employee-kpi-card is-success">
-          <span>الساعات الإضافية</span>
-          <strong>{money(latestOvertime)} ر.س</strong>
-          <small>قيمة الأوفر تايم في آخر سجل</small>
+          <span>{copy.overtime}</span>
+          <strong>{money(latestOvertime, language)} {copy.currency}</strong>
+          <small>{copy.overtimeNote}</small>
           <FontAwesomeIcon icon={faArrowTrendUp} />
         </article>
         <article className="employee-kpi-card is-danger">
-          <span>إجمالي الخصومات</span>
-          <strong>{money(latestDeductions)} ر.س</strong>
-          <small>يشمل GOSI والغياب وبقية الخصومات المحفوظة في المسير</small>
+          <span>{copy.deductions}</span>
+          <strong>{money(latestDeductions, language)} {copy.currency}</strong>
+          <small>{copy.deductionsNote}</small>
           <FontAwesomeIcon icon={faCircleMinus} />
         </article>
       </section>
@@ -206,15 +236,15 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
       <section className="employee-workspace-panel">
         <div className="employee-workspace-panel__head">
           <div>
-            <span className="employee-workspace-kicker">السجل المالي</span>
-            <h2>مسيرات الرواتب</h2>
-            <p>كل سجل يمثل شهرًا مستقلًا وتفاصيله المالية المعتمدة.</p>
+            <span className="employee-workspace-kicker">{copy.financialHistory}</span>
+            <h2>{copy.payrollRuns}</h2>
+            <p>{copy.historyNote}</p>
           </div>
           <label className="employee-month-filter">
-            <span>عرض الشهر</span>
+            <span>{copy.month}</span>
             <DashboardSelectBridgeV2 value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
-              <option value="all">كل الأشهر</option>
-              {monthOptions.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+              <option value="all">{copy.allMonths}</option>
+              {monthOptions.map((month) => <option key={month} value={month}>{monthLabel(month, language)}</option>)}
             </DashboardSelectBridgeV2>
           </label>
         </div>
@@ -228,28 +258,28 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
                 <div className="employee-payroll-card__month">
                   <span><FontAwesomeIcon icon={faFileInvoiceDollar} /></span>
                   <div>
-                    <strong>{monthLabel(row.monthKey)}</strong>
+                    <strong>{monthLabel(row.monthKey, language)}</strong>
                     <small>{row.monthKey}</small>
                   </div>
                 </div>
 
                 <div className="employee-payroll-card__figures">
-                  <div><span>الأساسي</span><strong>{money(row.baseSalary)} ر.س</strong></div>
-                  <div className="is-success"><span>الإضافي</span><strong>+ {money(row.overtime)} ر.س</strong></div>
-                  <div className="is-danger"><span>الخصومات</span><strong>- {money(deductions)} ر.س</strong></div>
-                  <div className="is-danger"><span>خصم GOSI</span><strong>- {money(row.insurance)} ر.س</strong></div>
-                  <div><span>مساهمة المنشأة GOSI</span><strong>{money(row.employerGosi)} ر.س</strong><small>لا تخصم من صافي الراتب</small></div>
-                  <div className="is-net"><span>الصافي</span><strong>{money(net)} ر.س</strong></div>
+                  <div><span>{copy.base}</span><strong>{money(row.baseSalary, language)} {copy.currency}</strong></div>
+                  <div className="is-success"><span>{copy.extra}</span><strong>+ {money(row.overtime, language)} {copy.currency}</strong></div>
+                  <div className="is-danger"><span>{copy.deductions}</span><strong>- {money(deductions, language)} {copy.currency}</strong></div>
+                  <div className="is-danger"><span>{copy.gosiDeduction}</span><strong>- {money(row.insurance, language)} {copy.currency}</strong></div>
+                  <div><span>{copy.employerGosi}</span><strong>{money(row.employerGosi, language)} {copy.currency}</strong><small>{copy.employerNote}</small></div>
+                  <div className="is-net"><span>{copy.net}</span><strong>{money(net, language)} {copy.currency}</strong></div>
                 </div>
 
                 <div className="employee-payroll-card__actions">
                   {row.attachedDocumentUrl ? (
                     <a href={row.attachedDocumentUrl} target="_blank" rel="noreferrer" className="employee-secondary-action">
                       <FontAwesomeIcon icon={faDownload} />
-                      {row.attachedDocumentName || "تحميل المستند"}
+                      {row.attachedDocumentName || copy.download}
                     </a>
                   ) : (
-                    <span className="employee-payroll-no-document"><FontAwesomeIcon icon={faReceipt} /> لا يوجد مستند مرفق</span>
+                    <span className="employee-payroll-no-document"><FontAwesomeIcon icon={faReceipt} /> {copy.noDocument}</span>
                   )}
                 </div>
               </article>
@@ -259,8 +289,8 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
           {!loading && !filtered.length ? (
             <div className="employee-empty-state">
               <FontAwesomeIcon icon={faFileInvoiceDollar} />
-              <h3>لا توجد سجلات رواتب</h3>
-              <p>سيظهر السجل هنا بعد اعتماد راتب الشهر من الإدارة.</p>
+              <h3>{copy.noPayroll}</h3>
+              <p>{copy.noPayrollNote}</p>
             </div>
           ) : null}
         </div>
@@ -269,47 +299,47 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
       <section className="employee-workspace-panel employee-request-payroll-impact">
         <div className="employee-workspace-panel__head">
           <div>
-            <span className="employee-workspace-kicker">الطلبات المالية المعتمدة</span>
-            <h2>الأوفرتايم والصرف المعجل</h2>
-            <p>تظهر هنا الآثار التشغيلية التي تم تنفيذها من مركز طلبات الموظفات.</p>
+            <span className="employee-workspace-kicker">{copy.approvedRequests}</span>
+            <h2>{copy.overtimeAdvance}</h2>
+            <p>{copy.requestNote}</p>
           </div>
         </div>
 
         <div className="employee-request-payroll-summary">
           <article>
-            <span>أوفر تايم معتمد</span>
-            <strong>{Math.floor(approvedOvertimeMinutes / 60)} س {approvedOvertimeMinutes % 60} د</strong>
+            <span>{copy.approvedOvertime}</span>
+            <strong>{Math.floor(approvedOvertimeMinutes / 60)} {copy.hours} {approvedOvertimeMinutes % 60} {copy.minutes}</strong>
           </article>
           <article>
-            <span>رصيد السلف المتبقي</span>
-            <strong>{money(activeAdvanceHalalas / 100)} ر.س</strong>
+            <span>{copy.advanceBalance}</span>
+            <strong>{money(activeAdvanceHalalas / 100, language)} {copy.currency}</strong>
           </article>
           <article>
-            <span>أقساط مجدولة</span>
+            <span>{copy.scheduledInstallments}</span>
             <strong>{requestImpact.installments.filter((item) => item.status === "scheduled").length}</strong>
           </article>
         </div>
 
         <div className="employee-request-payroll-lists">
           <div>
-            <h3>سجلات الأوفرتايم</h3>
+            <h3>{copy.overtimeRecords}</h3>
             {requestImpact.overtime.length ? requestImpact.overtime.map((item) => (
               <article key={item.id}>
                 <strong>{item.date_key}</strong>
-                <span>{item.approved_minutes} دقيقة معتمدة</span>
+                <span>{item.approved_minutes} {copy.approvedMinutes}</span>
                 <small>{item.task_summary || item.reason || item.payout_status}</small>
               </article>
-            )) : <p>لا يوجد أوفرتايم معتمد من الطلبات.</p>}
+            )) : <p>{copy.noOvertime}</p>}
           </div>
           <div>
-            <h3>الصرف المعجل والأقساط</h3>
+            <h3>{copy.advances}</h3>
             {requestImpact.advances.length ? requestImpact.advances.map((advance) => (
               <article key={advance.id}>
-                <strong>{money(Number(advance.approved_halalas || 0) / 100)} ر.س</strong>
-                <span>المتبقي {money(Number(advance.remaining_halalas || 0) / 100)} ر.س</span>
-                <small>{advance.installment_count} قسط • {advance.payment_status}</small>
+                <strong>{money(Number(advance.approved_halalas || 0) / 100, language)} {copy.currency}</strong>
+                <span>{copy.remaining} {money(Number(advance.remaining_halalas || 0) / 100, language)} {copy.currency}</span>
+                <small>{advance.installment_count} {copy.installment} • {language === "en" ? advance.payment_status.replaceAll("_", " ") : advance.payment_status}</small>
               </article>
-            )) : <p>لا توجد سلف منفذة.</p>}
+            )) : <p>{copy.noAdvances}</p>}
           </div>
         </div>
       </section>
