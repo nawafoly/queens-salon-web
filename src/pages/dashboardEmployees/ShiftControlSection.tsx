@@ -1316,7 +1316,7 @@ export default function ShiftControlSection({
             />
             <WorkspaceSwitchV2 checked={templateForm.active} onChange={(value) => setTemplateForm((current) => ({ ...current, active: value }))} disabled={!canManage || saving} label="القالب نشط" />
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setTemplateForm(emptyTemplateForm())} disabled={saving}>تفريغ</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => { setTemplateForm(emptyTemplateForm()); setError(""); setMessage(""); setPreview(null); }} disabled={saving}>تفريغ</button>
               <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveTemplate()} disabled={!canManage || saving}>حفظ القالب</button>
             </div>
           </WorkspaceCardV2>
@@ -1332,7 +1332,16 @@ export default function ShiftControlSection({
                   id="shift-exception-type"
                   options={[{ value: "shift", label: "شفت بديل" }, { value: "custom", label: "وقت مخصص" }, { value: "off", label: "راحة" }]}
                   value={exceptionForm.exceptionType}
-                  onChange={(value) => setExceptionForm((current) => ({ ...current, exceptionType: value === "custom" ? "custom" : value === "off" ? "off" : "shift" }))}
+                  onChange={(value) => setExceptionForm((current) => {
+                    const exceptionType: ScheduleExceptionType = value === "custom" ? "custom" : value === "off" ? "off" : "shift";
+                    return {
+                      ...current,
+                      exceptionType,
+                      shiftTemplateId: exceptionType === "shift" ? current.shiftTemplateId : "",
+                      startTime: exceptionType === "custom" ? current.startTime : "10:00",
+                      endTime: exceptionType === "custom" ? current.endTime : "18:00",
+                    };
+                  })}
                   disabled={!canManage || saving}
                 />
               </DashboardFieldV2>
