@@ -523,3 +523,28 @@ export type CorePayrollCarryoverAdjustment = Record<string, unknown> & {
   createdAt: string;
   updatedAt: string;
 };
+
+export type CorePayrollHistoricalSettlement = Record<string, unknown> & {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  sourcePayrollMonth: string;
+  sourcePayrollEntryId: string;
+  sourceSnapshotId: string;
+  direction: "addition" | "deduction";
+  amountHalalas: number;
+  settlementMethod: "cash" | "bank_transfer" | "other" | string;
+  settlementDate: string;
+  reference?: string | null;
+  reason: string;
+  note?: string | null;
+  status: "recorded" | "void" | string;
+  operationId: string;
+  recordedByUid?: string | null;
+  recordedByName?: string | null;
+  voidedAt?: string | null;
+  voidedByUid?: string | null;
+  voidReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
