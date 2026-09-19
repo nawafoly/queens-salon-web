@@ -2181,51 +2181,489 @@ export async function addPurchaseOrderLine(db, salonId, data, actor = {}) {
 }
 
 export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
-  const lineId = requiredId(preferred(data, 'lineId', 'line_id'), 'lineId');
-  const qty = Number(preferred(data, 'quantity', 'qty'));
-  if (!Number.isFinite(qty) || qty <= 0) {
-    throw new AppError(400, 'core_validation:invalid_quantity', 'Receive quantity must be greater than zero');
-  }
-  const line = await dbFirst(db, `SELECT * FROM inventory_purchase_order_lines WHERE salon_id = ? AND id = ?`, [salonId, lineId]);
-  if (!line) throw new AppError(404, 'inventory:po_line_not_found', 'Purchase order line was not found');
-  const remaining = Number(line.qty_ordered) - Number(line.qty_received || 0);
-  if (qty > remaining + 1e-9) {
-    throw new AppError(409, 'inventory:po_over_receive', 'Cannot receive more than ordered quantity');
-  }
-  const po = await dbFirst(
-    db,
-    'SELECT supplier_id FROM inventory_purchase_orders WHERE salon_id = ? AND id = ? LIMIT 1',
-    [salonId, line.purchase_order_id]
+  const lineId = requiredId(
+    preferred(data, 'lineId', 'line_id'),
+    'lineId'
   );
-  const movement = await receivePurchase(db, salonId, {
-    itemId: line.item_id,
-    quantity: qty,
-    unitCostHalalas: line.unit_cost_halalas,
-    supplierId: po?.supplier_id || null,
-    operationId: preferred(data, 'operationId', 'operation_id') || generatedId('invop'),
-    note: `PO ${line.purchase_order_id}`,
-  }, actor);
-  const now = nowIso();
-  const received = Number(line.qty_received || 0) + qty;
-  await dbRun(
-    db,
-    `UPDATE inventory_purchase_order_lines SET qty_received = ?, updated_at = ? WHERE id = ? AND salon_id = ?`,
-    [received, now, lineId, salonId]
+  const quantity = Number(
+    preferred(data, 'quantity', 'qty')
   );
-  const open = await dbFirst(
-    db,
-    `SELECT COUNT(*) AS open_lines FROM inventory_purchase_order_lines
-      WHERE salon_id = ? AND purchase_order_id = ? AND qty_received < qty_ordered`,
-    [salonId, line.purchase_order_id]
-  );
-  await dbRun(
-    db,
-    `UPDATE inventory_purchase_orders SET status = ?, updated_at = ? WHERE id = ? AND salon_id = ?`,
-    [Number(open?.open_lines || 0) > 0 ? 'PARTIAL' : 'RECEIVED', now, line.purchase_order_id, salonId]
-  );
-  return { lineId, received, movement };
-}
 
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new AppError(
+      400,
+      'core_validation:invalid_quantity',
+      'Receive quantity must be greater than zero'
+    );
+  }
+
+  const line = await dbFirst(
+    db,
+    `SELECT
+       pol.*,
+       po.supplier_id,
+       po.status AS purchase_order_status,
+       i.unit AS item_unit,
+       i.is_active AS item_active
+     FROM inventory_purchase_order_lines pol
+     JOIN inventory_purchase_orders po
+       ON po.salon_id = pol.salon_id
+      AND po.id = pol.purchase_order_id
+     JOIN inventory_items i
+       ON i.salon_id = pol.salon_id
+      AND i.id = pol.item_id
+     WHERE pol.salon_id = ?
+       AND pol.id = ?
+     LIMIT 1`,
+    [salonId, lineId]
+  );
+
+  if (!line) {
+    throw new AppError(
+      404,
+      'inventory:po_line_not_found',
+      'Purchase order line was not found'
+    );
+  }
+
+  if (Number(line.item_active) !== 1) {
+    throw new AppError(
+      409,
+      'inventory:item_inactive',
+      'Cannot receive stock for an inactive inventory item'
+    );
+  }
+
+  if (
+    cleanText(line.purchase_order_status).toUpperCase() ===
+    'CANCELLED'
+  ) {
+    throw new AppError(
+      409,
+      'inventory:po_cancelled',
+      'Cannot receive a cancelled purchase order'
+    );
+  }
+
+  const location = await ensureDefaultLocation(
+    db,
+    salonId
+  );
+
+  if (Number(location.active) !== 1) {
+    throw new AppError(
+      409,
+      'inventory:location_inactive',
+      'Default inventory location is inactive'
+    );
+  }
+
+  const operationId =
+    optionalText(
+      preferred(
+        data,
+        'operationId',
+        'operation_id'
+      )
+    ) ||
+    generatedId('invop');
+
+  const lineKey = `po:${lineId}`;
+
+  const existing = await dbAll(
+    db,
+    `SELECT
+       id,
+       item_id,
+       location_id,
+       movement_type,
+       quantity_delta,
+       unit_cost_halalas,
+       balance_after,
+       supplier_id,
+       line_key,
+       created_at
+     FROM inventory_stock_movements
+     WHERE salon_id = ?
+       AND source_type = 'PURCHASE'
+       AND source_id = ?
+     ORDER BY created_at, id`,
+    [salonId, operationId]
+  );
+
+  if (existing.length) {
+    const movement = existing.find(
+      (row) =>
+        cleanText(row.movement_type) ===
+        'PURCHASE_RECEIPT_IN'
+    );
+
+    const matchesRequest =
+      existing.length === 1 &&
+      movement &&
+      cleanText(movement.item_id) ===
+        cleanText(line.item_id) &&
+      cleanText(movement.location_id) ===
+        cleanText(location.id) &&
+      cleanText(movement.line_key) ===
+        lineKey &&
+      Math.abs(
+        Number(movement.quantity_delta) -
+          quantity
+      ) < 1e-9;
+
+    if (!matchesRequest) {
+      throw new AppError(
+        409,
+        'inventory:operation_id_reused',
+        'Purchase receipt operation id was already used for another write'
+      );
+    }
+
+    const currentLine = await dbFirst(
+      db,
+      `SELECT qty_received
+       FROM inventory_purchase_order_lines
+       WHERE salon_id = ? AND id = ?
+       LIMIT 1`,
+      [salonId, lineId]
+    );
+
+    return {
+      lineId,
+      received: Number(
+        currentLine?.qty_received || 0
+      ),
+      movement: {
+        movementId: movement.id,
+        balanceAfter: Number(
+          movement.balance_after
+        ),
+        createdAt: movement.created_at,
+      },
+      operationId,
+      replayed: true,
+    };
+  }
+
+  const remaining =
+    Number(line.qty_ordered) -
+    Number(line.qty_received || 0);
+
+  if (quantity > remaining + 1e-9) {
+    throw new AppError(
+      409,
+      'inventory:po_over_receive',
+      'Cannot receive more than ordered quantity'
+    );
+  }
+
+  const now = nowIso();
+  const who = actorFields(actor);
+  const movementId = generatedId('invmov');
+  const supplierId =
+    optionalText(line.supplier_id) || null;
+  const unitCostHalalas =
+    line.unit_cost_halalas == null
+      ? null
+      : integer(
+          line.unit_cost_halalas,
+          'unitCostHalalas',
+          { min: 0 }
+        );
+
+  const statements = [
+    {
+      sql: `INSERT INTO inventory_stock_levels
+        (id, salon_id, item_id, location_id, qty_on_hand, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?)
+       ON CONFLICT(salon_id, item_id, location_id) DO NOTHING`,
+      params: [
+        generatedId('invlvl'),
+        salonId,
+        line.item_id,
+        location.id,
+        now,
+      ],
+    },
+    {
+      sql: `INSERT INTO inventory_stock_movements (
+        id, salon_id, item_id, location_id, movement_type,
+        quantity_delta, unit, unit_cost_halalas, balance_after,
+        source_type, source_id, line_key, operation_id,
+        employee_id, supplier_id, booking_id, booking_item_id, service_id,
+        reverses_movement_id, note,
+        created_by_uid, created_by_name, created_at
+      )
+      SELECT
+        ?, ?, pol.item_id, ?, 'PURCHASE_RECEIPT_IN',
+        ?, ?, ?, sl.qty_on_hand + ?,
+        'PURCHASE', ?, ?, ?,
+        NULL, po.supplier_id, NULL, NULL, NULL,
+        NULL, ?,
+        ?, ?, ?
+      FROM inventory_purchase_order_lines pol
+      JOIN inventory_purchase_orders po
+        ON po.salon_id = pol.salon_id
+       AND po.id = pol.purchase_order_id
+      JOIN inventory_stock_levels sl
+        ON sl.salon_id = pol.salon_id
+       AND sl.item_id = pol.item_id
+       AND sl.location_id = ?
+      WHERE pol.salon_id = ?
+        AND pol.id = ?
+        AND UPPER(COALESCE(po.status, '')) <> 'CANCELLED'
+        AND pol.qty_received + ? <= pol.qty_ordered + 0.000000001`,
+      params: [
+        movementId,
+        salonId,
+        location.id,
+        quantity,
+        line.item_unit,
+        unitCostHalalas,
+        quantity,
+        operationId,
+        lineKey,
+        operationId,
+        `PO ${line.purchase_order_id} receipt`,
+        who.uid,
+        who.name,
+        now,
+        location.id,
+        salonId,
+        lineId,
+        quantity,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_stock_levels
+                SET qty_on_hand =
+                      qty_on_hand + ?,
+                    updated_at = ?
+              WHERE salon_id = ?
+                AND item_id = ?
+                AND location_id = ?
+                AND EXISTS (
+                  SELECT 1
+                    FROM inventory_stock_movements
+                   WHERE salon_id = ?
+                     AND id = ?
+                )`,
+      params: [
+        quantity,
+        now,
+        salonId,
+        line.item_id,
+        location.id,
+        salonId,
+        movementId,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_purchase_order_lines
+                SET qty_received =
+                      qty_received + ?,
+                    updated_at = ?
+              WHERE salon_id = ?
+                AND id = ?
+                AND qty_received + ?
+                    <= qty_ordered + 0.000000001
+                AND EXISTS (
+                  SELECT 1
+                    FROM inventory_stock_movements
+                   WHERE salon_id = ?
+                     AND id = ?
+                )`,
+      params: [
+        quantity,
+        now,
+        salonId,
+        lineId,
+        quantity,
+        salonId,
+        movementId,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_purchase_orders
+                SET status = CASE
+                      WHEN EXISTS (
+                        SELECT 1
+                          FROM inventory_purchase_order_lines open_line
+                         WHERE open_line.salon_id =
+                               inventory_purchase_orders.salon_id
+                           AND open_line.purchase_order_id =
+                               inventory_purchase_orders.id
+                           AND open_line.qty_received + 0.000000001
+                               < open_line.qty_ordered
+                      )
+                      THEN 'PARTIAL'
+                      ELSE 'RECEIVED'
+                    END,
+                    updated_at = ?
+              WHERE salon_id = ?
+                AND id = ?
+                AND EXISTS (
+                  SELECT 1
+                    FROM inventory_stock_movements
+                   WHERE salon_id = ?
+                     AND id = ?
+                )`,
+      params: [
+        now,
+        salonId,
+        line.purchase_order_id,
+        salonId,
+        movementId,
+      ],
+    },
+  ];
+
+  let results;
+
+  try {
+    results = await dbBatch(
+      db,
+      statements
+    );
+  } catch (error) {
+    const replay = await dbAll(
+      db,
+      `SELECT
+         id,
+         item_id,
+         location_id,
+         movement_type,
+         quantity_delta,
+         balance_after,
+         line_key,
+         created_at
+       FROM inventory_stock_movements
+       WHERE salon_id = ?
+         AND source_type = 'PURCHASE'
+         AND source_id = ?`,
+      [salonId, operationId]
+    );
+
+    const movement = replay.find(
+      (row) =>
+        cleanText(row.movement_type) ===
+        'PURCHASE_RECEIPT_IN'
+    );
+
+    if (
+      replay.length === 1 &&
+      movement &&
+      cleanText(movement.item_id) ===
+        cleanText(line.item_id) &&
+      cleanText(movement.location_id) ===
+        cleanText(location.id) &&
+      cleanText(movement.line_key) ===
+        lineKey &&
+      Math.abs(
+        Number(movement.quantity_delta) -
+          quantity
+      ) < 1e-9
+    ) {
+      const currentLine = await dbFirst(
+        db,
+        `SELECT qty_received
+         FROM inventory_purchase_order_lines
+         WHERE salon_id = ? AND id = ?
+         LIMIT 1`,
+        [salonId, lineId]
+      );
+
+      return {
+        lineId,
+        received: Number(
+          currentLine?.qty_received || 0
+        ),
+        movement: {
+          movementId: movement.id,
+          balanceAfter: Number(
+            movement.balance_after
+          ),
+          createdAt: movement.created_at,
+        },
+        operationId,
+        replayed: true,
+      };
+    }
+
+    throw error;
+  }
+
+  const movementChanges = changes(
+    results?.[1]
+  );
+  const stockChanges = changes(
+    results?.[2]
+  );
+  const lineChanges = changes(
+    results?.[3]
+  );
+  const orderChanges = changes(
+    results?.[4]
+  );
+
+  if (movementChanges !== 1) {
+    throw new AppError(
+      409,
+      'inventory:po_over_receive',
+      'Purchase order line no longer has enough quantity remaining to receive'
+    );
+  }
+
+  if (
+    stockChanges !== 1 ||
+    lineChanges !== 1 ||
+    orderChanges !== 1
+  ) {
+    throw new AppError(
+      500,
+      'inventory:po_receive_write_incomplete',
+      'Purchase order receipt transaction returned an incomplete write result'
+    );
+  }
+
+  const [movement, updatedLine] =
+    await Promise.all([
+      dbFirst(
+        db,
+        `SELECT balance_after, created_at
+         FROM inventory_stock_movements
+         WHERE salon_id = ? AND id = ?
+         LIMIT 1`,
+        [salonId, movementId]
+      ),
+      dbFirst(
+        db,
+        `SELECT qty_received
+         FROM inventory_purchase_order_lines
+         WHERE salon_id = ? AND id = ?
+         LIMIT 1`,
+        [salonId, lineId]
+      ),
+    ]);
+
+  return {
+    lineId,
+    received: Number(
+      updatedLine?.qty_received || 0
+    ),
+    movement: {
+      movementId,
+      balanceAfter: Number(
+        movement?.balance_after || 0
+      ),
+      createdAt:
+        movement?.created_at || now,
+    },
+    operationId,
+    replayed: false,
+  };
+}
 
 export async function transferStock(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
