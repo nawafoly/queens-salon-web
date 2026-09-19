@@ -2889,7 +2889,19 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "inventory:consumption-confirm":
       if (method === "POST") {
         requirePermission(ctx, "inventory.consume.confirm");
-        return confirmServiceConsumption(db, ctx.salonId, body, actorInfo);
+        const confirmBody =
+          ctx.role === "staff"
+            ? {
+                ...body,
+                employeeId: ctx.employeeId,
+              }
+            : body;
+        return confirmServiceConsumption(
+          db,
+          ctx.salonId,
+          confirmBody,
+          actorInfo
+        );
       }
       break;
 
