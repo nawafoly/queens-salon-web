@@ -201,3 +201,34 @@ test("Guard: stock transfer is one atomic D1 batch with idempotent replay", () =
   assert.match(transfer, /inventory:operation_id_reused/);
   assert.match(transfer, /replayed: true/);
 });
+
+
+test("Guard: purchase-order receipt is atomic, guarded, and idempotent", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  const start = inv.indexOf("export async function receivePurchaseOrderLine");
+  const end = inv.indexOf("export async function transferStock", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const receive = inv.slice(start, end);
+
+  assert.match(receive, /const statements = \[/);
+  assert.match(receive, /results = await dbBatch\(\s*db,\s*statements\s*\)/);
+  assert.doesNotMatch(receive, /await receivePurchase\(/);
+  assert.match(receive, /PURCHASE_RECEIPT_IN/);
+  assert.match(receive, /qty_received \+ \?/);
+  assert.match(receive, /qty_ordered \+ 0\.000000001/);
+  assert.match(receive, /inventory:po_over_receive/);
+  assert.match(receive, /inventory:operation_id_reused/);
+  assert.match(receive, /replayed: true/);
+  assert.match(receive, /THEN 'PARTIAL'/);
+  assert.match(receive, /ELSE 'RECEIVED'/);
+});
+
+test("Guard: inventory ledger writes inherit the HTTP idempotency key", () => {
+  const worker = read("workers/core/index.js");
+  assert.match(worker, /"inventory:consumption-confirm"/);
+  assert.match(worker, /"inventory:purchase-order-receive"/);
+  assert.match(worker, /"inventory:transfer"/);
+  assert.match(worker, /request\.headers\.get\("Idempotency-Key"\)/);
+  assert.match(worker, /operationId: headerOperationId/);
+});
