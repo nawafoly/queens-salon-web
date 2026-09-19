@@ -1081,7 +1081,7 @@ export default function ShiftControlSection({
     setMessage("");
     try {
       const result = await previewException();
-      if (!previewAllowsSave(result)) return;
+      if (!previewAllowsSave(result, "exception")) return;
       await CoreHrService.createScheduleException({
         employeeId: canonicalShiftEmployeeId,
         dateFrom: exceptionForm.dateFrom,
