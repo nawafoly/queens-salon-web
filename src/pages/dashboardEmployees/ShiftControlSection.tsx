@@ -566,7 +566,7 @@ export default function ShiftControlSection({
           employeeIds: shiftEmployeeIds,
           dateFrom: resolvedDate,
           dateTo: resolvedDate,
-        }).catch(() => ({ rows: [] as CoreResolvedShift[] })),
+        }),
       ]);
 
       const mergeById = <T extends { id: string }>(groups: T[][]) => Array.from(
