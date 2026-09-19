@@ -2229,51 +2229,414 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
 
 export async function transferStock(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
-  const fromLocationId = requiredId(preferred(data, 'fromLocationId', 'from_location_id'), 'fromLocationId');
-  const toLocationId = requiredId(preferred(data, 'toLocationId', 'to_location_id'), 'toLocationId');
+  const fromLocationId = requiredId(
+    preferred(data, 'fromLocationId', 'from_location_id'),
+    'fromLocationId'
+  );
+  const toLocationId = requiredId(
+    preferred(data, 'toLocationId', 'to_location_id'),
+    'toLocationId'
+  );
+
   if (fromLocationId === toLocationId) {
-    throw new AppError(400, 'inventory:same_location', 'Transfer locations must be different');
+    throw new AppError(
+      400,
+      'inventory:same_location',
+      'Transfer locations must be different'
+    );
   }
+
   const quantity = Number(preferred(data, 'quantity', 'qty'));
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    throw new AppError(400, 'core_validation:invalid_quantity', 'Transfer quantity must be greater than zero');
+    throw new AppError(
+      400,
+      'core_validation:invalid_quantity',
+      'Transfer quantity must be greater than zero'
+    );
   }
+
   const item = await getItem(db, salonId, itemId);
   if (!item || Number(item.is_active) !== 1) {
-    throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
+    throw new AppError(
+      404,
+      'inventory:item_not_found',
+      'Inventory item was not found'
+    );
   }
-  const fromLoc = await dbFirst(db, 'SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, fromLocationId]);
-  const toLoc = await dbFirst(db, 'SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, toLocationId]);
+
+  const [fromLoc, toLoc] = await Promise.all([
+    dbFirst(
+      db,
+      'SELECT id, active FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1',
+      [salonId, fromLocationId]
+    ),
+    dbFirst(
+      db,
+      'SELECT id, active FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1',
+      [salonId, toLocationId]
+    ),
+  ]);
+
   if (!fromLoc || !toLoc) {
-    throw new AppError(404, 'inventory:location_not_found', 'Inventory location was not found');
+    throw new AppError(
+      404,
+      'inventory:location_not_found',
+      'Inventory location was not found'
+    );
   }
-  const fifo = await getFifoCostForQuantity(db, salonId, itemId, quantity);
-  const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
-  const outbound = await appendMovement(db, salonId, {
+
+  if (Number(fromLoc.active) !== 1 || Number(toLoc.active) !== 1) {
+    throw new AppError(
+      409,
+      'inventory:location_inactive',
+      'Stock cannot be transferred to or from an inactive location'
+    );
+  }
+
+  const operationId =
+    optionalText(preferred(data, 'operationId', 'operation_id')) ||
+    generatedId('invop');
+
+  const readExistingTransfer = () =>
+    dbAll(
+      db,
+      `SELECT
+         id,
+         movement_type,
+         location_id,
+         quantity_delta,
+         balance_after,
+         created_at,
+         line_key
+       FROM inventory_stock_movements
+       WHERE salon_id = ?
+         AND item_id = ?
+         AND source_type = 'TRANSFER'
+         AND source_id = ?
+       ORDER BY line_key`,
+      [salonId, itemId, operationId]
+    );
+
+  const existing = await readExistingTransfer();
+  if (existing.length) {
+    const outboundRow = existing.find(
+      (row) => cleanText(row.movement_type) === 'TRANSFER_OUT'
+    );
+    const inboundRow = existing.find(
+      (row) => cleanText(row.movement_type) === 'TRANSFER_IN'
+    );
+
+    const matchesRequest =
+      outboundRow &&
+      inboundRow &&
+      cleanText(outboundRow.location_id) === fromLocationId &&
+      cleanText(inboundRow.location_id) === toLocationId &&
+      Math.abs(Number(outboundRow.quantity_delta) + quantity) < 1e-9 &&
+      Math.abs(Number(inboundRow.quantity_delta) - quantity) < 1e-9;
+
+    if (!matchesRequest) {
+      throw new AppError(
+        409,
+        'inventory:operation_id_reused',
+        'Transfer operation id was already used for another transfer'
+      );
+    }
+
+    return {
+      outbound: {
+        movementId: outboundRow.id,
+        balanceAfter: Number(outboundRow.balance_after),
+        createdAt: outboundRow.created_at,
+      },
+      inbound: {
+        movementId: inboundRow.id,
+        balanceAfter: Number(inboundRow.balance_after),
+        createdAt: inboundRow.created_at,
+      },
+      operationId,
+      replayed: true,
+    };
+  }
+
+  const fifo = await getFifoCostForQuantity(
+    db,
+    salonId,
     itemId,
-    locationId: fromLocationId,
-    movementType: 'TRANSFER_OUT',
-    quantityDelta: -quantity,
-    unit: item.unit,
-    unitCostHalalas: fifo.unitCostHalalas,
-    sourceType: 'TRANSFER',
-    sourceId: operationId,
-    lineKey: itemId + ':out',
+    quantity
+  );
+  const unitCostHalalas = fifo.unitCostHalalas;
+  const now = nowIso();
+  const who = actorFields(actor);
+  const note = optionalText(data.note) || 'Stock transfer';
+  const outboundId = generatedId('invmov');
+  const inboundId = generatedId('invmov');
+
+  const statements = [
+    {
+      sql: `INSERT INTO inventory_stock_levels
+        (id, salon_id, item_id, location_id, qty_on_hand, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?)
+       ON CONFLICT(salon_id, item_id, location_id) DO NOTHING`,
+      params: [
+        generatedId('invlvl'),
+        salonId,
+        itemId,
+        fromLocationId,
+        now,
+      ],
+    },
+    {
+      sql: `INSERT INTO inventory_stock_levels
+        (id, salon_id, item_id, location_id, qty_on_hand, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?)
+       ON CONFLICT(salon_id, item_id, location_id) DO NOTHING`,
+      params: [
+        generatedId('invlvl'),
+        salonId,
+        itemId,
+        toLocationId,
+        now,
+      ],
+    },
+    {
+      sql: `INSERT INTO inventory_stock_movements (
+        id, salon_id, item_id, location_id, movement_type,
+        quantity_delta, unit, unit_cost_halalas, balance_after,
+        source_type, source_id, line_key, operation_id,
+        employee_id, supplier_id, booking_id, booking_item_id, service_id,
+        reverses_movement_id, note,
+        created_by_uid, created_by_name, created_at
+      )
+      SELECT
+        ?, ?, ?, ?, 'TRANSFER_OUT',
+        ?, ?, ?, sl.qty_on_hand - ?,
+        'TRANSFER', ?, ?, ?,
+        NULL, NULL, NULL, NULL, NULL,
+        NULL, ?,
+        ?, ?, ?
+      FROM inventory_stock_levels sl
+      WHERE sl.salon_id = ?
+        AND sl.item_id = ?
+        AND sl.location_id = ?
+        AND sl.qty_on_hand + 0.000000001 >= ?`,
+      params: [
+        outboundId,
+        salonId,
+        itemId,
+        fromLocationId,
+        -quantity,
+        item.unit,
+        unitCostHalalas,
+        quantity,
+        operationId,
+        itemId + ':out',
+        operationId,
+        note + ' | OUT',
+        who.uid,
+        who.name,
+        now,
+        salonId,
+        itemId,
+        fromLocationId,
+        quantity,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_stock_levels
+                SET qty_on_hand = qty_on_hand - ?,
+                    updated_at = ?
+              WHERE salon_id = ?
+                AND item_id = ?
+                AND location_id = ?
+                AND EXISTS (
+                  SELECT 1
+                    FROM inventory_stock_movements
+                   WHERE salon_id = ?
+                     AND id = ?
+                )`,
+      params: [
+        quantity,
+        now,
+        salonId,
+        itemId,
+        fromLocationId,
+        salonId,
+        outboundId,
+      ],
+    },
+    {
+      sql: `INSERT INTO inventory_stock_movements (
+        id, salon_id, item_id, location_id, movement_type,
+        quantity_delta, unit, unit_cost_halalas, balance_after,
+        source_type, source_id, line_key, operation_id,
+        employee_id, supplier_id, booking_id, booking_item_id, service_id,
+        reverses_movement_id, note,
+        created_by_uid, created_by_name, created_at
+      )
+      SELECT
+        ?, ?, ?, ?, 'TRANSFER_IN',
+        ?, ?, ?, sl.qty_on_hand + ?,
+        'TRANSFER', ?, ?, ?,
+        NULL, NULL, NULL, NULL, NULL,
+        NULL, ?,
+        ?, ?, ?
+      FROM inventory_stock_levels sl
+      WHERE sl.salon_id = ?
+        AND sl.item_id = ?
+        AND sl.location_id = ?
+        AND EXISTS (
+          SELECT 1
+            FROM inventory_stock_movements source_movement
+           WHERE source_movement.salon_id = ?
+             AND source_movement.id = ?
+             AND source_movement.movement_type = 'TRANSFER_OUT'
+        )`,
+      params: [
+        inboundId,
+        salonId,
+        itemId,
+        toLocationId,
+        quantity,
+        item.unit,
+        unitCostHalalas,
+        quantity,
+        operationId,
+        itemId + ':in',
+        operationId,
+        note + ' | IN',
+        who.uid,
+        who.name,
+        now,
+        salonId,
+        itemId,
+        toLocationId,
+        salonId,
+        outboundId,
+      ],
+    },
+    {
+      sql: `UPDATE inventory_stock_levels
+                SET qty_on_hand = qty_on_hand + ?,
+                    updated_at = ?
+              WHERE salon_id = ?
+                AND item_id = ?
+                AND location_id = ?
+                AND EXISTS (
+                  SELECT 1
+                    FROM inventory_stock_movements
+                   WHERE salon_id = ?
+                     AND id = ?
+                )`,
+      params: [
+        quantity,
+        now,
+        salonId,
+        itemId,
+        toLocationId,
+        salonId,
+        inboundId,
+      ],
+    },
+  ];
+
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    const replay = await readExistingTransfer();
+    const replayOut = replay.find(
+      (row) => cleanText(row.movement_type) === 'TRANSFER_OUT'
+    );
+    const replayIn = replay.find(
+      (row) => cleanText(row.movement_type) === 'TRANSFER_IN'
+    );
+
+    if (
+      replayOut &&
+      replayIn &&
+      cleanText(replayOut.location_id) === fromLocationId &&
+      cleanText(replayIn.location_id) === toLocationId &&
+      Math.abs(Number(replayOut.quantity_delta) + quantity) < 1e-9 &&
+      Math.abs(Number(replayIn.quantity_delta) - quantity) < 1e-9
+    ) {
+      return {
+        outbound: {
+          movementId: replayOut.id,
+          balanceAfter: Number(replayOut.balance_after),
+          createdAt: replayOut.created_at,
+        },
+        inbound: {
+          movementId: replayIn.id,
+          balanceAfter: Number(replayIn.balance_after),
+          createdAt: replayIn.created_at,
+        },
+        operationId,
+        replayed: true,
+      };
+    }
+
+    throw error;
+  }
+
+  const outboundChanges = changes(results?.[2]);
+  const sourceLevelChanges = changes(results?.[3]);
+  const inboundChanges = changes(results?.[4]);
+  const destinationLevelChanges = changes(results?.[5]);
+
+  if (outboundChanges !== 1) {
+    throw new AppError(
+      409,
+      'inventory:insufficient_stock',
+      'Insufficient stock for this transfer'
+    );
+  }
+
+  if (
+    sourceLevelChanges !== 1 ||
+    inboundChanges !== 1 ||
+    destinationLevelChanges !== 1
+  ) {
+    throw new AppError(
+      500,
+      'inventory:transfer_write_incomplete',
+      'Stock transfer transaction returned an incomplete write result'
+    );
+  }
+
+  return {
+    outbound: {
+      movementId: outboundId,
+      balanceAfter: Number(
+        (
+          await dbFirst(
+            db,
+            `SELECT balance_after
+               FROM inventory_stock_movements
+              WHERE salon_id = ? AND id = ?
+              LIMIT 1`,
+            [salonId, outboundId]
+          )
+        )?.balance_after
+      ),
+      createdAt: now,
+    },
+    inbound: {
+      movementId: inboundId,
+      balanceAfter: Number(
+        (
+          await dbFirst(
+            db,
+            `SELECT balance_after
+               FROM inventory_stock_movements
+              WHERE salon_id = ? AND id = ?
+              LIMIT 1`,
+            [salonId, inboundId]
+          )
+        )?.balance_after
+      ),
+      createdAt: now,
+    },
     operationId,
-    note: optionalText(data.note) || 'Stock transfer out',
-  }, actor);
-  const inbound = await appendMovement(db, salonId, {
-    itemId,
-    locationId: toLocationId,
-    movementType: 'TRANSFER_IN',
-    quantityDelta: quantity,
-    unit: item.unit,
-    unitCostHalalas: fifo.unitCostHalalas,
-    sourceType: 'TRANSFER',
-    sourceId: operationId,
-    lineKey: itemId + ':in',
-    operationId,
-    note: optionalText(data.note) || 'Stock transfer in',
-  }, actor);
-  return { outbound, inbound, operationId };
+    replayed: false,
+  };
 }
