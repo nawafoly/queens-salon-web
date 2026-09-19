@@ -393,7 +393,7 @@ function RequestForm({ type, employeeId, employeeName, language, onCreated, onCl
       }
       onCreated(request);
     } catch (cause) {
-      setError(language === "ar" ? employeeRequestErrorMessage(cause, String((cause as Error)?.message || "تعذر إرسال الطلب.")) : String((cause as Error)?.message || "Could not submit the request."));
+      setError(language === "ar" ? employeeRequestErrorMessage(cause, String((cause as Error)?.message || "تعذر إرسال الطلب.")) : "Could not submit the request.");
     } finally {
       setBusy(false);
     }

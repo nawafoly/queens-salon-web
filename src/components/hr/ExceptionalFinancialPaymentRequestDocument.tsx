@@ -24,20 +24,10 @@ type FormProps = {
 
 const choose = (language: EmployeePortalLanguage, ar: string, en: string) => language === "en" ? en : ar;
 
-function formatMoneyHalalas(value: unknown) {
-  const amount = Number(value || 0) / 100;
-  return `${amount.toLocaleString("ar-SA-u-nu-latn", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
-}
-
-function formatNumber(value: unknown) {
-  const number = Number(value || 0);
-  return number.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 });
-}
-
-function formatDateTime(value: unknown) {
+function formatDateTime(value: unknown, language: EmployeePortalLanguage) {
   const parsed = Date.parse(String(value || ""));
   if (!Number.isFinite(parsed)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA-u-ca-gregory" : "ar-SA-u-ca-gregory-nu-latn", {
     timeZone: "Asia/Riyadh",
     dateStyle: "medium",
     timeStyle: "short",
@@ -118,7 +108,7 @@ export function ExceptionalFinancialPaymentRequestFormFields({
             previewLoading
               ? choose(language, "جاري الحساب...", "Calculating...")
               : preview
-                ? formatMoneyHalalas(preview.calculatedAmountHalalas)
+                ? moneyLabel(preview.calculatedAmountHalalas)
                 : choose(language, "أدخل عدد الأيام", "Enter the number of days")
           }
         />
@@ -160,6 +150,7 @@ export function ExceptionalFinancialPaymentRequestFormFields({
         <SignatureCaptureField
           compact
           required
+          language={language}
           label={choose(language, "توقيع الموظفة", "Employee signature")}
           signerName={employeeName || choose(language, "الموظفة", "Employee")}
           value={String(form.employeeSignatureDataUrl || "")}
@@ -195,12 +186,11 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request, la
   const afterBalance = Number.isFinite(actualAfter) && execution ? actualAfter : plannedAfter;
   const managerSignature = String(decisionPayload.reviewerSignatureDataUrl || "");
   const employeeSignature = String(payload.employeeSignatureDataUrl || "");
-  const amount = formatMoneyHalalas(payload.calculatedAmountHalalas);
 
   return (
     <DocumentPage dir={isEnglish ? "ltr" : "rtl"} className="leave-doc financial-payment-request-print-root" labelledBy="financial-payment-request-document-title">
       <header className="leave-doc-header">
-        <div className="leave-doc-brand" aria-label="شعار ملكات">
+        <div className="leave-doc-brand" aria-label={text("شعار ملكات", "Malikat logo")}>
           <img src={DOCUMENT_BRANDING.printLogoSource} alt={text("شعار ملكات", "Malikat logo")} />
         </div>
         <h2 id="financial-payment-request-document-title">{text("طلب تعويض مالي بدل إجازة", "Leave cash compensation request")}</h2>
@@ -211,7 +201,7 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request, la
         <DocumentField label={text("الموظفة", "Employee")} value={employeeName} />
         <DocumentField label={text("رقم الموظفة", "Employee ID")} value={request.employee_id} />
         <DocumentField label={text("عدد أيام الإجازة المطلوب تعويضها", "Leave days to compensate")} value={`${numberValue(requestedDays)} ${text("يوم", "days")}`} />
-        <DocumentField label={text("تاريخ الطلب", "Request date")} value={formatDateTime(request.submitted_at)} />
+        <DocumentField label={text("تاريخ الطلب", "Request date")} value={formatDateTime(request.submitted_at, language)} />
         <DocumentField label={text("الراتب الأساسي وقت الطلب", "Base salary at request time")} value={moneyValue(payload.baseSalaryHalalas)} />
         <DocumentField label={text("قيمة اليوم", "Daily rate")} value={moneyValue(payload.dayRateHalalas)} />
         <DocumentField label={text("إجمالي التعويض", "Total compensation")} value={moneyValue(payload.calculatedAmountHalalas)} />
@@ -234,8 +224,8 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request, la
           <div className="leave-doc-signature-cell"><span>{text("اسم الموظفة", "Employee name")}</span><strong>{employeeName}</strong></div>
         <div className="leave-doc-signature-cell">
           <span>{text("توقيع الموظفة", "Employee signature")}</span>
-          {employeeSignature ? <img className="leave-doc-signature-image" src={employeeSignature} alt={`توقيع ${employeeName}`} /> : <strong>غير موقع</strong>}
-          <small>{formatDateTime(request.submitted_at)}</small>
+          {employeeSignature ? <img className="leave-doc-signature-image" src={employeeSignature} alt={`${text("توقيع", "Signature of")} ${employeeName}`} /> : <strong>{text("غير موقع", "Not signed")}</strong>}
+          <small>{formatDateTime(request.submitted_at, language)}</small>
         </div>
       </div>
 
@@ -243,7 +233,7 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request, la
         <DocumentFieldGrid>
           <DocumentField label={text("القرار", "Decision")} value={approved ? text("مع الموافقة", "Approved") : rejected ? text("مرفوض", "Rejected") : text("قيد المراجعة", "Under review")} />
           <DocumentField label={text("المسؤول", "Reviewer")} value={decision?.actor_name || request.assigned_to_name || "—"} />
-          <DocumentField label={text("تاريخ القرار", "Decision date")} value={decision ? formatDateTime(decision.created_at) : "—"} />
+          <DocumentField label={text("تاريخ القرار", "Decision date")} value={decision ? formatDateTime(decision.created_at, language) : "—"} />
           <DocumentField label={text("حالة الصرف", "Payment status")} value={request.status === "completed" ? text("تم إدراجه في المسير وخصم الرصيد", "Included in payroll and balance deducted") : text("لم يكتمل", "Not completed")} />
         </DocumentFieldGrid>
         <DocumentLongText label={text("ملاحظات / القرار", "Notes / decision")} value={request.rejection_reason || request.decision_note || decision?.note || "—"} />
@@ -251,7 +241,7 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request, la
           <div className="leave-doc-signature-cell"><span>{text("مرجع الصرف", "Payment reference")}</span><strong>{request.external_reference || String(effect.financial_reference || effect.financialReference || "—")}</strong></div>
           <div className="leave-doc-signature-cell">
             <span>{text("توقيع المراجع / المسؤول", "Reviewer signature")}</span>
-            {managerSignature ? <img className="leave-doc-signature-image" src={managerSignature} alt="توقيع المراجع" /> : <strong>—</strong>}
+            {managerSignature ? <img className="leave-doc-signature-image" src={managerSignature} alt={text("توقيع المراجع", "Reviewer signature")} /> : <strong>—</strong>}
           </div>
         </div>
       </DocumentSection>

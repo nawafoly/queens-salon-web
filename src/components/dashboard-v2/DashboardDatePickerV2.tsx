@@ -17,6 +17,7 @@ export type DashboardDatePickerV2Props = {
   min?: string;
   max?: string;
   placeholder?: string;
+  language?: "ar" | "en";
   disabled?: boolean;
   required?: boolean;
   clearable?: boolean;
@@ -25,17 +26,18 @@ export type DashboardDatePickerV2Props = {
   onChange?: (value: string) => void;
 };
 
-const WEEKDAYS = ["أحد", "إثن", "ثلا", "أرب", "خمي", "جمع", "سبت"] as const;
+const WEEKDAYS = {
+  ar: ["أحد", "إثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
+  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+} as const;
 const ISO_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const monthFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
-  month: "long",
-  year: "numeric",
-});
-const dayLabelFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
+const dateFormatters = Object.fromEntries((["ar", "en"] as const).map((language) => {
+  const locale = language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-SA-u-ca-gregory";
+  return [language, {
+    month: new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }),
+    day: new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric" }),
+  }];
+})) as Record<"ar" | "en", { month: Intl.DateTimeFormat; day: Intl.DateTimeFormat }>;
 
 function parseIsoDate(value?: string): Date | null {
   if (!value) {
@@ -110,9 +112,9 @@ function CalendarIcon() {
   );
 }
 
-function ArrowIcon({ direction }: { direction: "next" | "previous" }) {
+function ArrowIcon({ direction, language }: { direction: "next" | "previous"; language: "ar" | "en" }) {
   // In RTL: previous month is on the right and points right; next is on the left.
-  const transform = direction === "previous" ? "rotate(180 10 10)" : undefined;
+  const transform = (direction === "previous") === (language === "ar") ? "rotate(180 10 10)" : undefined;
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
       <path
@@ -134,7 +136,8 @@ export default function DashboardDatePickerV2({
   defaultValue = "",
   min,
   max,
-  placeholder = "اختر التاريخ",
+  placeholder,
+  language = "ar",
   disabled = false,
   required = false,
   clearable = true,
@@ -142,6 +145,7 @@ export default function DashboardDatePickerV2({
   "aria-describedby": ariaDescribedBy,
   onChange,
 }: DashboardDatePickerV2Props) {
+  const displayPlaceholder = placeholder || (language === "en" ? "Select date" : "اختر التاريخ");
   const generatedId = useId();
   const triggerId = id ?? `dsv2-date-${generatedId}`;
   const dialogId = `${triggerId}-dialog`;
@@ -248,10 +252,10 @@ export default function DashboardDatePickerV2({
     let nextDate: Date | null = null;
     switch (event.key) {
       case "ArrowRight":
-        nextDate = addDays(date, -1);
+        nextDate = addDays(date, language === "en" ? 1 : -1);
         break;
       case "ArrowLeft":
-        nextDate = addDays(date, 1);
+        nextDate = addDays(date, language === "en" ? -1 : 1);
         break;
       case "ArrowDown":
         nextDate = addDays(date, 7);
@@ -332,14 +336,14 @@ export default function DashboardDatePickerV2({
 
   const classes = ["dsv2-date-v2", className].filter(Boolean).join(" ");
   const panel = open && typeof document !== "undefined" ? (
-    <div className="dashboard-v2 dsv2-page dsv2-floating-root" aria-hidden="false">
+    <div className="dashboard-v2 dsv2-page dsv2-floating-root" aria-hidden="false" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <div
         ref={panelRef}
         id={dialogId}
         className="dsv2-date-v2__panel"
         role="dialog"
         aria-modal="false"
-        aria-label="اختيار التاريخ"
+        aria-label={language === "en" ? "Choose date" : "اختيار التاريخ"}
         data-placement={position.placement}
         style={{
           left: position.left,
@@ -352,24 +356,24 @@ export default function DashboardDatePickerV2({
           <button
             type="button"
             className="dsv2-date-v2__nav"
-            aria-label="الشهر السابق"
+            aria-label={language === "en" ? "Previous month" : "الشهر السابق"}
             onClick={() => changeMonth(-1)}
           >
-            <ArrowIcon direction="previous" />
+            <ArrowIcon direction="previous" language={language} />
           </button>
-          <strong aria-live="polite">{monthFormatter.format(viewDate)}</strong>
+          <strong aria-live="polite">{dateFormatters[language].month.format(viewDate)}</strong>
           <button
             type="button"
             className="dsv2-date-v2__nav"
-            aria-label="الشهر التالي"
+            aria-label={language === "en" ? "Next month" : "الشهر التالي"}
             onClick={() => changeMonth(1)}
           >
-            <ArrowIcon direction="next" />
+            <ArrowIcon direction="next" language={language} />
           </button>
         </div>
 
         <div className="dsv2-date-v2__weekdays" aria-hidden="true">
-          {WEEKDAYS.map((weekday) => (
+          {WEEKDAYS[language].map((weekday) => (
             <span key={weekday}>{weekday}</span>
           ))}
         </div>
@@ -389,7 +393,7 @@ export default function DashboardDatePickerV2({
                 className="dsv2-date-v2__day"
                 role="gridcell"
                 aria-selected={selected}
-                aria-label={dayLabelFormatter.format(date)}
+                aria-label={dateFormatters[language].day.format(date)}
                 disabled={unavailable}
                 tabIndex={focused ? 0 : -1}
                 data-date={iso}
@@ -412,7 +416,7 @@ export default function DashboardDatePickerV2({
             disabled={isDisabledDate(today)}
             onClick={() => selectDate(today)}
           >
-            اليوم
+            {language === "en" ? "Today" : "اليوم"}
           </button>
           {clearable ? (
             <button
@@ -424,7 +428,7 @@ export default function DashboardDatePickerV2({
                 closeCalendar(true);
               }}
             >
-              مسح
+              {language === "en" ? "Clear" : "مسح"}
             </button>
           ) : null}
         </div>
@@ -433,7 +437,7 @@ export default function DashboardDatePickerV2({
   ) : null;
 
   return (
-    <div ref={rootRef} className={classes}>
+    <div ref={rootRef} className={classes} dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       {name ? <input type="hidden" name={name} value={selectedValue ?? ""} /> : null}
       <button
         ref={triggerRef}
@@ -467,7 +471,7 @@ export default function DashboardDatePickerV2({
           data-placeholder={selectedDate ? "false" : "true"}
           dir="ltr"
         >
-          {displayDate(selectedValue) || placeholder}
+          {displayDate(selectedValue) || displayPlaceholder}
         </span>
         <span className="dsv2-date-v2__icon">
           <CalendarIcon />

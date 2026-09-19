@@ -46,6 +46,10 @@
   font-weight: 600;
 }
 
+.leave-doc-date-field.dashboard-v2 .dsv2-date-v2[lang="en"] .dsv2-date-v2__value[data-placeholder="true"] {
+  direction: ltr;
+}
+
 @media (max-width: 760px) {
   .leave-doc-date-field.dashboard-v2 .dsv2-date-v2__trigger {
     width: 100%;

@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
+import type { EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import "../../styles/SignatureCaptureField.css";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   compact?: boolean;
   disabled?: boolean;
   allowUpload?: boolean;
+  language?: EmployeePortalLanguage;
 };
 
 const CANVAS_WIDTH = 900;
@@ -41,13 +43,16 @@ function pointFromEvent(canvas: HTMLCanvasElement, event: React.PointerEvent<HTM
 export default function SignatureCaptureField({
   value,
   onChange,
-  label = "التوقيع",
+  label,
   signerName = "",
   required = false,
   compact = false,
   disabled = false,
   allowUpload = false,
+  language = "ar",
 }: Props) {
+  const tr = (ar: string, en: string) => language === "en" ? en : ar;
+  const displayLabel = label || tr("التوقيع", "Signature");
   const [open, setOpen] = useState(false);
   const [hasInk, setHasInk] = useState(false);
   const [error, setError] = useState("");
@@ -120,7 +125,7 @@ export default function SignatureCaptureField({
   const save = () => {
     const canvas = canvasRef.current;
     if (!canvas || !hasInk) {
-      setError("ارسم توقيعك داخل اللوحة قبل الحفظ.");
+      setError(tr("ارسم توقيعك داخل اللوحة قبل الحفظ.", "Draw your signature before saving."));
       return;
     }
     const dataUrl = canvas.toDataURL("image/png");
@@ -134,12 +139,12 @@ export default function SignatureCaptureField({
     if (!file) return;
 
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setError("يجب اختيار صورة PNG أو JPG أو WebP للتوقيع.");
+      setError(tr("يجب اختيار صورة PNG أو JPG أو WebP للتوقيع.", "Choose a PNG, JPG or WebP image for your signature."));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("حجم صورة التوقيع يجب ألا يتجاوز 5 ميجابايت.");
+      setError(tr("حجم صورة التوقيع يجب ألا يتجاوز 5 ميجابايت.", "Signature images must be under 5 MB."));
       return;
     }
 
@@ -149,7 +154,7 @@ export default function SignatureCaptureField({
       const dataUrl = String(reader.result || "");
 
       if (!dataUrl.startsWith("data:image/")) {
-        setError("تعذر قراءة صورة التوقيع.");
+        setError(tr("تعذر قراءة صورة التوقيع.", "Could not read the signature image."));
         return;
       }
 
@@ -159,17 +164,17 @@ export default function SignatureCaptureField({
     };
 
     reader.onerror = () => {
-      setError("تعذر قراءة ملف التوقيع.");
+      setError(tr("تعذر قراءة ملف التوقيع.", "Could not read the signature file."));
     };
 
     reader.readAsDataURL(file);
   };
 
   return (
-    <div className={`signature-capture-field ${compact ? "is-compact" : ""}`}>
+    <div className={`signature-capture-field ${compact ? "is-compact" : ""}`} dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <div className="signature-capture-field__head">
-        <strong>{label}{required ? " *" : ""}</strong>
-        {value ? <span>تم التوقيع</span> : <span className="is-required">مطلوب</span>}
+        <strong>{displayLabel}{required ? " *" : ""}</strong>
+        {value ? <span>{tr("تم التوقيع", "Signed")}</span> : <span className="is-required">{tr("مطلوب", "Required")}</span>}
       </div>
       <button
         type="button"
@@ -178,9 +183,9 @@ export default function SignatureCaptureField({
         disabled={disabled}
       >
         {value ? (
-          <img src={value} alt={`توقيع ${signerName || "المستخدم"}`} />
+          <img src={value} alt={`${tr("توقيع", "Signature of")} ${signerName || tr("المستخدم", "user")}`} />
         ) : (
-          <span>اضغط لفتح لوحة التوقيع</span>
+          <span>{tr("اضغط لفتح لوحة التوقيع", "Tap to open the signature pad")}</span>
         )}
       </button>
       <div className="signature-capture-field__actions">
@@ -190,7 +195,7 @@ export default function SignatureCaptureField({
             className="signature-capture-field__edit"
             onClick={() => setOpen(true)}
           >
-            تعديل التوقيع اليدوي
+            {tr("تعديل التوقيع اليدوي", "Edit handwritten signature")}
           </button>
         ) : null}
 
@@ -208,23 +213,23 @@ export default function SignatureCaptureField({
               className="signature-capture-field__edit signature-capture-field__upload"
               onClick={() => fileInputRef.current?.click()}
             >
-              رفع صورة توقيع
+              {tr("رفع صورة توقيع", "Upload signature image")}
             </button>
           </>
         ) : null}
       </div>
 
       {open ? createPortal(
-        <div className="signature-pad-modal" role="dialog" aria-modal="true" aria-label={label}>
-          <button type="button" className="signature-pad-modal__backdrop" aria-label="إغلاق" onClick={() => setOpen(false)} />
-          <section className="signature-pad-modal__panel" dir="rtl">
+        <div className="signature-pad-modal" role="dialog" aria-modal="true" aria-label={displayLabel} lang={language}>
+          <button type="button" className="signature-pad-modal__backdrop" aria-label={tr("إغلاق", "Close")} onClick={() => setOpen(false)} />
+          <section className="signature-pad-modal__panel" dir={language === "en" ? "ltr" : "rtl"}>
             <header>
               <div>
-                <small>{signerName || "التوقيع الإلكتروني"}</small>
-                <h2>{label}</h2>
-                <p>اكتب توقيعك بيدك داخل المساحة البيضاء باستخدام الماوس أو الإصبع.</p>
+                <small>{signerName || tr("التوقيع الإلكتروني", "Electronic signature")}</small>
+                <h2>{displayLabel}</h2>
+                <p>{tr("اكتب توقيعك بيدك داخل المساحة البيضاء باستخدام الماوس أو الإصبع.", "Draw your signature in the white area using your finger or mouse.")}</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} aria-label="إغلاق">×</button>
+              <button type="button" onClick={() => setOpen(false)} aria-label={tr("إغلاق", "Close")}>×</button>
             </header>
             <div className="signature-pad-modal__board">
               <canvas
@@ -237,13 +242,13 @@ export default function SignatureCaptureField({
                   if (event.buttons === 0) end(event);
                 }}
               />
-              <span>وقّع هنا</span>
+              <span>{tr("وقّع هنا", "Sign here")}</span>
             </div>
             {error ? <div className="signature-pad-modal__error">{error}</div> : null}
             <footer>
-              <button type="button" className="is-secondary" onClick={clear}>مسح اللوحة</button>
-              <button type="button" className="is-secondary" onClick={() => setOpen(false)}>إلغاء</button>
-              <button type="button" className="is-primary" onClick={save}>اعتماد التوقيع</button>
+              <button type="button" className="is-secondary" onClick={clear}>{tr("مسح اللوحة", "Clear pad")}</button>
+              <button type="button" className="is-secondary" onClick={() => setOpen(false)}>{tr("إلغاء", "Cancel")}</button>
+              <button type="button" className="is-primary" onClick={save}>{tr("اعتماد التوقيع", "Save signature")}</button>
             </footer>
           </section>
         </div>,

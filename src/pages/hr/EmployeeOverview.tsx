@@ -89,7 +89,7 @@ const overviewCopy = {
     noDepartment: "بدون قسم", noTitle: "بدون مسمى وظيفي",
     owner: "مالك", admin: "مدير", hr: "موارد بشرية", reception: "استقبال", employee: "موظف",
     leaveUntil: "في إجازة حتى", onLeave: "في إجازة", checkingLeave: "جاري التحقق من الإجازات", leaveUnavailable: "حالة الإجازة غير متاحة", active: "نشط",
-    runtimeUnavailable: "بعض البيانات التشغيلية غير متاحة الآن.", runtimeLegacy: "لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.",
+    runtimeUnavailable: "بعض البيانات التشغيلية غير متاحة الآن.", runtimeLegacy: "لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.", leaveLoadFailed: "تعذر تحميل الإجازات المعتمدة من النظام المركزي.", leaveBalanceLoadFailed: "تعذر تحميل رصيد الإجازة من النظام المركزي.", shiftLoadFailed: "تعذر تحميل شفت اليوم.",
     notificationSummary: "ملخص التنبيهات", unreadNotifications: "التنبيهات غير المقروءة", messages: "الرسائل", fileUpdates: "تحديثات الملفات", leavePayroll: "الإجازات والرواتب",
     attendance: "الحضور والانصراف", attendanceEntry: "تسجيل الدوام", gps: "GPS + تصوير حسب الفرع",
     checkIn: "الحضور", checkedIn: "تم الحضور", notCheckedIn: "لم يتم الحضور", checkOut: "الانصراف", checkedOut: "تم الانصراف", notCheckedOut: "لم يتم الانصراف",
@@ -114,7 +114,7 @@ const overviewCopy = {
     noDepartment: "No department", noTitle: "No job title",
     owner: "Owner", admin: "Manager", hr: "Human Resources", reception: "Reception", employee: "Employee",
     leaveUntil: "On leave until", onLeave: "On leave", checkingLeave: "Checking leave status", leaveUnavailable: "Leave status unavailable", active: "Active",
-    runtimeUnavailable: "Some operational data is currently unavailable.", runtimeLegacy: "No legacy schedule or leave status was used as a fallback.",
+    runtimeUnavailable: "Some operational data is currently unavailable.", runtimeLegacy: "No legacy schedule or leave status was used as a fallback.", leaveLoadFailed: "Could not load approved leave.", leaveBalanceLoadFailed: "Could not load your leave balance.", shiftLoadFailed: "Could not load today's shift.",
     notificationSummary: "Notification summary", unreadNotifications: "Unread notifications", messages: "Messages", fileUpdates: "File updates", leavePayroll: "Leave and payroll",
     attendance: "Attendance", attendanceEntry: "Clock in and out", gps: "GPS + branch photo verification",
     checkIn: "Clock in", checkedIn: "Clocked in", notCheckedIn: "Not clocked in", checkOut: "Clock out", checkedOut: "Clocked out", notCheckedOut: "Not clocked out",
@@ -1157,9 +1157,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         await loadAttendanceMonth();
       }
 
-      setAttendanceMessage(
-        getAttendanceWorkerMessage(response)
-      );
+      setAttendanceMessage(language === "en" ? (type === "check_in" ? copy.attendanceRecorded : copy.attendanceComplete) : getAttendanceWorkerMessage(response));
     } catch (error) {
       const attendanceError = error as any;
 
@@ -1173,11 +1171,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         );
       }
 
-      setAttendanceMessage(
-        cleanText(
-          attendanceError?.message || copy.saveFailed
-        )
-      );
+      setAttendanceMessage(language === "en" ? copy.saveFailed : cleanText(attendanceError?.message || copy.saveFailed));
     } finally {
       setAttendanceBusy(false);
     }
@@ -1381,7 +1375,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       {employeeLeaveError || (canViewAttendance && todayResolvedShiftError) ? (
         <div className="employee-overview-runtime-alert" role="status" aria-live="polite">
           <strong>{copy.runtimeUnavailable}</strong>
-          <span>{employeeLeaveError || todayResolvedShiftError}</span>
+          <span>{language === "en" ? (employeeLeaveError ? copy.leaveLoadFailed : copy.shiftLoadFailed) : employeeLeaveError || todayResolvedShiftError}</span>
           <small>{copy.runtimeLegacy}</small>
         </div>
       ) : null}
@@ -1643,8 +1637,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             <div>
               <span>{copy.leaveBalance}</span>
               <small>
-                {employeeLeaveBalanceError ||
-                  copy.coreBalance}
+                {employeeLeaveBalanceError ? (language === "en" ? copy.leaveBalanceLoadFailed : employeeLeaveBalanceError) : copy.coreBalance}
               </small>
             </div>
             <strong>{leaveBalanceValue}</strong>

@@ -135,6 +135,7 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
           <span>{choose(language, "من تاريخ", "From")}</span>
           <DashboardDatePickerV2
             value={startDate}
+            language={language}
             required
             clearable
             placeholder={choose(language, "اختر تاريخ البداية", "Select start date")}
@@ -145,6 +146,7 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
           <span>{choose(language, "إلى تاريخ", "To")}</span>
           <DashboardDatePickerV2
             value={endDate}
+            language={language}
             min={startDate || undefined}
             required
             clearable
@@ -153,7 +155,7 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
           />
         </div>
         <DocumentField label={choose(language, "عدد الأيام", "Number of days")} value={days || "—"} />
-        <DocumentField label={choose(language, "تاريخ الطلب", "Request date")} value={formatDocumentDate(requestDate)} />
+        <DocumentField label={choose(language, "تاريخ الطلب", "Request date")} value={formatDocumentDate(requestDate, language)} />
       </DocumentFieldGrid>
 
       <label className="leave-doc-wide-field">
@@ -173,6 +175,7 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
         <SignatureCaptureField
           compact
           required
+          language={language}
           label={choose(language, "توقيع الموظفة", "Employee signature")}
           signerName={employeeName || choose(language, "الموظفة", "Employee")}
           value={employeeSignature}
@@ -240,7 +243,7 @@ function LeaveRequestDocumentView({ data, language = "ar" }: { data: LeaveReques
           <div className="leave-doc-signature-cell">
             <span>{choose(language, "الاسم", "Name")}</span>
             <strong>{data.managerName}</strong>
-            {data.managerRole ? <small>{data.managerRole}</small> : null}
+            {data.managerRole ? <small>{language === "en" ? ({ "مالك الصالون": "Salon owner", "الإدارة": "Management", "الموارد البشرية": "Human Resources", "المحاسبة": "Accounting", "المراجع": "Reviewer" } as Record<string, string>)[data.managerRole] || data.managerRole : data.managerRole}</small> : null}
           </div>
           <SignatureBlock signature={data.managerSignature} language={language} />
         </div>
@@ -263,5 +266,5 @@ function LeaveRequestDocumentView({ data, language = "ar" }: { data: LeaveReques
 }
 
 export default function LeaveRequestDocument({ request, language = "ar" }: DocumentProps) {
-  return <LeaveRequestDocumentView data={buildLeaveRequestDocumentData(request)} language={language} />;
+  return <LeaveRequestDocumentView data={buildLeaveRequestDocumentData(request, language)} language={language} />;
 }

@@ -55,6 +55,10 @@
   direction: rtl;
 }
 
+.dashboard-v2 .dsv2-date-v2[lang="en"] .dsv2-date-v2__value[data-placeholder="true"] {
+  direction: ltr;
+}
+
 .dashboard-v2 .dsv2-date-v2__icon {
   display: inline-grid;
   width: 20px;

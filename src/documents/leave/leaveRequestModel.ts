@@ -80,12 +80,12 @@ export function leaveDays(start: unknown, end: unknown) {
   return diff >= 0 ? diff + 1 : 0;
 }
 
-export function formatDocumentDate(value: unknown) {
+export function formatDocumentDate(value: unknown, language: "ar" | "en" = "ar") {
   const text = String(value || "");
   if (!text) return DASH;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00`) : new Date(text);
   if (!Number.isFinite(date.getTime())) return text;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA-u-ca-gregory" : "ar-SA-u-ca-gregory-nu-latn", {
     timeZone: "Asia/Riyadh",
     year: "numeric",
     month: "2-digit",
@@ -93,12 +93,12 @@ export function formatDocumentDate(value: unknown) {
   }).format(date);
 }
 
-export function formatDocumentDateTime(value: unknown) {
+export function formatDocumentDateTime(value: unknown, language: "ar" | "en" = "ar") {
   const text = String(value || "");
   if (!text) return DASH;
   const date = new Date(text);
   if (!Number.isFinite(date.getTime())) return text;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-SA-u-ca-gregory" : "ar-SA-u-ca-gregory-nu-latn", {
     timeZone: "Asia/Riyadh",
     dateStyle: "medium",
     timeStyle: "short",
@@ -154,7 +154,7 @@ function decisionInfo(request: EmployeeRequest) {
   };
 }
 
-export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRequestDocumentData {
+export function buildLeaveRequestDocumentData(request: EmployeeRequest, language: "ar" | "en" = "ar"): LeaveRequestDocumentData {
   const payload = request.payload || {};
   const startDate = payload.startDate;
   const endDate = payload.endDate;
@@ -163,8 +163,8 @@ export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRe
   const employeeName = safeDocumentText(request.employee_name_snapshot || request.employee_id, "الموظفة");
   const statusLabel = EMPLOYEE_REQUEST_STATUS_LABELS[request.status] || request.status;
   const selectedLeaveType = String(payload.leaveType || "");
-  const submittedAtLabel = formatDocumentDateTime(request.submitted_at);
-  const managerDecidedAtLabel = decision.decidedAt ? formatDocumentDateTime(decision.decidedAt) : DASH;
+  const submittedAtLabel = formatDocumentDateTime(request.submitted_at, language);
+  const managerDecidedAtLabel = decision.decidedAt ? formatDocumentDateTime(decision.decidedAt, language) : DASH;
 
   return {
     title: "طلب إجازة",
@@ -179,10 +179,10 @@ export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRe
     })),
     leaveDays: days,
     fields: [
-      { label: "من تاريخ", value: formatDocumentDate(startDate) },
-      { label: "إلى تاريخ", value: formatDocumentDate(endDate) },
+      { label: "من تاريخ", value: formatDocumentDate(startDate, language) },
+      { label: "إلى تاريخ", value: formatDocumentDate(endDate, language) },
       { label: "عدد الأيام", value: days || DASH },
-      { label: "تاريخ الطلب", value: formatDocumentDate(request.submitted_at) },
+      { label: "تاريخ الطلب", value: formatDocumentDate(request.submitted_at, language) },
     ],
     reason: safeDocumentText(payload.reason),
     notes: safeDocumentText(payload.notes),
@@ -212,6 +212,6 @@ export function buildLeaveRequestDocumentData(request: EmployeeRequest): LeaveRe
       fallback: decision.decidedAt ? "التوقيع غير محفوظ" : DASH,
     },
     statusLabel,
-    periodLabel: `${formatDocumentDate(startDate)} - ${formatDocumentDate(endDate)}`,
+    periodLabel: `${formatDocumentDate(startDate, language)} - ${formatDocumentDate(endDate, language)}`,
   };
 }
