@@ -556,10 +556,10 @@ export default function ShiftControlSection({
     try {
       const [templateRows, assignmentGroups, exceptionGroups, lockRows, adjustmentGroups, resolvedBatch] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }).catch(() => [] as CoreShiftAssignment[]))),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }).catch(() => [] as CoreScheduleException[]))),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }))),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }))),
         CoreHrService.listShiftPayrollPeriodLocks(),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftPayrollAdjustments({ employeeId: id }).catch(() => [] as CoreShiftPayrollAdjustment[]))),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftPayrollAdjustments({ employeeId: id }))),
         CoreHrService.resolveEmployeeShiftsRange({
           employeeIds: shiftEmployeeIds,
           dateFrom: resolvedDate,
@@ -610,6 +610,14 @@ export default function ShiftControlSection({
 
   const previewAssignment = async () => {
     if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
+    if (assignmentForm.assignmentType === "temporary" && !assignmentForm.effectiveTo) {
+      setError("التعيين المؤقت يحتاج تاريخ نهاية.");
+      return null;
+    }
+    if (assignmentForm.effectiveTo && assignmentForm.effectiveTo < assignmentForm.effectiveFrom) {
+      setError("تاريخ نهاية التعيين لا يمكن أن يكون قبل تاريخ البداية.");
+      return null;
+    }
     const previewTo = assignmentForm.assignmentType === "permanent"
       ? assignmentForm.effectiveFrom
       : assignmentForm.effectiveTo || assignmentForm.effectiveFrom;
@@ -625,6 +633,18 @@ export default function ShiftControlSection({
 
   const previewException = async () => {
     if (!targetShiftEmployeeId || !exceptionForm.dateFrom) return null;
+    if (exceptionForm.dateTo && exceptionForm.dateTo < exceptionForm.dateFrom) {
+      setError("تاريخ نهاية الاستثناء لا يمكن أن يكون قبل تاريخ البداية.");
+      return null;
+    }
+    if (exceptionForm.exceptionType === "shift" && !exceptionForm.shiftTemplateId) {
+      setError("اختر شفت بديل.");
+      return null;
+    }
+    if (exceptionForm.exceptionType === "custom" && (!validTime(exceptionForm.startTime) || !validTime(exceptionForm.endTime) || exceptionForm.startTime === exceptionForm.endTime)) {
+      setError("أدخل وقت بداية ونهاية صحيحين ومختلفين للاستثناء المخصص.");
+      return null;
+    }
     const result = await CoreHrService.previewShiftChange({
       employeeId: targetShiftEmployeeId,
       changeType: "exception",
@@ -658,8 +678,18 @@ export default function ShiftControlSection({
       setError("وقت بداية الشفت ونهايته لا يمكن أن يكونا متطابقين.");
       return;
     }
+    const breakMinutes = Number(templateForm.breakMinutes || 0);
     const lateGraceMinutes = Number(templateForm.lateGraceMinutes || 0);
     const attendanceLockAfterMinutes = Number(templateForm.attendanceLockAfterMinutes || 0);
+    const overtimeAfterMinutes = Number(templateForm.overtimeAfterMinutes || 0);
+    if (![breakMinutes, lateGraceMinutes, attendanceLockAfterMinutes, overtimeAfterMinutes].every(Number.isFinite)) {
+      setError("قيم الدقائق في سياسة الشفت يجب أن تكون أرقامًا صحيحة.");
+      return;
+    }
+    if (breakMinutes < 0 || breakMinutes > 720 || lateGraceMinutes < 0 || lateGraceMinutes > 720 || attendanceLockAfterMinutes < 0 || attendanceLockAfterMinutes > 1440 || overtimeAfterMinutes < 0 || overtimeAfterMinutes > 1440) {
+      setError("تحقق من مدد الاستراحة والسماح والإغلاق والإضافي؛ القيم خارج النطاق المسموح.");
+      return;
+    }
     if (templateForm.attendanceLockEnabled && attendanceLockAfterMinutes < lateGraceMinutes) {
       setError("مدة إغلاق البصمة يجب أن تكون مساوية لفترة سماح التأخير أو أكبر منها.");
       return;
@@ -675,13 +705,13 @@ export default function ShiftControlSection({
         startTime: templateForm.startTime,
         endTime: templateForm.endTime,
         crossesMidnight: crossesMidnight(templateForm.startTime, templateForm.endTime),
-        breakMinutes: Number(templateForm.breakMinutes || 0),
+        breakMinutes,
         breakPaid: false,
         lateGraceMinutes,
         earlyLeaveGraceMinutes: 0,
         attendanceLockEnabled: templateForm.attendanceLockEnabled,
         attendanceLockAfterMinutes,
-        overtimeAfterMinutes: Number(templateForm.overtimeAfterMinutes || 0),
+        overtimeAfterMinutes,
         active: templateForm.active,
         reason: "تحديث قالب شفت من مساحة الموظفة V2",
       });
