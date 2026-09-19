@@ -360,7 +360,10 @@ test('payroll carryover reconciliation mutates pending state atomically', async 
 
   const fn = source.slice(start, end);
 
-  assert.match(fn, /const carryoverStatements = \[\]/);
+  assert.match(
+    fn,
+    /const carryoverStatements = \[\s*\.\.\.\(Array\.isArray\(options\.prependStatements\)[\s\S]*?\)\s*,?\s*\];/
+  );
   assert.match(fn, /carryoverStatements\.push\(/);
   assert.match(fn, /await dbBatch\(db, carryoverStatements\)/);
   assert.doesNotMatch(
