@@ -1408,18 +1408,63 @@ async function buildApprovalSnapshotStatement(
   approvedAt = nowIso(),
   snapshotOptions = {}
 ) {
-  const approvalVersion = await nextApprovalSnapshotVersion(db, salonId, entry.id);
+  const approvalVersion = await nextApprovalSnapshotVersion(
+    db,
+    salonId,
+    entry.id
+  );
   const snapshotId = generatedId('payroll_approval_snapshot');
   const approvedNetHalalas = Object.prototype.hasOwnProperty.call(
     snapshotOptions,
     'approvedNetHalalas'
   )
-    ? Math.max(0, Number(snapshotOptions.approvedNetHalalas || 0))
-    : Math.max(0, Number(entry.net_salary_halalas ?? entry.final_salary_halalas ?? 0));
-  const baseSalaryHalalas = Math.max(0, Number(entry.base_salary_halalas || 0));
-  const grossSalaryHalalas = Math.max(0, Number(entry.gross_salary_halalas || 0));
-  const totalAdditionsHalalas = Math.max(0, grossSalaryHalalas - baseSalaryHalalas);
-  const totalDeductionsHalalas = Math.max(0, Number(entry.total_deductions_halalas || 0));
+    ? Math.max(
+        0,
+        Number(snapshotOptions.approvedNetHalalas || 0)
+      )
+    : Math.max(
+        0,
+        Number(
+          entry.net_salary_halalas ??
+          entry.final_salary_halalas ??
+          0
+        )
+      );
+  const baseSalaryHalalas = Math.max(
+    0,
+    Number(entry.base_salary_halalas || 0)
+  );
+  const grossSalaryHalalas = Math.max(
+    0,
+    Number(entry.gross_salary_halalas || 0)
+  );
+  const totalAdditionsHalalas = Math.max(
+    0,
+    grossSalaryHalalas - baseSalaryHalalas
+  );
+  const totalDeductionsHalalas = Math.max(
+    0,
+    Number(entry.total_deductions_halalas || 0)
+  );
+  const transitionGuard =
+    snapshotOptions.transitionGuard &&
+    typeof snapshotOptions.transitionGuard === 'object'
+      ? snapshotOptions.transitionGuard
+      : null;
+
+  const valueSql = transitionGuard
+    ? `SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1
+           FROM payroll_entries pe
+          WHERE pe.salon_id = ?
+            AND pe.id = ?
+            AND pe.status = ?
+            AND pe.audit_log_json = ?
+            AND pe.updated_at = ?
+       )`
+    : 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
   return {
     id: snapshotId,
     sql: `INSERT INTO payroll_approval_snapshots
@@ -1428,7 +1473,7 @@ async function buildApprovalSnapshotStatement(
        total_additions_halalas, total_deductions_halalas, attendance_summary_json,
        gosi_snapshot_json, employer_gosi_contribution_halalas,
        entry_snapshot_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ${valueSql}`,
     params: [
       snapshotId,
       salonId,
@@ -1444,9 +1489,21 @@ async function buildApprovalSnapshotStatement(
       totalDeductionsHalalas,
       entry.attendance_summary_json || null,
       entry.gosi_snapshot_json || null,
-      Math.max(0, Number(entry.employer_gosi_contribution_halalas || 0)),
+      Math.max(
+        0,
+        Number(entry.employer_gosi_contribution_halalas || 0)
+      ),
       JSON.stringify(snapshotOptions.entrySnapshot || entry),
       optionalText(snapshotOptions.createdAt) || approvedAt,
+      ...(transitionGuard
+        ? [
+            salonId,
+            entry.id,
+            cleanText(transitionGuard.status),
+            cleanText(transitionGuard.auditLogJson),
+            cleanText(transitionGuard.updatedAt),
+          ]
+        : []),
     ],
   };
 }
