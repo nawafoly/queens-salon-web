@@ -7,6 +7,10 @@ import {
   type ServiceRecipeLine,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
+import {
+  CoreBookingService,
+  type CoreStaffPortalBooking,
+} from "../services/CoreBookingService";
 import type { HrSession } from "./hr/shared";
 import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeePortalLanguage";
 
@@ -87,12 +91,15 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   const copy = bookingCopy[language] as BookingCopy;
   const employeeId = String(session.employeeId || session.uid || "");
   const [pending, setPending] = useState<PendingServiceConsumption[]>([]);
+  const [bookings, setBookings] = useState<CoreStaffPortalBooking[]>([]);
   const [trackedItems, setTrackedItems] = useState<InventoryItem[]>([]);
+  const [activeBookingId, setActiveBookingId] = useState("");
   const [bookingItemId, setBookingItemId] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingRecipe, setLoadingRecipe] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [bookingBusy, setBookingBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -111,6 +118,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   }, [pending]);
 
   const selected = pending.find((row) => row.booking_item_id === bookingItemId) || null;
+  const selectedBookingId = activeBookingId || selected?.booking_id || "";
+  const selectedBooking =
+    bookings.find((row) => row.id === selectedBookingId) || null;
+  const selectedBookingPending = selectedBooking
+    ? pending.filter((row) => row.booking_id === selectedBooking.id)
+    : [];
   const selectedConfirmable = Boolean(
     selected?.can_confirm === true &&
     (
@@ -120,20 +133,31 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   );
   const overdueCount = sections.overdue.length;
 
-  const refreshPending = useCallback(async () => {
+  const refreshWorkspace = useCallback(async () => {
     if (!employeeId) {
       setPending([]);
-      return;
+      setBookings([]);
+      return { pendingRows: [] as PendingServiceConsumption[], bookingRows: [] as CoreStaffPortalBooking[] };
     }
-    const rows = await CoreInventoryService.listPendingConsumptions({
-      employeeId,
-      scope: "worklist",
-      includeUpcoming: "1",
-      includeOverdue: "1",
-      upcomingDays: 7,
-      overdueDays: 30,
-    });
-    setPending(rows || []);
+
+    const [pendingRows, bookingRows] = await Promise.all([
+      CoreInventoryService.listPendingConsumptions({
+        employeeId,
+        scope: "worklist",
+        includeUpcoming: "1",
+        includeOverdue: "1",
+        upcomingDays: 7,
+        overdueDays: 30,
+      }),
+      CoreBookingService.mine(),
+    ]);
+
+    setPending(pendingRows || []);
+    setBookings(bookingRows || []);
+    return {
+      pendingRows: pendingRows || [],
+      bookingRows: bookingRows || [],
+    };
   }, [employeeId]);
 
   useEffect(() => {
@@ -141,7 +165,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
       setLoading(true);
       setError("");
       try {
-        const [pendingRows, inventoryItems] = await Promise.all([
+        const [pendingRows, inventoryItems, bookingRows] = await Promise.all([
           employeeId
             ? CoreInventoryService.listPendingConsumptions({
                 employeeId,
@@ -153,15 +177,20 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
               })
             : Promise.resolve([]),
           CoreInventoryService.listItems({ active: "1", policy: "SERVICE_TRACKED" }),
+          employeeId ? CoreBookingService.mine() : Promise.resolve([]),
         ]);
         setPending(pendingRows || []);
         setTrackedItems(inventoryItems || []);
+        setBookings(bookingRows || []);
         const actionable = (pendingRows || []).filter(
           (row) =>
             row.lifecycle === "OVERDUE" ||
             row.lifecycle === "PENDING_CONFIRMATION"
         );
-        if (actionable.length === 1) setBookingItemId(actionable[0].booking_item_id);
+        if (actionable.length === 1) {
+          setBookingItemId(actionable[0].booking_item_id);
+          setActiveBookingId(actionable[0].booking_id);
+        }
       } catch (err) {
         setError(errorMessage(err, language, copy));
       } finally {
@@ -226,10 +255,12 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           };
         }),
       });
+      const confirmedBookingId = selected?.booking_id || activeBookingId;
       setNotice(copy.success);
       setBookingItemId("");
       setLines([]);
-      await refreshPending();
+      if (confirmedBookingId) setActiveBookingId(confirmedBookingId);
+      await refreshWorkspace();
     } catch (err) {
       setError(errorMessage(err, language, copy));
     } finally {
