@@ -477,7 +477,27 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
     try {
       await CoreBookingService.updateMineStatus(selectedBooking.id, status);
       setNotice(status === "completed" ? copy.bookingCompleted : copy.bookingConfirmed);
-      await refreshWorkspace();
+      const refreshed = await refreshWorkspace();
+
+      if (status === "completed") {
+        const nextOpen = [...refreshed.bookingRows]
+          .filter((booking) => {
+            const nextStatus = String(booking.status || "").toLowerCase();
+            return (
+              booking.id !== selectedBooking.id &&
+              !["completed", "cancelled", "canceled", "rejected"].includes(nextStatus)
+            );
+          })
+          .sort((left, right) =>
+            `${left.bookingDate || ""}T${left.startTime || ""}`.localeCompare(
+              `${right.bookingDate || ""}T${right.startTime || ""}`
+            )
+          )[0];
+
+        setActiveBookingId(nextOpen?.id || "");
+        setBookingItemId("");
+        setLines([]);
+      }
     } catch (err) {
       setError(errorMessage(err, language, copy));
     } finally {
