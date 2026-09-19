@@ -282,3 +282,28 @@ test("Guard: material use requires an accepted booking state", () => {
   assert.match(inv, /'booked', 'confirmed', 'completed'/);
   assert.match(inv, /bookingAllowsConsumption/);
 });
+
+
+test("Guard: category recipe alternatives stay constrained to the configured category", () => {
+  const ui = read("src/pages/EmployeeServiceConsumption.tsx");
+  const inv = read("workers/core/repositories/inventory.js");
+
+  assert.match(ui, /lineType: ServiceRecipeLine\["line_type"\]/);
+  assert.match(ui, /line\.line_type === "CATEGORY"/);
+  assert.match(ui, /item\.category_id === line\.categoryId/);
+  assert.match(ui, /recipeLineId: line\.recipeLineId/);
+  assert.match(
+    ui,
+    /disabled=\{!selectedConfirmable \|\| line\.lineType === "SPECIFIC_ITEM"\}/
+  );
+  assert.match(inv, /inventory:item_not_in_recipe_category/);
+  assert.match(inv, /inventory:item_not_matching_recipe_line/);
+});
+
+test("Guard: empty recipes do not create impossible material tasks", () => {
+  const inv = read("workers/core/repositories/inventory.js");
+  assert.match(
+    inv,
+    /service_consumption_recipe_lines rl[\s\S]*rl\.recipe_id = r\.id/
+  );
+});
