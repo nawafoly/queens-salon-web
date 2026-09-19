@@ -574,10 +574,20 @@ export default function ShiftControlSection({
     [employeeAssignments, resolvedDate],
   );
 
-  const targetShiftEmployeeId = useMemo(
-    () => shiftEmployeeIds.find(isFullShiftIdentifier) || shiftEmployeeIds[0] || employeeId,
-    [employeeId, shiftEmployeeIds],
-  );
+  const canonicalShiftEmployeeId = useMemo(() => {
+    const primary = cleanText(employeeId);
+    if (isCoreEmployeeIdentifier(primary)) return primary;
+    return shiftEmployeeIds[0] || "";
+  }, [employeeId, shiftEmployeeIds]);
+
+  const assignmentTargetEmployeeId = useMemo(() => {
+    if (assignmentForm.id) {
+      const existing = employeeAssignments.find((assignment) => assignment.id === assignmentForm.id);
+      const existingEmployeeId = cleanText(existing?.employeeId || (existing as Record<string, unknown> | undefined)?.employee_id);
+      if (existingEmployeeId) return existingEmployeeId;
+    }
+    return canonicalShiftEmployeeId;
+  }, [assignmentForm.id, canonicalShiftEmployeeId, employeeAssignments]);
 
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
@@ -707,7 +717,7 @@ export default function ShiftControlSection({
   const previewAssignment = async () => {
     setPreview(null);
     setPreviewKind(null);
-    if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
+    if (!assignmentTargetEmployeeId || !assignmentForm.effectiveFrom) return null;
     if (assignmentForm.assignmentType === "temporary" && !assignmentForm.effectiveTo) {
       setError("التعيين المؤقت يحتاج تاريخ نهاية.");
       return null;
@@ -722,7 +732,7 @@ export default function ShiftControlSection({
     setPreviewing(true);
     try {
       const result = await CoreHrService.previewShiftChange({
-        employeeId: targetShiftEmployeeId,
+        employeeId: assignmentTargetEmployeeId,
         changeType: "assignment",
         effectiveFrom: assignmentForm.effectiveFrom,
         effectiveTo: previewTo,
@@ -743,7 +753,7 @@ export default function ShiftControlSection({
   const previewException = async () => {
     setPreview(null);
     setPreviewKind(null);
-    if (!targetShiftEmployeeId || !exceptionForm.dateFrom) return null;
+    if (!canonicalShiftEmployeeId || !exceptionForm.dateFrom) return null;
     if (exceptionForm.dateTo && exceptionForm.dateTo < exceptionForm.dateFrom) {
       setError("تاريخ نهاية الاستثناء لا يمكن أن يكون قبل تاريخ البداية.");
       return null;
@@ -759,7 +769,7 @@ export default function ShiftControlSection({
     setPreviewing(true);
     try {
       const result = await CoreHrService.previewShiftChange({
-        employeeId: targetShiftEmployeeId,
+        employeeId: canonicalShiftEmployeeId,
         changeType: "exception",
         dateFrom: exceptionForm.dateFrom,
         dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
@@ -924,7 +934,7 @@ export default function ShiftControlSection({
 
   const saveAssignment = async () => {
     if (!canManage) return;
-    if (!targetShiftEmployeeId) {
+    if (!assignmentTargetEmployeeId) {
       setError("تعذر تحديد هوية الموظفة في Core. أعد تحميل الملف قبل الحفظ.");
       return;
     }
@@ -948,7 +958,7 @@ export default function ShiftControlSection({
       if (!previewAllowsSave(result)) return;
       const normalizedEffectiveTo = assignmentForm.assignmentType === "permanent" ? null : assignmentForm.effectiveTo || null;
       const payload = {
-        employeeId: targetShiftEmployeeId,
+        employeeId: assignmentTargetEmployeeId,
         shiftTemplateId: assignmentForm.shiftTemplateId,
         effectiveFrom: assignmentForm.effectiveFrom,
         effectiveTo: normalizedEffectiveTo,
@@ -1034,7 +1044,7 @@ export default function ShiftControlSection({
 
   const createException = async () => {
     if (!canManage) return;
-    if (!targetShiftEmployeeId) {
+    if (!canonicalShiftEmployeeId) {
       setError("تعذر تحديد هوية الموظفة في Core. أعد تحميل الملف قبل الحفظ.");
       return;
     }
@@ -1067,7 +1077,7 @@ export default function ShiftControlSection({
       const result = await previewException();
       if (!previewAllowsSave(result)) return;
       await CoreHrService.createScheduleException({
-        employeeId: targetShiftEmployeeId,
+        employeeId: canonicalShiftEmployeeId,
         dateFrom: exceptionForm.dateFrom,
         dateTo: exceptionForm.dateTo,
         exceptionType: exceptionForm.exceptionType,
@@ -1105,7 +1115,7 @@ export default function ShiftControlSection({
           note: "إلغاء من مساحة الموظفة V2",
           allowLockedPeriodAdjustment,
         },
-        targetShiftEmployeeId
+        cleanText(exception.employeeId || (exception as Record<string, unknown>).employee_id) || canonicalShiftEmployeeId
       );
       setPreview(null);
       setPreviewKind(null);
