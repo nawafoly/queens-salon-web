@@ -542,9 +542,25 @@ export default function ShiftControlSection({
     [assignmentForm.shiftTemplateId, templates],
   );
 
+  const employeeAssignments = useMemo(
+    () => assignments.filter((assignment) => {
+      const id = cleanText(assignment.employeeId || (assignment as Record<string, unknown>).employee_id);
+      return shiftEmployeeIds.includes(id);
+    }),
+    [assignments, shiftEmployeeIds],
+  );
+
+  const employeeExceptions = useMemo(
+    () => exceptions.filter((exception) => {
+      const id = cleanText(exception.employeeId || (exception as Record<string, unknown>).employee_id);
+      return shiftEmployeeIds.includes(id);
+    }),
+    [exceptions, shiftEmployeeIds],
+  );
+
   const openAssignment = useMemo(
-    () => assignments.find((assignment) => isAssignmentActiveOnDate(assignment, resolvedDate)) || null,
-    [assignments, resolvedDate],
+    () => employeeAssignments.find((assignment) => isAssignmentActiveOnDate(assignment, resolvedDate)) || null,
+    [employeeAssignments, resolvedDate],
   );
 
   const targetShiftEmployeeId = useMemo(
@@ -649,6 +665,9 @@ export default function ShiftControlSection({
   }, [loadResolvedShift]);
 
   useEffect(() => {
+    setAssignments([]);
+    setExceptions([]);
+    setResolvedShift(null);
     setAssignmentForm(emptyAssignmentForm());
     setExceptionForm(emptyExceptionForm());
     setPreview(null);
@@ -1127,8 +1146,8 @@ export default function ShiftControlSection({
   };
 
   const visibleExceptions = useMemo(
-    () => filterScheduleExceptionsForView(exceptions, exceptionFilter),
-    [exceptionFilter, exceptions]
+    () => filterScheduleExceptionsForView(employeeExceptions, exceptionFilter),
+    [employeeExceptions, exceptionFilter]
   );
   const exceptionFilterOptions: Array<{ value: ScheduleExceptionFilter; label: string }> = [
     { value: "current", label: "الحالية" },
@@ -1156,16 +1175,16 @@ export default function ShiftControlSection({
     : source === "none" || !source
       ? "لا يوجد شفت Core"
       : "مطبق";
-  const nextException = exceptions
+  const nextException = employeeExceptions
     .filter(isOperationalScheduleException)
     .filter((exception) => cleanText(exception.dateFrom || (exception as Record<string, unknown>).date_from) >= todayKey())
     .sort((left, right) => cleanText(left.dateFrom || (left as Record<string, unknown>).date_from).localeCompare(cleanText(right.dateFrom || (right as Record<string, unknown>).date_from)))[0] || null;
-  const activeOrUpcomingAssignments = assignments.filter((assignment) => {
+  const activeOrUpcomingAssignments = employeeAssignments.filter((assignment) => {
     const label = assignmentStatus(assignment);
     return label === "نشط" || label === "مجدول";
   });
-  const cancelledAssignments = assignments.filter((assignment) => assignmentStatus(assignment) === "ملغي");
-  const archivedAssignments = assignments.filter((assignment) => !activeOrUpcomingAssignments.includes(assignment) && assignmentStatus(assignment) !== "ملغي");
+  const cancelledAssignments = employeeAssignments.filter((assignment) => assignmentStatus(assignment) === "ملغي");
+  const archivedAssignments = employeeAssignments.filter((assignment) => !activeOrUpcomingAssignments.includes(assignment) && assignmentStatus(assignment) !== "ملغي");
   const renderAssignmentRow = (assignment: CoreShiftAssignment) => {
     const label = assignmentStatus(assignment);
     const isCancelled = label === "ملغي";
