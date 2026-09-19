@@ -972,22 +972,17 @@ export default function ShiftControlSection({
     if (!canManage) return;
     const today = todayKey();
     const effectiveFrom = cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from);
-    const closeDate = (() => {
-      const date = new Date(`${today}T00:00:00`);
-      date.setDate(date.getDate() - 1);
-      return date.toISOString().slice(0, 10);
-    })();
-    if (effectiveFrom && closeDate < effectiveFrom) {
-      setError("لا يمكن إنهاء هذا التعيين قبل تاريخ بدايته. استخدم الإلغاء بدلًا من ذلك.");
+    if (effectiveFrom && today < effectiveFrom) {
+      setError("هذا التعيين لم يبدأ بعد. استخدم الإلغاء بدل إنهائه.");
       return;
     }
-    if (!window.confirm(`إنهاء تعيين الشفت ابتداءً من اليوم ${today}؟ آخر يوم عمل بهذا التعيين سيكون ${closeDate}.`)) return;
+    if (!window.confirm(`إنهاء تعيين الشفت بنهاية اليوم ${today}؟`)) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
       await CoreHrService.updateShiftAssignment(assignment.id, {
-        effectiveTo: closeDate,
+        effectiveTo: today,
         reason: "إنهاء شفت من مساحة الموظفة V2",
         allowLockedPeriodAdjustment,
       });
