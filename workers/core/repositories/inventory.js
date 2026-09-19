@@ -1129,19 +1129,30 @@ export async function confirmServiceConsumption(db, salonId, data, actor = {}) {
   const bookingId = consumptionContext.booking_id;
   const serviceId = consumptionContext.service_id;
 
-  const requestedLocationId = optionalText(
-    preferred(data, 'locationId', 'location_id')
-  );
+  const staffHomeLocation =
+    await getStaffHomeLocation(
+      db,
+      salonId,
+      employeeId
+    );
 
-  const location = requestedLocationId
-    ? await getLocation(db, salonId, requestedLocationId)
-    : await ensureDefaultLocation(db, salonId);
+  const location =
+    staffHomeLocation.locationId
+      ? await getLocation(
+          db,
+          salonId,
+          staffHomeLocation.locationId
+        )
+      : await ensureDefaultLocation(
+          db,
+          salonId
+        );
 
   if (Number(location.active) !== 1) {
     throw new AppError(
       409,
       'inventory:location_inactive',
-      'Inventory location is inactive'
+      'Employee inventory location is inactive'
     );
   }
 
