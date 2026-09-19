@@ -1945,6 +1945,15 @@ test("Shift Control UI is Core-only, fail-closed, and uses canonical time contro
   assert.equal((source.match(/clock="12h"/g) || []).length >= 4, true);
   assert.match(source, /crossesMidnight:\s*crossesMidnight\(/);
   assert.match(source, /مدة الاستراحة يجب أن تكون أقل من مدة الشفت الفعلية/);
+  assert.match(source, /lateGraceMinutes > 240/);
+  assert.match(source, /Promise\.allSettled\(shiftEmployeeIds\.map\(loader\)\)/);
+  assert.match(source, /previewKind === "assignment"/);
+  assert.match(source, /previewKind === "exception"/);
+  assert.match(source, /setAllowLockedPeriodAdjustment/);
+  assert.match(source, /السماح بتسجيل تسوية بعد إقفال الرواتب/);
+  assert.match(source, /const employeeAssignments = useMemo/);
+  assert.match(source, /const employeeExceptions = useMemo/);
+  assert.match(source, /const loadResolvedShift = useCallback/);
   assert.doesNotMatch(
     source,
     /resolveEmployeeShiftsRange\([\s\S]{0,300}\.catch\(\(\) => \(\{ rows: \[\]/,
@@ -1952,4 +1961,5 @@ test("Shift Control UI is Core-only, fail-closed, and uses canonical time contro
   );
   assert.doesNotMatch(source, /listShiftPayrollPeriodLocks\(/);
   assert.doesNotMatch(source, /listShiftPayrollAdjustments\(/);
+  assert.doesNotMatch(source, /ScheduleExceptionType/);
 });
