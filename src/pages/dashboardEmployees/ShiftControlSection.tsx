@@ -346,6 +346,26 @@ function readNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function validTime(value: string) {
+  const match = /^(\\d{2}):(\\d{2})$/.exec(cleanText(value));
+  if (!match) return false;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function timeMinutes(value: string) {
+  if (!validTime(value)) return null;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function crossesMidnight(startTime: string, endTime: string) {
+  const start = timeMinutes(startTime);
+  const end = timeMinutes(endTime);
+  return start !== null && end !== null && end < start;
+}
+
 function shiftPreviewDescription(preview: CoreShiftChangePreview) {
   const affectedDays = readNumber(preview.affectedDays ?? preview.affected_days);
   const overlaps = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
@@ -573,6 +593,21 @@ export default function ShiftControlSection({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setPreview(null);
+  }, [
+    assignmentForm.shiftTemplateId,
+    assignmentForm.effectiveFrom,
+    assignmentForm.effectiveTo,
+    assignmentForm.assignmentType,
+    exceptionForm.dateFrom,
+    exceptionForm.dateTo,
+    exceptionForm.exceptionType,
+    exceptionForm.shiftTemplateId,
+    exceptionForm.startTime,
+    exceptionForm.endTime,
+  ]);
+
   const previewAssignment = async () => {
     if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
     const previewTo = assignmentForm.assignmentType === "permanent"
@@ -615,6 +650,14 @@ export default function ShiftControlSection({
       setError("اسم الشفت مطلوب.");
       return;
     }
+    if (!validTime(templateForm.startTime) || !validTime(templateForm.endTime)) {
+      setError("وقت بداية ونهاية الشفت مطلوبان بصيغة صحيحة.");
+      return;
+    }
+    if (templateForm.startTime === templateForm.endTime) {
+      setError("وقت بداية الشفت ونهايته لا يمكن أن يكونا متطابقين.");
+      return;
+    }
     const lateGraceMinutes = Number(templateForm.lateGraceMinutes || 0);
     const attendanceLockAfterMinutes = Number(templateForm.attendanceLockAfterMinutes || 0);
     if (templateForm.attendanceLockEnabled && attendanceLockAfterMinutes < lateGraceMinutes) {
@@ -631,7 +674,7 @@ export default function ShiftControlSection({
         code: templateForm.code.trim() || null,
         startTime: templateForm.startTime,
         endTime: templateForm.endTime,
-        crossesMidnight: false,
+        crossesMidnight: crossesMidnight(templateForm.startTime, templateForm.endTime),
         breakMinutes: Number(templateForm.breakMinutes || 0),
         breakPaid: false,
         lateGraceMinutes,
@@ -704,6 +747,14 @@ export default function ShiftControlSection({
     if (!canManage) return;
     if (!assignmentForm.shiftTemplateId || !assignmentForm.effectiveFrom || !assignmentForm.reason.trim()) {
       setError("الشفت وتاريخ البداية وسبب التغيير مطلوبة.");
+      return;
+    }
+    if (assignmentForm.assignmentType === "temporary" && !assignmentForm.effectiveTo) {
+      setError("التعيين المؤقت يحتاج تاريخ نهاية.");
+      return;
+    }
+    if (assignmentForm.effectiveTo && assignmentForm.effectiveTo < assignmentForm.effectiveFrom) {
+      setError("تاريخ نهاية التعيين لا يمكن أن يكون قبل تاريخ البداية.");
       return;
     }
     setSaving(true);
@@ -794,9 +845,23 @@ export default function ShiftControlSection({
       setError("تاريخ الاستثناء مطلوب.");
       return;
     }
+    if (exceptionForm.dateTo < exceptionForm.dateFrom) {
+      setError("تاريخ نهاية الاستثناء لا يمكن أن يكون قبل تاريخ البداية.");
+      return;
+    }
     if (exceptionForm.exceptionType === "shift" && !exceptionForm.shiftTemplateId) {
       setError("اختر شفت بديل.");
       return;
+    }
+    if (exceptionForm.exceptionType === "custom") {
+      if (!validTime(exceptionForm.startTime) || !validTime(exceptionForm.endTime)) {
+        setError("وقت البداية والنهاية مطلوبان للاستثناء المخصص.");
+        return;
+      }
+      if (exceptionForm.startTime === exceptionForm.endTime) {
+        setError("وقت بداية الاستثناء ونهايته لا يمكن أن يكونا متطابقين.");
+        return;
+      }
     }
     setSaving(true);
     setError("");
@@ -993,7 +1058,7 @@ export default function ShiftControlSection({
             note={source === "assignment" && openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || "مفتوح"}` : resolvedStatus}
             tone={source === "exception" ? "gold" : source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"}
           />
-          <WorkspaceMetricV2 label="الوقت" value={source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note="وقت الدوام الفعلي" tone="dark" />
+          <WorkspaceMetricV2 label="الوقت" value={resolvedStatus === "مغلق اليوم" ? "راحة" : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note={resolvedStatus === "مغلق اليوم" ? "لا يوجد دوام مطلوب" : "وقت الدوام الفعلي"} tone="dark" />
           <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} note={source === "exception" ? exceptionTypeLabel(resolvedExceptionType) : "الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي"} tone={source === "exception" ? "gold" : source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
           <WorkspaceMetricV2
             label="مرونة الحضور"
@@ -1052,7 +1117,7 @@ export default function ShiftControlSection({
                 disabled={!canManage || saving}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="shift-assignment-to" label="ينتهي في">
+            <DashboardFieldV2 id="shift-assignment-to" label="ينتهي في" required={assignmentForm.assignmentType === "temporary"}>
               <DashboardDatePickerV2
                 id="shift-assignment-to"
                 value={assignmentForm.assignmentType === "permanent" ? "" : assignmentForm.effectiveTo}
@@ -1140,11 +1205,17 @@ export default function ShiftControlSection({
               <DashboardFieldV2 id="shift-template-code" label="الكود">
                 <input id="shift-template-code" className="dsv2-input" value={templateForm.code} onChange={(event) => setTemplateForm((current) => ({ ...current, code: event.target.value }))} disabled={!canManage || saving} placeholder="AM" />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-start" label="البداية">
+              <DashboardFieldV2 id="shift-template-start" label="البداية" required>
                 <DashboardTimeInputV2 id="shift-template-start" clock="12h" className="dsv2-input" value={templateForm.startTime} onChange={(event) => setTemplateForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-end" label="النهاية">
+              <DashboardFieldV2 id="shift-template-end" label="النهاية" required>
                 <DashboardTimeInputV2 id="shift-template-end" clock="12h" className="dsv2-input" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-break" label="مدة الاستراحة (دقيقة)">
+                <DashboardNumberInputV2 id="shift-template-break" className="dsv2-input" min="0" max="720" value={templateForm.breakMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, breakMinutes: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-overtime" label="بدء الإضافي بعد (دقيقة)">
+                <DashboardNumberInputV2 id="shift-template-overtime" className="dsv2-input" min="0" max="1440" value={templateForm.overtimeAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, overtimeAfterMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
               <DashboardFieldV2 id="shift-template-late" label="فترة سماح التأخير">
                 <DashboardNumberInputV2 id="shift-template-late" className="dsv2-input" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
@@ -1196,10 +1267,10 @@ export default function ShiftControlSection({
               <DashboardFieldV2 id="shift-exception-to" label="إلى تاريخ" required>
                 <DashboardDatePickerV2 id="shift-exception-to" value={exceptionForm.dateTo} onChange={(value) => setExceptionForm((current) => ({ ...current, dateTo: value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-start" label="بداية مخصصة">
+              <DashboardFieldV2 id="shift-exception-start" label="بداية مخصصة" required={exceptionForm.exceptionType === "custom"}>
                 <DashboardTimeInputV2 id="shift-exception-start" clock="12h" className="dsv2-input" value={exceptionForm.startTime} onChange={(event) => setExceptionForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-end" label="نهاية مخصصة">
+              <DashboardFieldV2 id="shift-exception-end" label="نهاية مخصصة" required={exceptionForm.exceptionType === "custom"}>
                 <DashboardTimeInputV2 id="shift-exception-end" clock="12h" className="dsv2-input" value={exceptionForm.endTime} onChange={(event) => setExceptionForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
             </div>
