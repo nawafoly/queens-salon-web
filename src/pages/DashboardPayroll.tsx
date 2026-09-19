@@ -516,6 +516,9 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "core_payroll:late_approval_invalid_status") {
     return "حالة هذه المسيرة لا تسمح بتسجيل اعتماد متأخر.";
   }
+  if (message === "core_payroll:late_approval_concurrent_mutation") {
+    return "تغيّرت حالة المسيرة أثناء تسجيل الاعتماد المتأخر. حدّث الصفحة وتحقق من الاعتماد المسجل قبل المحاولة مرة أخرى.";
+  }
   if (
     message === "payroll_payment_reversal_reason_required" ||
     message === "core_payroll:payment_reversal_reason_required"
