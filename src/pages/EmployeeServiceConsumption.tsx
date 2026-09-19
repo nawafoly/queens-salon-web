@@ -12,11 +12,11 @@ import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeeP
 
 const bookingCopy = {
   ar: {
-    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد مسموح فقط في يوم الخدمة أو بعده (متأخر).", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد بنود SPECIFIC_ITEM في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل يوم الخدمة", confirm: "تأكيد الحجز وخصم المواد",
+    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد يتاح بعد بدء تنفيذ الخدمة أو إذا أصبح الحجز متأخرًا.", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد بنود SPECIFIC_ITEM في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل بدء تنفيذ الخدمة", confirm: "تأكيد الحجز وخصم المواد",
     UPCOMING: "قادم", DUE_TODAY: "مطلوب اليوم", PENDING_CONFIRMATION: "بانتظار التأكيد", OVERDUE: "متأخر", CONFIRMED: "مؤكد",
   },
   en: {
-    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation is allowed only on or after the service date.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no SPECIFIC_ITEM lines.", confirming: "Confirming...", unavailable: "Confirmation unavailable before the service date", confirm: "Confirm booking and deduct materials",
+    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation becomes available after service execution starts or when the booking is overdue.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no SPECIFIC_ITEM lines.", confirming: "Confirming...", unavailable: "Confirmation is unavailable before service execution starts", confirm: "Confirm booking and deduct materials",
     UPCOMING: "Upcoming", DUE_TODAY: "Due today", PENDING_CONFIRMATION: "Awaiting confirmation", OVERDUE: "Overdue", CONFIRMED: "Confirmed",
   },
 } as const;
@@ -111,7 +111,13 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   }, [pending]);
 
   const selected = pending.find((row) => row.booking_item_id === bookingItemId) || null;
-  const selectedConfirmable = Boolean(selected?.can_confirm !== false && selected?.lifecycle !== "UPCOMING");
+  const selectedConfirmable = Boolean(
+    selected?.can_confirm === true &&
+    (
+      selected?.lifecycle === "PENDING_CONFIRMATION" ||
+      selected?.lifecycle === "OVERDUE"
+    )
+  );
   const overdueCount = sections.overdue.length;
 
   const refreshPending = useCallback(async () => {
@@ -151,7 +157,9 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         setPending(pendingRows || []);
         setTrackedItems(inventoryItems || []);
         const actionable = (pendingRows || []).filter(
-          (row) => row.lifecycle === "OVERDUE" || row.lifecycle === "PENDING_CONFIRMATION" || row.lifecycle === "DUE_TODAY"
+          (row) =>
+            row.lifecycle === "OVERDUE" ||
+            row.lifecycle === "PENDING_CONFIRMATION"
         );
         if (actionable.length === 1) setBookingItemId(actionable[0].booking_item_id);
       } catch (err) {
