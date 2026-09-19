@@ -194,6 +194,7 @@ async function validateServiceConsumptionContext(
        COALESCE(bi.start_time, b.start_time) AS start_time,
        COALESCE(bi.end_time, b.end_time) AS end_time,
        bi.duration_minutes,
+       b.staff_id AS booking_staff_id,
        b.status AS booking_status,
        b.deleted_at AS booking_deleted_at,
        s.id AS service_exists,
@@ -236,13 +237,34 @@ async function validateServiceConsumptionContext(
     );
   }
 
-  const bookingDate = cleanText(context.booking_date);
-  const today = salonTodayISO();
-  if (bookingDate && bookingDate > today) {
+  const assignedEmployeeId =
+    cleanText(context.staff_id) ||
+    cleanText(context.booking_staff_id);
+
+  if (
+    !assignedEmployeeId ||
+    assignedEmployeeId !== cleanText(employeeId)
+  ) {
+    throw new AppError(
+      403,
+      'inventory:booking_employee_mismatch',
+      'Inventory consumption can only be confirmed by the employee assigned to this booking item'
+    );
+  }
+
+  const lifecycle =
+    deriveServiceConsumptionLifecycle(
+      context
+    );
+
+  if (
+    lifecycle === 'UPCOMING' ||
+    lifecycle === 'DUE_TODAY'
+  ) {
     throw new AppError(
       409,
       'inventory:consumption_not_due',
-      'Service consumption cannot be confirmed before the booking date'
+      'Service consumption cannot be confirmed before service execution starts'
     );
   }
 
@@ -1845,7 +1867,9 @@ export async function listPendingServiceConsumptions(db, salonId, query = {}) {
     return {
       ...row,
       lifecycle,
-      can_confirm: lifecycle !== 'UPCOMING' && lifecycle !== 'CONFIRMED',
+      can_confirm:
+        lifecycle === 'PENDING_CONFIRMATION' ||
+        lifecycle === 'OVERDUE',
       effective_end_time: end || null,
       delay_minutes: delayMinutes,
     };
