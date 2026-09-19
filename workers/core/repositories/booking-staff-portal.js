@@ -17,6 +17,7 @@ import { getSetting } from './settings.js';
 
 const SELF_STATUS_TRANSITIONS = new Map([
   ['pending', new Set(['confirmed', 'cancelled'])],
+  ['booked', new Set(['completed', 'cancelled'])],
   ['confirmed', new Set(['completed', 'cancelled'])],
 ]);
 
