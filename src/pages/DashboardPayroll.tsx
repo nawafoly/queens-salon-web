@@ -528,6 +528,24 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "payroll_payment_reversal_entry_must_be_saved") {
     return "لا يمكن إلغاء تسجيل الدفع لسجل غير محفوظ.";
   }
+  if (message === "core_payroll:payment_concurrent_mutation") {
+    return "تغيّرت حالة الراتب أثناء تسجيل الدفع. حدّث الصفحة وتحقق من حالة المسيرة.";
+  }
+  if (message === "core_payroll:payment_advance_settlement_incomplete") {
+    return "لم تكتمل تسوية أقساط السلفة مع تسجيل الدفع. لم يتم اعتماد الحالة كعملية مكتملة.";
+  }
+  if (message === "core_payroll:payment_reversal_concurrent_mutation") {
+    return "تغيّرت حالة الراتب أثناء إلغاء الدفع. حدّث الصفحة وتحقق من حالة المسيرة.";
+  }
+  if (message === "core_payroll:payment_reversal_advance_incomplete") {
+    return "لم تكتمل إعادة أقساط السلفة بعد إلغاء الدفع.";
+  }
+  if (message === "core_payroll:payment_reversal_obligation_incomplete") {
+    return "لم تكتمل إعادة التزامات الراتب بعد إلغاء الدفع.";
+  }
+  if (message === "core_payroll:approval_concurrent_mutation") {
+    return "تغيّرت حالة المسيرة أثناء الاعتماد. حدّث الصفحة وتحقق من الحالة الحالية.";
+  }
   if (message === "core_payroll:payment_reversal_obligation_cancelled") {
     return "لا يمكن عكس الدفع لأن أحد التزامات الراتب المرتبطة أُلغي بعد الدفع.";
   }
