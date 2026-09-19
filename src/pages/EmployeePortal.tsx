@@ -542,7 +542,7 @@ function EmployeePortalContent() {
   const bottomNavItems = [
     { to: "/employee/overview", label: t("nav.home"), icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: t("nav.attendance"), icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
-    { to: "/employee/consumption", label: t("nav.bookings"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
+    { to: "/employee/bookings", label: t("nav.bookings"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
     { to: "/employee/requests", label: t("nav.requests"), icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/more", label: t("nav.more"), icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
@@ -550,7 +550,7 @@ function EmployeePortalContent() {
   const desktopNavItems = [
     { to: "/employee/overview", label: t("nav.home"), description: t("nav.homeDescription"), icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: t("nav.attendanceFull"), description: t("nav.attendanceDescription"), icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
-    { to: "/employee/consumption", label: t("nav.bookings"), description: t("nav.bookingsDescription"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
+    { to: "/employee/bookings", label: t("nav.bookings"), description: t("nav.bookingsDescription"), icon: faCalendarDays, end: true, permission: "inventory.consume.confirm" as AppPermission },
     { to: "/employee/requests", label: t("nav.myRequests"), description: t("nav.requestsDescription"), icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/payroll", label: t("nav.payroll"), description: t("nav.payrollDescription"), icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/targets", label: t("nav.targets"), description: t("nav.targetsDescription"), icon: faChartLine, permission: "targets.view_own" as AppPermission },
@@ -788,7 +788,8 @@ function EmployeePortalContent() {
             <Route path="permission" element={<Navigate to="/employee/requests?new=permission" replace />} />
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="targets" element={<PermissionRoute permission="targets.view_own"><EmployeeTargetsPage /></PermissionRoute>} />
-            <Route path="consumption" element={<PermissionRoute permission="inventory.consume.confirm"><EmployeeServiceConsumption session={session} /></PermissionRoute>} />
+            <Route path="bookings" element={<PermissionRoute permission="inventory.consume.confirm"><EmployeeServiceConsumption session={session} /></PermissionRoute>} />
+            <Route path="consumption" element={<Navigate to="/employee/bookings" replace />} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
           </div>
