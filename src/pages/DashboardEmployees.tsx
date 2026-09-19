@@ -10295,25 +10295,25 @@ const canonicalSchedules =
                       rows={4}
                     />
                   </DashboardFieldV2>
-                  <div className="attendance-punch-editor-actions-v2">
-                    <button
-                      type="button"
-                      className="dsv2-btn dsv2-btn--secondary"
-                      onClick={closeAttendancePunchEditor}
-                      disabled={saving}
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      className="dsv2-btn dsv2-btn--primary"
-                      onClick={() => void saveAttendancePunchEditor()}
-                      disabled={saving}
-                    >
-                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
-                    </button>
-                  </div>
-                </div>
+                                  </div>
+                <div className="attendance-punch-editor-actions-v2">
+                                    <button
+                                      type="button"
+                                      className="dsv2-btn dsv2-btn--secondary"
+                                      onClick={closeAttendancePunchEditor}
+                                      disabled={saving}
+                                    >
+                                      إلغاء
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="dsv2-btn dsv2-btn--primary"
+                                      onClick={() => void saveAttendancePunchEditor()}
+                                      disabled={saving}
+                                    >
+                                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                                    </button>
+                                  </div>
               </DashboardModalV2>
               <BasicInfoSection
                 isVisible={(!editingStaff && modalTab === "basic") || (!!editingStaff && activeTab === "basic")}
