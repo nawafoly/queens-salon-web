@@ -25,10 +25,19 @@ type Time12Parts = {
 };
 
 function normalizeTimeDraft(value: string) {
-  const digits = normalizeWesternDigits(value)
-    .replace(/[^0-9]/g, "")
-    .slice(0, 4);
+  return normalizeWesternDigits(value)
+    .replace(/[^0-9:]/g, "")
+    .slice(0, 5);
+}
 
+function normalizeTimeTyping(value: string) {
+  const clean = normalizeWesternDigits(value).replace(/[^0-9:]/g, "");
+  if (clean.includes(":")) {
+    const [hour = "", minute = ""] = clean.split(":");
+    return `${hour.slice(0, 2)}:${minute.slice(0, 2)}`.slice(0, 5);
+  }
+
+  const digits = clean.replace(/\D/g, "").slice(0, 4);
   if (digits.length <= 2) return digits;
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
@@ -121,7 +130,7 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
   };
 
   const commit12Draft = (nextDraft: string, nextPeriod = period12) => {
-    const normalizedDraft = normalizeTimeDraft(nextDraft);
+    const normalizedDraft = normalizeTimeTyping(nextDraft);
     setDraft12(normalizedDraft);
 
     if (!normalizedDraft) {
@@ -175,7 +184,7 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
             commit12Draft(event.target.value);
             return;
           }
-          commit(normalizeTimeDraft(event.target.value));
+          commit(normalizeTimeTyping(event.target.value));
         }}
         onBlur={(event) => {
           if (clock === "12h") {
