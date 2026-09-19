@@ -701,6 +701,21 @@ export default function ShiftControlSection({
       setError("تحقق من مدد الاستراحة والسماح والإغلاق والإضافي؛ القيم خارج النطاق المسموح.");
       return;
     }
+    const startMinutes = timeMinutes(templateForm.startTime);
+    const endMinutes = timeMinutes(templateForm.endTime);
+    const shiftMinutes = startMinutes === null || endMinutes === null
+      ? 0
+      : endMinutes > startMinutes
+        ? endMinutes - startMinutes
+        : (24 * 60 - startMinutes) + endMinutes;
+    if (breakMinutes >= shiftMinutes) {
+      setError("مدة الاستراحة يجب أن تكون أقل من مدة الشفت الفعلية.");
+      return;
+    }
+    if (overtimeAfterMinutes > 0 && overtimeAfterMinutes < shiftMinutes) {
+      setError("بدء الوقت الإضافي لا يمكن أن يكون قبل اكتمال مدة الشفت.");
+      return;
+    }
     if (templateForm.attendanceLockEnabled && attendanceLockAfterMinutes < lateGraceMinutes) {
       setError("مدة إغلاق البصمة يجب أن تكون مساوية لفترة سماح التأخير أو أكبر منها.");
       return;
