@@ -24,7 +24,7 @@ test("Guard: confirm binds booking item, SERVICE_TRACKED only, and is idempotent
   assert.match(inv, /SERVICE_CONSUMPTION_OUT/);
   assert.match(inv, /source_type[\s\S]*service_consumption|'service_consumption'/);
   assert.match(inv, /inventory:consumption_not_due/);
-  assert.match(inv, /cannot be confirmed before the booking date/);
+  assert.match(inv, /cannot be confirmed before service execution starts/);
 });
 
 test("Guard: pending worklist is booking-item grain with derived lifecycle", () => {
