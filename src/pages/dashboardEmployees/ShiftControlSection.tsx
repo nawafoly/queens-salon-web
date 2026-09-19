@@ -495,6 +495,8 @@ export default function ShiftControlSection({
   const [resolvedDate, setResolvedDate] = useState(todayKey());
   const [resolvedShift, setResolvedShift] = useState<CoreResolvedShift | null>(null);
   const [preview, setPreview] = useState<CoreShiftChangePreview | null>(null);
+  const [previewKind, setPreviewKind] = useState<"assignment" | "exception" | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [allowLockedPeriodAdjustment, setAllowLockedPeriodAdjustment] = useState(false);
   const [templateForm, setTemplateForm] = useState<TemplateForm>(() => emptyTemplateForm());
   const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>(() => emptyAssignmentForm());
@@ -523,12 +525,15 @@ export default function ShiftControlSection({
 
   const activeTemplates = useMemo(() => templates.filter((template) => boolish(template.active)), [templates]);
   const templateOptions = useMemo(() => {
-    const source = activeTemplates.length ? activeTemplates : templates;
+    const selectedIds = new Set(
+      [assignmentForm.shiftTemplateId, exceptionForm.shiftTemplateId].filter(Boolean)
+    );
+    const source = templates.filter((template) => boolish(template.active) || selectedIds.has(template.id));
     return source.map((template) => ({
       value: template.id,
-      label: `${template.name || template.id} - ${formatWindow(template)}`,
+      label: `${template.name || template.id} - ${formatWindow(template)}${boolish(template.active) ? "" : " (متوقف)"}`,
     }));
-  }, [activeTemplates, templates]);
+  }, [assignmentForm.shiftTemplateId, exceptionForm.shiftTemplateId, templates]);
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === assignmentForm.shiftTemplateId) || null,
@@ -558,10 +563,30 @@ export default function ShiftControlSection({
     setLoading(true);
     setError("");
     try {
+      const loadAcrossEmployeeIds = async <T,>(loader: (id: string) => Promise<T[]>) => {
+        const settled = await Promise.allSettled(shiftEmployeeIds.map(loader));
+        const groups: T[][] = [];
+        let firstError: unknown = null;
+        let successCount = 0;
+        settled.forEach((result) => {
+          if (result.status === "fulfilled") {
+            successCount += 1;
+            groups.push(result.value);
+          } else {
+            firstError ||= result.reason;
+          }
+        });
+        if (!successCount) throw firstError || new Error("core_hr:employee_alias_lookup_failed");
+        if (successCount < settled.length) {
+          console.warn("Shift Control ignored one or more invalid employee aliases.");
+        }
+        return groups;
+      };
+
       const [templateRows, assignmentGroups, exceptionGroups, resolvedBatch] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }))),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }))),
+        loadAcrossEmployeeIds((id) => CoreHrService.listShiftAssignments({ employeeId: id })),
+        loadAcrossEmployeeIds((id) => CoreHrService.listScheduleExceptions({ employeeId: id })),
         CoreHrService.resolveEmployeeShiftsRange({
           employeeIds: shiftEmployeeIds,
           dateFrom: resolvedDate,
@@ -597,6 +622,7 @@ export default function ShiftControlSection({
     setAssignmentForm(emptyAssignmentForm());
     setExceptionForm(emptyExceptionForm());
     setPreview(null);
+    setPreviewKind(null);
     setMessage("");
     setError("");
     setAllowLockedPeriodAdjustment(false);
@@ -604,6 +630,7 @@ export default function ShiftControlSection({
 
   useEffect(() => {
     setPreview(null);
+    setPreviewKind(null);
   }, [
     assignmentForm.shiftTemplateId,
     assignmentForm.effectiveFrom,
@@ -619,6 +646,7 @@ export default function ShiftControlSection({
 
   const previewAssignment = async () => {
     setPreview(null);
+    setPreviewKind(null);
     if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
     if (assignmentForm.assignmentType === "temporary" && !assignmentForm.effectiveTo) {
       setError("التعيين المؤقت يحتاج تاريخ نهاية.");
@@ -631,18 +659,25 @@ export default function ShiftControlSection({
     const previewTo = assignmentForm.assignmentType === "permanent"
       ? assignmentForm.effectiveFrom
       : assignmentForm.effectiveTo || assignmentForm.effectiveFrom;
-    const result = await CoreHrService.previewShiftChange({
-      employeeId: targetShiftEmployeeId,
-      changeType: "assignment",
-      effectiveFrom: assignmentForm.effectiveFrom,
-      effectiveTo: previewTo,
-    });
-    setPreview(result);
-    return result;
+    setPreviewing(true);
+    try {
+      const result = await CoreHrService.previewShiftChange({
+        employeeId: targetShiftEmployeeId,
+        changeType: "assignment",
+        effectiveFrom: assignmentForm.effectiveFrom,
+        effectiveTo: previewTo,
+      });
+      setPreview(result);
+      setPreviewKind("assignment");
+      return result;
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const previewException = async () => {
     setPreview(null);
+    setPreviewKind(null);
     if (!targetShiftEmployeeId || !exceptionForm.dateFrom) return null;
     if (exceptionForm.dateTo && exceptionForm.dateTo < exceptionForm.dateFrom) {
       setError("تاريخ نهاية الاستثناء لا يمكن أن يكون قبل تاريخ البداية.");
@@ -656,14 +691,20 @@ export default function ShiftControlSection({
       setError("أدخل وقت بداية ونهاية صحيحين ومختلفين للاستثناء المخصص.");
       return null;
     }
-    const result = await CoreHrService.previewShiftChange({
-      employeeId: targetShiftEmployeeId,
-      changeType: "exception",
-      dateFrom: exceptionForm.dateFrom,
-      dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
-    });
-    setPreview(result);
-    return result;
+    setPreviewing(true);
+    try {
+      const result = await CoreHrService.previewShiftChange({
+        employeeId: targetShiftEmployeeId,
+        changeType: "exception",
+        dateFrom: exceptionForm.dateFrom,
+        dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
+      });
+      setPreview(result);
+      setPreviewKind("exception");
+      return result;
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const previewAllowsSave = (result: CoreShiftChangePreview | null) => {
@@ -697,7 +738,7 @@ export default function ShiftControlSection({
       setError("قيم الدقائق في سياسة الشفت يجب أن تكون أرقامًا صحيحة.");
       return;
     }
-    if (breakMinutes < 0 || breakMinutes > 720 || lateGraceMinutes < 0 || lateGraceMinutes > 720 || attendanceLockAfterMinutes < 0 || attendanceLockAfterMinutes > 1440 || overtimeAfterMinutes < 0 || overtimeAfterMinutes > 1440) {
+    if (breakMinutes < 0 || breakMinutes > 720 || lateGraceMinutes < 0 || lateGraceMinutes > 240 || attendanceLockAfterMinutes < 0 || attendanceLockAfterMinutes > 1440 || overtimeAfterMinutes < 0 || overtimeAfterMinutes > 1440) {
       setError("تحقق من مدد الاستراحة والسماح والإغلاق والإضافي؛ القيم خارج النطاق المسموح.");
       return;
     }
@@ -710,10 +751,6 @@ export default function ShiftControlSection({
         : (24 * 60 - startMinutes) + endMinutes;
     if (breakMinutes >= shiftMinutes) {
       setError("مدة الاستراحة يجب أن تكون أقل من مدة الشفت الفعلية.");
-      return;
-    }
-    if (overtimeAfterMinutes > 0 && overtimeAfterMinutes < shiftMinutes) {
-      setError("بدء الوقت الإضافي لا يمكن أن يكون قبل اكتمال مدة الشفت.");
       return;
     }
     if (templateForm.attendanceLockEnabled && attendanceLockAfterMinutes < lateGraceMinutes) {
@@ -743,6 +780,8 @@ export default function ShiftControlSection({
       });
       setTemplateForm(emptyTemplateForm());
       setPreview(null);
+      setPreviewKind(null);
+    setPreviewKind(null);
       setMessage("تم حفظ قالب الشفت.");
       await load();
     } catch (err) {
@@ -789,6 +828,7 @@ export default function ShiftControlSection({
       reason: cleanText(assignment.reason) || "تعديل تعيين شفت من إدارة الموظفات",
     });
     setPreview(null);
+    setPreviewKind(null);
     setError("");
     setMessage("وضع التعديل نشط: عدّل التعيين ثم اضغط حفظ التعديل.");
     focusAssignmentEditor();
@@ -800,6 +840,7 @@ export default function ShiftControlSection({
       shiftTemplateId: current.shiftTemplateId || selectedTemplate?.id || activeTemplates[0]?.id || templates[0]?.id || "",
     }));
     setPreview(null);
+    setPreviewKind(null);
     setMessage("جاهز لتعيين شفت جديد. سيتم إغلاق أي تداخل سابق لنفس الموظفة تلقائيًا.");
     focusAssignmentEditor();
   };
@@ -870,6 +911,8 @@ export default function ShiftControlSection({
     try {
       await CoreHrService.cancelShiftAssignment(assignment.id, "إلغاء من مساحة الموظفة V2", { allowLockedPeriodAdjustment });
       setPreview(null);
+      setPreviewKind(null);
+    setPreviewKind(null);
       setMessage("تم إلغاء تعيين الشفت.");
       await load();
     } catch (err) {
@@ -907,6 +950,8 @@ export default function ShiftControlSection({
         allowLockedPeriodAdjustment,
       });
       setPreview(null);
+      setPreviewKind(null);
+    setPreviewKind(null);
       setMessage("تم إنهاء الشفت.");
       await load();
     } catch (err) {
@@ -993,6 +1038,8 @@ export default function ShiftControlSection({
         targetShiftEmployeeId
       );
       setPreview(null);
+      setPreviewKind(null);
+    setPreviewKind(null);
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {
@@ -1220,7 +1267,7 @@ export default function ShiftControlSection({
           <DashboardFieldV2 id="shift-assignment-reason" label="سبب التغيير" required>
             <input id="shift-assignment-reason" className="dsv2-input" value={assignmentForm.reason} onChange={(event) => setAssignmentForm((current) => ({ ...current, reason: event.target.value }))} disabled={!canManage || saving} />
           </DashboardFieldV2>
-          {preview ? (
+          {preview && previewKind === "assignment" ? (
             <WorkspaceNoticeV2
               title="تأثير الحفظ المتوقع"
               description={shiftPreviewDescription(preview)}
@@ -1228,7 +1275,7 @@ export default function ShiftControlSection({
             />
           ) : null}
           <div className="dsv2-cluster">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment()} disabled={!canManage || saving || !assignmentForm.shiftTemplateId}>فحص قبل الحفظ</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment()} disabled={!canManage || saving || previewing || !assignmentForm.shiftTemplateId}>{previewing && previewKind !== "exception" ? "جاري الفحص..." : "فحص قبل الحفظ"}</button>
             {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={startNewAssignment} disabled={saving}>إلغاء التعديل</button> : null}
             <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? "حفظ تعديل الشفت" : "تعيين الشفت"}</button>
           </div>
@@ -1369,8 +1416,15 @@ export default function ShiftControlSection({
             <DashboardFieldV2 id="shift-exception-note" label="ملاحظة">
               <input id="shift-exception-note" className="dsv2-input" value={exceptionForm.note} onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))} disabled={!canManage || saving} />
             </DashboardFieldV2>
+            {preview && previewKind === "exception" ? (
+              <WorkspaceNoticeV2
+                title="تأثير الاستثناء المتوقع"
+                description={shiftPreviewDescription(preview)}
+                tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
+              />
+            ) : null}
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException()} disabled={!canManage || saving}>فحص الاستثناء</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException()} disabled={!canManage || saving || previewing}>{previewing && previewKind !== "assignment" ? "جاري الفحص..." : "فحص الاستثناء"}</button>
               <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void createException()} disabled={!canManage || saving}>حفظ الاستثناء</button>
             </div>
           </WorkspaceCardV2>
