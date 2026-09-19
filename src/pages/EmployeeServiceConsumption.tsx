@@ -13,14 +13,15 @@ import {
 } from "../services/CoreBookingService";
 import type { HrSession } from "./hr/shared";
 import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeePortalLanguage";
+import "../styles/EmployeeBookingWorkspace.css";
 
 const bookingCopy = {
   ar: {
-    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد يتاح بعد بدء تنفيذ الخدمة أو إذا أصبح الحجز متأخرًا.", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد مواد قابلة للتأكيد في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل بدء تنفيذ الخدمة", confirm: "تأكيد المواد وخصم المخزون", bookingWorkspace: "مسار تنفيذ الحجوزات", bookingWorkspaceHint: "اختاري الحجز ثم نفّذي المواد المطلوبة قبل إكماله.", noActiveBookings: "لا توجد حجوزات مفتوحة حاليًا.", bookingStatus: "حالة الحجز", pendingBooking: "بانتظار التأكيد", bookedBooking: "مؤكد للحجز", confirmedBooking: "مؤكد", completedBooking: "مكتمل", cancelledBooking: "ملغي", confirmBooking: "تأكيد الحجز", confirmingBooking: "جاري تأكيد الحجز...", completeBooking: "إكمال الحجز", completingBooking: "جاري إكمال الحجز...", bookingConfirmed: "تم تأكيد الحجز وأصبح جاهزًا للتنفيذ.", bookingCompleted: "تم إكمال الحجز بنجاح.", materialsRemaining: "هذه الخدمة فيها مواد محددة في الوصفة ولم يتم تأكيدها بعد. أكديها قبل إكمال الحجز.", executionNotStarted: "لا يمكن إكمال الحجز قبل بدء جميع الخدمات.", readyToComplete: "تمت معالجة المواد المطلوبة ويمكن إكمال الحجز.", services: "الخدمات",
+    loadError: "تعذر تأكيد الاستهلاك.", success: "تم تأكيد الاستهلاك وخصم المخزون.", client: "عميلة", source: "المصدر", previewOnly: "للمعاينة فقط — لا يمكن التأكيد قبل يوم الخدمة", sticky: "يبقى حتى التأكيد — لا يمكن الإغلاق دون معالجة", none: "لا يوجد.", loadingBookings: "جاري تحميل حجوزاتك...", subtitle: "حجوزاتك اليوم والمتأخرة", title: "حجوزاتي", overdueAlert: "لديك حجوزات متأخرة بدون تأكيد مواد", overdueTail: "بند استهلاك دون تأكيد. المهمة لا تُغلق إلا بعد المعالجة — بدون خصم وهمي.", todayBookings: "حجوزات اليوم", noneToday: "لا يوجد مطلوب اليوم.", awaiting: "بانتظار التأكيد", noneAwaiting: "لا يوجد بانتظار التأكيد.", overdue: "متأخرة", noneOverdue: "لا يوجد متأخر.", upcoming: "قادمة", materials: "مواد هذا الحجز", upcomingPrefix: "هذا البند قادم في", confirmRule: "التأكيد يتاح بعد بدء تنفيذ الخدمة أو إذا أصبح الحجز متأخرًا.", loadingRecipe: "جاري تحميل الوصفة...", product: "المنتج", default: "الافتراضي", quantity: "الكمية", noRecipe: "لا توجد مواد قابلة للتأكيد في وصفة هذه الخدمة.", confirming: "جاري التأكيد...", unavailable: "التأكيد غير متاح قبل بدء تنفيذ الخدمة", confirm: "تأكيد المواد وخصم المخزون", bookingWorkspace: "مسار تنفيذ الحجوزات", bookingWorkspaceHint: "اختاري الحجز ثم نفّذي خطواته بالترتيب: استلام، بدء الخدمة، المواد، ثم الإكمال.", noActiveBookings: "لا توجد حجوزات مفتوحة حاليًا.", bookingStatus: "حالة الحجز", pendingBooking: "بانتظار التأكيد", bookedBooking: "مؤكد للحجز", confirmedBooking: "مؤكد", completedBooking: "مكتمل", cancelledBooking: "ملغي", confirmBooking: "تأكيد الحجز", confirmingBooking: "جاري تأكيد الحجز...", completeBooking: "إكمال الحجز", completingBooking: "جاري إكمال الحجز...", bookingConfirmed: "تم تأكيد الحجز وأصبح جاهزًا للتنفيذ.", bookingCompleted: "تم إكمال الحجز بنجاح.", materialsRemaining: "باقي مواد مستخدمة تحتاج تأكيد قبل إكمال الحجز.", executionNotStarted: "وقت تنفيذ الخدمة لم يبدأ بعد.", readyToComplete: "تمت معالجة المواد المطلوبة ويمكن إكمال الحجز.", services: "الخدمات", bookingDetails: "تفاصيل الحجز", acknowledgeBooking: "استلام الحجز", acknowledgingBooking: "جاري الاستلام...", bookingAcknowledged: "تم استلام الحجز.", acknowledged: "تم الاستلام", notAcknowledged: "بانتظار الاستلام", stepBooking: "الحجز", stepExecution: "التنفيذ", stepMaterials: "المواد", stepComplete: "الإكمال", serviceReady: "جاهزة", serviceMaterialsPending: "تأكيد المواد مطلوب", serviceNoMaterials: "لا توجد مواد مطلوبة", chooseService: "اختاري الخدمة لتسجيل المواد المستخدمة", clientPhone: "رقم العميلة", bookingSource: "مصدر الحجز", bookingTime: "الموعد",
     UPCOMING: "قادم", DUE_TODAY: "مطلوب اليوم", PENDING_CONFIRMATION: "بانتظار التأكيد", OVERDUE: "متأخر", CONFIRMED: "مؤكد",
   },
   en: {
-    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation becomes available after service execution starts or when the booking is overdue.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no confirmable material lines.", confirming: "Confirming...", unavailable: "Confirmation is unavailable before service execution starts", confirm: "Confirm materials and deduct inventory", bookingWorkspace: "Booking workflow", bookingWorkspaceHint: "Select a booking, then confirm required materials before completing it.", noActiveBookings: "There are no open bookings right now.", bookingStatus: "Booking status", pendingBooking: "Pending confirmation", bookedBooking: "Booked", confirmedBooking: "Confirmed", completedBooking: "Completed", cancelledBooking: "Cancelled", confirmBooking: "Confirm booking", confirmingBooking: "Confirming booking...", completeBooking: "Complete booking", completingBooking: "Completing booking...", bookingConfirmed: "The booking is confirmed and ready for execution.", bookingCompleted: "The booking was completed successfully.", materialsRemaining: "This service has configured recipe materials that are still unconfirmed. Confirm them before completing the booking.", executionNotStarted: "The booking cannot be completed before all services have started.", readyToComplete: "Required materials are handled and the booking can be completed.", services: "Services",
+    loadError: "Could not confirm material consumption.", success: "Consumption confirmed and inventory deducted.", client: "Client", source: "Source", previewOnly: "Preview only — confirmation is unavailable before the service date", sticky: "Remains open until confirmed — it cannot be closed without action", none: "None.", loadingBookings: "Loading your bookings...", subtitle: "Today’s and overdue bookings", title: "My Bookings", overdueAlert: "You have overdue bookings without material confirmation", overdueTail: "consumption items are unconfirmed. The task stays open until handled — no automatic deduction.", todayBookings: "Today’s bookings", noneToday: "Nothing is due today.", awaiting: "Awaiting confirmation", noneAwaiting: "Nothing is awaiting confirmation.", overdue: "Overdue", noneOverdue: "Nothing is overdue.", upcoming: "Upcoming", materials: "Materials for this booking", upcomingPrefix: "This item is scheduled for", confirmRule: "Confirmation becomes available after service execution starts or when the booking is overdue.", loadingRecipe: "Loading recipe...", product: "Product", default: "Default", quantity: "Quantity", noRecipe: "This service recipe has no confirmable material lines.", confirming: "Confirming...", unavailable: "Confirmation is unavailable before service execution starts", confirm: "Confirm materials and deduct inventory", bookingWorkspace: "Booking workflow", bookingWorkspaceHint: "Select a booking and follow the workflow in order: receive, execute, materials, then complete.", noActiveBookings: "There are no open bookings right now.", bookingStatus: "Booking status", pendingBooking: "Pending confirmation", bookedBooking: "Booked", confirmedBooking: "Confirmed", completedBooking: "Completed", cancelledBooking: "Cancelled", confirmBooking: "Confirm booking", confirmingBooking: "Confirming booking...", completeBooking: "Complete booking", completingBooking: "Completing booking...", bookingConfirmed: "The booking is confirmed and ready for execution.", bookingCompleted: "The booking was completed successfully.", materialsRemaining: "Used materials still need confirmation before the booking can be completed.", executionNotStarted: "Service execution has not started yet.", readyToComplete: "Required materials are handled and the booking can be completed.", services: "Services", bookingDetails: "Booking details", acknowledgeBooking: "Receive booking", acknowledgingBooking: "Receiving...", bookingAcknowledged: "Booking received.", acknowledged: "Received", notAcknowledged: "Awaiting receipt", stepBooking: "Booking", stepExecution: "Execution", stepMaterials: "Materials", stepComplete: "Complete", serviceReady: "Ready", serviceMaterialsPending: "Material confirmation required", serviceNoMaterials: "No materials required", chooseService: "Select the service to record used materials", clientPhone: "Client phone", bookingSource: "Booking source", bookingTime: "Appointment",
     UPCOMING: "Upcoming", DUE_TODAY: "Due today", PENDING_CONFIRMATION: "Awaiting confirmation", OVERDUE: "Overdue", CONFIRMED: "Confirmed",
   },
 } as const;
@@ -168,6 +169,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   const [loadingRecipe, setLoadingRecipe] = useState(false);
   const [saving, setSaving] = useState(false);
   const [bookingBusy, setBookingBusy] = useState(false);
+  const [bookingAckBusy, setBookingAckBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -217,6 +219,7 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
   const selectedBookingStatus = String(selectedBooking?.status || "").toLowerCase();
   const selectedBookingAccepted = ["booked", "confirmed"].includes(selectedBookingStatus);
   const selectedBookingExecutionReady = bookingExecutionReady(selectedBooking);
+  const selectedBookingItems = selectedBooking?.items || [];
   const selectedBookingCanComplete =
     Boolean(selectedBooking) &&
     selectedBookingAccepted &&
@@ -280,6 +283,25 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         setPending(pendingRows || []);
         setTrackedItems(inventoryItems || []);
         setBookings(bookingRows || []);
+
+        const openBookingRows = [...(bookingRows || [])]
+          .filter((booking) => {
+            const status = String(booking.status || "").toLowerCase();
+            return !["completed", "cancelled", "canceled", "rejected"].includes(status);
+          })
+          .sort((left, right) =>
+            `${left.bookingDate || ""}T${left.startTime || ""}`.localeCompare(
+              `${right.bookingDate || ""}T${right.startTime || ""}`
+            )
+          );
+        if (openBookingRows.length) {
+          setActiveBookingId((current) =>
+            openBookingRows.some((booking) => booking.id === current)
+              ? current
+              : openBookingRows[0].id
+          );
+        }
+
         const actionable = (pendingRows || []).filter(
           (row) =>
             row.lifecycle === "OVERDUE" ||
@@ -429,6 +451,22 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
     setBookingItemId(preferredRow?.booking_item_id || "");
     setError("");
     setNotice("");
+  }
+
+  async function acknowledgeBooking() {
+    if (!selectedBooking || bookingAckBusy || selectedBooking.staffAck) return;
+    setBookingAckBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await CoreBookingService.acknowledgeMine(selectedBooking.id);
+      setNotice(copy.bookingAcknowledged);
+      await refreshWorkspace();
+    } catch (err) {
+      setError(errorMessage(err, language, copy));
+    } finally {
+      setBookingAckBusy(false);
+    }
   }
 
   async function updateBookingStatus(status: "confirmed" | "completed") {
@@ -598,59 +636,139 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
       </div>
 
       {selectedBooking ? (
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 18,
-            padding: 14,
-            marginBottom: 16,
-            background: "#fff",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <div className="employee-booking-workflow">
+          <div className="employee-booking-workflow__head">
             <div>
-              <strong style={{ display: "block" }}>{selectedBooking.clientName || copy.client}</strong>
-              <small style={{ color: "#6b7280" }}>
-                {copy.services}: {(selectedBooking.items || []).map((item) => item.serviceNameSnapshot).filter(Boolean).join("، ") || "—"}
+              <span className="employee-booking-workflow__eyebrow">{copy.bookingDetails}</span>
+              <strong>{selectedBooking.clientName || copy.client}</strong>
+              <small>
+                {copy.bookingTime}: {selectedBooking.bookingDate || "—"} · {selectedBooking.startTime || "--:--"}
               </small>
             </div>
-            <small style={{ fontWeight: 700 }}>
-              {copy.bookingStatus}: {selectedBookingStatus}
-            </small>
+            <span className={`employee-booking-workflow__ack ${selectedBooking.staffAck ? "is-done" : ""}`}>
+              {selectedBooking.staffAck ? copy.acknowledged : copy.notAcknowledged}
+            </span>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            {selectedBookingStatus === "pending" ? (
+          <div className="employee-booking-workflow__meta">
+            {selectedBooking.clientPhone ? (
+              <span><strong>{copy.clientPhone}</strong>{selectedBooking.clientPhone}</span>
+            ) : null}
+            {selectedBooking.source ? (
+              <span><strong>{copy.bookingSource}</strong>{selectedBooking.source}</span>
+            ) : null}
+            <span><strong>{copy.bookingStatus}</strong>{selectedBookingStatus}</span>
+          </div>
+
+          <div className="employee-booking-steps" aria-label={copy.bookingWorkspace}>
+            {[
+              {
+                label: copy.stepBooking,
+                done: selectedBookingAccepted,
+                active: selectedBookingStatus === "pending",
+              },
+              {
+                label: copy.stepExecution,
+                done: selectedBookingExecutionReady,
+                active: selectedBookingAccepted && !selectedBookingExecutionReady,
+              },
+              {
+                label: copy.stepMaterials,
+                done: selectedBookingPending.length === 0,
+                active: selectedBookingExecutionReady && selectedBookingPending.length > 0,
+              },
+              {
+                label: copy.stepComplete,
+                done: selectedBookingStatus === "completed",
+                active: selectedBookingCanComplete,
+              },
+            ].map((step, index) => (
+              <div
+                key={step.label}
+                className={`employee-booking-step ${step.done ? "is-done" : ""} ${step.active ? "is-active" : ""}`}
+              >
+                <span>{step.done ? "✓" : index + 1}</span>
+                <small>{step.label}</small>
+              </div>
+            ))}
+          </div>
+
+          {!selectedBooking.staffAck ? (
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary employee-booking-workflow__receive"
+              disabled={bookingAckBusy}
+              onClick={() => void acknowledgeBooking()}
+            >
+              {bookingAckBusy ? copy.acknowledgingBooking : copy.acknowledgeBooking}
+            </button>
+          ) : null}
+
+          {selectedBookingStatus === "pending" ? (
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--primary employee-booking-workflow__primary"
+              disabled={bookingBusy}
+              onClick={() => void updateBookingStatus("confirmed")}
+            >
+              {bookingBusy ? copy.confirmingBooking : copy.confirmBooking}
+            </button>
+          ) : null}
+
+          <div className="employee-booking-services">
+            <div className="employee-booking-services__title">
+              <strong>{copy.services}</strong>
+              <small>{copy.chooseService}</small>
+            </div>
+            {selectedBookingItems.map((item) => {
+              const materialTask =
+                selectedBookingPending.find((row) => row.booking_item_id === item.id) || null;
+              const active = bookingItemId === item.id;
+              const serviceDate = item.bookingDate || selectedBooking.bookingDate;
+              const serviceTime = item.startTime || selectedBooking.startTime;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`employee-booking-service ${active ? "is-active" : ""}`}
+                  onClick={() => {
+                    setBookingItemId(materialTask?.booking_item_id || "");
+                    setActiveBookingId(selectedBooking.id);
+                    setError("");
+                    setNotice("");
+                  }}
+                >
+                  <span>
+                    <strong>{item.serviceNameSnapshot || item.serviceId}</strong>
+                    <small>{serviceDate || "—"} · {serviceTime || "--:--"}</small>
+                  </span>
+                  <em className={materialTask ? "needs-action" : "is-ready"}>
+                    {materialTask ? copy.serviceMaterialsPending : copy.serviceNoMaterials}
+                  </em>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedBookingAccepted ? (
+            <div className="employee-booking-workflow__complete">
+              <p>
+                {selectedBookingPending.length > 0
+                  ? copy.materialsRemaining
+                  : !selectedBookingExecutionReady
+                    ? copy.executionNotStarted
+                    : copy.readyToComplete}
+              </p>
               <button
                 type="button"
                 className="dsv2-btn dsv2-btn--primary"
-                style={{ width: "100%" }}
-                disabled={bookingBusy}
-                onClick={() => void updateBookingStatus("confirmed")}
+                disabled={bookingBusy || !selectedBookingCanComplete}
+                onClick={() => void updateBookingStatus("completed")}
               >
-                {bookingBusy ? copy.confirmingBooking : copy.confirmBooking}
+                {bookingBusy ? copy.completingBooking : copy.completeBooking}
               </button>
-            ) : selectedBookingAccepted ? (
-              <>
-                <p className="text-muted" style={{ margin: "0 0 10px" }}>
-                  {selectedBookingPending.length > 0
-                    ? copy.materialsRemaining
-                    : !selectedBookingExecutionReady
-                      ? copy.executionNotStarted
-                      : copy.readyToComplete}
-                </p>
-                <button
-                  type="button"
-                  className="dsv2-btn dsv2-btn--primary"
-                  style={{ width: "100%" }}
-                  disabled={bookingBusy || !selectedBookingCanComplete}
-                  onClick={() => void updateBookingStatus("completed")}
-                >
-                  {bookingBusy ? copy.completingBooking : copy.completeBooking}
-                </button>
-              </>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -673,13 +791,17 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
       {error ? <div className="alert alert-danger">{error}</div> : null}
       {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-      {renderSection(copy.todayBookings, sections.dueToday, { empty: copy.noneToday })}
-      {renderSection(copy.awaiting, sections.awaiting, { empty: copy.noneAwaiting })}
-      {renderSection(copy.overdue, sections.overdue, { sticky: true, empty: copy.noneOverdue })}
-      {sections.upcoming.length ? renderSection(copy.upcoming, sections.upcoming, { empty: "" }) : null}
+      {!selectedBooking ? (
+        <>
+          {renderSection(copy.todayBookings, sections.dueToday, { empty: copy.noneToday })}
+          {renderSection(copy.awaiting, sections.awaiting, { empty: copy.noneAwaiting })}
+          {renderSection(copy.overdue, sections.overdue, { sticky: true, empty: copy.noneOverdue })}
+          {sections.upcoming.length ? renderSection(copy.upcoming, sections.upcoming, { empty: "" }) : null}
+        </>
+      ) : null}
 
       {selected ? (
-        <>
+        <div className="employee-booking-materials">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{ margin: 0, fontWeight: 600 }}>{copy.materials}</p>
             <Badge lifecycle={selected.lifecycle} copy={copy} />
@@ -776,22 +898,20 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
           ) : !loadingRecipe ? (
             <p className="text-muted">{copy.noRecipe}</p>
           ) : null}
-        </>
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--primary employee-booking-materials__confirm"
+            disabled={saving || !employeeId || !bookingItemId || !materialLinesReady || !selectedConfirmable}
+            onClick={() => void confirm()}
+          >
+            {saving
+              ? copy.confirming
+              : !selectedConfirmable
+                ? copy.unavailable
+                : copy.confirm}
+          </button>
+        </div>
       ) : null}
-
-      <button
-        type="button"
-        className="dsv2-btn dsv2-btn--primary"
-        style={{ width: "100%", height: 48, borderRadius: 14 }}
-        disabled={saving || !employeeId || !bookingItemId || !materialLinesReady || !selectedConfirmable}
-        onClick={() => void confirm()}
-      >
-        {saving
-          ? copy.confirming
-          : !selectedConfirmable && selected
-            ? copy.unavailable
-            : copy.confirm}
-      </button>
     </section>
   );
 }
