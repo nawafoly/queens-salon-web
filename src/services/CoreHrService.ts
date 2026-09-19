@@ -21,6 +21,7 @@ import type {
   CorePayrollEntry,
   CorePayrollPeriod,
   CorePayrollCarryoverAdjustment,
+  CorePayrollHistoricalSettlement,
   CorePayrollRecurringDeduction,
   CorePayrollObligation,
   CorePayrollObligationDeduction,
@@ -1292,6 +1293,70 @@ export const CoreHrService = {
       { query }
     );
     return rows.map((row) => camel<CorePayrollCarryoverAdjustment>(row));
+  },
+  async listPayrollHistoricalSettlements(
+    query: {
+      employeeId?: string;
+      sourcePayrollMonth?: string;
+      sourcePayrollEntryId?: string;
+      status?: string;
+    } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-historical-settlements",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollHistoricalSettlement>(row));
+  },
+  async recordPayrollHistoricalSettlement(input: {
+    sourcePayrollEntryId: string;
+    direction: "addition" | "deduction";
+    amountHalalas: number;
+    settlementMethod: "cash" | "bank_transfer" | "other";
+    settlementDate: string;
+    reason: string;
+    reference?: string | null;
+    note?: string | null;
+  }) {
+    const row = await coreApiRequest<{
+      settlement?: Record<string, unknown>;
+      reconciliation?: Record<string, unknown>;
+      replayed?: boolean;
+    }>("/api/core/hr/payroll-historical-settlements", {
+      method: "POST",
+      body: input,
+    });
+    return {
+      ...row,
+      settlement: row.settlement
+        ? camel<CorePayrollHistoricalSettlement>(row.settlement)
+        : null,
+      reconciliation: row.reconciliation
+        ? camel<Record<string, unknown>>(row.reconciliation)
+        : null,
+    };
+  },
+  async voidPayrollHistoricalSettlement(
+    id: string,
+    reason: string
+  ) {
+    const row = await coreApiRequest<{
+      settlement?: Record<string, unknown>;
+      reconciliation?: Record<string, unknown>;
+      replayed?: boolean;
+    }>(
+      `/api/core/hr/payroll-historical-settlements/${encodeURIComponent(id)}/void`,
+      { method: "POST", body: { reason } }
+    );
+    return {
+      ...row,
+      settlement: row.settlement
+        ? camel<CorePayrollHistoricalSettlement>(row.settlement)
+        : null,
+      reconciliation: row.reconciliation
+        ? camel<Record<string, unknown>>(row.reconciliation)
+        : null,
+    };
   },
   async reconcilePayrollCarryoversBatch(input: {
     items: Array<{
