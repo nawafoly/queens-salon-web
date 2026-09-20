@@ -4442,9 +4442,17 @@ test('HR employee avatar file reference preserves omitted values and clears expl
   assert.equal(stored.avatar_file_id, null);
 });
 
-test('HR employee save atomically creates canonical booking staff row without Firestore mirror', async (t) => {
+test('HR employee save atomically creates canonical booking staff row and canonical service assignments', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
+
+  await db.exec(`
+    INSERT INTO services
+      (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at)
+    VALUES
+      ('svc-a', 'main', 'Service A', 30, 5000, 1, 0, '2026-01-01', '2026-01-01'),
+      ('svc-b', 'main', 'Service B', 45, 7000, 1, 1, '2026-01-01', '2026-01-01');
+  `);
 
   await upsertHrEmployee(db, 'main', {
     id: 'emp-atomic-staff',
@@ -4477,6 +4485,46 @@ test('HR employee save atomically creates canonical booking staff row without Fi
   assert.equal(Number(staff.active), 1);
   assert.equal(staff.employment_status, 'active');
   assert.equal(Number(staff.show_on_booking), 1);
+
+  const firstAssignments = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id='main' AND staff_id='emp-atomic-staff' ORDER BY service_id"
+  ).all();
+  assert.deepEqual(
+    firstAssignments.results.map((row) => [row.service_id, Number(row.active)]),
+    [['svc-a', 1]]
+  );
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-atomic-staff',
+    name: 'Atomic Staff',
+    bookingStaff: {
+      specialties: ['svc-b'],
+    },
+  }, actor);
+
+  const replacedAssignments = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id='main' AND staff_id='emp-atomic-staff' ORDER BY service_id"
+  ).all();
+  assert.deepEqual(
+    replacedAssignments.results.map((row) => [row.service_id, Number(row.active)]),
+    [['svc-a', 0], ['svc-b', 1]]
+  );
+
+  // Partial employee writes (payroll/photo/etc.) must never erase service
+  // assignments when bookingStaff.specialties is omitted.
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-atomic-staff',
+    name: 'Atomic Staff Updated',
+    bio: 'partial update',
+  }, actor);
+
+  const afterPartialSave = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id='main' AND staff_id='emp-atomic-staff' ORDER BY service_id"
+  ).all();
+  assert.deepEqual(
+    afterPartialSave.results.map((row) => [row.service_id, Number(row.active)]),
+    [['svc-a', 0], ['svc-b', 1]]
+  );
 });
 
 test('public booking tracking returns sanitized Core data without client PII', async (t) => {
