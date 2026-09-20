@@ -26,9 +26,11 @@ import {
 
 import type { AppPermission } from "../helpers/permissions";
 import { usePermissions } from "../security/PermissionContext";
+import { dashboardText, type DashboardLanguage } from "../helpers/dashboardLanguage";
 
 type DashboardMobileNavProps = {
   missingExpenseNotesCount: number;
+  language?: DashboardLanguage;
 };
 
 type PermissionRule = {
@@ -60,7 +62,9 @@ const MORE_GROUPS: Array<{ id: MoreGroupId; label: string }> = [
 
 export default function DashboardMobileNav({
   missingExpenseNotesCount,
+  language = "ar",
 }: DashboardMobileNavProps) {
+  const t = (arabic: string) => dashboardText(language, arabic);
   const location = useLocation();
   const navigate = useNavigate();
   const { hasPermission, hasAnyPermission } = usePermissions();
@@ -332,17 +336,18 @@ export default function DashboardMobileNav({
       .filter((item) => !primaryItems.some((primary) => primary.to === item.to))
       .map((item) =>
         item.to === "/dashboard/expenses" && missingExpenseNotesCount > 0
-          ? { ...item, label: `المصروفات (${missingExpenseNotesCount})` }
+          ? { ...item, label: `${dashboardText(language, "المصروفات")} (${missingExpenseNotesCount})` }
           : item
       );
-  }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primaryItems]);
+  }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primaryItems, language]);
 
   const moreGroups = useMemo(
     () => MORE_GROUPS.map((group) => ({
       ...group,
+      label: dashboardText(language, group.label),
       items: moreItems.filter((item) => item.group === group.id),
     })).filter((group) => group.items.length > 0),
-    [moreItems]
+    [moreItems, language]
   );
 
   const isMoreActive = moreItems.some(
@@ -353,7 +358,7 @@ export default function DashboardMobileNav({
 
   return (
     <>
-      <nav className="dashboard-mobile-bottom-nav" aria-label="تنقل لوحة التحكم">
+      <nav className="dashboard-mobile-bottom-nav" aria-label={t("تنقل لوحة التحكم")}>
         {primaryItems.map((item) => (
           <NavLink
             key={item.to}
@@ -371,7 +376,7 @@ export default function DashboardMobileNav({
             ) : (
               <FontAwesomeIcon icon={item.icon} />
             )}
-            <span>{item.label}</span>
+            <span>{t(item.label)}</span>
           </NavLink>
         ))}
 
@@ -383,7 +388,7 @@ export default function DashboardMobileNav({
             aria-expanded={moreOpen}
           >
             <FontAwesomeIcon icon={faBars} />
-            <span>المزيد</span>
+            <span>{t("المزيد")}</span>
           </button>
         ) : null}
       </nav>
@@ -400,20 +405,20 @@ export default function DashboardMobileNav({
             className="dashboard-mobile-more-sheet"
             role="dialog"
             aria-modal="true"
-            aria-label="المزيد من أقسام لوحة التحكم"
+            aria-label={t("المزيد من أقسام لوحة التحكم")}
           >
             <header className="dashboard-mobile-more-header">
               <div className="dashboard-mobile-more-header__top">
                 <div className="dashboard-mobile-more-header__title">
-                  <span>القائمة الإدارية</span>
-                  <h2>المزيد</h2>
-                  <p>نفس أقسام السايدبار، مرتبة حسب الصلاحيات المتاحة لحسابك.</p>
+                  <span>{t("القائمة الإدارية")}</span>
+                  <h2>{t("المزيد")}</h2>
+                  <p>{t("نفس أقسام السايدبار، مرتبة حسب الصلاحيات المتاحة لحسابك.")}</p>
                 </div>
                 <button
                   type="button"
                   className="dashboard-mobile-more-header__close"
                   onClick={() => setMoreOpen(false)}
-                  aria-label="إغلاق"
+                  aria-label={t("إغلاق")}
                 >
                   <FontAwesomeIcon icon={faXmark} />
                 </button>
@@ -441,8 +446,8 @@ export default function DashboardMobileNav({
                           <FontAwesomeIcon icon={item.icon} />
                         </span>
                         <span className="dashboard-mobile-more-card__copy">
-                          <strong>{item.label}</strong>
-                          {item.description ? <small>{item.description}</small> : null}
+                          <strong>{t(item.label)}</strong>
+                          {item.description ? <small>{t(item.description)}</small> : null}
                         </span>
                       </button>
                     ))}

@@ -29,6 +29,7 @@ type DashboardHeaderProps = {
   ariaLabel?: string;
   showProfileButton?: boolean;
   profileLabel?: ReactNode;
+  profileAriaLabel?: string;
 };
 
 function joinClassNames(...parts: Array<string | false | null | undefined>) {
@@ -93,6 +94,7 @@ export default function DashboardHeader({
   ariaLabel,
   showProfileButton = true,
   profileLabel = "البروفايل",
+  profileAriaLabel = "فتح الملف الشخصي",
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -160,9 +162,9 @@ export default function DashboardHeader({
                 type="button"
                 className="dashboard-header__profile-button internal-portal-switcher__item"
                 onClick={handleProfileClick}
-                aria-label="فتح الملف الشخصي"
+                aria-label={profileAriaLabel}
                 aria-current={isProfilePage ? "page" : undefined}
-                title="البروفايل"
+                title={typeof profileLabel === "string" ? profileLabel : profileAriaLabel}
               >
                 <FontAwesomeIcon icon={faUserTie} />
                 <span>{profileLabel}</span>

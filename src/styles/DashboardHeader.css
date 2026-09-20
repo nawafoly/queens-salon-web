@@ -68,6 +68,36 @@
   flex: 0 0 auto;
 }
 
+.dashboard-skin[lang="en"] .dashboard-header--dashboard,
+.dashboard-skin[lang="en"] .dashboard-header--dashboard .dashboard-header__actions {
+  direction: ltr;
+}
+
+.dashboard-skin .dashboard-language-toggle {
+  min-height: 36px;
+  padding: 5px 10px;
+  border: 1px solid rgba(156, 116, 38, 0.32);
+  border-radius: 999px;
+  background: rgba(201, 163, 82, 0.1);
+  color: #4b3515;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dashboard-skin .dashboard-language-toggle:focus-visible {
+  outline: 2px solid #9c7426;
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .dashboard-skin .dashboard-language-toggle {
+    min-height: 32px;
+    padding-inline: 7px;
+    font-size: 0.68rem;
+  }
+}
+
 .dashboard-header__leading {
   display: inline-flex;
   flex: 0 0 auto;

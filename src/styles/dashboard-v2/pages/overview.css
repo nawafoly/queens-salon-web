@@ -10,6 +10,16 @@
   padding-block: var(--dsv2-space-1) var(--dsv2-page-padding-block-end);
 }
 
+.dashboard-v2 .overview-v2-page[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
+.dashboard-v2 .overview-v2-page[dir="ltr"] .dsv2-table th,
+.dashboard-v2 .overview-v2-page[dir="ltr"] .dsv2-table td {
+  text-align: left;
+}
+
 .dashboard-v2 .overview-v2-hero {
   isolation: isolate;
   display: flex;

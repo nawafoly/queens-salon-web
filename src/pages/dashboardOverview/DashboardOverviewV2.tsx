@@ -24,6 +24,7 @@ import {
 import { formatTime12 } from "../../helpers/pageSharedUtils";
 import { timeToMinutes } from "../../helpers/timeContract";
 import { formatFinanceTransactionTitle } from "../../helpers/financeDisplay";
+import { dashboardText, type DashboardLanguage } from "../../helpers/dashboardLanguage";
 
 type BusinessHoursDay = {
   enabled?: boolean;
@@ -73,6 +74,7 @@ export type DashboardOverviewV2Props = {
     net: number;
   };
   recentFinanceTransactions: DashboardOverviewFinanceTransaction[];
+  language?: DashboardLanguage;
 };
 
 const STATUS_LABELS: Record<BookingStatus, string> = {
@@ -96,11 +98,6 @@ function formatFinanceDate(value: string): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-function formatHourLabel(hour: number): string {
-  const normalized = ((hour % 24) + 24) % 24;
-  return formatTime12(`${String(normalized).padStart(2, "0")}:00`);
-}
-
 function MetricIcon({ children }: { children: ReactNode }) {
   return <span className="overview-v2-metric__icon">{children}</span>;
 }
@@ -118,7 +115,18 @@ export default function DashboardOverviewV2({
   financeAccess,
   financeToday,
   recentFinanceTransactions,
+  language = "ar",
 }: DashboardOverviewV2Props) {
+  const t = (arabic: string) => dashboardText(language, arabic);
+  const numberLocale = language === "en" ? "en-US" : "ar-SA-u-nu-latn";
+  const currency = language === "en" ? "SAR" : "ر.س";
+  const formatClock = (value: string) => {
+    if (language === "ar") return formatTime12(value);
+    const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return value;
+    const hour = Number(match[1]);
+    return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
+  };
   const todayISO = useMemo(() => formatLocalDateISO(new Date()), []);
 
   const hourRows = useMemo(() => {
@@ -152,31 +160,31 @@ export default function DashboardOverviewV2({
     const dayHours = weekday ? businessHours?.[weekday] : undefined;
 
     if (dayHours?.enabled === false) {
-      return "اليوم المختار مغلق حسب إعدادات ساعات العمل";
+      return t("اليوم المختار مغلق حسب إعدادات ساعات العمل");
     }
 
     const start = String(dayHours?.start || "").trim();
     const end = String(dayHours?.end || "").trim();
 
     if (start && end) {
-      return `ساعات العمل: ${formatTime12(start)} - ${formatTime12(end)}`;
+      return `${t("ساعات العمل")}: ${formatClock(start)} - ${formatClock(end)}`;
     }
 
-    return "اختاري التاريخ ثم اضغطي على الحجز لعرض تفاصيله";
-  }, [businessHours, selectedScheduleDate]);
+    return t("اختاري التاريخ ثم اضغطي على الحجز لعرض تفاصيله");
+  }, [businessHours, selectedScheduleDate, language]);
 
-  const displayName = String(userInfo?.name || "مستخدم").trim() || "مستخدم";
+  const displayName = String(userInfo?.name || t("مستخدم")).trim() || t("مستخدم");
 
   return (
-    <main className="dsv2-page overview-v2-page" aria-labelledby="overview-v2-title">
+    <main className="dsv2-page overview-v2-page" dir={language === "en" ? "ltr" : "rtl"} aria-labelledby="overview-v2-title">
       <section className="dsv2-card dsv2-card--padded dsv2-card--elevated overview-v2-hero">
         <div className="overview-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">لوحة التشغيل اليومية</span>
+          <span className="dsv2-badge dsv2-badge--gold">{t("لوحة التشغيل اليومية")}</span>
           <h1 id="overview-v2-title" className="dsv2-page-title">
-            مرحبًا بك، {displayName}
+            {t("مرحبًا بك،")} {displayName}
           </h1>
           <p className="dsv2-page-subtitle">
-            متابعة موحدة للحجوزات والإيرادات والتشغيل اليومي من مصدر واحد واضح.
+            {t("متابعة موحدة للحجوزات والإيرادات والتشغيل اليومي من مصدر واحد واضح.")}
           </p>
         </div>
 
@@ -185,8 +193,8 @@ export default function DashboardOverviewV2({
             <FontAwesomeIcon icon={faCircleCheck} />
           </span>
           <div>
-            <strong>البيانات متصلة</strong>
-            <span>تتحدث مع نشاط لوحة التحكم</span>
+            <strong>{t("البيانات متصلة")}</strong>
+            <span>{t("تتحدث مع نشاط لوحة التحكم")}</span>
           </div>
         </div>
       </section>
@@ -195,10 +203,10 @@ export default function DashboardOverviewV2({
         <div className="dsv2-section-head overview-v2-section__head">
           <div>
             <h2 id="overview-v2-performance" className="dsv2-section-title">
-              أداء الصالون اليوم
+              {t("أداء الصالون اليوم")}
             </h2>
             <p className="dsv2-section-caption">
-              المؤشرات التشغيلية الأساسية بدون خلطها مع إجماليات الفترات المالية.
+              {t("المؤشرات التشغيلية الأساسية بدون خلطها مع إجماليات الفترات المالية.")}
             </p>
           </div>
         </div>
@@ -212,11 +220,11 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faCalendarAlt} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">حجوزات اليوم</span>
+            <span className="dsv2-metric-card__label">{t("حجوزات اليوم")}</span>
             <strong className="dsv2-metric-card__value">
-              {stats.todayBookings.toLocaleString("ar-SA-u-nu-latn")}
+              {stats.todayBookings.toLocaleString(numberLocale)}
             </strong>
-            <span className="dsv2-metric-card__meta">فتح قائمة الحجوزات</span>
+            <span className="dsv2-metric-card__meta">{t("فتح قائمة الحجوزات")}</span>
           </button>
 
           <button
@@ -227,14 +235,14 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faChartLine} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">إيرادات اليوم</span>
+            <span className="dsv2-metric-card__label">{t("إيرادات اليوم")}</span>
             <strong className="dsv2-metric-card__value">
               {financeAccess.income
-                ? `${stats.todayRevenue.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                : "غير متاح"}
+                ? `${stats.todayRevenue.toLocaleString(numberLocale)} {currency}`
+                : t("غير متاح")}
             </strong>
             <span className="dsv2-metric-card__meta">
-              {financeAccess.income ? "فتح التقارير" : "تتطلب صلاحية الإيرادات"}
+              {financeAccess.income ? t("فتح التقارير") : t("تتطلب صلاحية الإيرادات")}
             </span>
           </button>
 
@@ -246,22 +254,22 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faClock} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">الحجوزات المكتملة</span>
+            <span className="dsv2-metric-card__label">{t("الحجوزات المكتملة")}</span>
             <strong className="dsv2-metric-card__value">
-              {stats.completedBookings.toLocaleString("ar-SA-u-nu-latn")}
+              {stats.completedBookings.toLocaleString(numberLocale)}
             </strong>
-            <span className="dsv2-metric-card__meta">المكتملة في تاريخ اليوم</span>
+            <span className="dsv2-metric-card__meta">{t("المكتملة في تاريخ اليوم")}</span>
           </button>
 
           <article className="dsv2-metric-card dsv2-metric-card--danger overview-v2-metric">
             <MetricIcon>
               <FontAwesomeIcon icon={faUsers} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">موظفات مرتبطات بحجوزات</span>
+            <span className="dsv2-metric-card__label">{t("موظفات مرتبطات بحجوزات")}</span>
             <strong className="dsv2-metric-card__value">
-              {stats.busyEmployees.toLocaleString("ar-SA-u-nu-latn")}
+              {stats.busyEmployees.toLocaleString(numberLocale)}
             </strong>
-            <span className="dsv2-metric-card__meta">عدد فريد حسب حجوزات اليوم</span>
+            <span className="dsv2-metric-card__meta">{t("عدد فريد حسب حجوزات اليوم")}</span>
           </article>
         </div>
       </section>
@@ -270,10 +278,10 @@ export default function DashboardOverviewV2({
         <div className="dsv2-section-head overview-v2-section__head">
           <div>
             <h2 id="overview-v2-finance" className="dsv2-section-title">
-              الملخص المالي المسجل
+              {t("الملخص المالي المسجل")}
             </h2>
             <p className="dsv2-section-caption">
-              إجمالي الدخل والمصروفات وصافي الربح للفترة التي يعتمدها النظام.
+              {t("إجمالي الدخل والمصروفات وصافي الربح للفترة التي يعتمدها النظام.")}
             </p>
           </div>
         </div>
@@ -283,11 +291,11 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faWallet} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">إجمالي الدخل</span>
+            <span className="dsv2-metric-card__label">{t("إجمالي الدخل")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.income
-                ? `${financial.income.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                : "غير متاح"}
+                ? `${financial.income.toLocaleString(numberLocale)} {currency}`
+                : t("غير متاح")}
             </strong>
           </article>
 
@@ -295,11 +303,11 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faMoneyBillWave} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">إجمالي المصروفات</span>
+            <span className="dsv2-metric-card__label">{t("إجمالي المصروفات")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.expenses
-                ? `${financial.expenses.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                : "غير متاح"}
+                ? `${financial.expenses.toLocaleString(numberLocale)} {currency}`
+                : t("غير متاح")}
             </strong>
           </article>
 
@@ -313,11 +321,11 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faChartLine} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">صافي الربح</span>
+            <span className="dsv2-metric-card__label">{t("صافي الربح")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.income && financeAccess.expenses
-                ? `${financial.profit.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                : "غير متاح"}
+                ? `${financial.profit.toLocaleString(numberLocale)} {currency}`
+                : t("غير متاح")}
             </strong>
           </article>
         </div>
@@ -327,10 +335,10 @@ export default function DashboardOverviewV2({
         <div className="dsv2-section-head overview-v2-section__head">
           <div>
             <h2 id="overview-v2-operations" className="dsv2-section-title">
-              التشغيل اليومي
+              {t("التشغيل اليومي")}
             </h2>
             <p className="dsv2-section-caption">
-              الجدول الزمني للحجوزات مع ملخص اليوم وآخر العمليات المالية.
+              {t("الجدول الزمني للحجوزات مع ملخص اليوم وآخر العمليات المالية.")}
             </p>
           </div>
         </div>
@@ -339,19 +347,20 @@ export default function DashboardOverviewV2({
           <section className="dsv2-card dsv2-table-card overview-v2-schedule-card">
             <header className="overview-v2-card-head overview-v2-schedule-head">
               <div>
-                <h3 className="dsv2-section-title">جدول الحجوزات حسب الساعة</h3>
+                <h3 className="dsv2-section-title">{t("جدول الحجوزات حسب الساعة")}</h3>
                 <p className="dsv2-section-caption">{scheduleHint}</p>
               </div>
 
               <DashboardFieldV2
                 id="overview-v2-schedule-date"
-                label="تاريخ الجدول"
+                label={t("تاريخ الجدول")}
                 className="overview-v2-date-field"
               >
                 <DashboardDatePickerV2
                   id="overview-v2-schedule-date"
                   value={selectedScheduleDate}
                   clearable={false}
+                  language={language}
                   onChange={(value) =>
                     onSelectedScheduleDateChange(value || todayISO)
                   }
@@ -364,15 +373,15 @@ export default function DashboardOverviewV2({
                 <DashboardEmptyStateV2
                   compact
                   tone="gold"
-                  title="لا توجد حجوزات في التاريخ المحدد"
-                  description="اختاري تاريخًا آخر أو أضيفي حجزًا جديدًا من الإجراءات السريعة."
+                  title={t("لا توجد حجوزات في التاريخ المحدد")}
+                  description={t("اختاري تاريخًا آخر أو أضيفي حجزًا جديدًا من الإجراءات السريعة.")}
                   action={
                     <button
                       type="button"
                       className="dsv2-btn dsv2-btn--primary dsv2-btn--sm"
                       onClick={() => onQuickAction("newBooking")}
                     >
-                      إضافة حجز
+                      {t("إضافة حجز")}
                     </button>
                   }
                 />
@@ -383,15 +392,15 @@ export default function DashboardOverviewV2({
                   <table className="dsv2-table overview-v2-table">
                     <thead>
                       <tr>
-                        <th>الساعة</th>
-                        <th>الحجوزات داخل الساعة</th>
+                        <th>{t("الساعة")}</th>
+                        <th>{t("الحجوزات داخل الساعة")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {hourRows.map((row) => (
                         <tr key={`hour-${row.hour}`}>
                           <td className="overview-v2-hour-cell">
-                            {formatHourLabel(row.hour)}
+                            {formatClock(`${String(row.hour).padStart(2, "0")}:00`)}
                           </td>
                           <td>
                             <div className="overview-v2-booking-list">
@@ -409,12 +418,12 @@ export default function DashboardOverviewV2({
                                     </small>
                                   </span>
                                   <span className="overview-v2-booking__time">
-                                    {formatTime12(booking.time)}
+                                    {formatClock(booking.time)}
                                   </span>
                                   <span
                                     className={`dsv2-badge ${STATUS_TONES[booking.status]}`}
                                   >
-                                    {STATUS_LABELS[booking.status]}
+                                    {t(STATUS_LABELS[booking.status])}
                                   </span>
                                 </button>
                               ))}
@@ -429,7 +438,7 @@ export default function DashboardOverviewV2({
                 <div className="overview-v2-mobile-schedule">
                   {hourRows.map((row) => (
                     <article className="overview-v2-hour-card" key={`mobile-${row.hour}`}>
-                      <header>{formatHourLabel(row.hour)}</header>
+                      <header>{formatClock(`${String(row.hour).padStart(2, "0")}:00`)}</header>
                       <div>
                         {row.bookings.map((booking) => (
                           <button
@@ -445,11 +454,11 @@ export default function DashboardOverviewV2({
                               </small>
                             </span>
                             <span>
-                              <bdi dir="ltr">{formatTime12(booking.time)}</bdi>
+                              <bdi dir="ltr">{formatClock(booking.time)}</bdi>
                               <span
                                 className={`dsv2-badge ${STATUS_TONES[booking.status]}`}
                               >
-                                {STATUS_LABELS[booking.status]}
+                                {t(STATUS_LABELS[booking.status])}
                               </span>
                             </span>
                           </button>
@@ -466,34 +475,34 @@ export default function DashboardOverviewV2({
             <section className="dsv2-card dsv2-card--padded overview-v2-summary-card">
               <div className="overview-v2-card-head">
                 <div>
-                  <h3 className="dsv2-section-title">ملخص اليوم</h3>
-                  <p className="dsv2-section-caption">الحركة المسجلة في تاريخ اليوم.</p>
+                  <h3 className="dsv2-section-title">{t("ملخص اليوم")}</h3>
+                  <p className="dsv2-section-caption">{t("الحركة المسجلة في تاريخ اليوم.")}</p>
                 </div>
               </div>
 
               <dl className="overview-v2-summary-list">
                 <div>
-                  <dt>دخل اليوم</dt>
+                  <dt>{t("دخل اليوم")}</dt>
                   <dd data-tone="success">
 {financeAccess.income
-                      ? `${financeToday.income.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                      : "غير متاح"}
+                      ? `${financeToday.income.toLocaleString(numberLocale)} {currency}`
+                      : t("غير متاح")}
                   </dd>
                 </div>
                 <div>
-                  <dt>مصروف اليوم</dt>
+                  <dt>{t("مصروف اليوم")}</dt>
                   <dd data-tone="danger">
 {financeAccess.expenses
-                      ? `${financeToday.expenses.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                      : "غير متاح"}
+                      ? `${financeToday.expenses.toLocaleString(numberLocale)} {currency}`
+                      : t("غير متاح")}
                   </dd>
                 </div>
                 <div className="overview-v2-summary-list__net">
-                  <dt>الصافي</dt>
+                  <dt>{t("الصافي")}</dt>
                   <dd data-tone={financeToday.net >= 0 ? "success" : "danger"}>
 {financeAccess.income && financeAccess.expenses
-                      ? `${financeToday.net.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-                      : "غير متاح"}
+                      ? `${financeToday.net.toLocaleString(numberLocale)} {currency}`
+                      : t("غير متاح")}
                   </dd>
                 </div>
               </dl>
@@ -505,17 +514,17 @@ export default function DashboardOverviewV2({
           <section className="dsv2-card overview-v2-recent-card">
             <header className="overview-v2-card-head overview-v2-card-head--padded">
               <div>
-                <h3 className="dsv2-section-title">آخر العمليات</h3>
-                <p className="dsv2-section-caption">أحدث الحركات المالية المسجلة.</p>
+                <h3 className="dsv2-section-title">{t("آخر العمليات")}</h3>
+                <p className="dsv2-section-caption">{t("أحدث الحركات المالية المسجلة.")}</p>
               </div>
             </header>
 
             {!financeAccess.income && !financeAccess.expenses ? (
               <div className="overview-v2-recent-empty">
-                لا تملك صلاحية عرض العمليات المالية
+                {t("لا تملك صلاحية عرض العمليات المالية")}
               </div>
             ) : recentFinanceTransactions.length === 0 ? (
-              <div className="overview-v2-recent-empty">لا توجد عمليات حديثة</div>
+              <div className="overview-v2-recent-empty">{t("لا توجد عمليات حديثة")}</div>
             ) : (
               <div className="overview-v2-recent-list">
                 {recentFinanceTransactions.map((transaction) => (
@@ -530,7 +539,7 @@ export default function DashboardOverviewV2({
                     </div>
                     <b data-tone={transaction.type === "income" ? "success" : "danger"}>
                       {transaction.type === "income" ? "+" : "-"}
-                      {Math.abs(transaction.amount).toLocaleString("ar-SA-u-nu-latn")} ر.س
+                      {Math.abs(transaction.amount).toLocaleString(numberLocale)} {currency}
                     </b>
                   </article>
                 ))}
@@ -542,10 +551,10 @@ export default function DashboardOverviewV2({
             <div className="dsv2-section-head overview-v2-section__head">
               <div>
                 <h2 id="overview-v2-actions" className="dsv2-section-title">
-                  إجراءات سريعة
+                  {t("إجراءات سريعة")}
                 </h2>
                 <p className="dsv2-section-caption">
-                  انتقال مباشر إلى المهام الأكثر استخدامًا داخل لوحة الإدارة.
+                  {t("انتقال مباشر إلى المهام الأكثر استخدامًا داخل لوحة الإدارة.")}
                 </p>
               </div>
             </div>
@@ -556,15 +565,15 @@ export default function DashboardOverviewV2({
                   <FontAwesomeIcon icon={faCalendarAlt} />
                 </span>
                 <div>
-                  <h3>حجز جديد</h3>
-                  <p>إنشاء حجز للعميلة وإسناده إلى الموظفة والخدمة المناسبة.</p>
+                  <h3>{t("حجز جديد")}</h3>
+                  <p>{t("إنشاء حجز للعميلة وإسناده إلى الموظفة والخدمة المناسبة.")}</p>
                 </div>
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--primary dsv2-btn--sm"
                   onClick={() => onQuickAction("newBooking")}
                 >
-                  إضافة حجز
+                  {t("إضافة حجز")}
                   <FontAwesomeIcon icon={faArrowLeft} />
                 </button>
               </article>
@@ -574,15 +583,15 @@ export default function DashboardOverviewV2({
                   <FontAwesomeIcon icon={faUsers} />
                 </span>
                 <div>
-                  <h3>إدارة الحجوزات</h3>
-                  <p>مراجعة الحالات والمواعيد والتعديلات ضمن مساحة الحجوزات.</p>
+                  <h3>{t("إدارة الحجوزات")}</h3>
+                  <p>{t("مراجعة الحالات والمواعيد والتعديلات ضمن مساحة الحجوزات.")}</p>
                 </div>
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                   onClick={() => onQuickAction("bookings")}
                 >
-                  فتح الحجوزات
+                  {t("فتح الحجوزات")}
                   <FontAwesomeIcon icon={faArrowLeft} />
                 </button>
               </article>
@@ -592,15 +601,15 @@ export default function DashboardOverviewV2({
                   <FontAwesomeIcon icon={faChartLine} />
                 </span>
                 <div>
-                  <h3>التقارير</h3>
-                  <p>فتح تقارير الأداء والإيرادات والمصروفات للفترة المطلوبة.</p>
+                  <h3>{t("التقارير")}</h3>
+                  <p>{t("فتح تقارير الأداء والإيرادات والمصروفات للفترة المطلوبة.")}</p>
                 </div>
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                   onClick={() => onQuickAction("reports")}
                 >
-                  فتح التقارير
+                  {t("فتح التقارير")}
                   <FontAwesomeIcon icon={faArrowLeft} />
                 </button>
               </article>

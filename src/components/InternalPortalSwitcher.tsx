@@ -7,6 +7,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/InternalPortalSwitcher.css";
+import { dashboardText, type DashboardLanguage } from "../helpers/dashboardLanguage";
 
 const DASHBOARD_HR_SECTIONS = [
   "hr",
@@ -26,6 +27,7 @@ type InternalPortalSwitcherProps = {
   onLogout: () => void | Promise<void>;
   className?: string;
   showPortalLinks?: boolean;
+  language?: DashboardLanguage;
 };
 
 function joinClassNames(...parts: Array<string | false | null | undefined>) {
@@ -39,7 +41,9 @@ export default function InternalPortalSwitcher({
   onLogout,
   className,
   showPortalLinks = true,
+  language = "ar",
 }: InternalPortalSwitcherProps) {
+  const t = (arabic: string) => dashboardText(language, arabic);
   const location = useLocation();
   const pathname = location.pathname;
   const isEmployeeArea = pathname.startsWith("/employee");
@@ -52,7 +56,7 @@ export default function InternalPortalSwitcher({
   return (
     <nav
       className={joinClassNames("internal-portal-switcher", className)}
-      aria-label="التنقل بين الأنظمة الداخلية"
+      aria-label={t("التنقل بين الأنظمة الداخلية")}
     >
       {showPortalLinks && canOpenDashboard && !isDashboardArea ? (
         <NavLink
@@ -64,11 +68,11 @@ export default function InternalPortalSwitcher({
               isActive && "is-current"
             )
           }
-          aria-label="فتح لوحة التحكم"
-          title="لوحة التحكم"
+          aria-label={t("فتح لوحة التحكم")}
+          title={t("لوحة التحكم")}
         >
           <FontAwesomeIcon icon={faTableColumns} />
-          <span>لوحة التحكم</span>
+          <span>{t("لوحة التحكم")}</span>
         </NavLink>
       ) : null}
 
@@ -82,7 +86,7 @@ export default function InternalPortalSwitcher({
               isHrArea && "is-current"
             )
           }
-          aria-label="فتح لوحة الموارد البشرية"
+          aria-label={t("فتح لوحة الموارد البشرية")}
           title="لوحة HR"
         >
           <FontAwesomeIcon icon={faUserShield} />
@@ -95,11 +99,11 @@ export default function InternalPortalSwitcher({
         className="internal-portal-switcher__item internal-portal-switcher__item--logout"
         onClick={() => void onLogout()}
         disabled={loggingOut}
-        aria-label="تسجيل الخروج"
-        title="تسجيل الخروج"
+        aria-label={t("تسجيل الخروج")}
+        title={t("تسجيل الخروج")}
       >
         <FontAwesomeIcon icon={faRightFromBracket} />
-        <span>{loggingOut ? "..." : "خروج"}</span>
+        <span>{loggingOut ? "..." : t("خروج")}</span>
       </button>
     </nav>
   );

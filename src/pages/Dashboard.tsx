@@ -33,6 +33,7 @@ import DashboardSidebarTooltipV2 from "../components/DashboardSidebarTooltipV2";
 import MalikatPortalSidebarV2 from "../components/MalikatPortalSidebarV2";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
+import { DASHBOARD_LANGUAGE_KEY, dashboardText, type DashboardLanguage } from "../helpers/dashboardLanguage";
 import PermissionRoute from "../components/PermissionRoute";
 import { usePermissions } from "../security/PermissionContext";
 import Modal from "../components/Modal";
@@ -1077,6 +1078,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   initialEmail,
   authReady,
 }) => {
+  const [dashboardLanguage, setDashboardLanguage] = useState<DashboardLanguage>(() => {
+    try {
+      return localStorage.getItem(DASHBOARD_LANGUAGE_KEY) === "en" ? "en" : "ar";
+    } catch {
+      return "ar";
+    }
+  });
+  const t = (arabic: string) => dashboardText(dashboardLanguage, arabic);
+  const toggleDashboardLanguage = () => {
+    setDashboardLanguage((current) => {
+      const next = current === "ar" ? "en" : "ar";
+      try { localStorage.setItem(DASHBOARD_LANGUAGE_KEY, next); } catch { /* Storage may be unavailable. */ }
+      return next;
+    });
+  };
   const hasExternalAuthBootstrap =
     typeof initialRole !== "undefined" && typeof authReady === "boolean";
 
@@ -1998,18 +2014,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     );
   }
 
-  const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat(dashboardLanguage === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     timeStyle: "medium",
   }).format(new Date(topbarNowMs))}`;
   const dashboardHeaderTitle = isTvQueuePage
-    ? "شاشة نداء الحجوزات"
+    ? t("شاشة نداء الحجوزات")
     : isHrWorkspacePage
-      ? DASHBOARD_HR_TITLES[dashboardSection] || "الموارد البشرية"
-      : getDashboardHeaderTitle(location.pathname);
+      ? t(DASHBOARD_HR_TITLES[dashboardSection] || "الموارد البشرية")
+      : t(getDashboardHeaderTitle(location.pathname));
 
 
   return (
-    <div className={`dashboard-skin madan-admin-shell dashboard-v2 malikat-portal-shell-v2 dashboard-page dashboard-skin-page is-sidebar-drawer${(isBookingInternalPage || isAttendanceSecurityPage) ? " is-booking-internal-route" : ""}${isBookingsWorkspacePage ? " is-bookings-workspace-route" : ""}${isEnterpriseOperationsPage ? " is-enterprise-workspace-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+    <div lang={dashboardLanguage} className={`dashboard-skin madan-admin-shell dashboard-v2 malikat-portal-shell-v2 dashboard-page dashboard-skin-page is-sidebar-drawer${(isBookingInternalPage || isAttendanceSecurityPage) ? " is-booking-internal-route" : ""}${isBookingsWorkspacePage ? " is-bookings-workspace-route" : ""}${isEnterpriseOperationsPage ? " is-enterprise-workspace-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -2454,78 +2470,78 @@ const Dashboard: React.FC<DashboardProps> = ({
             <nav className="sidebar-nav">
               <ul>
                 {hasPrimaryNavigation ? (
-                  <li className="sidebar-nav-section">الحجوزات والعملاء والمالية</li>
+                  <li className="sidebar-nav-section">{t("الحجوزات والعملاء والمالية")}</li>
                 ) : null}
 
                 {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink to="/dashboard/overview" className="nav-link" data-sidebar-tooltip="نظرة عامة" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/overview" className="nav-link" data-sidebar-tooltip={t("نظرة عامة")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
-                      نظرة عامة
+                      {t("نظرة عامة")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("bookings.view") ? (
                   <li>
-                    <NavLink to="/dashboard/bookings" className="nav-link" data-sidebar-tooltip="الحجوزات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/bookings" className="nav-link" data-sidebar-tooltip={t("الحجوزات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
-                      الحجوزات
+                      {t("الحجوزات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("bookings.create") ? (
                   <li>
-                    <NavLink to="/dashboard/booking-internal" className="nav-link" data-sidebar-tooltip="الحجز الإداري" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/booking-internal" className="nav-link" data-sidebar-tooltip={t("الحجز الإداري")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
-                      الحجز الإداري
+                      {t("الحجز الإداري")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("bookings.day_audit.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/day-audit" className="nav-link" data-sidebar-tooltip="إغلاق اليوم / الشفت" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/day-audit" className="nav-link" data-sidebar-tooltip={t("إغلاق اليوم / الشفت")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
-                      إغلاق اليوم / الشفت
+                      {t("إغلاق اليوم / الشفت")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("bookings.queue_tv.view") ? (
                   <li>
-                    <NavLink to="/dashboard/tv-queue" className="nav-link" data-sidebar-tooltip="شاشة الحجوزات (TV)" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/tv-queue" className="nav-link" data-sidebar-tooltip={t("شاشة الحجوزات (TV)")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faTv} />
-                      شاشة الحجوزات (TV)
+                      {t("شاشة الحجوزات (TV)")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("clients.view") ? (
                   <li>
-                    <NavLink to="/dashboard/clients" className="nav-link" data-sidebar-tooltip="العملاء" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/clients" className="nav-link" data-sidebar-tooltip={t("العملاء")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUsers} />
-                      العملاء
+                      {t("العملاء")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("income.view") ? (
                   <li>
-                    <NavLink to="/dashboard/income" className="nav-link" data-sidebar-tooltip="الإيرادات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/income" className="nav-link" data-sidebar-tooltip={t("الإيرادات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
-                      الإيرادات
+                      {t("الإيرادات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("expenses.view") ? (
                   <li>
-                    <NavLink to="/dashboard/expenses" className="nav-link" data-sidebar-tooltip="المصروفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/expenses" className="nav-link" data-sidebar-tooltip={t("المصروفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       <span className="dash-nav-label">
-                        المصروفات
+                        {t("المصروفات")}
                         {missingExpenseNotesCount > 0 ? <span className="dash-badge">{missingExpenseNotesCount}</span> : null}
                       </span>
                     </NavLink>
@@ -2533,237 +2549,237 @@ const Dashboard: React.FC<DashboardProps> = ({
                 ) : null}
 
                 {canOpenHrPortal ? (
-                  <li className="sidebar-nav-section">الموظفات والموارد البشرية</li>
+                  <li className="sidebar-nav-section">{t("الموظفات والموارد البشرية")}</li>
                 ) : null}
 
                 {hasPermission("employees.view") ? (
                   <li>
-                    <NavLink to="/dashboard/hr" end className="nav-link" data-sidebar-tooltip="ملخص الموارد البشرية" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/hr" end className="nav-link" data-sidebar-tooltip={t("ملخص الموارد البشرية")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
-                      ملخص الموارد البشرية
+                      {t("ملخص الموارد البشرية")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("employees.view") ? (
                   <li>
-                    <NavLink to="/dashboard/employees" className="nav-link" data-sidebar-tooltip="إدارة الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/employees" className="nav-link" data-sidebar-tooltip={t("إدارة الموظفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUsers} />
-                      إدارة الموظفات
+                      {t("إدارة الموظفات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("employee_requests.view") ? (
                   <li>
-                    <NavLink to="/dashboard/requests" className="nav-link" data-sidebar-tooltip="طلبات الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/requests" className="nav-link" data-sidebar-tooltip={t("طلبات الموظفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faClockRotateLeft} />
-                      طلبات الموظفات
+                      {t("طلبات الموظفات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("attendance.leaves.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/permissions" className="nav-link" data-sidebar-tooltip="الاستئذانات والإجازات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/permissions" className="nav-link" data-sidebar-tooltip={t("الاستئذانات والإجازات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faFingerprint} />
-                      الاستئذانات والإجازات
+                      {t("الاستئذانات والإجازات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("attendance.view") ? (
                   <li>
-                    <NavLink to="/dashboard/attendance" className="nav-link" data-sidebar-tooltip="الحضور والبصمة" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/attendance" className="nav-link" data-sidebar-tooltip={t("الحضور والبصمة")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faFingerprint} />
-                      الحضور والبصمة
+                      {t("الحضور والبصمة")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("recruitment.view") ? (
                   <li>
-                    <NavLink to="/dashboard/recruitment-applications" className="nav-link" data-sidebar-tooltip="طلبات التوظيف" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/recruitment-applications" className="nav-link" data-sidebar-tooltip={t("طلبات التوظيف")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserTie} />
-                      طلبات التوظيف
+                      {t("طلبات التوظيف")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("messages.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/messages" className="nav-link" data-sidebar-tooltip="الرسائل الداخلية" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/messages" className="nav-link" data-sidebar-tooltip={t("الرسائل الداخلية")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUser} />
-                      الرسائل الداخلية
+                      {t("الرسائل الداخلية")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("employees.files.view") ? (
                   <li>
-                    <NavLink to="/dashboard/files" className="nav-link" data-sidebar-tooltip="ملفات الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/files" className="nav-link" data-sidebar-tooltip={t("ملفات الموظفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faClockRotateLeft} />
-                      ملفات الموظفات
+                      {t("ملفات الموظفات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("admin_accounts.manage") && hasPermission("employees.create") ? (
                   <li>
-                    <NavLink to="/dashboard/create-staff" className="nav-link" data-sidebar-tooltip="إنشاء حساب موظفة" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/create-staff" className="nav-link" data-sidebar-tooltip={t("إنشاء حساب موظفة")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
-                      إنشاء حساب موظفة
+                      {t("إنشاء حساب موظفة")}
                     </NavLink>
                   </li>
                 ) : null}
                 {hasPermission("payroll.view") ? (
                   <li>
-                    <NavLink to="/dashboard/payroll" className="nav-link" data-sidebar-tooltip="إدارة الرواتب" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/payroll" className="nav-link" data-sidebar-tooltip={t("إدارة الرواتب")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
-                      إدارة الرواتب
+                      {t("إدارة الرواتب")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasAnyPermission(["targets.view", "targets.view_all", "payroll.view"]) ? (
                   <li>
-                    <NavLink to="/dashboard/employee-targets" className="nav-link" data-sidebar-tooltip="تارقت الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/employee-targets" className="nav-link" data-sidebar-tooltip={t("تارقت الموظفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
-                      تارقت الموظفات
+                      {t("تارقت الموظفات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("staffPerformance.view") ? (
                   <li>
-                    <NavLink to="/dashboard/staff-performance" className="nav-link" data-sidebar-tooltip="أداء الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/staff-performance" className="nav-link" data-sidebar-tooltip={t("أداء الموظفات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
-                      أداء الموظفات
+                      {t("أداء الموظفات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasManagementNavigation ? (
-                  <li className="sidebar-nav-section">الإدارة والتقارير</li>
+                  <li className="sidebar-nav-section">{t("الإدارة والتقارير")}</li>
                 ) : null}
 
                 {hasPermission("partners.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/partners" className="nav-link" data-sidebar-tooltip="الشريكات والمساحات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/partners" className="nav-link" data-sidebar-tooltip={t("الشريكات والمساحات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faStore} />
-                      الشريكات والمساحات
+                      {t("الشريكات والمساحات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip="العروض والكوبونات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip={t("العروض والكوبونات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
-                      العروض والكوبونات
+                      {t("العروض والكوبونات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasAnyPermission(["inventory.view", "inventory.items.manage"]) ? (
                   <li>
-                    <NavLink to="/dashboard/inventory" className="nav-link" data-sidebar-tooltip="المخزون" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/inventory" className="nav-link" data-sidebar-tooltip={t("المخزون")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faBoxesStacked} />
-                      المخزون
+                      {t("المخزون")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("reports.view") ? (
                   <li>
-                    <NavLink to="/dashboard/reports" className="nav-link" data-sidebar-tooltip="التقارير" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/reports" className="nav-link" data-sidebar-tooltip={t("التقارير")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
-                      التقارير
+                      {t("التقارير")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("logs.view") ? (
                   <li>
-                    <NavLink to="/dashboard/logs" className="nav-link" data-sidebar-tooltip="سجل الحركات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/logs" className="nav-link" data-sidebar-tooltip={t("سجل الحركات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faClockRotateLeft} />
-                      سجل الحركات
+                      {t("سجل الحركات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("clients.loyalty.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/loyalty" className="nav-link" data-sidebar-tooltip="الولاء (VIP)" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/loyalty" className="nav-link" data-sidebar-tooltip={t("الولاء (VIP)")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
-                      الولاء (VIP)
+                      {t("الولاء (VIP)")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasSettingsNavigation ? (
-                  <li className="sidebar-nav-section">الموظفات والحسابات والإعدادات</li>
+                  <li className="sidebar-nav-section">{t("الموظفات والحسابات والإعدادات")}</li>
                 ) : null}
 
                 {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink to="/dashboard/admin-profile" className="nav-link" data-sidebar-tooltip="الملف الشخصي" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/admin-profile" className="nav-link" data-sidebar-tooltip={t("الملف الشخصي")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUser} />
-                      الملف الشخصي
+                      {t("الملف الشخصي")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("settings.general.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings" className="nav-link" data-sidebar-tooltip="الإعدادات الأساسية" end onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings" className="nav-link" data-sidebar-tooltip={t("الإعدادات الأساسية")} end onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
-                      الإعدادات الأساسية
+                      {t("الإعدادات الأساسية")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("settings.booking.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/bookings" className="nav-link" data-sidebar-tooltip="إعدادات الحجوزات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/bookings" className="nav-link" data-sidebar-tooltip={t("إعدادات الحجوزات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
-                      إعدادات الحجوزات
+                      {t("إعدادات الحجوزات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("catalog.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/catalog" className="nav-link" data-sidebar-tooltip="إدارة الكتالوج" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/catalog" className="nav-link" data-sidebar-tooltip={t("إدارة الكتالوج")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
-                      إدارة الكتالوج
+                      {t("إدارة الكتالوج")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("admin_accounts.view") || hasPermission("admin_accounts.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/users" className="nav-link" data-sidebar-tooltip="إدارة الحسابات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/users" className="nav-link" data-sidebar-tooltip={t("إدارة الحسابات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
-                      إدارة الحسابات
+                      {t("إدارة الحسابات")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("settings.content.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/contact" className="nav-link" data-sidebar-tooltip="محتوى الموقع" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/contact" className="nav-link" data-sidebar-tooltip={t("محتوى الموقع")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faHouse} />
-                      محتوى الموقع
+                      {t("محتوى الموقع")}
                     </NavLink>
                   </li>
                 ) : null}
 
                 {hasPermission("attendance.settings.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/attendance" className="nav-link" data-sidebar-tooltip="إعدادات البصمة والنطاقات" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/attendance" className="nav-link" data-sidebar-tooltip={t("إعدادات البصمة والنطاقات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
-                      إعدادات البصمة والنطاقات
+                      {t("إعدادات البصمة والنطاقات")}
                     </NavLink>
                   </li>
                 ) : null}
@@ -2778,6 +2794,8 @@ const Dashboard: React.FC<DashboardProps> = ({
               theme="dashboard"
               title={dashboardHeaderTitle}
               subtitle={settings.salonName || "MALIKAT"}
+              profileLabel={t("البروفايل")}
+              profileAriaLabel={t("فتح الملف الشخصي")}
               className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}
               showProfileButton={hasPermission("workspace.dashboard.view")}
               leading={
@@ -2785,26 +2803,30 @@ const Dashboard: React.FC<DashboardProps> = ({
                   type="button"
                   className="dash-topbar-toggle"
                   onClick={() => setIsSidebarOpen((prev) => !prev)}
-                  aria-label="فتح القائمة"
-                  title="القائمة"
+                  aria-label={t("فتح القائمة")}
+                  title={t("القائمة")}
                 >
                   <FontAwesomeIcon icon={faBars} />
                 </button>
               }
               actions={
-                isTvQueuePage ? (
-                  <span className="dashboard-header__clock">
-                    {topbarClockText}
-                  </span>
-                ) : (
-                  <InternalPortalSwitcher
-                    showPortalLinks={false}
-                    canOpenDashboard={hasPermission("workspace.dashboard.view")}
-                    canOpenHr={canOpenHrPortal}
-                    onLogout={handleLogout}
-                    className="dash-topbar-actions"
-                  />
-                )
+                <>
+                  <button type="button" className="dashboard-language-toggle" onClick={toggleDashboardLanguage} aria-label={dashboardLanguage === "ar" ? "Switch dashboard to English" : "تحويل لوحة التحكم إلى العربية"}>
+                    {dashboardLanguage === "ar" ? "English" : "العربية"}
+                  </button>
+                  {isTvQueuePage ? (
+                    <span className="dashboard-header__clock">{topbarClockText}</span>
+                  ) : (
+                    <InternalPortalSwitcher
+                      language={dashboardLanguage}
+                      showPortalLinks={false}
+                      canOpenDashboard={hasPermission("workspace.dashboard.view")}
+                      canOpenHr={canOpenHrPortal}
+                      onLogout={handleLogout}
+                      className="dash-topbar-actions"
+                    />
+                  )}
+                </>
               }
             />
 
@@ -2845,6 +2867,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   element={
                     <PermissionRoute permission="workspace.dashboard.view">
                       <DashboardOverviewV2
+                        language={dashboardLanguage}
                         userInfo={userInfo}
                         stats={stats}
                         scheduleBookings={todayScheduleBookings}
@@ -2965,7 +2988,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* ✅ Modal تفاصيل الحجز */}
-      <DashboardMobileNav missingExpenseNotesCount={missingExpenseNotesCount} />
+      <DashboardMobileNav language={dashboardLanguage} missingExpenseNotesCount={missingExpenseNotesCount} />
       {selectedBooking && (
         <Modal
           open={!!selectedBooking}
