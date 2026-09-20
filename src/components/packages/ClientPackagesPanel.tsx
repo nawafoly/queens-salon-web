@@ -313,7 +313,7 @@ export default function ClientPackagesPanel(props: {
             {t("الخدمات")}:{" "}
             {pkg.allowedServiceIdsSnapshot
               .map((id) => services[id] || id)
-              .join("، ")}
+              .join(language === "en" ? ", " : "، ")}
           </p>
 
           <details>
@@ -323,7 +323,7 @@ export default function ClientPackagesPanel(props: {
             {(transactions[String(pkg.id)] || []).map((transaction) => (
               <div key={transaction.id}>
                 {t(labels[transaction.type] || transaction.type)}:{" "}
-                {transaction.remainingBefore} ← {transaction.remainingAfter}{" "}
+                {transaction.remainingBefore} {language === "en" ? "→" : "←"} {transaction.remainingAfter}{" "}
                 {transaction.reason ? `· ${transaction.reason}` : ""}
               </div>
             ))}
