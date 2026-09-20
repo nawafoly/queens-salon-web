@@ -432,12 +432,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
           String(s.categoryName || "").trim() ||
           String(categoryNameById[String(s.categoryId || "").trim()] || "").trim() ||
           String(s.categoryId || "").trim() ||
-          "عام",
+          t("عام"),
         name: String(s.name || "").trim(),
         basePrice: Math.max(0, Number(s.price || 0)),
       }))
       .filter((s) => s.id && s.name);
-  }, [packageServices, sectionNameById, categoryNameById]);
+  }, [categoryNameById, language, packageServices, sectionNameById]);
 
   const servicesFiltered = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
@@ -1412,7 +1412,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
     if (isPackageExpiredByToday(pkg)) {
       openPackageForEdit(pkg);
       showNotice(
-        "الباقة منتهية. عدّل تاريخ الانتهاء إلى اليوم أو بعده ثم احفظها."
+        t("الباقة منتهية. عدّل تاريخ الانتهاء إلى اليوم أو بعده ثم احفظها.")
       );
       return;
     }
@@ -2023,7 +2023,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                         {packageComputed.picked
                           .slice(0, 5)
                           .map((service) => service.name)
-                          .join("، ")}
+                          .join(language === "en" ? ", " : "، ")}
                         {packageComputed.picked.length > 5 ? " ..." : ""}
                       </p>
                     </div>
@@ -2150,7 +2150,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   <div className="package-editor__price-box">
                     <span>{t("سعر البيع")}</span>
                     <strong>{packageComputed.price.toFixed(2)} <small>{currency}</small></strong>
-                    <em>{packageComputed.averageSessionPrice.toFixed(2)} {currency} للجلسة</em>
+                    <em>{packageComputed.averageSessionPrice.toFixed(2)} {currency} {t("للجلسة")}</em>
                   </div>
 
                   <dl className="package-editor__preview-details">
@@ -3000,7 +3000,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                     <div className="offer-editor__preview-empty"><FontAwesomeIcon icon={faImage} /></div>
                   )}
                   <div className="offer-editor__preview-badges">
-                    <span>{form.published ? "منشور" : "مخفي"}</span>
+                    <span>{form.published ? t("منشور") : t("مخفي")}</span>
                     <span>{offerEditorComputed.dateStatus}</span>
                   </div>
                 </div>
