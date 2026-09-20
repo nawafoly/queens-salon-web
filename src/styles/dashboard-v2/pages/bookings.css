@@ -1381,6 +1381,11 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   direction: rtl;
 }
 
+.bookings-v2-modal-panel.bookings-v2-modal-panel--en{
+  direction: ltr;
+  text-align: left;
+}
+
 .bookings-v2-modal-panel.qs-modal-panel--sm{
   width: min(560px, 100%);
 }
