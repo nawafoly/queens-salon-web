@@ -20,6 +20,7 @@ import { listAllExpensesCore } from "../services/CoreExpenseService";
 import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";
 import type { PaymentMethod } from "../types/finance";
 import { financePaymentMethodLabel, formatFinanceNote } from "../helpers/financeDisplay";
+import { reportsText, type DashboardLanguage } from "../helpers/dashboardReportsLanguage";
 import {
   PAYROLL_CLOSE_DAY,
   payrollCycleKeyFromDate,
@@ -159,8 +160,8 @@ function parseMillis(v: any): number {
   return 0;
 }
 
-function formatMoney(v: number) {
-  return `${Number(v || 0).toLocaleString("en-US")} ر.س`;
+function formatMoney(v: number, language: DashboardLanguage = "ar") {
+  return `${Number(v || 0).toLocaleString("en-US")} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function formatDateTime(date: string, time: string) {
@@ -169,11 +170,11 @@ function formatDateTime(date: string, time: string) {
   return `${d} ${t}`;
 }
 
-function bookingStatusLabel(status: BookingStatus) {
-  if (status === "confirmed") return "مؤكد";
-  if (status === "completed") return "مكتمل";
-  if (status === "cancelled") return "ملغي";
-  return "انتظار";
+function bookingStatusLabel(status: BookingStatus, language: DashboardLanguage = "ar") {
+  if (status === "confirmed") return reportsText(language, "مؤكد");
+  if (status === "completed") return reportsText(language, "مكتمل");
+  if (status === "cancelled") return reportsText(language, "ملغي");
+  return reportsText(language, "انتظار");
 }
 
 function sourceKind(raw: string): IncomeSourceKind {
@@ -187,12 +188,12 @@ function sourceKind(raw: string): IncomeSourceKind {
   return "other";
 }
 
-function sourceLabel(kind: IncomeSourceKind) {
-  if (kind === "booking") return "حجز";
-  if (kind === "invoice") return "فاتورة";
-  if (kind === "internal") return "داخلي";
-  if (kind === "refund") return "استرجاع";
-  return "دخل آخر";
+function sourceLabel(kind: IncomeSourceKind, language: DashboardLanguage = "ar") {
+  if (kind === "booking") return reportsText(language, "حجز");
+  if (kind === "invoice") return reportsText(language, "فاتورة");
+  if (kind === "internal") return reportsText(language, "داخلي");
+  if (kind === "refund") return reportsText(language, "استرجاع");
+  return reportsText(language, "دخل آخر");
 }
 
 function isBookingLinkedIncomeSource(raw: string): boolean {
@@ -219,20 +220,20 @@ function normalizePaymentMethod(raw: any): PaymentMethod {
   return "other";
 }
 
-function resolveIncomeReportNote(sourceRaw: string, noteText: string): string {
+function resolveIncomeReportNote(sourceRaw: string, noteText: string, language: DashboardLanguage = "ar"): string {
   if (noteText) return noteText;
 
   const kind = sourceKind(sourceRaw || "");
-  if (kind === "booking") return "\u0633\u062c\u0644 \u062d\u062c\u0632 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
-  if (kind === "invoice") return "\u0641\u0627\u062a\u0648\u0631\u0629 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
-  if (kind === "internal") return "\u062f\u0641\u0639 \u062f\u0627\u062e\u0644\u064a \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
-  if (kind === "refund") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  if (kind === "booking") return reportsText(language, "سجل حجز بدون ملاحظة");
+  if (kind === "invoice") return reportsText(language, "فاتورة بدون ملاحظة");
+  if (kind === "internal") return reportsText(language, "دفع داخلي بدون ملاحظة");
+  if (kind === "refund") return reportsText(language, "استرجاع بدون ملاحظة");
 
   const source = String(sourceRaw || "").trim().toLowerCase();
-  if (source === "manual" || source === "\u064a\u062f\u0648\u064a") {
-    return "\u062f\u062e\u0644 \u064a\u062f\u0648\u064a \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  if (source === "manual" || source === "يدوي") {
+    return reportsText(language, "دخل يدوي بدون ملاحظة");
   }
-  return "\u062f\u062e\u0644 \u0622\u062e\u0631 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  return reportsText(language, "دخل آخر بدون ملاحظة");
 }
 function toBookingRef(v?: string) {
   const raw = String(v || "").trim().toUpperCase();
@@ -266,13 +267,13 @@ function isRefundIncomeRow(item: Pick<IncomeRow, "id" | "source" | "amount">): b
   return kind === "refund" || Number(item.amount || 0) < 0 || String(item.id || "").startsWith("refund_");
 }
 
-function statusLabelForIncome(item: IncomeRow): string {
+function statusLabelForIncome(item: IncomeRow, language: DashboardLanguage = "ar"): string {
   const status = String(item.status || "").trim().toLowerCase();
-  if (status === "active" || status === "confirmed" || status === "completed") return "نشط";
-  if (status === "refunded" || status === "refund") return "استرجاع";
-  if (status === "voided" || status === "void" || status === "cancelled" || status === "canceled") return "ملغي";
-  if (isRefundIncomeRow(item)) return "استرجاع";
-  return "نشط";
+  if (status === "active" || status === "confirmed" || status === "completed") return reportsText(language, "نشط");
+  if (status === "refunded" || status === "refund") return reportsText(language, "استرجاع");
+  if (status === "voided" || status === "void" || status === "cancelled" || status === "canceled") return reportsText(language, "ملغي");
+  if (isRefundIncomeRow(item)) return reportsText(language, "استرجاع");
+  return reportsText(language, "نشط");
 }
 
 function rowEffectiveAmount(item: IncomeRow, _bookingMetaById: Record<string, BookingMeta>) {
@@ -436,11 +437,23 @@ function toMonthKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
 
-function monthLabelAr(monthKey: string) {
+function monthLabel(monthKey: string, language: DashboardLanguage = "ar") {
   const y = Number(monthKey.slice(0, 4));
   const m = Number(monthKey.slice(5, 7));
   if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return monthKey;
+  if (language === "en") {
+    return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(y, m - 1, 1));
+  }
   return `${MONTHS_AR[m - 1]} ${y}`;
+}
+
+function paymentMethodLabel(method: PaymentMethod, language: DashboardLanguage = "ar") {
+  if (language === "ar") return financePaymentMethodLabel(method);
+  if (method === "cash") return "Cash";
+  if (method === "card") return "Card";
+  if (method === "transfer") return "Transfer";
+  if (method === "mixed") return "Mixed";
+  return "Other";
 }
 
 function formatDeltaPct(v: number | null) {
@@ -505,7 +518,8 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
 }
 
-export default function DashboardReports() {
+export default function DashboardReports({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => reportsText(language, text);
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
   const [customFrom, setCustomFrom] = useState("");
@@ -918,7 +932,7 @@ export default function DashboardReports() {
         const linkedBooking = linkedBookingId ? bookingById[linkedBookingId] : undefined;
         const linkedMeta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
         const noteText = formatFinanceNote(x.note);
-        const displayNote = resolveIncomeReportNote(x.source, noteText);
+        const displayNote = resolveIncomeReportNote(x.source, noteText, language);
         return {
           id: `income_${x.id}`,
           date: incomeEffectiveDate(x),
@@ -929,7 +943,7 @@ export default function DashboardReports() {
             String(linkedMeta?.employeeName || linkedBooking?.employeeName || "").trim() || "-",
           note: displayNote,
           amount: rowEffectiveAmount(x, bookingMetaById),
-          statusLabel: statusLabelForIncome(x),
+          statusLabel: statusLabelForIncome(x, language),
         };
       })
       .sort((a, b) => {
@@ -993,8 +1007,8 @@ export default function DashboardReports() {
     const previousNet = previousRevenue - previousExpenses;
 
     return {
-      currentLabel: monthLabelAr(currentKey),
-      previousLabel: monthLabelAr(previousKey),
+      currentLabel: monthLabel(currentKey, language),
+      previousLabel: monthLabel(previousKey, language),
       current: {
         revenue: currentRevenue,
         expenses: currentExpenses,
@@ -1145,11 +1159,11 @@ export default function DashboardReports() {
     }));
 
     const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number }> = [
-      { label: sourceLabel("booking"), key: "booking", value: 0 },
-      { label: sourceLabel("invoice"), key: "invoice", value: 0 },
-      { label: sourceLabel("internal"), key: "internal", value: 0 },
-      { label: sourceLabel("refund"), key: "refund", value: 0 },
-      { label: sourceLabel("other"), key: "other", value: 0 },
+      { label: sourceLabel("booking", language), key: "booking", value: 0 },
+      { label: sourceLabel("invoice", language), key: "invoice", value: 0 },
+      { label: sourceLabel("internal", language), key: "internal", value: 0 },
+      { label: sourceLabel("refund", language), key: "refund", value: 0 },
+      { label: sourceLabel("other", language), key: "other", value: 0 },
     ];
     revenueRowsDetailed.forEach((x) => {
       const row = sourceRaw.find((it) => it.key === x.source);
@@ -1197,18 +1211,18 @@ export default function DashboardReports() {
 
   const lastSyncLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+      new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
         dateStyle: "short",
         timeStyle: "medium",
       }).format(new Date(lastSyncMs)),
-    [lastSyncMs]
+    [language, lastSyncMs]
   );
 
   const buildFinancialOverviewReportInput = () => ({
     revenueRows: revenueRowsDetailed.map((row) => ({
       date: row.date,
       time: row.time,
-      source: sourceLabel(row.source),
+      source: sourceLabel(row.source, language),
       mkRef: row.mkRef,
       employeeName: row.employeeName,
       note: row.note,
@@ -1232,8 +1246,8 @@ export default function DashboardReports() {
       fromDate: range.from,
       toDate: range.to,
       periodLabel: period,
-      incomeMethod: incomeMethodFilter === "all" ? "الكل" : financePaymentMethodLabel(incomeMethodFilter),
-      incomeSource: incomeSourceFilter === "all" ? "الكل" : sourceLabel(incomeSourceFilter),
+      incomeMethod: incomeMethodFilter === "all" ? "الكل" : paymentMethodLabel(incomeMethodFilter, language),
+      incomeSource: incomeSourceFilter === "all" ? "الكل" : sourceLabel(incomeSourceFilter, language),
       incomeStatus: incomeStatusFilter,
     },
     payrollCycle: {
@@ -1880,7 +1894,7 @@ export default function DashboardReports() {
                   <tr key={row.id}>
                     <td data-label="التاريخ/الوقت">{formatDateTime(row.date, row.time)}</td>
                     <td data-label="المصدر">
-                      {sourceLabel(row.source)}
+                      {sourceLabel(row.source, language)}
                     </td>
                     <td data-label="رقم الحجز MK">{row.mkRef}</td>
                     <td data-label="الموظفة">{row.employeeName || "-"}</td>
