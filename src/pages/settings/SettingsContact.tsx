@@ -417,7 +417,7 @@ export default function SettingsContact({ hasAdminPower, language = "ar" }: Sett
                           onClick={() => void markRead(message.id)}
                           disabled={!isNew}
                         >
-                          تحديد كمقروء
+                          {t("تحديد كمقروء")}
                         </button>
                       ) : null}
                     </header>
