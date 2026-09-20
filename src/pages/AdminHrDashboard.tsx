@@ -42,7 +42,7 @@ import type { AppPermission } from "../helpers/permissions";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
-import EmployeeFilesPage from "./hr/EmployeeFiles";
+import AdminFilesV2 from "./hr/AdminFilesV2";
 import AdminEmployeeRequestsPage from "./hr/AdminEmployeeRequests";
 import {
   listEmployeeRequestNotifications,
@@ -1793,7 +1793,7 @@ export default function AdminHrDashboard({
               }
             />
             <Route path="messages" element={<PermissionRoute permission="messages.manage"><EmployeeMessagesPage session={session} /></PermissionRoute>} />
-            <Route path="files" element={<PermissionRoute permission="employees.files.view"><EmployeeFilesPage session={session} /></PermissionRoute>} />
+            <Route path="files" element={<PermissionRoute permission="employees.files.view"><AdminFilesV2 session={session} /></PermissionRoute>} />
             <Route path="users" element={<Navigate to="/dashboard/settings/users" replace />} />
             <Route path="*" element={<Navigate to={adminLandingPath} replace />} />
           </Routes>
