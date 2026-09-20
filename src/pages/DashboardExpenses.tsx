@@ -1014,7 +1014,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
   if (!authReady) {
     return (
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card dsv2-card--padded expenses-v2-auth-state">
           <DashboardSkeletonV2 variant="title" width="38%" />
           <DashboardSkeletonV2 lines={3} />
@@ -1025,10 +1025,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
   if (!allowed) {
     return (
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <DashboardErrorStateV2
-          title="غير مصرح"
-          description="هذه الصفحة خاصة بالمالك والإدارة فقط."
+          title={t("غير مصرح")}
+          description={t("هذه الصفحة خاصة بالمالك والإدارة فقط.")}
         />
       </div>
     );
@@ -1101,32 +1101,32 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
   return (
     <>
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card expenses-v2-hero">
           <div className="expenses-v2-hero__content">
-            <span className="dsv2-badge dsv2-badge--gold">الإدارة المالية</span>
-            <h1 className="dsv2-page-title">المصروفات</h1>
+            <span className="dsv2-badge dsv2-badge--gold">{t("الإدارة المالية")}</span>
+            <h1 className="dsv2-page-title">{t("المصروفات")}</h1>
             <p className="dsv2-page-subtitle">
-              إدارة المصروفات التشغيلية والرواتب، ومراجعة النواقص والتقارير من مساحة واحدة.
+              {t("إدارة المصروفات التشغيلية والرواتب، ومراجعة النواقص والتقارير من مساحة واحدة.")}
             </p>
           </div>
 
-          <div className="expenses-v2-actions" aria-label="إجراءات صفحة المصروفات">
+          <div className="expenses-v2-actions" aria-label={t("إجراءات صفحة المصروفات")}>
             <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setAddOpen(true)} disabled={loading}>
-              <FontAwesomeIcon icon={faPlus} /> إضافة مصروف
+              <FontAwesomeIcon icon={faPlus} /> {t("إضافة مصروف")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadExpenses()} disabled={loading}>
-              <FontAwesomeIcon icon={faRotate} /> تحديث
+              <FontAwesomeIcon icon={faRotate} /> {t("تحديث")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportPdf} disabled={loading || !filtered.length}>
-              تحميل PDF
+              {t("تحميل PDF")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportExcel} disabled={loading || !filtered.length}>
-              Excel منسّق
+              {t("Excel منسّق")}
             </button>
             {hasLegacy && !migrated ? (
               <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void migrateLegacyExpensesOnce()} disabled={loading}>
-                ترحيل القديم ({legacyCount})
+                {t("ترحيل القديم")} ({legacyCount})
               </button>
             ) : null}
           </div>
@@ -1150,42 +1150,42 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
           </div>
         ) : null}
 
-        <section className="expenses-v2-metrics" aria-label="ملخص المصروفات">
+        <section className="expenses-v2-metrics" aria-label={t("ملخص المصروفات")}>
           <article className="dsv2-metric-card dsv2-metric-card--danger">
-            <p className="dsv2-metric-card__label">إجمالي المصروفات</p>
-            <p className="dsv2-metric-card__value">{formatSar(filteredAmount)}</p>
+            <p className="dsv2-metric-card__label">{t("إجمالي المصروفات")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(filteredAmount, language)}</p>
             <p className="dsv2-metric-card__meta">{activeRange.from} — {activeRange.to}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">مصروفات الرواتب</p>
-            <p className="dsv2-metric-card__value">{formatSar(payrollAmount)}</p>
-            <p className="dsv2-metric-card__meta">{filteredPayrollCount} سجل محسوب تلقائيًا</p>
+            <p className="dsv2-metric-card__label">{t("مصروفات الرواتب")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(payrollAmount, language)}</p>
+            <p className="dsv2-metric-card__meta">{filteredPayrollCount} {t("سجل محسوب تلقائيًا")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark">
-            <p className="dsv2-metric-card__label">المصروفات التشغيلية</p>
-            <p className="dsv2-metric-card__value">{formatSar(manualAmount)}</p>
-            <p className="dsv2-metric-card__meta">{filteredManualCount} سجل يدوي</p>
+            <p className="dsv2-metric-card__label">{t("المصروفات التشغيلية")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(manualAmount, language)}</p>
+            <p className="dsv2-metric-card__meta">{filteredManualCount} {t("سجل يدوي")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">تحتاج ملاحظة</p>
+            <p className="dsv2-metric-card__label">{t("تحتاج ملاحظة")}</p>
             <p className="dsv2-metric-card__value">{missingNotesInActiveRange}</p>
-            <p className="dsv2-metric-card__meta">ضمن الفترة الحالية</p>
+            <p className="dsv2-metric-card__meta">{t("ضمن الفترة الحالية")}</p>
           </article>
         </section>
 
-        <section className="expenses-v2-cycle-strip" aria-label="الفترة المرجعية">
-          <div><strong>الفترة المعروضة</strong><span>{activeRange.from} إلى {activeRange.to}</span></div>
-          <div><strong>الدورة المرجعية</strong><span>{activePayrollCycleKey}</span></div>
-          <div><strong>التصنيفات الظاهرة</strong><span>{categoryCount}</span></div>
-          <div><strong>إغلاق الرواتب</strong><span>يوم {PAYROLL_CLOSE_DAY} من كل شهر</span></div>
+        <section className="expenses-v2-cycle-strip" aria-label={t("الفترة المرجعية")}>
+          <div><strong>{t("الفترة المعروضة")}</strong><span>{activeRange.from} {t("إلى")} {activeRange.to}</span></div>
+          <div><strong>{t("الدورة المرجعية")}</strong><span>{activePayrollCycleKey}</span></div>
+          <div><strong>{t("التصنيفات الظاهرة")}</strong><span>{categoryCount}</span></div>
+          <div><strong>{t("إغلاق الرواتب")}</strong><span>{t("يوم")} {PAYROLL_CLOSE_DAY} {t("من كل شهر")}</span></div>
         </section>
 
         <section className="dsv2-card dsv2-card--padded expenses-v2-filter-card">
           <div className="expenses-v2-section-head">
             <div>
-              <span className="dsv2-badge dsv2-badge--neutral">الفلاتر</span>
-              <h2>سجل المصروفات</h2>
-              <p>غيّر الفترة والتصنيف وطريقة الدفع أو ابحث داخل السجلات.</p>
+              <span className="dsv2-badge dsv2-badge--neutral">{t("الفلاتر")}</span>
+              <h2>{t("سجل المصروفات")}</h2>
+              <p>{t("غيّر الفترة والتصنيف وطريقة الدفع أو ابحث داخل السجلات.")}</p>
             </div>
             <div className="expenses-v2-filter-actions">
               <button
@@ -1193,7 +1193,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                 type="button"
                 onClick={() => setOnlyMissingNotes((value) => !value)}
               >
-                {onlyMissingNotes ? "عرض الكل" : "بدون ملاحظات"}
+                {onlyMissingNotes ? t("عرض الكل") : t("بدون ملاحظات")}
               </button>
               <button
                 className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
@@ -1206,13 +1206,13 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                   setQ("");
                 }}
               >
-                تصفير الفلاتر
+                {t("تصفير الفلاتر")}
               </button>
             </div>
           </div>
 
           <div className="expenses-v2-filter-grid">
-            <DashboardFieldV2 id="expenses-v2-mode" label="وضع العرض">
+            <DashboardFieldV2 id="expenses-v2-mode" label={t("وضع العرض")}>
               <DashboardSelectV2
                 id="expenses-v2-mode"
                 options={recordModeOptions}
@@ -1221,7 +1221,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                 disabled={loading}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-month" label="الشهر المرجعي">
+            <DashboardFieldV2 id="expenses-v2-month" label={t("الشهر المرجعي")}>
               <DashboardSelectV2
                 id="expenses-v2-month"
                 options={monthOptions}
@@ -1232,13 +1232,13 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                 disabled={loading}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-category" label="التصنيف">
+            <DashboardFieldV2 id="expenses-v2-category" label={t("التصنيف")}>
               <DashboardSelectV2 id="expenses-v2-category" options={categoryOptions} value={fCategory} onChange={setFCategory} disabled={loading} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-payment" label="طريقة الدفع">
+            <DashboardFieldV2 id="expenses-v2-payment" label={t("طريقة الدفع")}>
               <DashboardSelectV2 id="expenses-v2-payment" options={paymentOptions} value={fPayment} onChange={setFPayment} disabled={loading} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-search" label="البحث" className="expenses-v2-search-field">
+            <DashboardFieldV2 id="expenses-v2-search" label={t("البحث")} className="expenses-v2-search-field">
               <div className="expenses-v2-search-control">
                 <FontAwesomeIcon icon={faMagnifyingGlass} />
                 <input
@@ -1246,7 +1246,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                   className="dsv2-input"
                   value={q}
                   onChange={(event) => setQ(event.target.value)}
-                  placeholder="الوصف، الموظفة، المصدر أو الملاحظات"
+                  placeholder={t("الوصف، الموظفة، المصدر أو الملاحظات")}
                 />
               </div>
             </DashboardFieldV2>
@@ -1256,10 +1256,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
         <section className="dsv2-table-card expenses-v2-table-card">
           <header className="expenses-v2-table-head">
             <div>
-              <h2>تفاصيل المصروفات</h2>
-              <p>{filtered.length} سجل مطابق للفلاتر الحالية</p>
+              <h2>{t("تفاصيل المصروفات")}</h2>
+              <p>{filtered.length} {t("سجل مطابق للفلاتر الحالية")}</p>
             </div>
-            <span className="dsv2-badge dsv2-badge--gold">{formatSar(filteredAmount)}</span>
+            <span className="dsv2-badge dsv2-badge--gold">{formatSar(filteredAmount, language)}</span>
           </header>
 
           {loading ? (
@@ -1270,10 +1270,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
           ) : !filtered.length ? (
             <div className="expenses-v2-state-wrap">
               <DashboardEmptyStateV2
-                title="لا توجد مصروفات مطابقة"
-                description="غيّر الفلاتر أو أضف مصروفًا جديدًا لبدء عرض البيانات."
+                title={t("لا توجد مصروفات مطابقة")}
+                description={t("غيّر الفلاتر أو أضف مصروفًا جديدًا لبدء عرض البيانات.")}
                 tone="gold"
-                action={<button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>إضافة مصروف</button>}
+                action={<button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>{t("إضافة مصروف")}</button>}
               />
             </div>
           ) : (
@@ -1282,7 +1282,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                 <table className="dsv2-table expenses-v2-table">
                   <thead>
                     <tr>
-                      <th>التاريخ</th><th>النوع</th><th>الوصف</th><th>الموظفة</th><th>التصنيف</th><th>الدفع</th><th>المبلغ</th><th>المصدر</th><th>ملاحظات</th><th>إجراء</th>
+                      <th>{t("التاريخ")}</th><th>{t("النوع")}</th><th>{t("الوصف")}</th><th>{t("الموظفة")}</th><th>{t("التصنيف")}</th><th>{t("الدفع")}</th><th>{t("المبلغ")}</th><th>{t("المصدر")}</th><th>{t("ملاحظات")}</th><th>{t("إجراء")}</th>
                     </tr>
                   </thead>
                   <tbody>
