@@ -2899,7 +2899,12 @@ function DashboardEmployeesContent() {
     const basePolicy = managedLeavePolicy(leaveType);
     const policy = isPartialLeave
       ? { deductFromBalance: false, affectsPayroll: false }
-      : basePolicy;
+      : leaveType === "other"
+        ? {
+            deductFromBalance: payload.deductFromBalance === true,
+            affectsPayroll: payload.affectsPayroll === true,
+          }
+        : basePolicy;
     const fromDate = normalizeLeaveUntil(payload.fromDate);
     const toDate = normalizeLeaveUntil(payload.toDate);
     const days = inclusiveLeaveDays(fromDate, toDate);
@@ -3046,8 +3051,18 @@ function DashboardEmployeesContent() {
             authUser.email,
           hrNote:
             policy.affectsPayroll
-              ? "إجازة بدون راتب — تخصم حسب معدل اليوم"
-              : "إجازة مدفوعة معتمدة",
+              ? "إجازة أخرى معتمدة — تؤثر على الراتب حسب سياسة الإدارة"
+              : leaveType === "other"
+                ? "إجازة أخرى معتمدة — سياسة إدارية مخصصة"
+                : "إجازة مدفوعة معتمدة",
+          ...(leaveType === "other"
+            ? {
+                manualLeavePolicy: {
+                  deductFromBalance: policy.deductFromBalance,
+                  affectsPayroll: policy.affectsPayroll,
+                },
+              }
+            : {}),
         }
       );
 
