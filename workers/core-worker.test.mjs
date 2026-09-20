@@ -692,6 +692,48 @@ class FakeD1 {
         .filter((row) => row.salon_id === salonId && row.id === id)
         .slice(0, 1);
     }
+    if (normalized.startsWith("SELECT * FROM payroll_carryover_adjustments WHERE salon_id = ?")) {
+      let rows = this.rows("payroll_carryover_adjustments").filter((row) => row.salon_id === params[0]);
+      let index = 1;
+
+      if (normalized.includes("target_payroll_month = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.target_payroll_month === value);
+      }
+      if (normalized.includes("employee_id = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.employee_id === value);
+      }
+      if (normalized.includes("status IN (?, ?)")) {
+        const statuses = new Set([params[index++], params[index++]]);
+        rows = rows.filter((row) => statuses.has(row.status));
+      } else if (normalized.includes("status = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.status === value);
+      } else if (normalized.includes("status <> 'void'")) {
+        rows = rows.filter((row) => row.status !== "void");
+      } else if (normalized.includes("status IN ('pending', 'applied')")) {
+        rows = rows.filter((row) => ["pending", "applied"].includes(row.status));
+      }
+      if (normalized.includes("source_payroll_month = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.source_payroll_month === value);
+      }
+      if (normalized.includes("source_snapshot_id = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.source_snapshot_id === value);
+      }
+      if (normalized.includes("source_payroll_entry_id = ?")) {
+        const value = params[index++];
+        rows = rows.filter((row) => row.source_payroll_entry_id === value);
+      }
+
+      return rows.sort((a, b) =>
+        String(b.target_payroll_month || "").localeCompare(String(a.target_payroll_month || "")) ||
+        String(a.employee_id || "").localeCompare(String(b.employee_id || "")) ||
+        String(a.created_at || "").localeCompare(String(b.created_at || ""))
+      );
+    }
     if (normalized.startsWith("SELECT id, target_payroll_entry_id, target_payroll_month FROM payroll_carryover_adjustments WHERE salon_id = ? AND source_payroll_entry_id = ? AND status = 'applied'")) {
       const [salonId, sourcePayrollEntryId] = params;
       return this.rows("payroll_carryover_adjustments")
@@ -1611,6 +1653,127 @@ class FakeD1 {
       }
       return { meta: { changes } };
     }
+    if (
+      normalized.startsWith("UPDATE payroll_carryover_adjustments SET status = 'void', amount_halalas = 0, updated_at = ?")
+    ) {
+      const [updatedAt, salonId, sourcePayrollEntryId] = params;
+      let changes = 0;
+      for (const row of this.rows("payroll_carryover_adjustments")) {
+        if (
+          row.salon_id !== salonId ||
+          row.source_payroll_entry_id !== sourcePayrollEntryId ||
+          row.status !== "pending"
+        ) continue;
+        this.seed("payroll_carryover_adjustments", {
+          ...row,
+          status: "void",
+          amount_halalas: 0,
+          updated_at: updatedAt,
+        });
+        changes += 1;
+      }
+      return { meta: { changes } };
+    }
+    if (
+      normalized.startsWith("UPDATE payroll_carryover_adjustments SET status = 'void', amount_halalas = 0, recalculated_net_halalas = ?")
+    ) {
+      const [recalculatedNetHalalas, reason, sourceDate, updatedAt, salonId, id] = params;
+      const row = this.find("payroll_carryover_adjustments", salonId, id);
+      if (!row || row.status !== "pending") return { meta: { changes: 0 } };
+      return this.update("payroll_carryover_adjustments", salonId, id, {
+        status: "void",
+        amount_halalas: 0,
+        recalculated_net_halalas: recalculatedNetHalalas,
+        reason,
+        source_date: sourceDate,
+        updated_at: updatedAt,
+      });
+    }
+    if (
+      normalized.startsWith("UPDATE payroll_carryover_adjustments SET direction = ?, amount_halalas = ?, approved_net_halalas = ?")
+    ) {
+      const [
+        direction,
+        amountHalalas,
+        approvedNetHalalas,
+        recalculatedNetHalalas,
+        reason,
+        sourceDate,
+        updatedAt,
+        salonId,
+        id,
+      ] = params;
+      const row = this.find("payroll_carryover_adjustments", salonId, id);
+      if (!row || row.status !== "pending") return { meta: { changes: 0 } };
+      return this.update("payroll_carryover_adjustments", salonId, id, {
+        direction,
+        amount_halalas: amountHalalas,
+        approved_net_halalas: approvedNetHalalas,
+        recalculated_net_halalas: recalculatedNetHalalas,
+        reason,
+        source_date: sourceDate,
+        updated_at: updatedAt,
+      });
+    }
+    if (
+      normalized.startsWith("UPDATE payroll_carryover_adjustments SET status = 'applied'")
+    ) {
+      const [targetPayrollEntryId, appliedAt, updatedAt, salonId, id, targetPayrollMonth] = params;
+      const row = this.find("payroll_carryover_adjustments", salonId, id);
+      if (
+        !row ||
+        row.status !== "pending" ||
+        row.target_payroll_month !== targetPayrollMonth
+      ) return { meta: { changes: 0 } };
+      return this.update("payroll_carryover_adjustments", salonId, id, {
+        status: "applied",
+        target_payroll_entry_id: targetPayrollEntryId,
+        applied_at: appliedAt,
+        updated_at: updatedAt,
+      });
+    }
+    if (normalized.startsWith("INSERT OR IGNORE INTO payroll_carryover_adjustments")) {
+      const [
+        id,
+        salon_id,
+        employee_id,
+        source_payroll_month,
+        target_payroll_month,
+        source_payroll_entry_id,
+        source_snapshot_id,
+        direction,
+        amount_halalas,
+        approved_net_halalas,
+        recalculated_net_halalas,
+        reason,
+        source_date,
+        created_at,
+        updated_at,
+      ] = params;
+      if (this.find("payroll_carryover_adjustments", salon_id, id)) {
+        return { meta: { changes: 0 } };
+      }
+      return this.insert("payroll_carryover_adjustments", {
+        id,
+        salon_id,
+        employee_id,
+        source_payroll_month,
+        target_payroll_month,
+        source_payroll_entry_id,
+        source_snapshot_id,
+        direction,
+        amount_halalas,
+        approved_net_halalas,
+        recalculated_net_halalas,
+        reason,
+        source_date,
+        status: "pending",
+        target_payroll_entry_id: null,
+        applied_at: null,
+        created_at,
+        updated_at,
+      });
+    }
     if (normalized.startsWith("INSERT INTO user_employee_links")) {
       const [
         id,
@@ -1978,7 +2141,10 @@ class FakeD1 {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE payroll_entries SET")) {
         results.push(await this.run(statement.sql, params));
-      } else if (sql.startsWith("UPDATE payroll_carryover_adjustments SET")) {
+      } else if (
+        sql.startsWith("UPDATE payroll_carryover_adjustments SET") ||
+        sql.startsWith("INSERT OR IGNORE INTO payroll_carryover_adjustments")
+      ) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
