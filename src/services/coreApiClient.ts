@@ -58,6 +58,8 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_employee_request:invalid_transition": "حالة الطلب الحالية لا تسمح بهذا الإجراء. أعد تحميل الطلب وراجع حالته.",
   "core_employee_request:insufficient_leave_balance": "رصيد الإجازة المتاح لا يكفي لتنفيذ هذه الإجازة.",
   "core_employee_request:insufficient_annual_leave_balance": "رصيد الإجازة السنوية لا يكفي لتنفيذ هذه الإجازة.",
+  "core_leave:insufficient_balance": "رصيد الإجازة المتاح لا يكفي لتنفيذ هذه الإجازة.",
+  "core_employee_request:leave_overlap": "توجد إجازة معتمدة أخرى تتداخل مع الفترة المحددة.",
   "core_leave:hr_review_resolution_required": "نوع الإجازة يحتاج قرار موارد بشرية إضافيًا قبل الاعتماد.",
   "core_leave:statutory_validation_required": "نوع الإجازة يحتاج تحققًا نظاميًا إضافيًا قبل الاعتماد.",
   "core_leave:entitlement_consumption_runtime_required": "هذه الإجازة تعتمد على رصيد استحقاق زمني ولم يكتمل مسار خصم الاستحقاق.",
