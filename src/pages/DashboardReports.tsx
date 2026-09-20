@@ -520,6 +520,7 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 
 export default function DashboardReports({ language = "ar" }: { language?: DashboardLanguage }) {
   const t = (text: string) => reportsText(language, text);
+  const money = (value: number) => money(value, language);
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
   const [customFrom, setCustomFrom] = useState("");
@@ -1291,23 +1292,21 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
   };
 
   return (
-    <div className="dsv2-page dsv2-reports-page reports-v2">
+    <div className="dsv2-page dsv2-reports-page reports-v2" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <header className="dsv2-card dsv2-card--padded dsv2-card--elevated reports-v2__header">
         <div>
-          <span className="dsv2-badge dsv2-badge--gold">التحليل المالي</span>
-          <h1 className="dsv2-page-title">اللوحة المالية</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("التحليل المالي")}</span>
+          <h1 className="dsv2-page-title">{t("اللوحة المالية")}</h1>
           <p className="dsv2-page-subtitle">
-            متابعة موحدة للإيرادات والمصروفات وصافي الربح، مع المقارنات الزمنية ودورة الرواتب
-            والتفاصيل المطابقة للفلاتر الحالية. العرض الشهري تقويمي، بينما تُعرض دورة الرواتب
-            المحاسبية للفترة من يوم 28 إلى يوم 27.
+            {t("متابعة موحدة للإيرادات والمصروفات وصافي الربح، مع المقارنات الزمنية ودورة الرواتب والتفاصيل المطابقة للفلاتر الحالية. العرض الشهري تقويمي، بينما تُعرض دورة الرواتب المحاسبية للفترة من يوم 28 إلى يوم 27.")}
           </p>
           <small className="reports-v2__sync">
-            <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}
+            <FontAwesomeIcon icon={faClockRotateLeft} /> {t("آخر مزامنة")}: {lastSyncLabel}
           </small>
           <div className="reports-v2__export-panel">
             <div className="reports-v2__export-copy">
-              <strong>تصدير التقرير الكامل</strong>
-              <span>الملخص، الفلاتر، دورة الرواتب، الإيرادات والمصروفات</span>
+              <strong>{t("تصدير التقرير الكامل")}</strong>
+              <span>{t("الملخص، الفلاتر، دورة الرواتب، الإيرادات والمصروفات")}</span>
             </div>
             <div className="reports-v2__export-actions">
               <button
@@ -1317,7 +1316,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                 disabled={loading || payrollCalculationLoading || exporting !== null}
               >
                 <FontAwesomeIcon icon={faFilePdf} />
-                {exporting === "pdf" ? "جاري تجهيز PDF..." : "تصدير PDF"}
+                {exporting === "pdf" ? t("جاري تجهيز PDF...") : t("تصدير PDF")}
               </button>
               <button
                 type="button"
@@ -1326,7 +1325,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                 disabled={loading || payrollCalculationLoading || exporting !== null}
               >
                 <FontAwesomeIcon icon={faFileExcel} />
-                {exporting === "excel" ? "جاري تجهيز Excel..." : "تصدير Excel"}
+                {exporting === "excel" ? t("جاري تجهيز Excel...") : t("تصدير Excel")}
               </button>
             </div>
             {exportError ? (
@@ -1344,41 +1343,41 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
           onClick={() => setPeriod("day")}
           type="button"
         >
-          اليوم
+          {t("اليوم")}
         </button>
         <button
           className={`f-btn ${period === "week" ? "is-active" : ""}`}
           onClick={() => setPeriod("week")}
           type="button"
         >
-          هذا الأسبوع
+          {t("هذا الأسبوع")}
         </button>
         <button
           className={`f-btn ${period === "month" ? "is-active" : ""}`}
           onClick={() => setPeriod("month")}
           type="button"
         >
-          هذا الشهر
+          {t("هذا الشهر")}
         </button>
         <button
           className={`f-btn ${period === "year" ? "is-active" : ""}`}
           onClick={() => setPeriod("year")}
           type="button"
         >
-          هذه السنة
+          {t("هذه السنة")}
         </button>
         <button
           className={`f-btn ${period === "custom" ? "is-active" : ""}`}
           onClick={() => setPeriod("custom")}
           type="button"
         >
-          فترة مخصصة
+          {t("فترة مخصصة")}
         </button>
 
         {period === "month" && (
           <div className="reports-v2__custom-range">
             <label>
-              الشهر
+              {t("الشهر")}
               <DashboardMonthInputV2 value={selectedMonth} onChange={(e) => { const next = String(e.target.value || "").trim(); if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonth(next); }} />
             </label>
           </div>
@@ -1387,11 +1386,11 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         {period === "custom" && (
           <div className="reports-v2__custom-range">
             <label>
-              من
+              {t("من")}
               <DashboardDatePickerV2 value={customFrom} onChange={setCustomFrom} />
             </label>
             <label>
-              إلى
+              {t("إلى")}
               <DashboardDatePickerV2 value={customTo} onChange={setCustomTo} />
             </label>
           </div>
@@ -1399,115 +1398,115 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
 
         <div className="reports-v2__custom-range">
           <label>
-            طريقة الدفع
+            {t("طريقة الدفع")}
             <DashboardSelectBridgeV2
               value={incomeMethodFilter}
               onChange={(e) => setIncomeMethodFilter(e.target.value as PaymentMethod | "all")}
             >
-              <option value="all">الكل</option>
-              <option value="cash">كاش</option>
-              <option value="card">شبكة</option>
-              <option value="transfer">تحويل</option>
-              <option value="mixed">مختلط</option>
-              <option value="other">أخرى</option>
+              <option value="all">{t("الكل")}</option>
+              <option value="cash">{t("كاش")}</option>
+              <option value="card">{t("شبكة")}</option>
+              <option value="transfer">{t("تحويل")}</option>
+              <option value="mixed">{t("مختلط")}</option>
+              <option value="other">{t("أخرى")}</option>
             </DashboardSelectBridgeV2>
           </label>
           <label>
-            المصدر
+            {t("المصدر")}
             <DashboardSelectBridgeV2
               value={incomeSourceFilter}
               onChange={(e) => setIncomeSourceFilter(e.target.value as IncomeSourceKind | "all")}
             >
-              <option value="all">الكل</option>
-              <option value="booking">حجز</option>
-              <option value="invoice">فاتورة</option>
-              <option value="internal">داخلي</option>
-              <option value="refund">استرجاع</option>
-              <option value="other">دخل آخر</option>
+              <option value="all">{t("الكل")}</option>
+              <option value="booking">{t("حجز")}</option>
+              <option value="invoice">{t("فاتورة")}</option>
+              <option value="internal">{t("داخلي")}</option>
+              <option value="refund">{t("استرجاع")}</option>
+              <option value="other">{t("دخل آخر")}</option>
             </DashboardSelectBridgeV2>
           </label>
           <label>
-            الحالة
+            {t("الحالة")}
             <DashboardSelectBridgeV2
               value={incomeStatusFilter}
               onChange={(e) => setIncomeStatusFilter(e.target.value as IncomeStatusFilter)}
             >
-              <option value="all">الكل</option>
-              <option value="active">نشط</option>
-              <option value="refunded">مسترجع</option>
-              <option value="voided">ملغي/Voided</option>
+              <option value="all">{t("الكل")}</option>
+              <option value="active">{t("نشط")}</option>
+              <option value="refunded">{t("مسترجع")}</option>
+              <option value="voided">{t("ملغي/Voided")}</option>
             </DashboardSelectBridgeV2>
           </label>
         </div>
 
         <div className="reports-v2__range-caption">
-          <FontAwesomeIcon icon={faCalendarDays} /> الفترة: {range.from} إلى {range.to}
+          <FontAwesomeIcon icon={faCalendarDays} /> {t("الفترة")}: {range.from} {t("إلى")} {range.to}
         </div>
       </section>
 
       <section className="dsv2-card dsv2-card--padded reports-v2__payroll-cycle">
         <div className="section-head">
-          <h2>دورة الرواتب (28-27)</h2>
-          <span>الإغلاق المحاسبي ثابت يوم {PAYROLL_CLOSE_DAY}</span>
+          <h2>{t("دورة الرواتب (28-27)")}</h2>
+          <span>{t("الإغلاق المحاسبي ثابت يوم")} {PAYROLL_CLOSE_DAY}</span>
         </div>
         <div className="reports-v2__payroll-cycle-grid">
           <article className="payroll-chip">
-            <h4>الدورة</h4>
+            <h4>{t("الدورة")}</h4>
             <strong>{payrollCycleTotals.cycleKey}</strong>
             <p>
-              من {payrollCycleRange.from} إلى {payrollCycleRange.to}
+              {t("من")} {payrollCycleRange.from} {t("إلى")} {payrollCycleRange.to}
             </p>
           </article>
           <article className="payroll-chip">
-            <h4>رواتب</h4>
-            <strong>{formatMoney(payrollCycleTotals.salary)}</strong>
-            <p>صافي مسير جميع الموظفات بعد الإضافات والخصومات</p>
+            <h4>{t("رواتب")}</h4>
+            <strong>{money(payrollCycleTotals.salary)}</strong>
+            <p>{t("صافي مسير جميع الموظفات بعد الإضافات والخصومات")}</p>
           </article>
           <article className="payroll-chip">
-            <h4>أوفر تايم</h4>
-            <strong>{formatMoney(payrollCycleTotals.overtime)}</strong>
-            <p>مسجل يوميًا بتاريخ يومه الفعلي</p>
+            <h4>{t("أوفر تايم")}</h4>
+            <strong>{money(payrollCycleTotals.overtime)}</strong>
+            <p>{t("مسجل يوميًا بتاريخ يومه الفعلي")}</p>
           </article>
           <article className="payroll-chip">
-            <h4>مصروفات أخرى</h4>
-            <strong>{formatMoney(payrollCycleTotals.other)}</strong>
-            <p>باقي المصروفات</p>
+            <h4>{t("مصروفات أخرى")}</h4>
+            <strong>{money(payrollCycleTotals.other)}</strong>
+            <p>{t("باقي المصروفات")}</p>
           </article>
         </div>
       </section>
 
       <div className="dsv2-grid--metrics reports-v2__kpis">
         <article className="dsv2-metric-card dsv2-metric-card--success kpi kpi-revenue">
-          <h3 className="dsv2-metric-card__label">إجمالي الإيرادات</h3>
-          <strong className="dsv2-metric-card__value">{formatMoney(totals.revenue)}</strong>
-          <span className="dsv2-metric-card__meta">حسب الفترة والفلاتر الحالية</span>
+          <h3 className="dsv2-metric-card__label">{t("إجمالي الإيرادات")}</h3>
+          <strong className="dsv2-metric-card__value">{money(totals.revenue)}</strong>
+          <span className="dsv2-metric-card__meta">{t("حسب الفترة والفلاتر الحالية")}</span>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--danger kpi kpi-expense">
-          <h3 className="dsv2-metric-card__label">إجمالي المصروفات</h3>
-          <strong className="dsv2-metric-card__value">{formatMoney(totals.expenses)}</strong>
-          <span className="dsv2-metric-card__meta">المصروفات المسجلة داخل الفترة</span>
+          <h3 className="dsv2-metric-card__label">{t("إجمالي المصروفات")}</h3>
+          <strong className="dsv2-metric-card__value">{money(totals.expenses)}</strong>
+          <span className="dsv2-metric-card__meta">{t("المصروفات المسجلة داخل الفترة")}</span>
         </article>
         <article className={`dsv2-metric-card ${totals.net >= 0 ? "dsv2-metric-card--gold is-positive" : "dsv2-metric-card--danger is-negative"} kpi kpi-net`}>
-          <h3 className="dsv2-metric-card__label">صافي الربح / الخسارة</h3>
-          <strong className="dsv2-metric-card__value">{formatMoney(totals.net)}</strong>
-          <span className="dsv2-metric-card__meta">الإيرادات بعد خصم المصروفات</span>
+          <h3 className="dsv2-metric-card__label">{t("صافي الربح / الخسارة")}</h3>
+          <strong className="dsv2-metric-card__value">{money(totals.net)}</strong>
+          <span className="dsv2-metric-card__meta">{t("الإيرادات بعد خصم المصروفات")}</span>
         </article>
       </div>
 
       <section className="dsv2-card dsv2-card--padded reports-v2__month-compare">
         <div className="section-head">
-          <h2>مقارنة الأشهر (تقويميًا) - {monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</h2>
+          <h2>{t("مقارنة الأشهر (تقويميًا)")} - {monthCompare.currentLabel} {t("مقابل")} {monthCompare.previousLabel}</h2>
         </div>
         <div className="month-compare-grid">
           <article className="month-compare-card">
-            <h4>الإيرادات</h4>
+            <h4>{t("الإيرادات")}</h4>
             <div className="month-compare-row">
               <span>{monthCompare.currentLabel}</span>
-              <b>{formatMoney(monthCompare.current.revenue)}</b>
+              <b>{money(monthCompare.current.revenue)}</b>
             </div>
             <div className="month-compare-row">
               <span>{monthCompare.previousLabel}</span>
-              <b>{formatMoney(monthCompare.previous.revenue)}</b>
+              <b>{money(monthCompare.previous.revenue)}</b>
             </div>
             <div className={`month-compare-delta ${deltaClass(monthCompare.delta.revenue)}`}>
               {formatDeltaPct(monthCompare.delta.revenue)}
@@ -1515,14 +1514,14 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
           </article>
 
           <article className="month-compare-card">
-            <h4>المصروفات</h4>
+            <h4>{t("المصروفات")}</h4>
             <div className="month-compare-row">
               <span>{monthCompare.currentLabel}</span>
-              <b>{formatMoney(monthCompare.current.expenses)}</b>
+              <b>{money(monthCompare.current.expenses)}</b>
             </div>
             <div className="month-compare-row">
               <span>{monthCompare.previousLabel}</span>
-              <b>{formatMoney(monthCompare.previous.expenses)}</b>
+              <b>{money(monthCompare.previous.expenses)}</b>
             </div>
             <div className={`month-compare-delta ${deltaClass(monthCompare.delta.expenses)}`}>
               {formatDeltaPct(monthCompare.delta.expenses)}
@@ -1530,14 +1529,14 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
           </article>
 
           <article className="month-compare-card">
-            <h4>صافي الربح</h4>
+            <h4>{t("صافي الربح")}</h4>
             <div className="month-compare-row">
               <span>{monthCompare.currentLabel}</span>
-              <b>{formatMoney(monthCompare.current.net)}</b>
+              <b>{money(monthCompare.current.net)}</b>
             </div>
             <div className="month-compare-row">
               <span>{monthCompare.previousLabel}</span>
-              <b>{formatMoney(monthCompare.previous.net)}</b>
+              <b>{money(monthCompare.previous.net)}</b>
             </div>
             <div className={`month-compare-delta ${deltaClass(monthCompare.delta.net)}`}>
               {formatDeltaPct(monthCompare.delta.net)}
@@ -1552,18 +1551,18 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
             <div className="chart-title-block">
               <span className="chart-eyebrow">التحليل المالي</span>
               <h2>
-                اتجاه التدفقات {trendMode === "month" ? "الشهرية" : "اليومية"}
+                {t("اتجاه التدفقات")} {trendMode === "month" ? t("الشهرية") : t("اليومية")}
                 {trendMode === "month" ? ` (${chartsModel.selectedYear})` : ""}
               </h2>
-              <p>مقارنة الإيرادات والمصروفات خلال الفترة المحددة</p>
+              <p>{t("مقارنة الإيرادات والمصروفات خلال الفترة المحددة")}</p>
             </div>
 
             <div className="chart-head-tools">
-              <div className="chart-summary-pills" aria-label="ملخص الرسم">
+              <div className="chart-summary-pills" aria-label={t("ملخص الرسم")}>
                 <span className="chart-summary-pill chart-summary-pill--returns">
-                  <small>الإيرادات</small>
+                  <small>{t("الإيرادات")}</small>
                   <b>
-                    {formatMoney(
+                    {money(
                       chartsModel.points.reduce(
                         (sum, point) => sum + Number(point.returns || 0),
                         0
@@ -1572,9 +1571,9 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                   </b>
                 </span>
                 <span className="chart-summary-pill chart-summary-pill--expenses">
-                  <small>المصروفات</small>
+                  <small>{t("المصروفات")}</small>
                   <b>
-                    {formatMoney(
+                    {money(
                       chartsModel.points.reduce(
                         (sum, point) => sum + Number(point.investments || 0),
                         0
@@ -1584,20 +1583,20 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                 </span>
               </div>
 
-              <div className="chart-switch" dir="rtl" aria-label="نطاق الرسم">
+              <div className="chart-switch" dir={language === "en" ? "ltr" : "rtl"} aria-label={t("نطاق الرسم")}>
                 <button
                   type="button"
                   className={`chart-switch__btn ${trendMode === "day" ? "is-active" : ""}`}
                   onClick={() => setTrendMode("day")}
                 >
-                  يومي
+                  {t("يومي")}
                 </button>
                 <button
                   type="button"
                   className={`chart-switch__btn ${trendMode === "month" ? "is-active" : ""}`}
                   onClick={() => setTrendMode("month")}
                 >
-                  شهري
+                  {t("شهري")}
                 </button>
               </div>
             </div>
@@ -1609,7 +1608,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
               className="top-chart top-chart--modern"
               preserveAspectRatio="none"
               role="img"
-              aria-label="رسم اتجاه الإيرادات والمصروفات"
+              aria-label={t("رسم اتجاه الإيرادات والمصروفات")}
             >
               {chartsModel.yTicks.map((tickVal, i) => {
                 const y =
@@ -1690,17 +1689,17 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
           </div>
 
           <div className="trend-legend trend-legend--modern">
-            <span className="legend-item legend-item--returns">الإيرادات</span>
-            <span className="legend-item legend-item--investments">المصروفات</span>
+            <span className="legend-item legend-item--returns">{t("الإيرادات")}</span>
+            <span className="legend-item legend-item--investments">{t("المصروفات")}</span>
           </div>
         </article>
 
         <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--status">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
-              <span className="chart-eyebrow">تشغيل الحجوزات</span>
-              <h3>حالة الحجوزات</h3>
-              <p>توزيع الحالات خلال الفترة الحالية</p>
+              <span className="chart-eyebrow">{t("تشغيل الحجوزات")}</span>
+              <h3>{t("حالة الحجوزات")}</h3>
+              <p>{t("توزيع الحالات خلال الفترة الحالية")}</p>
             </div>
           </div>
 
@@ -1710,7 +1709,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                 viewBox="0 0 520 280"
                 className="mini-chart mini-chart--status"
                 role="img"
-                aria-label="رسم حالات الحجوزات"
+                aria-label={t("رسم حالات الحجوزات")}
               >
                 {Array.from({ length: 5 }).map((_, i) => {
                   const y = 24 + (220 * i) / 4;
@@ -1777,8 +1776,8 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                 <i />
                 <i />
               </span>
-              <strong>لا توجد حجوزات في الفترة</strong>
-              <p>ستظهر حالات الحجوزات هنا فور تسجيل حركات جديدة.</p>
+              <strong>{t("لا توجد حجوزات في الفترة")}</strong>
+              <p>{t("ستظهر حالات الحجوزات هنا فور تسجيل حركات جديدة.")}</p>
             </div>
           )}
         </article>
@@ -1786,9 +1785,9 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--sources">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
-              <span className="chart-eyebrow">مزيج الإيرادات</span>
-              <h3>مصادر الإيرادات</h3>
-              <p>نسبة مساهمة كل مصدر في إجمالي الدخل</p>
+              <span className="chart-eyebrow">{t("مزيج الإيرادات")}</span>
+              <h3>{t("مصادر الإيرادات")}</h3>
+              <p>{t("نسبة مساهمة كل مصدر في إجمالي الدخل")}</p>
             </div>
           </div>
 
@@ -1799,7 +1798,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                   viewBox="0 0 360 300"
                   className="mini-chart mini-chart--donut"
                   role="img"
-                  aria-label="رسم توزيع مصادر الإيرادات"
+                  aria-label={t("رسم توزيع مصادر الإيرادات")}
                 >
                   <g transform="translate(180,145)">
                     {chartsModel.pieSlices.map((slice) => (
@@ -1822,13 +1821,13 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                       y="20"
                       className="donut-caption-v2"
                     >
-                      إجمالي الإيرادات
+                      {t("إجمالي الإيرادات")}
                     </text>
                   </g>
                 </svg>
               </div>
 
-              <div className="pie-legend pie-legend--modern" dir="rtl">
+              <div className="pie-legend pie-legend--modern" dir={language === "en" ? "ltr" : "rtl"}>
                 {chartsModel.pieSlices.map((slice) => {
                   const ratio =
                     chartsModel.sourceTotal > 0
@@ -1844,7 +1843,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                       />
                       <span className="pie-legend__label">{slice.label}</span>
                       <span className="pie-legend__value">
-                        {formatMoney(slice.value)}
+                        {money(slice.value)}
                       </span>
                       <span className="pie-legend__ratio">{ratio}%</span>
                     </div>
@@ -1855,54 +1854,58 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
           ) : (
             <div className="chart-empty-v2" role="status">
               <span className="chart-empty-v2__donut" aria-hidden="true" />
-              <strong>لا توجد إيرادات في الفترة</strong>
-              <p>غيّر الفترة أو الفلاتر لعرض توزيع مصادر الإيرادات.</p>
+              <strong>{t("لا توجد إيرادات في الفترة")}</strong>
+              <p>{t("غيّر الفترة أو الفلاتر لعرض توزيع مصادر الإيرادات.")}</p>
             </div>
           )}
         </article>
       </section>
 
-      {loadErr || payrollCalculationError ? <div className="reports-v2__error">{[loadErr, payrollCalculationError].filter(Boolean).join(" | ")}</div> : null}
+      {loadErr || payrollCalculationError ? (
+        <div className="reports-v2__error">
+          {[loadErr, payrollCalculationError ? `${t("تعذر احتساب مسير جميع الموظفات")}: ${payrollCalculationError}` : ""].filter(Boolean).join(" | ")}
+        </div>
+      ) : null}
 
       <section className="dsv2-card reports-v2__section">
         <div className="section-head">
           <h2>
-            <FontAwesomeIcon icon={faChartLine} /> تفاصيل الإيرادات
+            <FontAwesomeIcon icon={faChartLine} /> {t("تفاصيل الإيرادات")}
           </h2>
-          <span>عدد الحركات: {revenueRowsDetailed.length}</span>
+          <span>{t("عدد الحركات")}: {revenueRowsDetailed.length}</span>
         </div>
         <div className="dsv2-table-scroll table-wrap">
           <table className="dsv2-table">
             <thead>
               <tr>
-                <th>التاريخ/الوقت</th>
-                <th>المصدر</th>
-                <th>رقم الحجز MK</th>
-                <th>الموظفة</th>
-                <th>الملاحظة</th>
-                <th>المبلغ</th>
-                <th>الحالة</th>
+                <th>{t("التاريخ/الوقت")}</th>
+                <th>{t("المصدر")}</th>
+                <th>{t("رقم الحجز MK")}</th>
+                <th>{t("الموظفة")}</th>
+                <th>{t("الملاحظة")}</th>
+                <th>{t("المبلغ")}</th>
+                <th>{t("الحالة")}</th>
               </tr>
             </thead>
             <tbody>
               {revenueRowsDetailed.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-cell">لا توجد بيانات إيراد داخل الفترة.</td>
+                  <td colSpan={7} className="empty-cell">{t("لا توجد بيانات إيراد داخل الفترة.")}</td>
                 </tr>
               ) : (
                 revenueRowsDetailed.map((row) => (
                   <tr key={row.id}>
-                    <td data-label="التاريخ/الوقت">{formatDateTime(row.date, row.time)}</td>
-                    <td data-label="المصدر">
+                    <td data-label={t("التاريخ/الوقت")}>{formatDateTime(row.date, row.time)}</td>
+                    <td data-label={t("المصدر")}>
                       {sourceLabel(row.source, language)}
                     </td>
-                    <td data-label="رقم الحجز MK">{row.mkRef}</td>
-                    <td data-label="الموظفة">{row.employeeName || "-"}</td>
-                    <td data-label="الملاحظة">{row.note || "-"}</td>
-                    <td data-label="المبلغ" className={row.amount < 0 ? "amount-neg" : "amount-pos"}>
-                      {formatMoney(row.amount)}
+                    <td data-label={t("رقم الحجز MK")}>{row.mkRef}</td>
+                    <td data-label={t("الموظفة")}>{row.employeeName || "-"}</td>
+                    <td data-label={t("الملاحظة")}>{row.note || "-"}</td>
+                    <td data-label={t("المبلغ")} className={row.amount < 0 ? "amount-neg" : "amount-pos"}>
+                      {money(row.amount)}
                     </td>
-                    <td data-label="الحالة">{row.statusLabel}</td>
+                    <td data-label={t("الحالة")}>{row.statusLabel}</td>
                   </tr>
                 ))
               )}
@@ -1913,24 +1916,24 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
 
       <section className="dsv2-card reports-v2__section">
         <div className="section-head">
-          <h2>تفاصيل المصروفات</h2>
-          <span>عدد السجلات: {expensesInRange.length}</span>
+          <h2>{t("تفاصيل المصروفات")}</h2>
+          <span>{t("عدد السجلات")}: {expensesInRange.length}</span>
         </div>
         <div className="dsv2-table-scroll table-wrap">
           <table className="dsv2-table">
             <thead>
               <tr>
-                <th>التاريخ</th>
-                <th>التصنيف</th>
-                <th>الوصف</th>
-                <th>المبلغ</th>
-                <th>من أضافه</th>
+                <th>{t("التاريخ")}</th>
+                <th>{t("التصنيف")}</th>
+                <th>{t("الوصف")}</th>
+                <th>{t("المبلغ")}</th>
+                <th>{t("من أضافه")}</th>
               </tr>
             </thead>
             <tbody>
               {expensesInRange.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="empty-cell">لا توجد مصروفات داخل الفترة.</td>
+                  <td colSpan={5} className="empty-cell">{t("لا توجد مصروفات داخل الفترة.")}</td>
                 </tr>
               ) : (
                 expensesInRange
@@ -1938,11 +1941,11 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
                   .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                   .map((row) => (
                     <tr key={row.id}>
-                      <td data-label="التاريخ">{row.date}</td>
-                      <td data-label="التصنيف">{row.category || "أخرى"}</td>
-                      <td data-label="الوصف">{row.title || row.note || "-"}</td>
-                      <td data-label="المبلغ" className="amount-exp">{formatMoney(row.amount)}</td>
-                      <td data-label="من أضافه">{row.addedBy || "-"}</td>
+                      <td data-label={t("التاريخ")}>{row.date}</td>
+                      <td data-label={t("التصنيف")}>{t(row.category || "أخرى")}</td>
+                      <td data-label={t("الوصف")}>{row.title || row.note || "-"}</td>
+                      <td data-label={t("المبلغ")} className="amount-exp">{money(row.amount)}</td>
+                      <td data-label={t("من أضافه")}>{row.addedBy === "الإدارة" ? t("الإدارة") : row.addedBy || "-"}</td>
                     </tr>
                   ))
               )}
@@ -1951,7 +1954,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         </div>
       </section>
 
-      {loading || payrollCalculationLoading ? <div className="reports-v2__loading">{payrollCalculationLoading ? "جاري احتساب مسير جميع الموظفات..." : "جاري مزامنة البيانات..."}</div> : null}
+      {loading || payrollCalculationLoading ? <div className="reports-v2__loading">{payrollCalculationLoading ? t("جاري احتساب مسير جميع الموظفات...") : t("جاري مزامنة البيانات...")}</div> : null}
     </div>
   );
 }
