@@ -497,7 +497,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           console.error("[BookingInternalV2] client phone dedup lookup failed", error);
           if (lookupSeq !== newClientLookupSeq.current) return;
           setExistingClientMatch(null);
-          setExistingClientLookupError("تعذر التحقق من رقم الجوال. لن يتم إنشاء سجل جديد قبل نجاح التحقق.");
+          setExistingClientLookupError(t("تعذر التحقق من رقم الجوال. لن يتم إنشاء سجل جديد قبل نجاح التحقق."));
         } finally {
           if (lookupSeq === newClientLookupSeq.current) setExistingClientChecking(false);
         }
@@ -505,7 +505,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [showNewClient, newClientPhone, findExistingClientByPhone]);
+  }, [showNewClient, newClientPhone, findExistingClientByPhone, language]);
 
   const createNewClient = useCallback(async () => {
     const name = String(newClientName || "").trim();
@@ -525,7 +525,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const existing = await findExistingClientByPhone(phone);
       if (existing) {
         setExistingClientMatch(existing);
-        setClientMessage("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة.");
+        setClientMessage(t("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة."));
         return;
       }
 
@@ -535,7 +535,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         email: email || undefined,
       });
       const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
-      chooseClientForBooking(candidate, "تم اختيار العميلة للحجز بنجاح.");
+      chooseClientForBooking(candidate, t("تم اختيار العميلة للحجز بنجاح."));
     } catch (error: any) {
       console.error("[BookingInternalV2] client create/dedup check failed", error);
       const code = String(error?.code || "").toLowerCase();
@@ -550,7 +550,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       setExistingClientChecking(false);
       setCreatingClient(false);
     }
-  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking]);
+  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
@@ -575,7 +575,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       seen.add(identity);
       found.push({
         id: String(raw?.id || `${source}:${makeLocalId()}`),
-        name: name || "بدون اسم",
+        name: name || t("بدون اسم"),
         phone,
         publicId,
         source: String(raw?.source || source),
@@ -588,7 +588,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const rows = await resolveCoreBookingDataSource().searchClients(qRaw);
       (Array.isArray(rows) ? rows : []).forEach((row: any) => push(row, "core_d1"));
       setClients(found.slice(0, 25));
-      setClientMessage(found.length ? `تم العثور على ${found.length} نتيجة.` : "لم يتم العثور على عميلة مطابقة.");
+      setClientMessage(found.length ? (language === "en" ? `${found.length} result(s) found.` : `تم العثور على ${found.length} نتيجة.`) : t("لم يتم العثور على عميلة مطابقة."));
     } catch (error) {
       console.error("[BookingInternalV2] client search failed", error);
       setClients([]);
@@ -596,7 +596,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     } finally {
       setClientSearching(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -619,7 +619,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         console.error("[BookingInternalV2] settings load failed", error);
         if (!cancelled) {
           setSettingsReady(false);
-          setScheduleMessage("تعذر تحميل إعدادات الحجز من Core D1. أعيدي المحاولة قبل حفظ الحجز.");
+          setScheduleMessage(t("تعذر تحميل إعدادات الحجز من Core D1. أعيدي المحاولة قبل حفظ الحجز."));
         }
       }
     }
@@ -740,7 +740,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return {
         source: "manual" as DiscountSnapshotSource,
         type: "fixed" as const,
-        title: "خصم مبلغ ثابت",
+        title: t("خصم مبلغ ثابت"),
         value: Math.max(0, Number(manualFixedDiscount || 0)),
         maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
       };
@@ -749,7 +749,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return {
         source: "manual" as DiscountSnapshotSource,
         type: "percent" as const,
-        title: "خصم نسبة",
+        title: t("خصم نسبة"),
         percentage: Math.max(0, Number(manualPercentDiscount || 0)),
         maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
       };
@@ -1010,7 +1010,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         offer,
       });
       if (!preview.ok || !preview.snapshot) {
-        setCouponMessage(discountReasonText(preview.reason) || "الكوبون لا ينطبق على الخدمات المختارة.");
+        setCouponMessage(discountReasonText(preview.reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
         return;
       }
       setCouponOffer(offer);
@@ -1024,7 +1024,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     } finally {
       setCouponChecking(false);
     }
-  }, [couponInput, discountItems]);
+  }, [couponInput, discountItems, language]);
 
   const submitBooking = useCallback(async () => {
     if (submittingRef.current) return;
@@ -1037,7 +1037,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
     if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
     if (discountMode !== "none" && !discountResult.ok) {
-      setSubmitError(discountMessage || "الخصم المحدد غير صالح.");
+      setSubmitError(discountMessage || t("الخصم المحدد غير صالح."));
       return;
     }
     if (discountMode === "coupon" && !couponOffer) {
@@ -1119,7 +1119,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         canonicalClientId = String(ensuredClient?.id || "").trim();
       }
       if (!canonicalClientId) {
-        throw new Error("تعذر ربط الحجز بحساب العميلة المحدد.");
+        throw new Error(t("تعذر ربط الحجز بحساب العميلة المحدد."));
       }
       const status = paymentType === "none" ? "pending" : "confirmed";
       const total = Math.max(0, finalTotal);
@@ -1482,7 +1482,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                           type="button"
                           className="is-primary"
                           onClick={() => existingClientMatch
-                            ? chooseClientForBooking(existingClientMatch, "تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد.")
+                            ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
                             : void createNewClient()
                           }
                           disabled={creatingClient || existingClientChecking}
@@ -1561,7 +1561,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             </div>
                             <div className="bk2-time-picker">
                               <span>{t("الأوقات المتاحة")}</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>{t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.serviceTitle}</span></p>)}</div> : null}
+                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>{t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.serviceTitle}</span></p>)}</div> : null}
                               {!selection?.staffId ? <p>{t("اختاري الموظفة أولًا.")}</p> : timesLoading[key] ? <p>{t("جاري فحص المواعيد...")}</p> : times.length ? (
                                 <div>{times.map((time) => {
                                   const conflict = getCartScheduleConflict(key, selection.staffId, time);
