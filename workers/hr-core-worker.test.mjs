@@ -4448,13 +4448,12 @@ test('HR employee save atomically creates canonical booking staff row and canoni
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
-  await db.exec(`
-    INSERT INTO services
-      (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at)
-    VALUES
-      ('svc-a', 'main', 'Service A', 30, 5000, 1, 0, '2026-01-01', '2026-01-01'),
-      ('svc-b', 'main', 'Service B', 45, 7000, 1, 1, '2026-01-01', '2026-01-01');
-  `);
+  await db.prepare(
+    "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind('svc-a', 'main', 'Service A', 30, 5000, 1, 0, '2026-01-01', '2026-01-01').run();
+  await db.prepare(
+    "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind('svc-b', 'main', 'Service B', 45, 7000, 1, 1, '2026-01-01', '2026-01-01').run();
 
   await upsertHrEmployee(db, 'main', {
     id: 'emp-atomic-staff',
@@ -4543,20 +4542,28 @@ test('staff service backfill migrates valid legacy specialties into canonical as
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
-  await db.exec(`
-    INSERT INTO services
-      (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at)
-    VALUES
-      ('svc-backfill-active', 'main', 'Backfill Active', 30, 5000, 1, 0, '2026-01-01', '2026-01-01'),
-      ('svc-backfill-inactive', 'main', 'Backfill Inactive', 30, 5000, 0, 1, '2026-01-01', '2026-01-01');
-
-    INSERT INTO staff
-      (id, salon_id, name, active, employment_status, specialties_json, created_at, updated_at)
-    VALUES
-      ('staff-backfill', 'main', 'Backfill Staff', 1, 'active',
-       '["svc-backfill-active","svc-backfill-inactive","missing-service"]',
-       '2026-01-01', '2026-01-01');
-  `);
+  await db.prepare(
+    "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    'svc-backfill-active', 'main', 'Backfill Active', 30, 5000, 1, 0, '2026-01-01', '2026-01-01'
+  ).run();
+  await db.prepare(
+    "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    'svc-backfill-inactive', 'main', 'Backfill Inactive', 30, 5000, 0, 1, '2026-01-01', '2026-01-01'
+  ).run();
+  await db.prepare(
+    "INSERT INTO staff (id, salon_id, name, active, employment_status, specialties_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    'staff-backfill',
+    'main',
+    'Backfill Staff',
+    1,
+    'active',
+    '["svc-backfill-active","svc-backfill-inactive","missing-service"]',
+    '2026-01-01',
+    '2026-01-01'
+  ).run();
 
   const sql = (await readFile(
     new URL('../migrations/core/0078_staff_services_specialties_backfill.sql', import.meta.url),
