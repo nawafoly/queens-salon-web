@@ -1725,7 +1725,18 @@ async function dispatch(ctx, route, method, body, query, env) {
           requirePermission(ctx, "employee_requests.resignation.execute");
         }
       }
-      return transitionEmployeeRequest(db, ctx.salonId, route.id, route.action, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
+      return transitionEmployeeRequest(
+        db,
+        ctx.salonId,
+        route.id,
+        route.action,
+        body,
+        actorInfo,
+        {
+          externalAttendanceDb: env.ATTENDANCE_DB || null,
+          manualLeavePolicyAuthorized: leaveManager,
+        }
+      );
     }
 
     case "employee-profile:mine": {
