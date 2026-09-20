@@ -22,11 +22,40 @@ export const DEFAULT_CASHBACK_POLICY = Object.freeze({
   redeemScope: 'salon_only',
   cashWithdrawalAllowed: false,
   transferAllowed: false,
+  excludedServiceIds: [],
+  excludedPackageIds: [],
 });
 
 function finiteInteger(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+
+function booleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  if (Number(value) === 1) return true;
+  if (Number(value) === 0) return false;
+  const normalized = cleanText(value).toLowerCase();
+  if (['true', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseIdList(value) {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map((item) => cleanText(item)).filter(Boolean)));
+  }
+  const raw = cleanText(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? Array.from(new Set(parsed.map((item) => cleanText(item)).filter(Boolean)))
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapPolicy(row) {
@@ -40,7 +69,28 @@ function mapPolicy(row) {
     redeemScope: 'salon_only',
     cashWithdrawalAllowed: false,
     transferAllowed: false,
+    excludedServiceIds: parseIdList(row.excluded_service_ids_json),
+    excludedPackageIds: parseIdList(row.excluded_package_ids_json),
+    updatedAt: cleanText(row.updated_at) || null,
   };
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  const text = String(value ?? '');
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function addDaysIso(iso, days) {
+  if (!days) return null;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString();
 }
 
 export async function getCashbackPolicy(db, salonId) {
@@ -52,10 +102,107 @@ export async function getCashbackPolicy(db, salonId) {
   return mapPolicy(row);
 }
 
+export async function upsertCashbackPolicy(db, salonId, input = {}, actorUid = '') {
+  const currentRow = await dbFirst(
+    db,
+    'SELECT * FROM cashback_policies WHERE salon_id = ? LIMIT 1',
+    [salonId]
+  );
+  const current = mapPolicy(currentRow);
+
+  const enabled = booleanFlag(input.enabled, current.enabled);
+  const earnBps = input.earnBps == null && input.earn_bps == null
+    ? current.earnBps
+    : finiteInteger(input.earnBps ?? input.earn_bps, -1);
+  if (earnBps < 0 || earnBps > 10000) {
+    throw new AppError(400, 'core_cashback:invalid_earn_bps');
+  }
+
+  const minimumEligibleHalalas =
+    input.minimumEligibleHalalas == null && input.minimum_eligible_halalas == null
+      ? current.minimumEligibleHalalas
+      : finiteInteger(input.minimumEligibleHalalas ?? input.minimum_eligible_halalas, -1);
+  if (minimumEligibleHalalas < 0) {
+    throw new AppError(400, 'core_cashback:invalid_minimum_eligible');
+  }
+
+  let expiryDays = current.expiryDays;
+  if (
+    Object.prototype.hasOwnProperty.call(input, 'expiryDays') ||
+    Object.prototype.hasOwnProperty.call(input, 'expiry_days')
+  ) {
+    const rawExpiry = input.expiryDays ?? input.expiry_days;
+    if (rawExpiry === null || rawExpiry === '') {
+      expiryDays = null;
+    } else {
+      expiryDays = finiteInteger(rawExpiry, 0);
+      if (expiryDays <= 0 || expiryDays > 3650) {
+        throw new AppError(400, 'core_cashback:invalid_expiry_days');
+      }
+    }
+  }
+
+  const excludedServiceIds =
+    input.excludedServiceIds === undefined && input.excluded_service_ids === undefined
+      ? current.excludedServiceIds
+      : parseIdList(input.excludedServiceIds ?? input.excluded_service_ids);
+  const excludedPackageIds =
+    input.excludedPackageIds === undefined && input.excluded_package_ids === undefined
+      ? current.excludedPackageIds
+      : parseIdList(input.excludedPackageIds ?? input.excluded_package_ids);
+
+  const now = nowIso();
+  await dbRun(
+    db,
+    `INSERT INTO cashback_policies
+      (salon_id, enabled, earn_basis, earn_bps, minimum_eligible_halalas, expiry_days,
+       redeem_scope, cash_withdrawal_allowed, transfer_allowed,
+       excluded_service_ids_json, excluded_package_ids_json, created_at, updated_at)
+     VALUES (?, ?, 'paid', ?, ?, ?, 'salon_only', 0, 0, ?, ?, ?, ?)
+     ON CONFLICT(salon_id) DO UPDATE SET
+       enabled = excluded.enabled,
+       earn_basis = 'paid',
+       earn_bps = excluded.earn_bps,
+       minimum_eligible_halalas = excluded.minimum_eligible_halalas,
+       expiry_days = excluded.expiry_days,
+       redeem_scope = 'salon_only',
+       cash_withdrawal_allowed = 0,
+       transfer_allowed = 0,
+       excluded_service_ids_json = excluded.excluded_service_ids_json,
+       excluded_package_ids_json = excluded.excluded_package_ids_json,
+       updated_at = excluded.updated_at`,
+    [
+      salonId,
+      enabled ? 1 : 0,
+      earnBps,
+      minimumEligibleHalalas,
+      expiryDays,
+      JSON.stringify(excludedServiceIds),
+      JSON.stringify(excludedPackageIds),
+      currentRow?.created_at || now,
+      now,
+    ]
+  );
+
+  return {
+    ...(await getCashbackPolicy(db, salonId)),
+    updatedByUid: cleanText(actorUid) || null,
+  };
+}
+
 export function calculateCashbackEarnHalalas(eligibleHalalas, earnBps) {
   const basis = Math.max(0, finiteInteger(eligibleHalalas));
   const bps = Math.max(0, Math.min(10000, finiteInteger(earnBps)));
   return Math.floor((basis * bps) / 10000);
+}
+
+async function rawWalletBalance(db, salonId, clientId) {
+  const row = await dbFirst(
+    db,
+    'SELECT COALESCE(SUM(amount_halalas), 0) AS balance_halalas FROM cashback_wallet_transactions WHERE salon_id = ? AND client_id = ?',
+    [salonId, clientId]
+  );
+  return finiteInteger(row?.balance_halalas);
 }
 
 export async function recordCashbackMovement(db, salonId, input = {}, actorUid = '') {
@@ -68,7 +215,9 @@ export async function recordCashbackMovement(db, salonId, input = {}, actorUid =
   const amountHalalas = finiteInteger(input.amountHalalas ?? input.amount_halalas);
   if (!amountHalalas) throw new AppError(400, 'core_cashback:invalid_amount');
 
-  if (type === 'earn' && amountHalalas < 0) throw new AppError(400, 'core_cashback:earn_must_be_positive');
+  if (type === 'earn' && amountHalalas < 0) {
+    throw new AppError(400, 'core_cashback:earn_must_be_positive');
+  }
   if (['redeem', 'reverse', 'expire'].includes(type) && amountHalalas > 0) {
     throw new AppError(400, 'core_cashback:debit_must_be_negative');
   }
@@ -79,6 +228,13 @@ export async function recordCashbackMovement(db, salonId, input = {}, actorUid =
     [salonId, clientId]
   );
   if (!client) throw new AppError(404, 'core_client:not_found');
+
+  if (type === 'redeem' || type === 'expire') {
+    const available = Math.max(0, await rawWalletBalance(db, salonId, clientId));
+    if (Math.abs(amountHalalas) > available) {
+      throw new AppError(409, 'core_cashback:insufficient_balance');
+    }
+  }
 
   const idempotencyKey = requiredText(
     input.idempotencyKey || input.idempotency_key,
@@ -135,10 +291,12 @@ export async function getClientCashbackWallet(db, salonId, clientId) {
     ),
   ]);
 
-  const balanceHalalas = Math.max(
-    0,
-    rows.reduce((sum, row) => sum + finiteInteger(row.amount_halalas), 0)
+  const ledgerBalanceHalalas = rows.reduce(
+    (sum, row) => sum + finiteInteger(row.amount_halalas),
+    0
   );
+  const balanceHalalas = Math.max(0, ledgerBalanceHalalas);
+  const pendingRecoveryHalalas = Math.max(0, -ledgerBalanceHalalas);
   const earnedHalalas = rows
     .filter((row) => cleanText(row.type) === 'earn')
     .reduce((sum, row) => sum + Math.max(0, finiteInteger(row.amount_halalas)), 0);
@@ -157,6 +315,8 @@ export async function getClientCashbackWallet(db, salonId, clientId) {
     clientId: id,
     enabled: policy.enabled,
     balanceHalalas,
+    ledgerBalanceHalalas,
+    pendingRecoveryHalalas,
     earnedHalalas,
     redeemedHalalas,
     reversedHalalas,
@@ -167,4 +327,242 @@ export async function getClientCashbackWallet(db, salonId, clientId) {
     policy,
     transactions: rows,
   };
+}
+
+export async function reconcileCashbackForBooking(
+  db,
+  salonId,
+  bookingIdValue,
+  actorUid = ''
+) {
+  const policy = await getCashbackPolicy(db, salonId);
+  if (!policy.enabled || policy.earnBps <= 0) {
+    return {
+      enabled: false,
+      changed: false,
+      expectedEarnHalalas: 0,
+      recordedEarnHalalas: 0,
+    };
+  }
+
+  const bookingId = requiredId(bookingIdValue, 'bookingId');
+  const booking = await dbFirst(
+    db,
+    'SELECT id, client_id, status, total_halalas, package_sessions_used, updated_at FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, bookingId]
+  );
+  if (!booking) throw new AppError(404, 'core_booking:not_found');
+  if (!cleanText(booking.client_id)) {
+    return { enabled: true, changed: false, skipped: 'client_missing' };
+  }
+
+  const [paymentRows, refundRows, itemRows, movementRows] = await Promise.all([
+    dbAll(
+      db,
+      "SELECT id, amount_halalas, status, paid_at, created_at FROM payments WHERE salon_id = ? AND booking_id = ? ORDER BY created_at ASC, id ASC",
+      [salonId, bookingId]
+    ),
+    dbAll(
+      db,
+      "SELECT id, amount_halalas, status, refunded_at, created_at FROM refunds WHERE salon_id = ? AND booking_id = ? ORDER BY created_at ASC, id ASC",
+      [salonId, bookingId]
+    ),
+    dbAll(
+      db,
+      'SELECT id, service_id, final_total_halalas, total_halalas FROM booking_items WHERE salon_id = ? AND booking_id = ? ORDER BY id ASC',
+      [salonId, bookingId]
+    ),
+    dbAll(
+      db,
+      "SELECT id, type, amount_halalas, idempotency_key, created_at FROM cashback_wallet_transactions WHERE salon_id = ? AND booking_id = ? AND type IN ('earn','reverse') ORDER BY created_at ASC, id ASC",
+      [salonId, bookingId]
+    ),
+  ]);
+
+  const paidHalalas = paymentRows
+    .filter((row) =>
+      ['paid', 'completed', 'succeeded'].includes(cleanText(row.status).toLowerCase())
+    )
+    .reduce((sum, row) => sum + Math.max(0, finiteInteger(row.amount_halalas)), 0);
+  const refundedHalalas = refundRows
+    .filter((row) => cleanText(row.status).toLowerCase() === 'completed')
+    .reduce((sum, row) => sum + Math.max(0, finiteInteger(row.amount_halalas)), 0);
+  const netPaidHalalas = Math.max(0, paidHalalas - refundedHalalas);
+
+  const excludedServices = new Set(policy.excludedServiceIds);
+  const eligibleItemCap = itemRows.length
+    ? itemRows
+        .filter((row) => !excludedServices.has(cleanText(row.service_id)))
+        .reduce(
+          (sum, row) =>
+            sum +
+            Math.max(
+              0,
+              finiteInteger(
+                row.final_total_halalas == null
+                  ? row.total_halalas
+                  : row.final_total_halalas
+              )
+            ),
+          0
+        )
+    : Math.max(0, finiteInteger(booking.total_halalas));
+
+  const totalCap = Math.max(0, finiteInteger(booking.total_halalas));
+  const eligiblePaidHalalas = Math.min(
+    netPaidHalalas,
+    totalCap,
+    Math.max(0, eligibleItemCap)
+  );
+
+  const completed = cleanText(booking.status).toLowerCase() === 'completed';
+  const meetsMinimum = eligiblePaidHalalas >= policy.minimumEligibleHalalas;
+  const expectedEarnHalalas =
+    completed && meetsMinimum
+      ? calculateCashbackEarnHalalas(eligiblePaidHalalas, policy.earnBps)
+      : 0;
+
+  const recordedEarnHalalas = movementRows.reduce(
+    (sum, row) => sum + finiteInteger(row.amount_halalas),
+    0
+  );
+  const delta = expectedEarnHalalas - recordedEarnHalalas;
+
+  if (!delta) {
+    return {
+      enabled: true,
+      changed: false,
+      bookingId,
+      clientId: booking.client_id,
+      eligiblePaidHalalas,
+      expectedEarnHalalas,
+      recordedEarnHalalas,
+    };
+  }
+
+  const sourceFingerprint = stableHash(
+    JSON.stringify({
+      booking: {
+        status: booking.status,
+        total: booking.total_halalas,
+        updatedAt: booking.updated_at,
+      },
+      policy: {
+        earnBps: policy.earnBps,
+        minimumEligibleHalalas: policy.minimumEligibleHalalas,
+        excludedServiceIds: policy.excludedServiceIds,
+        updatedAt: policy.updatedAt,
+      },
+      payments: paymentRows.map((row) => [
+        row.id,
+        row.amount_halalas,
+        row.status,
+        row.paid_at,
+        row.created_at,
+      ]),
+      refunds: refundRows.map((row) => [
+        row.id,
+        row.amount_halalas,
+        row.status,
+        row.refunded_at,
+        row.created_at,
+      ]),
+      items: itemRows.map((row) => [
+        row.id,
+        row.service_id,
+        row.final_total_halalas,
+        row.total_halalas,
+      ]),
+      recordedEarnHalalas,
+      expectedEarnHalalas,
+    })
+  );
+
+  const createdAt = nowIso();
+  const type = delta > 0 ? 'earn' : 'reverse';
+  await recordCashbackMovement(
+    db,
+    salonId,
+    {
+      clientId: booking.client_id,
+      type,
+      amountHalalas: delta,
+      bookingId,
+      reason:
+        type === 'earn'
+          ? 'Cashback earned from completed MALIKAT booking'
+          : 'Cashback reversed after booking payment/refund reconciliation',
+      idempotencyKey: `cashback:booking:${bookingId}:reconcile:${sourceFingerprint}`,
+      expiresAt:
+        type === 'earn' && policy.expiryDays
+          ? addDaysIso(createdAt, policy.expiryDays)
+          : null,
+      createdAt,
+    },
+    actorUid
+  );
+
+  return {
+    enabled: true,
+    changed: true,
+    bookingId,
+    clientId: booking.client_id,
+    eligiblePaidHalalas,
+    expectedEarnHalalas,
+    recordedEarnHalalas: expectedEarnHalalas,
+    deltaHalalas: delta,
+    movementType: type,
+  };
+}
+
+export async function redeemCashbackForBooking(
+  db,
+  salonId,
+  clientIdValue,
+  input = {},
+  actorUid = ''
+) {
+  const policy = await getCashbackPolicy(db, salonId);
+  if (!policy.enabled) throw new AppError(409, 'core_cashback:disabled');
+
+  const clientId = requiredId(clientIdValue, 'clientId');
+  const bookingId = requiredId(input.bookingId || input.booking_id, 'bookingId');
+  const booking = await dbFirst(
+    db,
+    'SELECT id, client_id, status, total_halalas FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, bookingId]
+  );
+  if (!booking) throw new AppError(404, 'core_booking:not_found');
+  if (cleanText(booking.client_id) !== clientId) {
+    throw new AppError(409, 'core_cashback:booking_client_mismatch');
+  }
+  if (['cancelled', 'canceled'].includes(cleanText(booking.status).toLowerCase())) {
+    throw new AppError(409, 'core_cashback:booking_cancelled');
+  }
+
+  const amountHalalas = finiteInteger(input.amountHalalas ?? input.amount_halalas);
+  if (amountHalalas <= 0) throw new AppError(400, 'core_cashback:invalid_amount');
+  if (amountHalalas > Math.max(0, finiteInteger(booking.total_halalas))) {
+    throw new AppError(409, 'core_cashback:amount_exceeds_booking_total');
+  }
+
+  const operationId = requiredText(
+    input.operationId || input.operation_id,
+    'operationId',
+    300
+  );
+
+  return recordCashbackMovement(
+    db,
+    salonId,
+    {
+      clientId,
+      type: 'redeem',
+      amountHalalas: -amountHalalas,
+      bookingId,
+      reason: cleanText(input.reason) || 'Cashback redeemed inside MALIKAT',
+      idempotencyKey: `cashback:redeem:${operationId}`,
+    },
+    actorUid
+  );
 }
