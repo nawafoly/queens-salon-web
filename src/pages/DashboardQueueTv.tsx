@@ -9,6 +9,7 @@ import { resolveBookingDataSource } from "../services/bookingDataSource";
 import type { BookingDocWithId } from "../services/firestoreBookings";
 import defaultLogo from "../assets/images/ssunnamed.png";
 import "../styles/dashboard-v2/dashboard-v2.css";
+import { queueTvText, type DashboardLanguage } from "../helpers/dashboardQueueTvLanguage";
 
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;
 const MAX_PROMO_VIDEOS = 12;
@@ -16,26 +17,6 @@ const QUEUE_REFRESH_ACTIVE_MS = 8_000;
 const QUEUE_REFRESH_IDLE_MS = 20_000;
 const QUEUE_REFRESH_MAX_MS = 60_000;
 
-const copy = {
-  dash: "\u2014",
-  am: "\u0635",
-  pm: "\u0645",
-  loading: "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u062d\u062c\u0648\u0632\u0627\u062a \u0627\u0644\u064a\u0648\u0645...",
-  loadError:
-    "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u062d\u062c\u0648\u0632\u0627\u062a \u0627\u0644\u064a\u0648\u0645 \u0645\u0646 \u062e\u062f\u0645\u0629 \u0627\u0644\u062d\u062c\u0632. \u062d\u062f\u062b \u0627\u0644\u0634\u0627\u0634\u0629 \u0623\u0648 \u062a\u0623\u0643\u062f \u0645\u0646 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644.",
-  videoError:
-    "\u062a\u0639\u0630\u0631 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0641\u064a\u062f\u064a\u0648. \u062a\u0623\u0643\u062f \u0645\u0646 \u0635\u064a\u063a\u0629 MP4 (H.264 + AAC).",
-  empty:
-    "\u0644\u0627 \u062a\u0648\u062c\u062f \u062d\u062c\u0648\u0632\u0627\u062a \u0641\u0639\u0627\u0644\u0629 \u0644\u0639\u0631\u0636\u0647\u0627 \u0627\u0644\u0622\u0646.",
-  booking: "\u062d\u062c\u0632",
-  current: "\u0627\u0644\u062d\u0627\u0644\u064a",
-  upcoming: "\u0642\u0627\u062f\u0645",
-  client: "\u0627\u0644\u0639\u0645\u064a\u0644\u0629",
-  employee: "\u0627\u0644\u0645\u0648\u0638\u0641\u0629",
-  time: "\u0627\u0644\u0648\u0642\u062a",
-  endsAfter: "\u064a\u0646\u062a\u0647\u064a \u0628\u0639\u062f",
-  remaining: "\u0628\u0627\u0642\u064a",
-};
 
 type QueueBooking = {
   id: string;
@@ -136,7 +117,7 @@ function textDisplayScore(value: string): number {
   return arabic * 2 - brokenLatin * 6 - brokenArabicPairs * 3;
 }
 
-function repairDisplayText(value: unknown, fallback = copy.dash): string {
+function repairDisplayText(value: unknown, fallback = "—"): string {
   const text = String(value ?? "").trim();
   if (!text) return fallback;
 
@@ -171,23 +152,23 @@ function queueBookingFromDoc(row: BookingDocWithId, fallbackDate: string): Queue
   };
 }
 
-function bookingNoOf(raw: string): string {
+function bookingNoOf(raw: string, fallback = "—"): string {
   const v = String(raw || "").trim().toUpperCase();
-  if (!v) return copy.dash;
+  if (!v) return fallback;
   if (/^MK-\d+$/.test(v)) return v;
   if (/^\d+$/.test(v)) return `MK-${v}`;
   return v;
 }
 
-function formatTime12(time24: string): string {
+function formatTime12(time24: string, language: DashboardLanguage): string {
   const m = String(time24 || "")
     .trim()
     .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || copy.dash);
+  if (!m) return String(time24 || "—");
   const h24 = Number(m[1]);
   const mm = m[2];
   const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? copy.pm : copy.am}`;
+  return `${String(h12).padStart(2, "0")}:${mm} ${language === "en" ? (h24 >= 12 ? "PM" : "AM") : (h24 >= 12 ? "م" : "ص")}`;
 }
 
 function countdownLabel(targetMs: number, nowMs: number): string {
@@ -226,7 +207,8 @@ async function checkFileExists(path: string): Promise<boolean> {
   }
 }
 
-export default function DashboardQueueTv() {
+export default function DashboardQueueTv({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (arabic: string) => queueTvText(language, arabic);
   const [todayKey, setTodayKey] = useState<string>(() => todayISO());
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [bookings, setBookings] = useState<QueueBooking[]>([]);
@@ -349,7 +331,7 @@ export default function DashboardQueueTv() {
         failureStreak = Math.min(failureStreak + 1, 4);
         if (!active) return;
         console.error("[DashboardQueueTv] Booking load failed", loadError);
-        setError(copy.loadError);
+        setError(t("تعذر تحميل حجوزات اليوم من خدمة الحجز. حدث الشاشة أو تأكد من تسجيل الدخول."));
       } finally {
         inFlight = false;
         if (!active) return;
@@ -388,7 +370,7 @@ export default function DashboardQueueTv() {
       window.removeEventListener("online", refreshWhenActive);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [todayKey]);
+  }, [todayKey, language]);
 
   const todayQueue = useMemo(() => {
     const rows = bookings
@@ -427,7 +409,7 @@ export default function DashboardQueueTv() {
   const upcomingCount = todayQueue.length - currentCount;
   const nowDate = new Date(nowMs);
   const nowTime24 = `${String(nowDate.getHours()).padStart(2, "0")}:${String(nowDate.getMinutes()).padStart(2, "0")}`;
-  const todayLabel = nowDate.toLocaleDateString("ar-SA-u-nu-latn", {
+  const todayLabel = nowDate.toLocaleDateString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -436,50 +418,50 @@ export default function DashboardQueueTv() {
   const activeVideoNumber = Math.min(videoIndex + 1, Math.max(1, videoPlaylist.length));
 
   return (
-    <main className="dsv2-page tv-queue-v2-page" dir="rtl">
+    <main className="dsv2-page tv-queue-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card tv-queue-v2-hero">
         <div className="tv-queue-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">الشاشة التشغيلية</span>
-          <h1 className="dsv2-page-title">شاشة قائمة الانتظار</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("الشاشة التشغيلية")}</span>
+          <h1 className="dsv2-page-title">{t("شاشة قائمة الانتظار")}</h1>
           <p className="dsv2-page-subtitle">
-            متابعة بث الفيديو الترويجي وحجوزات اليوم الحالية والقادمة من مساحة تشغيلية واحدة.
+            {t("متابعة بث الفيديو الترويجي وحجوزات اليوم الحالية والقادمة من مساحة تشغيلية واحدة.")}
           </p>
         </div>
 
-        <div className="tv-queue-v2-hero__status" aria-label="حالة الشاشة">
+        <div className="tv-queue-v2-hero__status" aria-label={t("حالة الشاشة")}>
           <div className="tv-queue-v2-clock">
-            <span>الوقت الآن</span>
-            <strong dir="ltr">{formatTime12(nowTime24)}</strong>
+            <span>{t("الوقت الآن")}</span>
+            <strong dir="ltr">{formatTime12(nowTime24, language)}</strong>
             <small>{todayLabel}</small>
           </div>
-          <span className="dsv2-badge dsv2-badge--success">تحديث ذكي تلقائي</span>
+          <span className="dsv2-badge dsv2-badge--success">{t("تحديث ذكي تلقائي")}</span>
         </div>
       </section>
 
-      <section className="tv-queue-v2-metrics" aria-label="ملخص شاشة الانتظار">
+      <section className="tv-queue-v2-metrics" aria-label={t("ملخص شاشة الانتظار")}>
         <article className="dsv2-metric-card dsv2-metric-card--dark">
           <span className="dsv2-metric-card__icon"><FiList /></span>
-          <p className="dsv2-metric-card__label">الحجوزات المعروضة</p>
+          <p className="dsv2-metric-card__label">{t("الحجوزات المعروضة")}</p>
           <p className="dsv2-metric-card__value">{todayQueue.length}</p>
-          <p className="dsv2-metric-card__meta">بعد استبعاد الملغي والمنتهي</p>
+          <p className="dsv2-metric-card__meta">{t("بعد استبعاد الملغي والمنتهي")}</p>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--success">
           <span className="dsv2-metric-card__icon"><FiClock /></span>
-          <p className="dsv2-metric-card__label">الحالي الآن</p>
+          <p className="dsv2-metric-card__label">{t("الحالي الآن")}</p>
           <p className="dsv2-metric-card__value">{currentCount}</p>
-          <p className="dsv2-metric-card__meta">ضمن نافذة العرض الحالية</p>
+          <p className="dsv2-metric-card__meta">{t("ضمن نافذة العرض الحالية")}</p>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--gold">
           <span className="dsv2-metric-card__icon"><FiMonitor /></span>
-          <p className="dsv2-metric-card__label">الحجوزات القادمة</p>
+          <p className="dsv2-metric-card__label">{t("الحجوزات القادمة")}</p>
           <p className="dsv2-metric-card__value">{upcomingCount}</p>
-          <p className="dsv2-metric-card__meta">مرتبة حسب وقت الموعد</p>
+          <p className="dsv2-metric-card__meta">{t("مرتبة حسب وقت الموعد")}</p>
         </article>
         <article className="dsv2-metric-card dsv2-metric-card--gold">
           <span className="dsv2-metric-card__icon"><FiPlayCircle /></span>
-          <p className="dsv2-metric-card__label">الفيديوهات المتاحة</p>
+          <p className="dsv2-metric-card__label">{t("الفيديوهات المتاحة")}</p>
           <p className="dsv2-metric-card__value">{videoUnavailable ? 0 : videoPlaylist.length}</p>
-          <p className="dsv2-metric-card__meta">قائمة تشغيل تلقائية</p>
+          <p className="dsv2-metric-card__meta">{t("قائمة تشغيل تلقائية")}</p>
         </article>
       </section>
 
@@ -487,11 +469,11 @@ export default function DashboardQueueTv() {
         <article className="dsv2-card tv-queue-v2-media">
           <header className="tv-queue-v2-panel-head">
             <div className="tv-queue-v2-panel-head__copy">
-              <h2>الفيديو الترويجي</h2>
-              <p>تشغيل تلقائي متتابع للمواد المتاحة داخل شاشة الصالون.</p>
+              <h2>{t("الفيديو الترويجي")}</h2>
+              <p>{t("تشغيل تلقائي متتابع للمواد المتاحة داخل شاشة الصالون.")}</p>
             </div>
-            <div className="tv-queue-v2-panel-meta" aria-label="الفيديو الحالي">
-              <span>الفيديو الحالي</span>
+            <div className="tv-queue-v2-panel-meta" aria-label={t("الفيديو الحالي")}>
+              <span>{t("الفيديو الحالي")}</span>
               <strong dir="ltr">{activeVideoNumber} / {Math.max(1, videoPlaylist.length)}</strong>
             </div>
           </header>
@@ -534,33 +516,33 @@ export default function DashboardQueueTv() {
               />
 
               {!videoUnavailable ? (
-                <span className="tv-queue-v2-video-status">تشغيل تلقائي</span>
+                <span className="tv-queue-v2-video-status">{t("تشغيل تلقائي")}</span>
               ) : null}
 
               {videoUnavailable ? (
                 <div className="tv-queue-v2-video-fallback" role="alert">
-                  <p>{copy.videoError}</p>
+                  <p>{t("تعذر تشغيل الفيديو. تأكد من صيغة MP4 (H.264 + AAC).")}</p>
                 </div>
               ) : null}
             </div>
           </div>
         </article>
 
-        <aside className="dsv2-card tv-queue-v2-queue" aria-label="قائمة حجوزات اليوم">
+        <aside className="dsv2-card tv-queue-v2-queue" aria-label={t("قائمة حجوزات اليوم")}>
           <header className="tv-queue-v2-panel-head">
             <div className="tv-queue-v2-panel-head__copy">
-              <h2>قائمة حجوزات اليوم</h2>
-              <p>الحجوزات الحالية أولًا ثم القادمة، مع عد تنازلي محدث كل ثانية.</p>
+              <h2>{t("قائمة حجوزات اليوم")}</h2>
+              <p>{t("الحجوزات الحالية أولًا ثم القادمة، مع عد تنازلي محدث كل ثانية.")}</p>
             </div>
-            <span className="dsv2-badge dsv2-badge--gold" aria-label="إجمالي الحجوزات المعروضة">
-              {todayQueue.length} حجز
+            <span className="dsv2-badge dsv2-badge--gold" aria-label={t("إجمالي الحجوزات المعروضة")}>
+              {todayQueue.length} {t("حجز")}
             </span>
           </header>
 
           <div className="tv-queue-v2-queue-body" aria-live="polite">
             {loading ? (
-              <div className="tv-queue-v2-state-shell" role="status" aria-label={copy.loading}>
-                <span className="dsv2-sr-only">{copy.loading}</span>
+              <div className="tv-queue-v2-state-shell" role="status" aria-label={t("جاري تحميل حجوزات اليوم...")}>
+                <span className="dsv2-sr-only">{t("جاري تحميل حجوزات اليوم...")}</span>
                 {Array.from({ length: 3 }, (_, index) => (
                   <div className="tv-queue-v2-skeleton-card" key={index}>
                     <DashboardSkeletonV2 variant="title" width="42%" />
@@ -573,9 +555,9 @@ export default function DashboardQueueTv() {
             {!loading && error ? (
               <DashboardErrorStateV2
                 compact
-                title="تعذر تحميل حجوزات اليوم"
+                title={t("تعذر تحميل حجوزات اليوم")}
                 description={error}
-                details="ستتم إعادة المحاولة تلقائيًا أثناء بقاء الشاشة مفتوحة."
+                details={t("ستتم إعادة المحاولة تلقائيًا أثناء بقاء الشاشة مفتوحة.")}
               />
             ) : null}
 
@@ -583,8 +565,8 @@ export default function DashboardQueueTv() {
               <DashboardEmptyStateV2
                 compact
                 tone="gold"
-                title="لا توجد حجوزات فعالة الآن"
-                description={copy.empty}
+                title={t("لا توجد حجوزات فعالة الآن")}
+                description={t("لا توجد حجوزات فعالة لعرضها الآن.")}
               />
             ) : null}
 
@@ -597,7 +579,7 @@ export default function DashboardQueueTv() {
                   >
                     <header className="tv-queue-v2-booking__head">
                       <div className="tv-queue-v2-booking__title">
-                        <span>{copy.booking} {idx + 1}</span>
+                        <span>{t("حجز")} {idx + 1}</span>
                         <strong dir="ltr">{bookingNoOf(row.publicId)}</strong>
                       </div>
                       <span
@@ -605,25 +587,25 @@ export default function DashboardQueueTv() {
                           row.state === "current" ? "dsv2-badge--success" : "dsv2-badge--gold"
                         }`}
                       >
-                        {row.state === "current" ? copy.current : copy.upcoming}
+                        {row.state === "current" ? t("الحالي") : t("قادم")}
                       </span>
                     </header>
 
                     <dl className="tv-queue-v2-booking__meta">
                       <div>
-                        <dt>{copy.client}</dt>
-                        <dd>{row.clientName || copy.dash}</dd>
+                        <dt>{t("العميلة")}</dt>
+                        <dd>{row.clientName || "—"}</dd>
                       </div>
                       <div>
-                        <dt>{copy.employee}</dt>
-                        <dd>{row.employeeName || copy.dash}</dd>
+                        <dt>{t("الموظفة")}</dt>
+                        <dd>{row.employeeName || "—"}</dd>
                       </div>
                       <div>
-                        <dt>{copy.time}</dt>
-                        <dd dir="ltr">{formatTime12(row.time)}</dd>
+                        <dt>{t("الوقت")}</dt>
+                        <dd dir="ltr">{formatTime12(row.time, language)}</dd>
                       </div>
                       <div className="tv-queue-v2-countdown">
-                        <dt>{row.state === "current" ? copy.endsAfter : copy.remaining}</dt>
+                        <dt>{row.state === "current" ? t("ينتهي بعد") : t("باقي")}</dt>
                         <dd dir="ltr">
                           {row.state === "current"
                             ? msToMinSec(row.startMs + SHOW_AFTER_TURN_MS - nowMs)
