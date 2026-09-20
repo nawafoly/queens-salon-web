@@ -168,6 +168,7 @@ async function setup() {
     '0059_payroll_carryover_compliance_authority.sql',
     '0068_file_metadata_document_type.sql',
     '0078_staff_services_specialties_backfill.sql',
+    '0079_client_cashback_wallet.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
