@@ -166,7 +166,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
         transactions: Array.isArray(result?.transactions) ? result.transactions : [],
       });
     } catch (loadError: any) {
-      setError(String(loadError?.message || "تعذر تحميل بيانات الباقات والجلسات."));
+      setError(String(loadError?.message || t("تعذر تحميل بيانات الباقات والجلسات.")));
     } finally {
       setLoading(false);
     }
@@ -537,7 +537,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
               <div className="bk2-session-compact-list">
                 {dashboard.transactions.slice(0, 6).map((row) => (
                   <div key={row.id} className="bk2-session-ledger-mini">
-                    <span><strong>{row.clientName || "عميلة بدون اسم"}</strong><small>{transactionLabel(row.type, language)} · {row.packageName}</small></span>
+                    <span><strong>{row.clientName || t("عميلة بدون اسم")}</strong><small>{transactionLabel(row.type, language)} · {row.packageName}</small></span>
                     <em className={row.sessionsDelta < 0 ? "is-negative" : ""}>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</em>
                   </div>
                 ))}
