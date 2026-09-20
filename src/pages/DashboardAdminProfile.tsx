@@ -10,6 +10,7 @@ import { auth } from "../services/firebase";
 import { CoreAccountService } from "../services/CoreAccountService";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import "../styles/dashboard-v2/dashboard-v2.css";
+import { adminProfileText, type DashboardLanguage } from "../helpers/dashboardAdminProfileLanguage";
 
 type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending" | "client" | "guest";
 
@@ -57,14 +58,15 @@ function profileInitials(name: string, email: string) {
   return String(email || "A").trim().charAt(0).toUpperCase() || "A";
 }
 
-const DashboardAdminProfile: React.FC = () => {
+const DashboardAdminProfile: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const t = (arabic: string) => adminProfileText(language, arabic);
   const bootstrapSession = useMemo(() => {
     try {
       return readStoredAuthSession();
     } catch {
       return null;
     }
-  }, []);
+  }, [language]);
 
   const [authLoading, setAuthLoading] = useState(() => !bootstrapSession);
   const [saving, setSaving] = useState(false);
@@ -129,7 +131,7 @@ const DashboardAdminProfile: React.FC = () => {
         console.error("Core admin profile load error:", e);
         setAccountId("");
         setDocExists(false);
-        setMsg("تعذر تحميل الملف الشخصي من Core.");
+        setMsg(t("تعذر تحميل الملف الشخصي من Core."));
       } finally {
         if (alive && requestId === authRequestRef.current) setAuthLoading(false);
       }
@@ -142,7 +144,7 @@ const DashboardAdminProfile: React.FC = () => {
     const displayName = String(profile.displayName || "").trim();
     const phone = String(profile.phone || "").trim();
     const photoURL = String(profile.photoURL || "").trim();
-    if (!displayName) { setMsg("الاسم مطلوب."); return; }
+    if (!displayName) { setMsg(t("الاسم مطلوب.")); return; }
     try {
       setSaving(true);
       setMsg("");
@@ -166,17 +168,17 @@ const DashboardAdminProfile: React.FC = () => {
         localStorage.setItem("auth_user", JSON.stringify({ ...authUserCached, uid, email: profile.email, role: profile.role, displayName }));
         window.dispatchEvent(new Event("authChanged"));
       } catch {}
-      setMsg("تم حفظ الملف الشخصي بنجاح.");
+      setMsg(t("تم حفظ الملف الشخصي بنجاح."));
     } catch (e) {
       console.error("Core admin profile save error:", e);
-      setMsg("تعذر حفظ الملف الشخصي في Core.");
+      setMsg(t("تعذر حفظ الملف الشخصي في Core."));
     } finally { setSaving(false); }
   };
 
   if (authLoading) {
     return (
-      <main className="dsv2-page admin-profile-v2-page" dir="rtl">
-        <section className="dsv2-card dsv2-card--padded admin-profile-v2-loading" aria-label="جاري تحميل الملف الشخصي">
+      <main className="dsv2-page admin-profile-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
+        <section className="dsv2-card dsv2-card--padded admin-profile-v2-loading" aria-label={t("جاري تحميل الملف الشخصي")}>
           <DashboardSkeletonV2 variant="title" width="34%" />
           <DashboardSkeletonV2 lines={3} width="100%" />
         </section>
@@ -192,75 +194,75 @@ const DashboardAdminProfile: React.FC = () => {
 
   if (!hasAdminPower) {
     return (
-      <main className="dsv2-page admin-profile-v2-page" dir="rtl">
+      <main className="dsv2-page admin-profile-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <DashboardEmptyStateV2
           tone="gold"
-          title="غير مصرح"
-          description="هذه الصفحة مخصصة لحسابات Owner / Admin فقط."
+          title={t("غير مصرح")}
+          description={t("هذه الصفحة مخصصة لحسابات Owner / Admin فقط.")}
         />
       </main>
     );
   }
 
-  const roleLabel = ROLE_LABELS[profile.role] || profile.role;
+  const roleLabel = t(ROLE_LABELS[profile.role] || profile.role);
   const initials = profileInitials(profile.displayName, profile.email);
-  const messageTone = msg.startsWith("تم ") ? "is-success" : "is-error";
+  const messageTone = msg === t("تم حفظ الملف الشخصي بنجاح.") ? "is-success" : "is-error";
 
   return (
-    <main className="dsv2-page admin-profile-v2-page" dir="rtl">
+    <main className="dsv2-page admin-profile-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card admin-profile-v2-hero">
         <div className="admin-profile-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">الملف الشخصي الإداري</span>
-          <h1 className="dsv2-page-title">الملف الشخصي</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("الملف الشخصي الإداري")}</span>
+          <h1 className="dsv2-page-title">{t("الملف الشخصي")}</h1>
           <p className="dsv2-page-subtitle">
-            تحديث بيانات حساب الإدارة التي تظهر داخل لوحة التحكم مع إبقاء الهوية والدور محميين.
+            {t("تحديث بيانات حساب الإدارة التي تظهر داخل لوحة التحكم مع إبقاء الهوية والدور محميين.")}
           </p>
           <div className="admin-profile-v2-hero__badges">
             <span className="dsv2-badge dsv2-badge--success">{roleLabel}</span>
             <span className={`dsv2-badge ${docExists ? "dsv2-badge--success" : "dsv2-badge--danger"}`}>
-              {docExists ? "الملف مرتبط" : "حساب Core غير موجود"}
+              {docExists ? t("الملف مرتبط") : t("حساب Core غير موجود")}
             </span>
           </div>
         </div>
 
-        <div className="admin-profile-v2-identity" aria-label="هوية الحساب">
+        <div className="admin-profile-v2-identity" aria-label={t("هوية الحساب")}>
           <div className="admin-profile-v2-avatar" aria-hidden={!profile.photoURL}>
             {profile.photoURL ? (
-              <img src={profile.photoURL} alt={profile.displayName || "صورة الحساب"} />
+              <img src={profile.photoURL} alt={profile.displayName || t("صورة الحساب")} />
             ) : (
               <span>{initials}</span>
             )}
           </div>
           <div>
-            <strong>{profile.displayName || "حساب الإدارة"}</strong>
-            <span>{profile.email || "لا يوجد بريد مسجل"}</span>
+            <strong>{profile.displayName || t("حساب الإدارة")}</strong>
+            <span>{profile.email || t("لا يوجد بريد مسجل")}</span>
           </div>
         </div>
       </section>
 
-      <section className="admin-profile-v2-metrics" aria-label="ملخص الملف الشخصي">
+      <section className="admin-profile-v2-metrics" aria-label={t("ملخص الملف الشخصي")}>
         <article className="dsv2-metric-card dsv2-metric-card--gold">
-          <p className="dsv2-metric-card__label">الدور</p>
+          <p className="dsv2-metric-card__label">{t("الدور")}</p>
           <p className="dsv2-metric-card__value">{roleLabel}</p>
-          <p className="dsv2-metric-card__meta">صلاحية الحساب الحالية</p>
+          <p className="dsv2-metric-card__meta">{t("صلاحية الحساب الحالية")}</p>
         </article>
 
         <article className={`dsv2-metric-card ${docExists ? "dsv2-metric-card--success" : "dsv2-metric-card--danger"}`}>
-          <p className="dsv2-metric-card__label">مستند الحساب</p>
-          <p className="dsv2-metric-card__value">{docExists ? "موجود" : "مفقود"}</p>
+          <p className="dsv2-metric-card__label">{t("مستند الحساب")}</p>
+          <p className="dsv2-metric-card__value">{docExists ? t("موجود") : t("مفقود")}</p>
           <p className="dsv2-metric-card__meta">Core D1 · app_users</p>
         </article>
 
         <article className="dsv2-metric-card dsv2-metric-card--dark">
-          <p className="dsv2-metric-card__label">البريد الإلكتروني</p>
-          <p className="dsv2-metric-card__value">{profile.email ? "مرتبط" : "غير مسجل"}</p>
-          <p className="dsv2-metric-card__meta">يُعرض فقط ولا يُعدل هنا</p>
+          <p className="dsv2-metric-card__label">{t("البريد الإلكتروني")}</p>
+          <p className="dsv2-metric-card__value">{profile.email ? t("مرتبط") : t("غير مسجل")}</p>
+          <p className="dsv2-metric-card__meta">{t("يُعرض فقط ولا يُعدل هنا")}</p>
         </article>
 
         <article className="dsv2-metric-card">
-          <p className="dsv2-metric-card__label">الصورة الشخصية</p>
-          <p className="dsv2-metric-card__value">{profile.photoURL ? "مضافة" : "اختيارية"}</p>
-          <p className="dsv2-metric-card__meta">رابط صورة الحساب</p>
+          <p className="dsv2-metric-card__label">{t("الصورة الشخصية")}</p>
+          <p className="dsv2-metric-card__value">{profile.photoURL ? t("مضافة") : t("اختيارية")}</p>
+          <p className="dsv2-metric-card__meta">{t("رابط صورة الحساب")}</p>
         </article>
       </section>
 
@@ -268,16 +270,16 @@ const DashboardAdminProfile: React.FC = () => {
         <header className="admin-profile-v2-panel__head">
           <div>
             <span className="admin-profile-v2-panel__eyebrow">01</span>
-            <h2>بيانات الحساب</h2>
-            <p>يمكن تعديل الاسم والجوال والصورة فقط. البريد والدور يبقيان للعرض من مصدر الهوية الحالي.</p>
+            <h2>{t("بيانات الحساب")}</h2>
+            <p>{t("يمكن تعديل الاسم والجوال والصورة فقط. البريد والدور يبقيان للعرض من مصدر الهوية الحالي.")}</p>
           </div>
           <span className={`dsv2-badge ${docExists ? "dsv2-badge--success" : "dsv2-badge--danger"}`}>
-            {docExists ? "جاهز للحفظ" : "الحفظ متوقف"}
+            {docExists ? t("جاهز للحفظ") : t("الحفظ متوقف")}
           </span>
         </header>
 
         <div className="admin-profile-v2-form">
-          <DashboardFieldV2 id="admin-profile-name" label="الاسم">
+          <DashboardFieldV2 id="admin-profile-name" label={t("الاسم")}>
             <input
               id="admin-profile-name"
               className="dsv2-input"
@@ -288,7 +290,7 @@ const DashboardAdminProfile: React.FC = () => {
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="admin-profile-phone" label="رقم الجوال">
+          <DashboardFieldV2 id="admin-profile-phone" label={t("رقم الجوال")}>
             <input
               id="admin-profile-phone"
               className="dsv2-input"
@@ -300,7 +302,7 @@ const DashboardAdminProfile: React.FC = () => {
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="admin-profile-email" label="البريد الإلكتروني">
+          <DashboardFieldV2 id="admin-profile-email" label={t("البريد الإلكتروني")}>
             <input
               id="admin-profile-email"
               className="dsv2-input"
@@ -310,7 +312,7 @@ const DashboardAdminProfile: React.FC = () => {
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="admin-profile-role" label="الدور">
+          <DashboardFieldV2 id="admin-profile-role" label={t("الدور")}>
             <input
               id="admin-profile-role"
               className="dsv2-input"
@@ -319,7 +321,7 @@ const DashboardAdminProfile: React.FC = () => {
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="admin-profile-photo" label="رابط الصورة الشخصية">
+          <DashboardFieldV2 id="admin-profile-photo" label={t("رابط الصورة الشخصية")}>
             <input
               id="admin-profile-photo"
               className="dsv2-input"
@@ -333,21 +335,21 @@ const DashboardAdminProfile: React.FC = () => {
         </div>
 
         <div className="admin-profile-v2-source">
-          <span>مسار ملف الحساب</span>
+          <span>{t("مسار ملف الحساب")}</span>
           <code dir="ltr">Core D1 · app_users/{accountId || "—"}</code>
         </div>
 
         {!docExists ? (
           <div className="admin-profile-v2-note" role="alert">
-            لم يتم تفعيل الحفظ لأن حساب المستخدم غير موجود في Core D1.
+            {t("لم يتم تفعيل الحفظ لأن حساب المستخدم غير موجود في Core D1.")}
           </div>
         ) : null}
       </section>
 
       <section className="dsv2-card dsv2-card--padded admin-profile-v2-savebar">
         <div className="admin-profile-v2-savebar__copy">
-          <strong>حفظ الملف الشخصي</strong>
-          <p>يحفظ الاسم والجوال ورابط الصورة ثم يحدّث بيانات الجلسة المحلية المستخدمة في لوحة التحكم.</p>
+          <strong>{t("حفظ الملف الشخصي")}</strong>
+          <p>{t("يحفظ الاسم والجوال ورابط الصورة ثم يحدّث بيانات الجلسة المحلية المستخدمة في لوحة التحكم.")}</p>
           {msg ? (
             <span className={`admin-profile-v2-message ${messageTone}`} role={messageTone === "is-error" ? "alert" : "status"}>
               {msg}
@@ -360,9 +362,9 @@ const DashboardAdminProfile: React.FC = () => {
           type="button"
           onClick={handleSave}
           disabled={saving || !docExists}
-          title={!docExists ? "حساب Core غير موجود" : "حفظ الملف الشخصي"}
+          title={!docExists ? t("حساب Core غير موجود") : t("حفظ الملف الشخصي")}
         >
-          {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+          {saving ? t("جاري الحفظ...") : t("حفظ التغييرات")}
         </button>
       </section>
     </main>

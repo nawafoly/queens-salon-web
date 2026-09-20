@@ -2967,7 +2967,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   }
                 />
 
-                <Route path="admin-profile" element={<PermissionRoute permission="workspace.dashboard.view"><DashboardAdminProfile /></PermissionRoute>} />
+                <Route path="admin-profile" element={<PermissionRoute permission="workspace.dashboard.view"><DashboardAdminProfile language={dashboardLanguage} /></PermissionRoute>} />
                 <Route
                   path="design-system-v2"
                   element={
