@@ -27,6 +27,7 @@ import {
   type PackageSessionDashboardTransaction,
 } from "../../services/PackageOperationsService";
 import { CoreClientService } from "../../services/CoreClientService";
+import { bookingsText, type DashboardLanguage } from "../../helpers/dashboardBookingsLanguage";
 
 type SessionsTab = "overview" | "subscribers" | "packages" | "ledger" | "expiring";
 
@@ -46,20 +47,20 @@ const EMPTY_DASHBOARD: PackageSessionDashboardResult = {
   transactions: [],
 };
 
-function dateText(value: string) {
+function dateText(value: string, language: DashboardLanguage = "ar") {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(timestamp));
 }
 
-function dateTimeText(value: string) {
+function dateTimeText(value: string, language: DashboardLanguage = "ar") {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -68,15 +69,15 @@ function dateTimeText(value: string) {
   }).format(new Date(timestamp));
 }
 
-function statusLabel(status: string) {
-  if (status === "active") return "نشطة";
-  if (status === "exhausted") return "مستنفدة";
-  if (status === "expired") return "منتهية";
-  if (status === "cancelled") return "ملغاة";
-  return status || "غير محددة";
+function statusLabel(status: string, language: DashboardLanguage = "ar") {
+  if (status === "active") return bookingsText(language, "نشطة");
+  if (status === "exhausted") return bookingsText(language, "مستنفدة");
+  if (status === "expired") return bookingsText(language, "منتهية");
+  if (status === "cancelled") return bookingsText(language, "ملغاة");
+  return status || bookingsText(language, "غير محددة");
 }
 
-function transactionLabel(type: string) {
+function transactionLabel(type: string, language: DashboardLanguage = "ar") {
   const labels: Record<string, string> = {
     purchase: "شراء باقة",
     reserve: "حجز جلسة",
@@ -89,7 +90,7 @@ function transactionLabel(type: string) {
     admin_grant: "إضافة جلسة يدوية",
     admin_restore: "استرجاع إداري",
   };
-  return labels[type] || type || "حركة جلسة";
+  return labels[type] ? bookingsText(language, labels[type]) : type || bookingsText(language, "حركة جلسة");
 }
 
 function matchesSearch(search: string, values: unknown[]) {
@@ -116,7 +117,8 @@ function packageNeedsAttention(pkg: PackageSessionDashboardPackage) {
   return expiry >= Date.now() && expiry <= Date.now() + 30 * 24 * 60 * 60 * 1000;
 }
 
-export default function PackageSessionsManager() {
+export default function PackageSessionsManager({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => bookingsText(language, text);
   const [activeTab, setActiveTab] = useState<SessionsTab>("overview");
   const [dashboard, setDashboard] = useState<PackageSessionDashboardResult>(EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(true);
@@ -164,7 +166,7 @@ export default function PackageSessionsManager() {
         transactions: Array.isArray(result?.transactions) ? result.transactions : [],
       });
     } catch (loadError: any) {
-      setError(String(loadError?.message || "تعذر تحميل بيانات الباقات والجلسات."));
+      setError(String(loadError?.message || t("تعذر تحميل بيانات الباقات والجلسات.")));
     } finally {
       setLoading(false);
     }
@@ -226,7 +228,7 @@ export default function PackageSessionsManager() {
       const key = pkg.canonicalClientId || `${pkg.phone}:${pkg.clientName}`;
       const current = groups.get(key) || {
         canonicalClientId: pkg.canonicalClientId,
-        clientName: pkg.clientName || "عميلة بدون اسم",
+        clientName: pkg.clientName || t("عميلة بدون اسم"),
         phone: pkg.phone,
         packages: [],
       };
@@ -243,7 +245,7 @@ export default function PackageSessionsManager() {
       row.packageName,
       row.bookingId,
       row.invoiceId,
-      transactionLabel(row.type),
+      transactionLabel(row.type, language),
     ])),
     [dashboard.transactions, search]
   );
@@ -271,15 +273,15 @@ export default function PackageSessionsManager() {
     const sessionsCount = Number(adjustForm.sessionsCount);
     const reason = adjustForm.reason.trim();
     if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
-      setAdjustError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
+      setAdjustError(t("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000."));
       return;
     }
     if (!reason) {
-      setAdjustError("اكتبي سبب التعديل ليظهر في سجل الجلسات.");
+      setAdjustError(t("اكتبي سبب التعديل ليظهر في سجل الجلسات."));
       return;
     }
     if (adjustForm.operation === "subtract" && sessionsCount > adjustPackage.remainingSessions) {
-      setAdjustError("لا يمكن خصم عدد أكبر من الجلسات المتبقية.");
+      setAdjustError(t("لا يمكن خصم عدد أكبر من الجلسات المتبقية."));
       return;
     }
 
@@ -291,7 +293,7 @@ export default function PackageSessionsManager() {
       setAdjustPackage(null);
       await load();
     } catch (error: any) {
-      setAdjustError(String(error?.message || "تعذر تعديل رصيد الجلسات."));
+      setAdjustError(String(error?.message || t("تعذر تعديل رصيد الجلسات.")));
     } finally {
       setAdjustSaving(false);
     }
@@ -312,7 +314,7 @@ export default function PackageSessionsManager() {
     if (!detailsPackage || detailsSaving) return;
     const packageName = detailsForm.packageName.trim();
     if (!packageName) {
-      setDetailsError("اكتبي اسم الباقة.");
+      setDetailsError(t("اكتبي اسم الباقة."));
       return;
     }
     try {
@@ -328,7 +330,7 @@ export default function PackageSessionsManager() {
       setDetailsPackage(null);
       await load();
     } catch (error: any) {
-      setDetailsError(String(error?.message || "تعذر تعديل بيانات الباقة."));
+      setDetailsError(String(error?.message || t("تعذر تعديل بيانات الباقة.")));
     } finally {
       setDetailsSaving(false);
     }
@@ -336,14 +338,16 @@ export default function PackageSessionsManager() {
 
   const deletePackage = async (pkg: PackageSessionDashboardPackage) => {
     if (mutationLoading) return;
-    const ok = window.confirm(`حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
+    const ok = window.confirm(language === "en"
+      ? `Permanently delete package ${pkg.packageName} from Cloudflare D1 along with its movement history?`
+      : `حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
     if (!ok) return;
     try {
       setMutationLoading(true);
       await PackageOperationsService.deleteClientPackage(pkg.id);
       await load();
     } catch (error: any) {
-      window.alert(String(error?.message || "تعذر حذف الباقة."));
+      window.alert(String(error?.message || t("تعذر حذف الباقة.")));
     } finally {
       setMutationLoading(false);
     }
@@ -370,19 +374,19 @@ export default function PackageSessionsManager() {
     const sessionsCount = Number(grantForm.sessionsCount);
 
     if (!clientName) {
-      setGrantError("أدخلي اسم العميلة.");
+      setGrantError(t("أدخلي اسم العميلة."));
       return;
     }
     if (!phone) {
-      setGrantError("أدخلي رقم جوال سعودي صحيح.");
+      setGrantError(t("أدخلي رقم جوال سعودي صحيح."));
       return;
     }
     if (!packageCatalogId) {
-      setGrantError("اختاري الباقة أو الخدمة المرتبطة بالجلسة.");
+      setGrantError(t("اختاري الباقة أو الخدمة المرتبطة بالجلسة."));
       return;
     }
     if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
-      setGrantError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
+      setGrantError(t("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000."));
       return;
     }
 
@@ -395,7 +399,7 @@ export default function PackageSessionsManager() {
       );
       if (exactClients.length > 1) {
         throw new Error(
-          "يوجد أكثر من ملف عميلة بنفس رقم الجوال. يجب دمج الملفات المكررة أولًا."
+          t("يوجد أكثر من ملف عميلة بنفس رقم الجوال. يجب دمج الملفات المكررة أولًا.")
         );
       }
       const client =
@@ -412,10 +416,12 @@ export default function PackageSessionsManager() {
         packageCatalogId,
         sessionsCount,
         expiresAt: grantForm.expiresAt || undefined,
-        reason: grantForm.reason.trim() || "إضافة جلسة للعميلة من لوحة الإدارة",
+        reason: grantForm.reason.trim() || t("إضافة جلسة للعميلة من لوحة الإدارة"),
       });
       setGrantSuccess(
-        `تمت إضافة ${result.sessionsCount} جلسة إلى ${clientName} بنجاح.`
+        language === "en"
+        ? `Added ${result.sessionsCount} session(s) to ${clientName} successfully.`
+        : `تمت إضافة ${result.sessionsCount} جلسة إلى ${clientName} بنجاح.`
       );
       setSearch(phone);
       setActiveTab("packages");
@@ -430,7 +436,7 @@ export default function PackageSessionsManager() {
       });
     } catch (grantCause: any) {
       setGrantError(
-        String(grantCause?.message || "تعذر إضافة الجلسة للعميلة.")
+        String(grantCause?.message || t("تعذر إضافة الجلسة للعميلة."))
       );
     } finally {
       setGrantSaving(false);
@@ -446,26 +452,26 @@ export default function PackageSessionsManager() {
   ];
 
   return (
-    <section className="bk2-sessions-shell" aria-label="إدارة الباقات والجلسات">
+    <section className="bk2-sessions-shell" aria-label={t("إدارة الباقات والجلسات")} dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <div className="bk2-sessions-toolbar">
         <div>
           <span className="bk2-sessions-kicker">Packages D1</span>
-          <h2>الباقات والجلسات</h2>
-          <p>إدارة اشتراكات العميلات، أرصدة الجلسات، والانتهاء وسجل الحركات من مصدر واحد.</p>
+          <h2>{t("الباقات والجلسات")}</h2>
+          <p>{t("إدارة اشتراكات العميلات، أرصدة الجلسات، والانتهاء وسجل الحركات من مصدر واحد.")}</p>
         </div>
         <div className="bk2-sessions-actions">
           <button type="button" className="bk2-sessions-add" onClick={openGrantDialog}>
             <FiPlus />
-            إضافة جلسة لعميلة
+            {t("إضافة جلسة لعميلة")}
           </button>
           <button type="button" className="bk2-sessions-refresh" onClick={() => void load()} disabled={loading}>
             <FiRefreshCw className={loading ? "is-spinning" : ""} />
-            {loading ? "جاري التحديث" : "تحديث البيانات"}
+            {loading ? t("جاري التحديث") : t("تحديث البيانات")}
           </button>
         </div>
       </div>
 
-      <div className="bk2-sessions-tabs" role="tablist" aria-label="أقسام إدارة الجلسات">
+      <div className="bk2-sessions-tabs" role="tablist" aria-label={t("أقسام إدارة الجلسات")}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -484,10 +490,10 @@ export default function PackageSessionsManager() {
         <div className="bk2-sessions-error">
           <FiAlertTriangle />
           <div>
-            <strong>تعذر تحميل الباقات والجلسات</strong>
+            <strong>{t("تعذر تحميل الباقات والجلسات")}</strong>
             <p>{error}</p>
           </div>
-          <button type="button" onClick={() => void load()}>إعادة المحاولة</button>
+          <button type="button" onClick={() => void load()}>{t("إعادة المحاولة")}</button>
         </div>
       ) : null}
 
@@ -497,7 +503,7 @@ export default function PackageSessionsManager() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="ابحثي باسم العميلة أو الجوال أو الباقة أو رقم الحجز..."
+            placeholder={t("ابحثي باسم العميلة أو الجوال أو الباقة أو رقم الحجز...")}
           />
         </label>
       ) : null}
@@ -505,37 +511,37 @@ export default function PackageSessionsManager() {
       {!error && activeTab === "overview" ? (
         <>
           <div className="bk2-session-stats">
-            <article><span><FiUsers /></span><small>العميلات المشتركات</small><strong>{dashboard.summary.subscribedClients}</strong></article>
-            <article><span><FiPackage /></span><small>الباقات النشطة</small><strong>{dashboard.summary.activePackages}</strong></article>
-            <article><span><FiActivity /></span><small>الجلسات المتبقية</small><strong>{dashboard.summary.totalRemainingSessions}</strong></article>
-            <article><span><FiClock /></span><small>الجلسات المستخدمة</small><strong>{dashboard.summary.totalUsedSessions}</strong></article>
-            <article className="is-warning"><span><FiAlertTriangle /></span><small>تحتاج متابعة</small><strong>{dashboard.summary.expiringSoonCount + attentionPackages.filter((pkg) => pkg.remainingSessions <= 2).length}</strong></article>
+            <article><span><FiUsers /></span><small>{t("العميلات المشتركات")}</small><strong>{dashboard.summary.subscribedClients}</strong></article>
+            <article><span><FiPackage /></span><small>{t("الباقات النشطة")}</small><strong>{dashboard.summary.activePackages}</strong></article>
+            <article><span><FiActivity /></span><small>{t("الجلسات المتبقية")}</small><strong>{dashboard.summary.totalRemainingSessions}</strong></article>
+            <article><span><FiClock /></span><small>{t("الجلسات المستخدمة")}</small><strong>{dashboard.summary.totalUsedSessions}</strong></article>
+            <article className="is-warning"><span><FiAlertTriangle /></span><small>{t("تحتاج متابعة")}</small><strong>{dashboard.summary.expiringSoonCount + attentionPackages.filter((pkg) => pkg.remainingSessions <= 2).length}</strong></article>
           </div>
 
           <div className="bk2-session-overview-grid">
             <article className="bk2-session-panel">
-              <header><div><h3>الباقات التي تحتاج متابعة</h3><p>رصيد منخفض أو انتهاء خلال 30 يومًا.</p></div><button type="button" onClick={() => setActiveTab("expiring")}>عرض الكل</button></header>
+              <header><div><h3>{t("الباقات التي تحتاج متابعة")}</h3><p>{t("رصيد منخفض أو انتهاء خلال 30 يومًا.")}</p></div><button type="button" onClick={() => setActiveTab("expiring")}>{t("عرض الكل")}</button></header>
               <div className="bk2-session-compact-list">
                 {attentionPackages.slice(0, 6).map((pkg) => (
                   <button key={pkg.id} type="button" onClick={() => { setSelectedClientId(pkg.canonicalClientId); setActiveTab("subscribers"); }}>
-                    <span><strong>{pkg.clientName || "عميلة بدون اسم"}</strong><small>{pkg.packageName}</small></span>
-                    <em>{pkg.remainingSessions} جلسات</em>
+                    <span><strong>{pkg.clientName || t("عميلة بدون اسم")}</strong><small>{pkg.packageName}</small></span>
+                    <em>{pkg.remainingSessions} {t("جلسات")}</em>
                   </button>
                 ))}
-                {!loading && !attentionPackages.length ? <p className="bk2-session-empty">لا توجد باقات تحتاج متابعة حاليًا.</p> : null}
+                {!loading && !attentionPackages.length ? <p className="bk2-session-empty">{t("لا توجد باقات تحتاج متابعة حاليًا.")}</p> : null}
               </div>
             </article>
 
             <article className="bk2-session-panel">
-              <header><div><h3>آخر حركات الجلسات</h3><p>آخر عمليات الشراء والحجز والاستهلاك والاسترجاع.</p></div><button type="button" onClick={() => setActiveTab("ledger")}>السجل الكامل</button></header>
+              <header><div><h3>{t("آخر حركات الجلسات")}</h3><p>{t("آخر عمليات الشراء والحجز والاستهلاك والاسترجاع.")}</p></div><button type="button" onClick={() => setActiveTab("ledger")}>{t("السجل الكامل")}</button></header>
               <div className="bk2-session-compact-list">
                 {dashboard.transactions.slice(0, 6).map((row) => (
                   <div key={row.id} className="bk2-session-ledger-mini">
-                    <span><strong>{row.clientName || "عميلة بدون اسم"}</strong><small>{transactionLabel(row.type)} · {row.packageName}</small></span>
+                    <span><strong>{row.clientName || t("عميلة بدون اسم")}</strong><small>{transactionLabel(row.type, language)} · {row.packageName}</small></span>
                     <em className={row.sessionsDelta < 0 ? "is-negative" : ""}>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</em>
                   </div>
                 ))}
-                {!loading && !dashboard.transactions.length ? <p className="bk2-session-empty">لا توجد حركات جلسات مسجلة حتى الآن.</p> : null}
+                {!loading && !dashboard.transactions.length ? <p className="bk2-session-empty">{t("لا توجد حركات جلسات مسجلة حتى الآن.")}</p> : null}
               </div>
             </article>
           </div>
@@ -545,7 +551,7 @@ export default function PackageSessionsManager() {
       {!error && activeTab === "subscribers" ? (
         <div className="bk2-session-table-wrap">
           <table className="bk2-session-table">
-            <thead><tr><th>العميلة</th><th>الجوال</th><th>الباقات النشطة</th><th>الإجمالي</th><th>المستخدم</th><th>المتبقي</th><th>المحجوز</th><th>الإجراء</th></tr></thead>
+            <thead><tr><th>{t("العميلة")}</th><th>{t("الجوال")}</th><th>{t("الباقات النشطة")}</th><th>{t("الإجمالي")}</th><th>{t("المستخدم")}</th><th>{t("المتبقي")}</th><th>{t("المحجوز")}</th><th>{t("الإجراء")}</th></tr></thead>
             <tbody>
               {subscriberRows.map((client) => {
                 const totals = client.packages.reduce((acc, pkg) => ({
@@ -559,58 +565,58 @@ export default function PackageSessionsManager() {
                     <td><strong>{client.clientName}</strong><small>{client.canonicalClientId}</small></td>
                     <td dir="ltr">{client.phone || "—"}</td>
                     <td>{client.packages.length}</td><td>{totals.total}</td><td>{totals.used}</td><td><b>{totals.remaining}</b></td><td>{totals.reserved}</td>
-                    <td><button type="button" onClick={() => setSelectedClientId(client.canonicalClientId)}>عرض المحفظة</button></td>
+                    <td><button type="button" onClick={() => setSelectedClientId(client.canonicalClientId)}>{t("عرض المحفظة")}</button></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {!loading && !subscriberRows.length ? <p className="bk2-session-empty">لا توجد عميلات مشتركات مطابقة للبحث.</p> : null}
+          {!loading && !subscriberRows.length ? <p className="bk2-session-empty">{t("لا توجد عميلات مشتركات مطابقة للبحث.")}</p> : null}
         </div>
       ) : null}
 
       {!error && activeTab === "packages" ? (
         <div className="bk2-session-table-wrap">
           <table className="bk2-session-table">
-            <thead><tr><th>العميلة</th><th>الباقة</th><th>الإجمالي</th><th>المستخدم</th><th>المتبقي</th><th>المحجوز</th><th>الانتهاء</th><th>الحالة</th><th>الإجراء</th></tr></thead>
+            <thead><tr><th>{t("العميلة")}</th><th>{t("الباقة")}</th><th>{t("الإجمالي")}</th><th>{t("المستخدم")}</th><th>{t("المتبقي")}</th><th>{t("المحجوز")}</th><th>{t("الانتهاء")}</th><th>{t("الحالة")}</th><th>{t("الإجراء")}</th></tr></thead>
             <tbody>{visiblePackages.map((pkg) => (
               <tr key={pkg.id}>
-                <td><strong>{pkg.clientName || "عميلة بدون اسم"}</strong><small dir="ltr">{pkg.phone || pkg.canonicalClientId}</small></td>
-                <td><strong>{pkg.packageName}</strong><small>{pkg.invoiceId ? `فاتورة ${pkg.invoiceId}` : "بدون رقم فاتورة"}</small></td>
-                <td>{pkg.totalSessions}</td><td>{pkg.usedSessions}</td><td><b>{pkg.remainingSessions}</b></td><td>{pkg.reservedSessions}</td><td>{dateText(pkg.expiresAt)}</td>
-                <td><span className={`bk2-session-status is-${pkg.status}`}>{statusLabel(pkg.status)}</span></td>
+                <td><strong>{pkg.clientName || t("عميلة بدون اسم")}</strong><small dir="ltr">{pkg.phone || pkg.canonicalClientId}</small></td>
+                <td><strong>{pkg.packageName}</strong><small>{pkg.invoiceId ? `${t("فاتورة")} ${pkg.invoiceId}` : t("بدون رقم فاتورة")}</small></td>
+                <td>{pkg.totalSessions}</td><td>{pkg.usedSessions}</td><td><b>{pkg.remainingSessions}</b></td><td>{pkg.reservedSessions}</td><td>{dateText(pkg.expiresAt, language)}</td>
+                <td><span className={`bk2-session-status is-${pkg.status}`}>{statusLabel(pkg.status, language)}</span></td>
                 <td>
                   <div className="bk2-session-row-actions">
                     <button type="button" className="is-adjust" onClick={() => openAdjustmentDialog(pkg)} disabled={mutationLoading || adjustSaving}>
-                      <FiActivity /> تعديل الجلسات
+                      <FiActivity /> {t("تعديل الجلسات")}
                     </button>
                     <button type="button" onClick={() => openPackageDetailsDialog(pkg)} disabled={mutationLoading || detailsSaving}>
-                      <FiEdit3 /> بيانات الباقة
+                      <FiEdit3 /> {t("بيانات الباقة")}
                     </button>
                     <button type="button" className="is-delete" onClick={() => void deletePackage(pkg)} disabled={mutationLoading}>
-                      <FiTrash2 /> حذف
+                      <FiTrash2 /> {t("حذف")}
                     </button>
                   </div>
                 </td>
               </tr>
             ))}</tbody>
           </table>
-          {!loading && !visiblePackages.length ? <p className="bk2-session-empty">لا توجد باقات مطابقة للبحث.</p> : null}
+          {!loading && !visiblePackages.length ? <p className="bk2-session-empty">{t("لا توجد باقات مطابقة للبحث.")}</p> : null}
         </div>
       ) : null}
 
       {!error && activeTab === "ledger" ? (
         <div className="bk2-session-table-wrap">
           <table className="bk2-session-table">
-            <thead><tr><th>التاريخ</th><th>العميلة</th><th>الباقة</th><th>نوع الحركة</th><th>التغير</th><th>الرصيد قبل</th><th>الرصيد بعد</th><th>رقم الحجز</th></tr></thead>
+            <thead><tr><th>{t("التاريخ")}</th><th>{t("العميلة")}</th><th>{t("الباقة")}</th><th>{t("نوع الحركة")}</th><th>{t("التغير")}</th><th>{t("الرصيد قبل")}</th><th>{t("الرصيد بعد")}</th><th>{t("رقم الحجز")}</th></tr></thead>
             <tbody>{visibleTransactions.map((row: PackageSessionDashboardTransaction) => (
               <tr key={row.id}>
-                <td>{dateTimeText(row.createdAt)}</td><td><strong>{row.clientName || "عميلة بدون اسم"}</strong><small dir="ltr">{row.phone || row.canonicalClientId}</small></td><td>{row.packageName || "—"}</td><td>{transactionLabel(row.type)}</td>
+                <td>{dateTimeText(row.createdAt, language)}</td><td><strong>{row.clientName || "عميلة بدون اسم"}</strong><small dir="ltr">{row.phone || row.canonicalClientId}</small></td><td>{row.packageName || "—"}</td><td>{transactionLabel(row.type, language)}</td>
                 <td><b className={row.sessionsDelta < 0 ? "bk2-session-negative" : "bk2-session-positive"}>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</b></td><td>{row.remainingBefore}</td><td>{row.remainingAfter}</td><td dir="ltr">{row.bookingId || "—"}</td>
               </tr>
             ))}</tbody>
           </table>
-          {!loading && !visibleTransactions.length ? <p className="bk2-session-empty">لا توجد حركات مطابقة للبحث.</p> : null}
+          {!loading && !visibleTransactions.length ? <p className="bk2-session-empty">{t("لا توجد حركات مطابقة للبحث.")}</p> : null}
         </div>
       ) : null}
 
@@ -618,21 +624,21 @@ export default function PackageSessionsManager() {
         <div className="bk2-session-attention-grid">
           {attentionPackages.map((pkg) => (
             <article key={pkg.id}>
-              <header><span><FiAlertTriangle /></span><div><strong>{pkg.clientName || "عميلة بدون اسم"}</strong><small dir="ltr">{pkg.phone || pkg.canonicalClientId}</small></div></header>
+              <header><span><FiAlertTriangle /></span><div><strong>{pkg.clientName || t("عميلة بدون اسم")}</strong><small dir="ltr">{pkg.phone || pkg.canonicalClientId}</small></div></header>
               <h3>{pkg.packageName}</h3>
-              <dl><div><dt>المتبقي</dt><dd>{pkg.remainingSessions} من {pkg.totalSessions}</dd></div><div><dt>تاريخ الانتهاء</dt><dd>{dateText(pkg.expiresAt)}</dd></div></dl>
-              <button type="button" onClick={() => { setSelectedClientId(pkg.canonicalClientId); setActiveTab("subscribers"); }}>فتح محفظة العميلة</button>
+              <dl><div><dt>{t("المتبقي")}</dt><dd>{pkg.remainingSessions} {t("من")} {pkg.totalSessions}</dd></div><div><dt>{t("تاريخ الانتهاء")}</dt><dd>{dateText(pkg.expiresAt, language)}</dd></div></dl>
+              <button type="button" onClick={() => { setSelectedClientId(pkg.canonicalClientId); setActiveTab("subscribers"); }}>{t("فتح محفظة العميلة")}</button>
             </article>
           ))}
-          {!loading && !attentionPackages.length ? <p className="bk2-session-empty">لا توجد باقات تحتاج متابعة.</p> : null}
+          {!loading && !attentionPackages.length ? <p className="bk2-session-empty">{t("لا توجد باقات تحتاج متابعة.")}</p> : null}
         </div>
       ) : null}
 
       <DashboardDrawerV2
         open={Boolean(selectedClientId)}
         onClose={() => setSelectedClientId("")}
-        eyebrow="محفظة الجلسات"
-        title={selectedClientPackages[0]?.clientName || "محفظة العميلة"}
+        eyebrow={t("محفظة الجلسات")}
+        title={selectedClientPackages[0]?.clientName || t("محفظة العميلة")}
         description={<span dir="ltr">{selectedClientPackages[0]?.phone || selectedClientId}</span>}
         size="md"
         side="end"
@@ -640,24 +646,24 @@ export default function PackageSessionsManager() {
       >
         <div className="bk2-session-wallet-packages">
           {selectedClientPackages.map((pkg) => (
-            <article key={pkg.id}><div><strong>{pkg.packageName}</strong><small>{statusLabel(pkg.status)} · تنتهي {dateText(pkg.expiresAt)}</small></div><b>{pkg.remainingSessions}<small> جلسات</small></b></article>
+            <article key={pkg.id}><div><strong>{pkg.packageName}</strong><small>{statusLabel(pkg.status, language)} · تنتهي {dateText(pkg.expiresAt, language)}</small></div><b>{pkg.remainingSessions}<small> {t("جلسات")}</small></b></article>
           ))}
         </div>
-        <h4 className="bk2-session-wallet-heading">آخر الحركات</h4>
+        <h4 className="bk2-session-wallet-heading">{t("آخر الحركات")}</h4>
         <div className="bk2-session-wallet-ledger">
           {selectedClientTransactions.slice(0, 12).map((row) => (
-            <div key={row.id}><span><strong>{transactionLabel(row.type)}</strong><small>{dateTimeText(row.createdAt)}</small></span><b>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</b></div>
+            <div key={row.id}><span><strong>{transactionLabel(row.type, language)}</strong><small>{dateTimeText(row.createdAt, language)}</small></span><b>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</b></div>
           ))}
-          {!selectedClientTransactions.length ? <p>لا توجد حركات مسجلة.</p> : null}
+          {!selectedClientTransactions.length ? <p>{t("لا توجد حركات مسجلة.")}</p> : null}
         </div>
       </DashboardDrawerV2>
 
       <DashboardModalV2
         open={Boolean(adjustPackage)}
         onClose={() => { if (!adjustSaving) setAdjustPackage(null); }}
-        eyebrow="إدارة الرصيد"
-        title="تعديل جلسات الباقة"
-        description="التعديل يطبّق على الباقة الحالية فقط، ويُحفظ كحركة إدارية في سجل الجلسات."
+        eyebrow={t("إدارة الرصيد")}
+        title={t("تعديل جلسات الباقة")}
+        description={t("التعديل يطبّق على الباقة الحالية فقط، ويُحفظ كحركة إدارية في سجل الجلسات.")}
         size="md"
         tone="success"
         closeOnBackdrop={!adjustSaving}
@@ -665,9 +671,9 @@ export default function PackageSessionsManager() {
         className="bk2-session-v2-modal"
         footer={adjustPackage ? (
           <div className="bk2-session-v2-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setAdjustPackage(null)} disabled={adjustSaving}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setAdjustPackage(null)} disabled={adjustSaving}>{t("إلغاء")}</button>
             <button type="submit" form="bk2-adjust-sessions-form" className="dsv2-btn dsv2-btn--primary" disabled={adjustSaving}>
-              {adjustSaving ? "جاري الحفظ..." : "حفظ تعديل الجلسات"}
+              {adjustSaving ? t("جاري الحفظ...") : t("حفظ تعديل الجلسات")}
             </button>
           </div>
         ) : null}
@@ -675,21 +681,21 @@ export default function PackageSessionsManager() {
         {adjustPackage ? (
           <form id="bk2-adjust-sessions-form" className="bk2-session-v2-form" onSubmit={submitAdjustment}>
             <dl className="bk2-session-adjust-summary">
-              <div><dt>العميلة</dt><dd>{adjustPackage.clientName || "عميلة بدون اسم"}</dd></div>
-              <div><dt>الجوال</dt><dd dir="ltr">{adjustPackage.phone || "—"}</dd></div>
-              <div><dt>الباقة</dt><dd>{adjustPackage.packageName}</dd></div>
-              <div><dt>الرصيد الحالي</dt><dd>{adjustPackage.remainingSessions} جلسات</dd></div>
-              <div><dt>المحجوز</dt><dd>{adjustPackage.reservedSessions} جلسات</dd></div>
+              <div><dt>{t("العميلة")}</dt><dd>{adjustPackage.clientName || "عميلة بدون اسم"}</dd></div>
+              <div><dt>{t("الجوال")}</dt><dd dir="ltr">{adjustPackage.phone || "—"}</dd></div>
+              <div><dt>{t("الباقة")}</dt><dd>{adjustPackage.packageName}</dd></div>
+              <div><dt>{t("الرصيد الحالي")}</dt><dd>{adjustPackage.remainingSessions} {t("جلسات")}</dd></div>
+              <div><dt>{t("المحجوز")}</dt><dd>{adjustPackage.reservedSessions} {t("جلسات")}</dd></div>
             </dl>
 
-            <div className="bk2-session-adjust-operation" role="group" aria-label="نوع التعديل">
+            <div className="bk2-session-adjust-operation" role="group" aria-label={t("نوع التعديل")}>
               <button
                 type="button"
                 className={adjustForm.operation === "add" ? "is-active" : ""}
                 onClick={() => setAdjustForm((current) => ({ ...current, operation: "add" }))}
                 disabled={adjustSaving}
               >
-                <FiPlus /> إضافة جلسات
+                <FiPlus /> {t("إضافة جلسات")}
               </button>
               <button
                 type="button"
@@ -697,13 +703,13 @@ export default function PackageSessionsManager() {
                 onClick={() => setAdjustForm((current) => ({ ...current, operation: "subtract" }))}
                 disabled={adjustSaving}
               >
-                <FiMinus /> خصم جلسات
+                <FiMinus /> {t("خصم جلسات")}
               </button>
             </div>
 
             <div className="bk2-session-grant-grid bk2-session-adjust-fields">
               <label>
-                <span>عدد الجلسات *</span>
+                <span>{t("عدد الجلسات")} *</span>
                 <DashboardNumberInputV2
                   autoFocus
                   min={1}
@@ -714,12 +720,12 @@ export default function PackageSessionsManager() {
                 />
               </label>
               <label className="is-wide">
-                <span>سبب التعديل *</span>
+                <span>{t("سبب التعديل")} *</span>
                 <textarea
                   rows={3}
                   value={adjustForm.reason}
                   onChange={(event) => setAdjustForm((current) => ({ ...current, reason: event.target.value }))}
-                  placeholder="مثال: تعويض جلسة أو تصحيح رصيد"
+                  placeholder={t("مثال: تعويض جلسة أو تصحيح رصيد")}
                   disabled={adjustSaving}
                 />
               </label>
@@ -732,9 +738,9 @@ export default function PackageSessionsManager() {
               const after = Math.max(0, adjustPackage.remainingSessions + delta);
               return (
                 <div className={`bk2-session-balance-preview ${adjustForm.operation === "subtract" ? "is-subtract" : ""}`}>
-                  <span><small>الرصيد الحالي</small><strong>{adjustPackage.remainingSessions}</strong></span>
+                  <span><small>{t("الرصيد الحالي")}</small><strong>{adjustPackage.remainingSessions}</strong></span>
                   <b>{delta > 0 ? `+${delta}` : delta}</b>
-                  <span><small>الرصيد بعد التعديل</small><strong>{after}</strong></span>
+                  <span><small>{t("الرصيد بعد التعديل")}</small><strong>{after}</strong></span>
                 </div>
               );
             })()}
@@ -747,18 +753,18 @@ export default function PackageSessionsManager() {
       <DashboardModalV2
         open={Boolean(detailsPackage)}
         onClose={() => { if (!detailsSaving) setDetailsPackage(null); }}
-        eyebrow="بيانات الباقة"
-        title="تعديل بيانات الباقة"
-        description="عدّلي اسم الباقة أو تاريخ الانتهاء فقط. رصيد الجلسات له إجراء مستقل ومحفوظ في السجل."
+        eyebrow={t("بيانات الباقة")}
+        title={t("تعديل بيانات الباقة")}
+        description={t("عدّلي اسم الباقة أو تاريخ الانتهاء فقط. رصيد الجلسات له إجراء مستقل ومحفوظ في السجل.")}
         size="sm"
         closeOnBackdrop={!detailsSaving}
         closeOnEscape={!detailsSaving}
         className="bk2-session-v2-modal"
         footer={detailsPackage ? (
           <div className="bk2-session-v2-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>{t("إلغاء")}</button>
             <button type="submit" form="bk2-package-details-form" className="dsv2-btn dsv2-btn--primary" disabled={detailsSaving}>
-              {detailsSaving ? "جاري الحفظ..." : "حفظ بيانات الباقة"}
+              {detailsSaving ? t("جاري الحفظ...") : t("حفظ بيانات الباقة")}
             </button>
           </div>
         ) : null}
@@ -767,7 +773,7 @@ export default function PackageSessionsManager() {
           <form id="bk2-package-details-form" className="bk2-session-v2-form" onSubmit={submitPackageDetails}>
             <div className="bk2-session-grant-grid">
               <label className="is-wide">
-                <span>اسم الباقة *</span>
+                <span>{t("اسم الباقة")} *</span>
                 <input
                   autoFocus
                   value={detailsForm.packageName}
@@ -776,7 +782,7 @@ export default function PackageSessionsManager() {
                 />
               </label>
               <div className="bk2-session-v2-field is-wide">
-                <span>تاريخ الانتهاء</span>
+                <span>{t("تاريخ الانتهاء")}</span>
                 <DashboardDatePickerV2
                   value={detailsForm.expiresAt}
                   onChange={(value) => setDetailsForm((current) => ({ ...current, expiresAt: value }))}
@@ -793,9 +799,9 @@ export default function PackageSessionsManager() {
       <DashboardModalV2
         open={grantOpen}
         onClose={() => { if (!grantSaving) setGrantOpen(false); }}
-        eyebrow="جلسة يدوية"
-        title="إضافة جلسة لعميلة"
-        description="أدخلي بيانات العميلة وحددي الباقة وعدد الجلسات. إذا لم يكن لها ملف، سيتم إنشاؤه تلقائيًا داخل Core D1."
+        eyebrow={t("جلسة يدوية")}
+        title={t("إضافة جلسة لعميلة")}
+        description={t("أدخلي بيانات العميلة وحددي الباقة وعدد الجلسات. إذا لم يكن لها ملف، سيتم إنشاؤه تلقائيًا داخل Core D1.")}
         size="lg"
         tone="success"
         closeOnBackdrop={!grantSaving}
@@ -803,9 +809,9 @@ export default function PackageSessionsManager() {
         className="bk2-session-v2-modal bk2-session-v2-modal--grant"
         footer={(
           <div className="bk2-session-v2-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setGrantOpen(false)} disabled={grantSaving}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setGrantOpen(false)} disabled={grantSaving}>{t("إلغاء")}</button>
             <button type="submit" form="bk2-grant-session-form" className="dsv2-btn dsv2-btn--primary" disabled={grantSaving || !catalog.length}>
-              {grantSaving ? "جاري الإضافة..." : "حفظ وإضافة الجلسة"}
+              {grantSaving ? t("جاري الإضافة...") : t("حفظ وإضافة الجلسة")}
             </button>
           </div>
         )}
@@ -813,7 +819,7 @@ export default function PackageSessionsManager() {
         <form id="bk2-grant-session-form" className="bk2-session-v2-form" onSubmit={submitGrant}>
           <div className="bk2-session-grant-grid">
             <label>
-              <span>اسم العميلة *</span>
+              <span>{t("اسم العميلة")} *</span>
               <input
                 autoFocus
                 value={grantForm.clientName}
@@ -823,13 +829,13 @@ export default function PackageSessionsManager() {
                     clientName: event.target.value,
                   }))
                 }
-                placeholder="مثال: غادة العليان"
+                placeholder={t("مثال: غادة العليان")}
                 disabled={grantSaving}
               />
             </label>
 
             <label>
-              <span>رقم الجوال *</span>
+              <span>{t("رقم الجوال")} *</span>
               <input
                 dir="ltr"
                 inputMode="tel"
@@ -846,14 +852,14 @@ export default function PackageSessionsManager() {
             </label>
 
             <div className="bk2-session-v2-field is-wide">
-              <span>الباقة أو الخدمة المرتبطة *</span>
+              <span>{t("الباقة أو الخدمة المرتبطة")} *</span>
               <DashboardSelectV2
                 value={grantForm.packageCatalogId}
                 options={catalog.map((item) => ({
                   value: item.id,
-                  label: `${item.name} · ${item.sessionsCount} جلسات في الكتالوج`,
+                  label: `${item.name} · ${item.sessionsCount} ${t("جلسات في الكتالوج")}`,
                 }))}
-                placeholder={catalog.length ? "اختاري الباقة أو الخدمة" : "لا توجد باقات نشطة"}
+                placeholder={catalog.length ? t("اختاري الباقة أو الخدمة") : t("لا توجد باقات نشطة")}
                 disabled={grantSaving || !catalog.length}
                 className="bk2-session-v2-control"
                 onChange={(value) =>
@@ -866,7 +872,7 @@ export default function PackageSessionsManager() {
             </div>
 
             <label>
-              <span>عدد الجلسات المراد إضافتها *</span>
+              <span>{t("عدد الجلسات المراد إضافتها")} *</span>
               <DashboardNumberInputV2
                 min={1}
                 max={1000}
@@ -882,7 +888,7 @@ export default function PackageSessionsManager() {
             </label>
 
             <div className="bk2-session-v2-field">
-              <span>تاريخ الانتهاء</span>
+              <span>{t("تاريخ الانتهاء")}</span>
               <DashboardDatePickerV2
                 value={grantForm.expiresAt}
                 onChange={(value) =>
@@ -897,7 +903,7 @@ export default function PackageSessionsManager() {
             </div>
 
             <label className="is-wide">
-              <span>ملاحظة</span>
+              <span>{t("ملاحظة")}</span>
               <textarea
                 rows={3}
                 value={grantForm.reason}
@@ -907,7 +913,7 @@ export default function PackageSessionsManager() {
                     reason: event.target.value,
                   }))
                 }
-                placeholder="سبب الإضافة أو أي ملاحظة داخلية"
+                placeholder={t("سبب الإضافة أو أي ملاحظة داخلية")}
                 disabled={grantSaving}
               />
             </label>
@@ -922,7 +928,7 @@ export default function PackageSessionsManager() {
         </form>
       </DashboardModalV2>
 
-      {loading && !dashboard.packages.length ? <div className="bk2-session-loading">جاري تحميل بيانات الباقات والجلسات...</div> : null}
+      {loading && !dashboard.packages.length ? <div className="bk2-session-loading">{t("جاري تحميل بيانات الباقات والجلسات...")}</div> : null}
     </section>
   );
 }

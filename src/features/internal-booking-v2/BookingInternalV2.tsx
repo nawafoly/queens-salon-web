@@ -25,6 +25,7 @@ import {
 } from "../../helpers/bookingDiscountSnapshot";
 import { getAuth } from "firebase/auth";
 import { formatBookingReference } from "../../helpers/bookingReference";
+import { bookingsText, type DashboardLanguage } from "../../helpers/dashboardBookingsLanguage";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -339,14 +340,14 @@ function staffId(staff: any) {
   return String(staff?.id || staff?.employeeId || staff?.uid || "").trim();
 }
 
-function offerValueLabel(offer: CoreDiscount) {
+function offerValueLabel(offer: CoreDiscount, language: DashboardLanguage = "ar") {
   const type = String((offer as any)?.discountType || (offer as any)?.type || "").trim();
   const value = Number((offer as any)?.value || 0);
   if (type === "percent") return `${value}%`;
-  return `${value.toLocaleString("ar-SA-u-nu-latn")} ر.س`;
+  return `${value.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
-function discountReasonText(reason: string) {
+function discountReasonText(reason: string, language: DashboardLanguage = "ar") {
   const map: Record<string, string> = {
     discount_inactive: "الخصم غير نشط.",
     discount_expired_or_not_started: "الخصم خارج فترة الصلاحية.",
@@ -358,7 +359,7 @@ function discountReasonText(reason: string) {
     discount_percent_over_100: "النسبة لا يمكن أن تتجاوز 100%.",
     discount_zero: "الخصم الناتج يساوي صفر.",
   };
-  return map[reason] || reason || "";
+  return map[reason] ? bookingsText(language, map[reason]) : reason || "";
 }
 
 const steps = [
@@ -368,7 +369,11 @@ const steps = [
   { id: 4 as const, title: "الدفع", subtitle: "المراجعة والدفع", icon: FiCreditCard },
 ];
 
-export default function BookingInternalV2() {
+export default function BookingInternalV2({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => bookingsText(language, text);
+  const locale = language === "en" ? "en-US" : "ar-SA-u-nu-latn";
+  const currency = language === "en" ? "SAR" : "ر.س";
+  const money = (value: number) => `${Number(value || 0).toLocaleString(locale)} ${currency}`;
   const [step, setStep] = useState<Step>(1);
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [query, setQuery] = useState("");
@@ -492,7 +497,7 @@ export default function BookingInternalV2() {
           console.error("[BookingInternalV2] client phone dedup lookup failed", error);
           if (lookupSeq !== newClientLookupSeq.current) return;
           setExistingClientMatch(null);
-          setExistingClientLookupError("تعذر التحقق من رقم الجوال. لن يتم إنشاء سجل جديد قبل نجاح التحقق.");
+          setExistingClientLookupError(t("تعذر التحقق من رقم الجوال. لن يتم إنشاء سجل جديد قبل نجاح التحقق."));
         } finally {
           if (lookupSeq === newClientLookupSeq.current) setExistingClientChecking(false);
         }
@@ -500,14 +505,14 @@ export default function BookingInternalV2() {
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [showNewClient, newClientPhone, findExistingClientByPhone]);
+  }, [showNewClient, newClientPhone, findExistingClientByPhone, language]);
 
   const createNewClient = useCallback(async () => {
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
-    if (name.length < 2) { setNewClientError("اكتبي اسم العميلة كاملًا."); return; }
-    if (!phone || phone.length !== 10) { setNewClientError("أدخلي رقم جوال سعودي صحيح من 10 أرقام."); return; }
+    if (name.length < 2) { setNewClientError(t("اكتبي اسم العميلة كاملًا.")); return; }
+    if (!phone || phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
 
     setCreatingClient(true);
     setExistingClientChecking(true);
@@ -520,7 +525,7 @@ export default function BookingInternalV2() {
       const existing = await findExistingClientByPhone(phone);
       if (existing) {
         setExistingClientMatch(existing);
-        setClientMessage("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة.");
+        setClientMessage(t("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة."));
         return;
       }
 
@@ -530,22 +535,22 @@ export default function BookingInternalV2() {
         email: email || undefined,
       });
       const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
-      chooseClientForBooking(candidate, "تم اختيار العميلة للحجز بنجاح.");
+      chooseClientForBooking(candidate, t("تم اختيار العميلة للحجز بنجاح."));
     } catch (error: any) {
       console.error("[BookingInternalV2] client create/dedup check failed", error);
       const code = String(error?.code || "").toLowerCase();
       if (code === "core_api:offline" || code === "core_api:network_unavailable" || code === "core_api:timeout") {
-        setNewClientError("غير متصل بالإنترنت. لم يتم إنشاء العميلة. أعيدي الاتصال ثم حاولي مرة أخرى.");
+        setNewClientError(t("غير متصل بالإنترنت. لم يتم إنشاء العميلة. أعيدي الاتصال ثم حاولي مرة أخرى."));
       } else if (code === "core_api:write_outcome_unknown") {
-        setNewClientError("انقطع الاتصال أثناء حفظ العميلة. النتيجة غير مؤكدة؛ أعيدي الاتصال وابحثي برقم الجوال قبل إعادة المحاولة.");
+        setNewClientError(t("انقطع الاتصال أثناء حفظ العميلة. النتيجة غير مؤكدة؛ أعيدي الاتصال وابحثي برقم الجوال قبل إعادة المحاولة."));
       } else {
-        setNewClientError("تعذر التحقق من رقم الجوال أو حفظ العميلة. حاولي مرة أخرى.");
+        setNewClientError(t("تعذر التحقق من رقم الجوال أو حفظ العميلة. حاولي مرة أخرى."));
       }
     } finally {
       setExistingClientChecking(false);
       setCreatingClient(false);
     }
-  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking]);
+  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
@@ -570,7 +575,7 @@ export default function BookingInternalV2() {
       seen.add(identity);
       found.push({
         id: String(raw?.id || `${source}:${makeLocalId()}`),
-        name: name || "بدون اسم",
+        name: name || t("بدون اسم"),
         phone,
         publicId,
         source: String(raw?.source || source),
@@ -583,15 +588,15 @@ export default function BookingInternalV2() {
       const rows = await resolveCoreBookingDataSource().searchClients(qRaw);
       (Array.isArray(rows) ? rows : []).forEach((row: any) => push(row, "core_d1"));
       setClients(found.slice(0, 25));
-      setClientMessage(found.length ? `تم العثور على ${found.length} نتيجة.` : "لم يتم العثور على عميلة مطابقة.");
+      setClientMessage(found.length ? (language === "en" ? `${found.length} result(s) found.` : `تم العثور على ${found.length} نتيجة.`) : t("لم يتم العثور على عميلة مطابقة."));
     } catch (error) {
       console.error("[BookingInternalV2] client search failed", error);
       setClients([]);
-      setClientMessage("تعذر جلب بيانات العميلات من السيرفر.");
+      setClientMessage(t("تعذر جلب بيانات العميلات من السيرفر."));
     } finally {
       setClientSearching(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -614,7 +619,7 @@ export default function BookingInternalV2() {
         console.error("[BookingInternalV2] settings load failed", error);
         if (!cancelled) {
           setSettingsReady(false);
-          setScheduleMessage("تعذر تحميل إعدادات الحجز من Core D1. أعيدي المحاولة قبل حفظ الحجز.");
+          setScheduleMessage(t("تعذر تحميل إعدادات الحجز من Core D1. أعيدي المحاولة قبل حفظ الحجز."));
         }
       }
     }
@@ -636,12 +641,12 @@ export default function BookingInternalV2() {
           .filter((offer) => isCoreOfferActiveNow(offer))
           .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
         setOffers(activeRows);
-        if (!activeRows.length) setOffersMessage("لا توجد عروض نشطة حالياً.");
+        if (!activeRows.length) setOffersMessage(t("لا توجد عروض نشطة حالياً."));
       } catch (error) {
         console.error("[BookingInternalV2] offers load failed", error);
         if (!cancelled) {
           setOffers([]);
-          setOffersMessage("تعذر جلب العروض النشطة.");
+          setOffersMessage(t("تعذر جلب العروض النشطة."));
         }
       } finally {
         if (!cancelled) setOffersLoading(false);
@@ -662,10 +667,10 @@ export default function BookingInternalV2() {
         const safe = Array.isArray(rows) ? (rows as CatalogSection[]) : [];
         setSections(safe);
         setSelectedSectionId((current) => current || String(safe[0]?.id || ""));
-        if (!safe.length) setCatalogMessage("لا توجد أقسام خدمات نشطة.");
+        if (!safe.length) setCatalogMessage(t("لا توجد أقسام خدمات نشطة."));
       } catch (error) {
         console.error("[BookingInternalV2] sections load failed", error);
-        if (!cancelled) setCatalogMessage("تعذر جلب قائمة الخدمات من السيرفر.");
+        if (!cancelled) setCatalogMessage(t("تعذر جلب قائمة الخدمات من السيرفر."));
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
@@ -698,7 +703,7 @@ export default function BookingInternalV2() {
         if (!cancelled) {
           setCategories([]);
           setServices([]);
-          setCatalogMessage("تعذر جلب خدمات هذا القسم.");
+          setCatalogMessage(t("تعذر جلب خدمات هذا القسم."));
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -735,7 +740,7 @@ export default function BookingInternalV2() {
       return {
         source: "manual" as DiscountSnapshotSource,
         type: "fixed" as const,
-        title: "خصم مبلغ ثابت",
+        title: t("خصم مبلغ ثابت"),
         value: Math.max(0, Number(manualFixedDiscount || 0)),
         maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
       };
@@ -744,7 +749,7 @@ export default function BookingInternalV2() {
       return {
         source: "manual" as DiscountSnapshotSource,
         type: "percent" as const,
-        title: "خصم نسبة",
+        title: t("خصم نسبة"),
         percentage: Math.max(0, Number(manualPercentDiscount || 0)),
         maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
       };
@@ -915,7 +920,7 @@ export default function BookingInternalV2() {
         console.error("[BookingInternalV2] dated Core staff load failed", error);
         if (!cancelled) {
           setEligibleStaffByService({});
-          setScheduleMessage("تعذر جلب توفر الموظفات من Core HR. أعيدي المحاولة.");
+          setScheduleMessage(t("تعذر جلب توفر الموظفات من Core HR. أعيدي المحاولة."));
         }
       } finally {
         if (!cancelled) setStaffLoading(false);
@@ -953,7 +958,7 @@ export default function BookingInternalV2() {
     } catch (error) {
       console.error("[BookingInternalV2] availability load failed", error);
       setAvailableTimes((current) => ({ ...current, [serviceKey]: [] }));
-      setScheduleMessage("تعذر جلب الأوقات المتاحة. حاولي مرة أخرى.");
+      setScheduleMessage(t("تعذر جلب الأوقات المتاحة. حاولي مرة أخرى."));
     } finally {
       setTimesLoading((current) => ({ ...current, [serviceKey]: false }));
     }
@@ -986,7 +991,7 @@ export default function BookingInternalV2() {
     setCouponMessage("");
     setCouponOffer(null);
     if (!code) {
-      setCouponMessage("أدخلي كود الكوبون أولاً.");
+      setCouponMessage(t("أدخلي كود الكوبون أولاً."));
       return;
     }
     setCouponChecking(true);
@@ -994,7 +999,7 @@ export default function BookingInternalV2() {
       const offer = (await CoreOfferService.list({ active: true, code }))
         .find((row) => normalizeDiscountCode(row.code || row.codeKey) === code && isCoreOfferActiveNow(row)) || null;
       if (!offer) {
-        setCouponMessage("الكوبون غير صحيح أو منتهي أو غير نشط.");
+        setCouponMessage(t("الكوبون غير صحيح أو منتهي أو غير نشط."));
         return;
       }
       const preview = buildDiscountSnapshot(discountItems, {
@@ -1005,19 +1010,21 @@ export default function BookingInternalV2() {
         offer,
       });
       if (!preview.ok || !preview.snapshot) {
-        setCouponMessage(discountReasonText(preview.reason) || "الكوبون لا ينطبق على الخدمات المختارة.");
+        setCouponMessage(discountReasonText(preview.reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
         return;
       }
       setCouponOffer(offer);
       setDiscountMode("coupon");
-      setCouponMessage(`تم التحقق من الكوبون. الخصم المتوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA-u-nu-latn")} ر.س.`);
+      setCouponMessage(language === "en"
+        ? `Coupon verified. Expected discount ${money(halalasToSar(preview.discountHalalas))}.`
+        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(preview.discountHalalas))}.`);
     } catch (error) {
       console.error("[BookingInternalV2] coupon verify failed", error);
-      setCouponMessage("تعذر التحقق من الكوبون الآن.");
+      setCouponMessage(t("تعذر التحقق من الكوبون الآن."));
     } finally {
       setCouponChecking(false);
     }
-  }, [couponInput, discountItems]);
+  }, [couponInput, discountItems, language]);
 
   const submitBooking = useCallback(async () => {
     if (submittingRef.current) return;
@@ -1025,23 +1032,25 @@ export default function BookingInternalV2() {
     setPostSaveWarning("");
     setCreatedBookingIds([]);
     setCreatedBookingReference("");
-    if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
-    if (!settingsReady) { setSubmitError("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى."); return; }
-    if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
-    if (!allScheduled) { setSubmitError("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."); setStep(3); return; }
+    if (!selectedClient) { setSubmitError(t("اختاري العميلة أولًا.")); setStep(1); return; }
+    if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
+    if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
+    if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
     if (discountMode !== "none" && !discountResult.ok) {
-      setSubmitError(discountMessage || "الخصم المحدد غير صالح.");
+      setSubmitError(discountMessage || t("الخصم المحدد غير صالح."));
       return;
     }
     if (discountMode === "coupon" && !couponOffer) {
-      setSubmitError("تحققي من الكوبون قبل حفظ الحجز.");
+      setSubmitError(t("تحققي من الكوبون قبل حفظ الحجز."));
       return;
     }
     if (paymentType === "partial" && (effectivePaidAmount <= 0 || effectivePaidAmount >= finalTotal)) {
-      setSubmitError("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز."); return;
+      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز.")); return;
     }
     if (paymentMethod === "mixed" && Math.abs(mixedTotal - effectivePaidAmount) > 0.01) {
-      setSubmitError(`مجموع الدفع المختلط يجب أن يساوي ${effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س.`); return;
+      setSubmitError(language === "en"
+        ? `Mixed payment total must equal ${money(effectivePaidAmount)}.`
+        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`); return;
     }
 
     submittingRef.current = true;
@@ -1084,8 +1093,8 @@ export default function BookingInternalV2() {
           return next;
         });
         await Promise.all(staleSelections.map(({ service, staff }) => loadTimesForService(service, staff)));
-        setScheduleMessage("تم تحديث المواعيد؛ الوقت المختار أصبح محجوزًا أو يتداخل مع حجز آخر. اختاري وقتًا جديدًا.");
-        setSubmitError("الموعد المختار لم يعد متاحًا. تمت إعادتك إلى خطوة الموعد بعد تحديث الأوقات.");
+        setScheduleMessage(t("تم تحديث المواعيد؛ الوقت المختار أصبح محجوزًا أو يتداخل مع حجز آخر. اختاري وقتًا جديدًا."));
+        setSubmitError(t("الموعد المختار لم يعد متاحًا. تمت إعادتك إلى خطوة الموعد بعد تحديث الأوقات."));
         setStep(3);
         return;
       }
@@ -1110,7 +1119,7 @@ export default function BookingInternalV2() {
         canonicalClientId = String(ensuredClient?.id || "").trim();
       }
       if (!canonicalClientId) {
-        throw new Error("تعذر ربط الحجز بحساب العميلة المحدد.");
+        throw new Error(t("تعذر ربط الحجز بحساب العميلة المحدد."));
       }
       const status = paymentType === "none" ? "pending" : "confirmed";
       const total = Math.max(0, finalTotal);
@@ -1261,8 +1270,9 @@ export default function BookingInternalV2() {
           } as any);
         } catch (financialError: any) {
           console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
-          setPostSaveWarning(
-            `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
+          setPostSaveWarning(language === "en"
+            ? `Booking ${bookingId} was saved, but payment synchronization could not be completed after automatic retry. Do not recreate the booking; review it on the bookings page and retry collection.`
+            : `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
           );
         }
       }
@@ -1281,19 +1291,21 @@ export default function BookingInternalV2() {
           Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
         ));
         setAvailableTimes({});
-        setScheduleMessage("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة.");
-        setSubmitError("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر.");
+        setScheduleMessage(t("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة."));
+        setSubmitError(t("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر."));
         setStep(3);
       } else if (
         code === "core_api:offline" ||
         code === "core_api:network_unavailable" ||
         code === "core_api:timeout"
       ) {
-        setSubmitError("غير متصل بالإنترنت. لم يتم إنشاء الحجز. أعيدي الاتصال ثم حاولي مرة أخرى.");
+        setSubmitError(t("غير متصل بالإنترنت. لم يتم إنشاء الحجز. أعيدي الاتصال ثم حاولي مرة أخرى."));
       } else if (code === "core_api:write_outcome_unknown") {
-        setSubmitError("انقطع الاتصال أثناء حفظ الحجز. نتيجة العملية غير مؤكدة؛ لا تعيدي الحفظ. أعيدي الاتصال وافتحي صفحة الحجوزات للتحقق أولًا.");
+        setSubmitError(t("انقطع الاتصال أثناء حفظ الحجز. نتيجة العملية غير مؤكدة؛ لا تعيدي الحفظ. أعيدي الاتصال وافتحي صفحة الحجوزات للتحقق أولًا."));
       } else {
-        setSubmitError(`تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
+        setSubmitError(language === "en"
+          ? `Could not save booking: ${message || "Unknown error"}`
+          : `تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
       }
     } finally {
       submittingRef.current = false;
@@ -1333,7 +1345,7 @@ export default function BookingInternalV2() {
       discountSnapshot,
     });
     if (!rows.length) {
-      setSubmitError("لا توجد بيانات فاتورة جاهزة للطباعة.");
+      setSubmitError(t("لا توجد بيانات فاتورة جاهزة للطباعة."));
       return;
     }
 
@@ -1347,7 +1359,7 @@ export default function BookingInternalV2() {
       "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
     );
     if (!popup || popup === window) {
-      setSubmitError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم حاولي مرة أخرى.");
+      setSubmitError(t("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم حاولي مرة أخرى."));
       return;
     }
     popup.focus();
@@ -1364,22 +1376,22 @@ export default function BookingInternalV2() {
   }, []);
 
   return (
-    <div className="bk2-page" dir="rtl">
+    <div className="bk2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <header className="bk2-heading">
         <div>
           <p className="bk2-eyebrow">MALIKAT</p>
-          <h1>الحجز الإداري</h1>
-          <p>إنشاء حجز جديد بخطوات واضحة وسريعة.</p>
+          <h1>{t("الحجز الإداري")}</h1>
+          <p>{t("إنشاء حجز جديد بخطوات واضحة وسريعة.")}</p>
         </div>
-        <div className="bk2-mode-switch" aria-label="وضع الحجز">
-          <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>حجز جديد</button>
-          <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>الباقات والجلسات</button>
+        <div className="bk2-mode-switch" aria-label={t("وضع الحجز")}>
+          <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>{t("حجز جديد")}</button>
+          <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>{t("الباقات والجلسات")}</button>
         </div>
       </header>
 
-      {mode === "sessions" ? <PackageSessionsManager /> : (
+      {mode === "sessions" ? <PackageSessionsManager language={language} /> : (
         <>
-          <nav className="bk2-stepper" aria-label="خطوات الحجز">
+          <nav className="bk2-stepper" aria-label={t("خطوات الحجز")}>
             {steps.map((item, index) => {
               const Icon = item.icon;
               const active = step === item.id;
@@ -1388,7 +1400,7 @@ export default function BookingInternalV2() {
                 <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} onClick={() => setStep(item.id)}>
                   <span className="bk2-step-number">{completed ? "✓" : item.id}</span>
                   <span className="bk2-step-icon"><Icon /></span>
-                  <span><strong>{item.title}</strong><small>{item.subtitle}</small></span>
+                  <span><strong>{t(item.title)}</strong><small>{t(item.subtitle)}</small></span>
                   {index < steps.length - 1 ? <i aria-hidden="true" /> : null}
                 </button>
               );
@@ -1399,33 +1411,33 @@ export default function BookingInternalV2() {
             <main className="bk2-main-card">
               {step === 1 ? (
                 <section className="bk2-client-step">
-                  <div className="bk2-section-title"><div><h2>البحث عن العميلة</h2><p>ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.</p></div><span><FiUser /></span></div>
-                  <label className="bk2-search-box"><FiSearch /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)" /></label>
-                  {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? "جاري البحث في بيانات السيرفر..." : clientMessage}</p> : null}
-                  <div className="bk2-recent-header"><h3>{query ? "نتائج البحث" : "العميلات الأخيرات"}</h3><span>{visibleClients.length} عميلات</span></div>
+                  <div className="bk2-section-title"><div><h2>{t("البحث عن العميلة")}</h2><p>{t("ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.")}</p></div><span><FiUser /></span></div>
+                  <label className="bk2-search-box"><FiSearch /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)")} /></label>
+                  {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? t("جاري البحث في بيانات السيرفر...") : clientMessage}</p> : null}
+                  <div className="bk2-recent-header"><h3>{query ? t("نتائج البحث") : t("العميلات الأخيرات")}</h3><span>{visibleClients.length} {t("عميلات")}</span></div>
                   <div className="bk2-client-grid">
                     {visibleClients.map((client) => (
                       <button key={client.id} className={selectedClient?.id === client.id ? "is-selected" : ""} onClick={() => { setSelectedClient(client); markQuickClientUsage(client); }}>
                         <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} استخدامات` : client.publicId ? client.publicId : client.source || "عميلة"}</em>{client.sessions ? <em className="is-green">{client.sessions} جلسات متبقية</em> : null}</span></span>
+                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
                       </button>
                     ))}
                   </div>
-                  <div className="bk2-divider"><span>أو</span></div>
-                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />إضافة عميلة جديدة</button>
+                  <div className="bk2-divider"><span>{t("أو")}</span></div>
+                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t("إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>إضافة عميلة جديدة</strong><small>سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>{t("إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
-                        <label><span>اسم العميلة *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="مثال: رانيا الحربي" disabled={Boolean(existingClientMatch)} /></label>
-                        <label><span>رقم الجوال *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
-                        <label className="is-wide"><span>البريد الإلكتروني (اختياري)</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>{t("اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>{t("رقم الجوال")} *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
+                        <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
                       </div>
 
                       {existingClientChecking ? (
                         <div className="bk2-client-identity-check is-loading" role="status">
                           <span className="bk2-client-identity-dot" />
-                          <div><strong>جاري التحقق من رقم الجوال...</strong><small>نتأكد أن العميلة غير مسجلة مسبقًا.</small></div>
+                          <div><strong>{t("جاري التحقق من رقم الجوال...")}</strong><small>{t("نتأكد أن العميلة غير مسجلة مسبقًا.")}</small></div>
                         </div>
                       ) : existingClientMatch ? (
                         <div className="bk2-existing-client-match" role="status">
@@ -1435,81 +1447,81 @@ export default function BookingInternalV2() {
                           <div className="bk2-existing-client-content">
                             <div className="bk2-existing-client-heading">
                               <div>
-                                <span className="bk2-existing-client-kicker">تم العثور على عميلة مسجلة</span>
+                                <span className="bk2-existing-client-kicker">{t("تم العثور على عميلة مسجلة")}</span>
                                 <strong><bdi dir="auto">{existingClientMatch.name}</bdi></strong>
                               </div>
-                              <span className="bk2-existing-client-status">سجل موجود</span>
+                              <span className="bk2-existing-client-status">{t("سجل موجود")}</span>
                             </div>
                             <div className="bk2-existing-client-meta">
-                              <span><small>رقم الجوال</small><bdi dir="ltr">{existingClientMatch.phone}</bdi></span>
-                              {existingClientMatch.publicId ? <span><small>رقم العضوية</small><bdi dir="ltr">{existingClientMatch.publicId}</bdi></span> : null}
+                              <span><small>{t("رقم الجوال")}</small><bdi dir="ltr">{existingClientMatch.phone}</bdi></span>
+                              {existingClientMatch.publicId ? <span><small>{t("رقم العضوية")}</small><bdi dir="ltr">{existingClientMatch.publicId}</bdi></span> : null}
                             </div>
-                            <p>لن يتم إنشاء سجل جديد. اختاري العميلة الموجودة للمتابعة بالحجز.</p>
+                            <p>{t("لن يتم إنشاء سجل جديد. اختاري العميلة الموجودة للمتابعة بالحجز.")}</p>
                             {newClientName.trim() && normalizeSearchText(newClientName) !== normalizeSearchText(existingClientMatch.name) ? (
                               <div className="bk2-existing-client-name-warning">
-                                الاسم الذي كتبتيه مختلف عن الاسم المسجل؛ لن نستبدل بيانات العميلة تلقائيًا.
+                                {t("الاسم الذي كتبتيه مختلف عن الاسم المسجل؛ لن نستبدل بيانات العميلة تلقائيًا.")}
                               </div>
                             ) : null}
                           </div>
                         </div>
                       ) : existingClientLookupError ? (
                         <div className="bk2-client-identity-check is-error" role="alert">
-                          <div><strong>تعذر التحقق من رقم الجوال</strong><small>{existingClientLookupError}</small></div>
+                          <div><strong>{t("تعذر التحقق من رقم الجوال")}</strong><small>{existingClientLookupError}</small></div>
                         </div>
                       ) : phone10Digits(newClientPhone).length === 10 ? (
                         <div className="bk2-client-identity-check is-clear" role="status">
                           <span className="bk2-client-identity-dot" />
-                          <div><strong>رقم الجوال غير مسجل حاليًا</strong><small>يمكن إنشاء عميلة جديدة بهذا الرقم.</small></div>
+                          <div><strong>{t("رقم الجوال غير مسجل حاليًا")}</strong><small>{t("يمكن إنشاء عميلة جديدة بهذا الرقم.")}</small></div>
                         </div>
                       ) : null}
 
                       {newClientError ? <p className="bk2-inline-warning">{newClientError}</p> : null}
                       <div className="bk2-new-client-actions">
-                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>إلغاء</button>
+                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>{t("إلغاء")}</button>
                         <button
                           type="button"
                           className="is-primary"
                           onClick={() => existingClientMatch
-                            ? chooseClientForBooking(existingClientMatch, "تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد.")
+                            ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
                             : void createNewClient()
                           }
                           disabled={creatingClient || existingClientChecking}
                         >
                           {creatingClient
-                            ? "جاري الحفظ..."
+                            ? t("جاري الحفظ...")
                             : existingClientChecking
-                              ? "جاري التحقق..."
+                              ? t("جاري التحقق...")
                               : existingClientMatch
-                                ? "اختيار العميلة الموجودة"
+                                ? t("اختيار العميلة الموجودة")
                                 : existingClientLookupError
-                                  ? "إعادة التحقق والحفظ"
-                                  : "حفظ واختيار العميلة"}
+                                  ? t("إعادة التحقق والحفظ")
+                                  : t("حفظ واختيار العميلة")}
                         </button>
                       </div>
                     </div>
                   ) : null}
-                  <div className="bk2-tip"><span>i</span><div><strong>نصيحة</strong><p>استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.</p></div></div>
+                  <div className="bk2-tip"><span>i</span><div><strong>{t("نصيحة")}</strong><p>{t("استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.")}</p></div></div>
                 </section>
               ) : step === 2 ? (
                 <section className="bk2-services-step">
-                  <div className="bk2-section-title"><div><h2>اختيار الخدمات</h2><p>القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.</p></div><span><FiShoppingBag /></span></div>
-                  <label className="bk2-search-box"><FiSearch /><input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="ابحثي عن خدمة..." /></label>
-                  <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => setSelectedSectionId(String(section.id))}>{catalogLabel(section, "قسم")}</button>)}</div>
-                  {categories.length ? <div className="bk2-category-tabs"><button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>الكل</button>{categories.map((category) => <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>{catalogLabel(category, "تصنيف")}</button>)}</div> : null}
-                  {(catalogLoading || catalogMessage) ? <p className={`bk2-status-line ${catalogLoading ? "is-loading" : ""}`}>{catalogLoading ? "جاري تحميل الخدمات..." : catalogMessage}</p> : null}
+                  <div className="bk2-section-title"><div><h2>{t("اختيار الخدمات")}</h2><p>{t("القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.")}</p></div><span><FiShoppingBag /></span></div>
+                  <label className="bk2-search-box"><FiSearch /><input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder={t("ابحثي عن خدمة...")} /></label>
+                  <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => setSelectedSectionId(String(section.id))}>{catalogLabel(section, t("قسم"))}</button>)}</div>
+                  {categories.length ? <div className="bk2-category-tabs"><button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>{t("الكل")}</button>{categories.map((category) => <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>{catalogLabel(category, t("تصنيف"))}</button>)}</div> : null}
+                  {(catalogLoading || catalogMessage) ? <p className={`bk2-status-line ${catalogLoading ? "is-loading" : ""}`}>{catalogLoading ? t("جاري تحميل الخدمات...") : catalogMessage}</p> : null}
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const inCart = cart.some((item) => String(item.id) === String(service.id));
-                      return <button key={service.id} className={inCart ? "is-selected" : ""} onClick={() => setCart((current) => inCart ? current.filter((item) => String(item.id) !== String(service.id)) : [...current, service])}><span className="bk2-service-copy"><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) ? `${serviceDuration(service)} دقيقة` : "المدة حسب الخدمة"}</small></span><span className="bk2-service-price">{servicePrice(service).toLocaleString("ar-SA-u-nu-latn")} ر.س</span><span className="bk2-service-add">{inCart ? "✓" : "+"}</span></button>;
+                      return <button key={service.id} className={inCart ? "is-selected" : ""} onClick={() => setCart((current) => inCart ? current.filter((item) => String(item.id) !== String(service.id)) : [...current, service])}><span className="bk2-service-copy"><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) ? `${serviceDuration(service)} ${t("دقيقة")}` : t("المدة حسب الخدمة")}</small></span><span className="bk2-service-price">{money(servicePrice(service))}</span><span className="bk2-service-add">{inCart ? "✓" : "+"}</span></button>;
                     })}
                   </div>
-                  {!catalogLoading && !visibleServices.length ? <div className="bk2-no-results">لا توجد خدمات مطابقة في هذا القسم.</div> : null}
+                  {!catalogLoading && !visibleServices.length ? <div className="bk2-no-results">{t("لا توجد خدمات مطابقة في هذا القسم.")}</div> : null}
                 </section>
               ) : step === 3 ? (
                 <section className="bk2-schedule-step">
-                  <div className="bk2-section-title"><div><h2>الموظفة والموعد</h2><p>الموظفات والأوقات مرتبطة الآن ببيانات الدوام والحجوزات الفعلية.</p></div><span><FiClock /></span></div>
+                  <div className="bk2-section-title"><div><h2>{t("الموظفة والموعد")}</h2><p>{t("الموظفات والأوقات مرتبطة الآن ببيانات الدوام والحجوزات الفعلية.")}</p></div><span><FiClock /></span></div>
                   <div className="bk2-date-field">
-                    <span>تاريخ الحجز</span>
+                    <span>{t("تاريخ الحجز")}</span>
                     <DashboardDatePickerV2
                       value={bookingDate}
                       onChange={setBookingDate}
@@ -1517,10 +1529,10 @@ export default function BookingInternalV2() {
                       className="bk2-date-picker-v2"
                       aria-describedby={isPastBookingDate ? "bk2-past-date-warning" : undefined}
                     />
-                    {isPastBookingDate ? <p id="bk2-past-date-warning" className="bk2-past-date-warning" role="status">أنت تقوم بإنشاء حجز بتاريخ سابق</p> : null}
+                    {isPastBookingDate ? <p id="bk2-past-date-warning" className="bk2-past-date-warning" role="status">{t("أنت تقوم بإنشاء حجز بتاريخ سابق")}</p> : null}
                   </div>
-                  {!dayHours.enabled ? <p className="bk2-status-line">الصالون مغلق في هذا اليوم حسب إعدادات الدوام.</p> : null}
-                  {staffLoading ? <p className="bk2-status-line is-loading">جاري تحميل الموظفات...</p> : null}
+                  {!dayHours.enabled ? <p className="bk2-status-line">{t("الصالون مغلق في هذا اليوم حسب إعدادات الدوام.")}</p> : null}
+                  {staffLoading ? <p className="bk2-status-line is-loading">{t("جاري تحميل الموظفات...")}</p> : null}
                   {scheduleMessage ? <p className="bk2-status-line">{scheduleMessage}</p> : null}
                   <div className="bk2-schedule-list">
                     {cart.map((service, index) => {
@@ -1530,13 +1542,13 @@ export default function BookingInternalV2() {
                       const times = availableTimes[key] || [];
                       return (
                         <article key={key} className={`bk2-schedule-item ${selection?.time ? "is-complete" : ""}`}>
-                          <header><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) || 30} دقيقة</small></div>{selection?.time ? <em>✓ مكتمل</em> : null}</header>
+                          <header><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) || 30} {t("دقيقة")}</small></div>{selection?.time ? <em>✓ {t("مكتمل")}</em> : null}</header>
                           <div className="bk2-schedule-controls">
                             <div className="bk2-staff-field">
-                              <span>الموظفة</span>
+                              <span>{t("الموظفة")}</span>
                               <DashboardSelectV2
                                 value={selection?.staffId || ""}
-                                placeholder="اختاري الموظفة"
+                                placeholder={t("اختاري الموظفة")}
                                 className="bk2-staff-select-v2"
                                 options={staffRows.map((row) => ({ value: staffId(row), label: staffName(row) }))}
                                 onChange={(value) => {
@@ -1548,20 +1560,24 @@ export default function BookingInternalV2() {
                               />
                             </div>
                             <div className="bk2-time-picker">
-                              <span>الأوقات المتاحة</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>العميلة لديها خدمة من <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong><span>بسبب: {busy.serviceTitle}</span></p>)}</div> : null}
-                              {!selection?.staffId ? <p>اختاري الموظفة أولًا.</p> : timesLoading[key] ? <p>جاري فحص المواعيد...</p> : times.length ? (
+                              <span>{t("الأوقات المتاحة")}</span>
+                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>{t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.serviceTitle}</span></p>)}</div> : null}
+                              {!selection?.staffId ? <p>{t("اختاري الموظفة أولًا.")}</p> : timesLoading[key] ? <p>{t("جاري فحص المواعيد...")}</p> : times.length ? (
                                 <div>{times.map((time) => {
                                   const conflict = getCartScheduleConflict(key, selection.staffId, time);
                                   const conflicting = Boolean(conflict);
-                                  const conflictTitle = conflict ? `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}` : "";
-                                  return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `اختيار ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
+                                  const conflictTitle = conflict
+                                    ? (language === "en"
+                                      ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
+                                      : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
+                                    : "";
+                                  return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
                                 })}</div>
-                              ) : <p>لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.</p>}
+                              ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
                             </div>
                           </div>
-                          {conflictKeys.has(key) ? <p className="bk2-inline-warning">هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة. اختاري وقتًا مختلفًا.</p> : null}
-                          {!staffRows.length && !staffLoading ? <p className="bk2-inline-warning">لا توجد موظفة مؤهلة ومتاحة لهذه الخدمة في هذا اليوم.</p> : null}
+                          {conflictKeys.has(key) ? <p className="bk2-inline-warning">{t("هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة. اختاري وقتًا مختلفًا.")}</p> : null}
+                          {!staffRows.length && !staffLoading ? <p className="bk2-inline-warning">{t("لا توجد موظفة مؤهلة ومتاحة لهذه الخدمة في هذا اليوم.")}</p> : null}
                         </article>
                       );
                     })}
@@ -1569,19 +1585,19 @@ export default function BookingInternalV2() {
                 </section>
               ) : (
                 <section className="bk2-payment-step">
-                  <div className="bk2-section-title"><div><h2>المراجعة والدفع</h2><p>راجعي الحجز ثم اختاري طريقة ونوع التحصيل.</p></div><span><FiCreditCard /></span></div>
+                  <div className="bk2-section-title"><div><h2>{t("المراجعة والدفع")}</h2><p>{t("راجعي الحجز ثم اختاري طريقة ونوع التحصيل.")}</p></div><span><FiCreditCard /></span></div>
                   {createdBookingIds.length ? (
-                    <div className="bk2-booking-success"><strong>✓ تم حفظ الحجز بنجاح</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>رقم الحجز</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>تم ربط {cart.length} {cart.length === 1 ? "خدمة" : "خدمات"} بالعميلة والموظفات المختارات.</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button><button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button></div></div>
+                    <div className="bk2-booking-success"><strong>✓ {t("تم حفظ الحجز بنجاح")}</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t("رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div></div>
                   ) : (
                     <>
-                      <div className="bk2-review-list">{cart.map((service, index) => { const schedule = scheduleByService[String(service.id)]; const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id)); const originalAmount = servicePrice(service); const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0; const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount; return <article key={service.id}><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>{rowDiscount > 0 ? <small>خصم هذه الخدمة: {rowDiscount.toLocaleString("ar-SA-u-nu-latn")} ر.س</small> : null}</div><b>{rowDiscount > 0 ? <small className="bk2-price-before">{originalAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</small> : null}{rowFinal.toLocaleString("ar-SA-u-nu-latn")} ر.س</b></article>; })}</div>
-                      <div className="bk2-payment-block bk2-discount-block"><h3>إضافة خصم أو كوبون</h3><button type="button" className="bk2-discount-toggle" onClick={() => setDiscountOpen((open) => !open)}>{discountOpen ? "إخفاء خيارات الخصم" : "+ إضافة خصم أو كوبون"}</button>{discountOpen || discountMode !== "none" ? <><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>بدون خصم</button><button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>مبلغ ثابت</button><button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>نسبة</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>عرض محفوظ</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>كوبون</button></div>{discountMode === "fixed" ? <label className="bk2-payment-input"><span>قيمة الخصم</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>ر.س</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>النسبة</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>حد أقصى اختياري</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="بدون حد" /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>جاري تحميل العروض...</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer)} · {preview.ok ? `خصم متوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA-u-nu-latn")} ر.س` : discountReasonText(preview.reason)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>خدمات محددة: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>تصنيفات محددة: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>كود الكوبون</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? "جاري التحقق..." : "تحقق"}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>الإجمالي المؤهل: {halalasToSar(discountSnapshot.eligibleSubtotalHalalas).toLocaleString("ar-SA-u-nu-latn")} ر.س</span><strong>الخصم: {discountAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div> : null}</> : null}</div>
-                      <div className="bk2-payment-block"><h3>نوع التحصيل</h3><div className="bk2-choice-grid"><button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>دفع كامل</button><button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>عربون</button><button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>بدون دفع الآن</button></div>{paymentType === "partial" ? <label className="bk2-payment-input"><span>قيمة العربون</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>ر.س</em></label> : null}</div>
-                      {paymentType !== "none" ? <div className="bk2-payment-block"><h3>طريقة الدفع</h3><div className="bk2-choice-grid four"><button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>كاش</button><button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>شبكة</button><button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>تحويل</button><button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>مختلط</button></div>{paymentMethod === "mixed" ? <div className="bk2-mixed-grid"><label><span>كاش</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>شبكة</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>تحويل</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><p>المجموع: {mixedTotal.toLocaleString("ar-SA-u-nu-latn")} من {effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</p></div> : null}</div> : null}
-                      <label className="bk2-note-field"><span>ملاحظة الحجز (اختياري)</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder="أي تفاصيل مهمة للموظفة أو الاستقبال..." /></label>
-                      <div className="bk2-payment-summary"><div><span>الإجمالي قبل الخصم</span><strong>{cartTotal.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div><span>الإجمالي بعد الخصم</span><strong>{finalTotal.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div><span>المدفوع الآن</span><strong>{effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div></div>
+                      <div className="bk2-review-list">{cart.map((service, index) => { const schedule = scheduleByService[String(service.id)]; const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id)); const originalAmount = servicePrice(service); const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0; const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount; return <article key={service.id}><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>{rowDiscount > 0 ? <small>{t("خصم هذه الخدمة")}: {money(rowDiscount)}</small> : null}</div><b>{rowDiscount > 0 ? <small className="bk2-price-before">{money(originalAmount)}</small> : null}{money(rowFinal)}</b></article>; })}</div>
+                      <div className="bk2-payment-block bk2-discount-block"><h3>{t("إضافة خصم أو كوبون")}</h3><button type="button" className="bk2-discount-toggle" onClick={() => setDiscountOpen((open) => !open)}>{discountOpen ? t("إخفاء خيارات الخصم") : t("+ إضافة خصم أو كوبون")}</button>{discountOpen || discountMode !== "none" ? <><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("بدون خصم")}</button><button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("مبلغ ثابت")}</button><button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("نسبة")}</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>{t("عرض محفوظ")}</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>{t("كوبون")}</button></div>{discountMode === "fixed" ? <label className="bk2-payment-input"><span>{t("قيمة الخصم")}</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>{t("النسبة")}</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>{t("حد أقصى اختياري")}</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t("بدون حد")} /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>{t("جاري تحميل العروض...")}</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer, language)} · {preview.ok ? `${t("خصم متوقع")} ${money(halalasToSar(preview.discountHalalas))}` : discountReasonText(preview.reason, language)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>{t("خدمات محددة")}: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>{t("تصنيفات محددة")}: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>{t("كود الكوبون")}</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? t("جاري التحقق...") : t("تحقق")}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>{t("الإجمالي المؤهل")}: {money(halalasToSar(discountSnapshot.eligibleSubtotalHalalas))}</span><strong>{t("الخصم")}: {money(discountAmount)}</strong></div> : null}</> : null}</div>
+                      <div className="bk2-payment-block"><h3>{t("نوع التحصيل")}</h3><div className="bk2-choice-grid"><button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>{t("دفع كامل")}</button><button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>{t("عربون")}</button><button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>{t("بدون دفع الآن")}</button></div>{paymentType === "partial" ? <label className="bk2-payment-input"><span>{t("قيمة العربون")}</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}</div>
+                      {paymentType !== "none" ? <div className="bk2-payment-block"><h3>{t("طريقة الدفع")}</h3><div className="bk2-choice-grid four"><button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>{t("كاش")}</button><button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>{t("شبكة")}</button><button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>{t("تحويل")}</button><button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>{t("مختلط")}</button></div>{paymentMethod === "mixed" ? <div className="bk2-mixed-grid"><label><span>{t("كاش")}</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("شبكة")}</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("تحويل")}</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><p>{t("المجموع")}: {money(mixedTotal)} {t("من")} {money(effectivePaidAmount)}</p></div> : null}</div> : null}
+                      <label className="bk2-note-field"><span>{t("ملاحظة الحجز (اختياري)")}</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder={t("أي تفاصيل مهمة للموظفة أو الاستقبال...")} /></label>
+                      <div className="bk2-payment-summary"><div><span>{t("الإجمالي قبل الخصم")}</span><strong>{money(cartTotal)}</strong></div><div><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div><div><span>{t("الإجمالي بعد الخصم")}</span><strong>{money(finalTotal)}</strong></div><div><span>{t("المدفوع الآن")}</span><strong>{money(effectivePaidAmount)}</strong></div><div><span>{t("المتبقي")}</span><strong>{money(remainingAmount)}</strong></div></div>
                       {submitError ? <p className="bk2-inline-warning">{submitError}</p> : null}
-                      <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>العودة للموعد</button><button type="button" className="is-primary" onClick={requestSubmitBooking} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س` : `حفظ الحجز وتحصيل ${effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س`}</button></div>
+                      <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>{t("العودة للموعد")}</button><button type="button" className="is-primary" onClick={requestSubmitBooking} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${money(effectivePaidAmount)}` : `حفظ الحجز وتحصيل ${money(effectivePaidAmount)}`}</button></div>
                     </>
                   )}
                 </section>
@@ -1589,18 +1605,18 @@ export default function BookingInternalV2() {
             </main>
 
             <aside className="bk2-summary-card">
-              <div className="bk2-summary-title"><h2>ملخص الحجز</h2><FiCalendar /></div>
-              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || "لم يتم اختيار عميلة بعد"}</strong><small>{selectedClient?.phone || "اختاري عميلة للمتابعة"}</small></div></div>
-              <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> نوع الحجز</dt><dd>حجز داخل الصالون</dd></div><div><dt><FiCalendar /> التاريخ</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> الموظفة</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
-              {cart.length ? <div className="bk2-summary-services">{cart.map((service) => { const schedule = scheduleByService[String(service.id)]; return <div key={service.id}><span>{serviceTitle(service)}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}</span><strong>{servicePrice(service).toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div>; })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>لم تتم إضافة خدمات بعد</p></div>}
-              <div className="bk2-totals"><div><span>الإجمالي الفرعي</span><strong>{cartTotal.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div className="is-discount"><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div><div className="is-total"><span>الإجمالي</span><strong>{finalTotal.toLocaleString("ar-SA-u-nu-latn")} ر.س</strong></div></div>
-              <button className="bk2-continue" disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4} onClick={() => { if (step === 1 && canContinue) setStep(2); else if (step === 2 && cart.length) setStep(3); else if (step === 3 && allScheduled) setStep(4); }}>{step === 1 ? "المتابعة للخدمات" : step === 2 ? "المتابعة للموظفة والموعد" : step === 3 ? "المتابعة للمراجعة والدفع" : "راجعي وأكدي الحجز أعلاه"}<FiChevronLeft /></button>
-              <p className="bk2-safe-note">هذه نسخة V2 تجريبية منفصلة، ولم تستبدل نظام الحجز الحالي.</p>
+              <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
+              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient?.phone || t("اختاري عميلة للمتابعة")}</small></div></div>
+              <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
+              {cart.length ? <div className="bk2-summary-services">{cart.map((service) => { const schedule = scheduleByService[String(service.id)]; return <div key={service.id}><span>{serviceTitle(service)}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}</span><strong>{money(servicePrice(service))}</strong></div>; })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
+              <div className="bk2-totals"><div><span>{t("الإجمالي الفرعي")}</span><strong>{money(cartTotal)}</strong></div><div className="is-discount"><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div><div className="is-total"><span>{t("الإجمالي")}</span><strong>{money(finalTotal)}</strong></div></div>
+              <button className="bk2-continue" disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4} onClick={() => { if (step === 1 && canContinue) setStep(2); else if (step === 2 && cart.length) setStep(3); else if (step === 3 && allScheduled) setStep(4); }}>{step === 1 ? t("المتابعة للخدمات") : step === 2 ? t("المتابعة للموظفة والموعد") : step === 3 ? t("المتابعة للمراجعة والدفع") : t("راجعي وأكدي الحجز أعلاه")}<FiChevronLeft /></button>
+              <p className="bk2-safe-note">{t("هذه نسخة V2 تجريبية منفصلة، ولم تستبدل نظام الحجز الحالي.")}</p>
             </aside>
           </div>
         </>
       )}
-      <ConfirmModal open={showPastDateConfirmation} title="تأكيد الحجز بتاريخ سابق" message="تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟" confirmText="تأكيد وإنشاء الحجز" cancelText="إلغاء" showCancel onConfirm={confirmPastDateBooking} onCancel={() => setShowPastDateConfirmation(false)} />
+      <ConfirmModal open={showPastDateConfirmation} title={t("تأكيد الحجز بتاريخ سابق")} message={t("تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟")} confirmText={t("تأكيد وإنشاء الحجز")} cancelText={t("إلغاء")} showCancel onConfirm={confirmPastDateBooking} onCancel={() => setShowPastDateConfirmation(false)} />
     </div>
   );
 }
