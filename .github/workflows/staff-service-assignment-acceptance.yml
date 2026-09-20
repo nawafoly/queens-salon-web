@@ -1,0 +1,47 @@
+name: Staff Service Assignment Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/pages/DashboardEmployees.tsx"
+      - "src/services/coreBookableStaffService.ts"
+      - "workers/core/repositories/hr-employees.js"
+      - "workers/core/repositories/staff.js"
+      - "workers/core/repositories/booking-staff-policy.js"
+      - "workers/hr-core-worker.test.mjs"
+      - "migrations/core/0078_staff_services_specialties_backfill.sql"
+      - ".github/workflows/staff-service-assignment-acceptance.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-staff-service-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Canonical staff service assignment tests
+        run: >
+          node --test --test-force-exit
+          --test-name-pattern "HR employee save atomically creates canonical booking staff row|staff service backfill migrates valid legacy specialties"
+          workers/hr-core-worker.test.mjs
+
+      - name: Booking source-of-truth guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff whitespace check
+        run: git diff --check HEAD^ HEAD
