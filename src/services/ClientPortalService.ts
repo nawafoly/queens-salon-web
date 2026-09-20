@@ -90,6 +90,30 @@ export type ClientPortalLoyalty = {
   }>;
 };
 
+export type ClientPortalCashbackTransaction = {
+  id: string;
+  type: "earn" | "redeem" | "reverse" | "expire" | "adjustment" | string;
+  amountHalalas: number;
+  bookingId?: string;
+  refundId?: string;
+  reason: string;
+  createdAt: string;
+};
+
+export type ClientPortalCashback = {
+  clientId: string;
+  enabled: boolean;
+  balanceHalalas: number;
+  earnedHalalas: number;
+  redeemedHalalas: number;
+  reversedHalalas: number;
+  currency: "SAR";
+  redeemScope: "salon_only";
+  cashWithdrawalAllowed: false;
+  transferAllowed: false;
+  transactions: ClientPortalCashbackTransaction[];
+};
+
 export type ClientPortalOffer = {
   id: string;
   title: string;
@@ -111,6 +135,7 @@ export type ClientPortalSnapshot = {
   profile: ClientPortalProfile;
   bookings: ClientPortalBooking[];
   loyalty: ClientPortalLoyalty;
+  cashback?: ClientPortalCashback | null;
   offers: ClientPortalOffer[];
   generatedAt: string;
 };
@@ -230,6 +255,37 @@ function mapLoyalty(row: Record<string, unknown>): ClientPortalLoyalty {
   };
 }
 
+function mapCashbackTransaction(row: Record<string, unknown>): ClientPortalCashbackTransaction {
+  return {
+    id: text(row.id),
+    type: text(row.type),
+    amountHalalas: number(row.amountHalalas ?? row.amount_halalas),
+    bookingId: text(row.bookingId ?? row.booking_id) || undefined,
+    refundId: text(row.refundId ?? row.refund_id) || undefined,
+    reason: text(row.reason),
+    createdAt: text(row.createdAt ?? row.created_at),
+  };
+}
+
+function mapCashback(row: Record<string, unknown> | null | undefined): ClientPortalCashback | null {
+  if (!row || !Object.keys(row).length) return null;
+  return {
+    clientId: text(row.clientId ?? row.client_id),
+    enabled: row.enabled === true || Number(row.enabled) === 1,
+    balanceHalalas: number(row.balanceHalalas ?? row.balance_halalas),
+    earnedHalalas: number(row.earnedHalalas ?? row.earned_halalas),
+    redeemedHalalas: number(row.redeemedHalalas ?? row.redeemed_halalas),
+    reversedHalalas: number(row.reversedHalalas ?? row.reversed_halalas),
+    currency: "SAR",
+    redeemScope: "salon_only",
+    cashWithdrawalAllowed: false,
+    transferAllowed: false,
+    transactions: Array.isArray(row.transactions)
+      ? row.transactions.map((tx) => mapCashbackTransaction(tx as Record<string, unknown>))
+      : [],
+  };
+}
+
 function mapOffer(row: Record<string, unknown>): ClientPortalOffer {
   return {
     id: text(row.id),
@@ -254,6 +310,7 @@ function mapSnapshot(raw: Record<string, unknown>): ClientPortalSnapshot {
     profile: mapProfile((raw.profile || {}) as Record<string, unknown>),
     bookings: Array.isArray(raw.bookings) ? raw.bookings.map((row) => mapBooking(row as Record<string, unknown>)) : [],
     loyalty: mapLoyalty((raw.loyalty || {}) as Record<string, unknown>),
+    cashback: mapCashback((raw.cashback || null) as Record<string, unknown> | null),
     offers: Array.isArray(raw.offers) ? raw.offers.map((row) => mapOffer(row as Record<string, unknown>)) : [],
     generatedAt: text(raw.generatedAt || raw.generated_at),
   };
