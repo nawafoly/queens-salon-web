@@ -570,8 +570,8 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       if (key === "payroll" && !payrollReady) { payrollReady = true; done(); }
     };
     const appendLoadError = (label: string, error: unknown) => {
-      const detail = String((error as any)?.message || error || "خطأ غير معروف");
-      const nextMessage = `${label}: ${detail}`;
+      const detail = String((error as any)?.message || error || t("خطأ غير معروف"));
+      const nextMessage = `${t(label)}: ${detail}`;
       setLoadErr((current) => {
         const messages = current
           .split(" | ")
@@ -752,9 +752,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         if (!active) return;
         setCalculatedPayrollEntries([]);
         setCalculatedPayrollMonthKeys([]);
-        setPayrollCalculationError(
-          `تعذر احتساب مسير جميع الموظفات: ${String((error as any)?.message || error || "خطأ غير معروف")}`
-        );
+        setPayrollCalculationError(String((error as any)?.message || error || t("خطأ غير معروف")));
       })
       .finally(() => {
         if (active) setPayrollCalculationLoading(false);
@@ -951,7 +949,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         const bKey = `${b.date} ${b.time}`;
         return bKey.localeCompare(aKey);
       });
-  }, [incomeRowsInRange, bookingById, bookingMetaById]);
+  }, [incomeRowsInRange, bookingById, bookingMetaById, language]);
 
   const totals = useMemo(() => {
     const revenue = revenueRowsDetailed.reduce((s, x) => s + Number(x.amount || 0), 0);
@@ -1036,6 +1034,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
     incomeMethodFilter,
     incomeSourceFilter,
     incomeStatusFilter,
+    language,
   ]);
 
   const chartsModel = useMemo(() => {
@@ -1064,7 +1063,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
 
       points = MONTHS_AR.map((m, i) => ({
         key: `${selectedYear}-${pad2(i + 1)}`,
-        label: m,
+        label: t(m),
         returns: returnsMonthly[i],
         investments: investmentsMonthly[i],
       }));
@@ -1135,10 +1134,10 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
 
     const statusOrder: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
     const statusLabel: Record<BookingStatus, string> = {
-      pending: "نشط",
-      confirmed: "مؤكد",
-      completed: "مكتمل",
-      cancelled: "مرفوض",
+      pending: t("نشط"),
+      confirmed: t("مؤكد"),
+      completed: t("مكتمل"),
+      cancelled: t("مرفوض"),
     };
     const statusCount: Record<BookingStatus, number> = {
       pending: 0,
@@ -1207,7 +1206,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       pieSlices,
       sourceTotal,
     };
-  }, [trendMode, revenueRowsDetailed, expensesInRange, bookings, range.from, range.to]);
+  }, [trendMode, revenueRowsDetailed, expensesInRange, bookings, range.from, range.to, language]);
 
   const lastSyncLabel = useMemo(
     () =>
@@ -1219,6 +1218,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
   );
 
   const buildFinancialOverviewReportInput = () => ({
+    language,
     revenueRows: revenueRowsDetailed.map((row) => ({
       date: row.date,
       time: row.time,
@@ -1231,10 +1231,10 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
     })),
     expenseRows: expensesInRange.map((row) => ({
       date: row.date,
-      category: row.category,
+      category: t(row.category || "أخرى"),
       title: row.title || row.note || "-",
       amount: row.amount,
-      addedBy: row.addedBy,
+      addedBy: row.addedBy === "الإدارة" ? t("الإدارة") : row.addedBy,
       note: row.note,
     })),
     trendRows: chartsModel.points.map((point) => ({
@@ -1246,8 +1246,8 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       fromDate: range.from,
       toDate: range.to,
       periodLabel: period,
-      incomeMethod: incomeMethodFilter === "all" ? "الكل" : paymentMethodLabel(incomeMethodFilter, language),
-      incomeSource: incomeSourceFilter === "all" ? "الكل" : sourceLabel(incomeSourceFilter, language),
+      incomeMethod: incomeMethodFilter === "all" ? t("الكل") : paymentMethodLabel(incomeMethodFilter, language),
+      incomeSource: incomeSourceFilter === "all" ? t("الكل") : sourceLabel(incomeSourceFilter, language),
       incomeStatus: incomeStatusFilter,
     },
     payrollCycle: {
@@ -1259,7 +1259,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       other: payrollCycleTotals.other,
       total: payrollCycleTotals.total,
     },
-    generatedBy: "لوحة التقارير العامة",
+    generatedBy: t("لوحة التقارير العامة"),
   });
 
   const exportFinancialPdf = async () => {
@@ -1270,7 +1270,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       await exportFinancialOverviewReportPdf(buildFinancialOverviewReportInput());
     } catch (error) {
       console.error("Financial PDF export failed", error);
-      setExportError("تعذر إنشاء ملف PDF. أعد المحاولة بعد اكتمال تحميل البيانات.");
+      setExportError(t("تعذر إنشاء ملف PDF. أعد المحاولة بعد اكتمال تحميل البيانات."));
     } finally {
       setExporting(null);
     }
@@ -1284,7 +1284,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
       exportFinancialOverviewReportExcel(buildFinancialOverviewReportInput());
     } catch (error) {
       console.error("Financial Excel export failed", error);
-      setExportError("تعذر إنشاء ملف Excel. أعد المحاولة بعد اكتمال تحميل البيانات.");
+      setExportError(t("تعذر إنشاء ملف Excel. أعد المحاولة بعد اكتمال تحميل البيانات."));
     } finally {
       setExporting(null);
     }
