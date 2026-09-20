@@ -531,6 +531,38 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   }
 
   const bookingStaffInput = data.bookingStaff || data.booking_staff || data.staff || {};
+  const bookingSpecialtiesProvided = Array.isArray(bookingStaffInput.specialties);
+  const bookingSpecialtyIds = bookingSpecialtiesProvided
+    ? Array.from(
+        new Set(
+          bookingStaffInput.specialties
+            .map((value) => cleanText(value))
+            .filter(Boolean)
+        )
+      )
+    : null;
+
+  if (bookingSpecialtyIds?.length) {
+    const validServiceRows = await dbAll(
+      db,
+      `SELECT id
+         FROM services
+        WHERE salon_id = ?
+          AND active = 1
+          AND id IN (${bookingSpecialtyIds.map(() => '?').join(', ')})`,
+      [salonId, ...bookingSpecialtyIds]
+    );
+    const validServiceIds = new Set(validServiceRows.map((row) => cleanText(row.id)));
+    const invalidServiceIds = bookingSpecialtyIds.filter((serviceId) => !validServiceIds.has(serviceId));
+    if (invalidServiceIds.length) {
+      throw new AppError(
+        409,
+        'core_hr:invalid_staff_service_assignment',
+        `Unknown or inactive services: ${invalidServiceIds.join(', ')}`
+      );
+    }
+  }
+
   const staff = {
     id,
     salon_id: salonId,
@@ -563,9 +595,10 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         existingStaff?.show_on_booking,
       0
     ),
+    // Compatibility mirror only. The canonical booking authority is staff_services.
     specialties_json: JSON.stringify(
-      Array.isArray(bookingStaffInput.specialties)
-        ? bookingStaffInput.specialties.map((value) => cleanText(value)).filter(Boolean)
+      bookingSpecialtiesProvided
+        ? bookingSpecialtyIds
         : (() => {
             try {
               const parsed = JSON.parse(cleanText(existingStaff?.specialties_json) || '[]');
@@ -614,7 +647,7 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     }
   }
 
-  const writeResults = await dbBatch(db, [
+  const writeStatements = [
     {
       sql: `INSERT INTO employee_profiles
         (id, salon_id, firebase_uid, name, email, phone_normalized, avatar_file_id, avatar_url, bio, cv_url,
@@ -715,7 +748,58 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         now,
       ],
     },
-  ]);
+  ];
+
+  // Keep staff_services as the single canonical service-to-staff authority.
+  // specialties_json remains only a compatibility mirror for older readers.
+  if (bookingSpecialtiesProvided) {
+    const concurrencyGuard = `(
+      ? = 0 OR EXISTS (
+        SELECT 1
+          FROM employee_profiles AS service_sync_profile
+         WHERE service_sync_profile.salon_id = ?
+           AND service_sync_profile.id = ?
+           AND service_sync_profile.updated_at = ?
+      )
+    )`;
+
+    writeStatements.push({
+      sql: `UPDATE staff_services
+               SET active = 0
+             WHERE salon_id = ?
+               AND staff_id = ?
+               AND ${concurrencyGuard}`,
+      params: [
+        salonId,
+        id,
+        enforceConcurrency ? 1 : 0,
+        salonId,
+        id,
+        now,
+      ],
+    });
+
+    for (const serviceId of bookingSpecialtyIds) {
+      writeStatements.push({
+        sql: `INSERT INTO staff_services (salon_id, staff_id, service_id, active)
+              SELECT ?, ?, ?, 1
+               WHERE ${concurrencyGuard}
+              ON CONFLICT(salon_id, staff_id, service_id)
+              DO UPDATE SET active = 1`,
+        params: [
+          salonId,
+          id,
+          serviceId,
+          enforceConcurrency ? 1 : 0,
+          salonId,
+          id,
+          now,
+        ],
+      });
+    }
+  }
+
+  const writeResults = await dbBatch(db, writeStatements);
 
   if (
     enforceConcurrency &&
