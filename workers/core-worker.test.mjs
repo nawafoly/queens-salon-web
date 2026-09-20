@@ -57,6 +57,7 @@ class FakeD1 {
       "employee_absences",
       "payroll_periods",
       "payroll_entries",
+      "payroll_carryover_adjustments",
       "salary_advances",
       "salary_advance_installments",
       "employee_recurring_deductions",
@@ -383,6 +384,22 @@ class FakeD1 {
         })
         .filter(Boolean);
     }
+    if (normalized.startsWith("SELECT p.status AS profile_status, e.employment_status, e.start_date, e.end_date FROM employee_profiles p")) {
+      const [salonId, employeeId] = params;
+      const profile = this.rows("employee_profiles").find(
+        (row) => row.salon_id === salonId && row.id === employeeId
+      );
+      if (!profile) return [];
+      const employment = this.rows("employee_employment").find(
+        (row) => row.salon_id === salonId && row.employee_id === employeeId
+      );
+      return [{
+        profile_status: profile.status,
+        employment_status: employment?.employment_status ?? null,
+        start_date: employment?.start_date ?? null,
+        end_date: employment?.end_date ?? null,
+      }];
+    }
     if (normalized.startsWith("SELECT p.status AS profile_status, e.employment_status, e.end_date FROM employee_profiles p")) {
       const [salonId, employeeId] = params;
       const profile = this.rows("employee_profiles").find(
@@ -537,6 +554,20 @@ class FakeD1 {
         .filter((row) => row.salon_id === salonId && row.firebase_uid === uid)
         .slice(0, 2);
     }
+    if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND phone_normalized = ?")) {
+      const [salonId, phone] = params;
+      const limit = normalized.endsWith("LIMIT 2") ? 2 : 1;
+      return this.rows("clients")
+        .filter((row) => row.salon_id === salonId && row.phone_normalized === phone)
+        .slice(0, limit);
+    }
+    if (normalized.startsWith("SELECT id FROM clients WHERE salon_id = ? AND phone_normalized = ? AND id <> ?")) {
+      const [salonId, phone, excludedId] = params;
+      return this.rows("clients")
+        .filter((row) => row.salon_id === salonId && row.phone_normalized === phone && row.id !== excludedId)
+        .slice(0, 1)
+        .map((row) => ({ id: row.id }));
+    }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id IN (")) {
       const [salonId, ...ids] = params;
       const requestedIds = new Set(ids.map(String));
@@ -649,6 +680,21 @@ class FakeD1 {
       return this.rows("payroll_periods")
         .filter((row) => row.salon_id === salonId && row.id === id)
         .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT id, target_payroll_entry_id, target_payroll_month FROM payroll_carryover_adjustments WHERE salon_id = ? AND source_payroll_entry_id = ? AND status = 'applied'")) {
+      const [salonId, sourcePayrollEntryId] = params;
+      return this.rows("payroll_carryover_adjustments")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.source_payroll_entry_id === sourcePayrollEntryId &&
+          row.status === "applied"
+        )
+        .slice(0, 1)
+        .map((row) => ({
+          id: row.id,
+          target_payroll_entry_id: row.target_payroll_entry_id ?? null,
+          target_payroll_month: row.target_payroll_month ?? null,
+        }));
     }
     if (normalized.startsWith("SELECT id, firebase_uid, name, email, phone_normalized, avatar_file_id, status FROM employee_profiles WHERE salon_id = ?")) {
       const [salonId] = params;
