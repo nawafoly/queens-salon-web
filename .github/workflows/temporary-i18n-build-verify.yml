@@ -1,9 +1,9 @@
 name: Temporary i18n build verify
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/dashboard-english-settings-shell
+      - main
   workflow_dispatch:
 
 permissions:
