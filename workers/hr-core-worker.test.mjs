@@ -166,6 +166,7 @@ async function setup() {
     '0055_attendance_deferral_recreate_after_cancel.sql',
     '0057_leave_rest_workflows.sql',
     '0059_payroll_carryover_compliance_authority.sql',
+    '0068_file_metadata_document_type.sql',
     '0078_staff_services_specialties_backfill.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
@@ -2025,22 +2026,22 @@ test('annual leave manual adjustment writes canonical audited corrections', asyn
     );
   });
 });
-test('annual leave manual adjustment refuses review-required state', async (t) => {
+test('annual leave manual adjustment uses service-date accrual without an opening anchor', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
   await withFixedRiyadhDate(t, async () => {
     const employeeId =
-      'emp-annual-adjustment-review-required';
+      'emp-annual-adjustment-no-opening';
 
     await upsertHrEmployee(
       db,
       'main',
       {
         id: employeeId,
-        name: 'Annual Adjustment Review Required',
+        name: 'Annual Adjustment Without Opening Anchor',
         firebaseUid:
-          'uid-annual-adjustment-review-required',
+          'uid-annual-adjustment-no-opening',
         employment: {
           startDate: '2025-01-01',
           baseSalaryHalalas: 450000,
@@ -2050,28 +2051,27 @@ test('annual leave manual adjustment refuses review-required state', async (t) =
       actor
     );
 
-    await assert.rejects(
-      () =>
-        adjustAnnualLeaveBalance(
-          db,
-          'main',
-          employeeId,
-          {
-            action: 'add',
-            days: 0.5,
-            effectiveDate: '2026-08-28',
-            reason:
-              'Must not bypass annual review state',
-            operationId:
-              'annual-adjustment-review-required-1',
-          },
-          actor
-        ),
+    const adjusted = await adjustAnnualLeaveBalance(
+      db,
+      'main',
+      employeeId,
       {
-        code:
-          'core_annual_leave:opening_balance_required',
-      }
+        action: 'add',
+        days: 0.5,
+        effectiveDate: '2026-08-28',
+        reason:
+          'Canonical service-date accrual correction',
+        operationId:
+          'annual-adjustment-no-opening-1',
+      },
+      actor
     );
+
+    assert.equal(adjusted.idempotent, false);
+    assert.equal(adjusted.state.reviewRequired, false);
+    assert.equal(adjusted.entry.sourceType, 'manual_adjustment');
+    assert.equal(adjusted.entry.actionType, 'add');
+    assert.equal(Number(adjusted.entry.changeAmount), 0.5);
 
     const rows = await db.prepare(`
       SELECT COUNT(*) AS count
@@ -2081,7 +2081,7 @@ test('annual leave manual adjustment refuses review-required state', async (t) =
          AND source_type = 'manual_adjustment'
     `).bind(employeeId).first();
 
-    assert.equal(Number(rows.count), 0);
+    assert.equal(Number(rows.count), 1);
   });
 });
 test('historical annual leave correction routes locked payroll impact through canonical carryover', async (t) => {
