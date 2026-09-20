@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { FiUpload } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { DashboardModalV2 } from "../../components/dashboard-v2";
+import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 import { CoreClientService } from "../../services/CoreClientService";
 import type { CoreClient } from "../../types/coreApi";
 import {
@@ -40,13 +41,15 @@ function parseVip(value: unknown): boolean {
 }
 
 type Props = {
+  language: DashboardLanguage;
   open: boolean;
   existingClients: CoreClient[];
   onClose: () => void;
   onImported: (clients: CoreClient[]) => void;
 };
 
-export default function CustomersImportModal({ open, existingClients, onClose, onImported }: Props) {
+export default function CustomersImportModal({ language, open, existingClients, onClose, onImported }: Props) {
+  const t = (text: string) => clientsText(language, text);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [error, setError] = useState("");
@@ -68,9 +71,9 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
       try {
         const workbook = XLSX.read(event.target?.result, { type: "array" });
         const sheetName = workbook.SheetNames[0];
-        if (!sheetName) throw new Error("الملف لا يحتوي على ورقة بيانات.");
+        if (!sheetName) throw new Error(t("الملف لا يحتوي على ورقة بيانات."));
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: "" });
-        if (!rows.length) throw new Error("ملف Excel فارغ.");
+        if (!rows.length) throw new Error(t("ملف Excel فارغ."));
 
         const seen = new Set<string>();
         const next: PreviewRow[] = [];
@@ -89,10 +92,10 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
             note: String(getField(row, ["note", "ملاحظة", "ملاحظات", "notes", "remark"]) || "").trim(),
           });
         });
-        if (!next.length) throw new Error("لم نجد صفوفًا صالحة. يجب أن يحتوي كل صف على رقم جوال.");
+        if (!next.length) throw new Error(t("لم نجد صفوفًا صالحة. يجب أن يحتوي كل صف على رقم جوال."));
         setPreview(next);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "تعذر قراءة ملف Excel.");
+        setError(cause instanceof Error ? cause.message : t("تعذر قراءة ملف Excel."));
       }
     };
     reader.readAsArrayBuffer(file);
@@ -100,7 +103,7 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
 
   const commitImport = async () => {
     if (!preview.length) {
-      setError("لا توجد بيانات جاهزة للحفظ.");
+      setError(t("لا توجد بيانات جاهزة للحفظ."));
       return;
     }
     setImporting(true);
@@ -122,7 +125,7 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
       if (fileInputRef.current) fileInputRef.current.value = "";
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "حدث خطأ أثناء حفظ بيانات العميلات.");
+      setError(cause instanceof Error ? cause.message : t("حدث خطأ أثناء حفظ بيانات العميلات."));
     } finally {
       setImporting(false);
     }
@@ -132,9 +135,9 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
     <DashboardModalV2
       open={open}
       onClose={resetAndClose}
-      title="استيراد عميلات من Excel"
-      description="تتم المطابقة برقم الجوال من دون حذف أي سجل."
-      eyebrow="دمج آمن"
+      title={t("استيراد عميلات من Excel")}
+      description={t("تتم المطابقة برقم الجوال من دون حذف أي سجل.")}
+      eyebrow={t("دمج آمن")}
       size="lg"
       tone="gold"
       closeOnBackdrop={!importing}
@@ -142,8 +145,8 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
       className="dsv2-customers-import-modal"
       footer={
         <>
-          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={resetAndClose} disabled={importing}>إلغاء</button>
-          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void commitImport()} disabled={importing || !preview.length}>{importing ? "جارٍ الحفظ والدمج" : "حفظ ودمج"}</button>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={resetAndClose} disabled={importing}>{t("إلغاء")}</button>
+          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void commitImport()} disabled={importing || !preview.length}>{importing ? t("جارٍ الحفظ والدمج") : t("حفظ ودمج")}</button>
         </>
       }
     >
@@ -151,14 +154,14 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
         {error ? <div className="dsv2-customers-inline-error">{error}</div> : null}
         <label className="dsv2-customers-file-picker">
           <FiUpload />
-          <span><strong>اختاري ملف Excel</strong><small>الأعمدة المدعومة: الاسم، الجوال، VIP، ملاحظة.</small></span>
+          <span><strong>{t("اختاري ملف Excel")}</strong><small>{t("الأعمدة المدعومة: الاسم، الجوال، VIP، ملاحظة.")}</small></span>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={(event) => { const file = event.target.files?.[0]; if (file) pickFile(file); }} disabled={importing} />
         </label>
         {preview.length ? (
           <section className="dsv2-table-card dsv2-customers-import-preview">
-            <header className="dsv2-card--padded"><div><h3 className="dsv2-section-title">معاينة البيانات</h3><p className="dsv2-section-caption">سيتم دمج {preview.length.toLocaleString("ar-SA-u-nu-latn")} عميلة اعتمادًا على رقم الجوال.</p></div></header>
-            <div className="dsv2-table-scroll"><table className="dsv2-table"><thead><tr><th>الاسم</th><th>الجوال</th><th>VIP</th><th>ملاحظة</th></tr></thead><tbody>{preview.slice(0, 80).map((row) => <tr key={row.digits}><td>{row.name}</td><td><bdi dir="ltr">{row.phone}</bdi></td><td>{row.vip ? "VIP" : "عادية"}</td><td>{row.note || "—"}</td></tr>)}</tbody></table></div>
-            {preview.length > 80 ? <p>تم عرض أول 80 صفًا من {preview.length.toLocaleString("ar-SA-u-nu-latn")}.</p> : null}
+            <header className="dsv2-card--padded"><div><h3 className="dsv2-section-title">{t("معاينة البيانات")}</h3><p className="dsv2-section-caption">{language === "en" ? `${preview.length.toLocaleString("en-US")} clients will be merged by phone number.` : `سيتم دمج ${preview.length.toLocaleString("ar-SA-u-nu-latn")} عميلة اعتمادًا على رقم الجوال.`}</p></div></header>
+            <div className="dsv2-table-scroll"><table className="dsv2-table"><thead><tr><th>{t("الاسم")}</th><th>{t("الجوال")}</th><th>VIP</th><th>{t("ملاحظة")}</th></tr></thead><tbody>{preview.slice(0, 80).map((row) => <tr key={row.digits}><td>{row.name}</td><td><bdi dir="ltr">{row.phone}</bdi></td><td>{row.vip ? "VIP" : t("عادية")}</td><td>{row.note || "—"}</td></tr>)}</tbody></table></div>
+            {preview.length > 80 ? <p>{language === "en" ? `Showing the first 80 rows of ${preview.length.toLocaleString("en-US")}.` : `تم عرض أول 80 صفًا من ${preview.length.toLocaleString("ar-SA-u-nu-latn")}.`}</p> : null}
           </section>
         ) : null}
       </div>
