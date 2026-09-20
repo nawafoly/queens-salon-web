@@ -476,7 +476,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="attendance"
               element={
                 <PermissionRoute permission="attendance.settings.manage">
-                  <SettingsAttendance hasAdminPower={hasPermission("attendance.settings.manage")} />
+                  <SettingsAttendance hasAdminPower={hasPermission("attendance.settings.manage")} language={language} />
                 </PermissionRoute>
               }
             />

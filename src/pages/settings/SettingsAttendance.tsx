@@ -29,9 +29,11 @@ import {
   upsertWorkZoneInAttendanceWorker,
 } from "../../services/attendanceWorkerService";
 import "../../styles/dashboard-v2/dashboard-v2.css";
+import { settingsText, type DashboardLanguage } from "../../helpers/dashboardSettingsLanguage";
 
 type Props = {
   hasAdminPower: boolean;
+  language?: DashboardLanguage;
 };
 
 const emptyZone = {
@@ -58,25 +60,25 @@ function numberInput(value: number, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function attendanceErrorMessage(error: unknown, fallback: string) {
+function attendanceErrorMessage(error: unknown, fallback: string, language: DashboardLanguage = "ar") {
   const err = (error || {}) as { code?: string; message?: string };
   const code = String(err.code || "").toLowerCase();
   const message = String(err.message || "").trim();
 
   if (code.includes("permission-denied")) {
-    return "حساب هذه النافذة لا يملك صلاحية قراءة مناطق العمل. سجّل الدخول بحساب Owner / Admin / HR / Reception أو حددي نطاقًا مسموحًا للموظفة.";
+    return settingsText(language, "حساب هذه النافذة لا يملك صلاحية قراءة مناطق العمل. سجّل الدخول بحساب Owner / Admin / HR / Reception أو حددي نطاقًا مسموحًا للموظفة.");
   }
   if (code.includes("unavailable")) {
-    return "تعذر الاتصال بـ Firestore مؤقتًا. جرّبي التحديث بعد لحظات.";
+    return settingsText(language, "تعذر الاتصال بـ Firestore مؤقتًا. جرّبي التحديث بعد لحظات.");
   }
   if (code.includes("failed-precondition")) {
-    return "استعلام مناطق العمل يحتاج إعدادًا في Firestore. راجعي الـ console لمعرفة رابط الـ index إن وجد.";
+    return settingsText(language, "استعلام مناطق العمل يحتاج إعدادًا في Firestore. راجعي الـ console لمعرفة رابط الـ index إن وجد.");
   }
 
-  return message || fallback;
+  return message || settingsText(language, fallback);
 }
 
-function loadGoogleMaps() {
+function loadGoogleMaps(language: DashboardLanguage) {
   const win = window as any;
   if (win.google?.maps) return Promise.resolve(win.google);
   if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error("missing_google_maps_key"));
@@ -90,7 +92,7 @@ function loadGoogleMaps() {
     };
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=ar&region=SA&callback=${callbackName}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=${language === "en" ? "en" : "ar"}&region=SA&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
     script.onerror = () => reject(new Error("google_maps_load_failed"));
@@ -100,7 +102,8 @@ function loadGoogleMaps() {
   return googleMapsLoader;
 }
 
-export default function SettingsAttendance({ hasAdminPower }: Props) {
+export default function SettingsAttendance({ hasAdminPower, language = "ar" }: Props) {
+  const t = (text: string) => settingsText(language, text);
   const [settings, setSettings] = useState<AppSettings>(() => AppSettingsService.getCached());
   const [zones, setZones] = useState<WorkZone[]>([]);
   const [zoneDraft, setZoneDraft] = useState(emptyZone);
@@ -147,27 +150,27 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
   const stats = [
     {
-      label: "حالة النظام",
-      value: attendance.enabled ? "مفعّل" : "متوقف",
-      hint: "زر الحضور في بوابة الموظف",
+      label: t("حالة النظام"),
+      value: attendance.enabled ? t("مفعّل") : t("متوقف"),
+      hint: t("زر الحضور في بوابة الموظف"),
       tone: attendance.enabled ? "dsv2-metric-card--success" : "dsv2-metric-card--danger",
     },
     {
-      label: "البصمة",
-      value: attendance.requireBiometric ? "إلزامية" : "اختيارية",
-      hint: "تحقق داخلي مخصص للحضور فقط",
+      label: t("البصمة"),
+      value: attendance.requireBiometric ? t("إلزامية") : t("اختيارية"),
+      hint: t("تحقق داخلي مخصص للحضور فقط"),
       tone: "dsv2-metric-card--gold",
     },
     {
-      label: "GPS وRadius",
-      value: attendance.requireWorkZone ? "إلزامي" : "غير إلزامي",
-      hint: `${activeZones} مناطق نشطة`,
+      label: t("GPS وRadius"),
+      value: attendance.requireWorkZone ? t("إلزامي") : t("غير إلزامي"),
+      hint: `${activeZones} ${t("مناطق نشطة")}`,
       tone: "dsv2-metric-card--dark",
     },
     {
-      label: "الدقة المطلوبة",
-      value: `${attendance.maxLocationAccuracyMeters} م`,
-      hint: "أعلى هامش خطأ مسموح للموقع",
+      label: t("الدقة المطلوبة"),
+      value: `${attendance.maxLocationAccuracyMeters} ${language === "en" ? "m" : "م"}`,
+      hint: t("أعلى هامش خطأ مسموح للموقع"),
       tone: "dsv2-metric-card--dark",
     },
   ];
@@ -184,7 +187,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       applyZonesResult(await listWorkZones());
     } catch (error) {
       setZones([]);
-      setZonesError(attendanceErrorMessage(error, "تعذر تحميل مناطق العمل."));
+      setZonesError(attendanceErrorMessage(error, "تعذر تحميل مناطق العمل.", language));
     } finally {
       setZonesLoading(false);
     }
@@ -205,14 +208,14 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       if (settingsResult.status === "fulfilled") {
         setSettings(settingsResult.value);
       } else {
-        setMessage(attendanceErrorMessage(settingsResult.reason, "تعذر تحميل إعدادات الحضور."));
+        setMessage(attendanceErrorMessage(settingsResult.reason, "تعذر تحميل إعدادات الحضور.", language));
       }
 
       if (zonesResult.status === "fulfilled") {
         applyZonesResult(zonesResult.value);
       } else {
         setZones([]);
-        setZonesError(attendanceErrorMessage(zonesResult.reason, "تعذر تحميل مناطق العمل."));
+        setZonesError(attendanceErrorMessage(zonesResult.reason, "تعذر تحميل مناطق العمل.", language));
       }
     } finally {
       setZonesLoading(false);
@@ -247,7 +250,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     if (!GOOGLE_MAPS_API_KEY || !googleMapEl.current) return;
     let disposed = false;
 
-    loadGoogleMaps()
+    loadGoogleMaps(language)
       .then((google) => {
         if (disposed || !googleMapEl.current) return;
         const center = { lat: zoneDraft.lat, lng: zoneDraft.lng };
@@ -328,7 +331,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     return () => {
       disposed = true;
     };
-  }, [hasAdminPower]);
+  }, [hasAdminPower, language]);
 
   useEffect(() => {
     const center = { lat: zoneDraft.lat, lng: zoneDraft.lng };
@@ -375,7 +378,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       if (zoneDraftHasChanges) {
         const savedZone = await saveWorkZone({
           ...zoneDraft,
-          name: zoneDraft.name.trim() || "منطقة عمل جديدة",
+          name: zoneDraft.name.trim() || t("منطقة عمل جديدة"),
         });
         await upsertWorkZoneInAttendanceWorker(savedZone);
         latestZones = await listWorkZones();
@@ -389,9 +392,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
       const saved = await AppSettingsService.saveRemote(settings);
       setSettings(saved);
-      setMessage("تم حفظ إعدادات الحضور والبصمة.");
+      setMessage(t("تم حفظ إعدادات الحضور والبصمة."));
     } catch (error) {
-      setMessage((error as any)?.message || "تعذر حفظ الإعدادات.");
+      setMessage((error as any)?.message || t("تعذر حفظ الإعدادات."));
     } finally {
       setSaving(false);
     }
@@ -425,14 +428,14 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     try {
       const savedZone = await saveWorkZone({
         ...zoneDraft,
-        name: zoneDraft.name.trim() || "منطقة عمل جديدة",
+        name: zoneDraft.name.trim() || t("منطقة عمل جديدة"),
       });
       await upsertWorkZoneInAttendanceWorker(savedZone);
       resetZoneDraft();
       applyZonesResult(await listWorkZones());
-      setMessage("تم حفظ منطقة العمل.");
+      setMessage(t("تم حفظ منطقة العمل."));
     } catch (error) {
-      setMessage((error as any)?.message || "تعذر حفظ منطقة العمل.");
+      setMessage((error as any)?.message || t("تعذر حفظ منطقة العمل."));
     } finally {
       setSaving(false);
     }
@@ -448,9 +451,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       await removeWorkZone(id);
       setZones((current) => current.filter((zone) => zone.id !== id));
       if (zoneDraft.id === id) resetZoneDraft();
-      setMessage("تم حذف منطقة العمل.");
+      setMessage(t("تم حذف منطقة العمل."));
     } catch (error) {
-      setMessage((error as any)?.message || "تعذر حذف منطقة العمل.");
+      setMessage((error as any)?.message || t("تعذر حذف منطقة العمل."));
     } finally {
       setSaving(false);
     }
@@ -459,16 +462,16 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
   const useCurrentLocation = async () => {
     if (!hasAdminPower) return;
     setSaving(true);
-    setMessage("جاري قراءة موقع الجهاز...");
+    setMessage(t("جاري قراءة موقع الجهاز..."));
 
     try {
       const location = await getBrowserPosition();
       setZoneDraft((current) => ({ ...current, lat: location.lat, lng: location.lng }));
       setMapFrameCenter({ lat: location.lat, lng: location.lng });
       setManualMarkerOffset({ x: 0, y: 0 });
-      setMessage(`تم تحديد الموقع بدقة ${location.accuracy || 0} م.`);
+      setMessage(language === "en" ? `${t("تم تحديد الموقع بدقة")} ${location.accuracy || 0} m.` : `تم تحديد الموقع بدقة ${location.accuracy || 0} م.`);
     } catch (error) {
-      setMessage((error as any)?.message || "تعذر قراءة الموقع.");
+      setMessage((error as any)?.message || t("تعذر قراءة الموقع."));
     } finally {
       setSaving(false);
     }
@@ -522,7 +525,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     setMapFrameCenter(next);
     setManualMarkerOffset({ x: 0, y: 0 });
     setManualPickMode(false);
-    setMessage("تم اعتماد مركز الخريطة كموقع المنطقة.");
+    setMessage(t("تم اعتماد مركز الخريطة كموقع المنطقة."));
   };
 
   const moveDraftByPixels = (event: PointerEvent<HTMLElement>) => {
@@ -577,7 +580,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
   if (loading) {
     return (
-      <main className="dsv2-page settings-attendance-v2-page" dir="rtl">
+      <main className="dsv2-page settings-attendance-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card dsv2-card--padded settings-attendance-v2-state">
           <DashboardSkeletonV2 variant="title" width="36%" />
           <DashboardSkeletonV2 lines={3} width="100%" />
@@ -588,26 +591,26 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
   }
 
   return (
-    <main className="dsv2-page settings-attendance-v2-page" dir="rtl">
+    <main className="dsv2-page settings-attendance-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card settings-attendance-v2-hero">
         <div className="settings-attendance-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">إعدادات الحضور</span>
-          <h1 className="dsv2-page-title">الحضور والبصمة</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("إعدادات الحضور")}</span>
+          <h1 className="dsv2-page-title">{t("الحضور والبصمة")}</h1>
           <p className="dsv2-page-subtitle">
-            إدارة التحقق بالبصمة، دقة GPS، ومناطق العمل الجغرافية المتزامنة مع Attendance Worker.
+            {t("إدارة التحقق بالبصمة، دقة GPS، ومناطق العمل الجغرافية المتزامنة مع Attendance Worker.")}
           </p>
           <div className="settings-attendance-v2-hero__badges">
             <span className={`dsv2-badge ${attendance.requireBiometric ? "dsv2-badge--success" : ""}`}>
-              <FontAwesomeIcon icon={faFingerprint} /> {attendance.requireBiometric ? "البصمة إلزامية" : "البصمة اختيارية"}
+              <FontAwesomeIcon icon={faFingerprint} /> {attendance.requireBiometric ? t("البصمة إلزامية") : t("البصمة اختيارية")}
             </span>
             <span className="dsv2-badge">
-              <FontAwesomeIcon icon={faLocationDot} /> {activeZones} مناطق نشطة
+              <FontAwesomeIcon icon={faLocationDot} /> {activeZones} {t("مناطق نشطة")}
             </span>
           </div>
         </div>
       </section>
 
-      <section className="settings-attendance-v2-metrics" aria-label="ملخص إعدادات الحضور">
+      <section className="settings-attendance-v2-metrics" aria-label={t("ملخص إعدادات الحضور")}>
         {stats.map((item) => (
           <article key={item.label} className={`dsv2-metric-card ${item.tone}`}>
             <p className="dsv2-metric-card__label">{item.label}</p>
@@ -619,7 +622,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
       {message ? (
         <section className="dsv2-card dsv2-card--padded settings-attendance-v2-message" role="status">
-          <span className="dsv2-badge dsv2-badge--gold">حالة العملية</span>
+          <span className="dsv2-badge dsv2-badge--gold">{t("حالة العملية")}</span>
           <p>{message}</p>
         </section>
       ) : null}
@@ -628,11 +631,11 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
         <header className="settings-attendance-v2-panel__head">
           <div>
             <span className="settings-attendance-v2-panel__eyebrow">01</span>
-            <h2>سياسة تسجيل الحضور</h2>
-            <p>هذه الإعدادات تتحكم مباشرة بزر تسجيل الحضور داخل بوابة الموظف.</p>
+            <h2>{t("سياسة تسجيل الحضور")}</h2>
+            <p>{t("هذه الإعدادات تتحكم مباشرة بزر تسجيل الحضور داخل بوابة الموظف.")}</p>
           </div>
           <span className={`dsv2-badge ${hasAdminPower ? "dsv2-badge--success" : ""}`}>
-            {hasAdminPower ? "قابل للتعديل" : "عرض فقط"}
+            {hasAdminPower ? t("قابل للتعديل") : t("عرض فقط")}
           </span>
         </header>
 
@@ -675,16 +678,16 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                 {item.enabled ? "✓" : ""}
               </span>
               <span className="settings-attendance-v2-toggle__copy">
-                <strong>{item.title}</strong>
-                <small>{item.hint}</small>
+                <strong>{t(item.title)}</strong>
+                <small>{t(item.hint)}</small>
               </span>
-              <span className="settings-attendance-v2-toggle__status">{item.status}</span>
+              <span className="settings-attendance-v2-toggle__status">{t(item.status)}</span>
             </button>
           ))}
         </div>
 
         <div className="settings-attendance-v2-accuracy">
-          <DashboardFieldV2 id="attendance-max-accuracy" label="أقصى دقة مسموحة للموقع بالمتر">
+          <DashboardFieldV2 id="attendance-max-accuracy" label={t("أقصى دقة مسموحة للموقع بالمتر")}>
             <DashboardNumberInputV2
               id="attendance-max-accuracy"
               className="dsv2-input"
@@ -709,10 +712,10 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
         <header className="settings-attendance-v2-panel__head">
           <div>
             <span className="settings-attendance-v2-panel__eyebrow">02</span>
-            <h2>مناطق العمل Radius</h2>
-            <p>أضف كل فرع أو مشروع كنطاق مستقل. الموظفة تسجل فقط إذا كانت داخل أي نطاق نشط.</p>
+            <h2>{t("مناطق العمل Radius")}</h2>
+            <p>{t("أضف كل فرع أو مشروع كنطاق مستقل. الموظفة تسجل فقط إذا كانت داخل أي نطاق نشط.")}</p>
           </div>
-          <span className="dsv2-badge">{zones.length} مناطق محفوظة</span>
+          <span className="dsv2-badge">{zones.length} {t("مناطق محفوظة")}</span>
         </header>
 
         <div className="settings-attendance-v2-zones-layout">
@@ -724,18 +727,18 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                   ref={googleMapEl}
                 >
                   {!mapReady ? (
-                    <span className="settings-attendance-v2-map__loading">جاري تحميل Google Maps...</span>
+                    <span className="settings-attendance-v2-map__loading">{t("جاري تحميل Google Maps...")}</span>
                   ) : null}
                   {manualPickMode ? (
                     <>
                       <span className="settings-attendance-v2-center-sight" aria-hidden="true"><i /></span>
                       <span className="settings-attendance-v2-center-instruction">
-                        حرّك الخريطة حتى يصبح المؤشر فوق المكان المطلوب، ثم اضغط اعتماد المركز.
+                        {t("حرّك الخريطة حتى يصبح المؤشر فوق المكان المطلوب، ثم اضغط اعتماد المركز.")}
                       </span>
                     </>
                   ) : null}
                   <span className="settings-attendance-v2-radius-label">
-                    النطاق {zoneDraft.radiusMeters} م
+                    {t("النطاق")} {zoneDraft.radiusMeters} {language === "en" ? "m" : "م"}
                   </span>
                 </div>
               ) : (
@@ -761,12 +764,12 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     onPointerMove={moveEmbedDrag}
                     onPointerUp={stopEmbedDrag}
                     onPointerCancel={stopEmbedDrag}
-                    aria-label="تحريك موقع منطقة العمل"
+                    aria-label={t("تحريك موقع منطقة العمل")}
                   />
                   <span ref={radiusOverlayRef} className="settings-attendance-v2-radius-overlay" aria-hidden="true" />
-                  <span className="settings-attendance-v2-radius-label">Radius {zoneDraft.radiusMeters} م</span>
+                  <span className="settings-attendance-v2-radius-label">Radius {zoneDraft.radiusMeters} {language === "en" ? "m" : "م"}</span>
                   <span className="settings-attendance-v2-map__warning">
-                    أضف VITE_GOOGLE_MAPS_API_KEY للتحديد بالسحب والضغط داخل الخريطة.
+                    {t("أضف VITE_GOOGLE_MAPS_API_KEY للتحديد بالسحب والضغط داخل الخريطة.")}
                   </span>
                 </div>
               )}
@@ -774,16 +777,16 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
               <div className="settings-attendance-v2-precision">
                 <div className="settings-attendance-v2-precision__head">
                   <div>
-                    <strong>تحديد مركز المنطقة بدقة</strong>
-                    <small>ضغط أو سحب ثم تحريك متري للوصول للنقطة المطلوبة.</small>
+                    <strong>{t("تحديد مركز المنطقة بدقة")}</strong>
+                    <small>{t("ضغط أو سحب ثم تحريك متري للوصول للنقطة المطلوبة.")}</small>
                   </div>
-                  <span className="dsv2-badge dsv2-badge--gold">7 منازل عشرية</span>
+                  <span className="dsv2-badge dsv2-badge--gold">{t("7 منازل عشرية")}</span>
                 </div>
 
                 <div className="settings-attendance-v2-control-grid">
                   <article className="settings-attendance-v2-control-card settings-attendance-v2-control-card--location">
                     <header>
-                      <div><strong>الموقع</strong><small>اختيار سريع أو اعتماد مركز الخريطة</small></div>
+                      <div><strong>{t("الموقع")}</strong><small>{t("اختيار سريع أو اعتماد مركز الخريطة")}</small></div>
                       <FontAwesomeIcon icon={faLocationDot} />
                     </header>
                     <div className="settings-attendance-v2-actions">
@@ -799,7 +802,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                           setManualPickMode((value) => !value);
                         }}
                       >
-                        {manualPickMode ? "إلغاء وضع المركز" : "التحديد من مركز الخريطة"}
+                        {manualPickMode ? t("إلغاء وضع المركز") : t("التحديد من مركز الخريطة")}
                       </button>
                       <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={!hasAdminPower || saving || !manualPickMode} onClick={adoptMapCenter}>
                         اعتماد مركز الخريطة
@@ -808,9 +811,9 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
                     <div className="settings-attendance-v2-nudge">
                       <div className="settings-attendance-v2-nudge__copy">
-                        <strong>تحريك دقيق</strong>
-                        <small>كل ضغطة تحرّك الموقع بالمقدار المحدد.</small>
-                        <div className="settings-attendance-v2-chip-row" aria-label="مقدار التحريك">
+                        <strong>{t("تحريك دقيق")}</strong>
+                        <small>{t("كل ضغطة تحرّك الموقع بالمقدار المحدد.")}</small>
+                        <div className="settings-attendance-v2-chip-row" aria-label={t("مقدار التحريك")}>
                           {[1, 5, 10].map((step) => (
                             <button
                               key={step}
@@ -819,25 +822,25 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                               disabled={!hasAdminPower || saving}
                               onClick={() => setNudgeMeters(step)}
                             >
-                              {step} م
+                              {step} {language === "en" ? "m" : "م"}
                             </button>
                           ))}
                         </div>
                       </div>
-                      <div className="settings-attendance-v2-direction-pad" aria-label="تحريك موقع المنطقة">
-                        <button type="button" className="is-north" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(nudgeMeters, 0)} aria-label={`تحريك شمال ${nudgeMeters} متر`}>↑<small>شمال</small></button>
-                        <button type="button" className="is-west" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, -nudgeMeters)} aria-label={`تحريك غرب ${nudgeMeters} متر`}>←<small>غرب</small></button>
-                        <span>{nudgeMeters}م</span>
-                        <button type="button" className="is-east" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, nudgeMeters)} aria-label={`تحريك شرق ${nudgeMeters} متر`}>→<small>شرق</small></button>
-                        <button type="button" className="is-south" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(-nudgeMeters, 0)} aria-label={`تحريك جنوب ${nudgeMeters} متر`}>↓<small>جنوب</small></button>
+                      <div className="settings-attendance-v2-direction-pad" aria-label={t("تحريك موقع المنطقة")}>
+                        <button type="button" className="is-north" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(nudgeMeters, 0)} aria-label={`${t("تحريك شمال")} ${nudgeMeters} ${t("متر")}`}>↑<small>{t("شمال")}</small></button>
+                        <button type="button" className="is-west" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, -nudgeMeters)} aria-label={`${t("تحريك غرب")} ${nudgeMeters} ${t("متر")}`}>←<small>{t("غرب")}</small></button>
+                        <span>{nudgeMeters}{language === "en" ? "m" : "م"}</span>
+                        <button type="button" className="is-east" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, nudgeMeters)} aria-label={`${t("تحريك شرق")} ${nudgeMeters} ${t("متر")}`}>→<small>{t("شرق")}</small></button>
+                        <button type="button" className="is-south" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(-nudgeMeters, 0)} aria-label={`${t("تحريك جنوب")} ${nudgeMeters} ${t("متر")}`}>↓<small>{t("جنوب")}</small></button>
                       </div>
                     </div>
                   </article>
 
                   <article className="settings-attendance-v2-control-card settings-attendance-v2-control-card--radius">
-                    <header><div><strong>حجم النطاق</strong><small>يتحدث على الخريطة فورًا</small></div><span>{zoneDraft.radiusMeters} م</span></header>
+                    <header><div><strong>{t("حجم النطاق")}</strong><small>{t("يتحدث على الخريطة فورًا")}</small></div><span>{zoneDraft.radiusMeters} {language === "en" ? "m" : "م"}</span></header>
                     <label className="settings-attendance-v2-radius-input">
-                      <span>نصف القطر بالمتر</span>
+                      <span>{t("نصف القطر بالمتر")}</span>
                       <DashboardNumberInputV2
                         className="dsv2-input"
                         min={MIN_RADIUS_METERS}
@@ -857,7 +860,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                       value={Math.min(1000, zoneDraft.radiusMeters)}
                       disabled={!hasAdminPower}
                       onChange={(event) => setRadiusMeters(Number(event.target.value))}
-                      aria-label="تغيير نصف قطر المنطقة"
+                      aria-label={t("تغيير نصف قطر المنطقة")}
                     />
                     <div className="settings-attendance-v2-chip-row">
                       {RADIUS_PRESETS.map((radius) => (
@@ -868,52 +871,52 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                           disabled={!hasAdminPower || saving}
                           onClick={() => setRadiusMeters(radius)}
                         >
-                          {radius} م
+                          {radius} {language === "en" ? "m" : "م"}
                         </button>
                       ))}
                     </div>
                     <div className="settings-attendance-v2-fine-row">
-                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-1)}>− 1 م</button>
-                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(1)}>+ 1 م</button>
-                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-5)}>− 5 م</button>
-                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(5)}>+ 5 م</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-1)}>− 1 {language === "en" ? "m" : "م"}</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(1)}>+ 1 {language === "en" ? "m" : "م"}</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-5)}>− 5 {language === "en" ? "m" : "م"}</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(5)}>+ 5 {language === "en" ? "m" : "م"}</button>
                     </div>
-                    <p>قطر التغطية الكامل: <strong>{zoneDraft.radiusMeters * 2} متر</strong></p>
+                    <p>{t("قطر التغطية الكامل")}: <strong>{zoneDraft.radiusMeters * 2} {t("متر")}</strong></p>
                   </article>
 
                   <article className="settings-attendance-v2-control-card settings-attendance-v2-control-card--view">
-                    <header><div><strong>عرض الخريطة</strong><small>التكبير لا يغيّر الموقع المحفوظ</small></div><span>Zoom {mapZoom}</span></header>
+                    <header><div><strong>{t("عرض الخريطة")}</strong><small>{t("التكبير لا يغيّر الموقع المحفوظ")}</small></div><span>Zoom {mapZoom}</span></header>
                     <div className="settings-attendance-v2-actions">
-                      <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.max(3, value - 1))}>− تصغير</button>
-                      <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.min(21, value + 1))}>+ تكبير</button>
-                      <a className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" href={googleMapsOpenUrl} target="_blank" rel="noreferrer">فتح في Google Maps</a>
+                      <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.max(3, value - 1))}>− {t("تصغير")}</button>
+                      <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.min(21, value + 1))}>+ {t("تكبير")}</button>
+                      <a className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" href={googleMapsOpenUrl} target="_blank" rel="noreferrer">{t("فتح في Google Maps")}</a>
                     </div>
                   </article>
                 </div>
 
                 <div className="settings-attendance-v2-selected-location">
-                  <div><small>الموقع المحدد</small><strong dir="ltr">{Number(zoneDraft.lat).toFixed(7)}, {Number(zoneDraft.lng).toFixed(7)}</strong></div>
-                  <div><small>نصف القطر</small><strong>{zoneDraft.radiusMeters} متر</strong></div>
-                  <div><small>طريقة التعديل</small><strong>{manualPickMode ? "مركز الخريطة" : "ضغط / سحب / تحريك متري"}</strong></div>
+                  <div><small>{t("الموقع المحدد")}</small><strong dir="ltr">{Number(zoneDraft.lat).toFixed(7)}, {Number(zoneDraft.lng).toFixed(7)}</strong></div>
+                  <div><small>{t("نصف القطر")}</small><strong>{zoneDraft.radiusMeters} {t("متر")}</strong></div>
+                  <div><small>{t("طريقة التعديل")}</small><strong>{manualPickMode ? t("مركز الخريطة") : t("ضغط / سحب / تحريك متري")}</strong></div>
                 </div>
               </div>
             </div>
 
-            <DashboardFieldV2 id="attendance-zone-name" label="اسم المنطقة">
+            <DashboardFieldV2 id="attendance-zone-name" label={t("اسم المنطقة")}>
               <input
                 id="attendance-zone-name"
                 className="dsv2-input"
                 value={zoneDraft.name}
                 disabled={!hasAdminPower}
                 onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))}
-                placeholder="مثال: الفرع الرئيسي"
+                placeholder={t("مثال: الفرع الرئيسي")}
               />
             </DashboardFieldV2>
 
             <details className="settings-attendance-v2-advanced">
-              <summary>الإعدادات المتقدمة والإحداثيات اليدوية</summary>
+              <summary>{t("الإعدادات المتقدمة والإحداثيات اليدوية")}</summary>
               <div className="settings-attendance-v2-advanced__grid">
-                <DashboardFieldV2 id="attendance-zone-lat" label="خط العرض lat">
+                <DashboardFieldV2 id="attendance-zone-lat" label={t("خط العرض lat")}>
                   <DashboardNumberInputV2
                     id="attendance-zone-lat"
                     className="dsv2-input"
@@ -923,7 +926,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     onChange={(event) => setZoneDraft((current) => ({ ...current, lat: numberInput(Number(event.target.value), current.lat) }))}
                   />
                 </DashboardFieldV2>
-                <DashboardFieldV2 id="attendance-zone-lng" label="خط الطول lng">
+                <DashboardFieldV2 id="attendance-zone-lng" label={t("خط الطول lng")}>
                   <DashboardNumberInputV2
                     id="attendance-zone-lng"
                     className="dsv2-input"
@@ -933,7 +936,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     onChange={(event) => setZoneDraft((current) => ({ ...current, lng: numberInput(Number(event.target.value), current.lng) }))}
                   />
                 </DashboardFieldV2>
-                <DashboardFieldV2 id="attendance-zone-radius" label="نصف القطر بالمتر">
+                <DashboardFieldV2 id="attendance-zone-radius" label={t("نصف القطر بالمتر")}>
                   <DashboardNumberInputV2
                     id="attendance-zone-radius"
                     className="dsv2-input"
@@ -956,10 +959,10 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
             >
               <span className="settings-attendance-v2-toggle__mark">{zoneDraft.active ? "✓" : ""}</span>
               <span className="settings-attendance-v2-toggle__copy">
-                <strong>{zoneDraft.active ? "منطقة مفعلة" : "منطقة متوقفة"}</strong>
-                <small>المناطق المتوقفة لا تستخدم في تحقق الموظفات.</small>
+                <strong>{zoneDraft.active ? t("منطقة مفعلة") : t("منطقة متوقفة")}</strong>
+                <small>{t("المناطق المتوقفة لا تستخدم في تحقق الموظفات.")}</small>
               </span>
-              <span className="settings-attendance-v2-toggle__status">{zoneDraft.active ? "نشطة" : "متوقفة"}</span>
+              <span className="settings-attendance-v2-toggle__status">{zoneDraft.active ? t("نشطة") : t("متوقفة")}</span>
             </button>
 
             <div className="settings-attendance-v2-form-actions">
@@ -978,7 +981,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
           <aside className="settings-attendance-v2-zones-list">
             <div className="settings-attendance-v2-zones-list__head">
               <div>
-                <strong>المناطق المحفوظة</strong>
+                <strong>{t("المناطق المحفوظة")}</strong>
                 <small>Firestore + Attendance Worker</small>
               </div>
               <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={zonesLoading} onClick={() => void loadZones()}>
@@ -988,7 +991,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
             {zonesError ? (
               <DashboardErrorStateV2
-                title="تعذر قراءة مناطق العمل"
+                title={t("تعذر قراءة مناطق العمل")}
                 description={zonesError}
                 compact
               />
@@ -1003,12 +1006,12 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                     <div className="settings-attendance-v2-zone__title-row">
                       <strong>{zone.name}</strong>
                       <span className={`dsv2-badge ${zone.active ? "dsv2-badge--success" : ""}`}>
-                        {zone.active ? "مفعلة" : "متوقفة"}
+                        {zone.active ? t("مفعلة") : t("متوقفة")}
                       </span>
                     </div>
                     <small>ID: {zone.id}</small>
                     <span dir="ltr">{zone.lat.toFixed(5)}, {zone.lng.toFixed(5)}</span>
-                    <span>Radius {zone.radiusMeters} م</span>
+                    <span>Radius {zone.radiusMeters} {language === "en" ? "m" : "م"}</span>
                   </div>
                   <div className="settings-attendance-v2-zone__actions">
                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!hasAdminPower || saving} onClick={() => editZone(zone)}>
@@ -1022,8 +1025,8 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
               ))
             ) : (
               <DashboardEmptyStateV2
-                title="لا توجد مناطق عمل"
-                description="أضف أول منطقة حتى يعمل تحقق GPS بشكل صحيح."
+                title={t("لا توجد مناطق عمل")}
+                description={t("أضف أول منطقة حتى يعمل تحقق GPS بشكل صحيح.")}
                 tone="gold"
                 compact
               />
@@ -1034,15 +1037,15 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
 
       <section className="dsv2-card dsv2-card--padded settings-attendance-v2-savebar">
         <div>
-          <strong>تطبيق إعدادات الحضور</strong>
-          <p>الحفظ يزامن المناطق مع Attendance Worker ويحدّث إعدادات بوابة الموظف.</p>
+          <strong>{t("تطبيق إعدادات الحضور")}</strong>
+          <p>{t("الحفظ يزامن المناطق مع Attendance Worker ويحدّث إعدادات بوابة الموظف.")}</p>
         </div>
         <div className="settings-attendance-v2-savebar__actions">
           <button className="dsv2-btn dsv2-btn--secondary" type="button" disabled={saving} onClick={() => void load()}>
             <FontAwesomeIcon icon={faRotateRight} /> تحديث
           </button>
           <button className="dsv2-btn dsv2-btn--primary" type="button" disabled={!hasAdminPower || saving} onClick={saveSettings}>
-            <FontAwesomeIcon icon={faSave} /> {saving ? "جاري الحفظ..." : "حفظ إعدادات الحضور"}
+            <FontAwesomeIcon icon={faSave} /> {saving ? t("جاري الحفظ...") : t("حفظ إعدادات الحضور")}
           </button>
         </div>
       </section>
