@@ -82,3 +82,16 @@ test('MALIKAT Connect runtime foundation is part of the client platform guard', 
   assert.match(runtime, /sendConnectMessage/);
   assert.match(runtime, /delivery_status/);
 });
+
+
+test('client cashback is exposed through the canonical portal', () => {
+  const worker = readFileSync('workers/core/index.js', 'utf8');
+  const portal = readFileSync('workers/core/repositories/client-portal.js', 'utf8');
+
+  assert.match(worker, /\/api\/core\/client\/cashback/);
+  assert.match(worker, /case "client:cashback"/);
+  assert.match(portal, /getSelfCashback/);
+  assert.match(portal, /getClientCashbackWallet/);
+  assert.match(portal, /return \{ profile, bookings, loyalty, cashback, offers/);
+  assert.match(portal, /refunds,[\s\S]*loyalty,[\s\S]*cashback,[\s\S]*offersUsed/);
+});

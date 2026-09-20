@@ -15,6 +15,7 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { listBookings } from './bookings.js';
+import { getClientCashbackWallet } from './cashback.js';
 
 const HALALAS_PER_POINT = 100; // 1 point per paid SAR; change in one place only.
 const LOYALTY_LEVELS = [
@@ -397,6 +398,11 @@ export async function getSelfLoyalty(db, salonId, identity) {
   return getClientLoyaltyById(db, salonId, client.id);
 }
 
+export async function getSelfCashback(db, salonId, identity) {
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
+  return getClientCashbackWallet(db, salonId, client.id);
+}
+
 function safeJsonObject(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;
   try {
@@ -412,11 +418,12 @@ export async function getAdminClientOverview(db, salonId, clientId) {
   const client = await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
   if (!client) throw new AppError(404, 'core_client:not_found');
 
-  const [bookings, payments, refunds, loyalty] = await Promise.all([
+  const [bookings, payments, refunds, loyalty, cashback] = await Promise.all([
     listBookings(db, salonId, { clientId: id }),
     dbAll(db, `SELECT * FROM payments WHERE salon_id = ? AND client_id = ? ORDER BY COALESCE(paid_at, created_at) DESC LIMIT 500`, [salonId, id]),
     dbAll(db, `SELECT * FROM refunds WHERE salon_id = ? AND client_id = ? ORDER BY refunded_at DESC LIMIT 500`, [salonId, id]),
     getClientLoyaltyById(db, salonId, id),
+    getClientCashbackWallet(db, salonId, id),
   ]);
 
   const completedRefunds = refunds.filter((row) => cleanText(row.status) === 'completed');
@@ -448,6 +455,7 @@ export async function getAdminClientOverview(db, salonId, clientId) {
     ...payments.flatMap((row) => [row.paid_at, row.created_at]),
     ...refunds.flatMap((row) => [row.refunded_at, row.created_at]),
     ...loyalty.transactions.map((row) => row.created_at),
+    ...cashback.transactions.map((row) => row.created_at),
   ].map(cleanText).filter(Boolean).sort((a, b) => b.localeCompare(a));
 
   return {
@@ -456,6 +464,7 @@ export async function getAdminClientOverview(db, salonId, clientId) {
     payments,
     refunds,
     loyalty,
+    cashback,
     offersUsed: [...offersUsedMap.values()],
     summary: {
       bookings: bookings.length,
@@ -602,11 +611,12 @@ export async function getClientPortalSnapshot(db, salonId, identity) {
   // Resolve/link the account once before parallel reads. Without this guard a
   // first-time account could race and attempt to create more than one client.
   await resolveCanonicalSelfClient(db, salonId, identity);
-  const [profile, bookings, loyalty, offers] = await Promise.all([
+  const [profile, bookings, loyalty, cashback, offers] = await Promise.all([
     getSelfProfile(db, salonId, identity),
     listSelfBookings(db, salonId, identity),
     getSelfLoyalty(db, salonId, identity),
+    getSelfCashback(db, salonId, identity),
     listSelfOffers(db, salonId, identity),
   ]);
-  return { profile, bookings, loyalty, offers, generatedAt: nowIso() };
+  return { profile, bookings, loyalty, cashback, offers, generatedAt: nowIso() };
 }

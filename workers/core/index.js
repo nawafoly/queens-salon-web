@@ -131,6 +131,7 @@ import {
   getAdminClientOverview,
   getClientPortalSnapshot,
   getSelfLoyalty,
+  getSelfCashback,
   getSelfProfile,
   listSelfBookings,
   listSelfOffers,
@@ -556,6 +557,7 @@ function match(url, method) {
     ["/api/core/client/me", "client:me"],
     ["/api/core/client/bookings", "client:bookings"],
     ["/api/core/client/loyalty", "client:loyalty"],
+    ["/api/core/client/cashback", "client:cashback"],
     ["/api/core/client/offers", "client:offers"],
   ]);
   if (clientPortalRoutes.has(path)) {
@@ -1056,6 +1058,7 @@ async function dispatch(ctx, route, method, body, query, env) {
     "client:me",
     "client:bookings",
     "client:loyalty",
+    "client:cashback",
     "client:offers",
     "client-connect:client-conversations",
     "client-connect:client-messages",
@@ -1177,6 +1180,10 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "client:loyalty":
       if (method === "GET") return getSelfLoyalty(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:cashback":
+      if (method === "GET") return getSelfCashback(db, ctx.salonId, ctx.identity);
       break;
 
     case "client:offers":
