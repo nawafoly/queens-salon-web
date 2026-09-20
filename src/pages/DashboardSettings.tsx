@@ -460,7 +460,8 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                     initialRole={uiRole}
                     authReady={!authLoading}
                     allowAdminManageUsers={allowAdminManageUsers}
-                  />
+                  
+                    language={language}/>
                 </PermissionRoute>
               }
             />
