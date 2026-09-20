@@ -656,6 +656,16 @@ class FakeD1 {
         .filter((row) => row.salon_id === salonId && row.employee_id === employeeId && row.date_key === dateKey)
         .slice(0, 1);
     }
+    if (normalized.startsWith("SELECT * FROM employee_absences WHERE salon_id = ? AND (employee_id = ? OR employee_uid = ?)")) {
+      const [salonId, employeeId, employeeUid] = params;
+      return this.rows("employee_absences")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          (row.employee_id === employeeId || row.employee_uid === employeeUid)
+        )
+        .sort((a, b) => String(b.date_key || "").localeCompare(String(a.date_key || "")))
+        .slice(0, 1000);
+    }
     if (normalized.startsWith("SELECT * FROM employee_absences WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("employee_absences")
@@ -1944,6 +1954,8 @@ class FakeD1 {
         sql.startsWith("UPDATE employee_payroll_obligation_installments") ||
         sql.startsWith("UPDATE employee_payroll_obligations")
       ) {
+        results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("UPDATE payroll_entries SET")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
