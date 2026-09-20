@@ -1651,7 +1651,7 @@
 
   .dashboard-v2.is-booking-internal-route .bk2-summary-card {
     position: static;
-    order: -1;
+    order: 1;
   }
 
   .dashboard-v2.is-booking-internal-route .bk2-sessions-toolbar {
