@@ -185,3 +185,52 @@ test("Core leave conflicts expose specific causes instead of a generic 409 messa
     /console\.warn\("\[core-api-error\]"[\s\S]*?requestId[\s\S]*?status: response\.status[\s\S]*?code/
   );
 });
+
+
+test("other leave uses an explicit manager-authorized manual policy path", () => {
+  const canonicalServiceSource = readFileSync(
+    new URL("../src/services/canonicalEmployeeLeaveRequests.ts", import.meta.url),
+    "utf8"
+  );
+  const coreIndexSource = readFileSync(
+    new URL("../workers/core/index.js", import.meta.url),
+    "utf8"
+  );
+  const employeeRequestsSource = readFileSync(
+    new URL("../workers/core/repositories/employee-requests-legacy.js", import.meta.url),
+    "utf8"
+  );
+  const leavesSource = readFileSync(
+    new URL("../workers/core/repositories/leaves.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    dashboardEmployeesSource,
+    /leaveType === "other"[\s\S]*?deductFromBalance: payload\.deductFromBalance === true[\s\S]*?affectsPayroll: payload\.affectsPayroll === true/
+  );
+  assert.match(
+    dashboardEmployeesSource,
+    /manualLeavePolicy:[\s\S]*?deductFromBalance: policy\.deductFromBalance[\s\S]*?affectsPayroll: policy\.affectsPayroll/
+  );
+  assert.match(
+    canonicalServiceSource,
+    /manualLeavePolicy[\s\S]*?act\(current, "execute"[\s\S]*?manualLeavePolicy:/
+  );
+  assert.match(
+    coreIndexSource,
+    /manualLeavePolicyAuthorized: leaveManager/
+  );
+  assert.match(
+    employeeRequestsSource,
+    /manualLeavePolicyAuthorized !== true[\s\S]*?core_leave:manual_policy_forbidden/
+  );
+  assert.match(
+    employeeRequestsSource,
+    /legal_basis = 'HR_MANUAL_POLICY'[\s\S]*?manualHrReviewResolved:[\s\S]*?manualPolicy !== null/
+  );
+  assert.match(
+    leavesSource,
+    /options\.manualHrReviewResolved === true[\s\S]*?cleanText\(leave\.legal_basis\) === 'HR_MANUAL_POLICY'[\s\S]*?legacyDecideLeave/
+  );
+});
