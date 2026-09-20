@@ -50,7 +50,21 @@ requireText(
 requireMatch(booking, /if \(step === 1 && canContinue\) setStep\(2\)/, "Step 1 → 2 gating changed.");
 requireMatch(booking, /else if \(step === 2 && cart\.length\) setStep\(3\)/, "Step 2 → 3 gating changed.");
 requireMatch(booking, /else if \(step === 3 && allScheduled\) setStep\(4\)/, "Step 3 → 4 gating changed.");
-requireMatch(booking, /onClick=\{\(\) => setStep\(item\.id\)\}/, "Direct step navigation behavior changed.");
+requireText(
+  booking,
+  "const canOpenStep = (target: Step) =>",
+  "Progressive step navigation guard is missing."
+);
+requireMatch(
+  booking,
+  /disabled=\{!enabled\}/,
+  "Unavailable future booking steps are no longer disabled."
+);
+requireMatch(
+  booking,
+  /onClick=\{\(\) => \{ if \(enabled\) setStep\(item\.id\); \}\}/,
+  "Guarded direct step navigation behavior changed."
+);
 
 // Client/catalog data remains Core-backed and quick-client history remains intact.
 requireText(booking, 'const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";', "Quick-client history storage key changed.");
