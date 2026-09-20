@@ -582,7 +582,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
         );
 
         setPayrollLoadWarning(
-          "تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح."
+          t("تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح.")
         );
       }
 
@@ -594,7 +594,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       }
     } catch (e) {
       console.error("listAllExpensesCore error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
       setItems([]);
       setAutoPayrollItems([]);
     } finally {
@@ -623,7 +623,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
             setItems([]);
             setAutoPayrollItems([]);
             setLoading(false);
-            setModalMsg("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب.");
+            setModalMsg(t("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب."));
             setAuthReady(true);
           }
           return;
@@ -756,10 +756,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
   const addExpense = async () => {
     const amt = Number(amount);
-    if (!title.trim()) return setModalMsg("اكتب اسم المصروف");
-    if (!category.trim()) return setModalMsg("اختر التصنيف");
-    if (!date) return setModalMsg("اختر التاريخ");
-    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg("اكتب مبلغ صحيح");
+    if (!title.trim()) return setModalMsg(t("اكتب اسم المصروف"));
+    if (!category.trim()) return setModalMsg(t("اختر التصنيف"));
+    if (!date) return setModalMsg(t("اختر التاريخ"));
+    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg(t("اكتب مبلغ صحيح"));
 
     const expense: Expense = {
       id: safeUUID(),
@@ -778,10 +778,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       await loadExpenses();
       resetForm();
       setAddOpen(false);
-      setModalMsg("تمت إضافة المصروف بنجاح");
+      setModalMsg(t("تمت إضافة المصروف بنجاح"));
     } catch (e) {
       console.error("upsertExpenseCore error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -789,13 +789,13 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
   const removeExpense = async (id: string) => {
     if (isAutoPayrollExpenseId(id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن حذفه يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن حذفه يدويًا."));
       return;
     }
     setConfirmState({
       open: true,
-      title: "تأكيد الحذف",
-      message: "متأكد تبغى حذف المصروف؟",
+      title: t("تأكيد الحذف"),
+      message: t("متأكد تبغى حذف المصروف؟"),
       onConfirm: async () => {
         try {
           setLoading(true);
@@ -803,7 +803,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
           await loadExpenses();
         } catch (e) {
           console.error("removeExpenseCore error:", e);
-          setModalMsg(firebaseMsg(e));
+          setModalMsg(firebaseMsg(e, language));
         } finally {
           setLoading(false);
           setConfirmState({ open: false });
@@ -815,7 +815,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
   // ✅ بدء التعديل (كل الحقول)
   const startEdit = (e: Expense) => {
     if (isAutoPayrollExpenseId(e.id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا."));
       return;
     }
     setEditId(e.id);
@@ -845,15 +845,15 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
   // 💾 حفظ التعديل (كل الحقول)
   const saveEdit = async (original: Expense) => {
     if (isAutoPayrollExpenseId(original.id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا."));
       return;
     }
     const amt = Number(editForm.amount);
 
-    if (!editForm.title.trim()) return setModalMsg("اكتب اسم المصروف");
-    if (!editForm.category.trim()) return setModalMsg("اختر التصنيف");
-    if (!editForm.date) return setModalMsg("اختر التاريخ");
-    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg("اكتب مبلغ صحيح");
+    if (!editForm.title.trim()) return setModalMsg(t("اكتب اسم المصروف"));
+    if (!editForm.category.trim()) return setModalMsg(t("اختر التصنيف"));
+    if (!editForm.date) return setModalMsg(t("اختر التاريخ"));
+    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg(t("اكتب مبلغ صحيح"));
 
     const updated: Expense = {
       ...original,
@@ -870,10 +870,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       await upsertExpenseCore(updated);
       await loadExpenses();
       setEditId(null);
-      setModalMsg("تم التعديل ✅");
+      setModalMsg(t("تم التعديل ✅"));
     } catch (e) {
       console.error("saveEdit error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -883,7 +883,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
     try {
       const already = localStorage.getItem(EXPENSES_MIGRATED_KEY) === "1";
       if (already) {
-        setModalMsg("تم ترحيل المصروفات مسبقًا ✅");
+        setModalMsg(t("تم ترحيل المصروفات مسبقًا ✅"));
         setMigrated(true);
         setHasLegacy(false);
         setLegacyCount(0);
@@ -892,7 +892,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
       const legacy = loadLegacyExpenses();
       if (legacy.length === 0) {
-        setModalMsg("لا توجد مصروفات قديمة في LocalStorage ✅");
+        setModalMsg(t("لا توجد مصروفات قديمة في LocalStorage ✅"));
         setHasLegacy(false);
         setLegacyCount(0);
         return;
@@ -900,10 +900,11 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
       setConfirmState({
         open: true,
-        title: "ترحيل المصروفات",
-        message:
-          `سيتم ترحيل ${legacy.length} مصروف من LocalStorage إلى Firestore.\n` +
-          `ملاحظة: العملية مرة واحدة ولن تتكرر.\n\nتأكيد؟`,
+        title: t("ترحيل المصروفات"),
+        message: language === "en"
+          ? `${legacy.length} expenses will be migrated from LocalStorage to Firestore.\n${t("ملاحظة: العملية مرة واحدة ولن تتكرر.")}\n\nConfirm?`
+          : `سيتم ترحيل ${legacy.length} مصروف من LocalStorage إلى Firestore.\n` +
+            `${t("ملاحظة: العملية مرة واحدة ولن تتكرر.")}\n\nتأكيد؟`,
         onConfirm: async () => {
           try {
             setLoading(true);
@@ -919,7 +920,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
               setHasLegacy(false);
               setLegacyCount(0);
 
-              setModalMsg("كل السجلات موجودة بالفعل في Firestore ✅");
+              setModalMsg(t("كل السجلات موجودة بالفعل في Firestore ✅"));
               return;
             }
 
@@ -933,10 +934,10 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
             setLegacyCount(0);
 
             await loadExpenses();
-            setModalMsg(`تم ترحيل ${toUpsert.length} مصروف إلى Firestore ✅`);
+            setModalMsg(language === "en" ? `${toUpsert.length} expenses migrated to Firestore ✅` : `تم ترحيل ${toUpsert.length} مصروف إلى Firestore ✅`);
           } catch (e) {
             console.error("migrateLegacyExpensesOnce error:", e);
-            setModalMsg(firebaseMsg(e));
+            setModalMsg(firebaseMsg(e, language));
           } finally {
             setLoading(false);
             setConfirmState({ open: false });
@@ -945,23 +946,24 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       });
     } catch (e) {
       console.error("migrateLegacyExpensesOnce error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
   };
 
   const buildExpensesReportInput = () => ({
+    language,
     rows: filtered.map((e) => ({
       date: e.date,
-      type: expenseTypeLabel(e),
-      category: e.category,
-      title: e.title || e.note || "",
+      type: expenseTypeLabel(e, language),
+      category: t(String(e.category || "أخرى")),
+      title: expenseDisplayTitle(e, language) || e.note || "",
       employeeName: expenseEmployeeLabel(e),
-      paymentMethod: String(e.paymentMethod || ""),
+      paymentMethod: paymentMethodLabel(e.paymentMethod, language),
       amount: Number(e.amount || 0),
-      source: expenseSourceLabel(e),
-      addedBy: String((e as any).createdByName || (e as any).addedBy || "الإدارة"),
+      source: expenseSourceLabel(e, language),
+      addedBy: String((e as any).createdByName || (e as any).addedBy || t("الإدارة")),
       payrollCycle:
         payrollKindFromExpense(e) === "manual"
           ? ""
@@ -973,20 +975,20 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       toDate: activeRange.to,
       category: fCategory,
       paymentMethod: fPayment,
-      mode: recordMode === "payroll_cycle" ? "دورة رواتب" : "شهر تقويمي",
+      mode: recordMode === "payroll_cycle" ? t("دورة الرواتب") : t("شهر تقويمي"),
     },
-    generatedBy: "لوحة المصروفات",
+    generatedBy: t("لوحة المصروفات"),
   });
 
   const exportPdf = () => {
-    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (payrollLoadWarning) return setModalMsg(t("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب."));
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     exportExpensesReportPdf(buildExpensesReportInput());
   };
 
   const exportExcel = () => {
-    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (payrollLoadWarning) return setModalMsg(t("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب."));
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     exportExpensesReportExcel(buildExpensesReportInput());
   };
 
@@ -1007,7 +1009,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       if (!cats.includes(category)) setCategory(cats[0] || "أخرى");
     })();
 
-    setModalMsg("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)");
+    setModalMsg(t("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)"));
   };
 
   if (!authReady) {
