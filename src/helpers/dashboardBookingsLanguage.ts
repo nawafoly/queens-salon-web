@@ -673,6 +673,7 @@ function normalizeCatalogArabic(value: string): string {
     .replace(/\u0640/g, "")
     .replace(/[أإآ]/g, "ا")
     .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
