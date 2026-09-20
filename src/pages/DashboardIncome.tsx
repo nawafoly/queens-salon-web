@@ -28,6 +28,7 @@ import { CoreBookingService } from "../services/CoreBookingService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
 import { formatFinanceNote, isSystemFinanceNote } from "../helpers/financeDisplay";
+import { incomeText, type DashboardLanguage } from "../helpers/dashboardIncomeLanguage";
 import {
   exportIncomeReportExcel,
   exportIncomeReportPdf,
@@ -106,23 +107,23 @@ function normalizeISODate(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
-function methodLabel(m: PaymentMethod) {
-  if (m === "cash") return "\u0643\u0627\u0634";
-  if (m === "card") return "\u0634\u0628\u0643\u0629";
-  if (m === "transfer") return "\u062a\u062d\u0648\u064a\u0644";
-  if (m === "mixed") return "مختلط";
-  return "\u0623\u062e\u0631\u0649";
+function methodLabel(m: PaymentMethod, language: DashboardLanguage = "ar") {
+  if (m === "cash") return incomeText(language, "كاش");
+  if (m === "card") return incomeText(language, "شبكة");
+  if (m === "transfer") return incomeText(language, "تحويل");
+  if (m === "mixed") return incomeText(language, "مختلط");
+  return incomeText(language, "أخرى");
 }
 
-function sourceLabel(source: string) {
+function sourceLabel(source: string, language: DashboardLanguage = "ar") {
   const s = String(source || "").trim().toLowerCase();
-  if (!s) return "غير محدد";
-  if (s === "booking" || s === "\u062d\u062c\u0632") return "\u062d\u062c\u0632";
-  if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "\u0641\u0627\u062a\u0648\u0631\u0629";
-  if (s === "internal_booking") return "\u062d\u062c\u0632 \u062f\u0627\u062e\u0644\u064a";
-  if (s === "package_purchase") return "شراء باقة";
-  if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "\u064a\u062f\u0648\u064a";
-  if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639";
+  if (!s) return incomeText(language, "غير محدد");
+  if (s === "booking" || s === "حجز") return incomeText(language, "حجز");
+  if (s === "invoice" || s === "فاتورة") return incomeText(language, "فاتورة");
+  if (s === "internal_booking") return incomeText(language, "حجز داخلي");
+  if (s === "package_purchase") return incomeText(language, "شراء باقة");
+  if (s === "manual" || s === "يدوي") return incomeText(language, "يدوي");
+  if (s === "refund" || s === "استرجاع") return incomeText(language, "استرجاع");
   if (
     s === "other" ||
     s === "other income" ||
@@ -130,7 +131,7 @@ function sourceLabel(source: string) {
     s === "\u0623\u062e\u0631\u0649" ||
     s === "\u0627\u062e\u0631\u0649"
   )
-    return OTHER_INCOME_LABEL;
+    return incomeText(language, OTHER_INCOME_LABEL);
   return String(source || "").trim();
 }
 
@@ -145,9 +146,9 @@ function sourceKind(source: string): "booking" | "invoice" | "internal" | "manua
   return "other";
 }
 
-function toBookingRef(v?: string) {
+function toBookingRef(v?: string, language: DashboardLanguage = "ar") {
   const raw = String(v || "").trim().toUpperCase();
-  if (!raw) return "بدون حجز";
+  if (!raw) return incomeText(language, "بدون حجز");
   if (/^MK-\d+$/.test(raw)) return raw;
   if (/^\d+$/.test(raw)) return `MK-${raw}`;
   return raw;
@@ -196,26 +197,26 @@ function isRefundIncomeRow(item: IncomeItem): boolean {
   );
 }
 
-function paymentTypeLabel(type: BookingPaymentType): string {
-  return type === "partial" ? "\u0639\u0631\u0628\u0648\u0646" : "\u0643\u0627\u0645\u0644";
+function paymentTypeLabel(type: BookingPaymentType, language: DashboardLanguage = "ar"): string {
+  return type === "partial" ? incomeText(language, "عربون") : incomeText(language, "كامل");
 }
 
-function buildPaymentSummaryRows(meta?: BookingMeta): PaymentSummaryRow[] {
+function buildPaymentSummaryRows(meta?: BookingMeta, language: DashboardLanguage = "ar"): PaymentSummaryRow[] {
   if (!meta) return [];
   const paid = round2(meta.paidAmount);
   const remaining = round2(meta.remainingAmount);
   const rows: PaymentSummaryRow[] = [];
-  if (paid > 0) rows.push({ kind: "paid", label: "\u062f\u0641\u0639\u062a", value: paid });
-  if (remaining > 0) rows.push({ kind: "remaining", label: "\u0627\u0644\u0645\u062a\u0628\u0642\u064a", value: remaining });
+  if (paid > 0) rows.push({ kind: "paid", label: incomeText(language, "دفعت"), value: paid });
+  if (remaining > 0) rows.push({ kind: "remaining", label: incomeText(language, "المتبقي"), value: remaining });
   return rows;
 }
 
-function buildPaymentSummary(meta?: BookingMeta): string {
+function buildPaymentSummary(meta?: BookingMeta, language: DashboardLanguage = "ar"): string {
   if (!meta) return "";
-  const rows = buildPaymentSummaryRows(meta);
-  const typeText = paymentTypeLabel(meta.paymentType);
+  const rows = buildPaymentSummaryRows(meta, language);
+  const typeText = paymentTypeLabel(meta.paymentType, language);
   if (!rows.length) return typeText;
-  const rowsText = rows.map((r) => `${r.label} ${round2(r.value)} \u0631.\u0633`).join(" - ");
+  const rowsText = rows.map((r) => `${r.label} ${round2(r.value)} ${language === "en" ? "SAR" : "ر.س"}`).join(" - ");
   return `${typeText} - ${rowsText}`;
 }
 
@@ -260,7 +261,7 @@ function resolveDisplayEmployeeName(item: IncomeItem, meta?: BookingMeta): strin
   ]);
 }
 
-function resolveDisplayClientName(item: IncomeItem, meta?: BookingMeta): string {
+function resolveDisplayClientName(item: IncomeItem, meta?: BookingMeta, language: DashboardLanguage = "ar"): string {
   const fromMeta = String(meta?.clientName || "").trim();
   if (fromMeta) return fromMeta;
 
@@ -270,41 +271,41 @@ function resolveDisplayClientName(item: IncomeItem, meta?: BookingMeta): string 
   ).trim();
   if (fromIncome) return fromIncome;
 
-  return "عميلة غير محددة";
+  return incomeText(language, "عميلة غير محددة");
 }
 
-function resolveDisplayBookingRef(item: IncomeItem, meta?: BookingMeta): string {
+function resolveDisplayBookingRef(item: IncomeItem, meta?: BookingMeta, language: DashboardLanguage = "ar"): string {
   const fromMeta = String(meta?.bookingRef || "").trim();
   if (fromMeta && fromMeta !== "-") return fromMeta;
 
   const bookingId = String(item.bookingId || "").trim();
-  if (bookingId) return toBookingRef(bookingId);
+  if (bookingId) return toBookingRef(bookingId, language);
 
   const kind = sourceKind(item.source || "");
   if (kind === "manual" || kind === "invoice" || kind === "refund" || kind === "other") {
-    return "بدون حجز";
+    return incomeText(language, "بدون حجز");
   }
-  if (kind === "internal") return "حجز داخلي";
-  return "غير متوفر";
+  if (kind === "internal") return incomeText(language, "حجز داخلي");
+  return incomeText(language, "غير متوفر");
 }
 
-function resolveDisplayNoteText(item: IncomeItem, noteText: string): string {
+function resolveDisplayNoteText(item: IncomeItem, noteText: string, language: DashboardLanguage = "ar"): string {
   if (noteText) return noteText;
   const kind = sourceKind(item.source || "");
-  if (kind === "booking") return "سجل حجز بدون ملاحظة";
-  if (kind === "invoice") return "فاتورة بدون ملاحظة";
-  if (kind === "internal") return "دفع داخلي بدون ملاحظة";
-  if (kind === "manual") return "دخل يدوي بدون ملاحظة";
-  if (kind === "refund") return "استرجاع بدون ملاحظة";
-  return "بدون ملاحظة";
+  if (kind === "booking") return incomeText(language, "سجل حجز بدون ملاحظة");
+  if (kind === "invoice") return incomeText(language, "فاتورة بدون ملاحظة");
+  if (kind === "internal") return incomeText(language, "دفع داخلي بدون ملاحظة");
+  if (kind === "manual") return incomeText(language, "دخل يدوي بدون ملاحظة");
+  if (kind === "refund") return incomeText(language, "استرجاع بدون ملاحظة");
+  return incomeText(language, "بدون ملاحظة");
 }
 
-function buildFallbackPaymentSummaryText(item: IncomeItem, amountToShow: number): string {
+function buildFallbackPaymentSummaryText(item: IncomeItem, amountToShow: number, language: DashboardLanguage = "ar"): string {
   const signedAmount = round2(Number(amountToShow || item.amount || 0));
   const absAmount = Math.abs(signedAmount);
   const kind = sourceKind(item.source || "");
-  if (kind === "refund" || signedAmount < 0) return `استرجاع ${absAmount.toFixed(2)} ر.س`;
-  return `مدفوع ${absAmount.toFixed(2)} ر.س`;
+  if (kind === "refund" || signedAmount < 0) return `${incomeText(language, "استرجاع")} ${absAmount.toFixed(2)} ${language === "en" ? "SAR" : "ر.س"}`;
+  return `${incomeText(language, "مدفوع")} ${absAmount.toFixed(2)} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function isRevenueStatus(status: any) {
@@ -382,21 +383,22 @@ function loadLegacyIncome(): IncomeItem[] {
   }
 }
 
-function formatSar(value: number): string {
+function formatSar(value: number, language: DashboardLanguage = "ar"): string {
   const amount = Number(value || 0);
-  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
+  return `${amount.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
-function firebaseMsg(e: any) {
+function firebaseMsg(e: any, language: DashboardLanguage = "ar") {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions"))
-    return "⚠️ لا توجد صلاحيات كافية.";
-  if (msg.includes("not-found")) return "⚠️ المسار غير موجود.";
-  if (msg.includes("requires an index")) return "⚠️ الاستعلام يحتاج Index.";
-  return "تعذر تنفيذ العملية.";
+    return incomeText(language, "⚠️ لا توجد صلاحيات كافية.");
+  if (msg.includes("not-found")) return incomeText(language, "⚠️ المسار غير موجود.");
+  if (msg.includes("requires an index")) return incomeText(language, "⚠️ الاستعلام يحتاج Index.");
+  return incomeText(language, "تعذر تنفيذ العملية.");
 }
 
-function DashboardIncomeContent() {
+function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
+  const t = (text: string) => incomeText(language, text);
   const { hasPermission } = usePermissions();
   const canManageIncome = hasPermission("income.manage");
   const canManageBookingPayment = hasPermission("bookings.payment.manage");
