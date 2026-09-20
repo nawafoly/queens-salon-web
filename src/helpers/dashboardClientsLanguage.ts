@@ -225,6 +225,10 @@ const clientsEnglish: Record<string, string> = {
   "تاريخ الانتهاء": "Expiry date",
   "بدون انتهاء": "No expiry",
   "طباعة": "Print",
+  "تحديث": "Refresh",
+  "إلغاء": "Cancel",
+  "غير محدد": "Unspecified",
+  "إلغاء الباقة": "Cancel package",
 };
 
 export function clientsText(language: DashboardLanguage, arabic: string): string {
