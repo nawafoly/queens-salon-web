@@ -174,6 +174,10 @@ const incomeEnglish: Record<string, string> = {
   "لا توجد إيرادات مطابقة للفلاتر الحالية.": "No income records match the current filters.",
   "النظام": "System",
   "المرجع الكامل": "Full reference",
+  "تعديل دفعة حجز": "Booking payment edit",
+  "فاتورة من الاستقبال": "Reception invoice",
+  "دفع حجز داخلي": "Internal booking payment",
+  "طريقة الدفع": "Payment method",
 };
 
 export function incomeText(language: DashboardLanguage, arabic: string): string {
