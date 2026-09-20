@@ -468,7 +468,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="contact"
               element={
                 <PermissionRoute permission="settings.content.manage">
-                  <SettingsContact hasAdminPower={hasPermission("settings.content.manage")} />
+                  <SettingsContact hasAdminPower={hasPermission("settings.content.manage")} language={language} />
                 </PermissionRoute>
               }
             />

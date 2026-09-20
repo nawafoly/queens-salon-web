@@ -7,6 +7,7 @@ import {
 } from "../../services/CoreContactService";
 import { CoreSettingsService } from "../../services/CoreSettingsService";
 import "../../styles/dashboard-v2/dashboard-v2.css";
+import { settingsText, type DashboardLanguage } from "../../helpers/dashboardSettingsLanguage";
 
 type ContactPublic = {
   phone?: string;
@@ -22,18 +23,19 @@ type ContactPublic = {
 
 type SettingsContactProps = {
   hasAdminPower: boolean;
+  language?: DashboardLanguage;
 };
 
 function safeStr(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function formatMessageDate(value: unknown) {
+function formatMessageDate(value: unknown, language: DashboardLanguage) {
   if (!value) return "";
   try {
     const date = new Date(String(value));
     if (Number.isNaN(date.getTime())) return "";
-    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+    return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(date);
@@ -56,7 +58,8 @@ function mapPublicValue(data: ContactPublic | null | undefined): ContactPublic {
   };
 }
 
-export default function SettingsContact({ hasAdminPower }: SettingsContactProps) {
+export default function SettingsContact({ hasAdminPower, language = "ar" }: SettingsContactProps) {
+  const t = (text: string) => settingsText(language, text);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [showMessages, setShowMessages] = useState(false);
@@ -101,31 +104,31 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
   const contactStats = useMemo(
     () => [
       {
-        label: "الحقول المعبأة",
+        label: t("الحقول المعبأة"),
         value: `${filledFields}/7`,
-        hint: "من بيانات التواصل الأساسية",
+        hint: t("من بيانات التواصل الأساسية"),
         tone: "dsv2-metric-card--gold",
       },
       {
-        label: "إجمالي الرسائل",
+        label: t("إجمالي الرسائل"),
         value: String(messages.length),
-        hint: "آخر 20 رسالة فقط",
+        hint: t("آخر 20 رسالة فقط"),
         tone: "dsv2-metric-card--dark",
       },
       {
-        label: "الرسائل الجديدة",
+        label: t("الرسائل الجديدة"),
         value: String(unreadCount),
-        hint: unreadCount ? "تحتاج مراجعة" : "لا توجد رسائل جديدة",
+        hint: unreadCount ? t("تحتاج مراجعة") : t("لا توجد رسائل جديدة"),
         tone: unreadCount ? "dsv2-metric-card--danger" : "dsv2-metric-card--success",
       },
       {
-        label: "الخريطة",
-        value: publicData.mapEmbedUrl ? "مربوطة" : "غير مربوطة",
+        label: t("الخريطة"),
+        value: publicData.mapEmbedUrl ? t("مربوطة") : t("غير مربوطة"),
         hint: "Google Maps Embed",
         tone: publicData.mapEmbedUrl ? "dsv2-metric-card--success" : "dsv2-metric-card--dark",
       },
     ],
-    [filledFields, messages.length, publicData.mapEmbedUrl, unreadCount],
+    [filledFields, language, messages.length, publicData.mapEmbedUrl, unreadCount],
   );
 
   const loadPublic = useCallback(async () => {
@@ -185,11 +188,11 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
       setPublicData(mapPublicValue(payload));
       await loadMessages();
 
-      setSavedMsg("تم حفظ بيانات التواصل");
+      setSavedMsg(t("تم حفظ بيانات التواصل"));
       window.setTimeout(() => setSavedMsg(""), 2000);
     } catch (error) {
       console.error("save contact public error:", error);
-      setSavedMsg("تعذر حفظ بيانات التواصل");
+      setSavedMsg(t("تعذر حفظ بيانات التواصل"));
       window.setTimeout(() => setSavedMsg(""), 2500);
     } finally {
       setSaving(false);
@@ -207,22 +210,22 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
     }
   };
 
-  const saveFailed = savedMsg === "تعذر حفظ بيانات التواصل";
+  const saveFailed = savedMsg === t("تعذر حفظ بيانات التواصل");
 
   return (
-    <main className="dsv2-page settings-contact-v2-page" dir="rtl">
+    <main className="dsv2-page settings-contact-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card settings-contact-v2-hero">
         <div className="settings-contact-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">إعدادات التواصل</span>
-          <h1 className="dsv2-page-title">بيانات التواصل واللوكيشن</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("إعدادات التواصل")}</span>
+          <h1 className="dsv2-page-title">{t("بيانات التواصل واللوكيشن")}</h1>
           <p className="dsv2-page-subtitle">
-            إدارة بيانات التواصل التي تظهر في الموقع، نص العنوان، الخريطة، ورسائل العميلات الواردة.
+            {t("إدارة بيانات التواصل التي تظهر في الموقع، نص العنوان، الخريطة، ورسائل العميلات الواردة.")}
           </p>
           <div className="settings-contact-v2-hero__badges">
             <span className={`dsv2-badge ${hasAdminPower ? "dsv2-badge--success" : ""}`}>
-              {hasAdminPower ? "قابل للتعديل" : "عرض فقط"}
+              {hasAdminPower ? t("قابل للتعديل") : t("عرض فقط")}
             </span>
-            <span className="dsv2-badge">آخر 20 رسالة</span>
+            <span className="dsv2-badge">{t("آخر 20 رسالة")}</span>
           </div>
         </div>
 
@@ -231,11 +234,11 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
           type="button"
           onClick={() => setShowMessages((current) => !current)}
         >
-          {showMessages ? "إخفاء الرسائل" : `عرض الرسائل${unreadCount ? ` (${unreadCount} جديد)` : ""}`}
+          {showMessages ? t("إخفاء الرسائل") : `${t("عرض الرسائل")}${unreadCount ? ` (${unreadCount} ${t("جديد")})` : ""}`}
         </button>
       </section>
 
-      <section className="settings-contact-v2-metrics" aria-label="ملخص بيانات التواصل">
+      <section className="settings-contact-v2-metrics" aria-label={t("ملخص بيانات التواصل")}>
         {contactStats.map((item) => (
           <article key={item.label} className={`dsv2-metric-card ${item.tone}`}>
             <p className="dsv2-metric-card__label">{item.label}</p>
@@ -250,15 +253,15 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
           <header className="settings-contact-v2-panel__head">
             <div>
               <span className="settings-contact-v2-panel__eyebrow">01</span>
-              <h2>بيانات التواصل الأساسية</h2>
-              <p>الجوال والواتساب والبريد والمدينة المستخدمة في واجهات العميلات.</p>
+              <h2>{t("بيانات التواصل الأساسية")}</h2>
+              <p>{t("الجوال والواتساب والبريد والمدينة المستخدمة في واجهات العميلات.")}</p>
             </div>
-            <span className="dsv2-badge">4 حقول</span>
+            <span className="dsv2-badge">{t("4 حقول")}</span>
           </header>
 
           <div className="settings-contact-v2-form-grid">
             <label className="dsv2-field">
-              <span className="dsv2-field__label">الجوال</span>
+              <span className="dsv2-field__label">{t("الجوال")}</span>
               <input
                 className="dsv2-input"
                 value={publicData.phone || ""}
@@ -270,7 +273,7 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
             </label>
 
             <label className="dsv2-field">
-              <span className="dsv2-field__label">واتساب</span>
+              <span className="dsv2-field__label">{t("واتساب")}</span>
               <input
                 className="dsv2-input"
                 value={publicData.whatsapp || ""}
@@ -282,7 +285,7 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
             </label>
 
             <label className="dsv2-field">
-              <span className="dsv2-field__label">البريد الإلكتروني</span>
+              <span className="dsv2-field__label">{t("البريد الإلكتروني")}</span>
               <input
                 className="dsv2-input"
                 type="email"
@@ -294,13 +297,13 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
             </label>
 
             <label className="dsv2-field">
-              <span className="dsv2-field__label">المدينة</span>
+              <span className="dsv2-field__label">{t("المدينة")}</span>
               <input
                 className="dsv2-input"
                 value={publicData.city || ""}
                 onChange={(event) => onChange("city", event.target.value)}
                 disabled={!hasAdminPower}
-                placeholder="المدينة المنورة"
+                placeholder={t("المدينة المنورة")}
               />
             </label>
           </div>
@@ -310,48 +313,48 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
           <header className="settings-contact-v2-panel__head">
             <div>
               <span className="settings-contact-v2-panel__eyebrow">02</span>
-              <h2>العنوان والخريطة</h2>
-              <p>نص الظهور في صفحة التواصل وساعات العمل ورابط Google Maps Embed.</p>
+              <h2>{t("العنوان والخريطة")}</h2>
+              <p>{t("نص الظهور في صفحة التواصل وساعات العمل ورابط Google Maps Embed.")}</p>
             </div>
             <span className={`dsv2-badge ${publicData.mapEmbedUrl ? "dsv2-badge--success" : ""}`}>
-              {publicData.mapEmbedUrl ? "الخريطة مربوطة" : "بدون خريطة"}
+              {publicData.mapEmbedUrl ? t("الخريطة مربوطة") : t("بدون خريطة")}
             </span>
           </header>
 
           <div className="settings-contact-v2-form-grid settings-contact-v2-form-grid--location">
             <label className="dsv2-field settings-contact-v2-field--wide">
-              <span className="dsv2-field__label">العنوان</span>
+              <span className="dsv2-field__label">{t("العنوان")}</span>
               <input
                 className="dsv2-input"
                 value={publicData.address || ""}
                 onChange={(event) => onChange("address", event.target.value)}
                 disabled={!hasAdminPower}
-                placeholder="شارع... حي... المدينة..."
+                placeholder={t("شارع... حي... المدينة...")}
               />
             </label>
 
             <label className="dsv2-field settings-contact-v2-field--wide">
-              <span className="dsv2-field__label">العنوان المعروض في صفحة Contact</span>
+              <span className="dsv2-field__label">{t("العنوان المعروض في صفحة Contact")}</span>
               <input
                 className="dsv2-input"
                 value={publicData.locationText || ""}
                 onChange={(event) => onChange("locationText", event.target.value)}
                 disabled={!hasAdminPower}
-                placeholder="اتركه فارغًا لاستخدام العنوان تلقائيًا"
+                placeholder={t("اتركه فارغًا لاستخدام العنوان تلقائيًا")}
               />
               <small className="settings-contact-v2-field__hint">
-                إذا كان فارغًا، يستخدم النظام قيمة العنوان تلقائيًا عند الحفظ.
+                {t("إذا كان فارغًا، يستخدم النظام قيمة العنوان تلقائيًا عند الحفظ.")}
               </small>
             </label>
 
             <label className="dsv2-field settings-contact-v2-field--wide">
-              <span className="dsv2-field__label">ساعات العمل</span>
+              <span className="dsv2-field__label">{t("ساعات العمل")}</span>
               <textarea
                 className="dsv2-input settings-contact-v2-textarea"
                 value={publicData.hoursText || ""}
                 onChange={(event) => onChange("hoursText", event.target.value)}
                 disabled={!hasAdminPower}
-                placeholder={"السبت - الأربعاء: 10:00 ص - 10:00 م\nالخميس: ...\nالجمعة: ..."}
+                placeholder={language === "en" ? "Saturday - Wednesday: 10:00 AM - 10:00 PM\nThursday: ...\nFriday: ..." : "السبت - الأربعاء: 10:00 ص - 10:00 م\nالخميس: ...\nالجمعة: ..."}
               />
             </label>
 
@@ -366,7 +369,7 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
                 dir="ltr"
               />
               <small className="settings-contact-v2-field__hint">
-                استخدم رابط Embed نفسه المستخدم داخل iframe في صفحة التواصل.
+                {t("استخدم رابط Embed نفسه المستخدم داخل iframe في صفحة التواصل.")}
               </small>
             </label>
           </div>
@@ -378,12 +381,12 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
           <header className="settings-contact-v2-panel__head">
             <div>
               <span className="settings-contact-v2-panel__eyebrow">03</span>
-              <h2>آخر الرسائل</h2>
-              <p>آخر 20 رسالة واردة من نموذج التواصل، مع حالة القراءة.</p>
+              <h2>{t("آخر الرسائل")}</h2>
+              <p>{t("آخر 20 رسالة واردة من نموذج التواصل، مع حالة القراءة.")}</p>
             </div>
             <div className="settings-contact-v2-message-counts">
-              <span className="dsv2-badge">{messages.length} رسالة</span>
-              {unreadCount ? <span className="dsv2-badge dsv2-badge--gold">{unreadCount} جديدة</span> : null}
+              <span className="dsv2-badge">{messages.length} {messages.length === 1 ? t("رسالة") : t("رسائل")}</span>
+              {unreadCount ? <span className="dsv2-badge dsv2-badge--gold">{unreadCount} {t("جديدة")}</span> : null}
             </div>
           </header>
 
@@ -391,7 +394,7 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
             <div className="settings-contact-v2-messages">
               {messages.map((message) => {
                 const isNew = (message.status || "new") === "new";
-                const messageDate = formatMessageDate(message.createdAt);
+                const messageDate = formatMessageDate(message.createdAt, language);
 
                 return (
                   <article
@@ -400,9 +403,9 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
                   >
                     <header className="settings-contact-v2-message__head">
                       <div className="settings-contact-v2-message__title">
-                        <strong>{message.subject || "رسالة"}</strong>
+                        <strong>{message.subject || t("رسالة")}</strong>
                         <div className="settings-contact-v2-message__badges">
-                          {isNew ? <span className="dsv2-badge dsv2-badge--gold">جديدة</span> : <span className="dsv2-badge dsv2-badge--success">مقروءة</span>}
+                          {isNew ? <span className="dsv2-badge dsv2-badge--gold">{t("جديدة")}</span> : <span className="dsv2-badge dsv2-badge--success">{t("مقروءة")}</span>}
                           {messageDate ? <span className="dsv2-badge">{messageDate}</span> : null}
                         </div>
                       </div>
@@ -420,9 +423,9 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
                     </header>
 
                     <div className="settings-contact-v2-message__meta">
-                      {message.name ? <span><strong>الاسم</strong>{message.name}</span> : null}
-                      {message.phone ? <span><strong>الجوال</strong>{message.phone}</span> : null}
-                      {message.email ? <span><strong>البريد</strong>{message.email}</span> : null}
+                      {message.name ? <span><strong>{t("الاسم")}</strong>{message.name}</span> : null}
+                      {message.phone ? <span><strong>{t("الجوال")}</strong>{message.phone}</span> : null}
+                      {message.email ? <span><strong>{t("البريد")}</strong>{message.email}</span> : null}
                     </div>
 
                     <p className="settings-contact-v2-message__body">{message.message || "—"}</p>
@@ -432,8 +435,8 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
             </div>
           ) : (
             <DashboardEmptyStateV2
-              title="لا توجد رسائل حالياً"
-              description="ستظهر رسائل العميلات هنا عند وصولها من نموذج التواصل."
+              title={t("لا توجد رسائل حالياً")}
+              description={t("ستظهر رسائل العميلات هنا عند وصولها من نموذج التواصل.")}
               compact
               tone="gold"
             />
@@ -443,11 +446,11 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
 
       <section className="dsv2-card dsv2-card--padded settings-contact-v2-savebar">
         <div className="settings-contact-v2-savebar__copy">
-          <strong>حفظ بيانات التواصل</strong>
+          <strong>{t("حفظ بيانات التواصل")}</strong>
           <p>
             {hasAdminPower
-              ? "احفظ بعد تعديل البيانات حتى تنعكس على الصفحات التي تعتمد على مستند settings/public."
-              : "الحساب الحالي يملك صلاحية العرض فقط ولا يستطيع تعديل بيانات التواصل."}
+              ? t("احفظ بعد تعديل البيانات حتى تنعكس على الصفحات التي تعتمد على مستند settings/public.")
+              : t("الحساب الحالي يملك صلاحية العرض فقط ولا يستطيع تعديل بيانات التواصل.")}
           </p>
           {savedMsg ? (
             <span
@@ -464,9 +467,9 @@ export default function SettingsContact({ hasAdminPower }: SettingsContactProps)
           type="button"
           disabled={!hasAdminPower || saving}
           onClick={() => void handleSave()}
-          title={!hasAdminPower ? "تحتاج صلاحية settings.content.manage" : "حفظ بيانات التواصل"}
+          title={!hasAdminPower ? t("تحتاج صلاحية settings.content.manage") : t("حفظ بيانات التواصل")}
         >
-          {saving ? "جاري الحفظ…" : "حفظ التغييرات"}
+          {saving ? t("جاري الحفظ…") : t("حفظ التغييرات")}
         </button>
       </section>
     </main>
