@@ -823,8 +823,14 @@ function catalogRuleEnglish(raw: string): string {
 }
 
 function catalogLatinFallback(raw: string): string {
-  const m: Record<string,string> = {"ا":"a","أ":"a","إ":"i","آ":"aa","ب":"b","ت":"t","ث":"th","ج":"j","ح":"h","خ":"kh","د":"d","ذ":"dh","ر":"r","ز":"z","س":"s","ش":"sh","ص":"s","ض":"d","ط":"t","ظ":"z","ع":"a","غ":"gh","ف":"f","ق":"q","ك":"k","ل":"l","م":"m","ن":"n","ه":"h","ة":"ah","و":"w","ؤ":"u","ي":"y","ى":"a","ئ":"y","ء":""};
-  return String(raw || "").split("").map((ch) => m[ch] ?? ch).join("").replace(/\s+/g, " ").trim();
+  const m: Record<string,string> = {"ا":"a","ب":"b","ت":"t","ث":"th","ج":"j","ح":"h","خ":"kh","د":"d","ذ":"dh","ر":"r","ز":"z","س":"s","ش":"sh","ص":"s","ض":"d","ط":"t","ظ":"z","ع":"a","غ":"gh","ف":"f","ق":"q","ك":"k","ل":"l","م":"m","ن":"n","ه":"h","و":"w","ي":"y","ء":"","،":",","؛":";","؟":"?"};
+  return normalizeCatalogArabic(raw)
+    .split("")
+    .map((ch) => m[ch] ?? ch)
+    .join("")
+    .replace(/[\u0600-\u06FF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function translateBookingCatalogLabel(language: DashboardLanguage, value: string, kind: BookingCatalogLabelKind = "service"): string {
