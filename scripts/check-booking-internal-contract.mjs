@@ -24,8 +24,8 @@ function requireText(source, text, message) {
 // cannot silently return later.
 requireMatch(
   dashboard,
-  /path=["']booking-internal["'][\s\S]{0,500}<BookingInternalV2\s*\/>/,
-  "Dashboard route /dashboard/booking-internal is no longer wired to BookingInternalV2."
+  /path=["']booking-internal["'][\s\S]{0,500}<BookingInternalV2\s+language=\{dashboardLanguage\}\s*\/>/,
+  "Dashboard route /dashboard/booking-internal is no longer wired to the language-aware BookingInternalV2."
 );
 if (dashboard.includes("booking-internal-legacy")) {
   errors.push("Legacy /dashboard/booking-internal-legacy route must not exist.");
@@ -42,7 +42,11 @@ requireMatch(
 // Four-step workflow and the separate package/session workspace.
 requireText(booking, "type Step = 1 | 2 | 3 | 4;", "Internal booking no longer declares the four-step workflow contract.");
 requireText(booking, 'useState<"new" | "sessions">("new")', "New-booking / package-sessions mode switch contract changed.");
-requireText(booking, "<PackageSessionsManager />", "PackageSessionsManager is no longer mounted from internal booking.");
+requireText(
+  booking,
+  '<PackageSessionsManager language={language} />',
+  "PackageSessionsManager is no longer mounted from internal booking with dashboard language."
+);
 requireMatch(booking, /if \(step === 1 && canContinue\) setStep\(2\)/, "Step 1 → 2 gating changed.");
 requireMatch(booking, /else if \(step === 2 && cart\.length\) setStep\(3\)/, "Step 2 → 3 gating changed.");
 requireMatch(booking, /else if \(step === 3 && allScheduled\) setStep\(4\)/, "Step 3 → 4 gating changed.");
