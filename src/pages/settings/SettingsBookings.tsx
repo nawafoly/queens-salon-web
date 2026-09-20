@@ -571,8 +571,8 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
       const msg =
         String(e?.message || e?.code || "").toLowerCase().includes("permission") ||
         String(e?.code || "").toLowerCase().includes("permission")
-          ? "❌ فشل الحفظ: الصلاحيات (Rules) تمنع الكتابة"
-          : "❌ تعذر حفظ الإعدادات";
+          ? t("❌ فشل الحفظ: الصلاحيات (Rules) تمنع الكتابة")
+          : t("❌ تعذر حفظ الإعدادات");
 
       setSavedMsg(msg);
       setTimeout(() => setSavedMsg(""), 2600);
@@ -853,7 +853,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
                       className="dsv2-btn dsv2-btn--secondary"
                       onClick={copySelectedDayHoursToAll}
                     >
-                      نسخ وقت اليوم لبقية الأيام
+                      {t("نسخ وقت اليوم لبقية الأيام")}
                     </button>
                   </div>
                 </header>
@@ -911,7 +911,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
               </section>
 
               <div className="settings-bookings-v2-note">
-                يتم الحفظ في booking.businessHours مع slotStepMin وbufferMin وmaniPediToolsFee، وصفحة الحجز تقرأها من AppSettings.
+                {t("يتم الحفظ في booking.businessHours مع slotStepMin وbufferMin وmaniPediToolsFee، وصفحة الحجز تقرأها من AppSettings.")}
               </div>
             </div>
           ) : null}
@@ -987,7 +987,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
               </div>
 
               <div className="settings-bookings-v2-note">
-                تُحفظ الفترة داخل booking.seasonFill، بينما تنفيذ ترتيب اليوم يبقى في Booking.tsx وtimeSlots.ts كما هو.
+                {t("تُحفظ الفترة داخل booking.seasonFill، بينما تنفيذ ترتيب اليوم يبقى في Booking.tsx وtimeSlots.ts كما هو.")}
               </div>
             </div>
           ) : null}
@@ -1147,10 +1147,10 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
                         </div>
                         <div className="settings-bookings-v2-exception-card__actions">
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editBookingHourOverride(item.id)}>
-                            تعديل
+                            {t("تعديل")}
                           </button>
                           <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => removeBookingHourOverride(item.id)}>
-                            حذف
+                            {t("حذف")}
                           </button>
                         </div>
                       </article>
@@ -1177,7 +1177,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
           ) : null}
         </div>
         <button className="dsv2-btn dsv2-btn--primary" onClick={saveAll} type="button">
-          حفظ التغييرات
+          {t("حفظ التغييرات")}
         </button>
       </section>
     </main>
