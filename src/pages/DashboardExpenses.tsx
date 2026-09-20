@@ -1041,13 +1041,13 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
     )
   );
   const categoryOptions = [
-    { value: "الكل", label: "الكل" },
-    ...runtimeCategories.map((c) => ({ value: c, label: c })),
+    { value: "الكل", label: t("الكل") },
+    ...runtimeCategories.map((categoryName) => ({ value: categoryName, label: t(categoryName) })),
   ];
 
-  const categoryOptionsNoAll = categories.map((c) => ({
-    value: c,
-    label: c,
+  const categoryOptionsNoAll = categories.map((categoryName) => ({
+    value: categoryName,
+    label: t(categoryName),
   }));
 
   // Dashboard Expenses V2 stage 4.1: unified month selector
@@ -1069,22 +1069,22 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
 
     return Array.from(keys)
       .sort((a, b) => b.localeCompare(a))
-      .map((value) => ({ value, label: formatMonthKeyLabel(value) }));
+      .map((value) => ({ value, label: formatMonthKeyLabel(value, language) }));
   })();
 
   const paymentOptions = [
-    { value: "الكل", label: "الكل" },
-    ...paymentMethods.map((p) => ({ value: String(p), label: String(p) })),
+    { value: "الكل", label: t("الكل") },
+    ...paymentMethods.map((p) => ({ value: String(p), label: paymentMethodLabel(p, language) })),
   ];
 
   const paymentOptionsNoAll = paymentMethods.map((p) => ({
     value: String(p),
-    label: String(p),
+    label: paymentMethodLabel(p, language),
   }));
 
   const recordModeOptions = [
-    { value: "calendar", label: "شهر تقويمي (1-آخر الشهر)" },
-    { value: "payroll_cycle", label: `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
+    { value: "calendar", label: t("شهر تقويمي (1-آخر الشهر)") },
+    { value: "payroll_cycle", label: language === "en" ? `Payroll cycle (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` : `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
   ];
 
 
