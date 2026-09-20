@@ -2961,6 +2961,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         initialRole={userInfo.role}
                         authReady={Boolean(userInfo)}
                         settings={settings}
+                        language={dashboardLanguage}
                       />
                     </PermissionRoute>
                   }
