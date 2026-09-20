@@ -35,6 +35,7 @@ import {
 } from './booking-staff-policy.js';
 import { resolveBookingDiscount } from './discount-application.js';
 import { safeRefreshTargetsForBooking } from './employee-targets.js';
+import { reconcileCashbackForBooking } from './cashback.js';
 
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 const LOCK_GRANULARITY_MIN = 5;
@@ -1626,11 +1627,12 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
   }
 
   await safeRefreshTargetsForBooking(db, salonId, bookingId);
+  await reconcileCashbackForBooking(db, salonId, bookingId, actor?.uid || "");
   return getBooking(db, salonId, bookingId);
 }
 
 
-export async function completeBooking(db, salonId, id) {
+export async function completeBooking(db, salonId, id, actor = {}) {
   const now = nowIso();
   const result = await dbRun(
     db,
@@ -1639,6 +1641,7 @@ export async function completeBooking(db, salonId, id) {
   );
   if (!changes(result)) rowNotFound("booking");
   await safeRefreshTargetsForBooking(db, salonId, id);
+  await reconcileCashbackForBooking(db, salonId, id, actor?.uid || "");
   return getBooking(db, salonId, id);
 }
 
