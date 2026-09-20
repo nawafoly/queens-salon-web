@@ -448,7 +448,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="catalog"
               element={
                 <PermissionRoute permission="catalog.manage">
-                  <SettingsCatalogV2 hasAdminPower={hasPermission("catalog.manage")} />
+                  <SettingsCatalogV2 hasAdminPower={hasPermission("catalog.manage")} language={language} />
                 </PermissionRoute>
               }
             />
