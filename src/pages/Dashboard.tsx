@@ -2927,7 +2927,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty /></PermissionRoute>} />
                 <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers /></PermissionRoute>} />
                 <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><DashboardInventory /></PermissionRoute>} />
-                <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports /></PermissionRoute>} />
+                <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="payroll" element={<PermissionRoute permission="payroll.view"><DashboardPayroll /></PermissionRoute>} />
