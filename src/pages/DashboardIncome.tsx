@@ -418,7 +418,7 @@ function loadLegacyIncome(): IncomeItem[] {
 
 function formatSar(value: number, language: DashboardLanguage = "ar"): string {
   const amount = Number(value || 0);
-  return `${amount.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`;
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function firebaseMsg(e: any, language: DashboardLanguage = "ar") {
@@ -1172,7 +1172,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
             <div>
               <h2 className="dsv2-section-title">{t("سجل الإيرادات")}</h2>
               <p className="dsv2-section-caption">
-                {filtered.length.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} {t("سجل معروض من أصل")} {items.length.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")}.
+                {filtered.length.toLocaleString("en-US")} {t("سجل معروض من أصل")} {items.length.toLocaleString("en-US")}.
               </p>
             </div>
             <div className="income-v2-table-head__status">
