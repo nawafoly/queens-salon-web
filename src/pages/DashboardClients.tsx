@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { DashboardErrorStateV2 } from "../components/dashboard-v2";
+import { clientsText, type DashboardLanguage } from "../helpers/dashboardClientsLanguage";
 import {
   CustomersEmptyState,
   CustomersFilters,
@@ -109,10 +110,11 @@ function customerMatchesBooking(customer: CustomerRow, booking: BookingDocWithId
   return normalizeCustomerSearchText(customer.name) === normalizeCustomerSearchText(booking.clientName);
 }
 
-type DashboardClientsProps = { currentRole?: UiRole };
+type DashboardClientsProps = { currentRole?: UiRole; language?: DashboardLanguage };
 
-export default function DashboardClients({ currentRole = "guest" }: DashboardClientsProps) {
+export default function DashboardClients({ currentRole = "guest", language = "ar" }: DashboardClientsProps) {
   const navigate = useNavigate();
+  const t = (text: string) => clientsText(language, text);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [bookings, setBookings] = useState<BookingDocWithId[]>([]);
   const [coreClients, setCoreClients] = useState<CoreClient[]>([]);
@@ -163,13 +165,13 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
     if (bookingsResult.status === "fulfilled") setBookings(Array.isArray(bookingsResult.value) ? bookingsResult.value : []);
     else {
       setBookings([]);
-      errors.push(bookingsResult.reason instanceof Error ? bookingsResult.reason.message : "تعذر تحميل الحجوزات");
+      errors.push(bookingsResult.reason instanceof Error ? bookingsResult.reason.message : t("تعذر تحميل الحجوزات"));
     }
 
     if (clientsResult.status === "fulfilled") setCoreClients(Array.isArray(clientsResult.value) ? clientsResult.value : []);
     else {
       setCoreClients([]);
-      errors.push(clientsResult.reason instanceof Error ? clientsResult.reason.message : "تعذر تحميل ملفات العملاء");
+      errors.push(clientsResult.reason instanceof Error ? clientsResult.reason.message : t("تعذر تحميل ملفات العملاء"));
     }
 
     if (packagesResult.status === "fulfilled") {
@@ -190,7 +192,7 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
 
     setError(errors.join(" · "));
     setLoading(false);
-  }, [canViewClients]);
+  }, [canViewClients, language]);
 
   useEffect(() => {
     void loadData();
@@ -292,11 +294,11 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
       return matchesQuery && matchesSegment && matchesSource && matchesVisit;
     });
     return rows.sort((first, second) => {
-      if (sort === "most") return second.bookingsCount - first.bookingsCount || first.name.localeCompare(second.name, "ar");
-      if (sort === "newest") return Date.parse(second.createdAt || "") - Date.parse(first.createdAt || "") || first.name.localeCompare(second.name, "ar");
-      return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, "ar");
+      if (sort === "most") return second.bookingsCount - first.bookingsCount || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
+      if (sort === "newest") return Date.parse(second.createdAt || "") - Date.parse(first.createdAt || "") || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
+      return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
     });
-  }, [customers, deferredQuery, lastVisit, segment, sort, source]);
+  }, [customers, deferredQuery, language, lastVisit, segment, sort, source]);
 
   const selectedBookings = useMemo(() => selectedCustomer ? bookings.filter((booking) => customerMatchesBooking(selectedCustomer, booking)) : [], [bookings, selectedCustomer]);
 
@@ -320,9 +322,9 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
         document.execCommand("copy");
         input.remove();
       }
-      setCopyToast("تم نسخ رقم الجوال");
+      setCopyToast(t("تم نسخ رقم الجوال"));
     } catch {
-      setCopyToast("تعذر نسخ رقم الجوال");
+      setCopyToast(t("تعذر نسخ رقم الجوال"));
     }
     if (copyTimer.current) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopyToast(""), 1800);
@@ -350,15 +352,15 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
   };
 
   const exportCustomers = () => {
-    const rows: unknown[][] = [["العميلة", "رقم الجوال", "الحالة", "VIP", "عدد الحجوزات", "آخر زيارة", "المصدر"]];
+    const rows: unknown[][] = [[t("العميلة"), t("رقم الجوال"), t("الحالة"), "VIP", t("عدد الحجوزات"), t("آخر زيارة"), t("المصدر")]];
     visibleCustomers.forEach((customer) => rows.push([
       normalizeCustomerName(customer.name),
       customer.phone === "—" ? "" : customer.phone,
-      getCustomerStatusLabel(customer.status),
-      customer.vip ? "VIP" : "عادية",
+      getCustomerStatusLabel(customer.status, language),
+      customer.vip ? "VIP" : t("عادية"),
       customer.bookingsCount,
-      formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime),
-      getCustomerSourceLabel(customer.source),
+      formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime, language),
+      getCustomerSourceLabel(customer.source, language),
     ]));
     const date = new Date().toISOString().slice(0, 10);
     downloadXLSX(`queens_customers_${date}.xlsx`, rows, "Customers");
@@ -366,10 +368,10 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
 
   if (!canViewClients) {
     return (
-      <main className="dsv2-page dsv2-customers-page" dir="rtl">
+      <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <DashboardErrorStateV2
-          title="غير مصرح"
-          description="هذه الصفحة متاحة للإدارة والاستقبال حسب الصلاحيات الحالية."
+          title={t("غير مصرح")}
+          description={t("هذه الصفحة متاحة للإدارة والاستقبال حسب الصلاحيات الحالية.")}
           compact
         />
       </main>
@@ -381,30 +383,30 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
   const noResults = !loading && customers.length > 0 && visibleCustomers.length === 0;
 
   return (
-    <main className="dsv2-page dsv2-customers-page" dir="rtl">
-      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} />
-      <CustomersSearchToolbar query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
-      <CustomersFilters segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
-      <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} />
+    <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
+      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} language={language} />
+      <CustomersSearchToolbar language={language} query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
+      <CustomersFilters language={language} segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
+      <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} language={language} />
 
       {error && !fatalError ? (
         <div className="dsv2-customers-alert dsv2-customers-alert--error" role="alert">
           <span>{error}</span>
-          <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData()}>إعادة المحاولة</button>
+          <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData()}>{t("إعادة المحاولة")}</button>
         </div>
       ) : null}
-      {fatalError ? <CustomersEmptyState kind="error" message={error} onPrimary={() => void loadData()} /> : null}
-      {noData ? <CustomersEmptyState kind="empty" canImport={canImport} onPrimary={() => navigate("/dashboard/booking-internal")} onImport={() => setImportOpen(true)} /> : null}
-      {noResults ? <CustomersEmptyState kind="no-results" onPrimary={clearFilters} /> : null}
+      {fatalError ? <CustomersEmptyState language={language} kind="error" message={error} onPrimary={() => void loadData()} /> : null}
+      {noData ? <CustomersEmptyState language={language} kind="empty" canImport={canImport} onPrimary={() => navigate("/dashboard/booking-internal")} onImport={() => setImportOpen(true)} /> : null}
+      {noResults ? <CustomersEmptyState language={language} kind="no-results" onPrimary={clearFilters} /> : null}
       {!fatalError && !noData && !noResults ? (
         <>
-          <CustomersTable customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
-          <CustomersMobileList customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+          <CustomersTable language={language} customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+          <CustomersMobileList language={language} customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
         </>
       ) : null}
 
-      {selectedCustomer ? <CustomerRecordModal customer={selectedCustomer} bookings={selectedBookings} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
-      <CustomersImportModal open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
+      {selectedCustomer ? <CustomerRecordModal language={language} customer={selectedCustomer} bookings={selectedBookings} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
+      <CustomersImportModal language={language} open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
       {copyToast ? <div className="dsv2-customers-copy-toast" role="status">{copyToast}</div> : null}
     </main>
   );
