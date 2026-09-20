@@ -78,7 +78,7 @@ const settingsEnglish: Record<string, string> = {
   "الحفظ يطبق على كل الشاشات التي تعتمد على AppSettings.": "Saved changes apply to every screen that uses AppSettings.",
   "تحتاج صلاحية settings.general.manage": "Requires settings.general.manage permission",
   "حفظ الإعدادات": "Save settings",
-  "حفظ التغييرات": "Save changes"
+  "حفظ التغييرات": "Save changes",
   "إعدادات التواصل": "Contact settings",
   "بيانات التواصل واللوكيشن": "Contact and location details",
   "إدارة بيانات التواصل التي تظهر في الموقع، نص العنوان، الخريطة، ورسائل العميلات الواردة.": "Manage contact details shown on the website, address text, map and incoming client messages.",
@@ -130,7 +130,7 @@ const settingsEnglish: Record<string, string> = {
   "تحتاج صلاحية settings.content.manage": "Requires settings.content.manage permission",
   "جاري الحفظ…": "Saving…",
   "تم حفظ بيانات التواصل": "Contact details saved",
-  "تعذر حفظ بيانات التواصل": "Could not save contact details"
+  "تعذر حفظ بيانات التواصل": "Could not save contact details",
   "السبت": "Saturday",
   "الأحد": "Sunday",
   "الإثنين": "Monday",

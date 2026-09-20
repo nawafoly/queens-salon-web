@@ -812,7 +812,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
                   <span className="dsv2-field__label">{t("البفر بعد كل حجز")}</span>
                   <DashboardSelectV2
                     value={String(bufferMin)}
-                    options={BUFFER_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))
+                    options={BUFFER_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                     onChange={(value) => setBookingSettings({ bufferMin: Number(value) })}
                   />
                   <span className="dsv2-field__hint">{t("المسافة الزمنية الإضافية بعد نهاية الموعد.")}</span>
@@ -1015,7 +1015,7 @@ export default function SettingsBookings({ language = "ar" }: { language?: Dashb
                   <span className="dsv2-field__label">{t("وضع الفترة")}</span>
                   <DashboardSelectV2
                     value={overrideDraft.mode}
-                    options={OVERRIDE_MODE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))
+                    options={OVERRIDE_MODE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                     onChange={(value) =>
                       setOverrideDraft((prev) => ({
                         ...prev,
