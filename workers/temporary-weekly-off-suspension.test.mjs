@@ -80,6 +80,7 @@ function fakeShiftDb() {
       }
 
       if (normalized.includes("FROM hr_shift_assignments")) return null;
+      if (normalized.includes("FROM employee_weekly_rest_work_assignments")) return null;
       throw new Error(`Unhandled fake shift query: ${normalized}`);
     },
   };
