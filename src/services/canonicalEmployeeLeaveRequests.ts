@@ -172,6 +172,14 @@ export async function decideCanonicalEmployeeLeaveRequest(
     if (status === "under_review") {
       current = await act(current, "approve", {
         note: hrNote || `اعتماد طلب الإجازة بواسطة ${reviewerName}`,
+        ...(reviewer.manualLeavePolicy
+          ? {
+              manualLeavePolicy: {
+                deductFromBalance: reviewer.manualLeavePolicy.deductFromBalance === true,
+                affectsPayroll: reviewer.manualLeavePolicy.affectsPayroll === true,
+              },
+            }
+          : {}),
       });
       status = requestCoreStatus(current);
     }
