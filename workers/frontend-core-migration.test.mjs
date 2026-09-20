@@ -870,3 +870,23 @@ test("internal booking ships the iPad cashier workspace contract", () => {
   assert.match(ipad, /max-width: 1119px/);
   assert.match(ipad, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
+
+
+test("internal booking ships the phone cashier workspace contract", () => {
+  const shell = readFileSync("src/styles/dashboard-v2/dashboard-v2.css", "utf8");
+  const mobile = readFileSync(
+    "src/styles/dashboard-v2/pages/booking-internal-mobile.css",
+    "utf8"
+  );
+
+  assert.match(shell, /booking-internal-mobile\.css/);
+  assert.match(mobile, /MOBILE_CASHIER_WORKSPACE_V1/);
+  assert.match(mobile, /@media \(max-width: 743px\)/);
+  assert.match(
+    mobile,
+    /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/
+  );
+  assert.match(mobile, /min-height:\s*44px/);
+  assert.match(mobile, /overflow-x:\s*clip/);
+  assert.match(mobile, /@media \(max-width: 390px\)/);
+});

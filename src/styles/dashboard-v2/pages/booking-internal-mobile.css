@@ -1,0 +1,505 @@
+/* =========================================================
+   MALIKAT Dashboard V2 — Mobile cashier workspace
+   MOBILE_CASHIER_WORKSPACE_V1
+   Phone-first contract for 320–743px.
+   No horizontal page scroll, no desktop-sized panels.
+========================================================= */
+
+@media (max-width: 743px) {
+  .dashboard-v2.is-booking-internal-route .bk2-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-block-start: 6px;
+    padding-block-end: calc(14px + env(safe-area-inset-bottom));
+    overflow-x: clip;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-page > * {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-heading {
+    min-height: 0;
+    margin-bottom: 8px;
+    padding: 10px;
+    gap: 10px;
+    border-radius: 12px;
+    background: var(--dsv2-surface);
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-heading::after,
+  .dashboard-v2.is-booking-internal-route .bk2-eyebrow,
+  .dashboard-v2.is-booking-internal-route .bk2-heading > div:first-child > p:last-child {
+    display: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-heading > div:first-child {
+    gap: 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-heading h1 {
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-mode-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-mode-switch button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 8px;
+    font-size: 0.74rem;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper {
+    position: sticky;
+    z-index: 35;
+    top: max(4px, env(safe-area-inset-top));
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    margin-bottom: 8px;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 7px 20px rgba(var(--dsv2-black-rgb), 0.08);
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper button {
+    display: flex;
+    min-width: 0;
+    min-height: 66px;
+    padding: 6px 3px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    text-align: center;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper button:not(:last-child)::after {
+    inset-block: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-step-icon,
+  .dashboard-v2.is-booking-internal-route .bk2-stepper small {
+    display: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-step-number {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    font-size: 0.7rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper strong {
+    display: -webkit-box;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    font-size: clamp(0.58rem, 2.6vw, 0.68rem);
+    line-height: 1.18;
+    text-align: center;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-main-card,
+  .dashboard-v2.is-booking-internal-route .bk2-summary-card,
+  .dashboard-v2.is-booking-internal-route .bk2-sessions-shell {
+    width: 100%;
+    min-width: 0;
+    padding: 11px;
+    border-radius: 12px;
+    box-sizing: border-box;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-main-card {
+    min-height: 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-card {
+    position: static;
+    order: 1;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-title,
+  .dashboard-v2.is-booking-internal-route .bk2-summary-title {
+    gap: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-title > span {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-title h2,
+  .dashboard-v2.is-booking-internal-route .bk2-summary-title h2 {
+    font-size: 0.92rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-title p {
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-search-box {
+    margin-top: 10px;
+    padding-inline: 11px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-search-box input,
+  .dashboard-v2.is-booking-internal-route .bk2-date-picker-v2 .dsv2-date-v2__trigger,
+  .dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 .dsv2-select-v2__trigger,
+  .dashboard-v2.is-booking-internal-route .bk2-new-client-grid input,
+  .dashboard-v2.is-booking-internal-route .bk2-payment-input input,
+  .dashboard-v2.is-booking-internal-route .bk2-mixed-grid input,
+  .dashboard-v2.is-booking-internal-route .bk2-discount-grid input,
+  .dashboard-v2.is-booking-internal-route .bk2-coupon-row input {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-recent-header {
+    margin: 14px 0 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-client-grid {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-client-grid > button {
+    min-height: 76px;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 11px;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-client-copy strong {
+    font-size: 0.82rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-client-badges {
+    gap: 5px;
+    margin-top: 5px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-client-badges em {
+    padding: 3px 6px;
+    font-size: 0.6rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-divider {
+    margin: 14px 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-add-client,
+  .dashboard-v2.is-booking-internal-route .bk2-new-client-actions button,
+  .dashboard-v2.is-booking-internal-route .bk2-final-actions button,
+  .dashboard-v2.is-booking-internal-route .bk2-booking-success-actions button,
+  .dashboard-v2.is-booking-internal-route .bk2-coupon-row button,
+  .dashboard-v2.is-booking-internal-route .bk2-continue {
+    min-height: 46px;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-tip {
+    margin-top: 14px;
+    padding: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-new-client-panel {
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    box-sizing: border-box;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-new-client-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-choice-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-choice-grid.four,
+  .dashboard-v2.is-booking-internal-route .bk2-choice-grid.five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-new-client-grid label.is-wide {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-tabs,
+  .dashboard-v2.is-booking-internal-route .bk2-category-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 100%;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 4px 1px 7px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-tabs::-webkit-scrollbar,
+  .dashboard-v2.is-booking-internal-route .bk2-category-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-section-tabs button,
+  .dashboard-v2.is-booking-internal-route .bk2-category-tabs button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding-inline: 12px;
+    font-size: 0.72rem;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-list {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    margin-top: 7px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-list > button {
+    min-height: 68px;
+    grid-template-columns: minmax(0, 1fr) auto 42px;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 11px;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-copy strong {
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-copy small {
+    font-size: 0.65rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-price {
+    font-size: 0.74rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-add {
+    grid-column: auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-no-results {
+    padding: 24px 12px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-date-field {
+    margin-bottom: 12px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-schedule-list {
+    gap: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-schedule-item {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-schedule-item header {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-schedule-controls {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-time-picker > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-time-picker button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 7px 5px;
+    font-size: 0.75rem;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-payment-step {
+    gap: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-payment-block,
+  .dashboard-v2.is-booking-internal-route .bk2-review-list article {
+    border-radius: 11px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-payment-block {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-review-list article {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-choice-grid button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 7px 6px;
+    font-size: 0.7rem;
+    white-space: normal;
+    touch-action: manipulation;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-payment-input,
+  .dashboard-v2.is-booking-internal-route .bk2-mixed-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-discount-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-coupon-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-payment-summary {
+    padding: 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-meta > div {
+    padding: 8px 9px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-services {
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-empty-services {
+    min-height: 84px;
+    margin: 9px 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-totals > div {
+    padding: 6px 0;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-continue {
+    margin-top: 9px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-session-stats,
+  .dashboard-v2.is-booking-internal-route .bk2-session-overview-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-session-attention-grid,
+  .dashboard-v2.is-booking-internal-route .bk2-session-grant-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-sessions-toolbar,
+  .dashboard-v2.is-booking-internal-route .bk2-sessions-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-sessions-actions button {
+    width: 100%;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-session-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-booking-success {
+    padding: 16px 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-booking-success-reference {
+    width: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-v2.is-booking-internal-route .bk2-heading {
+    padding: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper button {
+    min-height: 62px;
+    padding-inline: 2px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-step-number {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-stepper strong {
+    font-size: 0.58rem;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-main-card,
+  .dashboard-v2.is-booking-internal-route .bk2-summary-card,
+  .dashboard-v2.is-booking-internal-route .bk2-sessions-shell {
+    padding: 9px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-list > button {
+    grid-template-columns: minmax(0, 1fr) auto 38px;
+    padding-inline: 8px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-service-add {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-time-picker > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

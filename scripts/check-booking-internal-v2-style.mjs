@@ -5,6 +5,7 @@ const root = resolve(process.cwd());
 const canonicalPath = resolve(root, "src/styles/dashboard-v2/pages/booking-internal.css");
 const controlsPath = resolve(root, "src/styles/dashboard-v2/pages/booking-internal-controls-refinement.css");
 const sessionsPath = resolve(root, "src/styles/dashboard-v2/pages/booking-internal-sessions-refinement.css");
+const mobilePath = resolve(root, "src/styles/dashboard-v2/pages/booking-internal-mobile.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const dashboardPath = resolve(root, "src/pages/Dashboard.tsx");
 const bookingPath = resolve(root, "src/features/internal-booking-v2/BookingInternalV2.tsx");
@@ -31,6 +32,7 @@ function checkCanonicalCss(path, label) {
 checkCanonicalCss(canonicalPath, "booking-internal.css");
 checkCanonicalCss(controlsPath, "booking-internal-controls-refinement.css");
 checkCanonicalCss(sessionsPath, "booking-internal-sessions-refinement.css");
+checkCanonicalCss(mobilePath, "booking-internal-mobile.css");
 
 const canonicalCss = readFileSync(canonicalPath, "utf8");
 const legacyFeatureCss = readFileSync(legacyFeatureStylePath, "utf8");
@@ -53,6 +55,19 @@ if (!entry.includes('@import "./pages/booking-internal-controls-refinement.css";
 }
 if (!entry.includes('@import "./pages/booking-internal-sessions-refinement.css";')) {
   errors.push("Dashboard V2 entry point does not import booking-internal-sessions-refinement.css.");
+}
+if (!entry.includes('@import "./pages/booking-internal-mobile.css";')) {
+  errors.push("Dashboard V2 entry point does not import booking-internal-mobile.css.");
+}
+const mobileCss = readFileSync(mobilePath, "utf8");
+if (!mobileCss.includes("MOBILE_CASHIER_WORKSPACE_V1")) {
+  errors.push("booking-internal-mobile.css is missing the mobile cashier workspace marker.");
+}
+if (!/@media \(max-width: 743px\)/.test(mobileCss)) {
+  errors.push("booking-internal-mobile.css must own the phone breakpoint through 743px.");
+}
+if (!/\.bk2-stepper\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/.test(mobileCss)) {
+  errors.push("Mobile booking stepper must fit all four steps without horizontal scrolling.");
 }
 
 const dashboard = readFileSync(dashboardPath, "utf8");
