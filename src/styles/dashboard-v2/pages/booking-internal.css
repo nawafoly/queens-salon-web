@@ -528,8 +528,7 @@
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-add-client,
-.dashboard-v2.is-booking-internal-route .bk2-sessions-refresh,
-.dashboard-v2.is-booking-internal-route .bk2-discount-toggle {
+.dashboard-v2.is-booking-internal-route .bk2-sessions-refresh {
   min-height: var(--dsv2-control-height);
   border: 1px solid var(--dsv2-border-gold);
   border-radius: var(--dsv2-radius-sm);
