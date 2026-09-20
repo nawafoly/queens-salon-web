@@ -33,6 +33,7 @@ import {
   hasCustomerPhone,
   isCustomerActive,
   normalizeCustomerName,
+  UNNAMED_CUSTOMER_LABEL,
 } from "./customerFormatters";
 import type {
   CustomerLastVisitFilter,
@@ -287,7 +288,7 @@ export function CustomerName({ customer, language }: { customer: CustomerRow; la
     <div className="dsv2-customers-name-block">
       <span className="dsv2-customers-avatar" aria-hidden="true">{getCustomerInitials(name)}</span>
       <span className="dsv2-customers-name-copy">
-        <strong className="dsv2-table__primary">{t(name)}</strong>
+        <strong className="dsv2-table__primary">{name === UNNAMED_CUSTOMER_LABEL ? t(name) : name}</strong>
         <small className="dsv2-table__secondary">{customer.clientId ? t("ملف موحّد") : t("من سجل الحجوزات")}</small>
       </span>
     </div>
