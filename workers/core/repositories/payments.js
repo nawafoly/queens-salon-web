@@ -13,6 +13,7 @@ import {
 } from '../d1.js';
 import { getInvoice } from './invoices.js';
 import { auditInsertStatement } from './audit.js';
+import { reconcileCashbackForBooking } from './cashback.js';
 
 function paymentStatusForInvoice(total, paid) {
   if (paid <= 0) return "unpaid";
@@ -188,5 +189,13 @@ export async function createPayment(db, salonId, data, actor = {}) {
     }
   }
   await dbBatch(db, statements);
+  if (payment.booking_id) {
+    await reconcileCashbackForBooking(
+      db,
+      salonId,
+      payment.booking_id,
+      actor?.uid || ""
+    );
+  }
   return payment;
 }
