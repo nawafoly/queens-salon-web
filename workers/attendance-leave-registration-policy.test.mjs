@@ -160,3 +160,28 @@ test("weekly-rest substitute is selectable and stays on the canonical entitlemen
     /weekly_rest_substitute_use"\) return "راحة أسبوعية تعويضية"/
   );
 });
+
+
+test("Core leave conflicts expose specific causes instead of a generic 409 message", () => {
+  const coreApiClientSource = readFileSync(
+    new URL("../src/services/coreApiClient.ts", import.meta.url),
+    "utf8"
+  );
+
+  for (const code of [
+    "core_employee_request:version_conflict",
+    "core_employee_request:invalid_transition",
+    "core_employee_request:insufficient_leave_balance",
+    "core_employee_request:insufficient_annual_leave_balance",
+    "core_leave:hr_review_resolution_required",
+    "core_leave:statutory_validation_required",
+    "core_leave:entitlement_consumption_runtime_required",
+  ]) {
+    assert.ok(coreApiClientSource.includes(code), "missing conflict mapping: " + code);
+  }
+
+  assert.match(
+    coreApiClientSource,
+    /console\.warn\("\[core-api-error\]"[\s\S]*?requestId[\s\S]*?status: response\.status[\s\S]*?code/
+  );
+});
