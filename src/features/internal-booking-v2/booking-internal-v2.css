@@ -161,7 +161,7 @@
   .bk2-stepper button { min-width: 126px; grid-template-columns: 32px 1fr; padding: 12px; }
   .bk2-step-icon { display: none; }
   .bk2-workspace { grid-template-columns: 1fr; }
-  .bk2-summary-card { position: static; order: -1; }
+  .bk2-summary-card { position: static; order: 1; }
 }
 
 @media (max-width: 560px) {
