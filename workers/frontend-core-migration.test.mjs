@@ -890,3 +890,19 @@ test("internal booking ships the phone cashier workspace contract", () => {
   assert.match(mobile, /overflow-x:\s*clip/);
   assert.match(mobile, /@media \(max-width: 390px\)/);
 });
+
+
+test("client personal profile exposes relationship-first home insights", () => {
+  const profile = readFileSync("src/pages/Profile.tsx", "utf8");
+  const portal = readFileSync("src/services/ClientPortalService.ts", "utf8");
+
+  assert.match(profile, /const lastVisit = useMemo/);
+  assert.match(profile, /const mostVisitedSpecialist = useMemo/);
+  assert.match(profile, /حجزك القادم/);
+  assert.match(profile, /آخر زيارة/);
+  assert.match(profile, /مختصتك الأكثر زيارة/);
+  assert.match(profile, /cashbackData\?\.enabled/);
+  assert.match(profile, /لا يمكن سحبه نقدًا أو تحويله خارج ملكات/);
+  assert.match(portal, /ClientPortalCashback/);
+  assert.match(portal, /redeemScope: "salon_only"/);
+});

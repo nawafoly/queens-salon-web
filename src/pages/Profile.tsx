@@ -31,7 +31,12 @@ import { logoutFirebase } from "../services/authService";
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
-import { ClientPortalService, type ClientPortalOffer, type ClientPortalLoyalty } from "../services/ClientPortalService";
+import {
+  ClientPortalService,
+  type ClientPortalCashback,
+  type ClientPortalOffer,
+  type ClientPortalLoyalty,
+} from "../services/ClientPortalService";
 
 // =======================
 // دعم واتساب
@@ -460,12 +465,14 @@ const Profile: React.FC = () => {
   const [bookingsErr, setBookingsErr] = useState<string>("");
   const [portalLoading, setPortalLoading] = useState(false);
   const [loyaltyData, setLoyaltyData] = useState<ClientPortalLoyalty | null>(null);
+  const [cashbackData, setCashbackData] = useState<ClientPortalCashback | null>(null);
   const [clientOffers, setClientOffers] = useState<ClientPortalOffer[]>([]);
 
   useEffect(() => {
     if (profileMode !== "firebase" || !firebaseUid || !firebaseUser) {
       setBookings([]);
       setLoyaltyData(null);
+      setCashbackData(null);
       setClientOffers([]);
       return;
     }
@@ -486,6 +493,7 @@ const Profile: React.FC = () => {
         });
         setBookings(rows);
         setLoyaltyData(snapshot.loyalty);
+        setCashbackData(snapshot.cashback ?? null);
         setClientOffers(snapshot.offers);
         setBookingsErr("");
         setUserData((prev) => ({
@@ -554,6 +562,25 @@ const Profile: React.FC = () => {
 
     future.sort((a, b) => toTs(a.date, a.time) - toTs(b.date, b.time));
     return future[0];
+  }, [bookings]);
+
+  const lastVisit = useMemo(() => {
+    const visitStatuses = new Set(["completed", "refunded", "partially_refunded"]);
+    return [...bookings]
+      .filter((booking) => visitStatuses.has(statusKey(booking.status)))
+      .sort((a, b) => (toTs(b.date, b.time) || b.createdAt || 0) - (toTs(a.date, a.time) || a.createdAt || 0))[0] || null;
+  }, [bookings]);
+
+  const mostVisitedSpecialist = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const booking of bookings) {
+      if (!["completed", "refunded", "partially_refunded"].includes(statusKey(booking.status))) continue;
+      const specialist = String(booking.employee || "").trim();
+      if (!specialist) continue;
+      counts.set(specialist, (counts.get(specialist) || 0) + 1);
+    }
+    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ar"));
+    return ranked[0] ? { name: ranked[0][0], visits: ranked[0][1] } : null;
   }, [bookings]);
 
   // =======================
@@ -972,11 +999,64 @@ const Profile: React.FC = () => {
               </div>
             </section>
 
+            <section className="p-section-container">
+              <div className="p-section-header"><h3>حجزك القادم</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("bookings")}>كل الحجوزات</button></div>
+              {upcomingBooking ? (
+                <div className="p-modern-booking-card">
+                  <div className="p-booking-main-info">
+                    <div className="p-booking-service-icon"><LuScissors /></div>
+                    <div className="p-booking-details"><span className="p-booking-service-name">{upcomingBooking.service}</span><span className="p-booking-employee-name">مع {upcomingBooking.employee || "سيتم تحديد الموظفة"}</span></div>
+                    <div className={`p-status-pill status-${statusKey(upcomingBooking.status)}`}>{statusLabelAr(upcomingBooking.status)}</div>
+                  </div>
+                  <div className="p-booking-footer-info">
+                    <div className="p-footer-item"><LuCalendarDays /> {formatDateAr(upcomingBooking.date)}</div>
+                    <div className="p-footer-item"><LuClock3 /> {formatTime12(upcomingBooking.time, "-")}</div>
+                  </div>
+                  <div className="p-booking-actions-modern"><button className="p-btn-modern primary" type="button" onClick={() => navigate(`/track/${encodeURIComponent(upcomingBooking.publicId || upcomingBooking.id)}`)}>تتبع الحجز</button></div>
+                </div>
+              ) : !portalLoading && !bookingsErr ? <div className="p-empty-state">لا يوجد حجز قادم حاليًا.</div> : null}
+            </section>
+
+            <section className="p-section-container">
+              <div className="p-section-header"><h3>آخر زيارة</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("bookings")}>السجل</button></div>
+              {lastVisit ? (
+                <div className="p-modern-booking-card">
+                  <div className="p-booking-main-info">
+                    <div className="p-booking-service-icon"><LuReceipt /></div>
+                    <div className="p-booking-details"><span className="p-booking-service-name">{lastVisit.service}</span><span className="p-booking-employee-name">مع {lastVisit.employee || "غير محددة"}</span></div>
+                  </div>
+                  <div className="p-booking-footer-info">
+                    <div className="p-footer-item"><LuCalendarDays /> {formatDateAr(lastVisit.date)}</div>
+                    <div className="p-footer-item"><LuClock3 /> {formatTime12(lastVisit.time, "-")}</div>
+                  </div>
+                </div>
+              ) : !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد زيارة مكتملة حتى الآن.</div> : null}
+            </section>
+
+            {mostVisitedSpecialist ? (
+              <section className="p-section-container">
+                <div className="p-section-header"><h3>مختصتك الأكثر زيارة</h3></div>
+                <div className="p-account-rows">
+                  <div><span>المختصة</span><strong>{mostVisitedSpecialist.name}</strong></div>
+                  <div><span>عدد الزيارات معها</span><strong>{mostVisitedSpecialist.visits}</strong></div>
+                </div>
+              </section>
+            ) : null}
+
             <section className="p-section-container p-home-loyalty-summary">
-              <div className="p-section-header"><h3>النقاط والولاء</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("loyalty")}>عرض الحساب</button></div>
+              <div className="p-section-header"><h3>{cashbackData?.enabled ? "رصيد الكاش باك" : "النقاط والولاء"}</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("loyalty")}>عرض الحساب</button></div>
               <div className="p-home-summary-grid">
-                <div><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
-                <div><strong>{loyalty.loyaltyTitle}</strong><span>المستوى الحالي</span></div>
+                {cashbackData?.enabled ? (
+                  <>
+                    <div><strong>{money(cashbackData.balanceHalalas / 100)}</strong><span>رصيد متاح داخل ملكات</span></div>
+                    <div><strong>{money(cashbackData.earnedHalalas / 100)}</strong><span>إجمالي الكاش باك المكتسب</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
+                    <div><strong>{loyalty.loyaltyTitle}</strong><span>المستوى الحالي</span></div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -1009,33 +1089,58 @@ const Profile: React.FC = () => {
 
             <section className="p-section-container">
               <div className="p-section-header">
-                <h3>النقاط والولاء</h3>
+                <h3>{cashbackData?.enabled ? "الكاش باك" : "النقاط والولاء"}</h3>
                 <button type="button" className="p-badge-id-hero" onClick={copyMembershipId}><LuIdCard className="p-inline-icon" /> ID: {membershipId}</button>
               </div>
-              <div className="p-points-card">
-                <div className="p-points-head"><h4>رصيد النقاط</h4><span className="p-points-badge">Points</span></div>
-                <div className="p-points-value-row"><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
-                <div className="p-points-meta">
-                  <span>مكتسبة: {loyalty.earned}</span>
-                  <span>مستخدمة: {loyalty.used}</span>
-                  <span>معكوسة بالاسترجاع: {loyalty.reversed}</span>
-                  <span>{loyalty.pointsToNext > 0 ? `متبقي ${loyalty.pointsToNext} نقطة للمستوى التالي` : "أعلى مستوى حالي"}</span>
-                </div>
-              </div>
-              <div className="p-loyalty-card">
-                <div className="p-loyalty-head"><h4>حالة الولاء</h4><div className="p-level-badge">Lv. {loyalty.level}</div></div>
-                <div className="p-loyalty-tier-line"><span>التصنيف الحالي: {loyalty.loyaltyTitle}</span><span>{loyalty.progress}%</span></div>
-                <div className="p-progress-bar-container"><div className="p-progress-bar-fill" style={{ width: `${loyalty.progress}%` }} /></div>
-                <p className="p-loyalty-note">تُحتسب النقاط من قيمة الحجوزات المكتملة، وتُعكس تلقائيًا عند الاسترجاع.</p>
-              </div>
-              {loyaltyData?.transactions?.length ? (
-                <div className="p-loyalty-transactions">
-                  <h4>آخر حركات النقاط</h4>
-                  {loyaltyData.transactions.slice(0, 10).map((tx) => (
-                    <div key={tx.id}><span>{tx.reason}</span><strong className={tx.points >= 0 ? "is-positive" : "is-negative"}>{tx.points > 0 ? "+" : ""}{tx.points}</strong></div>
-                  ))}
-                </div>
-              ) : null}
+              {cashbackData?.enabled ? (
+                <>
+                  <div className="p-points-card">
+                    <div className="p-points-head"><h4>رصيد الكاش باك</h4><span className="p-points-badge">Cashback</span></div>
+                    <div className="p-points-value-row"><strong>{money(cashbackData.balanceHalalas / 100)}</strong><span>متاح للاستخدام داخل صالون ملكات</span></div>
+                    <div className="p-points-meta">
+                      <span>مكتسب: {money(cashbackData.earnedHalalas / 100)}</span>
+                      <span>مستخدم: {money(cashbackData.redeemedHalalas / 100)}</span>
+                      <span>معكوس/منتهي: {money(cashbackData.reversedHalalas / 100)}</span>
+                      <span>لا يمكن سحبه نقدًا أو تحويله خارج ملكات</span>
+                    </div>
+                  </div>
+                  {cashbackData.transactions.length ? (
+                    <div className="p-loyalty-transactions">
+                      <h4>آخر حركات الكاش باك</h4>
+                      {cashbackData.transactions.slice(0, 10).map((tx) => (
+                        <div key={tx.id}><span>{tx.reason}</span><strong className={tx.amountHalalas >= 0 ? "is-positive" : "is-negative"}>{tx.amountHalalas > 0 ? "+" : ""}{money(tx.amountHalalas / 100)}</strong></div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="p-points-card">
+                    <div className="p-points-head"><h4>رصيد النقاط</h4><span className="p-points-badge">Points</span></div>
+                    <div className="p-points-value-row"><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
+                    <div className="p-points-meta">
+                      <span>مكتسبة: {loyalty.earned}</span>
+                      <span>مستخدمة: {loyalty.used}</span>
+                      <span>معكوسة بالاسترجاع: {loyalty.reversed}</span>
+                      <span>{loyalty.pointsToNext > 0 ? `متبقي ${loyalty.pointsToNext} نقطة للمستوى التالي` : "أعلى مستوى حالي"}</span>
+                    </div>
+                  </div>
+                  <div className="p-loyalty-card">
+                    <div className="p-loyalty-head"><h4>حالة الولاء</h4><div className="p-level-badge">Lv. {loyalty.level}</div></div>
+                    <div className="p-loyalty-tier-line"><span>التصنيف الحالي: {loyalty.loyaltyTitle}</span><span>{loyalty.progress}%</span></div>
+                    <div className="p-progress-bar-container"><div className="p-progress-bar-fill" style={{ width: `${loyalty.progress}%` }} /></div>
+                    <p className="p-loyalty-note">تُحتسب النقاط من قيمة الحجوزات المكتملة، وتُعكس تلقائيًا عند الاسترجاع.</p>
+                  </div>
+                  {loyaltyData?.transactions?.length ? (
+                    <div className="p-loyalty-transactions">
+                      <h4>آخر حركات النقاط</h4>
+                      {loyaltyData.transactions.slice(0, 10).map((tx) => (
+                        <div key={tx.id}><span>{tx.reason}</span><strong className={tx.points >= 0 ? "is-positive" : "is-negative"}>{tx.points > 0 ? "+" : ""}{tx.points}</strong></div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </section>
           </>
         ) : null}
