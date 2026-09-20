@@ -95,3 +95,26 @@ test('client cashback is exposed through the canonical portal', () => {
   assert.match(portal, /return \{ profile, bookings, loyalty, cashback, offers/);
   assert.match(portal, /refunds,[\s\S]*loyalty,[\s\S]*cashback,[\s\S]*offersUsed/);
 });
+
+
+test('cashback lifecycle stays disabled until policy activation and supports closed-loop recovery', () => {
+  const cashback = readFileSync('workers/core/repositories/cashback.js', 'utf8');
+  const bookings = readFileSync('workers/core/repositories/bookings.js', 'utf8');
+  const payments = readFileSync('workers/core/repositories/payments.js', 'utf8');
+  const refunds = readFileSync('workers/core/repositories/refunds.js', 'utf8');
+  const worker = readFileSync('workers/core/index.js', 'utf8');
+
+  assert.match(cashback, /enabled: false/);
+  assert.match(cashback, /earnBps: 0/);
+  assert.match(cashback, /reconcileCashbackForBooking/);
+  assert.match(cashback, /pendingRecoveryHalalas/);
+  assert.match(cashback, /core_cashback:insufficient_balance/);
+  assert.match(cashback, /cashWithdrawalAllowed: false/);
+  assert.match(cashback, /transferAllowed: false/);
+
+  assert.match(bookings, /reconcileCashbackForBooking/);
+  assert.match(payments, /reconcileCashbackForBooking/);
+  assert.match(refunds, /reconcileCashbackForBooking/);
+  assert.match(worker, /\/api\/core\/admin\/cashback\/policy/);
+  assert.match(worker, /cashback:redeem/);
+});
