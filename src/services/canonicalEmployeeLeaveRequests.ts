@@ -143,6 +143,10 @@ export async function decideCanonicalEmployeeLeaveRequest(
     reviewerUid: string;
     reviewerName?: string;
     hrNote?: string;
+    manualLeavePolicy?: {
+      deductFromBalance: boolean;
+      affectsPayroll: boolean;
+    };
   }
 ) {
   const requestId = cleanText(request.id);
@@ -175,6 +179,14 @@ export async function decideCanonicalEmployeeLeaveRequest(
     if (status === "approved" || status === "executing") {
       current = await act(current, "execute", {
         note: hrNote || "تنفيذ الإجازة المعتمدة",
+        ...(reviewer.manualLeavePolicy
+          ? {
+              manualLeavePolicy: {
+                deductFromBalance: reviewer.manualLeavePolicy.deductFromBalance === true,
+                affectsPayroll: reviewer.manualLeavePolicy.affectsPayroll === true,
+              },
+            }
+          : {}),
       });
       status = requestCoreStatus(current);
     }
