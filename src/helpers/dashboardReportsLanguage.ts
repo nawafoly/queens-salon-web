@@ -158,7 +158,6 @@ const reportsEnglish: Record<string, string> = {
   "إيراد": "Income",
   "مصروف": "Expense",
   "بدون مرجع": "No reference",
-  "غير محددة": "Unspecified",
   "حركة إيراد": "Income movement",
   "لا توجد حركات مالية مطابقة للفلاتر الحالية.": "No financial movements match the current filters.",
   "يعتمد التقرير على النتائج والفلاتر الظاهرة وقت التصدير، وليس على السجلات المستبعدة بالفلاتر.": "The report uses the results and filters visible at export time, not records excluded by filters.",
