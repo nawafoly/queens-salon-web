@@ -8,6 +8,7 @@ import { CoreBookingService } from "../../services/CoreBookingService";
 import { CoreInvoiceService } from "../../services/CoreInvoiceService";
 import { PackageOperationsService } from "../../services/PackageOperationsService";
 import { packageDate, printPackageDocument } from "./packageFormat";
+import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 import "../../styles/SessionPackages.css";
 
 const labels: Record<string, string> = {
@@ -34,15 +35,22 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function halalasToMoney(value: unknown): string {
+function halalasToMoney(value: unknown, language: DashboardLanguage): string {
   const amount = Number(value ?? 0);
-  return `${(Number.isFinite(amount) ? amount / 100 : 0).toFixed(2)} ر.س`;
+  const formatted = new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount / 100 : 0);
+  return `${formatted} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 export default function ClientPackagesPanel(props: {
   clientId?: string;
   canManage: boolean;
+  language?: DashboardLanguage;
 }) {
+  const language = props.language ?? "ar";
+  const t = (value: string) => clientsText(language, value);
   const clientId = text(props.clientId);
   const [packages, setPackages] = useState<ClientPackage[]>([]);
   const [transactions, setTransactions] = useState<
@@ -146,12 +154,12 @@ export default function ClientPackagesPanel(props: {
       setBookings(bookingGroups);
     } catch (cause) {
       const message =
-        cause instanceof Error ? cause.message : "تعذر تحميل الباقات والجلسات.";
-      setError(message || "تعذر تحميل الباقات والجلسات.");
+        cause instanceof Error ? cause.message : t("تعذر تحميل الباقات والجلسات.");
+      setError(message || t("تعذر تحميل الباقات والجلسات."));
     } finally {
       setBusy(false);
     }
-  }, [clientId]);
+  }, [clientId, language]);
 
   useEffect(() => {
     void load();
@@ -159,13 +167,13 @@ export default function ClientPackagesPanel(props: {
 
   async function adjust(pkg: ClientPackage) {
     const raw = window.prompt(
-      "عدد الجلسات المراد إضافتها أو خصمها (مثال: 1 أو -1)"
+      t("عدد الجلسات المراد إضافتها أو خصمها (مثال: 1 أو -1)")
     );
     if (raw === null) return;
     const delta = Number(raw);
-    const reason = window.prompt("سبب التعديل الإداري") || "";
+    const reason = window.prompt(t("سبب التعديل الإداري")) || "";
     if (!Number.isInteger(delta) || !delta || !reason.trim()) {
-      setError("يلزم إدخال عدد صحيح وسبب واضح.");
+      setError(t("يلزم إدخال عدد صحيح وسبب واضح."));
       return;
     }
     setBusy(true);
@@ -173,29 +181,29 @@ export default function ClientPackagesPanel(props: {
       await PackageOperationsService.adjust(String(pkg.id), delta, reason);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر تعديل الرصيد.");
+      setError(cause instanceof Error ? cause.message : t("تعذر تعديل الرصيد."));
     } finally {
       setBusy(false);
     }
   }
 
   async function cancel(pkg: ClientPackage) {
-    const reason = window.prompt("سبب إلغاء الباقة");
+    const reason = window.prompt(t("سبب إلغاء الباقة"));
     if (!reason?.trim()) return;
-    if (!window.confirm(`تأكيد إلغاء ${pkg.packageNameSnapshot}؟`)) return;
+    if (!window.confirm(language === "en" ? `${t("تأكيد إلغاء")} ${pkg.packageNameSnapshot}?` : `تأكيد إلغاء ${pkg.packageNameSnapshot}؟`)) return;
     setBusy(true);
     try {
       await PackageOperationsService.cancel(String(pkg.id), reason);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر إلغاء الباقة.");
+      setError(cause instanceof Error ? cause.message : t("تعذر إلغاء الباقة."));
     } finally {
       setBusy(false);
     }
   }
 
   async function restore(booking: LinkedBooking) {
-    const reason = window.prompt("سبب استرجاع الجلسة المستخدمة");
+    const reason = window.prompt(t("سبب استرجاع الجلسة المستخدمة"));
     if (!reason?.trim()) return;
     setBusy(true);
     try {
@@ -203,7 +211,7 @@ export default function ClientPackagesPanel(props: {
       await load();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "تعذر استرجاع الجلسة."
+        cause instanceof Error ? cause.message : t("تعذر استرجاع الجلسة.")
       );
     } finally {
       setBusy(false);
@@ -213,27 +221,28 @@ export default function ClientPackagesPanel(props: {
   async function invoice(pkg: ClientPackage) {
     const invoiceId = text(pkg.invoiceId || pkg.invoiceDocumentId);
     if (!invoiceId) {
-      setError("لا يوجد مرجع فاتورة لهذه الباقة.");
+      setError(t("لا يوجد مرجع فاتورة لهذه الباقة."));
       return;
     }
     try {
       const invoiceRow = await CoreInvoiceService.get(invoiceId);
       printPackageDocument(
-        `فاتورة ${invoiceRow.invoiceNumber || invoiceId}`,
-        `<b>الباقة:</b> ${pkg.packageNameSnapshot}<br>` +
-          `<b>الجلسات:</b> ${pkg.totalSessions}<br>` +
-          `<b>قبل الخصم:</b> ${halalasToMoney(invoiceRow.subtotalHalalas)}<br>` +
-          `<b>الخصم:</b> ${halalasToMoney(invoiceRow.discountHalalas)}<br>` +
-          `<b>الإجمالي:</b> ${halalasToMoney(invoiceRow.totalHalalas)}<br>` +
-          `<b>المدفوع:</b> ${halalasToMoney(invoiceRow.paidHalalas)}<br>` +
-          `<b>الحالة:</b> ${invoiceRow.status || "—"}<br>` +
-          `<b>تاريخ الانتهاء:</b> ${packageDate(pkg.expiresAt)}`
+        `${t("فاتورة")} ${invoiceRow.invoiceNumber || invoiceId}`,
+        `<b>${t("الباقة")}:</b> ${pkg.packageNameSnapshot}<br>` +
+          `<b>${t("الجلسات")}:</b> ${pkg.totalSessions}<br>` +
+          `<b>${t("قبل الخصم")}:</b> ${halalasToMoney(invoiceRow.subtotalHalalas, language)}<br>` +
+          `<b>${t("الخصم")}:</b> ${halalasToMoney(invoiceRow.discountHalalas, language)}<br>` +
+          `<b>${t("الإجمالي")}:</b> ${halalasToMoney(invoiceRow.totalHalalas, language)}<br>` +
+          `<b>${t("المدفوع")}:</b> ${halalasToMoney(invoiceRow.paidHalalas, language)}<br>` +
+          `<b>${t("الحالة")}:</b> ${invoiceRow.status || "—"}<br>` +
+          `<b>${t("تاريخ الانتهاء")}:</b> ${packageDate(pkg.expiresAt, language)}`,
+        language
       );
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "تعذر العثور على الفاتورة الأصلية في Core D1."
+          : t("تعذر العثور على الفاتورة الأصلية في Core D1.")
       );
     }
   }
@@ -241,29 +250,28 @@ export default function ClientPackagesPanel(props: {
   if (!clientId) {
     return (
       <div className="session-packages__error">
-        لا يوجد clientId ثابت لهذا الملف؛ لا يمكن عرض الرصيد بالاعتماد على
-        الهاتف فقط.
+        {t("لا يوجد clientId ثابت لهذا الملف؛ لا يمكن عرض الرصيد بالاعتماد على الهاتف فقط.")}
       </div>
     );
   }
 
   return (
-    <section className="session-packages" aria-label="الباقات والجلسات">
+    <section className="session-packages" aria-label={t("الباقات والجلسات")}>
       <div className="session-packages__head">
-        <h3>الباقات والجلسات</h3>
+        <h3>{t("الباقات والجلسات")}</h3>
         <button
           type="button"
           className="session-packages__button secondary"
           onClick={() => void load()}
           disabled={busy}
         >
-          تحديث
+          {t("تحديث")}
         </button>
       </div>
 
       {error ? <div className="session-packages__error">{error}</div> : null}
       {!busy && !packages.length ? (
-        <div className="session-packages__card">لا توجد باقات مسجلة.</div>
+        <div className="session-packages__card">{t("لا توجد باقات مسجلة.")}</div>
       ) : null}
 
       {packages.map((pkg) => (
@@ -272,37 +280,37 @@ export default function ClientPackagesPanel(props: {
             <div>
               <strong>{pkg.packageNameSnapshot}</strong>
               <span className="session-packages__muted">
-                الحالة: {pkg.status}
+                {t("الحالة")}: {pkg.status}
               </span>
             </div>
-            <span>فاتورة: {pkg.invoiceNumber || pkg.invoiceId || "—"}</span>
+            <span>{t("فاتورة")}: {pkg.invoiceNumber || pkg.invoiceId || "—"}</span>
           </div>
 
           <div className="session-packages__stats">
             <div className="session-packages__stat">
-              <small>الإجمالي</small>
+              <small>{t("الإجمالي")}</small>
               <strong>{pkg.totalSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>المتبقي</small>
+              <small>{t("المتبقي")}</small>
               <strong>{pkg.remainingSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>المحجوز</small>
+              <small>{t("المحجوز")}</small>
               <strong>{pkg.reservedSessions}</strong>
             </div>
             <div className="session-packages__stat">
-              <small>المستخدم</small>
+              <small>{t("المستخدم")}</small>
               <strong>{pkg.usedSessions}</strong>
             </div>
           </div>
 
           <p className="session-packages__muted">
-            الشراء: {packageDate(pkg.purchasedAt)} · الانتهاء:{" "}
-            {packageDate(pkg.expiresAt)}
+            {t("الشراء")}: {packageDate(pkg.purchasedAt, language)} · {t("الانتهاء")}:{" "}
+            {packageDate(pkg.expiresAt, language)}
           </p>
           <p>
-            الخدمات:{" "}
+            {t("الخدمات")}:{" "}
             {pkg.allowedServiceIdsSnapshot
               .map((id) => services[id] || id)
               .join("، ")}
@@ -310,11 +318,11 @@ export default function ClientPackagesPanel(props: {
 
           <details>
             <summary>
-              سجل الحركات ({transactions[String(pkg.id)]?.length || 0})
+              {t("سجل الحركات")} ({transactions[String(pkg.id)]?.length || 0})
             </summary>
             {(transactions[String(pkg.id)] || []).map((transaction) => (
               <div key={transaction.id}>
-                {labels[transaction.type] || transaction.type}:{" "}
+                {t(labels[transaction.type] || transaction.type)}:{" "}
                 {transaction.remainingBefore} ← {transaction.remainingAfter}{" "}
                 {transaction.reason ? `· ${transaction.reason}` : ""}
               </div>
@@ -323,7 +331,7 @@ export default function ClientPackagesPanel(props: {
 
           <details>
             <summary>
-              الحجوزات المرتبطة ({bookings[String(pkg.id)]?.length || 0})
+              {t("الحجوزات المرتبطة")} ({bookings[String(pkg.id)]?.length || 0})
             </summary>
             {(bookings[String(pkg.id)] || []).map((booking) => (
               <div key={`${booking.id}_${booking.serviceName}`}>
@@ -335,7 +343,7 @@ export default function ClientPackagesPanel(props: {
                     type="button"
                     onClick={() => void restore(booking)}
                   >
-                    استرجاع جلسة
+                    {t("استرجاع جلسة")}
                   </button>
                 ) : null}
               </div>
@@ -348,7 +356,7 @@ export default function ClientPackagesPanel(props: {
               className="session-packages__button secondary"
               onClick={() => void invoice(pkg)}
             >
-              فتح الفاتورة الأصلية
+              {t("فتح الفاتورة الأصلية")}
             </button>
             {props.canManage ? (
               <>
@@ -358,7 +366,7 @@ export default function ClientPackagesPanel(props: {
                   onClick={() => void adjust(pkg)}
                   disabled={busy}
                 >
-                  تعديل الرصيد
+                  {t("تعديل الرصيد")}
                 </button>
                 <button
                   type="button"
@@ -366,7 +374,7 @@ export default function ClientPackagesPanel(props: {
                   onClick={() => void cancel(pkg)}
                   disabled={busy || pkg.status === "cancelled"}
                 >
-                  إلغاء الباقة
+                  {t("إلغاء الباقة")}
                 </button>
               </>
             ) : null}
