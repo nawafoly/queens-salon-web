@@ -6,6 +6,8 @@ on:
     paths:
       - "src/pages/Booking.tsx"
       - "src/pages/Checkout.tsx"
+      - "src/pages/Profile.tsx"
+      - "src/services/ClientPortalService.ts"
       - "src/features/internal-booking-v2/**"
       - "src/helpers/coreBookingAvailability.ts"
       - "src/helpers/staffAvailability.ts"
@@ -20,6 +22,9 @@ on:
       - "src/services/firestoreBookings.ts"
       - "src/types/coreApi.ts"
       - "workers/core/**"
+      - "workers/client-platform-foundation.test.mjs"
+      - "migrations/core/0079_client_cashback_wallet.sql"
+      - "migrations/core/0080_client_connect_foundation.sql"
       - "workers/core-worker.test.mjs"
       - "workers/hr-core-worker.test.mjs"
       - "workers/frontend-core-migration.test.mjs"
@@ -58,6 +63,9 @@ jobs:
 
       - name: Internal booking behavior contract
         run: npm run check:booking-internal-contract
+
+      - name: Client platform foundation tests
+        run: npm run test:client-platform
 
       - name: Build
         run: npm run build
