@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { listCatalogRows } from "./core/repositories/catalog-admin.js";
 
 test("frontend migration guard passes", () => {
   const result = spawnSync(
@@ -815,4 +816,57 @@ test("production dashboards refresh Core data from application events instead of
     assert.doesNotMatch(source, /setInterval\(/);
     assert.match(source, /visibilitychange/);
   }
+});
+
+
+test("internal booking categories stay scoped to the selected section", async () => {
+  let observed = null;
+  const db = {
+    __fakeD1: true,
+    async all(sql, params) {
+      observed = { sql, params };
+      return [];
+    },
+  };
+
+  await listCatalogRows(db, "main", "categories", {
+    active: true,
+    sectionId: "section-hair",
+  });
+
+  assert.ok(observed);
+  assert.match(observed.sql, /section_id = \?/);
+  assert.deepEqual(observed.params, ["main", 1, "section-hair"]);
+
+  const source = readFileSync(
+    "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    "utf8"
+  );
+  assert.match(
+    source,
+    /listCategories\(\s*true,\s*normalizedSectionId \|\| undefined\s*\)/
+  );
+  assert.match(
+    source,
+    /String\(row\.sectionId \|\| ""\)\.trim\(\) === normalizedSectionId/
+  );
+  assert.doesNotMatch(
+    source,
+    /sectionId:\s*row\.sectionId\s*\|\|\s*sectionId/
+  );
+});
+
+test("internal booking ships the iPad cashier workspace contract", () => {
+  const shell = readFileSync("src/styles/dashboard-v2/dashboard-v2.css", "utf8");
+  const ipad = readFileSync(
+    "src/styles/dashboard-v2/pages/booking-internal-ipad.css",
+    "utf8"
+  );
+
+  assert.match(shell, /booking-internal-ipad\.css/);
+  assert.match(ipad, /IPAD_CASHIER_WORKSPACE_V1/);
+  assert.match(ipad, /@media \(min-width: 744px\) and \(max-width: 1400px\)/);
+  assert.match(ipad, /min-height:\s*44px/);
+  assert.match(ipad, /max-width: 1119px/);
+  assert.match(ipad, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });

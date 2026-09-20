@@ -40,7 +40,10 @@ export const CoreCatalogService = {
     return CoreAdminCatalogService.listSections(activeOnly ? true : undefined);
   },
 
-  async listCategories(activeOnly = true) {
-    return CoreAdminCatalogService.listCategories(activeOnly ? true : undefined);
+  async listCategories(activeOnly = true, sectionId?: string) {
+    return CoreAdminCatalogService.listCategories(
+      activeOnly ? true : undefined,
+      sectionId
+    );
   },
 };

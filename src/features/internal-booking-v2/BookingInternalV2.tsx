@@ -686,6 +686,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setServices([]);
         return;
       }
+      setCategories([]);
+      setServices([]);
+      setSelectedCategoryId("");
       setCatalogLoading(true);
       setCatalogMessage("");
       try {
@@ -976,6 +979,13 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       (eligibleStaffByService[key] || []).some((staff) => staffId(staff) === row.staffId);
     return Boolean(row?.staffId && row?.time && staffStillBookable && !conflictKeys.has(key));
   });
+
+  const canOpenStep = (target: Step) => {
+    if (target === 1) return true;
+    if (target === 2) return Boolean(selectedClient);
+    if (target === 3) return Boolean(selectedClient && cart.length);
+    return Boolean(selectedClient && cart.length && allScheduled);
+  };
 
   const finalTotal = halalasToSar(discountResult.totalHalalas);
   const effectivePaidAmount = paymentType === "none"
@@ -1376,7 +1386,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, []);
 
   return (
-    <div className="bk2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
+    <div className="bk2-page" data-booking-step={step} data-booking-mode={mode} dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <header className="bk2-heading">
         <div>
           <p className="bk2-eyebrow">MALIKAT</p>
@@ -1396,8 +1406,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               const Icon = item.icon;
               const active = step === item.id;
               const completed = step > item.id;
+              const enabled = canOpenStep(item.id);
               return (
-                <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} onClick={() => setStep(item.id)}>
+                <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} disabled={!enabled} aria-current={active ? "step" : undefined} onClick={() => { if (enabled) setStep(item.id); }}>
                   <span className="bk2-step-number">{completed ? "✓" : item.id}</span>
                   <span className="bk2-step-icon"><Icon /></span>
                   <span><strong>{t(item.title)}</strong><small>{t(item.subtitle)}</small></span>
@@ -1506,7 +1517,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 <section className="bk2-services-step">
                   <div className="bk2-section-title"><div><h2>{t("اختيار الخدمات")}</h2><p>{t("القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.")}</p></div><span><FiShoppingBag /></span></div>
                   <label className="bk2-search-box"><FiSearch /><input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder={t("ابحثي عن خدمة...")} /></label>
-                  <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => setSelectedSectionId(String(section.id))}>{translateBookingCatalogLabel(language, catalogLabel(section, "قسم"), "section")}</button>)}</div>
+                  <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => { setSelectedCategoryId(""); setSelectedSectionId(String(section.id)); }}>{translateBookingCatalogLabel(language, catalogLabel(section, "قسم"), "section")}</button>)}</div>
                   {categories.length ? <div className="bk2-category-tabs"><button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>{t("الكل")}</button>{categories.map((category) => <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>{translateBookingCatalogLabel(language, catalogLabel(category, "تصنيف"), "category")}</button>)}</div> : null}
                   {(catalogLoading || catalogMessage) ? <p className={`bk2-status-line ${catalogLoading ? "is-loading" : ""}`}>{catalogLoading ? t("جاري تحميل الخدمات...") : catalogMessage}</p> : null}
                   <div className="bk2-service-list">

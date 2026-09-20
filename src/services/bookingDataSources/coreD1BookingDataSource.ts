@@ -181,14 +181,24 @@ export const coreD1BookingDataSource: BookingDataSource = {
   },
 
   async getServiceCategories(sectionId = "") {
-    const categories = await CoreCatalogService.listCategories(true);
-    return categories.map((row) => ({
-      id: row.id,
-      الاسم: row.name,
-      sectionId: row.sectionId || sectionId || "",
-      active: row.active,
-      order: row.sortOrder,
-    }));
+    const normalizedSectionId = String(sectionId || "").trim();
+    const categories = await CoreCatalogService.listCategories(
+      true,
+      normalizedSectionId || undefined
+    );
+    return categories
+      .filter(
+        (row) =>
+          !normalizedSectionId ||
+          String(row.sectionId || "").trim() === normalizedSectionId
+      )
+      .map((row) => ({
+        id: row.id,
+        الاسم: row.name,
+        sectionId: row.sectionId || "",
+        active: row.active,
+        order: row.sortOrder,
+      }));
   },
 
   async getServiceSections() {

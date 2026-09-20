@@ -27,6 +27,13 @@ export async function listCatalogRows(db, salonId, kind, query = {}) {
     where.push('active = ?');
     params.push(activeFlag(query.active));
   }
+  if (kind === 'categories') {
+    const sectionId = String(query.sectionId || query.section_id || '').trim();
+    if (sectionId) {
+      where.push('section_id = ?');
+      params.push(sectionId);
+    }
+  }
   return dbAll(
     db,
     `SELECT * FROM ${table} WHERE ${where.join(' AND ')} ORDER BY sort_order ASC, name ASC`,

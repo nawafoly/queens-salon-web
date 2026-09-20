@@ -14,8 +14,15 @@ function mapRow(row: Record<string, unknown>): CoreCatalogRow {
   };
 }
 
-async function list(kind: "sections" | "categories", active?: boolean) {
-  const rows = await coreApiRequest<Record<string, unknown>[]>(`/api/core/${kind}`, { query: { active } });
+async function list(
+  kind: "sections" | "categories",
+  active?: boolean,
+  sectionId?: string
+) {
+  const rows = await coreApiRequest<Record<string, unknown>[]>(
+    `/api/core/${kind}`,
+    { query: { active, sectionId } }
+  );
   return rows.map(mapRow);
 }
 
@@ -33,7 +40,8 @@ async function remove(kind: "sections" | "categories", id: string) {
 
 export const CoreAdminCatalogService = {
   listSections: (active?: boolean) => list("sections", active),
-  listCategories: (active?: boolean) => list("categories", active),
+  listCategories: (active?: boolean, sectionId?: string) =>
+    list("categories", active, sectionId),
   createSection: (input: Record<string, unknown>) => create("sections", input),
   createCategory: (input: Record<string, unknown>) => create("categories", input),
   patchSection: (id: string, input: Record<string, unknown>) => patch("sections", id, input),
