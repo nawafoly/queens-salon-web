@@ -415,6 +415,14 @@ export async function getStaff(db, salonId, id) {
 }
 
 export async function patchStaff(db, salonId, id, data) {
+  if (data.specialties !== undefined || data.specialties_json !== undefined) {
+    throw new AppError(
+      409,
+      "core_staff:service_assignment_requires_employee_save",
+      "Service assignments must be changed through the employee save workflow."
+    );
+  }
+
   const existingForGuard = await getStaff(db, salonId, id).catch(() => null);
   const nextFlag = data.showOnBooking === undefined && data.show_on_booking === undefined
     ? undefined
@@ -459,15 +467,6 @@ export async function patchStaff(db, salonId, id, data) {
         : activeFlag(
             data.showOnBooking ?? data.show_on_booking,
             1
-          ),
-    specialties_json:
-      data.specialties === undefined &&
-      data.specialties_json === undefined
-        ? undefined
-        : JSON.stringify(
-            Array.isArray(data.specialties)
-              ? data.specialties
-              : []
           ),
   });
 }
