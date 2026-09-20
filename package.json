@@ -84,7 +84,7 @@
     "verify:operational-integrity": "npm run verify:operational-integrity:p8",
     "push:vapid:generate": "node scripts/generate-web-push-vapid.mjs",
     "test:employee:web-push": "node --test workers/employee-web-push-contract.test.mjs",
-    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs"
+    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs workers/client-connect-runtime.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

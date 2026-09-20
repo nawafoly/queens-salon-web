@@ -71,3 +71,14 @@ test('client platform migrations enforce money and communication boundaries', ()
   assert.match(connect, /split_phone_number/);
   assert.match(connect, /review_status/);
 });
+
+
+test('MALIKAT Connect runtime foundation is part of the client platform guard', () => {
+  const worker = readFileSync('workers/core/index.js', 'utf8');
+  const runtime = readFileSync('workers/core/repositories/client-connect.js', 'utf8');
+
+  assert.match(worker, /client-connect:client-conversations/);
+  assert.match(worker, /client-connect:security-review/);
+  assert.match(runtime, /sendConnectMessage/);
+  assert.match(runtime, /delivery_status/);
+});

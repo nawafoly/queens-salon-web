@@ -1,6 +1,6 @@
 # MALIKAT Client Relationship Platform
 
-Status: foundation approved for implementation.
+Status: Core foundation and guarded messaging runtime implemented; production migration/deploy still pending.
 
 ## 1. Client Core
 
@@ -91,3 +91,17 @@ Security review statuses:
 ## 6. Privacy boundary
 
 Ordinary conversations are not surfaced to management merely for curiosity. Management access is role-gated and security-review access is audited. Marketing consent is distinct from service communication consent.
+
+
+## 7. Runtime contract
+
+Implemented Core routes cover:
+
+- Client: open/list owned conversations and read/send owned messages.
+- Staff: list assigned conversations and read/send when the conversation is assigned to the linked employee.
+- Management: view all operational conversations when authorized by messages.manage, reassign a conversation, list security events, open full security context, and resolve the review.
+- Security access: opening a flagged conversation creates an audit event. Updating the review creates a second audit event.
+- Delivery boundary: ordinary participants only read messages whose delivery_status is sent. Blocked evidence is visible only through the authorized security-review endpoint.
+- Alerting: a blocked contact-exchange attempt creates management notifications and never delivers the message to the other party.
+
+The runtime remains inactive in production until migration 0080 is applied and the Core Worker is explicitly deployed.

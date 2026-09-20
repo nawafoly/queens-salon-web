@@ -137,6 +137,17 @@ import {
   patchSelfProfile,
   resolveSelfClient,
 } from './repositories/client-portal.js';
+import {
+  assignConnectConversation,
+  getConnectSecurityEventContext,
+  listClientConnectConversations,
+  listConnectMessages,
+  listConnectSecurityEvents,
+  listStaffConnectConversations,
+  openClientConnectConversation,
+  reviewConnectSecurityEvent,
+  sendConnectMessage,
+} from './repositories/client-connect.js';
 
 import {
   getHrEmployee,
@@ -549,6 +560,38 @@ function match(url, method) {
   ]);
   if (clientPortalRoutes.has(path)) {
     return { name: clientPortalRoutes.get(path) };
+  }
+
+  if (path === "/api/core/client/connect/conversations" && ["GET", "POST"].includes(method)) {
+    return { name: "client-connect:client-conversations" };
+  }
+  const clientConnectMessages = /^\/api\/core\/client\/connect\/conversations\/([^/]+)\/messages$/.exec(path);
+  if (clientConnectMessages && ["GET", "POST"].includes(method)) {
+    return { name: "client-connect:client-messages", id: clientConnectMessages[1] };
+  }
+
+  if (path === "/api/core/hr/client-connect/conversations" && method === "GET") {
+    return { name: "client-connect:staff-conversations" };
+  }
+  const staffConnectMessages = /^\/api\/core\/hr\/client-connect\/conversations\/([^/]+)\/messages$/.exec(path);
+  if (staffConnectMessages && ["GET", "POST"].includes(method)) {
+    return { name: "client-connect:staff-messages", id: staffConnectMessages[1] };
+  }
+
+  if (path === "/api/core/admin/client-connect/security-events" && method === "GET") {
+    return { name: "client-connect:security-events" };
+  }
+  const connectSecurityReview = /^\/api\/core\/admin\/client-connect\/security-events\/([^/]+)\/review$/.exec(path);
+  if (connectSecurityReview && method === "POST") {
+    return { name: "client-connect:security-review", id: connectSecurityReview[1] };
+  }
+  const connectSecurityEvent = /^\/api\/core\/admin\/client-connect\/security-events\/([^/]+)$/.exec(path);
+  if (connectSecurityEvent && method === "GET") {
+    return { name: "client-connect:security-event", id: connectSecurityEvent[1] };
+  }
+  const connectAssignment = /^\/api\/core\/admin\/client-connect\/conversations\/([^/]+)\/assign$/.exec(path);
+  if (connectAssignment && method === "POST") {
+    return { name: "client-connect:assign", id: connectAssignment[1] };
   }
 
   if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
@@ -1014,6 +1057,8 @@ async function dispatch(ctx, route, method, body, query, env) {
     "client:bookings",
     "client:loyalty",
     "client:offers",
+    "client-connect:client-conversations",
+    "client-connect:client-messages",
   ]).has(route.name);
   const isAuthSelfRoute = route.name === "auth:me";
   const isTestimonialWrite = route.name === "testimonials" && method === "POST";
@@ -1137,6 +1182,147 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "client:offers":
       if (method === "GET") return listSelfOffers(db, ctx.salonId, ctx.identity);
       break;
+
+    case "client-connect:client-conversations": {
+      if (ctx.role !== "client") throw new AppError(403, "core_client_connect:client_role_required");
+      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: true });
+      if (method === "GET") {
+        return listClientConnectConversations(db, ctx.salonId, selfClient.id, query);
+      }
+      return openClientConnectConversation(db, ctx.salonId, selfClient.id, body);
+    }
+
+    case "client-connect:client-messages": {
+      if (ctx.role !== "client") throw new AppError(403, "core_client_connect:client_role_required");
+      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: true });
+      const access = { clientId: selfClient.id, actorKind: "client" };
+      if (method === "GET") {
+        return listConnectMessages(db, ctx.salonId, route.id, access, query);
+      }
+      const result = await sendConnectMessage(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, senderKind: "client" },
+        actorInfo,
+        access
+      );
+      if (result.blocked) {
+        await recordAudit(db, ctx.salonId, {
+          action: "client_connect_security_triggered",
+          entityType: "client_connect_conversation",
+          entityId: route.id,
+          description: "A client message was blocked before delivery by the contact-exchange guard.",
+          meta: {
+            securityEventId: result.securityEventId,
+            detectionType: result.detectionType,
+            severity: result.severity,
+          },
+        }, actorInfo);
+      }
+      return result;
+    }
+
+    case "client-connect:staff-conversations": {
+      requireAnyPermission(ctx, ["messages.view", "messages.manage", "workspace.employee_portal.view"]);
+      return listStaffConnectConversations(db, ctx.salonId, actorInfo, query, {
+        manageAll: ctx.permissions.includes("messages.manage"),
+      });
+    }
+
+    case "client-connect:staff-messages": {
+      requireAnyPermission(ctx, ["messages.view", "messages.manage", "workspace.employee_portal.view"]);
+      const manageAll = ctx.permissions.includes("messages.manage");
+      const access = {
+        employeeId: ctx.employeeId || "",
+        manageAll,
+        actorKind: manageAll ? "admin" : "staff",
+      };
+      if (method === "GET") {
+        return listConnectMessages(db, ctx.salonId, route.id, access, query);
+      }
+      if (!manageAll && !ctx.employeeId) {
+        throw new AppError(403, "core_client_connect:employee_link_required");
+      }
+      const result = await sendConnectMessage(
+        db,
+        ctx.salonId,
+        route.id,
+        { ...body, senderKind: access.actorKind },
+        actorInfo,
+        access
+      );
+      if (result.blocked) {
+        await recordAudit(db, ctx.salonId, {
+          action: "client_connect_security_triggered",
+          entityType: "client_connect_conversation",
+          entityId: route.id,
+          description: "A staff/admin message was blocked before delivery by the contact-exchange guard.",
+          meta: {
+            securityEventId: result.securityEventId,
+            detectionType: result.detectionType,
+            severity: result.severity,
+          },
+        }, actorInfo);
+      }
+      return result;
+    }
+
+    case "client-connect:security-events":
+      requirePermission(ctx, "messages.manage");
+      return listConnectSecurityEvents(db, ctx.salonId, query);
+
+    case "client-connect:security-event": {
+      requirePermission(ctx, "messages.manage");
+      const context = await getConnectSecurityEventContext(db, ctx.salonId, route.id);
+      await recordAudit(db, ctx.salonId, {
+        action: "client_connect_security_review_opened",
+        entityType: "client_connect_security_event",
+        entityId: route.id,
+        description: "Authorized management opened a flagged customer conversation for security review.",
+        meta: {
+          conversationId: context.event.conversation_id,
+          detectionType: context.event.detection_type,
+          severity: context.event.severity,
+        },
+      }, actorInfo);
+      return context;
+    }
+
+    case "client-connect:security-review": {
+      requirePermission(ctx, "messages.manage");
+      const updated = await reviewConnectSecurityEvent(db, ctx.salonId, route.id, body, actorInfo);
+      await recordAudit(db, ctx.salonId, {
+        action: "client_connect_security_review_updated",
+        entityType: "client_connect_security_event",
+        entityId: route.id,
+        description: "Authorized management updated a MALIKAT Connect security review.",
+        meta: {
+          reviewStatus: updated.event.review_status,
+          conversationId: updated.event.conversation_id,
+        },
+      }, actorInfo);
+      return updated;
+    }
+
+    case "client-connect:assign": {
+      requirePermission(ctx, "messages.manage");
+      const updated = await assignConnectConversation(
+        db,
+        ctx.salonId,
+        route.id,
+        body.staffId || body.staff_id,
+        actorInfo
+      );
+      await recordAudit(db, ctx.salonId, {
+        action: "client_connect_conversation_assigned",
+        entityType: "client_connect_conversation",
+        entityId: route.id,
+        description: "MALIKAT Connect conversation specialist assignment changed.",
+        after: { assignedStaffId: updated.assigned_staff_id },
+      }, actorInfo);
+      return updated;
+    }
 
     case "client:loyalty-summary":
       requireRole(ctx.role, OPERATIONS_ROLES);
