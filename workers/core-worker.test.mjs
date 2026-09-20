@@ -1590,6 +1590,27 @@ class FakeD1 {
       const [updatedAt, salonId, id] = params;
       return this.update("employee_payroll_obligations", salonId, id, { updated_at: updatedAt });
     }
+    if (normalized.startsWith("UPDATE payroll_carryover_adjustments SET status = 'pending'")) {
+      const [updatedAt, salonId, targetPayrollEntryId, targetPayrollMonth] = params;
+      let changes = 0;
+      for (const row of this.rows("payroll_carryover_adjustments")) {
+        if (
+          row.salon_id !== salonId ||
+          row.target_payroll_entry_id !== targetPayrollEntryId ||
+          row.target_payroll_month !== targetPayrollMonth ||
+          row.status !== "applied"
+        ) continue;
+        this.seed("payroll_carryover_adjustments", {
+          ...row,
+          status: "pending",
+          target_payroll_entry_id: null,
+          applied_at: null,
+          updated_at: updatedAt,
+        });
+        changes += 1;
+      }
+      return { meta: { changes } };
+    }
     if (normalized.startsWith("INSERT INTO user_employee_links")) {
       const [
         id,
@@ -1956,6 +1977,8 @@ class FakeD1 {
       ) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE payroll_entries SET")) {
+        results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("UPDATE payroll_carryover_adjustments SET")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
