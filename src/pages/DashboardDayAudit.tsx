@@ -720,10 +720,10 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
         diff: nextLock.diff,
         isLocked: true,
         lockTimeLabel: formatLockedAt(nextLock.lockedAt, language),
-        printedAtLabel: DATE_TIME_FORMATTER.format(new Date()),
+        printedAtLabel: dateTimeFormatter(language).format(new Date()),
       };
       if (!openAuditPrintPopup(payload)) {
-        setErrorText("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة.");
+        setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
       }
     } catch (error) {
       console.error("Core day audit pre-lock refresh failed:", error);
