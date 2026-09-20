@@ -785,7 +785,7 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
   return id;
 }
 
-function employeeRequestLeavePolicy(payload) {
+function employeeRequestLeavePolicy(payload, manualPolicy = null) {
   const leaveType = cleanText(
     payload.leaveType
   ).toLowerCase();
@@ -794,6 +794,20 @@ function employeeRequestLeavePolicy(payload) {
     cleanText(
       payload.durationKind
     ).toLowerCase() === 'partial';
+
+  if (
+    !partial &&
+    leaveType === 'other' &&
+    manualPolicy
+  ) {
+    return {
+      deductFromBalance:
+        manualPolicy.deductFromBalance === true,
+
+      affectsPayroll:
+        manualPolicy.affectsPayroll === true,
+    };
+  }
 
   return {
     deductFromBalance:
@@ -817,7 +831,8 @@ async function createLeaveEffect(
   row,
   payload,
   actor,
-  options = {}
+  options = {},
+  input = {}
 ) {
   let leave = await dbFirst(
     db,
@@ -922,9 +937,39 @@ async function createLeaveEffect(
         )
       : fullDays;
 
+  const requestedManualPolicy =
+    input?.manualLeavePolicy &&
+    typeof input.manualLeavePolicy === 'object'
+      ? input.manualLeavePolicy
+      : null;
+
+  if (
+    requestedManualPolicy &&
+    options.manualLeavePolicyAuthorized !== true
+  ) {
+    throw new AppError(
+      403,
+      'core_leave:manual_policy_forbidden'
+    );
+  }
+
+  const manualPolicy =
+    cleanText(payload.leaveType).toLowerCase() === 'other' &&
+    requestedManualPolicy &&
+    typeof requestedManualPolicy.deductFromBalance === 'boolean' &&
+    typeof requestedManualPolicy.affectsPayroll === 'boolean'
+      ? {
+          deductFromBalance:
+            requestedManualPolicy.deductFromBalance,
+          affectsPayroll:
+            requestedManualPolicy.affectsPayroll,
+        }
+      : null;
+
   const policy =
     employeeRequestLeavePolicy(
-      payload
+      payload,
+      manualPolicy
     );
 
   let createdHere = false;
@@ -998,6 +1043,37 @@ async function createLeaveEffect(
     createdHere = true;
   }
 
+  if (
+    manualPolicy &&
+    cleanText(leave.status).toLowerCase() === 'pending'
+  ) {
+    await dbRun(
+      db,
+      `UPDATE employee_leaves
+          SET deduct_from_balance = ?,
+              affects_payroll = ?,
+              statutory_review_required = 0,
+              legal_basis = 'HR_MANUAL_POLICY',
+              updated_at = ?
+        WHERE salon_id = ?
+          AND id = ?
+          AND status = 'pending'`,
+      [
+        policy.deductFromBalance ? 1 : 0,
+        policy.affectsPayroll ? 1 : 0,
+        nowIso(),
+        salonId,
+        leave.id,
+      ]
+    );
+
+    leave = await dbFirst(
+      db,
+      'SELECT * FROM employee_leaves WHERE salon_id = ? AND id = ? LIMIT 1',
+      [salonId, leave.id]
+    );
+  }
+
 
   try {
     if (
@@ -1019,7 +1095,11 @@ async function createLeaveEffect(
           ...(options.leaveDecision || {}),
         },
         actor,
-        options
+        {
+          ...options,
+          manualHrReviewResolved:
+            manualPolicy !== null,
+        }
       );
 
       leave = decisionResult?.leave || decisionResult;
@@ -2502,7 +2582,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
       };
     }
     case 'leave': {
-      const effect = await createLeaveEffect(db, salonId, row, payload, actor, options);
+      const effect = await createLeaveEffect(db, salonId, row, payload, actor, options, input);
       return { sourceType: 'employee_leave', sourceId: effect.leaveId, before: null, after: { status: 'approved', days: effect.days, permissionId: effect.permissionId } };
     }
     case 'overtime': return executeOvertime(db, salonId, row, payload, actor, input);
