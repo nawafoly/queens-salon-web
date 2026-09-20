@@ -113,7 +113,12 @@ function assertGate(requestType, action = '') {
   }
 }
 
-function assertLeaveRequestDecisionAllowed(payload, actionKey) {
+function assertLeaveRequestDecisionAllowed(
+  payload,
+  actionKey,
+  input = {},
+  options = {}
+) {
   if (!['approve', 'execute'].includes(actionKey)) return;
 
   const resolved = requireExplicitSaLeaveType(payload);
@@ -126,10 +131,21 @@ function assertLeaveRequestDecisionAllowed(payload, actionKey) {
   );
 
   if (runtime === 'hr_review_block') {
-    throw new AppError(
-      409,
-      'core_leave:hr_review_resolution_required'
-    );
+    const manualPolicy = input?.manualLeavePolicy;
+    const manualPolicyResolved =
+      options.manualLeavePolicyAuthorized === true &&
+      manualPolicy &&
+      typeof manualPolicy === 'object' &&
+      typeof manualPolicy.deductFromBalance === 'boolean' &&
+      typeof manualPolicy.affectsPayroll === 'boolean';
+
+    if (!manualPolicyResolved) {
+      throw new AppError(
+        409,
+        'core_leave:hr_review_resolution_required'
+      );
+    }
+    return;
   }
   if (runtime === 'entitlement_consumption_block') {
     throw new AppError(
@@ -229,7 +245,9 @@ export async function transitionEmployeeRequest(
   if (requestType === 'leave') {
     assertLeaveRequestDecisionAllowed(
       parsePayload(row.payload_json),
-      actionKey
+      actionKey,
+      input,
+      options
     );
   }
 
