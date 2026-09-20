@@ -18,6 +18,7 @@ import {
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
+import { offersText, type DashboardLanguage } from "../helpers/dashboardOffersLanguage";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
@@ -129,22 +130,22 @@ const offerFieldLabels: Record<string, string> = {
   sortOrder: "ترتيب الظهور",
 };
 
-function getOfferSaveErrorMessage(error: any): string {
+function getOfferSaveErrorMessage(error: any, language: DashboardLanguage = "ar"): string {
   const serverMessage = String(error?.details?.message || error?.details?.error || "").trim();
   const field = Object.keys(offerFieldLabels).find((key) => serverMessage.startsWith(`${key} `));
   if (field) {
     const requirement = error?.code === "core_validation:invalid_integer"
-      ? "يجب أن تكون قيمته عددًا صحيحًا ضمن النطاق المسموح."
-      : "القيمة المدخلة غير صحيحة.";
-    return `${offerFieldLabels[field]}: ${requirement}`;
+      ? offersText(language, "يجب أن تكون قيمته عددًا صحيحًا ضمن النطاق المسموح.")
+      : offersText(language, "القيمة المدخلة غير صحيحة.");
+    return `${offersText(language, offerFieldLabels[field])}: ${requirement}`;
   }
   if (error?.code === "core_validation:invalid_integer") {
-    return "أحد الحقول العددية غير صحيح. راجع حدود الاستخدام والأسعار وترتيب الظهور.";
+    return offersText(language, "أحد الحقول العددية غير صحيح. راجع حدود الاستخدام والأسعار وترتيب الظهور.");
   }
   if (error?.code === "core_validation:invalid_number") {
-    return "قيمة الخصم غير صحيحة. استخدم رقمًا موجبًا وبحد أقصى منزلتين عشريتين.";
+    return offersText(language, "قيمة الخصم غير صحيحة. استخدم رقمًا موجبًا وبحد أقصى منزلتين عشريتين.");
   }
-  return String(error?.message || "تعذر حفظ العرض في قاعدة البيانات.");
+  return String(error?.message || offersText(language, "تعذر حفظ العرض في قاعدة البيانات."));
 }
 
 // ✅ NEW: QS + 3 digits, no dash (مثال: QS123)
@@ -178,7 +179,7 @@ function hasArabicText(value: string) {
   return /[\u0600-\u06FF]/.test(value);
 }
 
-function normalizeGroupLabel(raw: string) {
+function normalizeGroupLabel(raw: string, language: DashboardLanguage = "ar") {
   const base = humanizeLabel(raw);
   if (!base) return "";
   const dict: Record<string, string> = {
@@ -194,16 +195,16 @@ function normalizeGroupLabel(raw: string) {
     blowdry: "استشوار",
   };
   const direct = dict[base.toLowerCase()];
-  if (direct) return direct;
+  if (direct) return offersText(language, direct);
   if (hasArabicText(base) && /[A-Za-z]/.test(base)) {
     return base.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
   }
   return base;
 }
 
-function resolveSectionLabel(raw: string) {
+function resolveSectionLabel(raw: string, language: DashboardLanguage = "ar") {
   const src = String(raw || "").trim();
-  const x = normalizeGroupLabel(src);
+  const x = normalizeGroupLabel(src, language);
   const lower = src.toLowerCase();
   const map: Record<string, string> = {
     services: "الخدمات",
@@ -216,19 +217,19 @@ function resolveSectionLabel(raw: string) {
     consultation: "استشارة",
     blowdry: "استشوار",
   };
-  if (map[lower]) return map[lower];
+  if (map[lower]) return offersText(language, map[lower]);
   if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  return "قسم عام";
+  return offersText(language, "قسم عام");
 }
 
-function resolveCategoryLabel(raw: string) {
+function resolveCategoryLabel(raw: string, language: DashboardLanguage = "ar") {
   const src = String(raw || "").trim();
   const preferred = src.includes(">") ? src.split(">").pop() || src : src;
   const x = humanizeLabel(preferred);
   if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  const mapped = normalizeGroupLabel(x);
+  const mapped = normalizeGroupLabel(x, language);
   if (hasArabicText(mapped)) return mapped.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  return "غير محدد";
+  return offersText(language, "غير محدد");
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -318,15 +319,17 @@ function isPackageActiveNow(p: CorePackage) {
   return true;
 }
 
-function getPackageStatusLabel(p: CorePackage) {
-  if (isPackageExpiredByToday(p)) return "منتهي";
-  if (p?.active === false) return "موقوف";
-  if (p?.saleEnabled === false) return "غير معروض للبيع";
-  if (isPackageScheduledByToday(p)) return "مجدول";
-  return "نشط";
+function getPackageStatusLabel(p: CorePackage, language: DashboardLanguage = "ar") {
+  if (isPackageExpiredByToday(p)) return offersText(language, "منتهي");
+  if (p?.active === false) return offersText(language, "موقوف");
+  if (p?.saleEnabled === false) return offersText(language, "غير معروض للبيع");
+  if (isPackageScheduledByToday(p)) return offersText(language, "مجدول");
+  return offersText(language, "نشط");
 }
 
-const DashboardOffers: React.FC = () => {
+const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const t = (text: string) => offersText(language, text);
+  const currency = language === "en" ? "SAR" : "ر.س";
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<DashboardPackage[]>([]);
   const [packageServices, setPackageServices] = useState<PackageServiceRow[]>([]);
@@ -429,12 +432,12 @@ const DashboardOffers: React.FC = () => {
           String(s.categoryName || "").trim() ||
           String(categoryNameById[String(s.categoryId || "").trim()] || "").trim() ||
           String(s.categoryId || "").trim() ||
-          "عام",
+          t("عام"),
         name: String(s.name || "").trim(),
         basePrice: Math.max(0, Number(s.price || 0)),
       }))
       .filter((s) => s.id && s.name);
-  }, [packageServices, sectionNameById, categoryNameById]);
+  }, [categoryNameById, language, packageServices, sectionNameById]);
 
   const servicesFiltered = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
@@ -493,7 +496,7 @@ const DashboardOffers: React.FC = () => {
       const name =
         String(service.categoryName || "").trim() ||
         String(categoryNameById[id] || "").trim() ||
-        resolveCategoryLabel(id);
+        resolveCategoryLabel(id, language);
       const current = map.get(id);
       map.set(id, {
         id,
@@ -502,9 +505,9 @@ const DashboardOffers: React.FC = () => {
       });
     });
     return Array.from(map.values()).sort((a, b) =>
-      new Intl.Collator("ar", { sensitivity: "base" }).compare(a.name, b.name)
+      new Intl.Collator(language === "en" ? "en" : "ar", { sensitivity: "base" }).compare(a.name, b.name)
     );
-  }, [packageServices, categoryNameById]);
+  }, [categoryNameById, language, packageServices]);
 
   const selectedOfferServices = useMemo(
     () =>
@@ -531,12 +534,12 @@ const DashboardOffers: React.FC = () => {
       0
     );
     const dateStatus = isScheduledByToday(form)
-      ? "مجدول"
+      ? t("مجدول")
       : isExpiredByToday(form)
-        ? "منتهي"
+        ? t("منتهي")
         : form.active
-          ? "نشط"
-          : "موقوف";
+          ? t("نشط")
+          : t("موقوف");
 
     return {
       priceBefore,
@@ -547,7 +550,7 @@ const DashboardOffers: React.FC = () => {
       serviceValue,
       dateStatus,
     };
-  }, [form, selectedOfferServices]);
+  }, [form, language, selectedOfferServices]);
 
   const offerEditorChecks = useMemo(() => {
     const scopeReady =
@@ -559,18 +562,18 @@ const DashboardOffers: React.FC = () => {
       .map((item) => item.trim())
       .filter(Boolean);
     const items = [
-      { label: "عنوان العرض والكود مكتملان", ready: Boolean(form.title.trim() && form.code.trim()) },
-      { label: "قيمة الخصم صحيحة", ready: Number(form.value) > 0 && (form.discountType !== "percent" || Number(form.value) <= 100) },
-      { label: "فترة العرض صحيحة", ready: !form.startDate || !form.endDate || form.startDate <= form.endDate },
-      { label: "نطاق التطبيق محدد", ready: scopeReady },
-      { label: "الاستهداف جاهز", ready: form.targetScope === "all" || targetIds.length > 0 },
+      { label: t("عنوان العرض والكود مكتملان"), ready: Boolean(form.title.trim() && form.code.trim()) },
+      { label: t("قيمة الخصم صحيحة"), ready: Number(form.value) > 0 && (form.discountType !== "percent" || Number(form.value) <= 100) },
+      { label: t("فترة العرض صحيحة"), ready: !form.startDate || !form.endDate || form.startDate <= form.endDate },
+      { label: t("نطاق التطبيق محدد"), ready: scopeReady },
+      { label: t("الاستهداف جاهز"), ready: form.targetScope === "all" || targetIds.length > 0 },
     ];
     return {
       items,
       readyCount: items.filter((item) => item.ready).length,
       isReady: items.every((item) => item.ready),
     };
-  }, [form]);
+  }, [form, language]);
 
   const refresh = async () => {
     try {
@@ -651,7 +654,7 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر تحميل العروض أو الباقات من Core API.");
+      showNotice(t("تعذر تحميل العروض أو الباقات من Core API."));
     }
   };
 
@@ -764,7 +767,7 @@ const DashboardOffers: React.FC = () => {
     setServiceSearch("");
     setServicesPickerOpen(false);
     setSequenceEditorOpen(Array.isArray((o as any).sequenceSteps) && (o as any).sequenceSteps.length > 0);
-    setPickedImageName((o as any).imageUrl ? "تم اختيار صورة" : "");
+    setPickedImageName((o as any).imageUrl ? "__existing__" : "");
 
     setForm({
       title: (o as any).title || "",
@@ -810,26 +813,26 @@ const DashboardOffers: React.FC = () => {
   };
 
   const save = async () => {
-    if (!form.title.trim()) return showNotice("اكتب عنوان العرض");
-    if (!form.code.trim()) return showNotice("اكتب الكود أو اضغط توليد");
+    if (!form.title.trim()) return showNotice(t("اكتب عنوان العرض"));
+    if (!form.code.trim()) return showNotice(t("اكتب الكود أو اضغط توليد"));
     const discountValue = Number(form.value);
-    if (!Number.isFinite(discountValue) || discountValue <= 0) return showNotice("قيمة الخصم لازم تكون رقمًا أكبر من صفر");
-    if (!hasAtMostTwoDecimals(discountValue)) return showNotice("قيمة الخصم تقبل منزلتين عشريتين كحد أقصى");
-    if (form.discountType === "percent" && discountValue > 100) return showNotice("النسبة المئوية لا تتجاوز 100%");
-    if (form.startDate && form.endDate && form.startDate > form.endDate) return showNotice("تاريخ البداية لازم يكون قبل النهاية");
-    if (form.priceBefore < 0 || form.priceAfter < 0) return showNotice("أسعار العرض لا يمكن أن تكون سالبة");
-    if (form.priceBefore > 0 && form.priceAfter > form.priceBefore) return showNotice("السعر بعد الخصم يجب ألا يتجاوز السعر السابق");
+    if (!Number.isFinite(discountValue) || discountValue <= 0) return showNotice(t("قيمة الخصم لازم تكون رقمًا أكبر من صفر"));
+    if (!hasAtMostTwoDecimals(discountValue)) return showNotice(t("قيمة الخصم تقبل منزلتين عشريتين كحد أقصى"));
+    if (form.discountType === "percent" && discountValue > 100) return showNotice(t("النسبة المئوية لا تتجاوز 100%"));
+    if (form.startDate && form.endDate && form.startDate > form.endDate) return showNotice(t("تاريخ البداية لازم يكون قبل النهاية"));
+    if (form.priceBefore < 0 || form.priceAfter < 0) return showNotice(t("أسعار العرض لا يمكن أن تكون سالبة"));
+    if (form.priceBefore > 0 && form.priceAfter > form.priceBefore) return showNotice(t("السعر بعد الخصم يجب ألا يتجاوز السعر السابق"));
     const targetClientIds = form.targetClientIdsText.split(/[،,\n]/).map((item) => item.trim()).filter(Boolean);
-    if (form.targetScope === "specific" && targetClientIds.length === 0) return showNotice("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد");
+    if (form.targetScope === "specific" && targetClientIds.length === 0) return showNotice(t("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد"));
 
     if (form.appliesTo === "services" && form.serviceIds.length === 0) {
-      return showNotice("اختر خدمة واحدة على الأقل أو اجعل العرض على جميع الخدمات");
+      return showNotice(t("اختر خدمة واحدة على الأقل أو اجعل العرض على جميع الخدمات"));
     }
     if (form.appliesTo === "categories" && form.categoryIds.length === 0) {
-      return showNotice("اختر تصنيفًا واحدًا على الأقل أو غيّر نطاق العرض");
+      return showNotice(t("اختر تصنيفًا واحدًا على الأقل أو غيّر نطاق العرض"));
     }
     if (form.usageLimit < 0 || form.minOrder < 0 || form.maxDiscount < 0 || form.perClientLimit < 0) {
-      return showNotice("حدود الاستخدام والطلب والخصم لا يمكن أن تكون سالبة");
+      return showNotice(t("حدود الاستخدام والطلب والخصم لا يمكن أن تكون سالبة"));
     }
 
     const normalizedSeq = normalizeSequenceSteps(form.sequenceSteps, form.serviceIds);
@@ -882,7 +885,7 @@ const DashboardOffers: React.FC = () => {
       close();
     } catch (e: any) {
       console.error("❌ upsertOffer error:", e?.code, e?.message, e);
-      showNotice(getOfferSaveErrorMessage(e));
+      showNotice(getOfferSaveErrorMessage(e, language));
     }
   };
 
@@ -893,14 +896,14 @@ const DashboardOffers: React.FC = () => {
       await refresh();
     } catch (e: any) {
       console.error("❌ toggleActive error:", e?.code, e?.message, e);
-      showNotice("تعذر تحديث حالة العرض.");
+      showNotice(t("تعذر تحديث حالة العرض."));
     }
   };
 
   // ✅ حذف ناعم (Soft Delete) بدل حذف نهائي
   const softDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return showNotice("لا يمكن حذف عرض مستخدم");
-    if (!confirm("حذف العرض (نقل للمحذوفات)؟")) return;
+    if (Number((o as any).usageCount || 0) > 0) return showNotice(t("لا يمكن حذف عرض مستخدم"));
+    if (!confirm(t("حذف العرض (نقل للمحذوفات)؟"))) return;
 
     try {
       await upsertOffer(
@@ -910,12 +913,12 @@ const DashboardOffers: React.FC = () => {
       await refresh();
     } catch (e: any) {
       console.error("❌ softDelete error:", e?.code, e?.message, e);
-      showNotice("تعذر حذف العرض.");
+      showNotice(t("تعذر حذف العرض."));
     }
   };
 
   const restore = async (o: Offer) => {
-    if (!confirm("استرجاع العرض من المحذوفات؟")) return;
+    if (!confirm(t("استرجاع العرض من المحذوفات؟"))) return;
 
     try {
       await upsertOffer({ ...(o as any), id: (o as any).id, deletedAt: null } as any, SALON_ID);
@@ -923,21 +926,21 @@ const DashboardOffers: React.FC = () => {
       setFilterMode("active_now");
     } catch (e: any) {
       console.error("❌ restore error:", e?.code, e?.message, e);
-      showNotice("تعذر استرجاع العرض.");
+      showNotice(t("تعذر استرجاع العرض."));
     }
   };
 
   // ✅ حذف نهائي (اختياري فقط من تبويب المحذوفات)
   const hardDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return showNotice("لا يمكن حذف عرض مستخدم");
-    if (!confirm("⚠️ حذف نهائي؟ لا يمكن التراجع")) return;
+    if (Number((o as any).usageCount || 0) > 0) return showNotice(t("لا يمكن حذف عرض مستخدم"));
+    if (!confirm(t("⚠️ حذف نهائي؟ لا يمكن التراجع"))) return;
 
     try {
       await removeOffer((o as any).id, SALON_ID);
       await refresh();
     } catch (e: any) {
       console.error("❌ removeOffer error:", e?.code, e?.message, e);
-      showNotice("تعذر حذف العرض نهائيًا.");
+      showNotice(t("تعذر حذف العرض نهائيًا."));
     }
   };
 
@@ -946,7 +949,7 @@ const DashboardOffers: React.FC = () => {
 
     const sizeMb = file.size / (1024 * 1024);
     if (sizeMb > MAX_IMAGE_MB) {
-      showNotice(`حجم الصورة لازم يكون أقل من ${MAX_IMAGE_MB}MB`);
+      showNotice(language === "en" ? `Image size must be less than ${MAX_IMAGE_MB}MB` : `حجم الصورة لازم يكون أقل من ${MAX_IMAGE_MB}MB`);
       return;
     }
 
@@ -1011,7 +1014,7 @@ const DashboardOffers: React.FC = () => {
 
   const calculateOfferPriceAfter = () => {
     if (offerEditorComputed.priceBefore <= 0) {
-      showNotice("أدخل السعر قبل الخصم أولًا");
+      showNotice(t("أدخل السعر قبل الخصم أولًا"));
       return;
     }
     setForm((prev) => ({
@@ -1094,10 +1097,10 @@ const DashboardOffers: React.FC = () => {
     const startDate = String(packageDraft.startDate || "").trim();
     const endDate = String(packageDraft.endDate || "").trim();
     const items = [
-      { label: "اسم الباقة مكتمل", ready: Boolean(String(packageDraft.name || "").trim()) },
-      { label: "تم اختيار خدمة واحدة على الأقل", ready: packageComputed.picked.length > 0 },
-      { label: "السعر وعدد الجلسات صالحان", ready: packageComputed.price >= 0 && packageComputed.sessionsCount > 0 },
-      { label: "فترة الإتاحة صحيحة", ready: !startDate || !endDate || startDate <= endDate },
+      { label: t("اسم الباقة مكتمل"), ready: Boolean(String(packageDraft.name || "").trim()) },
+      { label: t("تم اختيار خدمة واحدة على الأقل"), ready: packageComputed.picked.length > 0 },
+      { label: t("السعر وعدد الجلسات صالحان"), ready: packageComputed.price >= 0 && packageComputed.sessionsCount > 0 },
+      { label: t("فترة الإتاحة صحيحة"), ready: !startDate || !endDate || startDate <= endDate },
     ];
 
     return {
@@ -1105,7 +1108,7 @@ const DashboardOffers: React.FC = () => {
       readyCount: items.filter((item) => item.ready).length,
       isReady: items.every((item) => item.ready),
     };
-  }, [packageDraft, packageComputed]);
+  }, [language, packageDraft, packageComputed]);
   const filteredPackageServices = useMemo(() => {
     const q = String(packageServiceSearch || "").trim().toLowerCase();
     if (!q) return packageServices;
@@ -1129,12 +1132,14 @@ const DashboardOffers: React.FC = () => {
         String((s as any).sectionTitle || "").trim() ||
           String(sectionNameById[String(s.sectionId || "").trim()] || "").trim() ||
           String(s.sectionId || "").trim() ||
-          "قسم غير محدد"
+          t("قسم غير محدد"),
+        language
       );
       const categoryTitle = normalizeGroupLabel(
         String(s.categoryName || "").trim() ||
           String(s.categoryId || "").trim() ||
-          "تصنيف غير محدد"
+          t("تصنيف غير محدد"),
+        language
       );
       const same =
         categoryTitle === sectionTitle ||
@@ -1145,7 +1150,7 @@ const DashboardOffers: React.FC = () => {
       current.services.push(s);
       groups.set(key, current);
     });
-    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
+    const collator = new Intl.Collator(language === "en" ? "en" : "ar", { sensitivity: "base", numeric: true });
     return Array.from(groups.values())
       .map((g) => ({
         ...g,
@@ -1234,7 +1239,7 @@ const DashboardOffers: React.FC = () => {
     setEditingPackageId(String(pkg.id || "").trim());
     setPackageFormOpen(true);
     setPackagePickedImageName(
-      String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : ""
+      String(pkg.imageUrl || "").trim() ? "__existing__" : ""
     );
     setPackageDraft({
       id: String(pkg.id || "").trim(),
@@ -1275,7 +1280,7 @@ const DashboardOffers: React.FC = () => {
     if (!file) return;
     const sizeMb = file.size / (1024 * 1024);
     if (sizeMb > MAX_PACKAGE_IMAGE_MB) {
-      showNotice(`حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`);
+      showNotice(language === "en" ? `Package image size must be less than ${MAX_PACKAGE_IMAGE_MB}MB` : `حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`);
       return;
     }
     const b64 = await fileToBase64(file);
@@ -1297,21 +1302,21 @@ const DashboardOffers: React.FC = () => {
       Math.floor(Number(packageDraft.validityDays || 1))
     );
 
-    if (!name) return showNotice("اكتب اسم الباقة");
+    if (!name) return showNotice(t("اكتب اسم الباقة"));
     if (startDate && endDate && startDate > endDate) {
-      return showNotice("تاريخ بداية الباقة يجب أن يكون قبل تاريخ الانتهاء");
+      return showNotice(t("تاريخ بداية الباقة يجب أن يكون قبل تاريخ الانتهاء"));
     }
     if (endDate && endDate < todayISO()) {
-      return showNotice("تاريخ انتهاء الباقة يجب أن يكون اليوم أو بعده");
+      return showNotice(t("تاريخ انتهاء الباقة يجب أن يكون اليوم أو بعده"));
     }
     if (!packageComputed.picked.length) {
-      return showNotice("اختر خدمة واحدة على الأقل");
+      return showNotice(t("اختر خدمة واحدة على الأقل"));
     }
     if (sessionsCount <= 0) {
-      return showNotice("عدد الجلسات يجب أن يكون أكبر من صفر");
+      return showNotice(t("عدد الجلسات يجب أن يكون أكبر من صفر"));
     }
     if (price < 0) {
-      return showNotice("سعر الباقة لا يمكن أن يكون سالبًا");
+      return showNotice(t("سعر الباقة لا يمكن أن يكون سالبًا"));
     }
 
     const id =
@@ -1364,7 +1369,7 @@ const DashboardOffers: React.FC = () => {
       resetPackageDraft();
       if (isUpdateMode) setPackageFormOpen(false);
       showNotice(
-        isUpdateMode ? "تم تحديث الباقة بنجاح" : "تم حفظ الباقة بنجاح",
+        isUpdateMode ? t("تم تحديث الباقة بنجاح") : t("تم حفظ الباقة بنجاح"),
         "success"
       );
     } catch (error: any) {
@@ -1374,21 +1379,21 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر حفظ الباقة في Core API.");
+      showNotice(t("تعذر حفظ الباقة في Core API."));
     }
   };
 
   const deletePackageById = async (idRaw: string) => {
     const id = String(idRaw || "").trim();
     if (!id) return;
-    if (!confirm("هل أنت متأكد من حذف هذه الباقة؟")) return;
+    if (!confirm(t("هل أنت متأكد من حذف هذه الباقة؟"))) return;
 
     try {
       await PackageService.remove(id);
       await removeOffer(id, SALON_ID).catch(() => undefined);
       await refresh();
       if (editingPackageId === id) resetPackageDraft();
-      showNotice("تم حذف الباقة", "success");
+      showNotice(t("تم حذف الباقة"), "success");
     } catch (error: any) {
       console.error(
         "Core package delete failed:",
@@ -1396,7 +1401,7 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر حذف الباقة من Core API.");
+      showNotice(t("تعذر حذف الباقة من Core API."));
     }
   };
 
@@ -1407,7 +1412,7 @@ const DashboardOffers: React.FC = () => {
     if (isPackageExpiredByToday(pkg)) {
       openPackageForEdit(pkg);
       showNotice(
-        "الباقة منتهية. عدّل تاريخ الانتهاء إلى اليوم أو بعده ثم احفظها."
+        t("الباقة منتهية. عدّل تاريخ الانتهاء إلى اليوم أو بعده ثم احفظها.")
       );
       return;
     }
@@ -1431,12 +1436,12 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر تحديث حالة الباقة.");
+      showNotice(t("تعذر تحديث حالة الباقة."));
     }
   };
 
   return (
-    <main className="dsv2-page dsv2-offers-page" dir="rtl">
+    <main className="dsv2-page dsv2-offers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       {inlineNotice ? (
         <div
           className={`offers-inline-notice offers-inline-notice--${inlineNotice.type}`}
@@ -1450,14 +1455,14 @@ const DashboardOffers: React.FC = () => {
         <div className="offers-head-main">
           <span className="offers-kicker">COMMERCIAL WORKSPACE</span>
           <h1>
-            <FontAwesomeIcon icon={faTag} /> العروض والباقات
+            <FontAwesomeIcon icon={faTag} /> {t("العروض والباقات")}
           </h1>
           <p className="offers-sub">
-            إدارة الحملات الترويجية والكوبونات والباقات من مساحة موحدة، مع متابعة الحالة والتواريخ والاستخدام.
+            {t("إدارة الحملات الترويجية والكوبونات والباقات من مساحة موحدة، مع متابعة الحالة والتواريخ والاستخدام.")}
           </p>
         </div>
 
-        <div className="offers-hero-actions" aria-label="إجراءات العروض والباقات">
+        <div className="offers-hero-actions" aria-label={t("إجراءات العروض والباقات")}>
           <button
             className="dash-pill dash-pill-primary offers-hero-action offers-hero-action--primary"
             type="button"
@@ -1465,7 +1470,7 @@ const DashboardOffers: React.FC = () => {
             aria-expanded={open}
           >
             <FontAwesomeIcon icon={open ? faXmark : faPlus} />
-            {open ? "إغلاق نموذج العرض" : "إضافة عرض"}
+            {open ? t("إغلاق نموذج العرض") : t("إضافة عرض")}
           </button>
           <button
             className="dash-pill dash-pill-outline offers-hero-action"
@@ -1474,14 +1479,14 @@ const DashboardOffers: React.FC = () => {
             aria-expanded={packageFormOpen}
           >
             <FontAwesomeIcon icon={faTag} />
-            {packageFormOpen ? "إغلاق نموذج الباقة" : "إنشاء باقة"}
+            {packageFormOpen ? t("إغلاق نموذج الباقة") : t("إنشاء باقة")}
           </button>
           <button
             className="dash-pill dash-pill-outline offers-hero-action offers-hero-action--refresh"
             type="button"
             onClick={refresh}
           >
-            <FontAwesomeIcon icon={faRotateLeft} /> تحديث
+            <FontAwesomeIcon icon={faRotateLeft} /> {t("تحديث")}
           </button>
         </div>
       </div>
@@ -1490,48 +1495,48 @@ const DashboardOffers: React.FC = () => {
         <article className="offers-enterprise-kpi offers-enterprise-kpi--primary">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faCheck} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>العروض النشطة</span>
+            <span>{t("العروض النشطة")}</span>
             <strong>{stats.activeNowCount}</strong>
-            <small>من أصل {stats.total} عرض</small>
+            <small>{t("من أصل")} {stats.total} {t("عرض")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faWandMagicSparkles} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>العروض المجدولة</span>
+            <span>{t("العروض المجدولة")}</span>
             <strong>{stats.scheduledCount}</strong>
-            <small>{stats.expiredCount} منتهٍ أو موقوف</small>
+            <small>{stats.expiredCount} {t("منتهٍ أو موقوف")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faTag} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>الباقات النشطة</span>
+            <span>{t("الباقات النشطة")}</span>
             <strong>{packageStats.activeNowCount}</strong>
-            <small>من أصل {packageStats.total} باقة</small>
+            <small>{t("من أصل")} {packageStats.total} {t("باقة")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faImage} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>المعروض للبيع</span>
+            <span>{t("المعروض للبيع")}</span>
             <strong>{packageStats.saleEnabledCount}</strong>
-            <small>{stats.used} عروض مستخدمة</small>
+            <small>{stats.used} {t("عروض مستخدمة")}</small>
           </div>
         </article>
       </div>
 
       <div className="offers-card dsv2-card dsv2-card--padded offers-section offers-section--packages-list">
         <div className="offers-card-title offers-section-heading">
-          <span><FontAwesomeIcon icon={faTag} /> الباقات المحفوظة</span>
+          <span><FontAwesomeIcon icon={faTag} /> {t("الباقات المحفوظة")}</span>
           <span className="offers-section-count">{packagesCatalog.length}</span>
         </div>
-        <div className="offers-section-note">إدارة الباقات الجاهزة للبيع، جلساتها، أسعارها وصلاحيتها من مكان واحد.</div>
+        <div className="offers-section-note">{t("إدارة الباقات الجاهزة للبيع، جلساتها، أسعارها وصلاحيتها من مكان واحد.")}</div>
         {!packagesCatalog.length ? (
-          <div className="offers-hint">لا توجد باكيجات محفوظة</div>
+          <div className="offers-hint">{t("لا توجد باكيجات محفوظة")}</div>
         ) : (
           <div className="pkg-offers-grid">
             {packagesCatalog.map((p) => {
@@ -1539,8 +1544,8 @@ const DashboardOffers: React.FC = () => {
               const pkgExpired = isPackageExpiredByToday(p);
               const pkgScheduled = isPackageScheduledByToday(p);
               const pkgActiveNow = isPackageActiveNow(p);
-              const pkgStatus = getPackageStatusLabel(p);
-              const packageActionLabel = pkgExpired ? "تجديد" : pkgActiveNow || pkgScheduled ? "إيقاف" : "تفعيل";
+              const pkgStatus = getPackageStatusLabel(p, language);
+              const packageActionLabel = pkgExpired ? t("تجديد") : pkgActiveNow || pkgScheduled ? t("إيقاف") : t("تفعيل");
               const packageActionIcon = pkgExpired ? faPen : pkgActiveNow || pkgScheduled ? faBan : faCheck;
               const packageActionClass =
                 pkgExpired ? "dash-pill-outline" : pkgActiveNow || pkgScheduled ? "dash-pill-warning" : "dash-pill-success";
@@ -1555,42 +1560,42 @@ const DashboardOffers: React.FC = () => {
                       )}
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الاسم</div>
+                      <div className="pkg-offer-label">{t("الاسم")}</div>
                       <div className="pkg-offer-value">{p.name || p.id}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الخدمات</div>
+                      <div className="pkg-offer-label">{t("الخدمات")}</div>
                       <div className="pkg-offer-value">{Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">السعر</div>
-                      <div className="pkg-offer-value">{Math.round(Number(p.price || 0))} ر.س</div>
+                      <div className="pkg-offer-label">{t("السعر")}</div>
+                      <div className="pkg-offer-value">{Math.round(Number(p.price || 0))} {currency}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">عدد الجلسات</div>
+                      <div className="pkg-offer-label">{t("عدد الجلسات")}</div>
                       <div className="pkg-offer-value">{Math.max(1, Number(p.sessionsCount || 1))}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الصلاحية</div>
+                      <div className="pkg-offer-label">{t("الصلاحية")}</div>
                       <div className="pkg-offer-value">
-                        {p.validityDays ? `${p.validityDays} يوم` : "—"}
+                        {p.validityDays ? `${p.validityDays} ${t("يوم")}` : "—"}
                       </div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">يبدأ</div>
+                      <div className="pkg-offer-label">{t("يبدأ")}</div>
                       <div className="pkg-offer-value">{String(p.startsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">ينتهي</div>
+                      <div className="pkg-offer-label">{t("ينتهي")}</div>
                       <div className="pkg-offer-value">{String(p.endsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-label">{t("الحالة")}</div>
                       <div className="pkg-offer-value"><span className={`offers-status-badge ${pkgActiveNow ? "is-active" : pkgScheduled ? "is-scheduled" : "is-muted"}`}>{pkgStatus}</span></div>
                     </div>
                     {!!String(p.description || "").trim() && (
                       <div className="pkg-offer-row">
-                        <div className="pkg-offer-label">الوصف</div>
+                        <div className="pkg-offer-label">{t("الوصف")}</div>
                         <div className="pkg-offer-value pkg-offer-desc">{String(p.description)}</div>
                       </div>
                     )}
@@ -1600,7 +1605,7 @@ const DashboardOffers: React.FC = () => {
                         className="dash-pill dash-pill-outline dash-pill-sm"
                         onClick={() => openPackageForEdit(p)}
                       >
-                        <FontAwesomeIcon icon={faPen} /> تعديل
+                        <FontAwesomeIcon icon={faPen} /> {t("تعديل")}
                       </button>
                       <button
                         type="button"
@@ -1616,7 +1621,7 @@ const DashboardOffers: React.FC = () => {
                         className="dash-pill dash-pill-danger dash-pill-sm"
                         onClick={() => deletePackageById(p.id)}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> حذف
+                        <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                       </button>
                     </div>
                   </div>
@@ -1641,11 +1646,8 @@ const DashboardOffers: React.FC = () => {
                 <span className="package-editor__eyebrow">
                   {editingPackageId ? "PACKAGE EDITOR · UPDATE" : "PACKAGE EDITOR · NEW"}
                 </span>
-                <h2>{editingPackageId ? "تعديل الباقة" : "إنشاء باقة جديدة"}</h2>
-                <p>
-                  أدخل البيانات التجارية، حدّد الخدمات، ثم راجع الملخص قبل الحفظ.
-                  سيتم تحديث نفس السجل عند التعديل.
-                </p>
+                <h2>{editingPackageId ? t("تعديل الباقة") : t("إنشاء باقة جديدة")}</h2>
+                <p>{t("أدخل البيانات التجارية، حدّد الخدمات، ثم راجع الملخص قبل الحفظ. سيتم تحديث نفس السجل عند التعديل.")}</p>
               </div>
             </div>
 
@@ -1655,14 +1657,14 @@ const DashboardOffers: React.FC = () => {
                 className="dash-pill dash-pill-outline"
                 onClick={() => setPackageFormOpen(false)}
               >
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
+                <FontAwesomeIcon icon={faXmark} /> {t("إغلاق")}
               </button>
               <button
                 type="button"
                 className="dash-pill dash-pill-outline"
                 onClick={resetPackageDraft}
               >
-                <FontAwesomeIcon icon={faRotateLeft} /> تفريغ
+                <FontAwesomeIcon icon={faRotateLeft} /> {t("تفريغ")}
               </button>
               <button
                 type="button"
@@ -1670,7 +1672,7 @@ const DashboardOffers: React.FC = () => {
                 onClick={savePackageDraft}
               >
                 <FontAwesomeIcon icon={faCheck} />
-                {editingPackageId ? "حفظ التعديلات" : "إنشاء الباقة"}
+                {editingPackageId ? t("حفظ التعديلات") : t("إنشاء الباقة")}
               </button>
             </div>
           </header>
@@ -1681,41 +1683,41 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">01</span>
                   <div>
-                    <h3>البيانات الأساسية</h3>
-                    <p>الاسم والوصف اللذان سيظهران للعميلة وفي لوحة الإدارة.</p>
+                    <h3>{t("البيانات الأساسية")}</h3>
+                    <p>{t("الاسم والوصف اللذان سيظهران للعميلة وفي لوحة الإدارة.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__grid package-editor__grid--identity">
                   <div className="pkgm__field package-editor__field--wide">
-                    <label>اسم الباقة <em>مطلوب</em></label>
+                    <label>{t("اسم الباقة")} <em>{t("مطلوب")}</em></label>
                     <input
                       value={packageDraft.name}
-                      placeholder="مثال: باقة العناية الشهرية"
+                      placeholder={t("مثال: باقة العناية الشهرية")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, name: e.target.value }))
                       }
                     />
-                    <small>استخدم اسمًا واضحًا وقصيرًا يسهل تمييزه في الحجز.</small>
+                    <small>{t("استخدم اسمًا واضحًا وقصيرًا يسهل تمييزه في الحجز.")}</small>
                   </div>
 
                   <div className="pkgm__field">
-                    <label>المعرف الداخلي</label>
+                    <label>{t("المعرف الداخلي")}</label>
                     <input
                       value={packageDraft.id}
-                      placeholder="يُنشأ تلقائيًا عند تركه فارغًا"
+                      placeholder={t("يُنشأ تلقائيًا عند تركه فارغًا")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, id: e.target.value }))
                       }
                     />
-                    <small>للاستخدام التقني فقط، ولا يظهر للعميلة.</small>
+                    <small>{t("للاستخدام التقني فقط، ولا يظهر للعميلة.")}</small>
                   </div>
 
                   <div className="pkgm__field package-editor__field--wide">
-                    <label>وصف الباقة</label>
+                    <label>{t("وصف الباقة")}</label>
                     <textarea
                       value={packageDraft.description}
-                      placeholder="اكتب فائدة الباقة وما الذي تحصل عليه العميلة..."
+                      placeholder={t("اكتب فائدة الباقة وما الذي تحصل عليه العميلة...")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, description: e.target.value }))
                       }
@@ -1728,14 +1730,14 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">02</span>
                   <div>
-                    <h3>التسعير والجلسات</h3>
-                    <p>اضبط سعر البيع، الرصيد، مدة الصلاحية وترتيب الظهور.</p>
+                    <h3>{t("التسعير والجلسات")}</h3>
+                    <p>{t("اضبط سعر البيع، الرصيد، مدة الصلاحية وترتيب الظهور.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__commercial-grid">
                   <div className="pkgm__field package-editor__commercial-field is-price">
-                    <label>سعر الباقة</label>
+                    <label>{t("سعر الباقة")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -1747,12 +1749,12 @@ const DashboardOffers: React.FC = () => {
                           }))
                         }
                       />
-                      <span>ر.س</span>
+                      <span>{currency}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>عدد الجلسات</label>
+                    <label>{t("عدد الجلسات")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={1}
@@ -1767,12 +1769,12 @@ const DashboardOffers: React.FC = () => {
                           }))
                         }
                       />
-                      <span>جلسة</span>
+                      <span>{t("جلسة")}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>مدة الصلاحية</label>
+                    <label>{t("مدة الصلاحية")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={1}
@@ -1787,12 +1789,12 @@ const DashboardOffers: React.FC = () => {
                           }))
                         }
                       />
-                      <span>يوم</span>
+                      <span>{t("يوم")}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>ترتيب الظهور</label>
+                    <label>{t("ترتيب الظهور")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={packageDraft.sortOrder}
@@ -1812,8 +1814,8 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__commercial-note">
                   <FontAwesomeIcon icon={faWandMagicSparkles} />
                   <span>
-                    متوسط سعر الجلسة حاليًا
-                    <strong>{packageComputed.averageSessionPrice.toFixed(2)} ر.س</strong>
+                    {t("متوسط سعر الجلسة حاليًا")}
+                    <strong>{packageComputed.averageSessionPrice.toFixed(2)} {currency}</strong>
                   </span>
                 </div>
               </section>
@@ -1822,14 +1824,14 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">03</span>
                   <div>
-                    <h3>الإتاحة والنشر</h3>
-                    <p>حدد فترة ظهور الباقة وحالتها في البيع والحجز.</p>
+                    <h3>{t("الإتاحة والنشر")}</h3>
+                    <p>{t("حدد فترة ظهور الباقة وحالتها في البيع والحجز.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__availability-grid">
                   <div className="pkgm__field">
-                    <label>تاريخ البداية</label>
+                    <label>{t("تاريخ البداية")}</label>
                     <DashboardDatePickerV2
                       value={packageDraft.startDate}
                       onChange={(value) =>
@@ -1838,7 +1840,7 @@ const DashboardOffers: React.FC = () => {
                     />
                   </div>
                   <div className="pkgm__field">
-                    <label>تاريخ الانتهاء</label>
+                    <label>{t("تاريخ الانتهاء")}</label>
                     <DashboardDatePickerV2
                       value={packageDraft.endDate}
                       onChange={(value) =>
@@ -1861,8 +1863,8 @@ const DashboardOffers: React.FC = () => {
                       <FontAwesomeIcon icon={faCheck} />
                     </span>
                     <span>
-                      <strong>الباقة مفعّلة</strong>
-                      <small>تُعامل كسجل نشط داخل النظام.</small>
+                      <strong>{t("الباقة مفعّلة")}</strong>
+                      <small>{t("تُعامل كسجل نشط داخل النظام.")}</small>
                     </span>
                   </label>
 
@@ -1881,8 +1883,8 @@ const DashboardOffers: React.FC = () => {
                       <FontAwesomeIcon icon={faTag} />
                     </span>
                     <span>
-                      <strong>معروضة للبيع والحجز</strong>
-                      <small>تظهر في القنوات المسموح لها ببيع الباقات.</small>
+                      <strong>{t("معروضة للبيع والحجز")}</strong>
+                      <small>{t("تظهر في القنوات المسموح لها ببيع الباقات.")}</small>
                     </span>
                   </label>
                 </div>
@@ -1892,8 +1894,8 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">04</span>
                   <div>
-                    <h3>الصورة والشروط</h3>
-                    <p>ارفع صورة مناسبة وأضف شروط الاستخدام عند الحاجة.</p>
+                    <h3>{t("الصورة والشروط")}</h3>
+                    <p>{t("ارفع صورة مناسبة وأضف شروط الاستخدام عند الحاجة.")}</p>
                   </div>
                 </div>
 
@@ -1907,24 +1909,24 @@ const DashboardOffers: React.FC = () => {
                       }
                     />
                     {packageDraft.imageUrl ? (
-                      <img src={packageDraft.imageUrl} alt="معاينة صورة الباقة" />
+                      <img src={packageDraft.imageUrl} alt={t("معاينة صورة الباقة")} />
                     ) : (
                       <span className="package-editor__upload-icon">
                         <FontAwesomeIcon icon={faImage} />
                       </span>
                     )}
                     <span className="package-editor__upload-copy">
-                      <strong>{packageDraft.imageUrl ? "تغيير صورة الباقة" : "رفع صورة الباقة"}</strong>
-                      <small>{packagePickedImageName || `PNG أو JPG · أقل من ${MAX_PACKAGE_IMAGE_MB}MB`}</small>
+                      <strong>{packageDraft.imageUrl ? t("تغيير صورة الباقة") : t("رفع صورة الباقة")}</strong>
+                      <small>{packagePickedImageName === "__existing__" ? t("تم اختيار صورة") : packagePickedImageName || (language === "en" ? `PNG or JPG · under ${MAX_PACKAGE_IMAGE_MB}MB` : `PNG أو JPG · أقل من ${MAX_PACKAGE_IMAGE_MB}MB`)}</small>
                     </span>
                   </label>
 
                   <div className="package-editor__media-fields">
                     <div className="pkgm__field">
-                      <label>شروط استخدام الباقة</label>
+                      <label>{t("شروط استخدام الباقة")}</label>
                       <textarea
                         value={packageDraft.terms}
-                        placeholder="مثال: غير قابلة للتحويل، الحجز المسبق مطلوب..."
+                        placeholder={t("مثال: غير قابلة للتحويل، الحجز المسبق مطلوب...")}
                         onChange={(e) =>
                           setPackageDraft((p) => ({ ...p, terms: e.target.value }))
                         }
@@ -1939,7 +1941,7 @@ const DashboardOffers: React.FC = () => {
                           setPackageDraft((p) => ({ ...p, imageUrl: "" }));
                         }}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> إزالة الصورة
+                        <FontAwesomeIcon icon={faTrash} /> {t("إزالة الصورة")}
                       </button>
                     )}
                   </div>
@@ -1950,11 +1952,11 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__section-head package-editor__section-head--services">
                   <span className="package-editor__step">05</span>
                   <div>
-                    <h3>الخدمات المشمولة</h3>
-                    <p>اختر الخدمات التي يمكن للعميلة استخدام رصيد الجلسات عليها.</p>
+                    <h3>{t("الخدمات المشمولة")}</h3>
+                    <p>{t("اختر الخدمات التي يمكن للعميلة استخدام رصيد الجلسات عليها.")}</p>
                   </div>
                   <span className="package-editor__count-badge">
-                    {packageComputed.picked.length} محددة
+                    {packageComputed.picked.length} {t("محددة")}
                   </span>
                 </div>
 
@@ -1965,7 +1967,7 @@ const DashboardOffers: React.FC = () => {
                       type="text"
                       value={packageServiceSearch}
                       onChange={(e) => setPackageServiceSearch(e.target.value)}
-                      placeholder="ابحث باسم الخدمة أو السعر أو المدة..."
+                      placeholder={t("ابحث باسم الخدمة أو السعر أو المدة...")}
                     />
                   </div>
                   <div className="pkgm__services-actions">
@@ -1974,14 +1976,14 @@ const DashboardOffers: React.FC = () => {
                       className="dash-pill dash-pill-outline dash-pill-sm"
                       onClick={selectAllVisiblePackageServices}
                     >
-                      تحديد النتائج
+                      {t("تحديد النتائج")}
                     </button>
                     <button
                       type="button"
                       className="dash-pill dash-pill-outline dash-pill-sm"
                       onClick={clearVisiblePackageServices}
                     >
-                      إلغاء النتائج
+                      {t("إلغاء النتائج")}
                     </button>
                   </div>
                 </div>
@@ -1992,21 +1994,21 @@ const DashboardOffers: React.FC = () => {
                     className={packageListMode === "all" ? "is-active" : ""}
                     onClick={() => setPackageListMode("all")}
                   >
-                    جميع الخدمات <span>{filteredPackageServices.length}</span>
+                    {t("جميع الخدمات")} <span>{filteredPackageServices.length}</span>
                   </button>
                   <button
                     type="button"
                     className={packageListMode === "selected" ? "is-active" : ""}
                     onClick={() => setPackageListMode("selected")}
                   >
-                    المحددة <span>{selectedPackageServices.length}</span>
+                    {t("المحددة")} <span>{selectedPackageServices.length}</span>
                   </button>
                   <button
                     type="button"
                     className={packageListMode === "unselected" ? "is-active" : ""}
                     onClick={() => setPackageListMode("unselected")}
                   >
-                    غير المحددة <span>{unselectedPackageServices.length}</span>
+                    {t("غير المحددة")} <span>{unselectedPackageServices.length}</span>
                   </button>
                 </div>
 
@@ -2016,12 +2018,12 @@ const DashboardOffers: React.FC = () => {
                       <FontAwesomeIcon icon={faCheck} />
                     </span>
                     <div>
-                      <strong>{packageComputed.picked.length} خدمة ضمن الباقة</strong>
+                      <strong>{packageComputed.picked.length} {t("خدمة ضمن الباقة")}</strong>
                       <p>
                         {packageComputed.picked
                           .slice(0, 5)
                           .map((service) => service.name)
-                          .join("، ")}
+                          .join(language === "en" ? ", " : "، ")}
                         {packageComputed.picked.length > 5 ? " ..." : ""}
                       </p>
                     </div>
@@ -2050,8 +2052,8 @@ const DashboardOffers: React.FC = () => {
                           <span className="pkgm__group-toggle-label">
                             <strong>{group.title}</strong>
                             <small>
-                              {group.services.length} خدمة
-                              {selectedInGroup > 0 ? ` · ${selectedInGroup} محددة` : ""}
+                              {group.services.length} {t("خدمة")}
+                              {selectedInGroup > 0 ? ` · ${selectedInGroup} ${t("محددة")}` : ""}
                             </small>
                           </span>
                           <span className="pkgm__group-toggle-caret" aria-hidden="true">
@@ -2063,7 +2065,7 @@ const DashboardOffers: React.FC = () => {
                           <div className="pkgm__group-items">
                             {group.services.map((service) => {
                               const selected = packageDraft.serviceIds.includes(service.id);
-                              const sectionText = resolveSectionLabel(service.sectionId || "");
+                              const sectionText = resolveSectionLabel(service.sectionId || "", language);
                               const categoryText = resolveCategoryLabel(
                                 service.categoryName || service.categoryId || ""
                               );
@@ -2082,11 +2084,11 @@ const DashboardOffers: React.FC = () => {
                                   <span className="pkgm__service-main">
                                     <span className="pkgm__service-name">{service.name}</span>
                                     <span className="pkgm__service-meta">
-                                      {sectionText} · {categoryText} · {service.durationMin} دقيقة
+                                      {sectionText} · {categoryText} · {service.durationMin} {t("دقيقة")}
                                     </span>
                                   </span>
                                   <span className="package-editor__service-price">
-                                    {service.price} <small>ر.س</small>
+                                    {service.price} <small>{currency}</small>
                                   </span>
                                 </button>
                               );
@@ -2098,15 +2100,15 @@ const DashboardOffers: React.FC = () => {
                   })}
 
                   {!filteredPackageServices.length && (
-                    <div className="pkgm__empty">لا توجد خدمات مطابقة للبحث</div>
+                    <div className="pkgm__empty">{t("لا توجد خدمات مطابقة للبحث")}</div>
                   )}
                   {filteredPackageServices.length > 0 &&
                     !visibleSelectedGroups.length &&
                     !visibleUnselectedGroups.length && (
                       <div className="pkgm__empty">
                         {packageListMode === "selected"
-                          ? "لا توجد خدمات محددة حسب البحث الحالي"
-                          : "كل الخدمات الحالية محددة بالفعل"}
+                          ? t("لا توجد خدمات محددة حسب البحث الحالي")
+                          : t("كل الخدمات الحالية محددة بالفعل")}
                       </div>
                     )}
                 </div>
@@ -2117,44 +2119,44 @@ const DashboardOffers: React.FC = () => {
               <div className="package-editor__preview-card">
                 <div className="package-editor__preview-media">
                   {packageDraft.imageUrl ? (
-                    <img src={packageDraft.imageUrl} alt="صورة الباقة" />
+                    <img src={packageDraft.imageUrl} alt={t("صورة الباقة")} />
                   ) : (
                     <span><FontAwesomeIcon icon={faImage} /></span>
                   )}
                   <div className="package-editor__preview-badges">
                     <span className={packageDraft.active !== false ? "is-live" : "is-off"}>
-                      {packageDraft.active !== false ? "مفعّلة" : "موقوفة"}
+                      {packageDraft.active !== false ? t("مفعّلة") : t("موقوفة")}
                     </span>
                     <span className={packageDraft.saleEnabled !== false ? "is-sale" : "is-off"}>
-                      {packageDraft.saleEnabled !== false ? "متاحة للبيع" : "غير معروضة"}
+                      {packageDraft.saleEnabled !== false ? t("متاحة للبيع") : t("غير معروضة")}
                     </span>
                   </div>
                 </div>
 
                 <div className="package-editor__preview-body">
-                  <span className="package-editor__preview-label">معاينة الباقة</span>
-                  <h3>{String(packageDraft.name || "").trim() || "اسم الباقة"}</h3>
+                  <span className="package-editor__preview-label">{t("معاينة الباقة")}</span>
+                  <h3>{String(packageDraft.name || "").trim() || t("اسم الباقة")}</h3>
                   <p>
                     {String(packageDraft.description || "").trim() ||
-                      "سيظهر وصف الباقة هنا بعد إدخاله."}
+                      t("سيظهر وصف الباقة هنا بعد إدخاله.")}
                   </p>
 
                   <div className="package-editor__preview-kpis">
-                    <div><strong>{packageComputed.picked.length}</strong><span>خدمة</span></div>
-                    <div><strong>{packageComputed.sessionsCount}</strong><span>جلسة</span></div>
-                    <div><strong>{packageComputed.validityDays}</strong><span>يوم</span></div>
+                    <div><strong>{packageComputed.picked.length}</strong><span>{t("خدمة")}</span></div>
+                    <div><strong>{packageComputed.sessionsCount}</strong><span>{t("جلسة")}</span></div>
+                    <div><strong>{packageComputed.validityDays}</strong><span>{t("يوم")}</span></div>
                   </div>
 
                   <div className="package-editor__price-box">
-                    <span>سعر البيع</span>
-                    <strong>{packageComputed.price.toFixed(2)} <small>ر.س</small></strong>
-                    <em>{packageComputed.averageSessionPrice.toFixed(2)} ر.س للجلسة</em>
+                    <span>{t("سعر البيع")}</span>
+                    <strong>{packageComputed.price.toFixed(2)} <small>{currency}</small></strong>
+                    <em>{packageComputed.averageSessionPrice.toFixed(2)} {currency} {t("للجلسة")}</em>
                   </div>
 
                   <dl className="package-editor__preview-details">
-                    <div><dt>بداية الإتاحة</dt><dd>{packageDraft.startDate || "غير محدد"}</dd></div>
-                    <div><dt>نهاية الإتاحة</dt><dd>{packageDraft.endDate || "غير محدد"}</dd></div>
-                    <div><dt>ترتيب الظهور</dt><dd>{packageDraft.sortOrder || 0}</dd></div>
+                    <div><dt>{t("بداية الإتاحة")}</dt><dd>{packageDraft.startDate || t("غير محدد")}</dd></div>
+                    <div><dt>{t("نهاية الإتاحة")}</dt><dd>{packageDraft.endDate || t("غير محدد")}</dd></div>
+                    <div><dt>{t("ترتيب الظهور")}</dt><dd>{packageDraft.sortOrder || 0}</dd></div>
                   </dl>
                 </div>
               </div>
@@ -2162,7 +2164,7 @@ const DashboardOffers: React.FC = () => {
               <div className={`package-editor__readiness ${packageEditorChecks.isReady ? "is-ready" : ""}`}>
                 <div className="package-editor__readiness-head">
                   <div>
-                    <span>جاهزية الحفظ</span>
+                    <span>{t("جاهزية الحفظ")}</span>
                     <strong>{packageEditorChecks.readyCount} / {packageEditorChecks.items.length}</strong>
                   </div>
                   <span className="package-editor__readiness-score">
@@ -2195,14 +2197,14 @@ const DashboardOffers: React.FC = () => {
                   onClick={savePackageDraft}
                 >
                   <FontAwesomeIcon icon={faCheck} />
-                  {editingPackageId ? "حفظ التعديلات" : "إنشاء الباقة"}
+                  {editingPackageId ? t("حفظ التعديلات") : t("إنشاء الباقة")}
                 </button>
                 <button
                   type="button"
                   className="dash-pill dash-pill-outline"
                   onClick={() => setPackageFormOpen(false)}
                 >
-                  إلغاء والعودة
+                  {t("إلغاء والعودة")}
                 </button>
               </div>
             </aside>
@@ -2213,9 +2215,9 @@ const DashboardOffers: React.FC = () => {
       {/* Filters + Add */}
       <div className="offers-card dsv2-card dsv2-card--padded offers-section offers-section--filters">
         <div className="offers-card-title">
-          <FontAwesomeIcon icon={faFilter} /> مركز العروض
+          <FontAwesomeIcon icon={faFilter} /> {t("مركز العروض")}
         </div>
-        <div className="offers-section-note">اعرض الحملات حسب حالتها، ثم ابحث مباشرة بالعنوان أو كود الخصم.</div>
+        <div className="offers-section-note">{t("اعرض الحملات حسب حالتها، ثم ابحث مباشرة بالعنوان أو كود الخصم.")}</div>
 
         <div className="offers-row offers-row--filters">
           <div className="offers-filter-pills">
@@ -2224,7 +2226,7 @@ const DashboardOffers: React.FC = () => {
               className={`dash-pill dash-pill-sm ${filterMode === "all" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("all")}
             >
-              كل العروض ({Math.max(0, stats.total - stats.deletedCount)})
+              {t("كل العروض")} ({Math.max(0, stats.total - stats.deletedCount)})
             </button>
 
             <button
@@ -2232,7 +2234,7 @@ const DashboardOffers: React.FC = () => {
               className={`dash-pill dash-pill-sm ${filterMode === "active_now" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("active_now")}
             >
-              سارية الآن ({stats.activeNowCount})
+              {t("سارية الآن")} ({stats.activeNowCount})
             </button>
 
             <button
@@ -2240,7 +2242,7 @@ const DashboardOffers: React.FC = () => {
               className={`dash-pill dash-pill-sm ${filterMode === "scheduled" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("scheduled")}
             >
-              مجدولة ({stats.scheduledCount})
+              {t("مجدولة")} ({stats.scheduledCount})
             </button>
 
             <button
@@ -2248,7 +2250,7 @@ const DashboardOffers: React.FC = () => {
               className={`dash-pill dash-pill-sm ${filterMode === "expired" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("expired")}
             >
-              منتهية/موقوفة ({stats.expiredCount})
+              {t("منتهية/موقوفة")} ({stats.expiredCount})
             </button>
 
             <button
@@ -2256,13 +2258,13 @@ const DashboardOffers: React.FC = () => {
               className={`dash-pill dash-pill-sm ${filterMode === "deleted" ? "dash-pill-danger" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("deleted")}
             >
-              محذوفة ({stats.deletedCount})
+              {t("محذوفة")} ({stats.deletedCount})
             </button>
           </div>
 
           <div className="offers-search offers-search--wide">
             <FontAwesomeIcon className="offers-search-ic" icon={faMagnifyingGlass} />
-            <input value={queryText} onChange={(e) => setQueryText(e.target.value)} placeholder="بحث بالعنوان أو الكود..." />
+            <input value={queryText} onChange={(e) => setQueryText(e.target.value)} placeholder={t("بحث بالعنوان أو الكود...")} />
           </div>
 
         </div>
@@ -2273,18 +2275,18 @@ const DashboardOffers: React.FC = () => {
       {/* Table */}
       <div className="offers-table-card dsv2-card dsv2-card--padded offers-section offers-section--offers-table">
         <div className="offers-card-title offers-section-heading">
-          <span><FontAwesomeIcon icon={faTag} /> نتائج العروض</span>
+          <span><FontAwesomeIcon icon={faTag} /> {t("نتائج العروض")}</span>
           <span className="offers-section-count">{filteredOffers.length}</span>
         </div>
         {filteredOffers.length === 0 ? (
-          <div className="offers-hint">لا توجد عروض مطابقة لهذا التصنيف. اختر «كل العروض» لعرض السارية والمجدولة والمنتهية.</div>
+          <div className="offers-hint">{t("لا توجد عروض مطابقة لهذا التصنيف. اختر «كل العروض» لعرض السارية والمجدولة والمنتهية.")}</div>
         ) : (
           <div className="pkg-offers-grid offers-as-packages-grid">
             {filteredOffers.map((o: any) => {
               const deleted = isDeleted(o);
               const scheduled = isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
               const expired = isExpiredByToday(o) && !deleted;
-              const statusLabel = deleted ? "محذوف" : scheduled ? "مجدول" : expired ? "منتهي" : o.active ? "نشط" : "موقوف";
+              const statusLabel = deleted ? t("محذوف") : scheduled ? t("مجدول") : expired ? t("منتهي") : o.active ? t("نشط") : t("موقوف");
 
               return (
                 <div key={o.id} className={`pkg-offer-card offers-like-package-card ${deleted ? "is-deleted" : ""}`}>
@@ -2298,51 +2300,51 @@ const DashboardOffers: React.FC = () => {
                     </div>
 
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">العنوان</div>
+                      <div className="pkg-offer-label">{t("العنوان")}</div>
                       <div className="pkg-offer-value">{o.title}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الكود</div>
+                      <div className="pkg-offer-label">{t("الكود")}</div>
                       <div className="pkg-offer-value">{o.code || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الخصم</div>
-                      <div className="pkg-offer-value">{o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}</div>
+                      <div className="pkg-offer-label">{t("الخصم")}</div>
+                      <div className="pkg-offer-value">{o.discountType === "percent" ? `${o.value}%` : `${o.value} ${t("ريال")}`}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الفترة</div>
+                      <div className="pkg-offer-label">{t("الفترة")}</div>
                       <div className="pkg-offer-value">{o.startDate || "—"} → {o.endDate || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-label">{t("الحالة")}</div>
                       <div className="pkg-offer-value"><span className={`offers-status-badge ${deleted ? "is-deleted" : scheduled ? "is-scheduled" : expired || !o.active ? "is-muted" : "is-active"}`}>{statusLabel}</span></div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الاستخدام</div>
+                      <div className="pkg-offer-label">{t("الاستخدام")}</div>
                       <div className="pkg-offer-value">{o.usageCount || 0}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">النطاق</div>
-                      <div className="pkg-offer-value">{(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}</div>
+                      <div className="pkg-offer-label">{t("النطاق")}</div>
+                      <div className="pkg-offer-value">{(o.appliesTo || "all") === "services" ? t("خدمات محددة") : t("الكل")}</div>
                     </div>
 
                     <div className="of-actions of-actions--card">
                       {!deleted && (
                         <>
                           <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" onClick={() => openEdit(o)}>
-                            <FontAwesomeIcon icon={faPen} /> تعديل
+                            <FontAwesomeIcon icon={faPen} /> {t("تعديل")}
                           </button>
                           <button
                             className={`dash-pill ${o.active ? "dash-pill-warning" : "dash-pill-success"} dash-pill-sm`}
                             type="button"
                             onClick={() => toggleActive(o)}
-                            title={o.active ? "إيقاف" : "تفعيل"}
+                            title={o.active ? t("إيقاف") : t("تفعيل")}
                           >
                             <FontAwesomeIcon icon={o.active ? faBan : faCheck} />
-                            {o.active ? " إيقاف" : " تفعيل"}
+                            {o.active ? ` ${t("إيقاف")}` : ` ${t("تفعيل")}`}
                           </button>
                           <button className="dash-pill dash-pill-danger dash-pill-sm" type="button" onClick={() => softDelete(o)}>
-                            <FontAwesomeIcon icon={faTrash} /> حذف
+                            <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                           </button>
                         </>
                       )}
@@ -2350,10 +2352,10 @@ const DashboardOffers: React.FC = () => {
                       {deleted && (
                         <>
                           <button className="dash-pill dash-pill-success dash-pill-sm" type="button" onClick={() => restore(o)}>
-                            <FontAwesomeIcon icon={faRotateLeft} /> استرجاع
+                            <FontAwesomeIcon icon={faRotateLeft} /> {t("استرجاع")}
                           </button>
                           <button className="dash-pill dash-pill-danger dash-pill-sm" type="button" onClick={() => hardDelete(o)}>
-                            <FontAwesomeIcon icon={faSkullCrossbones} /> حذف نهائي
+                            <FontAwesomeIcon icon={faSkullCrossbones} /> {t("حذف نهائي")}
                           </button>
                         </>
                       )}
@@ -2379,19 +2381,19 @@ const DashboardOffers: React.FC = () => {
               </span>
               <div>
                 <span className="offer-editor__eyebrow">OFFER MANAGEMENT</span>
-                <h2>{editing ? "تعديل العرض" : "إنشاء عرض جديد"}</h2>
+                <h2>{editing ? t("تعديل العرض") : t("إنشاء عرض جديد")}</h2>
                 <p>
-                  إدارة بيانات العرض، التسعير، حدود الاستخدام، النطاق، الاستهداف، النشر والصورة من مساحة عمل واحدة.
+                  {t("إدارة بيانات العرض، التسعير، حدود الاستخدام، النطاق، الاستهداف، النشر والصورة من مساحة عمل واحدة.")}
                 </p>
               </div>
             </div>
 
             <div className="offer-editor__header-actions">
               <button className="dash-pill dash-pill-outline" type="button" onClick={close}>
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
+                <FontAwesomeIcon icon={faXmark} /> {t("إغلاق")}
               </button>
               <button className="dash-pill dash-pill-primary offer-editor__save-top" type="button" onClick={save}>
-                <FontAwesomeIcon icon={faCheck} /> حفظ العرض
+                <FontAwesomeIcon icon={faCheck} /> {t("حفظ العرض")}
               </button>
             </div>
           </header>
@@ -2402,24 +2404,24 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">01</span>
                   <div>
-                    <h3>هوية العرض</h3>
-                    <p>البيانات التي تظهر للعميلة في التطبيق وصفحات العروض.</p>
+                    <h3>{t("هوية العرض")}</h3>
+                    <p>{t("البيانات التي تظهر للعميلة في التطبيق وصفحات العروض.")}</p>
                   </div>
                 </div>
 
                 <div className="offer-editor__grid offer-editor__grid--identity">
                   <div className="offer-editor__field">
-                    <label>عنوان العرض <em>مطلوب</em></label>
+                    <label>{t("عنوان العرض")} <em>{t("مطلوب")}</em></label>
                     <input
                       value={form.title}
                       onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                      placeholder="مثال: عرض نهاية الأسبوع"
+                      placeholder={t("مثال: عرض نهاية الأسبوع")}
                     />
-                    <small>اكتب عنوانًا واضحًا ومباشرًا يسهل فهمه.</small>
+                    <small>{t("اكتب عنوانًا واضحًا ومباشرًا يسهل فهمه.")}</small>
                   </div>
 
                   <div className="offer-editor__field">
-                    <label>كود العرض <em>مطلوب</em></label>
+                    <label>{t("كود العرض")} <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__code-row">
                       <input
                         value={form.code}
@@ -2431,21 +2433,21 @@ const DashboardOffers: React.FC = () => {
                         type="button"
                         onClick={() => setForm((prev) => ({ ...prev, code: generateCode() }))}
                       >
-                        <FontAwesomeIcon icon={faWandMagicSparkles} /> توليد
+                        <FontAwesomeIcon icon={faWandMagicSparkles} /> {t("توليد")}
                       </button>
                     </div>
-                    <small>يُستخدم عند تطبيق العرض بالكوبون أو داخل الحجز.</small>
+                    <small>{t("يُستخدم عند تطبيق العرض بالكوبون أو داخل الحجز.")}</small>
                   </div>
 
                   <div className="offer-editor__field offer-editor__field--wide">
-                    <label>وصف العرض</label>
+                    <label>{t("وصف العرض")}</label>
                     <textarea
                       rows={4}
                       value={form.description}
                       onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="اكتب وصفًا مختصرًا، شروط الاستفادة، وما الذي تحصل عليه العميلة..."
+                      placeholder={t("اكتب وصفًا مختصرًا، شروط الاستفادة، وما الذي تحصل عليه العميلة...")}
                     />
-                    <small>الوصف هو المكان الأنسب لشرح الشروط والملاحظات للعميلة.</small>
+                    <small>{t("الوصف هو المكان الأنسب لشرح الشروط والملاحظات للعميلة.")}</small>
                   </div>
                 </div>
               </section>
@@ -2454,33 +2456,33 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">02</span>
                   <div>
-                    <h3>الخصم والتسعير</h3>
-                    <p>حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.</p>
+                    <h3>{t("الخصم والتسعير")}</h3>
+                    <p>{t("حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.")}</p>
                   </div>
                 </div>
 
-                <div className="offer-editor__discount-selector" role="group" aria-label="نوع الخصم">
+                <div className="offer-editor__discount-selector" role="group" aria-label={t("نوع الخصم")}>
                   <button
                     type="button"
                     className={form.discountType === "fixed" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, discountType: "fixed" }))}
                   >
-                    <strong>مبلغ ثابت</strong>
-                    <span>خصم قيمة محددة بالريال</span>
+                    <strong>{t("مبلغ ثابت")}</strong>
+                    <span>{t("خصم قيمة محددة بالريال")}</span>
                   </button>
                   <button
                     type="button"
                     className={form.discountType === "percent" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, discountType: "percent" }))}
                   >
-                    <strong>نسبة مئوية</strong>
-                    <span>خصم نسبة من قيمة الخدمة</span>
+                    <strong>{t("نسبة مئوية")}</strong>
+                    <span>{t("خصم نسبة من قيمة الخدمة")}</span>
                   </button>
                 </div>
 
                 <div className="offer-editor__commercial-grid">
                   <div className="offer-editor__field offer-editor__commercial-field is-primary">
-                    <label>قيمة الخصم <em>مطلوب</em></label>
+                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2489,12 +2491,12 @@ const DashboardOffers: React.FC = () => {
                         value={form.value}
                         onChange={(e) => setForm((prev) => ({ ...prev, value: Number(e.target.value) }))}
                       />
-                      <span>{form.discountType === "percent" ? "%" : "ريال"}</span>
+                      <span>{form.discountType === "percent" ? "%" : t("ريال")}</span>
                     </div>
                   </div>
 
                   <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>السعر قبل الخصم</label>
+                    <label>{t("السعر قبل الخصم")}</label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2502,12 +2504,12 @@ const DashboardOffers: React.FC = () => {
                         value={form.priceBefore}
                         onChange={(e) => setForm((prev) => ({ ...prev, priceBefore: Number(e.target.value) }))}
                       />
-                      <span>ريال</span>
+                      <span>{t("ريال")}</span>
                     </div>
                   </div>
 
                   <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>السعر بعد الخصم</label>
+                    <label>{t("السعر بعد الخصم")}</label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2515,12 +2517,12 @@ const DashboardOffers: React.FC = () => {
                         value={form.priceAfter}
                         onChange={(e) => setForm((prev) => ({ ...prev, priceAfter: Number(e.target.value) }))}
                       />
-                      <span>ريال</span>
+                      <span>{t("ريال")}</span>
                     </div>
                   </div>
 
                   <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>ترتيب الظهور</label>
+                    <label>{t("ترتيب الظهور")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={form.sortOrder}
@@ -2531,43 +2533,43 @@ const DashboardOffers: React.FC = () => {
 
                 <div className="offer-editor__pricing-summary">
                   <div>
-                    <span>الخصم المحسوب</span>
-                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} ريال</strong>
+                    <span>{t("الخصم المحسوب")}</span>
+                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} {t("ريال")}</strong>
                   </div>
                   <div>
-                    <span>السعر المقترح بعد الخصم</span>
-                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} ريال</strong>
+                    <span>{t("السعر المقترح بعد الخصم")}</span>
+                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} {t("ريال")}</strong>
                   </div>
                   <div>
-                    <span>التوفير الظاهر</span>
-                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} ريال</strong>
+                    <span>{t("التوفير الظاهر")}</span>
+                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} {t("ريال")}</strong>
                   </div>
                   <button type="button" className="dash-pill dash-pill-outline" onClick={calculateOfferPriceAfter}>
-                    احتساب السعر تلقائيًا
+                    {t("احتساب السعر تلقائيًا")}
                   </button>
                 </div>
 
                 <div className="offer-editor__limits-grid">
                   <div className="offer-editor__field">
-                    <label>إجمالي مرات الاستخدام</label>
+                    <label>{t("إجمالي مرات الاستخدام")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={form.usageLimit}
                       onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
                     />
-                    <small>ضع 0 لعدم تحديد حد إجمالي.</small>
+                    <small>{t("ضع 0 لعدم تحديد حد إجمالي.")}</small>
                   </div>
                   <div className="offer-editor__field">
-                    <label>الحد لكل عميلة</label>
+                    <label>{t("الحد لكل عميلة")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={form.perClientLimit}
                       onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
                     />
-                    <small>ضع 0 للسماح بدون حد فردي.</small>
+                    <small>{t("ضع 0 للسماح بدون حد فردي.")}</small>
                   </div>
                   <div className="offer-editor__field">
-                    <label>الحد الأدنى للطلب</label>
+                    <label>{t("الحد الأدنى للطلب")}</label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2575,11 +2577,11 @@ const DashboardOffers: React.FC = () => {
                         value={form.minOrder}
                         onChange={(e) => setForm((prev) => ({ ...prev, minOrder: Number(e.target.value) }))}
                       />
-                      <span>ريال</span>
+                      <span>{t("ريال")}</span>
                     </div>
                   </div>
                   <div className="offer-editor__field">
-                    <label>الحد الأعلى للخصم</label>
+                    <label>{t("الحد الأعلى للخصم")}</label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2587,7 +2589,7 @@ const DashboardOffers: React.FC = () => {
                         value={form.maxDiscount}
                         onChange={(e) => setForm((prev) => ({ ...prev, maxDiscount: Number(e.target.value) }))}
                       />
-                      <span>ريال</span>
+                      <span>{t("ريال")}</span>
                     </div>
                   </div>
                 </div>
@@ -2597,36 +2599,36 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">03</span>
                   <div>
-                    <h3>الفترة وحالة النشر</h3>
-                    <p>تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.</p>
+                    <h3>{t("الفترة وحالة النشر")}</h3>
+                    <p>{t("تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.")}</p>
                   </div>
                 </div>
 
                 <div className="offer-editor__grid">
                   <div className="offer-editor__field">
-                    <label>تاريخ البداية</label>
+                    <label>{t("تاريخ البداية")}</label>
                     <DashboardDatePickerV2
                       value={form.startDate}
                       onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
                     />
                   </div>
                   <div className="offer-editor__field">
-                    <label>تاريخ النهاية</label>
+                    <label>{t("تاريخ النهاية")}</label>
                     <DashboardDatePickerV2
                       value={form.endDate}
                       onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
                     />
                   </div>
                   <div className="offer-editor__field">
-                    <label>حالة النشر</label>
+                    <label>{t("حالة النشر")}</label>
                     <DashboardSelectV2
-                      options={OFFER_STATUS_OPTIONS}
+                      options={OFFER_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                       value={form.status}
                       onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
                     />
                   </div>
                   <div className="offer-editor__status-card">
-                    <span>الحالة الفعلية حسب التاريخ</span>
+                    <span>{t("الحالة الفعلية حسب التاريخ")}</span>
                     <strong>{offerEditorComputed.dateStatus}</strong>
                   </div>
                 </div>
@@ -2639,10 +2641,10 @@ const DashboardOffers: React.FC = () => {
                       onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
                     />
                     <span>
-                      <strong>تفعيل العرض</strong>
-                      <small>يسمح للنظام بتطبيق الخصم خلال فترة العرض.</small>
+                      <strong>{t("تفعيل العرض")}</strong>
+                      <small>{t("يسمح للنظام بتطبيق الخصم خلال فترة العرض.")}</small>
                     </span>
-                    <i>{form.active ? "مفعّل" : "موقوف"}</i>
+                    <i>{form.active ? t("مفعّل") : t("موقوف")}</i>
                   </label>
 
                   <label className={`offer-editor__toggle-card ${form.published ? "is-on" : ""}`}>
@@ -2652,10 +2654,10 @@ const DashboardOffers: React.FC = () => {
                       onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
                     />
                     <span>
-                      <strong>النشر للعميلات</strong>
-                      <small>إظهار العرض في تطبيق العميلة وصفحات العروض.</small>
+                      <strong>{t("النشر للعميلات")}</strong>
+                      <small>{t("إظهار العرض في تطبيق العميلة وصفحات العروض.")}</small>
                     </span>
-                    <i>{form.published ? "منشور" : "مخفي"}</i>
+                    <i>{form.published ? t("منشور") : t("مخفي")}</i>
                   </label>
                 </div>
               </section>
@@ -2664,8 +2666,8 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">04</span>
                   <div>
-                    <h3>الجمهور وزر الإجراء</h3>
-                    <p>حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.</p>
+                    <h3>{t("الجمهور وزر الإجراء")}</h3>
+                    <p>{t("حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.")}</p>
                   </div>
                 </div>
 
@@ -2675,46 +2677,46 @@ const DashboardOffers: React.FC = () => {
                     className={form.targetScope === "all" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, targetScope: "all", targetClientIdsText: "" }))}
                   >
-                    <strong>جميع العميلات</strong>
-                    <span>عرض عام متاح لكل الحسابات المؤهلة.</span>
+                    <strong>{t("جميع العميلات")}</strong>
+                    <span>{t("عرض عام متاح لكل الحسابات المؤهلة.")}</span>
                   </button>
                   <button
                     type="button"
                     className={form.targetScope === "specific" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, targetScope: "specific" }))}
                   >
-                    <strong>عميلات محددات</strong>
-                    <span>استهداف قائمة معرفات أو حسابات بعينها.</span>
+                    <strong>{t("عميلات محددات")}</strong>
+                    <span>{t("استهداف قائمة معرفات أو حسابات بعينها.")}</span>
                   </button>
                 </div>
 
                 {form.targetScope === "specific" && (
                   <div className="offer-editor__field offer-editor__field--spaced">
-                    <label>معرفات العميلات المستهدفات <em>مطلوب للنطاق المحدد</em></label>
+                    <label>{t("معرفات العميلات المستهدفات")} <em>{t("مطلوب للنطاق المحدد")}</em></label>
                     <textarea
                       rows={3}
                       value={form.targetClientIdsText}
                       onChange={(e) => setForm((prev) => ({ ...prev, targetClientIdsText: e.target.value }))}
-                      placeholder="clientId أو Firebase UID، مفصولة بفواصل أو أسطر"
+                      placeholder={t("clientId أو Firebase UID، مفصولة بفواصل أو أسطر")}
                     />
                   </div>
                 )}
 
                 <div className="offer-editor__grid offer-editor__grid--action">
                   <div className="offer-editor__field">
-                    <label>نص زر الإجراء</label>
+                    <label>{t("نص زر الإجراء")}</label>
                     <input
                       value={form.ctaLabel}
                       onChange={(e) => setForm((prev) => ({ ...prev, ctaLabel: e.target.value }))}
-                      placeholder="احجزي الآن"
+                      placeholder={t("احجزي الآن")}
                     />
                   </div>
                   <div className="offer-editor__field">
-                    <label>رابط الإجراء</label>
+                    <label>{t("رابط الإجراء")}</label>
                     <input
                       value={form.ctaUrl}
                       onChange={(e) => setForm((prev) => ({ ...prev, ctaUrl: e.target.value }))}
-                      placeholder="/booking أو رابط داخلي"
+                      placeholder={t("/booking أو رابط داخلي")}
                     />
                   </div>
                 </div>
@@ -2724,8 +2726,8 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">05</span>
                   <div>
-                    <h3>نطاق تطبيق العرض</h3>
-                    <p>حدد ما إذا كان الخصم عامًا أو مرتبطًا بخدمات أو تصنيفات محددة.</p>
+                    <h3>{t("نطاق تطبيق العرض")}</h3>
+                    <p>{t("حدد ما إذا كان الخصم عامًا أو مرتبطًا بخدمات أو تصنيفات محددة.")}</p>
                   </div>
                 </div>
 
@@ -2735,24 +2737,24 @@ const DashboardOffers: React.FC = () => {
                     className={form.appliesTo === "all" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, appliesTo: "all", serviceIds: [], categoryIds: [], sequenceSteps: [] }))}
                   >
-                    <strong>كل الخدمات</strong>
-                    <span>يطبق العرض على كامل كتالوج الصالون.</span>
+                    <strong>{t("كل الخدمات")}</strong>
+                    <span>{t("يطبق العرض على كامل كتالوج الصالون.")}</span>
                   </button>
                   <button
                     type="button"
                     className={form.appliesTo === "services" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, appliesTo: "services", categoryIds: [] }))}
                   >
-                    <strong>خدمات محددة</strong>
-                    <span>{form.serviceIds.length} خدمة محددة حاليًا.</span>
+                    <strong>{t("خدمات محددة")}</strong>
+                    <span>{form.serviceIds.length} {t("خدمة")} {language === "en" ? "currently selected" : "محددة حاليًا."}</span>
                   </button>
                   <button
                     type="button"
                     className={form.appliesTo === "categories" ? "is-active" : ""}
                     onClick={() => setForm((prev) => ({ ...prev, appliesTo: "categories", serviceIds: [], sequenceSteps: [] }))}
                   >
-                    <strong>تصنيفات محددة</strong>
-                    <span>{form.categoryIds.length} تصنيف محدد حاليًا.</span>
+                    <strong>{t("تصنيفات محددة")}</strong>
+                    <span>{form.categoryIds.length} {language === "en" ? "categories currently selected." : "تصنيف محدد حاليًا."}</span>
                   </button>
                 </div>
 
@@ -2760,30 +2762,30 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__scope-panel">
                     <div className="offer-editor__service-toolbar">
                       <div>
-                        <strong>اختيار الخدمات</strong>
-                        <span>{form.serviceIds.length} من {servicesFlat.length} خدمة</span>
+                        <strong>{t("اختيار الخدمات")}</strong>
+                        <span>{form.serviceIds.length} {t("من أصل")} {servicesFlat.length} {t("خدمة")}</span>
                       </div>
                       <div className="offer-editor__toolbar-actions">
                         <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={selectAllVisibleOfferServices}>
-                          تحديد الظاهر
+                          {t("تحديد الظاهر")}
                         </button>
                         <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={clearVisibleOfferServices}>
-                          إلغاء الظاهر
+                          {t("إلغاء الظاهر")}
                         </button>
                         <button
                           type="button"
                           className="dash-pill dash-pill-outline dash-pill-sm"
                           onClick={() => setServicesPickerOpen((current) => !current)}
                         >
-                          {servicesPickerOpen ? "إخفاء القائمة" : "عرض القائمة"}
+                          {servicesPickerOpen ? t("إخفاء القائمة") : t("عرض القائمة")}
                         </button>
                       </div>
                     </div>
 
                     {form.serviceIds.length > 0 && (
                       <div className="offer-editor__selected-summary">
-                        <span>الخدمات المختارة</span>
-                        <strong>{selectedOfferServices.map((service) => service.name).join("، ") || `${form.serviceIds.length} خدمة`}</strong>
+                        <span>{t("الخدمات المختارة")}</span>
+                        <strong>{selectedOfferServices.map((service) => service.name).join(language === "en" ? ", " : "، ") || `${form.serviceIds.length} ${t("خدمة")}`}</strong>
                       </div>
                     )}
 
@@ -2794,19 +2796,19 @@ const DashboardOffers: React.FC = () => {
                           <input
                             value={serviceSearch}
                             onChange={(e) => setServiceSearch(e.target.value)}
-                            placeholder="ابحث باسم الخدمة أو القسم أو السعر..."
+                            placeholder={t("ابحث باسم الخدمة أو القسم أو السعر...")}
                           />
                         </div>
 
                         <div className="offer-editor__service-groups">
                           {servicesGrouped.length === 0 ? (
-                            <div className="offer-editor__empty">لا توجد خدمات مطابقة للبحث.</div>
+                            <div className="offer-editor__empty">{t("لا توجد خدمات مطابقة للبحث.")}</div>
                           ) : (
                             servicesGrouped.map(([groupName, list]) => (
                               <div key={groupName} className="offer-editor__service-group">
                                 <div className="offer-editor__service-group-head">
                                   <strong>{groupName}</strong>
-                                  <span>{list.length} خدمة</span>
+                                  <span>{list.length} {t("خدمة")}</span>
                                 </div>
                                 <div className="offer-editor__service-list">
                                   {list.map((service) => {
@@ -2819,7 +2821,7 @@ const DashboardOffers: React.FC = () => {
                                           <strong>{service.name}</strong>
                                           <small>{service.sectionTitle} · {service.category}</small>
                                         </span>
-                                        <span className="offer-editor__service-price">{service.basePrice.toFixed(2)} ريال</span>
+                                        <span className="offer-editor__service-price">{service.basePrice.toFixed(2)} {t("ريال")}</span>
                                       </label>
                                     );
                                   })}
@@ -2839,10 +2841,10 @@ const DashboardOffers: React.FC = () => {
                           onClick={() => setSequenceEditorOpen((current) => !current)}
                         >
                           <span>
-                            <strong>إعداد تسلسل الخدمات</strong>
-                            <small>اختياري للحجوزات التي تعتمد ترتيبًا وفواصل زمنية.</small>
+                            <strong>{t("إعداد تسلسل الخدمات")}</strong>
+                            <small>{t("اختياري للحجوزات التي تعتمد ترتيبًا وفواصل زمنية.")}</small>
                           </span>
-                          <b>{sequenceEditorOpen ? "إخفاء" : "فتح"}</b>
+                          <b>{sequenceEditorOpen ? t("إخفاء") : t("فتح")}</b>
                         </button>
 
                         {sequenceEditorOpen && (
@@ -2850,11 +2852,11 @@ const DashboardOffers: React.FC = () => {
                             <table className="offer-editor__sequence-table">
                               <thead>
                                 <tr>
-                                  <th>الترتيب</th>
-                                  <th>الخدمة</th>
-                                  <th>الفاصل بعد الخدمة</th>
-                                  <th>اسم بديل</th>
-                                  <th>تحريك</th>
+                                  <th>{t("الترتيب")}</th>
+                                  <th>{t("الخدمة")}</th>
+                                  <th>{t("الفاصل بعد الخدمة")}</th>
+                                  <th>{t("اسم بديل")}</th>
+                                  <th>{t("تحريك")}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -2871,13 +2873,13 @@ const DashboardOffers: React.FC = () => {
                                             value={Math.max(0, Number(step.gapAfterMin || 0))}
                                             onChange={(e) => updateSequenceStepGap(step.serviceId, Number(e.target.value || 0))}
                                           />
-                                          <span>دقيقة</span>
+                                          <span>{t("دقيقة")}</span>
                                         </div>
                                       </td>
                                       <td>
                                         <input
                                           value={String(step.titleSnapshot || "")}
-                                          placeholder={service?.name || "اسم اختياري"}
+                                          placeholder={service?.name || t("اسم اختياري")}
                                           onChange={(e) => updateSequenceStepTitle(step.serviceId, e.target.value)}
                                         />
                                       </td>
@@ -2903,8 +2905,8 @@ const DashboardOffers: React.FC = () => {
                   <div className="offer-editor__scope-panel">
                     <div className="offer-editor__category-head">
                       <div>
-                        <strong>اختيار التصنيفات</strong>
-                        <span>{form.categoryIds.length} من {offerCategories.length} تصنيف</span>
+                        <strong>{t("اختيار التصنيفات")}</strong>
+                        <span>{form.categoryIds.length} {t("من أصل")} {offerCategories.length} {language === "en" ? "categories" : "تصنيف"}</span>
                       </div>
                       <div className="offer-editor__toolbar-actions">
                         <button
@@ -2912,14 +2914,14 @@ const DashboardOffers: React.FC = () => {
                           className="dash-pill dash-pill-outline dash-pill-sm"
                           onClick={() => setForm((prev) => ({ ...prev, categoryIds: offerCategories.map((category) => category.id) }))}
                         >
-                          تحديد الكل
+                          {t("تحديد الكل")}
                         </button>
                         <button
                           type="button"
                           className="dash-pill dash-pill-outline dash-pill-sm"
                           onClick={() => setForm((prev) => ({ ...prev, categoryIds: [] }))}
                         >
-                          إلغاء الكل
+                          {t("إلغاء الكل")}
                         </button>
                       </div>
                     </div>
@@ -2936,7 +2938,7 @@ const DashboardOffers: React.FC = () => {
                           >
                             <span className="offer-editor__category-check"><FontAwesomeIcon icon={faCheck} /></span>
                             <strong>{category.name}</strong>
-                            <small>{category.servicesCount} خدمة</small>
+                            <small>{category.servicesCount} {t("خدمة")}</small>
                           </button>
                         );
                       })}
@@ -2949,8 +2951,8 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">06</span>
                   <div>
-                    <h3>صورة العرض</h3>
-                    <p>ارفع صورة واضحة ومتناسقة مع هوية الصالون؛ الحد الأعلى {MAX_IMAGE_MB}MB.</p>
+                    <h3>{t("صورة العرض")}</h3>
+                    <p>{t("ارفع صورة واضحة ومتناسقة مع هوية الصالون؛ الحد الأعلى")} {MAX_IMAGE_MB}MB.</p>
                   </div>
                 </div>
 
@@ -2958,20 +2960,20 @@ const DashboardOffers: React.FC = () => {
                   <label className={`offer-editor__upload ${form.imageUrl ? "has-image" : ""}`}>
                     <input type="file" accept="image/*" onChange={(e) => onPickImage(e.target.files?.[0] || null)} />
                     {form.imageUrl ? (
-                      <img src={form.imageUrl} alt="معاينة صورة العرض" />
+                      <img src={form.imageUrl} alt={t("معاينة صورة العرض")} />
                     ) : (
                       <span className="offer-editor__upload-placeholder">
                         <FontAwesomeIcon icon={faImage} />
-                        <strong>اختيار صورة العرض</strong>
-                        <small>PNG أو JPG أو WEBP</small>
+                        <strong>{t("اختيار صورة العرض")}</strong>
+                        <small>{t("PNG أو JPG أو WEBP")}</small>
                       </span>
                     )}
                   </label>
 
                   <div className="offer-editor__media-copy">
-                    <span>الملف الحالي</span>
-                    <strong>{pickedImageName || (form.imageUrl ? "صورة محفوظة" : "لم يتم اختيار صورة")}</strong>
-                    <p>يفضل استخدام صورة أفقية واضحة بدون نصوص صغيرة لضمان ظهور جيد في الجوال.</p>
+                    <span>{t("الملف الحالي")}</span>
+                    <strong>{pickedImageName === "__existing__" ? t("تم اختيار صورة") : pickedImageName || (form.imageUrl ? t("صورة محفوظة") : t("لم يتم اختيار صورة"))}</strong>
+                    <p>{t("يفضل استخدام صورة أفقية واضحة بدون نصوص صغيرة لضمان ظهور جيد في الجوال.")}</p>
                     {form.imageUrl && (
                       <button
                         className="dash-pill dash-pill-danger"
@@ -2981,7 +2983,7 @@ const DashboardOffers: React.FC = () => {
                           setForm((prev) => ({ ...prev, imageUrl: "" }));
                         }}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> إزالة الصورة
+                        <FontAwesomeIcon icon={faTrash} /> {t("إزالة الصورة")}
                       </button>
                     )}
                   </div>
@@ -2993,43 +2995,43 @@ const DashboardOffers: React.FC = () => {
               <div className="offer-editor__preview-card">
                 <div className="offer-editor__preview-media">
                   {form.imageUrl ? (
-                    <img src={form.imageUrl} alt="معاينة العرض" />
+                    <img src={form.imageUrl} alt={t("معاينة العرض")} />
                   ) : (
                     <div className="offer-editor__preview-empty"><FontAwesomeIcon icon={faImage} /></div>
                   )}
                   <div className="offer-editor__preview-badges">
-                    <span>{form.published ? "منشور" : "مخفي"}</span>
+                    <span>{form.published ? t("منشور") : t("مخفي")}</span>
                     <span>{offerEditorComputed.dateStatus}</span>
                   </div>
                 </div>
 
                 <div className="offer-editor__preview-body">
-                  <span className="offer-editor__preview-label">معاينة العرض</span>
-                  <h3>{form.title.trim() || "عنوان العرض"}</h3>
-                  <p>{form.description.trim() || "سيظهر وصف العرض هنا للعميلة."}</p>
+                  <span className="offer-editor__preview-label">{t("معاينة العرض")}</span>
+                  <h3>{form.title.trim() || t("عنوان العرض")}</h3>
+                  <p>{form.description.trim() || t("سيظهر وصف العرض هنا للعميلة.")}</p>
 
                   <div className="offer-editor__discount-box">
                     <strong>
                       {Number(form.value || 0).toFixed(form.discountType === "percent" ? 0 : 2)}
-                      {form.discountType === "percent" ? "%" : " ريال"}
+                      {form.discountType === "percent" ? "%" : ` ${t("ريال")}`}
                     </strong>
-                    <span>قيمة الخصم</span>
+                    <span>{t("قيمة الخصم")}</span>
                   </div>
 
                   {(offerEditorComputed.priceBefore > 0 || offerEditorComputed.priceAfter > 0) && (
                     <div className="offer-editor__preview-prices">
-                      <span>{offerEditorComputed.priceBefore.toFixed(2)} ريال</span>
-                      <strong>{offerEditorComputed.priceAfter.toFixed(2)} ريال</strong>
+                      <span>{offerEditorComputed.priceBefore.toFixed(2)} {t("ريال")}</span>
+                      <strong>{offerEditorComputed.priceAfter.toFixed(2)} {t("ريال")}</strong>
                     </div>
                   )}
 
                   <dl className="offer-editor__preview-details">
-                    <div><dt>الكود</dt><dd>{form.code || "—"}</dd></div>
-                    <div><dt>الفترة</dt><dd>{form.startDate || "مفتوحة"} — {form.endDate || "مفتوحة"}</dd></div>
-                    <div><dt>النطاق</dt><dd>{form.appliesTo === "all" ? "كل الخدمات" : form.appliesTo === "services" ? `${form.serviceIds.length} خدمة` : `${form.categoryIds.length} تصنيف`}</dd></div>
-                    <div><dt>الجمهور</dt><dd>{form.targetScope === "all" ? "جميع العميلات" : "عميلات محددات"}</dd></div>
-                    <div><dt>الاستخدام</dt><dd>{form.usageLimit > 0 ? `${form.usageLimit} مرة` : "غير محدود"}</dd></div>
-                    <div><dt>لكل عميلة</dt><dd>{form.perClientLimit > 0 ? `${form.perClientLimit} مرة` : "غير محدود"}</dd></div>
+                    <div><dt>{t("الكود")}</dt><dd>{form.code || "—"}</dd></div>
+                    <div><dt>{t("الفترة")}</dt><dd>{form.startDate || t("مفتوحة")} — {form.endDate || t("مفتوحة")}</dd></div>
+                    <div><dt>{t("النطاق")}</dt><dd>{form.appliesTo === "all" ? t("كل الخدمات") : form.appliesTo === "services" ? `${form.serviceIds.length} ${t("خدمة")}` : language === "en" ? `${form.categoryIds.length} categories` : `${form.categoryIds.length} تصنيف`}</dd></div>
+                    <div><dt>{t("الجمهور")}</dt><dd>{form.targetScope === "all" ? t("جميع العميلات") : t("عميلات محددات")}</dd></div>
+                    <div><dt>{t("الاستخدام")}</dt><dd>{form.usageLimit > 0 ? (language === "en" ? `${form.usageLimit} times` : `${form.usageLimit} مرة`) : t("غير محدود")}</dd></div>
+                    <div><dt>{t("لكل عميلة")}</dt><dd>{form.perClientLimit > 0 ? (language === "en" ? `${form.perClientLimit} times` : `${form.perClientLimit} مرة`) : t("غير محدود")}</dd></div>
                   </dl>
 
                   <button type="button" className="offer-editor__preview-cta">
@@ -3041,8 +3043,8 @@ const DashboardOffers: React.FC = () => {
               <div className={`offer-editor__readiness ${offerEditorChecks.isReady ? "is-ready" : ""}`}>
                 <div className="offer-editor__readiness-head">
                   <div>
-                    <span>جاهزية العرض</span>
-                    <strong>{offerEditorChecks.isReady ? "جاهز للحفظ" : "يحتاج مراجعة"}</strong>
+                    <span>{t("جاهزية العرض")}</span>
+                    <strong>{offerEditorChecks.isReady ? t("جاهز للحفظ") : t("يحتاج مراجعة")}</strong>
                   </div>
                   <b>{offerEditorChecks.readyCount}/{offerEditorChecks.items.length}</b>
                 </div>
@@ -3066,17 +3068,17 @@ const DashboardOffers: React.FC = () => {
               </div>
 
               <div className="offer-editor__aside-summary">
-                <span>قيمة الخدمات المحددة</span>
-                <strong>{offerEditorComputed.serviceValue.toFixed(2)} ريال</strong>
-                <small>قيمة إرشادية محسوبة من أسعار الخدمات المختارة.</small>
+                <span>{t("قيمة الخدمات المحددة")}</span>
+                <strong>{offerEditorComputed.serviceValue.toFixed(2)} {t("ريال")}</strong>
+                <small>{t("قيمة إرشادية محسوبة من أسعار الخدمات المختارة.")}</small>
               </div>
 
               <div className="offer-editor__aside-actions">
                 <button className="dash-pill dash-pill-primary" type="button" onClick={save}>
-                  <FontAwesomeIcon icon={faCheck} /> حفظ العرض
+                  <FontAwesomeIcon icon={faCheck} /> {t("حفظ العرض")}
                 </button>
                 <button className="dash-pill dash-pill-outline" type="button" onClick={close}>
-                  إلغاء
+                  {t("إلغاء")}
                 </button>
               </div>
             </aside>
