@@ -762,7 +762,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
         className="bk2-session-v2-modal"
         footer={detailsPackage ? (
           <div className="bk2-session-v2-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>{t("إلغاء")}</button>
             <button type="submit" form="bk2-package-details-form" className="dsv2-btn dsv2-btn--primary" disabled={detailsSaving}>
               {detailsSaving ? t("جاري الحفظ...") : t("حفظ بيانات الباقة")}
             </button>
@@ -809,7 +809,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
         className="bk2-session-v2-modal bk2-session-v2-modal--grant"
         footer={(
           <div className="bk2-session-v2-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setGrantOpen(false)} disabled={grantSaving}>إلغاء</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setGrantOpen(false)} disabled={grantSaving}>{t("إلغاء")}</button>
             <button type="submit" form="bk2-grant-session-form" className="dsv2-btn dsv2-btn--primary" disabled={grantSaving || !catalog.length}>
               {grantSaving ? t("جاري الإضافة...") : t("حفظ وإضافة الجلسة")}
             </button>
@@ -888,7 +888,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
             </label>
 
             <div className="bk2-session-v2-field">
-              <span>تاريخ الانتهاء</span>
+              <span>{t("تاريخ الانتهاء")}</span>
               <DashboardDatePickerV2
                 value={grantForm.expiresAt}
                 onChange={(value) =>
