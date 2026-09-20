@@ -980,11 +980,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return Boolean(row?.staffId && row?.time && staffStillBookable && !conflictKeys.has(key));
   });
 
-  const canOpenStep = (target: Step) => {
-    if (target === 1) return true;
-    if (target === 2) return Boolean(selectedClient);
-    if (target === 3) return Boolean(selectedClient && cart.length);
-    return Boolean(selectedClient && cart.length && allScheduled);
+  const isStepComplete = (target: Step) => {
+    if (target === 1) return Boolean(selectedClient);
+    if (target === 2) return cart.length > 0;
+    if (target === 3) return allScheduled;
+    return createdBookingIds.length > 0;
   };
 
   const finalTotal = halalasToSar(discountResult.totalHalalas);
@@ -1405,10 +1405,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             {steps.map((item, index) => {
               const Icon = item.icon;
               const active = step === item.id;
-              const completed = step > item.id;
-              const enabled = canOpenStep(item.id);
+              const completed = isStepComplete(item.id);
               return (
-                <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} disabled={!enabled} aria-current={active ? "step" : undefined} onClick={() => { if (enabled) setStep(item.id); }}>
+                <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} aria-current={active ? "step" : undefined} onClick={() => setStep(item.id)}>
                   <span className="bk2-step-number">{completed ? "✓" : item.id}</span>
                   <span className="bk2-step-icon"><Icon /></span>
                   <span><strong>{t(item.title)}</strong><small>{t(item.subtitle)}</small></span>
