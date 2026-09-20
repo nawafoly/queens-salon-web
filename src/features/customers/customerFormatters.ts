@@ -1,4 +1,5 @@
 import type { CustomerSource } from "./customerTypes";
+import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 
 export const UNNAMED_CUSTOMER_LABEL = "عميلة بدون اسم";
 export const EMPTY_VALUE_LABEL = "—";
@@ -157,16 +158,16 @@ export function getCustomerInitials(value: unknown): string {
   return `${words[0]?.slice(0, 1) || ""}${words.length > 1 ? words.at(-1)?.slice(0, 1) || "" : ""}`;
 }
 
-export function formatCustomerLastVisit(dateValue: unknown, timeValue?: unknown): string {
+export function formatCustomerLastVisit(dateValue: unknown, timeValue?: unknown, language: DashboardLanguage = "ar"): string {
   const date = cleanText(dateValue);
   const time = cleanText(timeValue);
-  if (!date) return "لا توجد زيارة";
+  if (!date) return clientsText(language, "لا توجد زيارة");
 
   const isoTime = /^\d{1,2}:\d{2}$/.test(time) ? `${time}:00` : "00:00:00";
   const parsed = new Date(`${date}T${isoTime}`);
   if (Number.isNaN(parsed.getTime())) return [date, time].filter(Boolean).join(" · ");
 
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -174,31 +175,31 @@ export function formatCustomerLastVisit(dateValue: unknown, timeValue?: unknown)
   }).format(parsed);
 }
 
-export function formatCustomerCreatedAt(value: unknown): string {
+export function formatCustomerCreatedAt(value: unknown, language: DashboardLanguage = "ar"): string {
   const raw = cleanText(value);
   if (!raw) return EMPTY_VALUE_LABEL;
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", {
     day: "numeric",
     month: "short",
     year: "numeric",
   }).format(parsed);
 }
 
-export function formatCustomerCount(value: number, fractionDigits = 0): string {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
+export function formatCustomerCount(value: number, fractionDigits = 0, language: DashboardLanguage = "ar"): string {
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-export function getCustomerStatusLabel(status: unknown): string {
+export function getCustomerStatusLabel(status: unknown, language: DashboardLanguage = "ar"): string {
   const value = cleanText(status).toLowerCase();
-  if (!value || value === "active") return "نشطة";
-  if (["inactive", "disabled"].includes(value)) return "غير نشطة";
-  if (["blocked", "suspended"].includes(value)) return "موقوفة";
-  return cleanText(status) || "غير محددة";
+  if (!value || value === "active") return clientsText(language, "نشطة");
+  if (["inactive", "disabled"].includes(value)) return clientsText(language, "غير نشطة");
+  if (["blocked", "suspended"].includes(value)) return clientsText(language, "موقوفة");
+  return cleanText(status) || clientsText(language, "غير محددة");
 }
 
 export function isCustomerActive(status: unknown): boolean {
@@ -206,16 +207,16 @@ export function isCustomerActive(status: unknown): boolean {
   return !value || value === "active";
 }
 
-export function getCustomerSourceLabel(source: CustomerSource): string {
-  if (source === "combined") return "ملف موحّد وحجوزات";
-  if (source === "client-record") return "ملف العميلة";
-  return "سجل الحجوزات";
+export function getCustomerSourceLabel(source: CustomerSource, language: DashboardLanguage = "ar"): string {
+  if (source === "combined") return clientsText(language, "ملف موحّد وحجوزات");
+  if (source === "client-record") return clientsText(language, "ملف العميلة");
+  return clientsText(language, "سجل الحجوزات");
 }
 
-export function getCustomerSourceDescription(source: CustomerSource): string {
-  if (source === "combined") return "بيانات العميلة موجودة في السجل الموحد ومرتبطة بحجوزات";
-  if (source === "client-record") return "ملف عميلة محفوظ في Core D1 ولا توجد له حجوزات حتى الآن";
-  return "العميلة ظاهرة من سجل الحجوزات ولم يرتبط بها ملف Core موحد بعد";
+export function getCustomerSourceDescription(source: CustomerSource, language: DashboardLanguage = "ar"): string {
+  if (source === "combined") return clientsText(language, "بيانات العميلة موجودة في السجل الموحد ومرتبطة بحجوزات");
+  if (source === "client-record") return clientsText(language, "ملف عميلة محفوظ في Core D1 ولا توجد له حجوزات حتى الآن");
+  return clientsText(language, "العميلة ظاهرة من سجل الحجوزات ولم يرتبط بها ملف Core موحد بعد");
 }
 
 export function buildCustomerWhatsAppHref(nameValue: unknown, phoneValue: unknown): string {
