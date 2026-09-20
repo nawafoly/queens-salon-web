@@ -58,6 +58,7 @@ class FakeD1 {
       "payroll_periods",
       "payroll_entries",
       "payroll_carryover_adjustments",
+      "payroll_historical_settlements",
       "salary_advances",
       "salary_advance_installments",
       "employee_recurring_deductions",
@@ -695,6 +696,17 @@ class FakeD1 {
           target_payroll_entry_id: row.target_payroll_entry_id ?? null,
           target_payroll_month: row.target_payroll_month ?? null,
         }));
+    }
+    if (normalized.startsWith("SELECT id FROM payroll_historical_settlements WHERE salon_id = ? AND source_payroll_entry_id = ? AND status = 'recorded'")) {
+      const [salonId, sourcePayrollEntryId] = params;
+      return this.rows("payroll_historical_settlements")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.source_payroll_entry_id === sourcePayrollEntryId &&
+          row.status === "recorded"
+        )
+        .slice(0, 1)
+        .map((row) => ({ id: row.id }));
     }
     if (normalized.startsWith("SELECT id, firebase_uid, name, email, phone_normalized, avatar_file_id, status FROM employee_profiles WHERE salon_id = ?")) {
       const [salonId] = params;
@@ -2873,6 +2885,16 @@ test("core absence endpoint stores canonical employee id and filters by employee
     email: null,
     phone_normalized: null,
     status: "active",
+    created_at: "2026-07-01T00:00:00.000Z",
+    updated_at: "2026-07-01T00:00:00.000Z",
+  });
+  fake.seed("employee_employment", {
+    id: "employment-1002",
+    salon_id: "main",
+    employee_id: "1002",
+    employment_status: "active",
+    start_date: "2026-07-01",
+    end_date: null,
     created_at: "2026-07-01T00:00:00.000Z",
     updated_at: "2026-07-01T00:00:00.000Z",
   });
