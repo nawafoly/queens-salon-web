@@ -34,6 +34,7 @@ import {
   countMonthlyExpensesMissingNotesCore,
 } from "../services/CoreExpenseService";
 import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
+import { expensesText, type DashboardLanguage } from "../helpers/dashboardExpensesLanguage";
 import {
   DashboardConfirmV2,
   DashboardDatePickerV2,
@@ -54,23 +55,23 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function money(n: number) {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 2 }).format(n);
+function money(n: number, language: DashboardLanguage = "ar") {
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 }).format(n);
 }
 
 
-function firebaseMsg(e: any) {
+function firebaseMsg(e: any, language: DashboardLanguage = "ar") {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions")) {
-    return "⚠️ لا توجد صلاحيات كافية. تأكد من صلاحيات Core D1 وتسجيل الدخول.";
+    return expensesText(language, "⚠️ لا توجد صلاحيات كافية. تأكد من صلاحيات Core D1 وتسجيل الدخول.");
   }
   if (msg.includes("not-found")) {
-    return "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.";
+    return expensesText(language, "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.");
   }
   if (msg.includes("requires an index")) {
-    return "⚠️ الاستعلام يحتاج Index.";
+    return expensesText(language, "⚠️ الاستعلام يحتاج Index.");
   }
-  return "تعذر تنفيذ العملية. راجع Console لمعرفة السبب.";
+  return expensesText(language, "تعذر تنفيذ العملية. راجع Console لمعرفة السبب.");
 }
 
 // ✅ LocalStorage Expenses (Migration)
@@ -136,12 +137,15 @@ const GREGORIAN_MONTHS_AR = [
   "ديسمبر",
 ] as const;
 
-function formatMonthKeyLabel(monthKey: string): string {
+function formatMonthKeyLabel(monthKey: string, language: DashboardLanguage = "ar"): string {
   const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
   if (!match) return String(monthKey || "").trim();
   const year = Number(match[1]);
   const month = Number(match[2]);
   if (!Number.isFinite(year) || month < 1 || month > 12) return monthKey;
+  if (language === "en") {
+    return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  }
   return `${GREGORIAN_MONTHS_AR[month - 1]} ${year}`;
 }
 
@@ -196,11 +200,20 @@ function extractStaffNameFromExpenseTitle(title: string): string {
   return "";
 }
 
-function expenseTypeLabel(e: Expense): string {
+function expenseTypeLabel(e: Expense, language: DashboardLanguage = "ar"): string {
   const kind = payrollKindFromExpense(e);
-  if (kind === "salary") return "راتب";
-  if (kind === "overtime") return "أوفر تايم";
-  return "تشغيلي";
+  if (kind === "salary") return expensesText(language, "راتب");
+  if (kind === "overtime") return expensesText(language, "أوفر تايم");
+  return expensesText(language, "تشغيلي");
+}
+
+function expenseDisplayTitle(e: Expense, language: DashboardLanguage = "ar"): string {
+  const title = String(e.title || "").trim();
+  if (language === "ar" || !title) return title;
+  const kind = payrollKindFromExpense(e);
+  if (kind === "salary") return title.replace(/^راتب\s*/, `${expensesText(language, "راتب")} `);
+  if (kind === "overtime") return title.replace(/^أوفر تايم\s*/, `${expensesText(language, "أوفر تايم")} `);
+  return title;
 }
 
 function expenseEmployeeLabel(e: Expense): string {
@@ -211,33 +224,33 @@ function expenseEmployeeLabel(e: Expense): string {
   return parsed || "-";
 }
 
-function expenseSourceLabel(e: Expense): string {
+function expenseSourceLabel(e: Expense, language: DashboardLanguage = "ar"): string {
   const kind = payrollKindFromExpense(e);
-  if (kind === "salary" || kind === "overtime") return "رواتب";
+  if (kind === "salary" || kind === "overtime") return expensesText(language, "رواتب");
   const category = String(e.category || "").trim();
-  return category || "تشغيل";
+  return category ? expensesText(language, category) : expensesText(language, "تشغيل");
 }
 
-function paymentMethodLabel(value: unknown): string {
+function paymentMethodLabel(value: unknown, language: DashboardLanguage = "ar"): string {
   const raw = String(value || "").trim();
   const key = raw.toLowerCase();
-  if (key === "cash" || raw.includes("كاش") || raw.includes("نقد")) return "كاش";
-  if (key === "card" || key === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return "شبكة";
-  if (key === "transfer" || raw.includes("تحويل")) return "تحويل";
-  if (key === "mixed" || raw.includes("مختلط")) return "مختلط";
-  return raw || "غير محدد";
+  if (key === "cash" || raw.includes("كاش") || raw.includes("نقد")) return expensesText(language, "كاش");
+  if (key === "card" || key === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return expensesText(language, "شبكة");
+  if (key === "transfer" || raw.includes("تحويل")) return expensesText(language, "تحويل");
+  if (key === "mixed" || raw.includes("مختلط")) return expensesText(language, "مختلط");
+  return raw || expensesText(language, "غير محدد");
 }
 
 function paymentMethodTone(value: unknown): "cash" | "card" | "transfer" | "other" {
-  const label = paymentMethodLabel(value);
-  if (label === "كاش") return "cash";
-  if (label === "شبكة") return "card";
-  if (label === "تحويل") return "transfer";
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "cash" || raw.includes("كاش") || raw.includes("نقد")) return "cash";
+  if (raw === "card" || raw === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return "card";
+  if (raw === "transfer" || raw.includes("تحويل")) return "transfer";
   return "other";
 }
 
-function formatSar(value: unknown): string {
-  return `${money(Number(value || 0))} ر.س`;
+function formatSar(value: unknown, language: DashboardLanguage = "ar"): string {
+  return `${money(Number(value || 0), language)} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function formatDateDisplay(value: unknown): string {
@@ -246,7 +259,8 @@ function formatDateDisplay(value: unknown): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : raw || "—";
 }
 
-const DashboardExpenses: React.FC = () => {
+const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const t = (text: string) => expensesText(language, text);
   const { hasPermission } = usePermissions();
   const [authReady, setAuthReady] = useState(false);
   const allowed = hasPermission("expenses.view");
