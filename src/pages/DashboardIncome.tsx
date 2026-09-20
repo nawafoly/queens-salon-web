@@ -1314,9 +1314,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       <DashboardModalV2
         open={addOpen}
         onClose={() => { if (!loading) setAddOpen(false); }}
-        title="إضافة حركة إيراد"
-        description="سجّل بيانات الحركة المالية، ثم احفظها لتظهر في المؤشرات والتقارير."
-        eyebrow="الإيرادات"
+        title={t("إضافة حركة إيراد")}
+        description={t("سجّل بيانات الحركة المالية، ثم احفظها لتظهر في المؤشرات والتقارير.")}
+        eyebrow={t("الإيرادات")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
@@ -1324,29 +1324,29 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         footer={
           <>
             <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addIncome()} disabled={loading}>
-              {loading ? "جارٍ الحفظ..." : "حفظ الحركة"}
+              {loading ? t("جارٍ الحفظ...") : t("حفظ الحركة")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>
-              إلغاء
+              {t("إلغاء")}
             </button>
           </>
         }
       >
         <div className="income-v2-modal-grid">
-          <DashboardFieldV2 id="income-v2-add-date" label="التاريخ" required>
+          <DashboardFieldV2 id="income-v2-add-date" label={t("التاريخ")} required>
             <DashboardDatePickerV2 id="income-v2-add-date" value={date} onChange={setDate} required clearable={false} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="income-v2-add-amount" label="المبلغ (ر.س)" required>
+          <DashboardFieldV2 id="income-v2-add-amount" label={t("المبلغ (ر.س)")} required>
             <DashboardNumberInputV2 id="income-v2-add-amount" className="dsv2-input" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="income-v2-add-method" label="طريقة السداد" required>
-            <DashboardSelectV2 id="income-v2-add-method" options={INCOME_METHOD_OPTIONS} value={method} onChange={(value) => setMethod(value as PaymentMethod)} />
+          <DashboardFieldV2 id="income-v2-add-method" label={t("طريقة السداد")} required>
+            <DashboardSelectV2 id="income-v2-add-method" options={INCOME_METHOD_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} value={method} onChange={(value) => setMethod(value as PaymentMethod)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="income-v2-add-source" label="المصدر" required>
-            <input id="income-v2-add-source" className="dsv2-input" type="text" placeholder="مثال: بيع منتج أو تعديل يدوي" value={source} onChange={(event) => setSource(event.target.value)} />
+          <DashboardFieldV2 id="income-v2-add-source" label={t("المصدر")} required>
+            <input id="income-v2-add-source" className="dsv2-input" type="text" placeholder={t("مثال: بيع منتج أو تعديل يدوي")} value={source} onChange={(event) => setSource(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="income-v2-add-note" label="السبب أو المرجع" required className="income-v2-field--wide">
-            <textarea id="income-v2-add-note" className="dsv2-textarea" placeholder="اكتب سبب الحركة أو مرجعها" value={note} onChange={(event) => setNote(event.target.value)} />
+          <DashboardFieldV2 id="income-v2-add-note" label={t("السبب أو المرجع")} required className="income-v2-field--wide">
+            <textarea id="income-v2-add-note" className="dsv2-textarea" placeholder={t("اكتب سبب الحركة أو مرجعها")} value={note} onChange={(event) => setNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
       </DashboardModalV2>
@@ -1354,9 +1354,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       <DashboardModalV2
         open={editOpen && Boolean(editTarget)}
         onClose={closeEditIncomeModal}
-        title={editCanAdjustPayment ? "تعديل الدفع للحجز" : "تعديل مبلغ الإيراد"}
-        description="يتطلب تعديل الحركات المالية إدخال الرقم السري المعتمد."
-        eyebrow="تعديل آمن"
+        title={editCanAdjustPayment ? t("تعديل الدفع للحجز") : t("تعديل مبلغ الإيراد")}
+        description={t("يتطلب تعديل الحركات المالية إدخال الرقم السري المعتمد.")}
+        eyebrow={t("تعديل آمن")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
@@ -1364,34 +1364,34 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         footer={
           <>
             <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void saveEditedIncome()} disabled={loading}>
-              {loading ? "جارٍ الحفظ..." : "حفظ التعديل"}
+              {loading ? t("جارٍ الحفظ...") : t("حفظ التعديل")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={closeEditIncomeModal} disabled={loading}>
-              إلغاء
+              {t("إلغاء")}
             </button>
           </>
         }
       >
         {editCanAdjustPayment ? (
           <div className="income-v2-booking-hint">
-            <span>الحجز: {editBookingMeta?.bookingRef || editLinkedBookingId || "-"}</span>
-            <span>العميلة: {editBookingMeta?.clientName || "-"}</span>
+            <span>{t("الحجز")}: {editBookingMeta?.bookingRef || editLinkedBookingId || "-"}</span>
+            <span>{t("العميلة")}: {editBookingMeta?.clientName || "-"}</span>
           </div>
         ) : null}
         <div className="income-v2-modal-grid">
-          <DashboardFieldV2 id="income-v2-edit-pin" label="الرقم السري" required className="income-v2-field--wide">
-            <input id="income-v2-edit-pin" name="income_edit_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder="أدخل الرقم السري" value={editPin} onChange={(event) => setEditPin(event.target.value)} disabled={loading} />
+          <DashboardFieldV2 id="income-v2-edit-pin" label={t("الرقم السري")} required className="income-v2-field--wide">
+            <input id="income-v2-edit-pin" name="income_edit_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder={t("أدخل الرقم السري")} value={editPin} onChange={(event) => setEditPin(event.target.value)} disabled={loading} />
           </DashboardFieldV2>
           {editCanAdjustPayment ? (
             <>
-              <DashboardFieldV2 id="income-v2-edit-total" label="إجمالي الحجز (ر.س)" required>
+              <DashboardFieldV2 id="income-v2-edit-total" label={t("إجمالي الحجز (ر.س)")} required>
                 <DashboardNumberInputV2 id="income-v2-edit-total" className="dsv2-input" min="0" step="0.01" value={editBookingTotal} onChange={(event) => setEditBookingTotal(event.target.value)} disabled={loading} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="income-v2-edit-payment-type" label="نوع الدفع" required>
-                <DashboardSelectV2 id="income-v2-edit-payment-type" options={BOOKING_PAYMENT_TYPE_OPTIONS} value={editPaymentType} onChange={(value) => setEditPaymentType(value as BookingPaymentType)} disabled={loading} />
+              <DashboardFieldV2 id="income-v2-edit-payment-type" label={t("نوع الدفع")} required>
+                <DashboardSelectV2 id="income-v2-edit-payment-type" options={BOOKING_PAYMENT_TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} value={editPaymentType} onChange={(value) => setEditPaymentType(value as BookingPaymentType)} disabled={loading} />
               </DashboardFieldV2>
               {editPaymentType === "partial" ? (
-                <DashboardFieldV2 id="income-v2-edit-paid" label="المبلغ المدفوع (ر.س)" required>
+                <DashboardFieldV2 id="income-v2-edit-paid" label={t("المبلغ المدفوع (ر.س)")} required>
                   <DashboardNumberInputV2 id="income-v2-edit-paid" className="dsv2-input" min="0" step="0.01" value={editPaidAmount} onChange={(event) => setEditPaidAmount(event.target.value)} disabled={loading} />
                 </DashboardFieldV2>
               ) : null}
@@ -1400,12 +1400,12 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                   const totalValue = round2(Math.max(0, parseMoneyInput(editBookingTotal)));
                   const paidRaw = editPaymentType === "full" ? totalValue : Math.max(0, parseMoneyInput(editPaidAmount));
                   const paidValue = round2(Math.min(totalValue, paidRaw));
-                  return `المدفوع ${formatSar(paidValue)} — المتبقي ${formatSar(Math.max(0, totalValue - paidValue))}`;
+                  return `${t("المدفوع")} ${formatSar(paidValue, language)} — ${t("المتبقي")} ${formatSar(Math.max(0, totalValue - paidValue), language)}`;
                 })()}
               </div>
             </>
           ) : (
-            <DashboardFieldV2 id="income-v2-edit-amount" label="المبلغ الجديد (ر.س)" required>
+            <DashboardFieldV2 id="income-v2-edit-amount" label={t("المبلغ الجديد (ر.س)")} required>
               <DashboardNumberInputV2 id="income-v2-edit-amount" className="dsv2-input" min="0" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} disabled={loading} />
             </DashboardFieldV2>
           )}
@@ -1416,9 +1416,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       <DashboardModalV2
         open={deleteOpen && Boolean(deleteTarget)}
         onClose={closeDeleteIncomeModal}
-        title="حذف سجل الإيراد؟"
-        description="لن يظهر السجل في المؤشرات أو التقارير بعد الحذف."
-        eyebrow="إجراء حساس"
+        title={t("حذف سجل الإيراد؟")}
+        description={t("لن يظهر السجل في المؤشرات أو التقارير بعد الحذف.")}
+        eyebrow={t("إجراء حساس")}
         size="sm"
         tone="danger"
         role="alertdialog"
@@ -1427,23 +1427,23 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         footer={
           <>
             <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={() => void confirmDeleteIncome()} disabled={loading}>
-              {loading ? "جارٍ الحذف..." : "تأكيد الحذف"}
+              {loading ? t("جارٍ الحذف...") : t("تأكيد الحذف")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={closeDeleteIncomeModal} disabled={loading}>
-              تراجع
+              {t("تراجع")}
             </button>
           </>
         }
       >
         {deleteTarget ? (
           <div className="income-v2-delete-summary">
-            <strong>{formatSar(Number(deleteTarget.amount || 0))}</strong>
+            <strong>{formatSar(Number(deleteTarget.amount || 0), language)}</strong>
             <span>{deleteTarget.date || "-"}</span>
-            <span>{sourceLabel(deleteTarget.source || "")}</span>
+            <span>{sourceLabel(deleteTarget.source || "", language)}</span>
           </div>
         ) : null}
-        <DashboardFieldV2 id="income-v2-delete-pin" label="الرقم السري للحذف" required>
-          <input id="income-v2-delete-pin" name="income_delete_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder="أدخل الرقم السري" value={deletePin} onChange={(event) => setDeletePin(event.target.value)} disabled={loading} />
+        <DashboardFieldV2 id="income-v2-delete-pin" label={t("الرقم السري للحذف")} required>
+          <input id="income-v2-delete-pin" name="income_delete_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder={t("أدخل الرقم السري")} value={deletePin} onChange={(event) => setDeletePin(event.target.value)} disabled={loading} />
         </DashboardFieldV2>
         {deleteError ? <div className="income-v2-inline-error" role="alert">{deleteError}</div> : null}
       </DashboardModalV2>
@@ -1452,8 +1452,8 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         <DashboardDrawerV2
           open={Boolean(detailsTarget)}
           onClose={() => setDetailsTarget(null)}
-          title="تفاصيل حركة الإيراد"
-          description="عرض سريع للسجل وبيانات الحجز المرتبطة."
+          title={t("تفاصيل حركة الإيراد")}
+          description={t("عرض سريع للسجل وبيانات الحجز المرتبطة.")}
           eyebrow={detailsTarget.id}
           size="md"
           side="end"
@@ -1462,30 +1462,30 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
             <>
               {!isRefundIncomeRow(detailsTarget) ? (
                 <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { const target = detailsTarget; setDetailsTarget(null); openEditIncomeModal(target); }}>
-                  تعديل الحركة
+                  {t("تعديل الحركة")}
                 </button>
               ) : null}
               <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>
-                إغلاق
+                {t("إغلاق")}
               </button>
             </>
           }
         >
           <div className="income-v2-drawer-content">
             <article className={`dsv2-metric-card ${detailsAmount < 0 ? "dsv2-metric-card--danger" : "dsv2-metric-card--success"}`}>
-              <p className="dsv2-metric-card__label">المبلغ المسجل</p>
-              <p className="dsv2-metric-card__value">{formatSar(detailsAmount)}</p>
-              <p className="dsv2-metric-card__meta">{detailsAmount < 0 ? "حركة استرجاع" : "حركة إيراد"}</p>
+              <p className="dsv2-metric-card__label">{t("المبلغ المسجل")}</p>
+              <p className="dsv2-metric-card__value">{formatSar(detailsAmount, language)}</p>
+              <p className="dsv2-metric-card__meta">{detailsAmount < 0 ? t("حركة استرجاع") : t("حركة إيراد")}</p>
             </article>
             <dl className="income-v2-detail-list">
-              <div><dt>التاريخ</dt><dd>{rowEffectiveDate(detailsTarget)}</dd></div>
-              <div><dt>طريقة الدفع</dt><dd>{methodLabel(detailsTarget.method)}</dd></div>
-              <div><dt>العميلة</dt><dd>{resolveDisplayClientName(detailsTarget, detailsBookingMeta)}</dd></div>
-              <div><dt>رقم الحجز</dt><dd>{resolveDisplayBookingRef(detailsTarget, detailsBookingMeta)}</dd></div>
-              <div><dt>المصدر</dt><dd>{sourceLabel(detailsTarget.source || "")}</dd></div>
-              <div><dt>الملاحظة</dt><dd>{resolveDisplayNoteText(detailsTarget, detailsNote)}</dd></div>
-              <div><dt>نوع الدفع</dt><dd>{detailsBookingMeta?.paymentType === "partial" ? "عربون" : detailsBookingMeta ? "دفع كامل" : "غير مرتبط بحجز"}</dd></div>
-              <div><dt>المتبقي</dt><dd>{formatSar(detailsBookingMeta?.remainingAmount || 0)}</dd></div>
+              <div><dt>{t("التاريخ")}</dt><dd>{rowEffectiveDate(detailsTarget)}</dd></div>
+              <div><dt>{t("طريقة الدفع")}</dt><dd>{methodLabel(detailsTarget.method, language)}</dd></div>
+              <div><dt>{t("العميلة")}</dt><dd>{resolveDisplayClientName(detailsTarget, detailsBookingMeta, language)}</dd></div>
+              <div><dt>{t("رقم الحجز")}</dt><dd>{resolveDisplayBookingRef(detailsTarget, detailsBookingMeta, language)}</dd></div>
+              <div><dt>{t("المصدر")}</dt><dd>{sourceLabel(detailsTarget.source || "", language)}</dd></div>
+              <div><dt>{t("الملاحظة")}</dt><dd>{resolveDisplayNoteText(detailsTarget, detailsNote, language)}</dd></div>
+              <div><dt>{t("نوع الدفع")}</dt><dd>{detailsBookingMeta?.paymentType === "partial" ? t("عربون") : detailsBookingMeta ? t("دفع كامل") : t("غير مرتبط بحجز")}</dd></div>
+              <div><dt>{t("المتبقي")}</dt><dd>{formatSar(detailsBookingMeta?.remainingAmount || 0, language)}</dd></div>
             </dl>
           </div>
         </DashboardDrawerV2>
@@ -1494,10 +1494,10 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   );
 }
 
-export default function DashboardIncome() {
+export default function DashboardIncome({ language = "ar" }: { language?: DashboardLanguage }) {
   return (
     <DashboardToastProviderV2 position="top-start">
-      <DashboardIncomeContent />
+      <DashboardIncomeContent language={language} />
     </DashboardToastProviderV2>
   );
 }
