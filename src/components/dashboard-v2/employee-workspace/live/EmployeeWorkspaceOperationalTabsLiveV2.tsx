@@ -1116,7 +1116,17 @@ export function EmployeeAttendanceTabLiveV2({
           action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
         />
       ) : viewState === "empty" ? (
-        <WorkspaceCardV2 title="لا توجد سجلات حضور" description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد.">
+        <WorkspaceCardV2
+          title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
+          description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد."
+          actions={
+            <div className="dsv2-cluster">
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+            </div>
+          }
+          className="dsv2-ew-attendance-calendar-card"
+        >
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
             <strong>لا توجد سجلات لهذا الشهر</strong>
             <span>ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.</span>
