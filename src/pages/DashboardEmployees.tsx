@@ -3050,10 +3050,12 @@ function DashboardEmployeesContent() {
             authUser.displayName ||
             authUser.email,
           hrNote:
-            policy.affectsPayroll
-              ? "إجازة أخرى معتمدة — تؤثر على الراتب حسب سياسة الإدارة"
-              : leaveType === "other"
-                ? "إجازة أخرى معتمدة — سياسة إدارية مخصصة"
+            leaveType === "other"
+              ? policy.affectsPayroll
+                ? "إجازة أخرى معتمدة — تؤثر على الراتب حسب سياسة الإدارة"
+                : "إجازة أخرى معتمدة — سياسة إدارية مخصصة"
+              : policy.affectsPayroll
+                ? "إجازة بدون راتب — تخصم حسب معدل اليوم"
                 : "إجازة مدفوعة معتمدة",
           ...(leaveType === "other"
             ? {
