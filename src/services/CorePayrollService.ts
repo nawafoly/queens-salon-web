@@ -743,6 +743,113 @@ export function isEmployeePayrollEligible(employee: CoreHrEmployee) {
   return employeeBaseSalary(employee) > 0;
 }
 
+function payrollSetupMissingForEmployee(employee: CoreHrEmployee): PayrollSetupMissingKey[] {
+  const employment = employmentOf(employee);
+  const missing = new Set<PayrollSetupMissingKey>();
+
+  if (!text(employee.id || (employee as any).employeeId)) missing.add("employeeId");
+  if (employeeBaseSalary(employee) <= 0) missing.add("baseSalary");
+
+  const attendanceMode = text(
+    employment.attendance_payroll_mode ?? employment.attendancePayrollMode
+  ).toLowerCase() === "exempt"
+    ? "exempt"
+    : "required";
+
+  if (attendanceMode !== "exempt") {
+    const workDays = positiveNumber(
+      employment.expected_work_days ?? employment.expectedWorkDays
+    );
+    const monthlyHours = positiveNumber(
+      employment.expected_work_hours ?? employment.expectedWorkHours
+    );
+    const dailyHours = positiveNumber(
+      employment.daily_scheduled_hours ?? employment.dailyScheduledHours
+    );
+    if (workDays <= 0) missing.add("workDays");
+    if (monthlyHours <= 0 && dailyHours <= 0) missing.add("monthlyHours");
+  }
+
+  return Array.from(missing);
+}
+
+function payrollPreviewUnavailableEntry(
+  employee: CoreHrEmployee,
+  payrollMonth: string,
+  existing: PayrollEntryView | undefined,
+  error: unknown
+): PayrollEntryView {
+  const employment = employmentOf(employee);
+  const employeeId = text(employee.id || (employee as any).employeeId);
+  const baseSalaryHalalas = employeeBaseSalary(employee);
+  const allowancesHalalas =
+    numberValue(employment.housing_allowance_halalas ?? employment.housingAllowanceHalalas) +
+    numberValue(employment.transportation_allowance_halalas ?? employment.transportationAllowanceHalalas) +
+    numberValue(employment.other_allowances_halalas ?? employment.otherAllowancesHalalas);
+  const attendanceMode = text(
+    employment.attendance_payroll_mode ?? employment.attendancePayrollMode
+  ).toLowerCase() === "exempt"
+    ? "exempt"
+    : "required";
+  const missing = payrollSetupMissingForEmployee(employee);
+  const note = text((error as any)?.message) || "core_payroll:preview_unavailable";
+
+  return {
+    id: existing?.id,
+    periodId: existing?.periodId || null,
+    saved: Boolean(existing?.saved),
+    employeeId,
+    employeeName: text(employee.name) || employeeId,
+    jobTitle: text(employment.job_title ?? employment.jobTitle ?? employment.title) || null,
+    payrollMonth,
+    baseSalaryHalalas,
+    allowancesHalalas,
+    laborPolicyVersion: "",
+    fixedActualWageHalalas: baseSalaryHalalas + allowancesHalalas,
+    overtimeActualHourlyHalalas: 0,
+    overtimeBasicHourlyHalalas: 0,
+    workDays: numberValue(employment.expected_work_days ?? employment.expectedWorkDays),
+    monthlyHours: numberValue(employment.expected_work_hours ?? employment.expectedWorkHours),
+    dailyScheduledHours: numberValue(employment.daily_scheduled_hours ?? employment.dailyScheduledHours),
+    dailyRateHalalas: 0,
+    hourlyRateHalalas: 0,
+    attendanceSummary: emptyAttendanceSummary(
+      attendanceMode === "exempt" ? "not_ready" : "unlinked",
+      [note]
+    ),
+    detectedExtraHours: 0,
+    overtimeEnabled: false,
+    financialOvertimeHours: 0,
+    overtimeMultiplier: numberValue(employment.overtime_multiplier ?? employment.overtimeMultiplier, 1.5),
+    overtimeValueHalalas: 0,
+    additions: existing?.additions || [],
+    deductions: existing?.deductions || [],
+    manualAdditionsHalalas: 0,
+    manualDeductionsHalalas: 0,
+    advancesHalalas: 0,
+    insuranceDeductionHalalas: 0,
+    employerGosiContributionHalalas: 0,
+    gosiSnapshot: null,
+    absenceDeductionHalalas: 0,
+    missingHoursDeductionHalalas: 0,
+    grossSalaryHalalas: baseSalaryHalalas + allowancesHalalas,
+    totalAdditionsHalalas: allowancesHalalas,
+    totalDeductionsHalalas: 0,
+    netSalaryHalalas: baseSalaryHalalas + allowancesHalalas,
+    finalSalaryHalalas: baseSalaryHalalas + allowancesHalalas,
+    payrollSetupComplete: false,
+    payrollSetupMissing: missing.length ? missing : ["baseSalary"],
+    monthlyHoursSource: attendanceMode === "exempt" ? "not_required_attendance_exempt" : "missing",
+    status: existing?.status || "draft",
+    notes: existing?.notes || note,
+    approvedAt: existing?.approvedAt || null,
+    approvedByUid: existing?.approvedByUid || null,
+    paidAt: existing?.paidAt || null,
+    paidByUid: existing?.paidByUid || null,
+    auditLog: existing?.auditLog || [],
+  };
+}
+
 export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
   const scheduleSnapshot = readJson<Record<string, unknown> | null>(
     row.scheduleSnapshotJson,
@@ -1010,7 +1117,14 @@ export async function generatePayrollEntriesForMonths(input: {
   );
   const payrollEmployees = employees.filter((employee) => {
     if (input.employeeId && employee.id !== input.employeeId) return false;
-    return isEmployeePayrollEligible(employee);
+    const profileStatus = text(employee.status).toLowerCase();
+    const employment = employmentOf(employee);
+    const employmentStatus = text(
+      employment.employment_status ?? employment.employmentStatus
+    ).toLowerCase();
+    if (profileStatus && profileStatus !== "active") return false;
+    if (employmentStatus && employmentStatus !== "active") return false;
+    return true;
   });
 
   const rows: PayrollEntryView[] = [];
@@ -1021,17 +1135,27 @@ export async function generatePayrollEntriesForMonths(input: {
         if (!input.status || existing.status === input.status) rows.push(existing);
         continue;
       }
-      const previewRow = await CoreHrService.previewPayrollEntry({
-        id: existing?.id,
-        periodId: existing?.periodId,
-        employeeId: employee.id,
-        payrollMonth,
-        status: existing?.status || "draft",
-        additions: existing?.additions || [],
-        deductions: existing?.deductions || [],
-        notes: existing?.notes || null,
-      });
-      const preview = normalizePayrollEntry(previewRow);
+      let preview: PayrollEntryView;
+      try {
+        const previewRow = await CoreHrService.previewPayrollEntry({
+          id: existing?.id,
+          periodId: existing?.periodId,
+          employeeId: employee.id,
+          payrollMonth,
+          status: existing?.status || "draft",
+          additions: existing?.additions || [],
+          deductions: existing?.deductions || [],
+          notes: existing?.notes || null,
+        });
+        preview = normalizePayrollEntry(previewRow);
+      } catch (error) {
+        preview = payrollPreviewUnavailableEntry(
+          employee,
+          payrollMonth,
+          existing,
+          error
+        );
+      }
       const normalized: PayrollEntryView = {
         ...preview,
         id: existing?.id,

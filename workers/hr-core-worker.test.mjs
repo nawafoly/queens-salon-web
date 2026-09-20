@@ -3768,6 +3768,138 @@ test('Core employee leave request execution uses canonical leave ledger', async 
   assert.equal(Number(repeatedReversalCount.count), 1);
 });
 
+test('other HR review leave request approves with manager manual policy', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-request-other-leave',
+      name: 'Other Leave Employee',
+      firebaseUid: 'uid-request-other-leave',
+      employment: {
+        startDate: '2025-01-01',
+        baseSalaryHalalas: 450000,
+        leaveBalance: 6,
+      },
+    },
+    actor
+  );
+
+  await seedAnnualLeaveOpeningBalance(db, 'emp-request-other-leave', 6);
+
+  const employeeActor = {
+    uid: 'uid-request-other-leave',
+    employeeId: 'emp-request-other-leave',
+    email: 'other-leave-request@example.com',
+    name: 'Other Leave Employee',
+    role: 'employee',
+  };
+  const adminActor = { ...actor, role: 'admin' };
+  const manualLeavePolicy = {
+    deductFromBalance: true,
+    affectsPayroll: true,
+  };
+
+  let request = await createEmployeeRequest(
+    db,
+    'main',
+    {
+      requestType: 'leave',
+      payload: {
+        leaveType: 'other',
+        startDate: '2026-09-14',
+        endDate: '2026-09-14',
+        durationKind: 'full_day',
+        reason: 'Manual HR policy leave',
+      },
+      idempotencyKey: 'other-hr-review-leave-1',
+    },
+    employeeActor
+  );
+
+  request = await transitionEmployeeRequest(
+    db,
+    'main',
+    request.id,
+    'receive',
+    { version: request.version },
+    adminActor
+  );
+  request = await transitionEmployeeRequest(
+    db,
+    'main',
+    request.id,
+    'start-review',
+    { version: request.version },
+    adminActor
+  );
+
+  await assert.rejects(
+    transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'approve',
+      { version: request.version },
+      adminActor,
+      { manualLeavePolicyAuthorized: true }
+    ),
+    { code: 'core_leave:hr_review_resolution_required' }
+  );
+
+  request = await transitionEmployeeRequest(
+    db,
+    'main',
+    request.id,
+    'approve',
+    {
+      version: request.version,
+      note: 'Approved with manual leave policy',
+      manualLeavePolicy,
+    },
+    adminActor,
+    { manualLeavePolicyAuthorized: true }
+  );
+
+  request = await withFixedRiyadhDate(t, () => transitionEmployeeRequest(
+    db,
+    'main',
+    request.id,
+    'execute',
+    {
+      version: request.version,
+      manual_leave_policy: {
+        deduct_from_balance: true,
+        affects_payroll: true,
+      },
+      entitlementAsOfDate: TEST_ANNUAL_LEAVE_ENTITLEMENT_AS_OF_DATE,
+    },
+    adminActor,
+    { manualLeavePolicyAuthorized: true }
+  ));
+
+  assert.equal(request.status, 'completed');
+
+  const leave = await db.prepare(`
+    SELECT *
+      FROM employee_leaves
+     WHERE salon_id = 'main'
+       AND request_id = ?
+     LIMIT 1
+  `).bind(request.id).first();
+
+  assert.ok(leave);
+  assert.equal(leave.leave_type, 'other_hr_review');
+  assert.equal(leave.status, 'approved');
+  assert.equal(leave.legal_basis, 'HR_MANUAL_POLICY');
+  assert.equal(Number(leave.deduct_from_balance), 1);
+  assert.equal(Number(leave.affects_payroll), 1);
+  assert.ok(leave.balance_adjustment_id);
+});
+
 test('annual leave cash compensation preview is blocked during active service', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());

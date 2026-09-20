@@ -227,7 +227,7 @@ test("other leave uses an explicit manager-authorized manual policy path", () =>
   );
   assert.match(
     employeeRequestGuardSource,
-    /runtime === 'hr_review_block'[\s\S]*?manualLeavePolicyAuthorized === true[\s\S]*?typeof manualPolicy\.deductFromBalance === 'boolean'[\s\S]*?typeof manualPolicy\.affectsPayroll === 'boolean'[\s\S]*?return;/
+    /function normalizeManualLeavePolicy[\s\S]*?manual_leave_policy[\s\S]*?typeof deductFromBalance !== 'boolean'[\s\S]*?runtime === 'hr_review_block'[\s\S]*?manualLeavePolicyAuthorized === true[\s\S]*?manualPolicy !== null[\s\S]*?return;/
   );
   assert.match(
     employeeRequestsSource,

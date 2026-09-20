@@ -741,7 +741,7 @@ export default function DashboardPayroll() {
         loadPayrollMonth({ year: requestedYear, month: requestedMonth }),
       ]);
       const eligibleEmployeeRows = employeeRows.filter(isEmployeePayrollEligible);
-      const excludedEmployeeCount = employeeRows.length - eligibleEmployeeRows.length;
+      const incompleteEmployeeCount = employeeRows.length - eligibleEmployeeRows.length;
       const previewEntries = await generatePayrollEntries({
         year: requestedYear,
         month: requestedMonth,
@@ -751,13 +751,13 @@ export default function DashboardPayroll() {
       const savedCount = previewEntries.filter((entry) => entry.saved).length;
       const previewCount = previewEntries.length - savedCount;
 
-      setEmployees(eligibleEmployeeRows);
+      setEmployees(employeeRows);
       setEntries(previewEntries);
       setMessage(
         previewEntries.length
-          ? `تم تحميل ${previewEntries.length} سجل مسير: ${savedCount} محفوظ و${previewCount} معاينة محسوبة دون حفظ.${excludedEmployeeCount ? ` تم استبعاد ${excludedEmployeeCount} حساب/موظف نشط بلا راتب أساسي من إنشاء المسير.` : ""}`
-          : excludedEmployeeCount
-            ? `لا توجد موظفات مؤهلات لمسير هذا الشهر. تم استبعاد ${excludedEmployeeCount} حساب/موظف نشط بلا راتب أساسي.`
+          ? `تم تحميل ${previewEntries.length} سجل مسير: ${savedCount} محفوظ و${previewCount} معاينة دون حفظ.${incompleteEmployeeCount ? ` ${incompleteEmployeeCount} حساب/موظفة نشطة تحتاج استكمال إعدادات الراتب.` : ""}`
+          : incompleteEmployeeCount
+            ? `تم تحميل الموظفات النشطات، لكن ${incompleteEmployeeCount} حساب/موظفة تحتاج استكمال إعدادات الراتب.`
             : "لا توجد موظفات نشطات مطابقة لهذا الشهر."
       );
     } catch (loadError: any) {

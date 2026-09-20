@@ -824,6 +824,34 @@ function employeeRequestLeavePolicy(payload, manualPolicy = null) {
   };
 }
 
+function normalizeManualLeavePolicy(input = {}) {
+  const manualPolicy =
+    input?.manualLeavePolicy && typeof input.manualLeavePolicy === 'object'
+      ? input.manualLeavePolicy
+      : input?.manual_leave_policy && typeof input.manual_leave_policy === 'object'
+        ? input.manual_leave_policy
+        : null;
+
+  if (!manualPolicy) return null;
+
+  const deductFromBalance =
+    manualPolicy.deductFromBalance ?? manualPolicy.deduct_from_balance;
+  const affectsPayroll =
+    manualPolicy.affectsPayroll ?? manualPolicy.affects_payroll;
+
+  if (
+    typeof deductFromBalance !== 'boolean' ||
+    typeof affectsPayroll !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    deductFromBalance,
+    affectsPayroll,
+  };
+}
+
 
 async function createLeaveEffect(
   db,
@@ -937,11 +965,7 @@ async function createLeaveEffect(
         )
       : fullDays;
 
-  const requestedManualPolicy =
-    input?.manualLeavePolicy &&
-    typeof input.manualLeavePolicy === 'object'
-      ? input.manualLeavePolicy
-      : null;
+  const requestedManualPolicy = normalizeManualLeavePolicy(input);
 
   if (
     requestedManualPolicy &&

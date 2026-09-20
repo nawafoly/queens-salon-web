@@ -34,6 +34,34 @@ function parsePayload(value) {
   }
 }
 
+function normalizeManualLeavePolicy(input = {}) {
+  const manualPolicy =
+    input?.manualLeavePolicy && typeof input.manualLeavePolicy === 'object'
+      ? input.manualLeavePolicy
+      : input?.manual_leave_policy && typeof input.manual_leave_policy === 'object'
+        ? input.manual_leave_policy
+        : null;
+
+  if (!manualPolicy) return null;
+
+  const deductFromBalance =
+    manualPolicy.deductFromBalance ?? manualPolicy.deduct_from_balance;
+  const affectsPayroll =
+    manualPolicy.affectsPayroll ?? manualPolicy.affects_payroll;
+
+  if (
+    typeof deductFromBalance !== 'boolean' ||
+    typeof affectsPayroll !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    deductFromBalance,
+    affectsPayroll,
+  };
+}
+
 function riyadhMonthKey() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Riyadh',
@@ -131,13 +159,10 @@ function assertLeaveRequestDecisionAllowed(
   );
 
   if (runtime === 'hr_review_block') {
-    const manualPolicy = input?.manualLeavePolicy;
+    const manualPolicy = normalizeManualLeavePolicy(input);
     const manualPolicyResolved =
       options.manualLeavePolicyAuthorized === true &&
-      manualPolicy &&
-      typeof manualPolicy === 'object' &&
-      typeof manualPolicy.deductFromBalance === 'boolean' &&
-      typeof manualPolicy.affectsPayroll === 'boolean';
+      manualPolicy !== null;
 
     if (!manualPolicyResolved) {
       throw new AppError(
