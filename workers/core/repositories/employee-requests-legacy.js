@@ -797,7 +797,7 @@ function employeeRequestLeavePolicy(payload, manualPolicy = null) {
 
   if (
     !partial &&
-    leaveType === 'other' &&
+    ['other', 'other_hr_review'].includes(leaveType) &&
     manualPolicy
   ) {
     return {
@@ -954,7 +954,9 @@ async function createLeaveEffect(
   }
 
   const manualPolicy =
-    cleanText(payload.leaveType).toLowerCase() === 'other' &&
+    ['other', 'other_hr_review'].includes(
+      cleanText(payload.leaveType).toLowerCase()
+    ) &&
     requestedManualPolicy &&
     typeof requestedManualPolicy.deductFromBalance === 'boolean' &&
     typeof requestedManualPolicy.affectsPayroll === 'boolean'
