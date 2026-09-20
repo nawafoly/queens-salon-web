@@ -82,6 +82,18 @@ if (!booking.includes('className="bk2-date-picker-v2"')) {
 if (!booking.includes('className="bk2-staff-select-v2"')) {
   errors.push("BookingInternalV2.tsx is missing the isolated V2 staff-select class.");
 }
+if (booking.includes("discountOpen") || booking.includes("setDiscountOpen")) {
+  errors.push("BookingInternalV2.tsx must keep discount options visible without disclosure state.");
+}
+if (booking.includes("bk2-discount-toggle")) {
+  errors.push("BookingInternalV2.tsx must not render the removed discount toggle button.");
+}
+if (!booking.includes('className="bk2-choice-grid five"')) {
+  errors.push("BookingInternalV2.tsx must render the discount choices directly in the payment step.");
+}
+if (!booking.includes('t("إضافة خصم أو كوبون")')) {
+  errors.push("BookingInternalV2.tsx is missing the discount section heading.");
+}
 
 const sessions = readFileSync(packageSessionsPath, "utf8");
 for (const primitive of ["DashboardDrawerV2", "DashboardModalV2", "DashboardSelectV2", "DashboardDatePickerV2"]) {
