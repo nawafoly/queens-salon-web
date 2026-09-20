@@ -2794,7 +2794,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             <DashboardHeader
               theme="dashboard"
               title={dashboardHeaderTitle}
-              subtitle={settings.salonName || "MALIKAT"}
+              subtitle="MALIKAT"
               profileLabel={t("البروفايل")}
               profileAriaLabel={t("فتح الملف الشخصي")}
               className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}
