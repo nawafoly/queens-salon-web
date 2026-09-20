@@ -26,6 +26,18 @@ function fakeShiftDb() {
     async first(sql, params = []) {
       const normalized = String(sql).replace(/\s+/g, " ").trim();
 
+      if (normalized.includes("MAX(has_profile)") && normalized.includes("FROM employee_profiles p")) {
+        return {
+          employee_id: employeeId,
+          has_profile: 1,
+          has_employment: 1,
+          profile_status: "active",
+          employment_status: "active",
+          start_date: "2020-01-01",
+          end_date: null,
+        };
+      }
+
       if (normalized.includes("FROM hr_schedule_exceptions")) {
         const date = String(params[2] || "");
         if (!suspendedWorkDates.has(date)) return null;
