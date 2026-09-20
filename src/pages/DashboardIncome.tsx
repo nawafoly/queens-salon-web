@@ -977,17 +977,17 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
 
   return (
     <>
-      <div className="dsv2-page income-v2-page">
+      <div className="dsv2-page income-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card income-v2-hero">
           <div className="income-v2-hero__content">
-            <span className="dsv2-badge dsv2-badge--gold">الإدارة المالية</span>
-            <h1 className="dsv2-page-title">الإيرادات</h1>
+            <span className="dsv2-badge dsv2-badge--gold">{t("الإدارة المالية")}</span>
+            <h1 className="dsv2-page-title">{t("الإيرادات")}</h1>
             <p className="dsv2-page-subtitle">
-              متابعة وتسجيل الإيرادات اليومية مع توحيد طرق الدفع والتقارير المالية.
+              {t("متابعة وتسجيل الإيرادات اليومية مع توحيد طرق الدفع والتقارير المالية.")}
             </p>
           </div>
 
-          <div className="income-v2-actions" aria-label="إجراءات صفحة الإيرادات">
+          <div className="income-v2-actions" aria-label={t("إجراءات صفحة الإيرادات")}>
             <button
               className="dsv2-btn dsv2-btn--primary"
               type="button"
@@ -995,7 +995,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
               disabled={loading}
             >
               <FontAwesomeIcon icon={faPlus} />
-              إضافة دخل
+              {t("إضافة دخل")}
             </button>
             <button
               className="dsv2-btn dsv2-btn--secondary"
@@ -1004,7 +1004,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
               disabled={loading}
             >
               <FontAwesomeIcon icon={faRotate} />
-              تحديث
+              {t("تحديث")}
             </button>
             <button
               className="dsv2-btn dsv2-btn--secondary"
@@ -1013,7 +1013,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
               disabled={!filtered.length || loading}
             >
               <FontAwesomeIcon icon={faFilePdf} />
-              تحميل PDF
+              {t("تحميل PDF")}
             </button>
             <button
               className="dsv2-btn dsv2-btn--secondary"
@@ -1022,61 +1022,61 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
               disabled={!filtered.length || loading}
             >
               <FontAwesomeIcon icon={faFileExcel} />
-              Excel منسّق
+              {t("Excel منسّق")}
             </button>
           </div>
         </section>
 
-        <section className="income-v2-metrics" aria-label="ملخص الإيرادات">
+        <section className="income-v2-metrics" aria-label={t("ملخص الإيرادات")}>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">إجمالي الإيرادات</p>
-            <p className="dsv2-metric-card__value">{formatSar(total)}</p>
-            <p className="dsv2-metric-card__meta">حسب الفترة المحددة</p>
+            <p className="dsv2-metric-card__label">{t("إجمالي الإيرادات")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(total, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("حسب الفترة المحددة")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--success">
-            <p className="dsv2-metric-card__label">إيرادات الكاش</p>
-            <p className="dsv2-metric-card__value">{formatSar(totalCash)}</p>
-            <p className="dsv2-metric-card__meta">المدفوع نقدًا</p>
+            <p className="dsv2-metric-card__label">{t("إيرادات الكاش")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalCash, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("المدفوع نقدًا")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark">
-            <p className="dsv2-metric-card__label">إيرادات الشبكة</p>
-            <p className="dsv2-metric-card__value">{formatSar(totalCard)}</p>
-            <p className="dsv2-metric-card__meta">مدفوعات البطاقات</p>
+            <p className="dsv2-metric-card__label">{t("إيرادات الشبكة")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalCard, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("مدفوعات البطاقات")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">التحويلات</p>
-            <p className="dsv2-metric-card__value">{formatSar(totalTransfer)}</p>
-            <p className="dsv2-metric-card__meta">التحويلات البنكية</p>
+            <p className="dsv2-metric-card__label">{t("التحويلات")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalTransfer, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("التحويلات البنكية")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark">
-            <p className="dsv2-metric-card__label">دخل آخر</p>
-            <p className="dsv2-metric-card__value">{formatSar(totalOtherIncome)}</p>
-            <p className="dsv2-metric-card__meta">الإيرادات اليدوية والأخرى</p>
+            <p className="dsv2-metric-card__label">{t("دخل آخر")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalOtherIncome, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("الإيرادات اليدوية والأخرى")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--danger">
-            <p className="dsv2-metric-card__label">إجمالي الاسترجاع</p>
-            <p className="dsv2-metric-card__value">{formatSar(totalRefund)}</p>
-            <p className="dsv2-metric-card__meta">الحركات المالية السالبة</p>
+            <p className="dsv2-metric-card__label">{t("إجمالي الاسترجاع")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalRefund, language)}</p>
+            <p className="dsv2-metric-card__meta">{t("الحركات المالية السالبة")}</p>
           </article>
         </section>
 
         <section className="dsv2-card dsv2-card--padded income-v2-filter-card">
           <div className="dsv2-section-head">
             <div>
-              <h2 className="dsv2-section-title">البحث والفلاتر</h2>
+              <h2 className="dsv2-section-title">{t("البحث والفلاتر")}</h2>
               <p className="dsv2-section-caption">
-                تؤثر فترة التاريخ في المؤشرات، بينما يطبق البحث وطريقة الدفع على السجلات المعروضة.
+                {t("تؤثر فترة التاريخ في المؤشرات، بينما يطبق البحث وطريقة الدفع على السجلات المعروضة.")}
               </p>
             </div>
             {hasActiveFilters ? (
               <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={clearFilters}>
-                مسح الفلاتر
+                {t("مسح الفلاتر")}
               </button>
             ) : null}
           </div>
 
           <div className="income-v2-filter-grid">
-            <DashboardFieldV2 id="income-v2-search" label="بحث">
+            <DashboardFieldV2 id="income-v2-search" label={t("بحث")}>
               <div className="income-v2-search-control">
                 <FontAwesomeIcon icon={faSearch} aria-hidden="true" />
                 <input
@@ -1084,7 +1084,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                   name="income-v2-search"
                   className="dsv2-input"
                   type="search"
-                  placeholder="المصدر، الملاحظة، المبلغ، العميلة أو رقم الحجز"
+                  placeholder={t("المصدر، الملاحظة، المبلغ، العميلة أو رقم الحجز")}
                   value={q}
                   onChange={(event) => setQ(event.target.value)}
                   autoComplete="off"
@@ -1093,32 +1093,32 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
               </div>
             </DashboardFieldV2>
 
-            <DashboardFieldV2 id="income-v2-method" label="طريقة الدفع">
+            <DashboardFieldV2 id="income-v2-method" label={t("طريقة الدفع")}>
               <DashboardSelectV2
                 id="income-v2-method"
-                options={INCOME_FILTER_METHOD_OPTIONS}
+                options={INCOME_FILTER_METHOD_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                 value={fMethod}
                 onChange={(value) => setFMethod(value as PaymentMethod | "all")}
               />
             </DashboardFieldV2>
 
-            <DashboardFieldV2 id="income-v2-from" label="من تاريخ">
+            <DashboardFieldV2 id="income-v2-from" label={t("من تاريخ")}>
               <DashboardDatePickerV2
                 id="income-v2-from"
                 value={from}
                 max={to || undefined}
                 onChange={setFrom}
-                placeholder="بداية الفترة"
+                placeholder={t("بداية الفترة")}
               />
             </DashboardFieldV2>
 
-            <DashboardFieldV2 id="income-v2-to" label="إلى تاريخ">
+            <DashboardFieldV2 id="income-v2-to" label={t("إلى تاريخ")}>
               <DashboardDatePickerV2
                 id="income-v2-to"
                 value={to}
                 min={from || undefined}
                 onChange={setTo}
-                placeholder="نهاية الفترة"
+                placeholder={t("نهاية الفترة")}
               />
             </DashboardFieldV2>
           </div>
@@ -1127,31 +1127,31 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         <section className="dsv2-table-card income-v2-table-card">
           <header className="income-v2-table-head">
             <div>
-              <h2 className="dsv2-section-title">سجل الإيرادات</h2>
+              <h2 className="dsv2-section-title">{t("سجل الإيرادات")}</h2>
               <p className="dsv2-section-caption">
-                {filtered.length.toLocaleString("en-US")} سجل معروض من أصل {items.length.toLocaleString("en-US")}.
+                {filtered.length.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} {t("سجل معروض من أصل")} {items.length.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")}.
               </p>
             </div>
             <div className="income-v2-table-head__status">
-              {loading ? <span className="dsv2-badge dsv2-badge--gold">جارٍ التحديث</span> : null}
-              <span className="dsv2-badge dsv2-badge--success">{formatSar(total)}</span>
+              {loading ? <span className="dsv2-badge dsv2-badge--gold">{t("جارٍ التحديث")}</span> : null}
+              <span className="dsv2-badge dsv2-badge--success">{formatSar(total, language)}</span>
             </div>
           </header>
 
           {loadError && !items.length ? (
             <div className="income-v2-state-wrap">
               <DashboardErrorStateV2
-                title="تعذر تحميل الإيرادات"
+                title={t("تعذر تحميل الإيرادات")}
                 description={loadError}
                 action={
                   <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={() => void refresh()}>
-                    إعادة المحاولة
+                    {t("إعادة المحاولة")}
                   </button>
                 }
               />
             </div>
           ) : loading && !items.length ? (
-            <div className="income-v2-loading-table" role="status" aria-label="جارٍ تحميل الإيرادات">
+            <div className="income-v2-loading-table" role="status" aria-label={t("جارٍ تحميل الإيرادات")}>
               <DashboardSkeletonV2 variant="title" width="34%" />
               <DashboardSkeletonV2 variant="text" lines={4} />
               <DashboardSkeletonV2 variant="block" height={150} />
@@ -1159,17 +1159,17 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
           ) : filtered.length === 0 ? (
             <div className="income-v2-state-wrap">
               <DashboardEmptyStateV2
-                title="لا توجد إيرادات مطابقة"
-                description={hasActiveFilters ? "غيّر نطاق البحث أو امسح الفلاتر لعرض بقية السجلات." : "ابدأ بإضافة أول حركة إيراد."}
+                title={t("لا توجد إيرادات مطابقة")}
+                description={hasActiveFilters ? t("غيّر نطاق البحث أو امسح الفلاتر لعرض بقية السجلات.") : t("ابدأ بإضافة أول حركة إيراد.")}
                 tone="gold"
                 action={
                   hasActiveFilters ? (
                     <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={clearFilters}>
-                      مسح الفلاتر
+                      {t("مسح الفلاتر")}
                     </button>
                   ) : (
                     <button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>
-                      إضافة دخل
+                      {t("إضافة دخل")}
                     </button>
                   )
                 }
@@ -1181,27 +1181,27 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                 <table className="dsv2-table income-v2-table">
                   <thead>
                     <tr>
-                      <th>التاريخ</th>
-                      <th>المبلغ</th>
-                      <th>الدفع</th>
-                      <th>العميلة والحجز</th>
-                      <th>المصدر</th>
-                      <th>الملاحظة</th>
-                      <th>ملخص الدفع</th>
-                      <th>الإجراءات</th>
+                      <th>{t("التاريخ")}</th>
+                      <th>{t("المبلغ")}</th>
+                      <th>{t("الدفع")}</th>
+                      <th>{t("العميلة والحجز")}</th>
+                      <th>{t("المصدر")}</th>
+                      <th>{t("الملاحظة")}</th>
+                      <th>{t("ملخص الدفع")}</th>
+                      <th>{t("الإجراءات")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((item) => {
                       const bookingMeta = rowBookingMeta(item);
-                      const paymentRows = buildPaymentSummaryRows(bookingMeta);
+                      const paymentRows = buildPaymentSummaryRows(bookingMeta, language);
                       const amountToShow = rowEffectiveAmount(item);
                       const noteText = formatFinanceNote(item.note);
                       const srcKind = sourceKind(item.source || "");
-                      const displayClientName = resolveDisplayClientName(item, bookingMeta);
-                      const displayBookingRef = resolveDisplayBookingRef(item, bookingMeta);
-                      const displayNoteText = resolveDisplayNoteText(item, noteText);
-                      const fallbackSummary = buildFallbackPaymentSummaryText(item, amountToShow);
+                      const displayClientName = resolveDisplayClientName(item, bookingMeta, language);
+                      const displayBookingRef = resolveDisplayBookingRef(item, bookingMeta, language);
+                      const displayNoteText = resolveDisplayNoteText(item, noteText, language);
+                      const fallbackSummary = buildFallbackPaymentSummaryText(item, amountToShow, language);
                       return (
                         <tr key={item.id}>
                           <td>
@@ -1209,16 +1209,16 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                           </td>
                           <td>
                             <strong className="income-v2-amount" data-negative={amountToShow < 0 ? "true" : "false"}>
-                              {formatSar(amountToShow)}
+                              {formatSar(amountToShow, language)}
                             </strong>
                           </td>
                           <td>
                             <span className="income-v2-method-badge" data-method={item.method}>
-                              {methodLabel(item.method)}
+                              {methodLabel(item.method, language)}
                             </span>
                             {bookingMeta ? (
                               <span className="dsv2-table__secondary">
-                                {bookingMeta.paymentType === "full" ? "دفع كامل" : "عربون"}
+                                {bookingMeta.paymentType === "full" ? t("دفع كامل") : t("عربون")}
                               </span>
                             ) : null}
                           </td>
@@ -1228,7 +1228,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                           </td>
                           <td>
                             <span className="income-v2-source-badge" data-source={srcKind}>
-                              {sourceLabel(item.source || "")}
+                              {sourceLabel(item.source || "", language)}
                             </span>
                           </td>
                           <td className="income-v2-note-cell">{displayNoteText}</td>
@@ -1236,27 +1236,27 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                             <div className="income-v2-payment-summary">
                               {paymentRows.length ? paymentRows.map((row) => (
                                 <span key={`${item.id}-${row.kind}`} data-kind={row.kind}>
-                                  {row.label}: {formatSar(row.value)}
+                                  {row.label}: {formatSar(row.value, language)}
                                 </span>
                               )) : <span data-kind={amountToShow < 0 ? "remaining" : "paid"}>{fallbackSummary}</span>}
                             </div>
                           </td>
                           <td>
                             <div className="income-v2-row-actions">
-                              <button className="dsv2-icon-btn" type="button" title="عرض التفاصيل" onClick={() => setDetailsTarget(item)}>
+                              <button className="dsv2-icon-btn" type="button" title={t("عرض التفاصيل")} onClick={() => setDetailsTarget(item)}>
                                 <FontAwesomeIcon icon={faEye} />
                               </button>
                               {!isRefundIncomeRow(item) ? (
                                 <>
-                                  <button className="dsv2-icon-btn" type="button" title="تعديل" onClick={() => openEditIncomeModal(item)} disabled={loading}>
+                                  <button className="dsv2-icon-btn" type="button" title={t("تعديل")} onClick={() => openEditIncomeModal(item)} disabled={loading}>
                                     <FontAwesomeIcon icon={faPen} />
                                   </button>
-                                  <button className="dsv2-icon-btn income-v2-delete-action" type="button" title="حذف" onClick={() => openDeleteIncomeModal(item)} disabled={loading}>
+                                  <button className="dsv2-icon-btn income-v2-delete-action" type="button" title={t("حذف")} onClick={() => openDeleteIncomeModal(item)} disabled={loading}>
                                     <FontAwesomeIcon icon={faTrash} />
                                   </button>
                                 </>
                               ) : (
-                                <span className="dsv2-badge dsv2-badge--danger">من الحجوزات</span>
+                                <span className="dsv2-badge dsv2-badge--danger">{t("من الحجوزات")}</span>
                               )}
                             </div>
                           </td>
@@ -1277,27 +1277,27 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                       <header>
                         <div>
                           <span>{rowEffectiveDate(item)}</span>
-                          <strong data-negative={amountToShow < 0 ? "true" : "false"}>{formatSar(amountToShow)}</strong>
+                          <strong data-negative={amountToShow < 0 ? "true" : "false"}>{formatSar(amountToShow, language)}</strong>
                         </div>
-                        <span className="income-v2-method-badge" data-method={item.method}>{methodLabel(item.method)}</span>
+                        <span className="income-v2-method-badge" data-method={item.method}>{methodLabel(item.method, language)}</span>
                       </header>
                       <dl>
-                        <div><dt>العميلة</dt><dd>{resolveDisplayClientName(item, bookingMeta)}</dd></div>
-                        <div><dt>الحجز</dt><dd>{resolveDisplayBookingRef(item, bookingMeta)}</dd></div>
-                        <div><dt>المصدر</dt><dd>{sourceLabel(item.source || "")}</dd></div>
-                        <div><dt>الملاحظة</dt><dd>{resolveDisplayNoteText(item, noteText)}</dd></div>
+                        <div><dt>{t("العميلة")}</dt><dd>{resolveDisplayClientName(item, bookingMeta, language)}</dd></div>
+                        <div><dt>{t("الحجز")}</dt><dd>{resolveDisplayBookingRef(item, bookingMeta, language)}</dd></div>
+                        <div><dt>{t("المصدر")}</dt><dd>{sourceLabel(item.source || "", language)}</dd></div>
+                        <div><dt>{t("الملاحظة")}</dt><dd>{resolveDisplayNoteText(item, noteText, language)}</dd></div>
                       </dl>
                       <footer>
                         <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}>
-                          <FontAwesomeIcon icon={faEye} /> عرض
+                          <FontAwesomeIcon icon={faEye} /> {t("عرض")}
                         </button>
                         {!isRefundIncomeRow(item) ? (
                           <>
                             <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => openEditIncomeModal(item)} disabled={loading}>
-                              <FontAwesomeIcon icon={faPen} /> تعديل
+                              <FontAwesomeIcon icon={faPen} /> {t("تعديل")}
                             </button>
                             <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => openDeleteIncomeModal(item)} disabled={loading}>
-                              <FontAwesomeIcon icon={faTrash} /> حذف
+                              <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                             </button>
                           </>
                         ) : null}
