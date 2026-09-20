@@ -25,6 +25,7 @@ import {
 } from "../../helpers/bookingDiscountSnapshot";
 import { getAuth } from "firebase/auth";
 import { formatBookingReference } from "../../helpers/bookingReference";
+import { bookingsText, type DashboardLanguage } from "../../helpers/dashboardBookingsLanguage";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -339,14 +340,14 @@ function staffId(staff: any) {
   return String(staff?.id || staff?.employeeId || staff?.uid || "").trim();
 }
 
-function offerValueLabel(offer: CoreDiscount) {
+function offerValueLabel(offer: CoreDiscount, language: DashboardLanguage = "ar") {
   const type = String((offer as any)?.discountType || (offer as any)?.type || "").trim();
   const value = Number((offer as any)?.value || 0);
   if (type === "percent") return `${value}%`;
-  return `${value.toLocaleString("ar-SA-u-nu-latn")} ر.س`;
+  return `${value.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
-function discountReasonText(reason: string) {
+function discountReasonText(reason: string, language: DashboardLanguage = "ar") {
   const map: Record<string, string> = {
     discount_inactive: "الخصم غير نشط.",
     discount_expired_or_not_started: "الخصم خارج فترة الصلاحية.",
@@ -358,7 +359,7 @@ function discountReasonText(reason: string) {
     discount_percent_over_100: "النسبة لا يمكن أن تتجاوز 100%.",
     discount_zero: "الخصم الناتج يساوي صفر.",
   };
-  return map[reason] || reason || "";
+  return map[reason] ? bookingsText(language, map[reason]) : reason || "";
 }
 
 const steps = [
@@ -368,7 +369,11 @@ const steps = [
   { id: 4 as const, title: "الدفع", subtitle: "المراجعة والدفع", icon: FiCreditCard },
 ];
 
-export default function BookingInternalV2() {
+export default function BookingInternalV2({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => bookingsText(language, text);
+  const locale = language === "en" ? "en-US" : "ar-SA-u-nu-latn";
+  const currency = language === "en" ? "SAR" : "ر.س";
+  const money = (value: number) => `${Number(value || 0).toLocaleString(locale)} ${currency}`;
   const [step, setStep] = useState<Step>(1);
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [query, setQuery] = useState("");
@@ -506,8 +511,8 @@ export default function BookingInternalV2() {
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
-    if (name.length < 2) { setNewClientError("اكتبي اسم العميلة كاملًا."); return; }
-    if (!phone || phone.length !== 10) { setNewClientError("أدخلي رقم جوال سعودي صحيح من 10 أرقام."); return; }
+    if (name.length < 2) { setNewClientError(t("اكتبي اسم العميلة كاملًا.")); return; }
+    if (!phone || phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
 
     setCreatingClient(true);
     setExistingClientChecking(true);
@@ -535,11 +540,11 @@ export default function BookingInternalV2() {
       console.error("[BookingInternalV2] client create/dedup check failed", error);
       const code = String(error?.code || "").toLowerCase();
       if (code === "core_api:offline" || code === "core_api:network_unavailable" || code === "core_api:timeout") {
-        setNewClientError("غير متصل بالإنترنت. لم يتم إنشاء العميلة. أعيدي الاتصال ثم حاولي مرة أخرى.");
+        setNewClientError(t("غير متصل بالإنترنت. لم يتم إنشاء العميلة. أعيدي الاتصال ثم حاولي مرة أخرى."));
       } else if (code === "core_api:write_outcome_unknown") {
-        setNewClientError("انقطع الاتصال أثناء حفظ العميلة. النتيجة غير مؤكدة؛ أعيدي الاتصال وابحثي برقم الجوال قبل إعادة المحاولة.");
+        setNewClientError(t("انقطع الاتصال أثناء حفظ العميلة. النتيجة غير مؤكدة؛ أعيدي الاتصال وابحثي برقم الجوال قبل إعادة المحاولة."));
       } else {
-        setNewClientError("تعذر التحقق من رقم الجوال أو حفظ العميلة. حاولي مرة أخرى.");
+        setNewClientError(t("تعذر التحقق من رقم الجوال أو حفظ العميلة. حاولي مرة أخرى."));
       }
     } finally {
       setExistingClientChecking(false);
@@ -587,7 +592,7 @@ export default function BookingInternalV2() {
     } catch (error) {
       console.error("[BookingInternalV2] client search failed", error);
       setClients([]);
-      setClientMessage("تعذر جلب بيانات العميلات من السيرفر.");
+      setClientMessage(t("تعذر جلب بيانات العميلات من السيرفر."));
     } finally {
       setClientSearching(false);
     }
@@ -636,12 +641,12 @@ export default function BookingInternalV2() {
           .filter((offer) => isCoreOfferActiveNow(offer))
           .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
         setOffers(activeRows);
-        if (!activeRows.length) setOffersMessage("لا توجد عروض نشطة حالياً.");
+        if (!activeRows.length) setOffersMessage(t("لا توجد عروض نشطة حالياً."));
       } catch (error) {
         console.error("[BookingInternalV2] offers load failed", error);
         if (!cancelled) {
           setOffers([]);
-          setOffersMessage("تعذر جلب العروض النشطة.");
+          setOffersMessage(t("تعذر جلب العروض النشطة."));
         }
       } finally {
         if (!cancelled) setOffersLoading(false);
@@ -662,10 +667,10 @@ export default function BookingInternalV2() {
         const safe = Array.isArray(rows) ? (rows as CatalogSection[]) : [];
         setSections(safe);
         setSelectedSectionId((current) => current || String(safe[0]?.id || ""));
-        if (!safe.length) setCatalogMessage("لا توجد أقسام خدمات نشطة.");
+        if (!safe.length) setCatalogMessage(t("لا توجد أقسام خدمات نشطة."));
       } catch (error) {
         console.error("[BookingInternalV2] sections load failed", error);
-        if (!cancelled) setCatalogMessage("تعذر جلب قائمة الخدمات من السيرفر.");
+        if (!cancelled) setCatalogMessage(t("تعذر جلب قائمة الخدمات من السيرفر."));
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
@@ -698,7 +703,7 @@ export default function BookingInternalV2() {
         if (!cancelled) {
           setCategories([]);
           setServices([]);
-          setCatalogMessage("تعذر جلب خدمات هذا القسم.");
+          setCatalogMessage(t("تعذر جلب خدمات هذا القسم."));
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -915,7 +920,7 @@ export default function BookingInternalV2() {
         console.error("[BookingInternalV2] dated Core staff load failed", error);
         if (!cancelled) {
           setEligibleStaffByService({});
-          setScheduleMessage("تعذر جلب توفر الموظفات من Core HR. أعيدي المحاولة.");
+          setScheduleMessage(t("تعذر جلب توفر الموظفات من Core HR. أعيدي المحاولة."));
         }
       } finally {
         if (!cancelled) setStaffLoading(false);
@@ -953,7 +958,7 @@ export default function BookingInternalV2() {
     } catch (error) {
       console.error("[BookingInternalV2] availability load failed", error);
       setAvailableTimes((current) => ({ ...current, [serviceKey]: [] }));
-      setScheduleMessage("تعذر جلب الأوقات المتاحة. حاولي مرة أخرى.");
+      setScheduleMessage(t("تعذر جلب الأوقات المتاحة. حاولي مرة أخرى."));
     } finally {
       setTimesLoading((current) => ({ ...current, [serviceKey]: false }));
     }
@@ -986,7 +991,7 @@ export default function BookingInternalV2() {
     setCouponMessage("");
     setCouponOffer(null);
     if (!code) {
-      setCouponMessage("أدخلي كود الكوبون أولاً.");
+      setCouponMessage(t("أدخلي كود الكوبون أولاً."));
       return;
     }
     setCouponChecking(true);
@@ -994,7 +999,7 @@ export default function BookingInternalV2() {
       const offer = (await CoreOfferService.list({ active: true, code }))
         .find((row) => normalizeDiscountCode(row.code || row.codeKey) === code && isCoreOfferActiveNow(row)) || null;
       if (!offer) {
-        setCouponMessage("الكوبون غير صحيح أو منتهي أو غير نشط.");
+        setCouponMessage(t("الكوبون غير صحيح أو منتهي أو غير نشط."));
         return;
       }
       const preview = buildDiscountSnapshot(discountItems, {
@@ -1010,10 +1015,12 @@ export default function BookingInternalV2() {
       }
       setCouponOffer(offer);
       setDiscountMode("coupon");
-      setCouponMessage(`تم التحقق من الكوبون. الخصم المتوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA-u-nu-latn")} ر.س.`);
+      setCouponMessage(language === "en"
+        ? `Coupon verified. Expected discount ${money(halalasToSar(preview.discountHalalas))}.`
+        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(preview.discountHalalas))}.`);
     } catch (error) {
       console.error("[BookingInternalV2] coupon verify failed", error);
-      setCouponMessage("تعذر التحقق من الكوبون الآن.");
+      setCouponMessage(t("تعذر التحقق من الكوبون الآن."));
     } finally {
       setCouponChecking(false);
     }
@@ -1025,23 +1032,25 @@ export default function BookingInternalV2() {
     setPostSaveWarning("");
     setCreatedBookingIds([]);
     setCreatedBookingReference("");
-    if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
-    if (!settingsReady) { setSubmitError("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى."); return; }
-    if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
-    if (!allScheduled) { setSubmitError("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."); setStep(3); return; }
+    if (!selectedClient) { setSubmitError(t("اختاري العميلة أولًا.")); setStep(1); return; }
+    if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
+    if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
+    if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
     if (discountMode !== "none" && !discountResult.ok) {
       setSubmitError(discountMessage || "الخصم المحدد غير صالح.");
       return;
     }
     if (discountMode === "coupon" && !couponOffer) {
-      setSubmitError("تحققي من الكوبون قبل حفظ الحجز.");
+      setSubmitError(t("تحققي من الكوبون قبل حفظ الحجز."));
       return;
     }
     if (paymentType === "partial" && (effectivePaidAmount <= 0 || effectivePaidAmount >= finalTotal)) {
-      setSubmitError("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز."); return;
+      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز.")); return;
     }
     if (paymentMethod === "mixed" && Math.abs(mixedTotal - effectivePaidAmount) > 0.01) {
-      setSubmitError(`مجموع الدفع المختلط يجب أن يساوي ${effectivePaidAmount.toLocaleString("ar-SA-u-nu-latn")} ر.س.`); return;
+      setSubmitError(language === "en"
+        ? `Mixed payment total must equal ${money(effectivePaidAmount)}.`
+        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`); return;
     }
 
     submittingRef.current = true;
@@ -1084,8 +1093,8 @@ export default function BookingInternalV2() {
           return next;
         });
         await Promise.all(staleSelections.map(({ service, staff }) => loadTimesForService(service, staff)));
-        setScheduleMessage("تم تحديث المواعيد؛ الوقت المختار أصبح محجوزًا أو يتداخل مع حجز آخر. اختاري وقتًا جديدًا.");
-        setSubmitError("الموعد المختار لم يعد متاحًا. تمت إعادتك إلى خطوة الموعد بعد تحديث الأوقات.");
+        setScheduleMessage(t("تم تحديث المواعيد؛ الوقت المختار أصبح محجوزًا أو يتداخل مع حجز آخر. اختاري وقتًا جديدًا."));
+        setSubmitError(t("الموعد المختار لم يعد متاحًا. تمت إعادتك إلى خطوة الموعد بعد تحديث الأوقات."));
         setStep(3);
         return;
       }
@@ -1261,8 +1270,9 @@ export default function BookingInternalV2() {
           } as any);
         } catch (financialError: any) {
           console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
-          setPostSaveWarning(
-            `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
+          setPostSaveWarning(language === "en"
+            ? `Booking ${bookingId} was saved, but payment synchronization could not be completed after automatic retry. Do not recreate the booking; review it on the bookings page and retry collection.`
+            : `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
           );
         }
       }
@@ -1281,19 +1291,21 @@ export default function BookingInternalV2() {
           Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
         ));
         setAvailableTimes({});
-        setScheduleMessage("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة.");
-        setSubmitError("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر.");
+        setScheduleMessage(t("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة."));
+        setSubmitError(t("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر."));
         setStep(3);
       } else if (
         code === "core_api:offline" ||
         code === "core_api:network_unavailable" ||
         code === "core_api:timeout"
       ) {
-        setSubmitError("غير متصل بالإنترنت. لم يتم إنشاء الحجز. أعيدي الاتصال ثم حاولي مرة أخرى.");
+        setSubmitError(t("غير متصل بالإنترنت. لم يتم إنشاء الحجز. أعيدي الاتصال ثم حاولي مرة أخرى."));
       } else if (code === "core_api:write_outcome_unknown") {
-        setSubmitError("انقطع الاتصال أثناء حفظ الحجز. نتيجة العملية غير مؤكدة؛ لا تعيدي الحفظ. أعيدي الاتصال وافتحي صفحة الحجوزات للتحقق أولًا.");
+        setSubmitError(t("انقطع الاتصال أثناء حفظ الحجز. نتيجة العملية غير مؤكدة؛ لا تعيدي الحفظ. أعيدي الاتصال وافتحي صفحة الحجوزات للتحقق أولًا."));
       } else {
-        setSubmitError(`تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
+        setSubmitError(language === "en"
+          ? `Could not save booking: ${message || "Unknown error"}`
+          : `تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
       }
     } finally {
       submittingRef.current = false;
@@ -1333,7 +1345,7 @@ export default function BookingInternalV2() {
       discountSnapshot,
     });
     if (!rows.length) {
-      setSubmitError("لا توجد بيانات فاتورة جاهزة للطباعة.");
+      setSubmitError(t("لا توجد بيانات فاتورة جاهزة للطباعة."));
       return;
     }
 
@@ -1347,7 +1359,7 @@ export default function BookingInternalV2() {
       "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
     );
     if (!popup || popup === window) {
-      setSubmitError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم حاولي مرة أخرى.");
+      setSubmitError(t("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم حاولي مرة أخرى."));
       return;
     }
     popup.focus();
