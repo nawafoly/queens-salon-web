@@ -2921,7 +2921,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 />
 
                 <Route path="tv-queue" element={<PermissionRoute permission="bookings.queue_tv.view"><DashboardQueueTv /></PermissionRoute>} />
-                <Route path="day-audit" element={<PermissionRoute permission="bookings.day_audit.manage"><DashboardDayAudit /></PermissionRoute>} />
+                <Route path="day-audit" element={<PermissionRoute permission="bookings.day_audit.manage"><DashboardDayAudit language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="clients" element={<PermissionRoute permission="clients.view"><DashboardClients currentRole={userInfo.role} language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="partners" element={<PermissionRoute permission="partners.manage"><DashboardPartners /></PermissionRoute>} />
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty /></PermissionRoute>} />

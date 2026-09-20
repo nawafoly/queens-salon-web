@@ -15,6 +15,7 @@ import { DashboardDatePickerV2, DashboardSkeletonV2 } from "../components/dashbo
 import { CoreBookingService } from "../services/CoreBookingService";
 import { listIncomeForDateCore } from "../services/CoreIncomeService";
 import "../styles/dashboard-v2/dashboard-v2.css";
+import { dayAuditText, type DashboardLanguage } from "../helpers/dashboardDayAuditLanguage";
 
 const LOCK_KEY = "dashboard_day_audit_lock_v1";
 
@@ -58,15 +59,19 @@ type DayAuditPrintPayload = {
   printedAtLabel: string;
 };
 
-const MONEY_FORMATTER = new Intl.NumberFormat("ar-SA-u-nu-latn", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+function moneyFormatter(language: DashboardLanguage) {
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+function dateTimeFormatter(language: DashboardLanguage) {
+  return new Intl.DateTimeFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
 
 function todayISO(d = new Date()): string {
   const y = d.getFullYear();
@@ -80,14 +85,15 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatAmount(v: unknown): string {
-  return `${MONEY_FORMATTER.format(toNum(v))} ر.س`;
+function formatAmount(v: unknown, language: DashboardLanguage): string {
+  const currency = language === "en" ? "SAR" : "ر.س";
+  return `${moneyFormatter(language).format(toNum(v))} ${currency}`;
 }
 
-function formatLockedAt(ms: unknown): string {
+function formatLockedAt(ms: unknown, language: DashboardLanguage): string {
   const n = Number(ms);
   if (!Number.isFinite(n) || n <= 0) return "—";
-  return DATE_TIME_FORMATTER.format(new Date(n));
+  return dateTimeFormatter(language).format(new Date(n));
 }
 
 function escapeHtml(value: unknown): string {
@@ -343,7 +349,8 @@ async function fetchAuditRevenueSnapshot(dateKey: string): Promise<AuditRevenueS
   };
 }
 
-export default function DashboardDayAudit() {
+export default function DashboardDayAudit({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (arabic: string) => dayAuditText(language, arabic);
   const [todayKey, setTodayKey] = useState(() => todayISO());
   const [todayLimitKey, setTodayLimitKey] = useState(() => todayISO());
   const [bookingDateById, setBookingDateById] = useState<Record<string, string>>({});
@@ -367,7 +374,7 @@ export default function DashboardDayAudit() {
   const transferRevenue = lock ? toNum(lock.transferRevenue ?? 0) : revenueLive.transfer;
   const manualCash = lock ? lock.manualCash : toNum(manualCashInput || 0);
   const diff = lock ? lock.diff : manualCash - cashRevenue;
-  const lockTimeLabel = lock ? formatLockedAt(lock.lockedAt) : "";
+  const lockTimeLabel = lock ? formatLockedAt(lock.lockedAt, language) : "";
   const loading = loadedDateKey !== todayKey;
 
   useEffect(() => {
@@ -391,7 +398,7 @@ export default function DashboardDayAudit() {
       } catch (error) {
         console.error("Core day audit load failed:", error);
         if (active) {
-          setErrorText("تعذر تحميل جرد اليوم من Core.");
+          setErrorText(t("تعذر تحميل جرد اليوم من Core."));
           setLoadedDateKey(todayKey);
         }
       }
@@ -418,13 +425,13 @@ export default function DashboardDayAudit() {
       window.removeEventListener("online", refreshWhenActive);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [todayKey]);
+  }, [todayKey, language]);
 
   const dateLabel = useMemo(() => {
     const m = todayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return todayKey;
     const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "short" }).format(dt);
+    return new Intl.DateTimeFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { dateStyle: "short" }).format(dt);
   }, [todayKey]);
 
   const applyDateSelection = (rawDate: string) => {
@@ -466,7 +473,7 @@ export default function DashboardDayAudit() {
     if (!popup) return false;
     pendingPrintPopupRef.current = popup;
     try {
-      popup.document.title = "جاري تجهيز جرد اليوم";
+      popup.document.title = t("جاري تجهيز جرد اليوم");
     } catch {
       // ignore popup access errors
     }
@@ -475,24 +482,24 @@ export default function DashboardDayAudit() {
   };
 
   const buildAuditPrintHtml = (payload: DayAuditPrintPayload) => {
-    const statusLabel = payload.isLocked ? "مقفل" : "مفتوح";
+    const statusLabel = payload.isLocked ? t("مقفل") : t("مفتوح");
     const diffClass = payload.diff < 0 ? "neg" : payload.diff > 0 ? "pos" : "zero";
     const lockedRow = payload.isLocked
-      ? `<tr><td>وقت الإغلاق</td><td>${escapeHtml(payload.lockTimeLabel)}</td></tr>`
+      ? `<tr><td>${escapeHtml(t("وقت الإغلاق"))}</td><td>${escapeHtml(payload.lockTimeLabel)}</td></tr>`
       : "";
-    const cardRow = `<div class="summary-row"><span>إيراد الشبكة</span><strong>${escapeHtml(
-      formatAmount(payload.cardRevenue)
+    const cardRow = `<div class="summary-row"><span>${escapeHtml(t("إيراد الشبكة"))}</span><strong>${escapeHtml(
+      formatAmount(payload.cardRevenue, language)
     )}</strong></div>`;
-    const transferRow = `<div class="summary-row"><span>إيراد التحويل (خارج القفل)</span><strong>${escapeHtml(
-      formatAmount(payload.transferRevenue)
+    const transferRow = `<div class="summary-row"><span>${escapeHtml(t("إيراد التحويل (خارج القفل)"))}</span><strong>${escapeHtml(
+      formatAmount(payload.transferRevenue, language)
     )}</strong></div>`;
 
     return `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${language}" dir="${language === "en" ? "ltr" : "rtl"}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>جرد اليوم</title>
+  <title>${escapeHtml(t("جرد اليوم"))}</title>
   <style>
     @page { size: 80mm auto; margin: 0; }
     html, body {
@@ -572,35 +579,35 @@ export default function DashboardDayAudit() {
 </head>
 <body>
   <main class="receipt">
-    <h1 class="title">جرد اليوم</h1>
+    <h1 class="title">${escapeHtml(t("جرد اليوم"))}</h1>
     <div class="meta">${escapeHtml(payload.printedAtLabel)}</div>
     <div class="line"></div>
     <table>
-      <tr><td>تاريخ الجرد</td><td>${escapeHtml(payload.dateLabel)}</td></tr>
-      <tr><td>الحالة</td><td>${statusLabel}</td></tr>
+      <tr><td>${escapeHtml(t("تاريخ الجرد"))}</td><td>${escapeHtml(payload.dateLabel)}</td></tr>
+      <tr><td>${escapeHtml(t("الحالة"))}</td><td>${statusLabel}</td></tr>
       ${lockedRow}
     </table>
     <div class="summary">
       <div class="summary-row">
-        <span>إيراد الجرد (الكاش + الشبكة)</span>
-        <strong>${escapeHtml(formatAmount(payload.totalRevenue))}</strong>
+        <span>${escapeHtml(t("إيراد الجرد (الكاش + الشبكة)"))}</span>
+        <strong>${escapeHtml(formatAmount(payload.totalRevenue, language))}</strong>
       </div>
       <div class="summary-row">
-        <span>إيراد الكاش</span>
-        <strong>${escapeHtml(formatAmount(payload.cashRevenue))}</strong>
+        <span>${escapeHtml(t("إيراد الكاش"))}</span>
+        <strong>${escapeHtml(formatAmount(payload.cashRevenue, language))}</strong>
       </div>
       ${cardRow}
       ${transferRow}
       <div class="summary-row">
-        <span>الكاش اليدوي</span>
-        <strong>${escapeHtml(formatAmount(payload.manualCash))}</strong>
+        <span>${escapeHtml(t("الكاش اليدوي"))}</span>
+        <strong>${escapeHtml(formatAmount(payload.manualCash, language))}</strong>
       </div>
       <div class="summary-row ${diffClass}">
-        <span>فرق الكاش (الكاش اليدوي - إيراد الكاش)</span>
-        <strong>${escapeHtml(formatAmount(payload.diff))}</strong>
+        <span>${escapeHtml(t("فرق الكاش (الكاش اليدوي - إيراد الكاش)"))}</span>
+        <strong>${escapeHtml(formatAmount(payload.diff, language))}</strong>
       </div>
     </div>
-    <div class="footer">تم إعداد الجرد آليًا من لوحة التحكم</div>
+    <div class="footer">${escapeHtml(t("تم إعداد الجرد آليًا من لوحة التحكم"))}</div>
   </main>
   <script>
     (function () {
@@ -664,11 +671,11 @@ export default function DashboardDayAudit() {
       manualCash,
       diff,
       isLocked: !!lock,
-      lockTimeLabel: lock ? formatLockedAt(lock.lockedAt) : "—",
-      printedAtLabel: DATE_TIME_FORMATTER.format(new Date()),
+      lockTimeLabel: lock ? formatLockedAt(lock.lockedAt, language) : "—",
+      printedAtLabel: dateTimeFormatter(language).format(new Date()),
     };
     if (!openAuditPrintPopup(payload)) {
-      setErrorText("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة.");
+      setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
     }
   };
 
@@ -677,7 +684,7 @@ export default function DashboardDayAudit() {
 
     const manual = toNum(manualCashInput || 0);
     if (manual < 0) {
-      setErrorText("الكاش اليدوي لا يمكن أن يكون رقمًا سالبًا.");
+      setErrorText(t("الكاش اليدوي لا يمكن أن يكون رقمًا سالبًا."));
       return;
     }
 
@@ -712,16 +719,16 @@ export default function DashboardDayAudit() {
         manualCash: nextLock.manualCash,
         diff: nextLock.diff,
         isLocked: true,
-        lockTimeLabel: formatLockedAt(nextLock.lockedAt),
-        printedAtLabel: DATE_TIME_FORMATTER.format(new Date()),
+        lockTimeLabel: formatLockedAt(nextLock.lockedAt, language),
+        printedAtLabel: dateTimeFormatter(language).format(new Date()),
       };
       if (!openAuditPrintPopup(payload)) {
-        setErrorText("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة.");
+        setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
       }
     } catch (error) {
       console.error("Core day audit pre-lock refresh failed:", error);
       closePendingAuditPrintPopup();
-      setErrorText("تعذر تحديث بيانات الجرد قبل الإقفال. لم يتم إقفال اليوم.");
+      setErrorText(t("تعذر تحديث بيانات الجرد قبل الإقفال. لم يتم إقفال اليوم."));
     } finally {
       lockInFlightRef.current = false;
     }
@@ -735,13 +742,13 @@ export default function DashboardDayAudit() {
       : "dsv2-metric-card--success";
 
   return (
-    <main className="dsv2-page day-audit-v2-page" dir="rtl">
+    <main className="dsv2-page day-audit-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card day-audit-v2-hero">
         <div className="day-audit-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">الجرد اليومي</span>
-          <h1 className="dsv2-page-title">الجرد والإقفال اليومي</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("الجرد اليومي")}</span>
+          <h1 className="dsv2-page-title">{t("الجرد والإقفال اليومي")}</h1>
           <p className="dsv2-page-subtitle">
-            مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.
+            {t("مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.")}
           </p>
         </div>
 
@@ -751,7 +758,7 @@ export default function DashboardDayAudit() {
               <FontAwesomeIcon icon={faCalendarDay} />
             </span>
             <label className="day-audit-v2-date-card__field" htmlFor="day-audit-date">
-              <span>تاريخ الجرد</span>
+              <span>{t("تاريخ الجرد")}</span>
               <DashboardDatePickerV2
                 id="day-audit-date"
                 value={todayKey}
@@ -766,13 +773,13 @@ export default function DashboardDayAudit() {
               onClick={() => applyDateSelection(todayLimitKey)}
               disabled={todayKey === todayLimitKey}
             >
-              اليوم
+              {t("اليوم")}
             </button>
           </div>
 
           <div className="day-audit-v2-status" data-state={lock ? "locked" : "open"}>
             <FontAwesomeIcon icon={lock ? faLock : faUnlockKeyhole} />
-            <span>{lock ? "اليوم مقفل" : "اليوم مفتوح"}</span>
+            <span>{lock ? t("اليوم مقفل") : t("اليوم مفتوح")}</span>
           </div>
         </div>
       </section>
@@ -781,42 +788,42 @@ export default function DashboardDayAudit() {
         <div className="day-audit-v2-notice day-audit-v2-notice--success" role="status">
           <FontAwesomeIcon icon={faLock} />
           <span>
-            تم إقفال هذا اليوم في <strong>{lockTimeLabel}</strong>. القيم محفوظة وغير قابلة للتعديل.
+            {t("تم إقفال هذا اليوم في")} <strong>{lockTimeLabel}</strong>. {t("القيم محفوظة وغير قابلة للتعديل.")}
           </span>
         </div>
       ) : null}
 
-      <section className="day-audit-v2-metrics" aria-label="ملخص الجرد">
+      <section className="day-audit-v2-metrics" aria-label={t("ملخص الجرد")}>
         <article className="dsv2-metric-card dsv2-metric-card--dark">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faFileInvoiceDollar} /></span>
-          <p className="dsv2-metric-card__label">إجمالي التحصيل</p>
+          <p className="dsv2-metric-card__label">{t("إجمالي التحصيل")}</p>
           <div className="dsv2-metric-card__value">
-            {loading ? <DashboardSkeletonV2 width="72%" height={22} /> : formatAmount(bookingsRevenue)}
+            {loading ? <DashboardSkeletonV2 width="72%" height={22} /> : formatAmount(bookingsRevenue, language)}
           </div>
           <p className="dsv2-metric-card__meta">{dateLabel}</p>
         </article>
 
         <article className="dsv2-metric-card dsv2-metric-card--success">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCashRegister} /></span>
-          <p className="dsv2-metric-card__label">تحصيل الكاش</p>
-          <p className="dsv2-metric-card__value">{formatAmount(cashRevenue)}</p>
-          <p className="dsv2-metric-card__meta">حسب المدفوعات المسجلة</p>
+          <p className="dsv2-metric-card__label">{t("تحصيل الكاش")}</p>
+          <p className="dsv2-metric-card__value">{formatAmount(cashRevenue, language)}</p>
+          <p className="dsv2-metric-card__meta">{t("حسب المدفوعات المسجلة")}</p>
         </article>
 
         <article className="dsv2-metric-card dsv2-metric-card--gold">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCreditCard} /></span>
-          <p className="dsv2-metric-card__label">الشبكة والتحويل</p>
-          <p className="dsv2-metric-card__value">{formatAmount(cardRevenue + transferRevenue)}</p>
+          <p className="dsv2-metric-card__label">{t("الشبكة والتحويل")}</p>
+          <p className="dsv2-metric-card__value">{formatAmount(cardRevenue + transferRevenue, language)}</p>
           <p className="dsv2-metric-card__meta">
-            شبكة {formatAmount(cardRevenue)} · تحويل {formatAmount(transferRevenue)}
+            {t("شبكة")} {formatAmount(cardRevenue, language)} · {t("تحويل")} {formatAmount(transferRevenue, language)}
           </p>
         </article>
 
         <article className={`dsv2-metric-card ${diffMetricClass}`}>
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faScaleBalanced} /></span>
-          <p className="dsv2-metric-card__label">فرق الكاش</p>
-          <p className="dsv2-metric-card__value">{formatAmount(diff)}</p>
-          <p className="dsv2-metric-card__meta">الكاش الفعلي ناقص تحصيل الكاش</p>
+          <p className="dsv2-metric-card__label">{t("فرق الكاش")}</p>
+          <p className="dsv2-metric-card__value">{formatAmount(diff, language)}</p>
+          <p className="dsv2-metric-card__meta">{t("الكاش الفعلي ناقص تحصيل الكاش")}</p>
         </article>
       </section>
 
@@ -824,15 +831,15 @@ export default function DashboardDayAudit() {
         <article className="dsv2-card day-audit-v2-panel day-audit-v2-entry">
           <header className="day-audit-v2-panel__head">
             <div className="day-audit-v2-panel__head-copy">
-              <span className="dsv2-badge dsv2-badge--gold">عدّ الكاش</span>
-              <h2>إدخال الكاش الفعلي</h2>
-              <p>أدخل المبلغ الموجود فعليًا في الصندوق، ثم راجع الفرق قبل الإقفال.</p>
+              <span className="dsv2-badge dsv2-badge--gold">{t("عدّ الكاش")}</span>
+              <h2>{t("إدخال الكاش الفعلي")}</h2>
+              <p>{t("أدخل المبلغ الموجود فعليًا في الصندوق، ثم راجع الفرق قبل الإقفال.")}</p>
             </div>
             <span className="day-audit-v2-panel__index">01</span>
           </header>
 
           <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
-            <span>مبلغ الكاش الموجود</span>
+            <span>{t("مبلغ الكاش الموجود")}</span>
             <div className="day-audit-v2-amount-control">
               <DashboardNumberInputV2
                 id="day-audit-manual-cash"
@@ -846,21 +853,21 @@ export default function DashboardDayAudit() {
                 }}
                 disabled={!!lock}
               />
-              <b>ر.س</b>
+              <b>{language === "en" ? "SAR" : "ر.س"}</b>
             </div>
             <small>
-              {lock ? "تم تثبيت المبلغ عند إقفال اليوم." : "استخدم المبلغ المحسوب فعليًا من الصندوق."}
+              {lock ? t("تم تثبيت المبلغ عند إقفال اليوم.") : t("استخدم المبلغ المحسوب فعليًا من الصندوق.")}
             </small>
           </label>
 
           <div className="day-audit-v2-difference">
-            <span>نتيجة المطابقة الحالية</span>
+            <span>{t("نتيجة المطابقة الحالية")}</span>
             <strong data-diff={diffTone}>
               {diff === 0
-                ? "متطابق"
+                ? t("متطابق")
                 : diff < 0
-                  ? `عجز ${formatAmount(Math.abs(diff))}`
-                  : `زيادة ${formatAmount(diff)}`}
+                  ? `${t("عجز")} ${formatAmount(Math.abs(diff), language)}`
+                  : `${t("زيادة")} ${formatAmount(diff, language)}`}
             </strong>
           </div>
 
@@ -878,7 +885,7 @@ export default function DashboardDayAudit() {
               onClick={printAudit}
             >
               <FontAwesomeIcon icon={faPrint} />
-              طباعة مسودة الجرد
+              {t("طباعة مسودة الجرد")}
             </button>
             <button
               type="button"
@@ -888,7 +895,7 @@ export default function DashboardDayAudit() {
               disabled={!!lock}
             >
               <FontAwesomeIcon icon={faLock} />
-              {lock ? "تم إقفال اليوم" : "طباعة وإقفال اليوم"}
+              {lock ? t("تم إقفال اليوم") : t("طباعة وإقفال اليوم")}
             </button>
           </div>
         </article>
@@ -896,44 +903,44 @@ export default function DashboardDayAudit() {
         <aside className="dsv2-card day-audit-v2-panel day-audit-v2-breakdown">
           <header className="day-audit-v2-panel__head">
             <div className="day-audit-v2-panel__head-copy">
-              <span className="dsv2-badge dsv2-badge--gold">التسوية</span>
-              <h2>تفصيل التسوية</h2>
-              <p>ملخص قنوات الدفع الداخلة في جرد التاريخ المحدد.</p>
+              <span className="dsv2-badge dsv2-badge--gold">{t("التسوية")}</span>
+              <h2>{t("تفصيل التسوية")}</h2>
+              <p>{t("ملخص قنوات الدفع الداخلة في جرد التاريخ المحدد.")}</p>
             </div>
             <span className="day-audit-v2-panel__index">02</span>
           </header>
 
           <div className="day-audit-v2-summary">
             <div className="day-audit-v2-summary-row">
-              <span>إجمالي التحصيل</span>
-              <strong>{formatAmount(bookingsRevenue)}</strong>
+              <span>{t("إجمالي التحصيل")}</span>
+              <strong>{formatAmount(bookingsRevenue, language)}</strong>
             </div>
             <div className="day-audit-v2-summary-row">
-              <span>تحصيل الكاش بالنظام</span>
-              <strong>{formatAmount(cashRevenue)}</strong>
+              <span>{t("تحصيل الكاش بالنظام")}</span>
+              <strong>{formatAmount(cashRevenue, language)}</strong>
             </div>
             <div className="day-audit-v2-summary-row">
-              <span>تحصيل الشبكة</span>
-              <strong>{formatAmount(cardRevenue)}</strong>
+              <span>{t("تحصيل الشبكة")}</span>
+              <strong>{formatAmount(cardRevenue, language)}</strong>
             </div>
             <div className="day-audit-v2-summary-row">
-              <span>التحويل البنكي</span>
-              <strong>{formatAmount(transferRevenue)}</strong>
+              <span>{t("التحويل البنكي")}</span>
+              <strong>{formatAmount(transferRevenue, language)}</strong>
             </div>
             <div className="day-audit-v2-summary-row day-audit-v2-summary-row--highlight">
-              <span>الكاش الفعلي</span>
-              <strong>{formatAmount(manualCash)}</strong>
+              <span>{t("الكاش الفعلي")}</span>
+              <strong>{formatAmount(manualCash, language)}</strong>
             </div>
             <div className="day-audit-v2-summary-row day-audit-v2-summary-row--total">
-              <span>فرق الكاش النهائي</span>
-              <strong className="day-audit-v2-value" data-diff={diffTone}>{formatAmount(diff)}</strong>
+              <span>{t("فرق الكاش النهائي")}</span>
+              <strong className="day-audit-v2-value" data-diff={diffTone}>{formatAmount(diff, language)}</strong>
             </div>
           </div>
 
           <div className="day-audit-v2-policy">
-            <strong>قاعدة الإقفال</strong>
+            <strong>{t("قاعدة الإقفال")}</strong>
             <p>
-              التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.
+              {t("التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.")}
             </p>
           </div>
         </aside>
