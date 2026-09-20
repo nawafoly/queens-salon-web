@@ -578,6 +578,7 @@ const bookingEnglish: Record<string, string> = {
   "جلسة إلى": "session(s) to",
   "بنجاح.": "successfully.",
   "إلى": "To",
+  "موظفة": "Staff member",
 };
 
 export function bookingsText(language: DashboardLanguage, arabic: string): string {
