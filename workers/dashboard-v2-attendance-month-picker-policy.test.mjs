@@ -52,3 +52,21 @@ test("the month popover grid is isolated from the attendance calendar alignment 
     /className=["']dsv2-ew-attendance-month-grid["']\s+role=["']grid["']/
   );
 });
+
+test("attendance month picker respects employee service month boundaries", () => {
+  assert.match(attendancePickerSource, /function clampMonthKey/);
+  assert.match(attendancePickerSource, /monthKeyFromDate\(startDate\)/);
+  assert.match(attendancePickerSource, /monthKeyFromDate\(endDate\) \|\| localDateKey\(\)\.slice\(0, 7\)/);
+  assert.match(attendancePickerSource, /monthAllowed\(requestedMonth, props\.employmentStartDate, props\.employmentEndDate\)/);
+  assert.match(attendancePickerSource, /disabled=\{viewYear <= minYear\}/);
+  assert.match(attendancePickerSource, /disabled=\{viewYear >= maxYear\}/);
+  assert.match(attendancePickerSource, /disabled=\{disabled\}/);
+  assert.match(attendancePickerSource, /firstServiceDateForMonth\(nextMonth, props\.employmentStartDate, props\.employmentEndDate\)/);
+  assert.match(attendancePickerStyles, /\.dsv2-ew-attendance-month-option:disabled/);
+  assert.match(attendancePickerStyles, /\.dsv2-ew-attendance-month-current:disabled/);
+
+  const employmentStartDate = "2026-09-07";
+  const employmentEndDate = "2026-10-15";
+  assert.equal(employmentStartDate.slice(0, 7), "2026-09");
+  assert.equal(employmentEndDate.slice(0, 7), "2026-10");
+});

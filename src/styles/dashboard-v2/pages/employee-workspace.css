@@ -937,6 +937,22 @@
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="إجازة"] { border-block-end: 3px solid var(--dsv2-gold); background: var(--dsv2-ew-gold-soft); }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="غياب"] { border-block-end: 3px solid var(--dsv2-burgundy); background: var(--dsv2-ew-danger-soft); }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="—"] { opacity: 0.45; cursor: default; }
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="pre_employment"],
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="post_employment"] {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--dsv2-ew-muted) 26%, var(--dsv2-ew-border));
+  background: color-mix(in srgb, var(--dsv2-surface-soft) 68%, var(--dsv2-surface));
+  color: var(--dsv2-text-soft);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="pre_employment"] span,
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="post_employment"] span,
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="pre_employment"] small,
+.dashboard-v2 .dsv2-ew-calendar__day[data-employment-state="post_employment"] small {
+  color: var(--dsv2-text-soft);
+}
 
 .dashboard-v2 .dsv2-ew-day-detail { display: grid; gap: 14px; }
 .dashboard-v2 .dsv2-ew-day-detail__status { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
@@ -1427,6 +1443,13 @@
   border-color: color-mix(in srgb, var(--dsv2-burgundy) 28%, var(--dsv2-border-strong));
   background: var(--dsv2-ew-danger-soft);
   box-shadow: inset 0 -3px 0 var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-employment-state="pre_employment"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-employment-state="post_employment"] {
+  border-color: color-mix(in srgb, var(--dsv2-ew-muted) 22%, var(--dsv2-ew-border));
+  background: color-mix(in srgb, var(--dsv2-surface-soft) 72%, var(--dsv2-surface));
+  box-shadow: none;
 }
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day small {

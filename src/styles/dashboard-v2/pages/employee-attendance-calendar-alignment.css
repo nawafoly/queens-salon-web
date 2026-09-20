@@ -85,6 +85,14 @@
   color: var(--dsv2-black);
 }
 
+.dashboard-v2 .dsv2-ew-attendance-month-nav:disabled,
+.dashboard-v2 .dsv2-ew-attendance-month-option:disabled,
+.dashboard-v2 .dsv2-ew-attendance-month-current:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .dashboard-v2 .dsv2-ew-attendance-month-picker-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -110,6 +118,12 @@
   background: var(--dsv2-gold-soft);
   color: var(--dsv2-black);
   transform: translateY(-1px);
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-option:disabled:hover {
+  border-color: var(--dsv2-ew-border);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text-soft);
 }
 
 .dashboard-v2 .dsv2-ew-attendance-month-option[data-active="true"] {

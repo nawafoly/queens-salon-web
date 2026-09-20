@@ -38,6 +38,8 @@ type AttendanceSectionProps = {
   rows: StaffAttendanceWithId[];
   monthKey: string;
   selectedDate: string;
+  employmentStartDate?: string;
+  employmentEndDate?: string;
   employeeId?: string;
   employeeIds?: string[];
   canEdit?: boolean;
@@ -762,6 +764,8 @@ export default function AttendanceSection({
   rows,
   monthKey,
   selectedDate,
+  employmentStartDate = "",
+  employmentEndDate = "",
   employeeId = "",
   employeeIds = [],
   canEdit = false,
@@ -1534,6 +1538,8 @@ export default function AttendanceSection({
         rows={liveRows}
         monthKey={monthKey}
         selectedDate={selectedDate}
+        employmentStartDate={employmentStartDate}
+        employmentEndDate={employmentEndDate}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
         absenceDateKeys={coreAbsenceDateKeys}
         scheduledWorkDateKeys={scheduledWorkDateKeys}

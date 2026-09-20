@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AttendanceSpecialDay } from "../../../../helpers/hr/attendanceCalendarData";
 
 import {
@@ -47,6 +47,11 @@ function safeMonthKey(value: string) {
   return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
 }
 
+function safeDateKey(value: unknown) {
+  const clean = cleanText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(clean) ? clean : "";
+}
+
 function getLocalDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -91,6 +96,32 @@ function buildMonthOptions(monthKey: string) {
   }));
 }
 
+function monthKeyFromDate(value: unknown) {
+  const date = safeDateKey(value);
+  return date ? date.slice(0, 7) : "";
+}
+
+function clampMonthKeyToEmployment(monthKey: string, startDate: unknown, endDate: unknown) {
+  const normalized = safeMonthKey(monthKey);
+  const todayMonth = getLocalDateKey().slice(0, 7);
+  const minMonth = monthKeyFromDate(startDate);
+  const maxMonth = monthKeyFromDate(endDate) || todayMonth;
+  if (minMonth && normalized < minMonth) return minMonth;
+  if (maxMonth && normalized > maxMonth) return maxMonth;
+  return normalized;
+}
+
+function firstServiceDateForMonth(monthKey: string, startDate: unknown, endDate: unknown) {
+  const normalized = safeMonthKey(monthKey);
+  const start = safeDateKey(startDate);
+  const end = safeDateKey(endDate);
+  const first = `${normalized}-01`;
+  const last = `${normalized}-${String(daysInMonthKey(normalized)).padStart(2, "0")}`;
+  const boundedStart = start && start > first ? start : first;
+  const boundedEnd = end && end < last ? end : last;
+  return boundedStart <= boundedEnd ? boundedStart : boundedStart;
+}
+
 function daysInMonthKey(monthKey: string) {
   const normalized = safeMonthKey(monthKey);
   return new Date(
@@ -115,6 +146,8 @@ type AttendanceCalendarDayLiveV2 = {
   dayNumber: number;
   status: string;
   timeLabel: string;
+  employmentState: "in_service" | "pre_employment" | "post_employment";
+  interactive: boolean;
   row?: EmployeeAttendanceRowLiveV2;
   specialDay?: AttendanceSpecialDay;
 };
@@ -218,6 +251,8 @@ function attendanceCalendarLeaveType(day: AttendanceCalendarDayLiveV2) {
 }
 
 function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
+  if (day.employmentState === "pre_employment") return "\u0642\u0628\u0644 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629";
+  if (day.employmentState === "post_employment") return "\u0628\u0639\u062f \u0627\u0646\u062a\u0647\u0627\u0621 \u0627\u0644\u062e\u062f\u0645\u0629";
   switch (attendanceCalendarLeaveType(day)) {
     case "weekly_rest": return "\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
     case "compensatory": return "\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629";
@@ -235,6 +270,9 @@ function attendanceCalendarTimeLabel(input: {
   checkIn: string;
   checkOut: string;
 }) {
+  if (input.status === "\u0642\u0628\u0644 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629") return "\u0644\u0627 \u064a\u062f\u062e\u0644 \u0636\u0645\u0646 \u0627\u0644\u062d\u0636\u0648\u0631 \u0623\u0648 \u0627\u0644\u063a\u064a\u0627\u0628";
+  if (input.status === "\u0628\u0639\u062f \u0627\u0646\u062a\u0647\u0627\u0621 \u0627\u0644\u062e\u062f\u0645\u0629") return "\u062e\u0627\u0631\u062c \u0641\u062a\u0631\u0629 \u0627\u0644\u0639\u0645\u0644";
+
   const punchLabel = [input.checkIn, input.checkOut]
     .filter(Boolean)
     .join(" – ");
@@ -257,7 +295,9 @@ function buildAttendanceCalendar(
   approvedLeaveDateKeys: readonly string[],
   absenceDateKeys: readonly string[],
   scheduledWorkDateKeys: readonly string[],
-  specialDays: readonly AttendanceSpecialDay[] = []
+  specialDays: readonly AttendanceSpecialDay[] = [],
+  employmentStartDate = "",
+  employmentEndDate = ""
 ): AttendanceCalendarDayLiveV2[] {
   const normalized =
     safeMonthKey(monthKey);
@@ -362,6 +402,46 @@ function buildAttendanceCalendar(
         byDate.get(
           date
         );
+
+      const startDate =
+        safeDateKey(
+          employmentStartDate
+        );
+
+      const endDate =
+        safeDateKey(
+          employmentEndDate
+        );
+
+      if (
+        startDate &&
+        date < startDate
+      ) {
+        return {
+          date,
+          dayNumber,
+          row,
+          employmentState: "pre_employment",
+          interactive: false,
+          status: "\u0642\u0628\u0644 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629",
+          timeLabel: "\u0644\u0627 \u064a\u062f\u062e\u0644 \u0636\u0645\u0646 \u0627\u0644\u062d\u0636\u0648\u0631 \u0623\u0648 \u0627\u0644\u063a\u064a\u0627\u0628",
+        };
+      }
+
+      if (
+        endDate &&
+        date > endDate
+      ) {
+        return {
+          date,
+          dayNumber,
+          row,
+          employmentState: "post_employment",
+          interactive: false,
+          status: "\u0628\u0639\u062f \u0627\u0646\u062a\u0647\u0627\u0621 \u0627\u0644\u062e\u062f\u0645\u0629",
+          timeLabel: "\u062e\u0627\u0631\u062c \u0641\u062a\u0631\u0629 \u0627\u0644\u0639\u0645\u0644",
+        };
+      }
 
       const checkIn =
         formatAttendanceTime(
@@ -469,6 +549,8 @@ function buildAttendanceCalendar(
         dayNumber,
         row,
         specialDay,
+        employmentState: "in_service",
+        interactive: true,
         status,
         timeLabel:
           attendanceCalendarTimeLabel({
@@ -861,6 +943,8 @@ export type EmployeeAttendanceTabLiveV2Props = {
   rows: EmployeeAttendanceRowLiveV2[];
   monthKey: string;
   selectedDate: string;
+  employmentStartDate?: string;
+  employmentEndDate?: string;
   approvedLeaveDateKeys?: string[];
   absenceDateKeys?: string[];
   scheduledWorkDateKeys?: string[];
@@ -886,6 +970,8 @@ export function EmployeeAttendanceTabLiveV2({
   rows,
   monthKey,
   selectedDate,
+  employmentStartDate = "",
+  employmentEndDate = "",
   approvedLeaveDateKeys = [],
   absenceDateKeys = [],
   scheduledWorkDateKeys = [],
@@ -904,11 +990,26 @@ export function EmployeeAttendanceTabLiveV2({
   onCancelLeave,
 }: EmployeeAttendanceTabLiveV2Props) {
   const [detailDrawerDate, setDetailDrawerDate] = useState("");
-  const normalizedMonth = safeMonthKey(monthKey);
+  const normalizedMonth = clampMonthKeyToEmployment(monthKey, employmentStartDate, employmentEndDate);
   const todayKey = getLocalDateKey();
-  const activeSelectedDate = cleanText(selectedDate).startsWith(normalizedMonth)
-    ? selectedDate
-    : coerceDateToMonth(selectedDate, normalizedMonth);
+  const firstSelectableDate = firstServiceDateForMonth(normalizedMonth, employmentStartDate, employmentEndDate);
+  const cleanSelectedDate = safeDateKey(selectedDate);
+  const activeSelectedDate = cleanSelectedDate.startsWith(normalizedMonth) &&
+    (!safeDateKey(employmentStartDate) || cleanSelectedDate >= safeDateKey(employmentStartDate)) &&
+    (!safeDateKey(employmentEndDate) || cleanSelectedDate <= safeDateKey(employmentEndDate))
+    ? cleanSelectedDate
+    : firstSelectableDate;
+  useEffect(() => {
+    if (normalizedMonth !== safeMonthKey(monthKey)) {
+      onMonthChange(normalizedMonth);
+      onSelectedDateChange(firstSelectableDate);
+      setDetailDrawerDate("");
+      return;
+    }
+    if (activeSelectedDate !== cleanText(selectedDate)) {
+      onSelectedDateChange(activeSelectedDate);
+    }
+  }, [activeSelectedDate, firstSelectableDate, monthKey, normalizedMonth, onMonthChange, onSelectedDateChange, selectedDate]);
   const normalizedRows = rows.filter((row) => cleanText(row.date).startsWith(normalizedMonth));
   const monthLeaveDates =
     approvedLeaveDateKeys.filter(
@@ -960,7 +1061,9 @@ export function EmployeeAttendanceTabLiveV2({
       monthLeaveDates,
       monthAbsenceDates,
       monthScheduledWorkDates,
-      monthSpecialDays
+      monthSpecialDays,
+      employmentStartDate,
+      employmentEndDate
     );
 
   const selectedDay = calendarDays.find((day) => day.date === activeSelectedDate) || null;
@@ -983,11 +1086,16 @@ export function EmployeeAttendanceTabLiveV2({
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
+  const monthOptions = buildMonthOptions(normalizedMonth).filter((option) => option.value === clampMonthKeyToEmployment(option.value, employmentStartDate, employmentEndDate));
+  const serviceStartDate = safeDateKey(employmentStartDate);
+  const serviceEndDate = safeDateKey(employmentEndDate);
+  const serviceBoundaryLoadedCount = serviceStartDate || serviceEndDate ? 1 : 0;
   const loadedDataCount =
     normalizedRows.length +
     monthLeaveDates.length +
     monthScheduledWorkDates.length +
-    monthSpecialDays.length;
+    monthSpecialDays.length +
+    serviceBoundaryLoadedCount;
   const viewState: "loading" | "error" | "empty" | "data" = loading && !loadedDataCount
     ? "loading"
     : cleanText(error) && !loadedDataCount
@@ -1023,29 +1131,41 @@ export function EmployeeAttendanceTabLiveV2({
   const drawerShiftSource = cleanText(drawerRow?.shiftSourceLabel || (drawerDate === activeSelectedDate ? effectiveShiftInfo?.sourceLabel : ""));
   const drawerShiftStatus = cleanText(drawerRow?.shiftStatusLabel || (drawerDate === activeSelectedDate ? effectiveShiftInfo?.statusLabel : ""));
   const handleMonthChange = (nextMonthKey: string) => {
-    const normalizedNextMonth = safeMonthKey(nextMonthKey);
-    const nextSelectedDate = normalizedNextMonth === todayKey.slice(0, 7)
+    const normalizedNextMonth = clampMonthKeyToEmployment(nextMonthKey, employmentStartDate, employmentEndDate);
+    const serviceDefaultDate = firstServiceDateForMonth(normalizedNextMonth, employmentStartDate, employmentEndDate);
+    const nextSelectedDate = normalizedNextMonth === todayKey.slice(0, 7) &&
+      (!safeDateKey(employmentStartDate) || todayKey >= safeDateKey(employmentStartDate)) &&
+      (!safeDateKey(employmentEndDate) || todayKey <= safeDateKey(employmentEndDate))
       ? todayKey
-      : `${normalizedNextMonth}-01`;
+      : serviceDefaultDate;
     onMonthChange(normalizedNextMonth);
     onSelectedDateChange(nextSelectedDate);
     setDetailDrawerDate("");
   };
   const handleSelectedDateChange = (nextDate: string) => {
     const cleanDate = cleanText(nextDate);
+    const day = calendarDays.find((item) => item.date === cleanDate);
+    if (day && !day.interactive) return;
     if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDate) && !cleanDate.startsWith(normalizedMonth)) {
-      onMonthChange(cleanDate.slice(0, 7));
+      onMonthChange(clampMonthKeyToEmployment(cleanDate.slice(0, 7), employmentStartDate, employmentEndDate));
     }
     onSelectedDateChange(cleanDate);
   };
   const openDayDetails = (nextDate: string) => {
     const cleanDate = cleanText(nextDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return;
+    const day = calendarDays.find((item) => item.date === cleanDate);
+    if (day && !day.interactive) return;
     handleSelectedDateChange(cleanDate);
     setDetailDrawerDate(cleanDate);
   };
-  const goToToday = () => handleSelectedDateChange(todayKey);
-  const openTodayDetails = () => openDayDetails(todayKey);
+  const todayTargetDate =
+    (!safeDateKey(employmentStartDate) || todayKey >= safeDateKey(employmentStartDate)) &&
+    (!safeDateKey(employmentEndDate) || todayKey <= safeDateKey(employmentEndDate))
+      ? todayKey
+      : firstSelectableDate;
+  const goToToday = () => handleSelectedDateChange(todayTargetDate);
+  const openTodayDetails = () => openDayDetails(todayTargetDate);
   const closeDetailDrawer = () => setDetailDrawerDate("");
 
   return (
@@ -1072,6 +1192,16 @@ export function EmployeeAttendanceTabLiveV2({
         />
       ) : null}
 
+      {serviceStartDate ? (
+        <WorkspaceNoticeV2
+          title={`فترة الخدمة المعروضة تبدأ من ${formatAttendanceDate(serviceStartDate)}`}
+          description={serviceEndDate
+            ? `الأيام السابقة لتاريخ المباشرة والأيام بعد ${formatAttendanceDate(serviceEndDate)} خارج نطاق الحضور والغياب.`
+            : "الأيام السابقة لتاريخ المباشرة لا تدخل في الحضور أو الغياب."}
+          tone="neutral"
+        />
+      ) : null}
+
       <WorkspaceCardV2
         title="فلتر الحضور"
         description="اختر الشهر، ثم اضغط على أي يوم من التقويم لعرض تفاصيله."
@@ -1082,7 +1212,7 @@ export function EmployeeAttendanceTabLiveV2({
               id="employee-live-v2-attendance-month"
               value={normalizedMonth}
               disabled={readOnly || loading}
-              options={buildMonthOptions(normalizedMonth)}
+              options={monthOptions}
               onChange={handleMonthChange}
             />
           </DashboardFieldV2>
@@ -1164,12 +1294,15 @@ export function EmployeeAttendanceTabLiveV2({
                     type="button"
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
+                    data-employment-state={day.employmentState}
+                    aria-disabled={!day.interactive}
+                    disabled={!day.interactive}
                     data-special={day.specialDay?.kind || ""}
                     data-leave-type={attendanceCalendarLeaveType(day)}
                     data-selected={activeSelectedDate === day.date ? "true" : "false"}
                     data-today={todayKey === day.date ? "true" : "false"}
-                    onClick={() => handleSelectedDateChange(day.date)}
-                    onDoubleClick={() => openDayDetails(day.date)}
+                    onClick={() => day.interactive && handleSelectedDateChange(day.date)}
+                    onDoubleClick={() => day.interactive && openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
                     <span>{attendanceCalendarDisplayStatus(day) || "-"}</span>
