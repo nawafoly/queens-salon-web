@@ -347,7 +347,8 @@ async function decideLeaveCanonical(
   salonId,
   idValue,
   decision = {},
-  actor = {}
+  actor = {},
+  options = {}
 ) {
   const id = cleanText(idValue);
   if (!id) {
@@ -495,6 +496,18 @@ async function decideLeaveCanonical(
     }
 
     case 'hr_review_block':
+      if (
+        options.manualHrReviewResolved === true &&
+        cleanText(leave.legal_basis) === 'HR_MANUAL_POLICY'
+      ) {
+        return legacyDecideLeave(
+          db,
+          salonId,
+          id,
+          decision,
+          actor
+        );
+      }
       throw new AppError(
         409,
         'core_leave:hr_review_resolution_required'
@@ -524,7 +537,8 @@ export async function decideLeave(
     salonId,
     idValue,
     decision,
-    actor
+    actor,
+    options
   );
 
   // Composite HR reversals may need to finish linked operational effects
