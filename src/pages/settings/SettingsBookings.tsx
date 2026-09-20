@@ -14,6 +14,7 @@ import { readVerifiedUserAccess } from "../../services/authAccess";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { auth } from "../../services/firebase";
 import "../../styles/dashboard-v2/dashboard-v2.css";
+import { settingsText, type DashboardLanguage } from "../../helpers/dashboardSettingsLanguage";
 
 type UiRole =
   | "owner"
@@ -117,10 +118,15 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-function formatTime12Safe(v: any, fallback = "-") {
+function formatTime12Safe(v: any, fallback = "-", language: DashboardLanguage = "ar") {
   const raw = String(v || "").trim();
   if (!raw) return fallback;
-  return formatTime12(raw, raw);
+  if (language === "ar") return formatTime12(raw, raw);
+  const normalized = safeTimeHHMM(raw, "");
+  if (!normalized) return raw;
+  const [hour, minute] = normalized.split(":").map(Number);
+  const date = new Date(2000, 0, 1, hour, minute, 0);
+  return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).format(date);
 }
 
 function normalizeIsoDate(v: any) {
@@ -128,12 +134,14 @@ function normalizeIsoDate(v: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
-function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory") {
+function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory", language: DashboardLanguage = "ar") {
   const iso = normalizeIsoDate(v);
   if (!iso) return "-";
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  const locale = calendar === "hijri" ? "ar-SA-u-ca-islamic-umalqura" : "ar-SA-u-ca-gregory";
+  const locale = language === "en"
+    ? (calendar === "hijri" ? "en-SA-u-ca-islamic-umalqura" : "en-GB")
+    : (calendar === "hijri" ? "ar-SA-u-ca-islamic-umalqura" : "ar-SA-u-ca-gregory");
   const raw = d.toLocaleDateString(locale, {
     year: "numeric",
     month: "2-digit",
@@ -145,15 +153,15 @@ function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory") {
   return `\u200E${clean}\u200E`;
 }
 
-function formatDateRangeByCalendar(fromDate: any, toDate: any, calendar: DateCalendar = "gregory") {
+function formatDateRangeByCalendar(fromDate: any, toDate: any, calendar: DateCalendar = "gregory", language: DashboardLanguage = "ar") {
   const fromIso = normalizeIsoDate(fromDate);
   const toIso = normalizeIsoDate(toDate);
   if (!fromIso && !toIso) return "-";
-  if (!fromIso) return formatDateByCalendar(toIso, calendar);
-  if (!toIso) return formatDateByCalendar(fromIso, calendar);
+  if (!fromIso) return formatDateByCalendar(toIso, calendar, language);
+  if (!toIso) return formatDateByCalendar(fromIso, calendar, language);
   const start = fromIso <= toIso ? fromIso : toIso;
   const end = fromIso <= toIso ? toIso : fromIso;
-  return `من ${formatDateByCalendar(start, calendar)} إلى ${formatDateByCalendar(end, calendar)}`;
+  return `${settingsText(language, "من")} ${formatDateByCalendar(start, calendar, language)} ${settingsText(language, "إلى")} ${formatDateByCalendar(end, calendar, language)}`;
 }
 
 function loadLocalSettings() {
@@ -187,10 +195,11 @@ function defaultBusinessHoursLocal() {
 }
 
 function messageIsError(message: string) {
-  return message.includes("❌") || message.includes("تعذر") || message.includes("فشل");
+  return message.includes("❌") || message.includes("تعذر") || message.includes("فشل") || message.includes("Could not") || message.includes("Failed");
 }
 
-export default function SettingsBookings() {
+export default function SettingsBookings({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => settingsText(language, text);
   const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [authLoading, setAuthLoading] = useState(true);
   const [settings, setSettings] = useState<any>(() => {
@@ -296,36 +305,36 @@ export default function SettingsBookings() {
   const bookingStats = useMemo(
     () => [
       {
-        label: "أيام العمل",
+        label: t("أيام العمل"),
         value: `${openDaysCount}/7`,
-        hint: "الدوام الأسبوعي المفتوح",
+        hint: t("الدوام الأسبوعي المفتوح"),
         tone: "dsv2-metric-card--success",
       },
       {
-        label: "الاستثناءات",
+        label: t("الاستثناءات"),
         value: String(bookingHourOverrides.length),
-        hint: "الفترات الخاصة بتاريخ محدد",
+        hint: t("الفترات الخاصة بتاريخ محدد"),
         tone: "dsv2-metric-card--gold",
       },
       {
-        label: "خطوة الحجز",
-        value: `${slotStepMin} د`,
-        hint: "دقة فتح المواعيد",
+        label: t("خطوة الحجز"),
+        value: language === "en" ? `${slotStepMin} min` : `${slotStepMin} د`,
+        hint: t("دقة فتح المواعيد"),
         tone: "dsv2-metric-card--dark",
       },
       {
-        label: "التتابع",
-        value: bookingSettings?.sequentialBooking ? "مفعّل" : "متوقف",
-        hint: "منع الفراغات بين الحجوزات",
+        label: t("التتابع"),
+        value: bookingSettings?.sequentialBooking ? t("مفعّل") : t("متوقف"),
+        hint: t("منع الفراغات بين الحجوزات"),
         tone: bookingSettings?.sequentialBooking ? "dsv2-metric-card--success" : "dsv2-metric-card--danger",
       },
     ],
-    [bookingHourOverrides.length, bookingSettings?.sequentialBooking, openDaysCount, slotStepMin]
+    [bookingHourOverrides.length, bookingSettings?.sequentialBooking, language, openDaysCount, slotStepMin]
   );
 
   const weekdayOptions = useMemo(
-    () => WEEKDAY_KEYS.map((day) => ({ value: day, label: WEEKDAY_LABEL_AR[day] })),
-    []
+    () => WEEKDAY_KEYS.map((day) => ({ value: day, label: t(WEEKDAY_LABEL_AR[day]) })),
+    [language]
   );
 
   const setBookingSettings = (patch: any) => {
@@ -377,17 +386,17 @@ export default function SettingsBookings() {
     const fromDate = String(overrideDraft.fromDate || "").trim();
     const toDate = String(overrideDraft.toDate || "").trim();
     if (!fromDate || !toDate) {
-      setSavedMsg("❌ حددي من/إلى تاريخ للاستثناء");
+      setSavedMsg(t("❌ حددي من/إلى تاريخ للاستثناء"));
       setTimeout(() => setSavedMsg(""), 2200);
       return;
     }
     if (fromDate > toDate) {
-      setSavedMsg("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+      setSavedMsg(t("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية"));
       setTimeout(() => setSavedMsg(""), 2200);
       return;
     }
     if (overrideDraft.mode === "hours" && String(overrideDraft.start || "") === String(overrideDraft.end || "")) {
-      setSavedMsg("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين");
+      setSavedMsg(t("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين"));
       setTimeout(() => setSavedMsg(""), 2200);
       return;
     }
@@ -469,12 +478,12 @@ export default function SettingsBookings() {
 
       if (draftHasAnyValue) {
         if (!draftFromDate || !draftToDate) {
-          setSavedMsg("❌ حددي من/إلى تاريخ للاستثناء أو اضغطي تنظيف");
+          setSavedMsg(t("❌ حددي من/إلى تاريخ للاستثناء أو اضغطي تنظيف"));
           setTimeout(() => setSavedMsg(""), 2600);
           return;
         }
         if (draftFromDate > draftToDate) {
-          setSavedMsg("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+          setSavedMsg(t("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية"));
           setTimeout(() => setSavedMsg(""), 2600);
           return;
         }
@@ -482,7 +491,7 @@ export default function SettingsBookings() {
           overrideDraft.mode === "hours" &&
           String(overrideDraft.start || "") === String(overrideDraft.end || "")
         ) {
-          setSavedMsg("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين");
+          setSavedMsg(t("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين"));
           setTimeout(() => setSavedMsg(""), 2600);
           return;
         }
@@ -544,7 +553,7 @@ export default function SettingsBookings() {
       resetOverrideDraft();
 
       console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
-      setSavedMsg("✅ تم حفظ الإعدادات");
+      setSavedMsg(t("✅ تم حفظ الإعدادات"));
       setTimeout(() => setSavedMsg(""), 1800);
     } catch (e: any) {
       console.error("❌ saveAll error:", e);
@@ -552,7 +561,9 @@ export default function SettingsBookings() {
       const errMsg = String(e?.message || "");
       const invalidDay = WEEKDAY_KEYS.find((d) => errMsg.includes(`INVALID_BUSINESS_HOURS_${d}`));
       if (invalidDay) {
-        setSavedMsg(`❌ اليوم (${WEEKDAY_LABEL_AR[invalidDay]}): البداية والنهاية لا يمكن أن تكونا نفس الوقت`);
+        setSavedMsg(language === "en"
+          ? `❌ ${t(WEEKDAY_LABEL_AR[invalidDay])}: ${t("البداية والنهاية لا يمكن أن تكونا نفس الوقت")}`
+          : `❌ اليوم (${WEEKDAY_LABEL_AR[invalidDay]}): البداية والنهاية لا يمكن أن تكونا نفس الوقت`);
         setTimeout(() => setSavedMsg(""), 2600);
         return;
       }
@@ -582,7 +593,9 @@ export default function SettingsBookings() {
     }, {} as Record<WeekdayKey, { enabled: boolean; start: string; end: string }>);
 
     setBookingSettings({ businessHours: next });
-    setSavedMsg(`✅ تم نسخ وقت ${WEEKDAY_LABEL_AR[selectedWeekday]} إلى بقية الأيام`);
+    setSavedMsg(language === "en"
+      ? `✅ ${t("تم نسخ وقت")} ${t(WEEKDAY_LABEL_AR[selectedWeekday])} ${t("إلى بقية الأيام")}`
+      : `✅ تم نسخ وقت ${WEEKDAY_LABEL_AR[selectedWeekday]} إلى بقية الأيام`);
     setTimeout(() => setSavedMsg(""), 1800);
   };
 
@@ -643,7 +656,7 @@ export default function SettingsBookings() {
 
   if (authLoading) {
     return (
-      <main className="dsv2-page settings-bookings-v2-page" dir="rtl">
+      <main className="dsv2-page settings-bookings-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card dsv2-card--padded settings-bookings-v2-state">
           <DashboardSkeletonV2 width="30%" height={22} />
           <DashboardSkeletonV2 width="62%" height={14} />
@@ -655,11 +668,11 @@ export default function SettingsBookings() {
 
   if (!hasAdminPower) {
     return (
-      <main className="dsv2-page settings-bookings-v2-page" dir="rtl">
+      <main className="dsv2-page settings-bookings-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <DashboardEmptyStateV2
           tone="gold"
-          title="غير مصرح"
-          description="إعدادات الحجوزات الحالية متاحة لحسابات Owner/Admin فقط."
+          title={t("غير مصرح")}
+          description={t("إعدادات الحجوزات الحالية متاحة لحسابات Owner/Admin فقط.")}
         />
       </main>
     );
@@ -669,24 +682,24 @@ export default function SettingsBookings() {
   const savedMsgIsError = messageIsError(savedMsg);
 
   return (
-    <main className="dsv2-page settings-bookings-v2-page" dir="rtl">
+    <main className="dsv2-page settings-bookings-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <section className="dsv2-card settings-bookings-v2-hero">
         <div className="settings-bookings-v2-hero__content">
-          <span className="dsv2-badge dsv2-badge--gold">إعدادات الحجوزات</span>
-          <h1 className="dsv2-page-title">جدولة وتشغيل الحجوزات</h1>
+          <span className="dsv2-badge dsv2-badge--gold">{t("إعدادات الحجوزات")}</span>
+          <h1 className="dsv2-page-title">{t("جدولة وتشغيل الحجوزات")}</h1>
           <p className="dsv2-page-subtitle">
-            إدارة إتاحة الحجز، دقة المواعيد، ساعات العمل، وضع الموسم، والاستثناءات من مساحة واحدة.
+            {t("إدارة إتاحة الحجز، دقة المواعيد، ساعات العمل، وضع الموسم، والاستثناءات من مساحة واحدة.")}
           </p>
           <div className="settings-bookings-v2-hero__badges">
             <span className={`dsv2-badge ${bookingSettings.maintenanceMode ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
-              {bookingSettings.maintenanceMode ? "الحجز متوقف" : "الحجز متاح"}
+              {bookingSettings.maintenanceMode ? t("الحجز متوقف") : t("الحجز متاح")}
             </span>
-            <span className="dsv2-badge">{openDaysCount}/7 أيام مفتوحة</span>
+            <span className="dsv2-badge">{openDaysCount}/7 {t("أيام مفتوحة")}</span>
           </div>
         </div>
       </section>
 
-      <section className="settings-bookings-v2-metrics" aria-label="ملخص إعدادات الحجوزات">
+      <section className="settings-bookings-v2-metrics" aria-label={t("ملخص إعدادات الحجوزات")}>
         {bookingStats.map((item) => (
           <article key={item.label} className={`dsv2-metric-card ${item.tone}`}>
             <p className="dsv2-metric-card__label">{item.label}</p>
@@ -696,21 +709,21 @@ export default function SettingsBookings() {
         ))}
       </section>
 
-      <section className="settings-bookings-v2-tabs" aria-label="أقسام إعدادات الحجوزات">
+      <section className="settings-bookings-v2-tabs" aria-label={t("أقسام إعدادات الحجوزات")}>
         {BOOKING_SECTION_ITEMS.map((item) => {
           const active = item.id === activeBookingSection;
           const hint =
             item.id === "general"
               ? bookingSettings.maintenanceMode
-                ? "الحجز متوقف مؤقتًا"
-                : "الحجز متاح"
+                ? t("الحجز متوقف مؤقتًا")
+                : t("الحجز متاح")
               : item.id === "hours"
-                ? `${openDaysCount}/7 أيام مفتوحة`
+                ? `${openDaysCount}/7 ${t("أيام مفتوحة")}`
                 : item.id === "season"
                   ? bookingSettings?.sequentialBooking
-                    ? "التتابع مفعل"
-                    : "ضبط الهدر والتتابع"
-                  : `${bookingHourOverrides.length} فترة محفوظة`;
+                    ? t("التتابع مفعل")
+                    : t("ضبط الهدر والتتابع")
+                  : `${bookingHourOverrides.length} ${t("فترة محفوظة")}`;
 
           return (
             <button
@@ -722,7 +735,7 @@ export default function SettingsBookings() {
             >
               <span className="settings-bookings-v2-tab__index">{item.index}</span>
               <span className="settings-bookings-v2-tab__copy">
-                <strong>{item.title}</strong>
+                <strong>{t(item.title)}</strong>
                 <small>{hint}</small>
               </span>
             </button>
@@ -734,18 +747,18 @@ export default function SettingsBookings() {
         <header className="settings-bookings-v2-panel__head">
           <div className="settings-bookings-v2-panel__copy">
             <span className="settings-bookings-v2-panel__eyebrow">{activeSectionMeta?.index || "01"}</span>
-            <h2>{activeSectionMeta?.title || "إعدادات الحجوزات"}</h2>
+            <h2>{activeSectionMeta ? t(activeSectionMeta.title) : t("إعدادات الحجوزات")}</h2>
             <p>
               {activeBookingSection === "general"
-                ? "تحكم سريع في إتاحة الحجز ورسالة الصيانة التي تظهر للعميلات."
+                ? t("تحكم سريع في إتاحة الحجز ورسالة الصيانة التي تظهر للعميلات.")
                 : activeBookingSection === "hours"
-                  ? "اضبط دقة المواعيد، الرسوم، وأيام العمل الأسبوعية من مكان واحد."
+                  ? t("اضبط دقة المواعيد، الرسوم، وأيام العمل الأسبوعية من مكان واحد.")
                   : activeBookingSection === "season"
-                    ? "أدوات تقلل الفراغات وتساعد على ترتيب اليوم وقت الضغط والمواسم."
-                    : "فترات خاصة بتاريخ محدد لإغلاق يوم أو تغيير ساعات العمل مؤقتًا."}
+                    ? t("أدوات تقلل الفراغات وتساعد على ترتيب اليوم وقت الضغط والمواسم.")
+                    : t("فترات خاصة بتاريخ محدد لإغلاق يوم أو تغيير ساعات العمل مؤقتًا.")}
             </p>
           </div>
-          <span className="dsv2-badge dsv2-badge--success">تحكم إداري</span>
+          <span className="dsv2-badge dsv2-badge--success">{t("تحكم إداري")}</span>
         </header>
 
         <div className="settings-bookings-v2-panel__body">
@@ -761,23 +774,23 @@ export default function SettingsBookings() {
                   {bookingSettings.maintenanceMode ? "✓" : ""}
                 </span>
                 <span className="settings-bookings-v2-toggle__copy">
-                  <strong>وضع الصيانة</strong>
-                  <small>إيقاف الحجز مؤقتًا للعميلات مع إبقاء الإدارة متاحة.</small>
+                  <strong>{t("وضع الصيانة")}</strong>
+                  <small>{t("إيقاف الحجز مؤقتًا للعميلات مع إبقاء الإدارة متاحة.")}</small>
                 </span>
                 <span className="settings-bookings-v2-toggle__status">
-                  {bookingSettings.maintenanceMode ? "متوقف" : "مفتوح"}
+                  {bookingSettings.maintenanceMode ? t("متوقف") : t("مفتوح")}
                 </span>
               </button>
 
               <label className="dsv2-field settings-bookings-v2-field-wide">
-                <span className="dsv2-field__label">رسالة الصيانة التي تظهر للعميلات</span>
+                <span className="dsv2-field__label">{t("رسالة الصيانة التي تظهر للعميلات")}</span>
                 <input
                   className="dsv2-input"
                   value={String(bookingSettings.maintenanceMessage || "")}
                   onChange={(event) => setBookingSettings({ maintenanceMessage: event.target.value })}
-                  placeholder="مثال: الحجز متوقف مؤقتًا للصيانة، نعود قريبًا"
+                  placeholder={t("مثال: الحجز متوقف مؤقتًا للصيانة، نعود قريبًا")}
                 />
-                <span className="dsv2-field__hint">تُحفظ هذه القيمة داخل AppSettings وتظهر عند إيقاف الحجز.</span>
+                <span className="dsv2-field__hint">{t("تُحفظ هذه القيمة داخل AppSettings وتظهر عند إيقاف الحجز.")}</span>
               </label>
             </div>
           ) : null}
@@ -786,27 +799,27 @@ export default function SettingsBookings() {
             <div className="settings-bookings-v2-section-stack">
               <div className="settings-bookings-v2-control-grid">
                 <label className="dsv2-field settings-bookings-v2-control-card">
-                  <span className="dsv2-field__label">خطوة الوقت</span>
+                  <span className="dsv2-field__label">{t("خطوة الوقت")}</span>
                   <DashboardSelectV2
                     value={String(slotStepMin)}
-                    options={SLOT_STEP_OPTIONS}
+                    options={SLOT_STEP_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                     onChange={(value) => setBookingSettings({ slotStepMin: Number(value) })}
                   />
-                  <span className="dsv2-field__hint">5/10 دقائق لدقة أعلى، و30 دقيقة لجدولة أبسط.</span>
+                  <span className="dsv2-field__hint">{t("5/10 دقائق لدقة أعلى، و30 دقيقة لجدولة أبسط.")}</span>
                 </label>
 
                 <label className="dsv2-field settings-bookings-v2-control-card">
-                  <span className="dsv2-field__label">البفر بعد كل حجز</span>
+                  <span className="dsv2-field__label">{t("البفر بعد كل حجز")}</span>
                   <DashboardSelectV2
                     value={String(bufferMin)}
-                    options={BUFFER_OPTIONS}
+                    options={BUFFER_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))
                     onChange={(value) => setBookingSettings({ bufferMin: Number(value) })}
                   />
-                  <span className="dsv2-field__hint">المسافة الزمنية الإضافية بعد نهاية الموعد.</span>
+                  <span className="dsv2-field__hint">{t("المسافة الزمنية الإضافية بعد نهاية الموعد.")}</span>
                 </label>
 
                 <label className="dsv2-field settings-bookings-v2-control-card">
-                  <span className="dsv2-field__label">رسوم أدوات البديكير/المناكير</span>
+                  <span className="dsv2-field__label">{t("رسوم أدوات البديكير/المناكير")}</span>
                   <span className="settings-bookings-v2-money-input">
                     <DashboardNumberInputV2
                       className="dsv2-input"
@@ -817,17 +830,17 @@ export default function SettingsBookings() {
                         setBookingSettings({ maniPediToolsFee: Math.max(0, safeInt(event.target.value, 0)) })
                       }
                     />
-                    <span>ريال</span>
+                    <span>{t("ريال")}</span>
                   </span>
-                  <span className="dsv2-field__hint">تظهر فقط إذا اختارت العميلة الأدوات من المشغل.</span>
+                  <span className="dsv2-field__hint">{t("تظهر فقط إذا اختارت العميلة الأدوات من المشغل.")}</span>
                 </label>
               </div>
 
               <section className="settings-bookings-v2-weekly">
                 <header className="settings-bookings-v2-weekly__head">
                   <div>
-                    <h3>إدارة الدوام الأسبوعي</h3>
-                    <p>اختاري يومًا للمراجعة أو انسخي أوقاته إلى بقية الأسبوع.</p>
+                    <h3>{t("إدارة الدوام الأسبوعي")}</h3>
+                    <p>{t("اختاري يومًا للمراجعة أو انسخي أوقاته إلى بقية الأسبوع.")}</p>
                   </div>
                   <div className="settings-bookings-v2-weekly__actions">
                     <DashboardSelectV2
@@ -861,7 +874,7 @@ export default function SettingsBookings() {
                           className="settings-bookings-v2-day__name"
                           onClick={() => setSelectedWeekday(day)}
                         >
-                          {WEEKDAY_LABEL_AR[day]}
+                          {t(WEEKDAY_LABEL_AR[day])}
                         </button>
 
                         <button
@@ -871,25 +884,25 @@ export default function SettingsBookings() {
                           onClick={() => updateBusinessDay(day, { enabled: dayHours.enabled === false })}
                         >
                           <span aria-hidden="true">{dayHours.enabled !== false ? "✓" : ""}</span>
-                          {dayHours.enabled !== false ? "مفتوح" : "مغلق"}
+                          {dayHours.enabled !== false ? t("مفتوح") : t("مغلق")}
                         </button>
 
                         <label className="settings-bookings-v2-time-field">
-                          <span>من</span>
+                          <span>{t("من")}</span>
                           <DashboardTimeInputV2 className="dsv2-input" value={dayHours.start} disabled={dayHours.enabled === false} onChange={(event) => updateBusinessDay(day, { start: event.target.value })} />
                         </label>
 
                         <label className="settings-bookings-v2-time-field">
-                          <span>إلى</span>
+                          <span>{t("إلى")}</span>
                           <DashboardTimeInputV2 className="dsv2-input" value={dayHours.end} disabled={dayHours.enabled === false} onChange={(event) => updateBusinessDay(day, { end: event.target.value })} />
                         </label>
 
                         <div className="settings-bookings-v2-day__summary">
                           {dayHours.enabled === false
-                            ? "اليوم مغلق"
+                            ? t("اليوم مغلق")
                             : overnight
-                              ? `يتجاوز منتصف الليل: ${formatTime12Safe(dayHours.start)} - ${formatTime12Safe(dayHours.end)}`
-                              : `${formatTime12Safe(dayHours.start)} - ${formatTime12Safe(dayHours.end)}`}
+                              ? `${t("يتجاوز منتصف الليل")}: ${formatTime12Safe(dayHours.start, "-", language)} - ${formatTime12Safe(dayHours.end, "-", language)}`
+                              : `${formatTime12Safe(dayHours.start, "-", language)} - ${formatTime12Safe(dayHours.end, "-", language)}`}
                         </div>
                       </article>
                     );
@@ -923,11 +936,11 @@ export default function SettingsBookings() {
                     {seasonFillEnabled ? "✓" : ""}
                   </span>
                   <span className="settings-bookings-v2-toggle__copy">
-                    <strong>ترتيب اليوم تلقائيًا</strong>
-                    <small>تفعيل ترتيب وقت الحجز خلال فترة الموسم المحددة.</small>
+                    <strong>{t("ترتيب اليوم تلقائيًا")}</strong>
+                    <small>{t("تفعيل ترتيب وقت الحجز خلال فترة الموسم المحددة.")}</small>
                   </span>
                   <span className="settings-bookings-v2-toggle__status">
-                    {seasonFillEnabled ? "مفعّل" : "متوقف"}
+                    {seasonFillEnabled ? t("مفعّل") : t("متوقف")}
                   </span>
                 </button>
 
@@ -941,18 +954,18 @@ export default function SettingsBookings() {
                     {bookingSettings?.sequentialBooking ? "✓" : ""}
                   </span>
                   <span className="settings-bookings-v2-toggle__copy">
-                    <strong>إجبار الحجز المتتابع</strong>
-                    <small>منع الفراغات بين المواعيد داخل نفس اليوم.</small>
+                    <strong>{t("إجبار الحجز المتتابع")}</strong>
+                    <small>{t("منع الفراغات بين المواعيد داخل نفس اليوم.")}</small>
                   </span>
                   <span className="settings-bookings-v2-toggle__status">
-                    {bookingSettings?.sequentialBooking ? "مفعّل" : "متوقف"}
+                    {bookingSettings?.sequentialBooking ? t("مفعّل") : t("متوقف")}
                   </span>
                 </button>
               </div>
 
               <div className="settings-bookings-v2-date-grid">
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">من تاريخ</span>
+                  <span className="dsv2-field__label">{t("من تاريخ")}</span>
                   <DashboardDatePickerV2
                     value={seasonFillFrom}
                     disabled={!seasonFillEnabled}
@@ -962,7 +975,7 @@ export default function SettingsBookings() {
                   />
                 </label>
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">إلى تاريخ</span>
+                  <span className="dsv2-field__label">{t("إلى تاريخ")}</span>
                   <DashboardDatePickerV2
                     value={seasonFillTo}
                     disabled={!seasonFillEnabled}
@@ -983,7 +996,7 @@ export default function SettingsBookings() {
             <div className="settings-bookings-v2-section-stack">
               <div className="settings-bookings-v2-exception-form">
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">من تاريخ</span>
+                  <span className="dsv2-field__label">{t("من تاريخ")}</span>
                   <DashboardDatePickerV2
                     value={overrideDraft.fromDate}
                     onChange={(value) => setOverrideDraft((prev) => ({ ...prev, fromDate: value }))}
@@ -991,7 +1004,7 @@ export default function SettingsBookings() {
                 </label>
 
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">إلى تاريخ</span>
+                  <span className="dsv2-field__label">{t("إلى تاريخ")}</span>
                   <DashboardDatePickerV2
                     value={overrideDraft.toDate}
                     onChange={(value) => setOverrideDraft((prev) => ({ ...prev, toDate: value }))}
@@ -999,10 +1012,10 @@ export default function SettingsBookings() {
                 </label>
 
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">وضع الفترة</span>
+                  <span className="dsv2-field__label">{t("وضع الفترة")}</span>
                   <DashboardSelectV2
                     value={overrideDraft.mode}
-                    options={OVERRIDE_MODE_OPTIONS}
+                    options={OVERRIDE_MODE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))
                     onChange={(value) =>
                       setOverrideDraft((prev) => ({
                         ...prev,
@@ -1013,32 +1026,32 @@ export default function SettingsBookings() {
                 </label>
 
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">وقت البداية</span>
+                  <span className="dsv2-field__label">{t("وقت البداية")}</span>
                   <DashboardTimeInputV2 className="dsv2-input" value={String(overrideDraft.start || "10:00")} disabled={overrideDraft.mode === "closed"} onChange={(event) => setOverrideDraft((prev) => ({ ...prev, start: event.target.value }))} />
-                  <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.start || "10:00")}</span>
+                  <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.start || "10:00", "-", language)}</span>
                 </label>
 
                 <label className="dsv2-field">
-                  <span className="dsv2-field__label">وقت النهاية</span>
+                  <span className="dsv2-field__label">{t("وقت النهاية")}</span>
                   <DashboardTimeInputV2 className="dsv2-input" value={String(overrideDraft.end || "22:00")} disabled={overrideDraft.mode === "closed"} onChange={(event) => setOverrideDraft((prev) => ({ ...prev, end: event.target.value }))} />
-                  <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.end || "22:00")}</span>
+                  <span className="dsv2-field__hint">{formatTime12Safe(overrideDraft.end || "22:00", "-", language)}</span>
                 </label>
 
                 <label className="dsv2-field settings-bookings-v2-field-wide">
-                  <span className="dsv2-field__label">سبب داخلي (اختياري)</span>
+                  <span className="dsv2-field__label">{t("سبب داخلي (اختياري)")}</span>
                   <input
                     className="dsv2-input"
                     value={String(overrideDraft.reason || "")}
                     onChange={(event) => setOverrideDraft((prev) => ({ ...prev, reason: event.target.value }))}
-                    placeholder="مثال: دوام رمضان / جدول حملة صبغات"
+                    placeholder={t("مثال: دوام رمضان / جدول حملة صبغات")}
                   />
                 </label>
               </div>
 
               <div className="settings-bookings-v2-weekday-groups">
                 <section>
-                  <h3>أيام مستهدفة داخل الفترة</h3>
-                  <p>اختياري؛ اتركيها فارغة لتطبيق الاستثناء على كل الأيام.</p>
+                  <h3>{t("أيام مستهدفة داخل الفترة")}</h3>
+                  <p>{t("اختياري؛ اتركيها فارغة لتطبيق الاستثناء على كل الأيام.")}</p>
                   <div className="settings-bookings-v2-chips">
                     {WEEKDAY_KEYS.map((day) => {
                       const active = (overrideDraft.includeWeekdays || []).includes(day);
@@ -1050,7 +1063,7 @@ export default function SettingsBookings() {
                           aria-pressed={active}
                           onClick={() => toggleDraftWeekday("includeWeekdays", day)}
                         >
-                          {WEEKDAY_LABEL_AR[day]}
+                          {t(WEEKDAY_LABEL_AR[day])}
                         </button>
                       );
                     })}
@@ -1058,8 +1071,8 @@ export default function SettingsBookings() {
                 </section>
 
                 <section>
-                  <h3>أيام مغلقة داخل الفترة</h3>
-                  <p>اختياري؛ تستخدم لإغلاق أيام محددة داخل نفس الفترة.</p>
+                  <h3>{t("أيام مغلقة داخل الفترة")}</h3>
+                  <p>{t("اختياري؛ تستخدم لإغلاق أيام محددة داخل نفس الفترة.")}</p>
                   <div className="settings-bookings-v2-chips">
                     {WEEKDAY_KEYS.map((day) => {
                       const active = (overrideDraft.blockedWeekdays || []).includes(day);
@@ -1071,7 +1084,7 @@ export default function SettingsBookings() {
                           aria-pressed={active}
                           onClick={() => toggleDraftWeekday("blockedWeekdays", day)}
                         >
-                          {WEEKDAY_LABEL_AR[day]}
+                          {t(WEEKDAY_LABEL_AR[day])}
                         </button>
                       );
                     })}
@@ -1081,27 +1094,27 @@ export default function SettingsBookings() {
 
               <div className="settings-bookings-v2-form-actions">
                 <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={addBookingHourOverride}>
-                  {isEditingOverride ? "حفظ التعديل" : "إضافة استثناء"}
+                  {isEditingOverride ? t("حفظ التعديل") : t("إضافة استثناء")}
                 </button>
                 <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={resetOverrideDraft}>
-                  {isEditingOverride ? "إلغاء التعديل" : "تنظيف"}
+                  {isEditingOverride ? t("إلغاء التعديل") : t("تنظيف")}
                 </button>
               </div>
 
               <section className="settings-bookings-v2-exceptions-list">
                 <header>
                   <div>
-                    <h3>الاستثناءات المحفوظة</h3>
-                    <p>الأولوية: الإغلاق الخاص بالتاريخ، ثم الاستثناء، ثم الدوام الأسبوعي.</p>
+                    <h3>{t("الاستثناءات المحفوظة")}</h3>
+                    <p>{t("الأولوية: الإغلاق الخاص بالتاريخ، ثم الاستثناء، ثم الدوام الأسبوعي.")}</p>
                   </div>
-                  <span className="dsv2-badge dsv2-badge--gold">{bookingHourOverrides.length} فترة</span>
+                  <span className="dsv2-badge dsv2-badge--gold">{bookingHourOverrides.length} {t("فترة")}</span>
                 </header>
 
                 {!bookingHourOverrides.length ? (
                   <DashboardEmptyStateV2
                     tone="gold"
-                    title="لا توجد استثناءات"
-                    description="أضف فترة خاصة إذا احتجت تغيير الدوام أو إغلاق أيام بتاريخ محدد."
+                    title={t("لا توجد استثناءات")}
+                    description={t("أضف فترة خاصة إذا احتجت تغيير الدوام أو إغلاق أيام بتاريخ محدد.")}
                   />
                 ) : (
                   <div className="settings-bookings-v2-exception-cards">
@@ -1111,26 +1124,26 @@ export default function SettingsBookings() {
                           <div className="settings-bookings-v2-exception-card__title">
                             <strong>
                               {item.mode === "closed"
-                                ? "مغلق بالكامل"
-                                : `ساعات: ${formatTime12Safe(item.start || "10:00")} - ${formatTime12Safe(item.end || "22:00")}`}
+                                ? t("مغلق بالكامل")
+                                : `${t("ساعات")}: ${formatTime12Safe(item.start || "10:00", "-", language)} - ${formatTime12Safe(item.end || "22:00", "-", language)}`}
                             </strong>
                             <span className={`dsv2-badge ${item.mode === "closed" ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
-                              {item.mode === "closed" ? "إغلاق" : "ساعات مخصصة"}
+                              {item.mode === "closed" ? t("إغلاق") : t("ساعات مخصصة")}
                             </span>
                           </div>
                           <dl className="settings-bookings-v2-exception-card__meta">
-                            <div><dt>الميلادي</dt><dd>{formatDateRangeByCalendar(item.fromDate, item.toDate, "gregory")}</dd></div>
-                            <div><dt>الهجري</dt><dd>{formatDateRangeByCalendar(item.fromDate, item.toDate, "hijri")}</dd></div>
+                            <div><dt>{t("الميلادي")}</dt><dd>{formatDateRangeByCalendar(item.fromDate, item.toDate, "gregory", language)}</dd></div>
+                            <div><dt>{t("الهجري")}</dt><dd>{formatDateRangeByCalendar(item.fromDate, item.toDate, "hijri", language)}</dd></div>
                             <div>
-                              <dt>الأيام المستهدفة</dt>
-                              <dd>{(item.includeWeekdays || []).length ? (item.includeWeekdays || []).map((day) => WEEKDAY_LABEL_AR[day]).join("، ") : "الكل"}</dd>
+                              <dt>{t("الأيام المستهدفة")}</dt>
+                              <dd>{(item.includeWeekdays || []).length ? (item.includeWeekdays || []).map((day) => t(WEEKDAY_LABEL_AR[day])).join(language === "en" ? ", " : "، ") : t("الكل")}</dd>
                             </div>
                             <div>
-                              <dt>الأيام المغلقة</dt>
-                              <dd>{(item.blockedWeekdays || []).length ? (item.blockedWeekdays || []).map((day) => WEEKDAY_LABEL_AR[day]).join("، ") : "لا يوجد"}</dd>
+                              <dt>{t("الأيام المغلقة")}</dt>
+                              <dd>{(item.blockedWeekdays || []).length ? (item.blockedWeekdays || []).map((day) => t(WEEKDAY_LABEL_AR[day])).join(language === "en" ? ", " : "، ") : t("لا يوجد")}</dd>
                             </div>
                           </dl>
-                          {item.reason ? <p className="settings-bookings-v2-exception-card__reason">السبب: {item.reason}</p> : null}
+                          {item.reason ? <p className="settings-bookings-v2-exception-card__reason">{t("السبب")}: {item.reason}</p> : null}
                         </div>
                         <div className="settings-bookings-v2-exception-card__actions">
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editBookingHourOverride(item.id)}>
@@ -1152,8 +1165,8 @@ export default function SettingsBookings() {
 
       <section className="dsv2-card dsv2-card--padded settings-bookings-v2-savebar">
         <div className="settings-bookings-v2-savebar__copy">
-          <strong>حفظ إعدادات الحجوزات</strong>
-          <p>احفظ بعد التعديل حتى تنعكس القيم في صفحة الحجز.</p>
+          <strong>{t("حفظ إعدادات الحجوزات")}</strong>
+          <p>{t("احفظ بعد التعديل حتى تنعكس القيم في صفحة الحجز.")}</p>
           {savedMsg ? (
             <span
               className={`dsv2-badge ${savedMsgIsError ? "dsv2-badge--danger" : "dsv2-badge--success"}`}

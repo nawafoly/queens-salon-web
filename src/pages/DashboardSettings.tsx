@@ -440,7 +440,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="bookings"
               element={
                 <PermissionRoute permission="settings.booking.manage">
-                  <SettingsBookings />
+                  <SettingsBookings language={language} />
                 </PermissionRoute>
               }
             />
