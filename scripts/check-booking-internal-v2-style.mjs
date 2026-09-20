@@ -9,6 +9,7 @@ const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const dashboardPath = resolve(root, "src/pages/Dashboard.tsx");
 const bookingPath = resolve(root, "src/features/internal-booking-v2/BookingInternalV2.tsx");
 const packageSessionsPath = resolve(root, "src/features/internal-booking-v2/PackageSessionsManager.tsx");
+const legacyFeatureStylePath = resolve(root, "src/features/internal-booking-v2/booking-internal-v2.css");
 const errors = [];
 
 function checkCanonicalCss(path, label) {
@@ -30,6 +31,18 @@ function checkCanonicalCss(path, label) {
 checkCanonicalCss(canonicalPath, "booking-internal.css");
 checkCanonicalCss(controlsPath, "booking-internal-controls-refinement.css");
 checkCanonicalCss(sessionsPath, "booking-internal-sessions-refinement.css");
+
+const canonicalCss = readFileSync(canonicalPath, "utf8");
+const legacyFeatureCss = readFileSync(legacyFeatureStylePath, "utf8");
+if (/\.bk2-summary-card\s*\{[^}]*order\s*:\s*-1\b/s.test(canonicalCss)) {
+  errors.push("booking-internal.css must not render the summary before the active workflow on tablet/mobile.");
+}
+if (/\.bk2-summary-card\s*\{[^}]*order\s*:\s*-1\b/s.test(legacyFeatureCss)) {
+  errors.push("booking-internal-v2.css must not render the summary before the active workflow on tablet/mobile.");
+}
+if (!/@media \(max-width: 900px\)[\s\S]*?\.bk2-summary-card[^}]*order\s*:\s*1\b/.test(canonicalCss)) {
+  errors.push("booking-internal.css must place the mobile summary after the active workflow.");
+}
 
 const entry = readFileSync(entryPath, "utf8");
 if (!entry.includes('@import "./pages/booking-internal.css";')) {
