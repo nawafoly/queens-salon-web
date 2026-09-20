@@ -2411,7 +2411,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 <div className="offer-editor__grid offer-editor__grid--identity">
                   <div className="offer-editor__field">
-                    <label>عنوان العرض <em>{t("مطلوب")}</em></label>
+                    <label>{t("عنوان العرض")} <em>{t("مطلوب")}</em></label>
                     <input
                       value={form.title}
                       onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -2421,7 +2421,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   </div>
 
                   <div className="offer-editor__field">
-                    <label>كود العرض <em>{t("مطلوب")}</em></label>
+                    <label>{t("كود العرض")} <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__code-row">
                       <input
                         value={form.code}
@@ -2482,7 +2482,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 <div className="offer-editor__commercial-grid">
                   <div className="offer-editor__field offer-editor__commercial-field is-primary">
-                    <label>قيمة الخصم <em>{t("مطلوب")}</em></label>
+                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2965,7 +2965,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       <span className="offer-editor__upload-placeholder">
                         <FontAwesomeIcon icon={faImage} />
                         <strong>{t("اختيار صورة العرض")}</strong>
-                        <small>PNG أو JPG أو WEBP</small>
+                        <small>{t("PNG أو JPG أو WEBP")}</small>
                       </span>
                     )}
                   </label>
