@@ -448,15 +448,29 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
     const message = modalMsg.trim();
     if (!message) return;
 
-    const tone = message.startsWith("تم")
+    const successMessages = new Set([
+      t("تم تحديث بيانات الإيرادات"),
+      t("تمت إضافة سجل الإيراد"),
+      t("تم حذف سجل الإيراد"),
+      t("تم تعديل طريقة الدفع وتحديث الإيراد"),
+      t("تم تعديل المبلغ"),
+      t("تم تحميل ملف PDF"),
+    ]);
+    const warningMessages = new Set([
+      t("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة."),
+      t("إيراد الحجز يُدار من الحجز نفسه حتى تبقى الفاتورة والمدفوعات والإيراد متطابقة."),
+      t("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح."),
+      t("ما فيه بيانات للتصدير"),
+    ]);
+    const tone = successMessages.has(message)
       ? "success"
-      : message.includes("مخصص") || message.includes("يُدار") || message.includes("لا يوجد")
+      : warningMessages.has(message)
         ? "warning"
         : "danger";
 
     pushToast({ title: message, tone });
     setModalMsg("");
-  }, [modalMsg, pushToast]);
+  }, [language, modalMsg, pushToast]);
 
   const refresh = async (announce = false) => {
     try {
@@ -466,9 +480,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       setItems(incomeRows);
       setBookingMetaById(buildBookingMetaByIncomeRows(incomeRows));
       setLoadError("");
-      if (announce) setModalMsg("تم تحديث بيانات الإيرادات");
+      if (announce) setModalMsg(t("تم تحديث بيانات الإيرادات"));
     } catch (e) {
-      const message = firebaseMsg(e);
+      const message = firebaseMsg(e, language);
       setLoadError(message);
       setModalMsg(message);
     } finally {
@@ -493,7 +507,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         );
 
         if (!user) {
-          if (mounted) setModalMsg("سجّل دخول الإدارة أولاً");
+          if (mounted) setModalMsg(t("سجّل دخول الإدارة أولاً"));
           return;
         }
 
@@ -522,7 +536,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         }
       } catch (e) {
         if (mounted) {
-          const message = firebaseMsg(e);
+          const message = firebaseMsg(e, language);
           setLoadError(message);
           setModalMsg(message);
         }
@@ -566,11 +580,11 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       const linkedBookingId = resolveLinkedBookingId(x);
       const bm = bookingMetaById[linkedBookingId];
       const effectiveDate = effectiveDateOf(x);
-      const paymentSummary = buildPaymentSummary(bm);
+      const paymentSummary = buildPaymentSummary(bm, language);
       const noteText = formatFinanceNote(x.note);
       const effectiveAmount = Number(x.amount || 0);
       const a =
-        `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
+        `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "", language)} ${x.note || ""} ${noteText} ${
           x.bookingId || ""
         } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""} ${paymentSummary}`.toLowerCase();
       return a.includes(qq);
@@ -640,8 +654,8 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
     const n = Number(amount);
     const reason = String(note || "").trim();
     const cleanedSource = normalizeIncomeSourceInput(source);
-    if (!date || !n || n <= 0) return setModalMsg("بيانات غير صحيحة");
-    if (!reason) return setModalMsg("سبب/مرجع الدخل مطلوب");
+    if (!date || !n || n <= 0) return setModalMsg(t("بيانات غير صحيحة"));
+    if (!reason) return setModalMsg(t("سبب/مرجع الدخل مطلوب"));
 
     const item: IncomeItem = {
       id: uid(),
@@ -661,9 +675,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       setAddOpen(false);
       setAmount("");
       setNote("");
-      setModalMsg("تمت إضافة سجل الإيراد");
+      setModalMsg(t("تمت إضافة سجل الإيراد"));
     } catch (e) {
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -671,15 +685,15 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
 
   const openDeleteIncomeModal = (item: IncomeItem) => {
     if (isRefundIncomeRow(item)) {
-      setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
+      setModalMsg(t("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة."));
       return;
     }
     if (!canManageIncome) {
-      setModalMsg("لا تملك صلاحية إدارة الإيرادات.");
+      setModalMsg(t("لا تملك صلاحية إدارة الإيرادات."));
       return;
     }
     if (resolveLinkedBookingId(item)) {
-      setModalMsg("إيراد الحجز يُدار من الحجز نفسه حتى تبقى الفاتورة والمدفوعات والإيراد متطابقة.");
+      setModalMsg(t("إيراد الحجز يُدار من الحجز نفسه حتى تبقى الفاتورة والمدفوعات والإيراد متطابقة."));
       return;
     }
     setDeleteTarget(item);
@@ -699,15 +713,15 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   const confirmDeleteIncome = async () => {
     if (!deleteTarget?.id) return;
     if (!canManageIncome) {
-      setDeleteError("لا تملك صلاحية إدارة الإيرادات.");
+      setDeleteError(t("لا تملك صلاحية إدارة الإيرادات."));
       return;
     }
     if (resolveLinkedBookingId(deleteTarget)) {
-      setDeleteError("إيراد الحجز لا يُحذف مباشرة من صفحة الإيرادات.");
+      setDeleteError(t("إيراد الحجز لا يُحذف مباشرة من صفحة الإيرادات."));
       return;
     }
     if (String(deletePin).trim() !== INCOME_EDIT_PIN) {
-      setDeleteError("الرقم السري غير صحيح");
+      setDeleteError(t("الرقم السري غير صحيح"));
       return;
     }
 
@@ -721,9 +735,9 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       setDeleteTarget(null);
       setDeletePin("");
       setDeleteError("");
-      setModalMsg("تم حذف سجل الإيراد");
+      setModalMsg(t("تم حذف سجل الإيراد"));
     } catch (e) {
-      setDeleteError(firebaseMsg(e));
+      setDeleteError(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -731,20 +745,20 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
 
   const openEditIncomeModal = (item: IncomeItem) => {
     if (!canManageIncome) {
-      setModalMsg("لا تملك صلاحية إدارة الإيرادات.");
+      setModalMsg(t("لا تملك صلاحية إدارة الإيرادات."));
       return;
     }
     if (isRefundIncomeRow(item)) {
-      setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
+      setModalMsg(t("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة."));
       return;
     }
     const linkedBookingId = resolveLinkedBookingId(item);
     if (linkedBookingId && !canManageBookingPayment) {
-      setModalMsg("لا تملك صلاحية إدارة دفعات الحجوزات.");
+      setModalMsg(t("لا تملك صلاحية إدارة دفعات الحجوزات."));
       return;
     }
     if (linkedBookingId && item.method === "mixed") {
-      setModalMsg("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح.");
+      setModalMsg(t("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح."));
       return;
     }
     const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
@@ -771,7 +785,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   const saveEditedIncome = async () => {
     if (!editTarget) return;
     if (String(editPin).trim() !== INCOME_EDIT_PIN) {
-      setEditError("الرقم السري غير صحيح");
+      setEditError(t("الرقم السري غير صحيح"));
       return;
     }
 
@@ -780,11 +794,11 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       !!bookingId && !isRefundIncomeRow(editTarget);
 
     if (!canManageIncome) {
-      setEditError("لا تملك صلاحية إدارة الإيرادات.");
+      setEditError(t("لا تملك صلاحية إدارة الإيرادات."));
       return;
     }
     if (bookingPaymentEdit && !canManageBookingPayment) {
-      setEditError("لا تملك صلاحية إدارة دفعات الحجوزات.");
+      setEditError(t("لا تملك صلاحية إدارة دفعات الحجوزات."));
       return;
     }
 
@@ -792,7 +806,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       bookingPaymentEdit && canManageBookingPayment;
 
     if (canAdjustPayment && editTarget.method === "mixed") {
-      setEditError("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح.");
+      setEditError(t("الدفع المختلط يُعدّل من صفحة الحجوزات حتى يتم توزيع المبلغ على طرق الدفع بشكل صريح."));
       return;
     }
 
@@ -803,7 +817,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       if (canAdjustPayment) {
         const totalAmountRaw = parseMoneyInput(editBookingTotal);
         if (!Number.isFinite(totalAmountRaw) || totalAmountRaw <= 0) {
-          setEditError("إجمالي الحجز غير صحيح.");
+          setEditError(t("إجمالي الحجز غير صحيح."));
           return;
         }
         const totalAmount = round2(totalAmountRaw);
@@ -814,17 +828,17 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
 
         if (paymentType === "partial") {
           if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-            setEditError("مبلغ العربون غير صحيح.");
+            setEditError(t("مبلغ العربون غير صحيح."));
             return;
           }
           if (paidAmount > totalAmount) {
-            setEditError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+            setEditError(t("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز."));
             return;
           }
         }
 
         if (!Number.isFinite(paidAmount) || paidAmount < 0) {
-          setEditError("المبلغ المدفوع غير صحيح.");
+          setEditError(t("المبلغ المدفوع غير صحيح."));
           return;
         }
 
@@ -848,11 +862,11 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         });
 
         await refresh();
-        setModalMsg("تم تعديل طريقة الدفع وتحديث الإيراد");
+        setModalMsg(t("تم تعديل طريقة الدفع وتحديث الإيراد"));
       } else {
         const nextAmountRaw = parseMoneyInput(editAmount);
         if (!Number.isFinite(nextAmountRaw) || nextAmountRaw <= 0) {
-          setEditError("المبلغ غير صحيح.");
+          setEditError(t("المبلغ غير صحيح."));
           return;
         }
 
@@ -864,7 +878,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         });
         const next = await listAllIncomeCore();
         setItems(next);
-        setModalMsg("تم تعديل المبلغ");
+        setModalMsg(t("تم تعديل المبلغ"));
       }
 
       setEditOpen(false);
@@ -872,7 +886,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       setEditPin("");
       setEditError("");
     } catch (e) {
-      setEditError(firebaseMsg(e));
+      setEditError(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -891,12 +905,12 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
 
       return {
         date: rowEffectiveDate(x),
-        invoiceRef: resolveDisplayBookingRef(x, bookingMeta),
-        clientName: resolveDisplayClientName(x, bookingMeta),
-        services: sourceLabel(x.source || ""),
+        invoiceRef: resolveDisplayBookingRef(x, bookingMeta, language),
+        clientName: resolveDisplayClientName(x, bookingMeta, language),
+        services: sourceLabel(x.source || "", language),
         employeeName: resolveDisplayEmployeeName(x, bookingMeta),
-        paymentMethod: methodLabel(x.method),
-        source: sourceLabel(x.source || ""),
+        paymentMethod: methodLabel(x.method, language),
+        source: sourceLabel(x.source || "", language),
         totalAmount,
         paidAmount,
         remainingAmount,
@@ -906,7 +920,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
           remainingAmount,
           isRefund,
         }).label,
-        note: resolveDisplayNoteText(x, noteText),
+        note: resolveDisplayNoteText(x, noteText, language),
       };
     });
 
@@ -915,8 +929,8 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
     filters: {
       fromDate: from || undefined,
       toDate: to || undefined,
-      method: fMethod === "all" ? "الكل" : methodLabel(fMethod),
-      source: q.trim() ? `بحث: ${q.trim()}` : "الكل",
+      method: fMethod === "all" ? t("الكل") : methodLabel(fMethod, language),
+      source: q.trim() ? `${t("بحث")}: ${q.trim()}` : t("الكل"),
     },
     summary: {
       totalRevenue: total,
@@ -927,25 +941,25 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       refundTotal: totalRefund,
       remainingTotal: reportRows.reduce((sum, row) => sum + Number(row.remainingAmount || 0), 0),
     },
-    generatedBy: "لوحة الإيرادات",
+    generatedBy: t("لوحة الإيرادات"),
     };
   };
 
   const exportPdf = async () => {
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     try {
       setLoading(true);
       await exportIncomeReportPdf(buildIncomeReportInput());
-      setModalMsg("تم تحميل ملف PDF");
+      setModalMsg(t("تم تحميل ملف PDF"));
     } catch (error) {
-      setModalMsg(error instanceof Error ? error.message : "تعذر إنشاء ملف PDF");
+      setModalMsg(error instanceof Error ? error.message : t("تعذر إنشاء ملف PDF"));
     } finally {
       setLoading(false);
     }
   };
 
   const exportExcel = () => {
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     exportIncomeReportExcel(buildIncomeReportInput());
   };
 
