@@ -59,6 +59,8 @@ class FakeD1 {
       "payroll_entries",
       "payroll_carryover_adjustments",
       "payroll_historical_settlements",
+      "cashback_policies",
+      "cashback_wallet_transactions",
       "salary_advances",
       "salary_advance_installments",
       "employee_recurring_deductions",
@@ -548,6 +550,12 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("clients", salonId, id) ? [this.find("clients", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM cashback_policies WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("cashback_policies")
+        .filter((row) => row.salon_id === salonId)
+        .slice(0, 1);
     }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND firebase_uid = ?")) {
       const [salonId, uid] = params;
