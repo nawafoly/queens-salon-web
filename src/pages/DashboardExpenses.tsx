@@ -34,6 +34,7 @@ import {
   countMonthlyExpensesMissingNotesCore,
 } from "../services/CoreExpenseService";
 import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
+import { expensesText, type DashboardLanguage } from "../helpers/dashboardExpensesLanguage";
 import {
   DashboardConfirmV2,
   DashboardDatePickerV2,
@@ -54,23 +55,23 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function money(n: number) {
-  return new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 2 }).format(n);
+function money(n: number, language: DashboardLanguage = "ar") {
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 }).format(n);
 }
 
 
-function firebaseMsg(e: any) {
+function firebaseMsg(e: any, language: DashboardLanguage = "ar") {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions")) {
-    return "⚠️ لا توجد صلاحيات كافية. تأكد من صلاحيات Core D1 وتسجيل الدخول.";
+    return expensesText(language, "⚠️ لا توجد صلاحيات كافية. تأكد من صلاحيات Core D1 وتسجيل الدخول.");
   }
   if (msg.includes("not-found")) {
-    return "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.";
+    return expensesText(language, "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.");
   }
   if (msg.includes("requires an index")) {
-    return "⚠️ الاستعلام يحتاج Index.";
+    return expensesText(language, "⚠️ الاستعلام يحتاج Index.");
   }
-  return "تعذر تنفيذ العملية. راجع Console لمعرفة السبب.";
+  return expensesText(language, "تعذر تنفيذ العملية. راجع Console لمعرفة السبب.");
 }
 
 // ✅ LocalStorage Expenses (Migration)
@@ -136,12 +137,15 @@ const GREGORIAN_MONTHS_AR = [
   "ديسمبر",
 ] as const;
 
-function formatMonthKeyLabel(monthKey: string): string {
+function formatMonthKeyLabel(monthKey: string, language: DashboardLanguage = "ar"): string {
   const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
   if (!match) return String(monthKey || "").trim();
   const year = Number(match[1]);
   const month = Number(match[2]);
   if (!Number.isFinite(year) || month < 1 || month > 12) return monthKey;
+  if (language === "en") {
+    return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  }
   return `${GREGORIAN_MONTHS_AR[month - 1]} ${year}`;
 }
 
@@ -196,11 +200,20 @@ function extractStaffNameFromExpenseTitle(title: string): string {
   return "";
 }
 
-function expenseTypeLabel(e: Expense): string {
+function expenseTypeLabel(e: Expense, language: DashboardLanguage = "ar"): string {
   const kind = payrollKindFromExpense(e);
-  if (kind === "salary") return "راتب";
-  if (kind === "overtime") return "أوفر تايم";
-  return "تشغيلي";
+  if (kind === "salary") return expensesText(language, "راتب");
+  if (kind === "overtime") return expensesText(language, "أوفر تايم");
+  return expensesText(language, "تشغيلي");
+}
+
+function expenseDisplayTitle(e: Expense, language: DashboardLanguage = "ar"): string {
+  const title = String(e.title || "").trim();
+  if (language === "ar" || !title) return title;
+  const kind = payrollKindFromExpense(e);
+  if (kind === "salary") return title.replace(/^راتب\s*/, `${expensesText(language, "راتب")} `);
+  if (kind === "overtime") return title.replace(/^أوفر تايم\s*/, `${expensesText(language, "أوفر تايم")} `);
+  return title;
 }
 
 function expenseEmployeeLabel(e: Expense): string {
@@ -211,33 +224,33 @@ function expenseEmployeeLabel(e: Expense): string {
   return parsed || "-";
 }
 
-function expenseSourceLabel(e: Expense): string {
+function expenseSourceLabel(e: Expense, language: DashboardLanguage = "ar"): string {
   const kind = payrollKindFromExpense(e);
-  if (kind === "salary" || kind === "overtime") return "رواتب";
+  if (kind === "salary" || kind === "overtime") return expensesText(language, "رواتب");
   const category = String(e.category || "").trim();
-  return category || "تشغيل";
+  return category ? expensesText(language, category) : expensesText(language, "تشغيل");
 }
 
-function paymentMethodLabel(value: unknown): string {
+function paymentMethodLabel(value: unknown, language: DashboardLanguage = "ar"): string {
   const raw = String(value || "").trim();
   const key = raw.toLowerCase();
-  if (key === "cash" || raw.includes("كاش") || raw.includes("نقد")) return "كاش";
-  if (key === "card" || key === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return "شبكة";
-  if (key === "transfer" || raw.includes("تحويل")) return "تحويل";
-  if (key === "mixed" || raw.includes("مختلط")) return "مختلط";
-  return raw || "غير محدد";
+  if (key === "cash" || raw.includes("كاش") || raw.includes("نقد")) return expensesText(language, "كاش");
+  if (key === "card" || key === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return expensesText(language, "شبكة");
+  if (key === "transfer" || raw.includes("تحويل")) return expensesText(language, "تحويل");
+  if (key === "mixed" || raw.includes("مختلط")) return expensesText(language, "مختلط");
+  return raw || expensesText(language, "غير محدد");
 }
 
 function paymentMethodTone(value: unknown): "cash" | "card" | "transfer" | "other" {
-  const label = paymentMethodLabel(value);
-  if (label === "كاش") return "cash";
-  if (label === "شبكة") return "card";
-  if (label === "تحويل") return "transfer";
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "cash" || raw.includes("كاش") || raw.includes("نقد")) return "cash";
+  if (raw === "card" || raw === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return "card";
+  if (raw === "transfer" || raw.includes("تحويل")) return "transfer";
   return "other";
 }
 
-function formatSar(value: unknown): string {
-  return `${money(Number(value || 0))} ر.س`;
+function formatSar(value: unknown, language: DashboardLanguage = "ar"): string {
+  return `${money(Number(value || 0), language)} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function formatDateDisplay(value: unknown): string {
@@ -246,7 +259,8 @@ function formatDateDisplay(value: unknown): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : raw || "—";
 }
 
-const DashboardExpenses: React.FC = () => {
+const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const t = (text: string) => expensesText(language, text);
   const { hasPermission } = usePermissions();
   const [authReady, setAuthReady] = useState(false);
   const allowed = hasPermission("expenses.view");
@@ -568,7 +582,7 @@ const DashboardExpenses: React.FC = () => {
         );
 
         setPayrollLoadWarning(
-          "تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح."
+          t("تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح.")
         );
       }
 
@@ -580,7 +594,7 @@ const DashboardExpenses: React.FC = () => {
       }
     } catch (e) {
       console.error("listAllExpensesCore error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
       setItems([]);
       setAutoPayrollItems([]);
     } finally {
@@ -609,7 +623,7 @@ const DashboardExpenses: React.FC = () => {
             setItems([]);
             setAutoPayrollItems([]);
             setLoading(false);
-            setModalMsg("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب.");
+            setModalMsg(t("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب."));
             setAuthReady(true);
           }
           return;
@@ -742,10 +756,10 @@ const DashboardExpenses: React.FC = () => {
 
   const addExpense = async () => {
     const amt = Number(amount);
-    if (!title.trim()) return setModalMsg("اكتب اسم المصروف");
-    if (!category.trim()) return setModalMsg("اختر التصنيف");
-    if (!date) return setModalMsg("اختر التاريخ");
-    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg("اكتب مبلغ صحيح");
+    if (!title.trim()) return setModalMsg(t("اكتب اسم المصروف"));
+    if (!category.trim()) return setModalMsg(t("اختر التصنيف"));
+    if (!date) return setModalMsg(t("اختر التاريخ"));
+    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg(t("اكتب مبلغ صحيح"));
 
     const expense: Expense = {
       id: safeUUID(),
@@ -764,10 +778,10 @@ const DashboardExpenses: React.FC = () => {
       await loadExpenses();
       resetForm();
       setAddOpen(false);
-      setModalMsg("تمت إضافة المصروف بنجاح");
+      setModalMsg(t("تمت إضافة المصروف بنجاح"));
     } catch (e) {
       console.error("upsertExpenseCore error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -775,13 +789,13 @@ const DashboardExpenses: React.FC = () => {
 
   const removeExpense = async (id: string) => {
     if (isAutoPayrollExpenseId(id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن حذفه يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن حذفه يدويًا."));
       return;
     }
     setConfirmState({
       open: true,
-      title: "تأكيد الحذف",
-      message: "متأكد تبغى حذف المصروف؟",
+      title: t("تأكيد الحذف"),
+      message: t("متأكد تبغى حذف المصروف؟"),
       onConfirm: async () => {
         try {
           setLoading(true);
@@ -789,7 +803,7 @@ const DashboardExpenses: React.FC = () => {
           await loadExpenses();
         } catch (e) {
           console.error("removeExpenseCore error:", e);
-          setModalMsg(firebaseMsg(e));
+          setModalMsg(firebaseMsg(e, language));
         } finally {
           setLoading(false);
           setConfirmState({ open: false });
@@ -801,7 +815,7 @@ const DashboardExpenses: React.FC = () => {
   // ✅ بدء التعديل (كل الحقول)
   const startEdit = (e: Expense) => {
     if (isAutoPayrollExpenseId(e.id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا."));
       return;
     }
     setEditId(e.id);
@@ -831,15 +845,15 @@ const DashboardExpenses: React.FC = () => {
   // 💾 حفظ التعديل (كل الحقول)
   const saveEdit = async (original: Expense) => {
     if (isAutoPayrollExpenseId(original.id)) {
-      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      setModalMsg(t("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا."));
       return;
     }
     const amt = Number(editForm.amount);
 
-    if (!editForm.title.trim()) return setModalMsg("اكتب اسم المصروف");
-    if (!editForm.category.trim()) return setModalMsg("اختر التصنيف");
-    if (!editForm.date) return setModalMsg("اختر التاريخ");
-    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg("اكتب مبلغ صحيح");
+    if (!editForm.title.trim()) return setModalMsg(t("اكتب اسم المصروف"));
+    if (!editForm.category.trim()) return setModalMsg(t("اختر التصنيف"));
+    if (!editForm.date) return setModalMsg(t("اختر التاريخ"));
+    if (!Number.isFinite(amt) || amt <= 0) return setModalMsg(t("اكتب مبلغ صحيح"));
 
     const updated: Expense = {
       ...original,
@@ -856,10 +870,10 @@ const DashboardExpenses: React.FC = () => {
       await upsertExpenseCore(updated);
       await loadExpenses();
       setEditId(null);
-      setModalMsg("تم التعديل ✅");
+      setModalMsg(t("تم التعديل ✅"));
     } catch (e) {
       console.error("saveEdit error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
@@ -869,7 +883,7 @@ const DashboardExpenses: React.FC = () => {
     try {
       const already = localStorage.getItem(EXPENSES_MIGRATED_KEY) === "1";
       if (already) {
-        setModalMsg("تم ترحيل المصروفات مسبقًا ✅");
+        setModalMsg(t("تم ترحيل المصروفات مسبقًا ✅"));
         setMigrated(true);
         setHasLegacy(false);
         setLegacyCount(0);
@@ -878,7 +892,7 @@ const DashboardExpenses: React.FC = () => {
 
       const legacy = loadLegacyExpenses();
       if (legacy.length === 0) {
-        setModalMsg("لا توجد مصروفات قديمة في LocalStorage ✅");
+        setModalMsg(t("لا توجد مصروفات قديمة في LocalStorage ✅"));
         setHasLegacy(false);
         setLegacyCount(0);
         return;
@@ -886,10 +900,11 @@ const DashboardExpenses: React.FC = () => {
 
       setConfirmState({
         open: true,
-        title: "ترحيل المصروفات",
-        message:
-          `سيتم ترحيل ${legacy.length} مصروف من LocalStorage إلى Firestore.\n` +
-          `ملاحظة: العملية مرة واحدة ولن تتكرر.\n\nتأكيد؟`,
+        title: t("ترحيل المصروفات"),
+        message: language === "en"
+          ? `${legacy.length} expenses will be migrated from LocalStorage to Firestore.\n${t("ملاحظة: العملية مرة واحدة ولن تتكرر.")}\n\nConfirm?`
+          : `سيتم ترحيل ${legacy.length} مصروف من LocalStorage إلى Firestore.\n` +
+            `${t("ملاحظة: العملية مرة واحدة ولن تتكرر.")}\n\nتأكيد؟`,
         onConfirm: async () => {
           try {
             setLoading(true);
@@ -905,7 +920,7 @@ const DashboardExpenses: React.FC = () => {
               setHasLegacy(false);
               setLegacyCount(0);
 
-              setModalMsg("كل السجلات موجودة بالفعل في Firestore ✅");
+              setModalMsg(t("كل السجلات موجودة بالفعل في Firestore ✅"));
               return;
             }
 
@@ -919,10 +934,10 @@ const DashboardExpenses: React.FC = () => {
             setLegacyCount(0);
 
             await loadExpenses();
-            setModalMsg(`تم ترحيل ${toUpsert.length} مصروف إلى Firestore ✅`);
+            setModalMsg(language === "en" ? `${toUpsert.length} expenses migrated to Firestore ✅` : `تم ترحيل ${toUpsert.length} مصروف إلى Firestore ✅`);
           } catch (e) {
             console.error("migrateLegacyExpensesOnce error:", e);
-            setModalMsg(firebaseMsg(e));
+            setModalMsg(firebaseMsg(e, language));
           } finally {
             setLoading(false);
             setConfirmState({ open: false });
@@ -931,23 +946,24 @@ const DashboardExpenses: React.FC = () => {
       });
     } catch (e) {
       console.error("migrateLegacyExpensesOnce error:", e);
-      setModalMsg(firebaseMsg(e));
+      setModalMsg(firebaseMsg(e, language));
     } finally {
       setLoading(false);
     }
   };
 
   const buildExpensesReportInput = () => ({
+    language,
     rows: filtered.map((e) => ({
       date: e.date,
-      type: expenseTypeLabel(e),
-      category: e.category,
-      title: e.title || e.note || "",
+      type: expenseTypeLabel(e, language),
+      category: t(String(e.category || "أخرى")),
+      title: expenseDisplayTitle(e, language) || e.note || "",
       employeeName: expenseEmployeeLabel(e),
-      paymentMethod: String(e.paymentMethod || ""),
+      paymentMethod: paymentMethodLabel(e.paymentMethod, language),
       amount: Number(e.amount || 0),
-      source: expenseSourceLabel(e),
-      addedBy: String((e as any).createdByName || (e as any).addedBy || "الإدارة"),
+      source: expenseSourceLabel(e, language),
+      addedBy: String((e as any).createdByName || (e as any).addedBy || t("الإدارة")),
       payrollCycle:
         payrollKindFromExpense(e) === "manual"
           ? ""
@@ -959,20 +975,20 @@ const DashboardExpenses: React.FC = () => {
       toDate: activeRange.to,
       category: fCategory,
       paymentMethod: fPayment,
-      mode: recordMode === "payroll_cycle" ? "دورة رواتب" : "شهر تقويمي",
+      mode: recordMode === "payroll_cycle" ? t("دورة الرواتب") : t("شهر تقويمي"),
     },
-    generatedBy: "لوحة المصروفات",
+    generatedBy: t("لوحة المصروفات"),
   });
 
   const exportPdf = () => {
-    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (payrollLoadWarning) return setModalMsg(t("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب."));
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     exportExpensesReportPdf(buildExpensesReportInput());
   };
 
   const exportExcel = () => {
-    if (payrollLoadWarning) return setModalMsg("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب.");
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    if (payrollLoadWarning) return setModalMsg(t("تعذر التصدير لأن بيانات الرواتب غير مكتملة. أعد تحميل الصفحة بعد عودة مصدر الرواتب."));
+    if (!filtered.length) return setModalMsg(t("ما فيه بيانات للتصدير"));
     exportExpensesReportExcel(buildExpensesReportInput());
   };
 
@@ -993,12 +1009,12 @@ const DashboardExpenses: React.FC = () => {
       if (!cats.includes(category)) setCategory(cats[0] || "أخرى");
     })();
 
-    setModalMsg("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)");
+    setModalMsg(t("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)"));
   };
 
   if (!authReady) {
     return (
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card dsv2-card--padded expenses-v2-auth-state">
           <DashboardSkeletonV2 variant="title" width="38%" />
           <DashboardSkeletonV2 lines={3} />
@@ -1009,10 +1025,10 @@ const DashboardExpenses: React.FC = () => {
 
   if (!allowed) {
     return (
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <DashboardErrorStateV2
-          title="غير مصرح"
-          description="هذه الصفحة خاصة بالمالك والإدارة فقط."
+          title={t("غير مصرح")}
+          description={t("هذه الصفحة خاصة بالمالك والإدارة فقط.")}
         />
       </div>
     );
@@ -1025,13 +1041,13 @@ const DashboardExpenses: React.FC = () => {
     )
   );
   const categoryOptions = [
-    { value: "الكل", label: "الكل" },
-    ...runtimeCategories.map((c) => ({ value: c, label: c })),
+    { value: "الكل", label: t("الكل") },
+    ...runtimeCategories.map((categoryName) => ({ value: categoryName, label: t(categoryName) })),
   ];
 
-  const categoryOptionsNoAll = categories.map((c) => ({
-    value: c,
-    label: c,
+  const categoryOptionsNoAll = categories.map((categoryName) => ({
+    value: categoryName,
+    label: t(categoryName),
   }));
 
   // Dashboard Expenses V2 stage 4.1: unified month selector
@@ -1053,22 +1069,22 @@ const DashboardExpenses: React.FC = () => {
 
     return Array.from(keys)
       .sort((a, b) => b.localeCompare(a))
-      .map((value) => ({ value, label: formatMonthKeyLabel(value) }));
+      .map((value) => ({ value, label: formatMonthKeyLabel(value, language) }));
   })();
 
   const paymentOptions = [
-    { value: "الكل", label: "الكل" },
-    ...paymentMethods.map((p) => ({ value: String(p), label: String(p) })),
+    { value: "الكل", label: t("الكل") },
+    ...paymentMethods.map((p) => ({ value: String(p), label: paymentMethodLabel(p, language) })),
   ];
 
   const paymentOptionsNoAll = paymentMethods.map((p) => ({
     value: String(p),
-    label: String(p),
+    label: paymentMethodLabel(p, language),
   }));
 
   const recordModeOptions = [
-    { value: "calendar", label: "شهر تقويمي (1-آخر الشهر)" },
-    { value: "payroll_cycle", label: `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
+    { value: "calendar", label: t("شهر تقويمي (1-آخر الشهر)") },
+    { value: "payroll_cycle", label: language === "en" ? `Payroll cycle (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` : `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
   ];
 
 
@@ -1085,32 +1101,32 @@ const DashboardExpenses: React.FC = () => {
 
   return (
     <>
-      <div className="dsv2-page expenses-v2-page">
+      <div className="dsv2-page expenses-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
         <section className="dsv2-card expenses-v2-hero">
           <div className="expenses-v2-hero__content">
-            <span className="dsv2-badge dsv2-badge--gold">الإدارة المالية</span>
-            <h1 className="dsv2-page-title">المصروفات</h1>
+            <span className="dsv2-badge dsv2-badge--gold">{t("الإدارة المالية")}</span>
+            <h1 className="dsv2-page-title">{t("المصروفات")}</h1>
             <p className="dsv2-page-subtitle">
-              إدارة المصروفات التشغيلية والرواتب، ومراجعة النواقص والتقارير من مساحة واحدة.
+              {t("إدارة المصروفات التشغيلية والرواتب، ومراجعة النواقص والتقارير من مساحة واحدة.")}
             </p>
           </div>
 
-          <div className="expenses-v2-actions" aria-label="إجراءات صفحة المصروفات">
+          <div className="expenses-v2-actions" aria-label={t("إجراءات صفحة المصروفات")}>
             <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setAddOpen(true)} disabled={loading}>
-              <FontAwesomeIcon icon={faPlus} /> إضافة مصروف
+              <FontAwesomeIcon icon={faPlus} /> {t("إضافة مصروف")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadExpenses()} disabled={loading}>
-              <FontAwesomeIcon icon={faRotate} /> تحديث
+              <FontAwesomeIcon icon={faRotate} /> {t("تحديث")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportPdf} disabled={loading || !filtered.length}>
-              تحميل PDF
+              {t("تحميل PDF")}
             </button>
             <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportExcel} disabled={loading || !filtered.length}>
-              Excel منسّق
+              {t("Excel منسّق")}
             </button>
             {hasLegacy && !migrated ? (
               <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void migrateLegacyExpensesOnce()} disabled={loading}>
-                ترحيل القديم ({legacyCount})
+                {t("ترحيل القديم")} ({legacyCount})
               </button>
             ) : null}
           </div>
@@ -1134,42 +1150,42 @@ const DashboardExpenses: React.FC = () => {
           </div>
         ) : null}
 
-        <section className="expenses-v2-metrics" aria-label="ملخص المصروفات">
+        <section className="expenses-v2-metrics" aria-label={t("ملخص المصروفات")}>
           <article className="dsv2-metric-card dsv2-metric-card--danger">
-            <p className="dsv2-metric-card__label">إجمالي المصروفات</p>
-            <p className="dsv2-metric-card__value">{formatSar(filteredAmount)}</p>
+            <p className="dsv2-metric-card__label">{t("إجمالي المصروفات")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(filteredAmount, language)}</p>
             <p className="dsv2-metric-card__meta">{activeRange.from} — {activeRange.to}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">مصروفات الرواتب</p>
-            <p className="dsv2-metric-card__value">{formatSar(payrollAmount)}</p>
-            <p className="dsv2-metric-card__meta">{filteredPayrollCount} سجل محسوب تلقائيًا</p>
+            <p className="dsv2-metric-card__label">{t("مصروفات الرواتب")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(payrollAmount, language)}</p>
+            <p className="dsv2-metric-card__meta">{filteredPayrollCount} {t("سجل محسوب تلقائيًا")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark">
-            <p className="dsv2-metric-card__label">المصروفات التشغيلية</p>
-            <p className="dsv2-metric-card__value">{formatSar(manualAmount)}</p>
-            <p className="dsv2-metric-card__meta">{filteredManualCount} سجل يدوي</p>
+            <p className="dsv2-metric-card__label">{t("المصروفات التشغيلية")}</p>
+            <p className="dsv2-metric-card__value">{formatSar(manualAmount, language)}</p>
+            <p className="dsv2-metric-card__meta">{filteredManualCount} {t("سجل يدوي")}</p>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold">
-            <p className="dsv2-metric-card__label">تحتاج ملاحظة</p>
+            <p className="dsv2-metric-card__label">{t("تحتاج ملاحظة")}</p>
             <p className="dsv2-metric-card__value">{missingNotesInActiveRange}</p>
-            <p className="dsv2-metric-card__meta">ضمن الفترة الحالية</p>
+            <p className="dsv2-metric-card__meta">{t("ضمن الفترة الحالية")}</p>
           </article>
         </section>
 
-        <section className="expenses-v2-cycle-strip" aria-label="الفترة المرجعية">
-          <div><strong>الفترة المعروضة</strong><span>{activeRange.from} إلى {activeRange.to}</span></div>
-          <div><strong>الدورة المرجعية</strong><span>{activePayrollCycleKey}</span></div>
-          <div><strong>التصنيفات الظاهرة</strong><span>{categoryCount}</span></div>
-          <div><strong>إغلاق الرواتب</strong><span>يوم {PAYROLL_CLOSE_DAY} من كل شهر</span></div>
+        <section className="expenses-v2-cycle-strip" aria-label={t("الفترة المرجعية")}>
+          <div><strong>{t("الفترة المعروضة")}</strong><span>{activeRange.from} {t("إلى")} {activeRange.to}</span></div>
+          <div><strong>{t("الدورة المرجعية")}</strong><span>{activePayrollCycleKey}</span></div>
+          <div><strong>{t("التصنيفات الظاهرة")}</strong><span>{categoryCount}</span></div>
+          <div><strong>{t("إغلاق الرواتب")}</strong><span>{t("يوم")} {PAYROLL_CLOSE_DAY} {t("من كل شهر")}</span></div>
         </section>
 
         <section className="dsv2-card dsv2-card--padded expenses-v2-filter-card">
           <div className="expenses-v2-section-head">
             <div>
-              <span className="dsv2-badge dsv2-badge--neutral">الفلاتر</span>
-              <h2>سجل المصروفات</h2>
-              <p>غيّر الفترة والتصنيف وطريقة الدفع أو ابحث داخل السجلات.</p>
+              <span className="dsv2-badge dsv2-badge--neutral">{t("الفلاتر")}</span>
+              <h2>{t("سجل المصروفات")}</h2>
+              <p>{t("غيّر الفترة والتصنيف وطريقة الدفع أو ابحث داخل السجلات.")}</p>
             </div>
             <div className="expenses-v2-filter-actions">
               <button
@@ -1177,7 +1193,7 @@ const DashboardExpenses: React.FC = () => {
                 type="button"
                 onClick={() => setOnlyMissingNotes((value) => !value)}
               >
-                {onlyMissingNotes ? "عرض الكل" : "بدون ملاحظات"}
+                {onlyMissingNotes ? t("عرض الكل") : t("بدون ملاحظات")}
               </button>
               <button
                 className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
@@ -1190,13 +1206,13 @@ const DashboardExpenses: React.FC = () => {
                   setQ("");
                 }}
               >
-                تصفير الفلاتر
+                {t("تصفير الفلاتر")}
               </button>
             </div>
           </div>
 
           <div className="expenses-v2-filter-grid">
-            <DashboardFieldV2 id="expenses-v2-mode" label="وضع العرض">
+            <DashboardFieldV2 id="expenses-v2-mode" label={t("وضع العرض")}>
               <DashboardSelectV2
                 id="expenses-v2-mode"
                 options={recordModeOptions}
@@ -1205,7 +1221,7 @@ const DashboardExpenses: React.FC = () => {
                 disabled={loading}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-month" label="الشهر المرجعي">
+            <DashboardFieldV2 id="expenses-v2-month" label={t("الشهر المرجعي")}>
               <DashboardSelectV2
                 id="expenses-v2-month"
                 options={monthOptions}
@@ -1216,13 +1232,13 @@ const DashboardExpenses: React.FC = () => {
                 disabled={loading}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-category" label="التصنيف">
+            <DashboardFieldV2 id="expenses-v2-category" label={t("التصنيف")}>
               <DashboardSelectV2 id="expenses-v2-category" options={categoryOptions} value={fCategory} onChange={setFCategory} disabled={loading} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-payment" label="طريقة الدفع">
+            <DashboardFieldV2 id="expenses-v2-payment" label={t("طريقة الدفع")}>
               <DashboardSelectV2 id="expenses-v2-payment" options={paymentOptions} value={fPayment} onChange={setFPayment} disabled={loading} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="expenses-v2-search" label="البحث" className="expenses-v2-search-field">
+            <DashboardFieldV2 id="expenses-v2-search" label={t("البحث")} className="expenses-v2-search-field">
               <div className="expenses-v2-search-control">
                 <FontAwesomeIcon icon={faMagnifyingGlass} />
                 <input
@@ -1230,7 +1246,7 @@ const DashboardExpenses: React.FC = () => {
                   className="dsv2-input"
                   value={q}
                   onChange={(event) => setQ(event.target.value)}
-                  placeholder="الوصف، الموظفة، المصدر أو الملاحظات"
+                  placeholder={t("الوصف، الموظفة، المصدر أو الملاحظات")}
                 />
               </div>
             </DashboardFieldV2>
@@ -1240,10 +1256,10 @@ const DashboardExpenses: React.FC = () => {
         <section className="dsv2-table-card expenses-v2-table-card">
           <header className="expenses-v2-table-head">
             <div>
-              <h2>تفاصيل المصروفات</h2>
-              <p>{filtered.length} سجل مطابق للفلاتر الحالية</p>
+              <h2>{t("تفاصيل المصروفات")}</h2>
+              <p>{filtered.length} {t("سجل مطابق للفلاتر الحالية")}</p>
             </div>
-            <span className="dsv2-badge dsv2-badge--gold">{formatSar(filteredAmount)}</span>
+            <span className="dsv2-badge dsv2-badge--gold">{formatSar(filteredAmount, language)}</span>
           </header>
 
           {loading ? (
@@ -1254,10 +1270,10 @@ const DashboardExpenses: React.FC = () => {
           ) : !filtered.length ? (
             <div className="expenses-v2-state-wrap">
               <DashboardEmptyStateV2
-                title="لا توجد مصروفات مطابقة"
-                description="غيّر الفلاتر أو أضف مصروفًا جديدًا لبدء عرض البيانات."
+                title={t("لا توجد مصروفات مطابقة")}
+                description={t("غيّر الفلاتر أو أضف مصروفًا جديدًا لبدء عرض البيانات.")}
                 tone="gold"
-                action={<button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>إضافة مصروف</button>}
+                action={<button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>{t("إضافة مصروف")}</button>}
               />
             </div>
           ) : (
@@ -1266,7 +1282,7 @@ const DashboardExpenses: React.FC = () => {
                 <table className="dsv2-table expenses-v2-table">
                   <thead>
                     <tr>
-                      <th>التاريخ</th><th>النوع</th><th>الوصف</th><th>الموظفة</th><th>التصنيف</th><th>الدفع</th><th>المبلغ</th><th>المصدر</th><th>ملاحظات</th><th>إجراء</th>
+                      <th>{t("التاريخ")}</th><th>{t("النوع")}</th><th>{t("الوصف")}</th><th>{t("الموظفة")}</th><th>{t("التصنيف")}</th><th>{t("الدفع")}</th><th>{t("المبلغ")}</th><th>{t("المصدر")}</th><th>{t("ملاحظات")}</th><th>{t("إجراء")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1275,19 +1291,19 @@ const DashboardExpenses: React.FC = () => {
                       return (
                         <tr key={item.id}>
                           <td><span className="dsv2-table__primary">{formatDateDisplay(item.date)}</span>{item.monthKey ? <small className="dsv2-table__secondary">{item.monthKey}</small> : null}</td>
-                          <td><span className="expenses-v2-type-badge" data-type={payrollKindFromExpense(item)}>{expenseTypeLabel(item)}</span></td>
-                          <td><span className="dsv2-table__primary expenses-v2-title-cell" title={item.title || item.note || "—"}>{item.title || item.note || "—"}</span></td>
+                          <td><span className="expenses-v2-type-badge" data-type={payrollKindFromExpense(item)}>{expenseTypeLabel(item, language)}</span></td>
+                          <td><span className="dsv2-table__primary expenses-v2-title-cell" title={expenseDisplayTitle(item, language) || item.note || "—"}>{expenseDisplayTitle(item, language) || item.note || "—"}</span></td>
                           <td>{expenseEmployeeLabel(item)}</td>
-                          <td>{item.category || "أخرى"}</td>
-                          <td><span className="expenses-v2-payment-badge" data-method={paymentMethodTone(item.paymentMethod)}>{paymentMethodLabel(item.paymentMethod)}</span></td>
-                          <td><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></td>
-                          <td>{expenseSourceLabel(item)}</td>
-                          <td className="expenses-v2-note-cell">{item.note || <span className="expenses-v2-missing-note">بدون ملاحظة</span>}</td>
+                          <td>{t(item.category || "أخرى")}</td>
+                          <td><span className="expenses-v2-payment-badge" data-method={paymentMethodTone(item.paymentMethod)}>{paymentMethodLabel(item.paymentMethod, language)}</span></td>
+                          <td><strong className="expenses-v2-amount">{formatSar(item.amount, language)}</strong></td>
+                          <td>{expenseSourceLabel(item, language)}</td>
+                          <td className="expenses-v2-note-cell">{item.note || <span className="expenses-v2-missing-note">{t("بدون ملاحظة")}</span>}</td>
                           <td>
                             <div className="expenses-v2-row-actions">
-                              <button className="dsv2-icon-btn" type="button" aria-label="عرض التفاصيل" title="عرض التفاصيل" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /></button>
-                              {!autoPayroll ? <button className="dsv2-icon-btn" type="button" aria-label="تعديل" title="تعديل" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /></button> : null}
-                              {!autoPayroll ? <button className="dsv2-icon-btn expenses-v2-delete-action" type="button" aria-label="حذف" title="حذف" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /></button> : null}
+                              <button className="dsv2-icon-btn" type="button" aria-label={t("عرض التفاصيل")} title={t("عرض التفاصيل")} onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /></button>
+                              {!autoPayroll ? <button className="dsv2-icon-btn" type="button" aria-label={t("تعديل")} title={t("تعديل")} onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /></button> : null}
+                              {!autoPayroll ? <button className="dsv2-icon-btn expenses-v2-delete-action" type="button" aria-label={t("حذف")} title={t("حذف")} onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /></button> : null}
                             </div>
                           </td>
                         </tr>
@@ -1302,13 +1318,13 @@ const DashboardExpenses: React.FC = () => {
                   const autoPayroll = isAutoPayrollExpenseId(item.id);
                   return (
                     <article className="expenses-v2-mobile-card" key={item.id}>
-                      <header><div><span>{formatDateDisplay(item.date)}</span><strong>{item.title || item.note || "—"}</strong></div><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></header>
-                      <div className="expenses-v2-mobile-meta"><span>{expenseTypeLabel(item)}</span><span>{item.category || "أخرى"}</span><span>{paymentMethodLabel(item.paymentMethod)}</span><span>{expenseSourceLabel(item)}</span></div>
-                      <p>{item.note || "بدون ملاحظة"}</p>
+                      <header><div><span>{formatDateDisplay(item.date)}</span><strong>{expenseDisplayTitle(item, language) || item.note || "—"}</strong></div><strong className="expenses-v2-amount">{formatSar(item.amount, language)}</strong></header>
+                      <div className="expenses-v2-mobile-meta"><span>{expenseTypeLabel(item, language)}</span><span>{t(item.category || "أخرى")}</span><span>{paymentMethodLabel(item.paymentMethod, language)}</span><span>{expenseSourceLabel(item, language)}</span></div>
+                      <p>{item.note || t("بدون ملاحظة")}</p>
                       <footer>
-                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /> التفاصيل</button>
-                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /> تعديل</button> : null}
-                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /> حذف</button> : null}
+                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /> {t("التفاصيل")}</button>
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /> {t("تعديل")}</button> : null}
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /> {t("حذف")}</button> : null}
                       </footer>
                     </article>
                   );
@@ -1322,43 +1338,43 @@ const DashboardExpenses: React.FC = () => {
       <DashboardModalV2
         open={addOpen}
         onClose={() => { if (!loading) setAddOpen(false); }}
-        title="إضافة مصروف"
-        description="سجّل بيانات المصروف ليظهر مباشرة في السجل والتقارير."
-        eyebrow="المصروفات"
+        title={t("إضافة مصروف")}
+        description={t("سجّل بيانات المصروف ليظهر مباشرة في السجل والتقارير.")}
+        eyebrow={t("المصروفات")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
         closeOnEscape={!loading}
         footer={
           <>
-            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addExpense()} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ المصروف"}</button>
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>إلغاء</button>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addExpense()} disabled={loading}>{loading ? t("جارٍ الحفظ...") : t("حفظ المصروف")}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>{t("إلغاء")}</button>
           </>
         }
       >
         <div className="expenses-v2-modal-grid">
-          <DashboardFieldV2 id="expenses-v2-add-title" label="اسم المصروف" required>
-            <input id="expenses-v2-add-title" className="dsv2-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: شراء منتجات" />
+          <DashboardFieldV2 id="expenses-v2-add-title" label={t("اسم المصروف")} required>
+            <input id="expenses-v2-add-title" className="dsv2-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("مثال: شراء منتجات")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-category" label="التصنيف" required>
-            <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={category} onChange={setCategory} disabled={loading} />
+          <DashboardFieldV2 id="expenses-v2-add-category" label={t("التصنيف")} required>
+            <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: t("أخرى") }]} value={category} onChange={setCategory} disabled={loading} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-amount" label="المبلغ (ر.س)" required>
+          <DashboardFieldV2 id="expenses-v2-add-amount" label={t("المبلغ (ر.س)")} required>
             <DashboardNumberInputV2 id="expenses-v2-add-amount" className="dsv2-input" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-date" label="التاريخ" required>
+          <DashboardFieldV2 id="expenses-v2-add-date" label={t("التاريخ")} required>
             <DashboardDatePickerV2 id="expenses-v2-add-date" value={date} onChange={setDate} required clearable={false} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-payment" label="طريقة الدفع" required>
-            <DashboardSelectV2 id="expenses-v2-add-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={String(paymentMethod)} onChange={(value) => setPaymentMethod(value as PaymentMethod)} disabled={loading} />
+          <DashboardFieldV2 id="expenses-v2-add-payment" label={t("طريقة الدفع")} required>
+            <DashboardSelectV2 id="expenses-v2-add-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: t("كاش") }, { value: "شبكة", label: t("شبكة") }, { value: "تحويل", label: t("تحويل") }]} value={String(paymentMethod)} onChange={(value) => setPaymentMethod(value as PaymentMethod)} disabled={loading} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-note" label="ملاحظات" className="expenses-v2-field--wide">
-            <textarea id="expenses-v2-add-note" className="dsv2-textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="أي تفاصيل إضافية" />
+          <DashboardFieldV2 id="expenses-v2-add-note" label={t("ملاحظات")} className="expenses-v2-field--wide">
+            <textarea id="expenses-v2-add-note" className="dsv2-textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder={t("أي تفاصيل إضافية")} />
           </DashboardFieldV2>
           <div className="expenses-v2-quick-category expenses-v2-field--wide">
-            <div><strong>إضافة تصنيف سريع</strong><span>سيُحفظ ضمن إعدادات التصنيفات المالية.</span></div>
-            <input className="dsv2-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="مثال: تأمين" />
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={addCategoryQuick}>إضافة</button>
+            <div><strong>{t("إضافة تصنيف سريع")}</strong><span>{t("سيُحفظ ضمن إعدادات التصنيفات المالية.")}</span></div>
+            <input className="dsv2-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder={t("مثال: تأمين")} />
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={addCategoryQuick}>{t("إضافة")}</button>
           </div>
         </div>
       </DashboardModalV2>
@@ -1366,37 +1382,37 @@ const DashboardExpenses: React.FC = () => {
       <DashboardModalV2
         open={Boolean(editTarget)}
         onClose={cancelEdit}
-        title="تعديل المصروف"
-        description="عدّل بيانات السجل اليدوي ثم احفظ التغييرات."
-        eyebrow="تعديل السجل"
+        title={t("تعديل المصروف")}
+        description={t("عدّل بيانات السجل اليدوي ثم احفظ التغييرات.")}
+        eyebrow={t("تعديل السجل")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
         closeOnEscape={!loading}
         footer={
           <>
-            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => editTarget && void saveEdit(editTarget)} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ التعديل"}</button>
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={cancelEdit} disabled={loading}>إلغاء</button>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => editTarget && void saveEdit(editTarget)} disabled={loading}>{loading ? t("جارٍ الحفظ...") : t("حفظ التعديل")}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={cancelEdit} disabled={loading}>{t("إلغاء")}</button>
           </>
         }
       >
         <div className="expenses-v2-modal-grid">
-          <DashboardFieldV2 id="expenses-v2-edit-title" label="اسم المصروف" required>
+          <DashboardFieldV2 id="expenses-v2-edit-title" label={t("اسم المصروف")} required>
             <input id="expenses-v2-edit-title" className="dsv2-input" value={editForm.title} onChange={(event) => setEditForm((prev) => ({ ...prev, title: event.target.value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-category" label="التصنيف" required>
-            <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
+          <DashboardFieldV2 id="expenses-v2-edit-category" label={t("التصنيف")} required>
+            <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: t("أخرى") }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-amount" label="المبلغ (ر.س)" required>
+          <DashboardFieldV2 id="expenses-v2-edit-amount" label={t("المبلغ (ر.س)")} required>
             <DashboardNumberInputV2 id="expenses-v2-edit-amount" className="dsv2-input" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((prev) => ({ ...prev, amount: event.target.value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-date" label="التاريخ" required>
+          <DashboardFieldV2 id="expenses-v2-edit-date" label={t("التاريخ")} required>
             <DashboardDatePickerV2 id="expenses-v2-edit-date" value={editForm.date} onChange={(value) => setEditForm((prev) => ({ ...prev, date: value }))} required clearable={false} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-payment" label="طريقة الدفع" required>
-            <DashboardSelectV2 id="expenses-v2-edit-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={editForm.paymentMethod} onChange={(value) => setEditForm((prev) => ({ ...prev, paymentMethod: value }))} />
+          <DashboardFieldV2 id="expenses-v2-edit-payment" label={t("طريقة الدفع")} required>
+            <DashboardSelectV2 id="expenses-v2-edit-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: t("كاش") }, { value: "شبكة", label: t("شبكة") }, { value: "تحويل", label: t("تحويل") }]} value={editForm.paymentMethod} onChange={(value) => setEditForm((prev) => ({ ...prev, paymentMethod: value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-note" label="ملاحظات" className="expenses-v2-field--wide">
+          <DashboardFieldV2 id="expenses-v2-edit-note" label={t("ملاحظات")} className="expenses-v2-field--wide">
             <textarea id="expenses-v2-edit-note" className="dsv2-textarea" value={editForm.note} onChange={(event) => setEditForm((prev) => ({ ...prev, note: event.target.value }))} />
           </DashboardFieldV2>
         </div>
@@ -1406,55 +1422,55 @@ const DashboardExpenses: React.FC = () => {
         open={confirmState.open}
         onClose={() => setConfirmState({ open: false })}
         onConfirm={async () => { await confirmState.onConfirm?.(); }}
-        title={confirmState.title || "تأكيد الإجراء"}
+        title={confirmState.title || t("تأكيد الإجراء")}
         description={confirmState.message}
         tone="danger"
-        confirmLabel="تأكيد"
-        cancelLabel="تراجع"
+        confirmLabel={t("تأكيد")}
+        cancelLabel={t("تراجع")}
       />
 
       <DashboardModalV2
         open={Boolean(modalMsg)}
         onClose={() => setModalMsg("")}
-        title={modalMsg.includes("تعذر") || modalMsg.includes("غير مصرح") || modalMsg.includes("⚠️") ? "تعذر تنفيذ العملية" : "تم تنفيذ العملية"}
+        title={modalMsg.includes("تعذر") || modalMsg.includes("غير مصرح") || modalMsg.includes("Could not") || modalMsg.includes("Access denied") || modalMsg.includes("⚠️") ? t("تعذر تنفيذ العملية") : t("تم تنفيذ العملية")}
         description={modalMsg}
         size="sm"
-        tone={modalMsg.includes("تعذر") || modalMsg.includes("⚠️") ? "danger" : "success"}
-        footer={<button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setModalMsg("")}>حسنًا</button>}
+        tone={modalMsg.includes("تعذر") || modalMsg.includes("Could not") || modalMsg.includes("⚠️") ? "danger" : "success"}
+        footer={<button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setModalMsg("")}>{t("حسنًا")}</button>}
       ><div /></DashboardModalV2>
 
       {detailsTarget ? (
         <DashboardDrawerV2
           open={Boolean(detailsTarget)}
           onClose={() => setDetailsTarget(null)}
-          title="تفاصيل المصروف"
-          description="عرض سريع لبيانات السجل ومصدره."
+          title={t("تفاصيل المصروف")}
+          description={t("عرض سريع لبيانات السجل ومصدره.")}
           eyebrow={detailsTarget.id}
           size="md"
           side="end"
           tone={payrollKindFromExpense(detailsTarget) === "manual" ? "gold" : "success"}
           footer={
             <>
-              {!isAutoPayrollExpenseId(detailsTarget.id) ? <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { startEdit(detailsTarget); setDetailsTarget(null); }}>تعديل المصروف</button> : null}
-              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>إغلاق</button>
+              {!isAutoPayrollExpenseId(detailsTarget.id) ? <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { startEdit(detailsTarget); setDetailsTarget(null); }}>{t("تعديل المصروف")}</button> : null}
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>{t("إغلاق")}</button>
             </>
           }
         >
           <div className="expenses-v2-drawer-content">
             <article className="dsv2-metric-card dsv2-metric-card--danger">
-              <p className="dsv2-metric-card__label">المبلغ المسجل</p>
-              <p className="dsv2-metric-card__value">{formatSar(detailsTarget.amount)}</p>
-              <p className="dsv2-metric-card__meta">{expenseTypeLabel(detailsTarget)}</p>
+              <p className="dsv2-metric-card__label">{t("المبلغ المسجل")}</p>
+              <p className="dsv2-metric-card__value">{formatSar(detailsTarget.amount, language)}</p>
+              <p className="dsv2-metric-card__meta">{expenseTypeLabel(detailsTarget, language)}</p>
             </article>
             <dl className="expenses-v2-detail-list">
-              <div><dt>الوصف</dt><dd>{detailsTarget.title || "—"}</dd></div>
-              <div><dt>التاريخ</dt><dd>{formatDateDisplay(detailsTarget.date)}</dd></div>
-              <div><dt>التصنيف</dt><dd>{detailsTarget.category || "أخرى"}</dd></div>
-              <div><dt>طريقة الدفع</dt><dd>{paymentMethodLabel(detailsTarget.paymentMethod)}</dd></div>
-              <div><dt>الموظفة</dt><dd>{expenseEmployeeLabel(detailsTarget)}</dd></div>
-              <div><dt>المصدر</dt><dd>{expenseSourceLabel(detailsTarget)}</dd></div>
-              <div><dt>دورة الرواتب</dt><dd>{detailsTarget.monthKey || "—"}</dd></div>
-              <div><dt>ملاحظات</dt><dd>{detailsTarget.note || "لا توجد ملاحظات"}</dd></div>
+              <div><dt>{t("الوصف")}</dt><dd>{expenseDisplayTitle(detailsTarget, language) || "—"}</dd></div>
+              <div><dt>{t("التاريخ")}</dt><dd>{formatDateDisplay(detailsTarget.date)}</dd></div>
+              <div><dt>{t("التصنيف")}</dt><dd>{t(detailsTarget.category || "أخرى")}</dd></div>
+              <div><dt>{t("طريقة الدفع")}</dt><dd>{paymentMethodLabel(detailsTarget.paymentMethod, language)}</dd></div>
+              <div><dt>{t("الموظفة")}</dt><dd>{expenseEmployeeLabel(detailsTarget)}</dd></div>
+              <div><dt>{t("المصدر")}</dt><dd>{expenseSourceLabel(detailsTarget, language)}</dd></div>
+              <div><dt>{t("دورة الرواتب")}</dt><dd>{detailsTarget.monthKey || "—"}</dd></div>
+              <div><dt>{t("ملاحظات")}</dt><dd>{detailsTarget.note || t("لا توجد ملاحظات")}</dd></div>
             </dl>
           </div>
         </DashboardDrawerV2>
