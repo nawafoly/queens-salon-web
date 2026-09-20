@@ -90,8 +90,11 @@ test("annual leave balance UI renders canonical Core balance components", () => 
   assert.match(panel, /label="المستخدم"/);
   assert.match(panel, /label="المعاد\/المسترجع"/);
   assert.match(panel, /label="الرصيد المتاح"/);
-  assert.match(panel, /label="بداية سنة الخدمة"/);
-  assert.match(panel, /label="نهاية سنة الخدمة"/);
+  assert.match(panel, /label="تاريخ مباشرة العمل"/);
+  assert.match(panel, /label="سنة الخدمة الحالية"/);
+  assert.match(panel, /previousIsoDate\(annualLeave\.serviceYearEnd\)/);
+  assert.match(panel, /label="تاريخ إكمال سنة خدمة"/);
+  assert.doesNotMatch(panel, /label="نهاية سنة الخدمة"/);
 });
 
 test("reviewRequired annual balance shows Arabic reason instead of misleading balance", () => {

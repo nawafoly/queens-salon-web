@@ -44,6 +44,15 @@ function clean(value: unknown) {
   return String(value || "").trim();
 }
 
+function previousIsoDate(value: unknown) {
+  const raw = clean(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
+  const date = new Date(`${raw}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function numberLabel(value: unknown, suffix = "") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "غير متوفر";
@@ -1199,25 +1208,33 @@ export default function LeaveRestManagementPanel({
             tone={annualReviewRequired ? "gold" : "success"}
           />
           <WorkspaceMetricV2
-            label="بداية سنة الخدمة"
+            label="تاريخ مباشرة العمل"
             value={
               loading
                 ? "جاري التحميل..."
-                : annualLeave.serviceYearStart
-                  ? fmtIsoDate(String(annualLeave.serviceYearStart))
-                  : annualLeave.startDate
-                    ? fmtIsoDate(String(annualLeave.startDate))
-                    : "غير محددة"
+                : annualLeave.startDate
+                  ? fmtIsoDate(String(annualLeave.startDate))
+                  : "غير محدد"
             }
           />
           <WorkspaceMetricV2
-            label="نهاية سنة الخدمة"
+            label="سنة الخدمة الحالية"
+            value={
+              loading
+                ? "جاري التحميل..."
+                : annualLeave.serviceYearStart && annualLeave.serviceYearEnd
+                  ? `${fmtIsoDate(String(annualLeave.serviceYearStart))} — ${fmtIsoDate(previousIsoDate(annualLeave.serviceYearEnd))}`
+                  : "غير محددة"
+            }
+          />
+          <WorkspaceMetricV2
+            label="تاريخ إكمال سنة خدمة"
             value={
               loading
                 ? "جاري التحميل..."
                 : annualLeave.serviceYearEnd
                   ? fmtIsoDate(String(annualLeave.serviceYearEnd))
-                  : "غير محددة"
+                  : "غير محدد"
             }
           />
         </div>

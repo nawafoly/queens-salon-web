@@ -101,6 +101,21 @@ function payrollDateKeys(start, end) {
   return rows;
 }
 
+function payrollServicePeriod(bounds, employment) {
+  const startDate = cleanText(employment?.start_date);
+  const endDate = cleanText(employment?.end_date);
+  const periodStart = startDate && startDate > bounds.monthStart ? startDate : bounds.monthStart;
+  const periodEnd = endDate && endDate < bounds.monthEnd ? endDate : bounds.monthEnd;
+  return {
+    startDate: startDate || null,
+    endDate: endDate || null,
+    periodStart,
+    periodEnd,
+    isPartial: periodStart > bounds.monthStart || periodEnd < bounds.monthEnd,
+    hasServiceInMonth: !periodStart || !periodEnd ? false : periodStart <= periodEnd,
+  };
+}
+
 function payrollTimeMinutes(value) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(cleanText(value));
   if (!match) return null;
@@ -307,10 +322,50 @@ async function buildCanonicalAttendanceSummary(
   shiftRuntime = {}
 ) {
   const bounds = payrollMonthBoundsCanonical(payrollMonth);
+  const servicePeriod = payrollServicePeriod(bounds, employment);
   const completedThrough = payrollCompletedThrough(bounds);
   const completedPeriodEnd =
     completedThrough < bounds.monthEnd ? completedThrough : bounds.monthEnd;
+  const effectiveCompletedEnd =
+    completedPeriodEnd < servicePeriod.periodEnd
+      ? completedPeriodEnd
+      : servicePeriod.periodEnd;
   const attendanceMode = cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt' ? 'exempt' : 'required';
+  if (!servicePeriod.hasServiceInMonth) {
+    return {
+      summary: {
+        totalScheduledHours: 0,
+        totalActualWorkedHours: 0,
+        totalLateHours: 0,
+        totalEarlyLeaveHours: 0,
+        totalCompensatedLateHours: 0,
+        totalRawMissingHours: 0,
+        totalPermissionRequestedHours: 0,
+        totalPermissionCoveredHours: 0,
+        totalMissingHours: 0,
+        totalExtraHours: 0,
+        attendanceDays: 0,
+        absentDays: 0,
+        incompleteDays: 0,
+        approvedLeaveDays: 0,
+        approvedAbsenceDays: 0,
+        employmentStartDate: servicePeriod.startDate,
+        servicePeriodStart: servicePeriod.periodStart,
+        servicePeriodEnd: servicePeriod.periodEnd,
+        hasServiceInMonth: false,
+        serviceScheduledDays: 0,
+        absenceDeductionOverlapHours: 0,
+        attendanceRecordCount: 0,
+        attendanceLinkStatus: 'not_started',
+        attendancePayrollMode: attendanceMode,
+        attendancePayrollExemptionReason: null,
+        attendanceDeductionEligible: false,
+        attendanceDeductionNote: 'Payroll period is before the employee employment start date.',
+        attendanceNotes: ['No payroll attendance obligations before employment start date.'],
+      },
+      dailyScheduledHours: 0,
+    };
+  }
   const [
     attendanceRows,
     leaveRows,
@@ -322,7 +377,7 @@ async function buildCanonicalAttendanceSummary(
     listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
     listLeaves(db, salonId, { employeeId, status: 'approved' }),
     listAbsences(db, salonId, { employeeId }),
-    dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, bounds.monthStart, bounds.monthEnd]).catch(() => []),
+    dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd]).catch(() => []),
     dbAll(
       db,
       `SELECT leave_id, recall_date
@@ -331,15 +386,15 @@ async function buildCanonicalAttendanceSummary(
           AND employee_id = ?
           AND status = 'active'
           AND recall_date BETWEEN ? AND ?`,
-      [salonId, employeeId, bounds.monthStart, bounds.monthEnd]
+      [salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd]
     ).catch(() => []),
     resolveEmployeeShiftsBatch(
       db,
       salonId,
       {
         employeeIds: [employeeId],
-        dateFrom: bounds.monthStart,
-        dateTo: bounds.monthEnd,
+        dateFrom: servicePeriod.periodStart,
+        dateTo: servicePeriod.periodEnd,
       },
       shiftRuntime
     ),
@@ -351,17 +406,17 @@ async function buildCanonicalAttendanceSummary(
         `${cleanText(row.leave_id)}|${cleanText(row.recall_date)}`
     )
   );
-  const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= bounds.monthStart && cleanText(row.date_key) <= bounds.monthEnd);
+  const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= servicePeriod.periodStart && cleanText(row.date_key) <= servicePeriod.periodEnd);
   const punchRecordCount = periodAttendance.filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase())).length;
   const paidFullDayLeaveDates = new Set();
   let approvedLeaveDays = 0;
   let approvedAbsenceDays = 0;
   for (const leave of leaveRows || []) {
     if (payrollLeaveIsPartial(leave)) continue;
-    const from = cleanText(leave.start_date) < bounds.monthStart ? bounds.monthStart : cleanText(leave.start_date);
+    const from = cleanText(leave.start_date) < servicePeriod.periodStart ? servicePeriod.periodStart : cleanText(leave.start_date);
     const to =
-      cleanText(leave.end_date) > completedPeriodEnd
-        ? completedPeriodEnd
+      cleanText(leave.end_date) > effectiveCompletedEnd
+        ? effectiveCompletedEnd
         : cleanText(leave.end_date);
     if (!from || !to || from > to) continue;
     for (const dateKey of payrollDateKeys(from, to)) {
@@ -377,7 +432,7 @@ async function buildCanonicalAttendanceSummary(
   }
   for (const absence of absenceRows || []) {
     const dateKey = cleanText(absence.date_key);
-    if (dateKey < bounds.monthStart || dateKey > completedPeriodEnd) continue;
+    if (dateKey < servicePeriod.periodStart || dateKey > effectiveCompletedEnd) continue;
     approvedAbsenceDays += payrollAbsenceUnit(absence.absence_type);
   }
   approvedLeaveDays = payrollRoundHours(approvedLeaveDays);
@@ -401,6 +456,11 @@ async function buildCanonicalAttendanceSummary(
         incompleteDays: 0,
         approvedLeaveDays,
         approvedAbsenceDays,
+        employmentStartDate: servicePeriod.startDate,
+        servicePeriodStart: servicePeriod.periodStart,
+        servicePeriodEnd: servicePeriod.periodEnd,
+        hasServiceInMonth: true,
+        serviceScheduledDays: 0,
         absenceDeductionOverlapHours: 0,
         attendanceRecordCount: punchRecordCount,
         attendanceLinkStatus: 'exempt',
@@ -438,8 +498,8 @@ async function buildCanonicalAttendanceSummary(
   let incompleteDays = 0;
   const scheduleHours = [];
 
-  if (completedThrough >= bounds.monthStart) {
-    for (const dateKey of payrollDateKeys(bounds.monthStart, completedThrough)) {
+  if (effectiveCompletedEnd >= servicePeriod.periodStart) {
+    for (const dateKey of payrollDateKeys(servicePeriod.periodStart, effectiveCompletedEnd)) {
       const schedule = payrollShiftSchedule(shiftsByDate.get(dateKey));
       if (!schedule.enabled) continue;
       const scheduledHours = payrollHoursBetween(schedule.start, schedule.end);
@@ -530,6 +590,11 @@ async function buildCanonicalAttendanceSummary(
       incompleteDays,
       approvedLeaveDays,
       approvedAbsenceDays,
+      employmentStartDate: servicePeriod.startDate,
+      servicePeriodStart: servicePeriod.periodStart,
+      servicePeriodEnd: servicePeriod.periodEnd,
+      hasServiceInMonth: true,
+      serviceScheduledDays: scheduleHours.length,
       absenceDeductionOverlapHours: payrollRoundHours(absenceDeductionOverlapHours),
       attendanceRecordCount: punchRecordCount,
       attendanceLinkStatus: deductionEligible ? 'confirmed' : 'unlinked',
@@ -549,8 +614,22 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   const summary = attendance.summary;
   const baseSalaryHalalas = payrollRoundMoney(employment.base_salary_halalas);
   const allowancesHalalas = payrollRoundMoney(employment.housing_allowance_halalas) + payrollRoundMoney(employment.transportation_allowance_halalas) + payrollRoundMoney(employment.other_allowances_halalas);
-  const workDays = Math.max(0, Number(employment.expected_work_days || 0) || 0);
-  const configuredMonthlyHours = summary.attendancePayrollMode === 'exempt' ? 0 : Math.max(0, Number(employment.expected_work_hours || 0) || 0);
+  const hasServiceInMonth = summary.hasServiceInMonth !== false;
+  const serviceScheduledDays = Math.max(0, Number(summary.serviceScheduledDays || 0) || 0);
+  const partialServicePeriod =
+    cleanText(summary.servicePeriodStart) > payrollMonthBoundsCanonical(payrollMonth).monthStart ||
+    cleanText(summary.servicePeriodEnd) < payrollMonthBoundsCanonical(payrollMonth).monthEnd;
+  const configuredWorkDays = Math.max(0, Number(employment.expected_work_days || 0) || 0);
+  const configuredMonthlyHours = summary.attendancePayrollMode === 'exempt'
+    ? 0
+    : partialServicePeriod
+      ? 0
+      : Math.max(0, Number(employment.expected_work_hours || 0) || 0);
+  const workDays = !hasServiceInMonth
+    ? 0
+    : partialServicePeriod && serviceScheduledDays > 0
+    ? serviceScheduledDays
+    : configuredWorkDays;
   const dailyScheduledHours = summary.attendancePayrollMode === 'exempt' ? 0 : (attendance.dailyScheduledHours || Math.max(0, Number(employment.daily_scheduled_hours || 0) || 0));
   const monthlyHours = configuredMonthlyHours > 0 ? configuredMonthlyHours : (workDays > 0 && dailyScheduledHours > 0 ? Math.round(workDays * dailyScheduledHours * 100) / 100 : 0);
   const fixedActualWageHalalas =

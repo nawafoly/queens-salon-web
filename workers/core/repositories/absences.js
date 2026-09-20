@@ -88,6 +88,25 @@ export async function createAbsence(
     created_at: now,
     updated_at: now,
   };
+  const employment = await dbFirst(
+    db,
+    `SELECT p.status AS profile_status, e.employment_status, e.start_date, e.end_date
+       FROM employee_profiles p
+       LEFT JOIN employee_employment e
+         ON e.salon_id = p.salon_id AND e.employee_id = p.id
+      WHERE p.salon_id = ? AND p.id = ?
+      LIMIT 1`,
+    [salonId, row.employee_id]
+  );
+  if (
+    !employment ||
+    cleanText(employment.profile_status).toLowerCase() !== 'active' ||
+    cleanText(employment.employment_status).toLowerCase() !== 'active' ||
+    (cleanText(employment.start_date) && row.date_key < cleanText(employment.start_date)) ||
+    (cleanText(employment.end_date) && row.date_key > cleanText(employment.end_date))
+  ) {
+    throw new AppError(409, 'core_absence:outside_employment_period');
+  }
   const allowPermissionConflict = data.allowPermissionConflict === true || data.allow_permission_conflict === true;
   if (!allowPermissionConflict) {
     let permissionConflict = null;

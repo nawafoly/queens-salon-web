@@ -10,6 +10,7 @@ import {
   calculateAnnualLeaveLiveAccrualRange,
   calculateAnnualLeaveAccrualRange,
   calculateAnnualLeaveAvailable,
+  annualLeaveServiceYear,
   calculateSickLeaveSegments,
   completedServiceYears,
   getSaLeaveTypePolicy,
@@ -34,6 +35,18 @@ test('annual accrual uses service anniversary year and actual period days', () =
   assert.equal(result.annualEntitlementDays, 21);
   assert.ok(result.accruedDays > 10);
   assert.ok(result.accruedDays < 11);
+});
+
+test('service year boundary is end-exclusive on the anniversary date', () => {
+  const firstYearLastDay = annualLeaveServiceYear('2026-09-07', '2027-09-06');
+  assert.equal(firstYearLastDay.serviceYearStart, '2026-09-07');
+  assert.equal(firstYearLastDay.serviceYearEnd, '2027-09-07');
+  assert.equal(firstYearLastDay.completedServiceYearsAtStart, 0);
+
+  const secondYearFirstDay = annualLeaveServiceYear('2026-09-07', '2027-09-07');
+  assert.equal(secondYearFirstDay.serviceYearStart, '2027-09-07');
+  assert.equal(secondYearFirstDay.serviceYearEnd, '2028-09-07');
+  assert.equal(secondYearFirstDay.completedServiceYearsAtStart, 1);
 });
 
 test('live annual accrual grows continuously within the Riyadh day', () => {

@@ -26,6 +26,7 @@ import {
   deferAttendanceDeduction,
   listPayrollCarryoverAdjustments,
   markPayrollEntryPaid,
+  previewPayrollEntry,
   reconcilePayrollCarryoversBatch,
   upsertPayrollEntry,
   upsertPayrollPeriod,
@@ -1695,6 +1696,113 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
 
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
   assert.equal(paidPayroll.status, 'paid');
+});
+
+test('employment start date gates attendance absence shift and payroll obligations', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const employeeId = 'emp-start-boundary';
+  await upsertHrEmployee(db, 'main', {
+    id: employeeId,
+    name: 'Start Boundary Employee',
+    firebaseUid: 'uid-start-boundary',
+    employment: {
+      startDate: '2026-09-07',
+      baseSalaryHalalas: 600000,
+      expectedWorkDays: 30,
+      expectedWorkHours: 240,
+      dailyScheduledHours: 8,
+      attendancePayrollMode: 'required',
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-09-07',
+      socialInsuranceClassificationNote: 'Employment start boundary fixture',
+      gosiWageMode: 'derived',
+    },
+  }, actor);
+
+  const shift = await saveShiftTemplate(db, 'main', {
+    id: 'shift-start-boundary',
+    name: 'Start Boundary Shift',
+    startTime: '09:00',
+    endTime: '17:00',
+  }, actor);
+  await replaceHrSchedules(
+    db,
+    'main',
+    employeeId,
+    [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      id: `schedule-start-boundary-${weekday}`,
+      weekday,
+      shiftTemplateId: shift.id,
+      active: true,
+      effectiveFrom: '2026-09-01',
+    }))
+  );
+
+  const shifts = await resolveEmployeeShiftsBatch(db, 'main', {
+    employeeIds: [employeeId],
+    dateFrom: '2026-09-01',
+    dateTo: '2026-09-07',
+  });
+  const shiftsByDate = new Map(shifts.rows.map((row) => [row.date, row]));
+  for (const date of [
+    '2026-09-01',
+    '2026-09-02',
+    '2026-09-03',
+    '2026-09-04',
+    '2026-09-05',
+    '2026-09-06',
+  ]) {
+    assert.equal(shiftsByDate.get(date)?.source, 'none');
+    assert.equal(shiftsByDate.get(date)?.operational, false);
+  }
+  assert.equal(shiftsByDate.get('2026-09-07')?.source, 'weekly_schedule');
+
+  await assert.rejects(
+    recordAttendance(db, 'main', {
+      employeeId,
+      type: 'check_in',
+      date: '2026-09-06',
+      recordedAt: '2026-09-06T06:00:00.000Z',
+      idempotencyKey: 'emp-start-boundary-before-start',
+    }, actor),
+    { code: 'core_attendance:employee_not_active' }
+  );
+
+  await assert.rejects(
+    createAbsence(db, 'main', {
+      employeeId,
+      date: '2026-09-06',
+      type: 'full_day',
+      reason: 'Before employment start',
+    }, actor),
+    { code: 'core_absence:outside_employment_period' }
+  );
+
+  const preview = await withFixedRiyadhDate(
+    t,
+    () => previewPayrollEntry(db, 'main', {
+      employeeId,
+      payrollMonth: '2026-09',
+    }, actor),
+    '2026-10-01'
+  );
+  const summary = JSON.parse(preview.attendance_summary_json || '{}');
+  assert.equal(summary.employmentStartDate, '2026-09-07');
+  assert.equal(summary.servicePeriodStart, '2026-09-07');
+  assert.equal(summary.servicePeriodEnd, '2026-09-30');
+  assert.equal(summary.hasServiceInMonth, true);
+  assert.equal(Number(summary.serviceScheduledDays), 24);
+  assert.equal(Number(summary.absentDays), 24);
+  assert.equal(Number(summary.totalScheduledHours), 192);
+  assert.equal(Number(summary.totalRawMissingHours), 192);
+  assert.equal(Number(summary.totalMissingHours), 0);
+  assert.equal(Number(preview.work_days), 24);
+  assert.equal(Number(preview.monthly_hours), 192);
+  assert.equal(Number(preview.missing_hours), 0);
+  assert.equal(Number(preview.missing_hours_deduction_halalas), 0);
+  assert.equal(Number(preview.absence_deduction_halalas), 0);
 });
 
 test('annual leave manual adjustment writes canonical audited corrections', async (t) => {

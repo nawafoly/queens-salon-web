@@ -116,7 +116,7 @@ export async function recordAttendance(db, salonId, data, actor = {}) {
 
   const employment = await dbFirst(
     db,
-    `SELECT p.status AS profile_status, e.employment_status, e.end_date
+    `SELECT p.status AS profile_status, e.employment_status, e.start_date, e.end_date
        FROM employee_profiles p
        LEFT JOIN employee_employment e
          ON e.salon_id = p.salon_id AND e.employee_id = p.id
@@ -128,6 +128,7 @@ export async function recordAttendance(db, salonId, data, actor = {}) {
     !employment ||
     cleanText(employment.profile_status).toLowerCase() !== 'active' ||
     cleanText(employment.employment_status).toLowerCase() !== 'active' ||
+    (cleanText(employment.start_date) && dateKey < cleanText(employment.start_date)) ||
     (cleanText(employment.end_date) && dateKey > cleanText(employment.end_date))
   ) {
     throw new AppError(409, 'core_attendance:employee_not_active');

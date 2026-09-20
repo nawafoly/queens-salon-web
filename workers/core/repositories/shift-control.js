@@ -1554,6 +1554,7 @@ function employeeOperationalOnDate(row, date) {
   const hasEmployment =
     Number(row.has_employment) === 1 ||
     cleanText(row.employment_status) !== "" ||
+    cleanText(row.start_date) !== "" ||
     cleanText(row.end_date) !== "";
 
   if (!hasProfile && !hasEmployment) return true;
@@ -1563,6 +1564,7 @@ function employeeOperationalOnDate(row, date) {
   const employmentStatus = cleanText(row.employment_status).toLowerCase();
   return profileStatus === 'active' &&
     employmentStatus === 'active' &&
+    (!cleanText(row.start_date) || date >= cleanText(row.start_date)) &&
     (!cleanText(row.end_date) || date <= cleanText(row.end_date));
 }
 
@@ -1578,12 +1580,14 @@ function employeeHistoricallyOperationalOnDate(row, date) {
   const hasEmployment =
     Number(row.has_employment) === 1 ||
     cleanText(row.employment_status) !== "" ||
+    cleanText(row.start_date) !== "" ||
     cleanText(row.end_date) !== "";
 
   if (!hasProfile && !hasEmployment) return true;
   if (!hasProfile || !hasEmployment) return false;
 
-  return !cleanText(row.end_date) || date <= cleanText(row.end_date);
+  return (!cleanText(row.start_date) || date >= cleanText(row.start_date)) &&
+    (!cleanText(row.end_date) || date <= cleanText(row.end_date));
 }
 
 function employeeOperationalForResolution(row, date, runtime = {}) {
@@ -1618,6 +1622,7 @@ async function resolveEmployeeBaseShift(
             MAX(has_employment) AS has_employment,
             MAX(profile_status) AS profile_status,
             MAX(employment_status) AS employment_status,
+            MAX(start_date) AS start_date,
             MAX(end_date) AS end_date
        FROM (
          SELECT p.id AS employee_id,
@@ -1625,6 +1630,7 @@ async function resolveEmployeeBaseShift(
                 0 AS has_employment,
                 p.status AS profile_status,
                 NULL AS employment_status,
+                NULL AS start_date,
                 NULL AS end_date
            FROM employee_profiles p
           WHERE p.salon_id=? AND p.id=?
@@ -1634,6 +1640,7 @@ async function resolveEmployeeBaseShift(
                 1 AS has_employment,
                 NULL AS profile_status,
                 e.employment_status AS employment_status,
+                e.start_date AS start_date,
                 e.end_date AS end_date
            FROM employee_employment e
           WHERE e.salon_id=? AND e.employee_id=?
@@ -2355,6 +2362,7 @@ export async function resolveEmployeeShiftsBatch(
                 MAX(has_employment) AS has_employment,
                 MAX(profile_status) AS profile_status,
                 MAX(employment_status) AS employment_status,
+                MAX(start_date) AS start_date,
                 MAX(end_date) AS end_date
            FROM (
              SELECT p.id AS employee_id,
@@ -2362,6 +2370,7 @@ export async function resolveEmployeeShiftsBatch(
                     0 AS has_employment,
                     p.status AS profile_status,
                     NULL AS employment_status,
+                    NULL AS start_date,
                     NULL AS end_date
                FROM employee_profiles p
               WHERE p.salon_id=? AND p.id IN (${marks})
@@ -2371,6 +2380,7 @@ export async function resolveEmployeeShiftsBatch(
                     1 AS has_employment,
                     NULL AS profile_status,
                     e.employment_status AS employment_status,
+                    e.start_date AS start_date,
                     e.end_date AS end_date
                FROM employee_employment e
               WHERE e.salon_id=? AND e.employee_id IN (${marks})
