@@ -14,6 +14,7 @@ import {
   rowNotFound,
   updateById,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 
 const inactiveEmploymentStatuses = new Set([
   "inactive",
@@ -35,6 +36,48 @@ function safeFakeRows(db, table) {
   } catch {
     return [];
   }
+}
+
+async function attachCanonicalServiceAssignments(db, salonId, staffRows = []) {
+  const ids = Array.from(
+    new Set(staffRows.map((row) => cleanText(row?.id)).filter(Boolean))
+  );
+  if (!ids.length) return staffRows;
+
+  const assignmentRows = db.__fakeD1
+    ? safeFakeRows(db, "staff_services").filter(
+        (row) =>
+          row.salon_id === salonId &&
+          Number(row.active) === 1 &&
+          ids.includes(cleanText(row.staff_id))
+      )
+    : await dbAll(
+        db,
+        `SELECT staff_id, service_id
+           FROM staff_services
+          WHERE salon_id = ?
+            AND active = 1
+            AND staff_id IN (${placeholders(ids.length)})
+          ORDER BY staff_id, service_id`,
+        [salonId, ...ids]
+      );
+
+  const serviceIdsByStaff = new Map(ids.map((id) => [id, []]));
+  for (const row of assignmentRows) {
+    const staffId = cleanText(row.staff_id);
+    const serviceId = cleanText(row.service_id);
+    if (!staffId || !serviceId || !serviceIdsByStaff.has(staffId)) continue;
+    serviceIdsByStaff.get(staffId).push(serviceId);
+  }
+
+  return staffRows.map((row) => ({
+    ...row,
+    // staff_services is canonical. specialties_json is exposed as a compatibility
+    // projection so every UI reads the same assignments used by booking.
+    specialties_json: JSON.stringify(
+      Array.from(new Set(serviceIdsByStaff.get(cleanText(row.id)) || []))
+    ),
+  }));
 }
 
 function emptyHrStatusMaps() {
@@ -263,6 +306,7 @@ export async function listStaff(db, salonId, query = {}) {
     rows = await dbAll(db, sql, params);
   }
 
+  rows = await attachCanonicalServiceAssignments(db, salonId, rows);
   const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, rows);
   const mergedRows = rows.map((row) => mergeHrStatus(row, hrStatusMaps));
   return mergedRows.filter((row) => !activeOnly || staffIsActive(row));
@@ -322,16 +366,23 @@ export async function listStaffByIds(
           ]
         );
 
-  const hrStatusMaps =
-    await hrStatusMapsForStaff(
+  const canonicalRows =
+    await attachCanonicalServiceAssignments(
       db,
       salonId,
       rows
     );
 
+  const hrStatusMaps =
+    await hrStatusMapsForStaff(
+      db,
+      salonId,
+      canonicalRows
+    );
+
   const byId =
     new Map(
-      rows.map(
+      canonicalRows.map(
         (row) => [
           cleanText(row.id),
           mergeHrStatus(
@@ -357,8 +408,9 @@ export async function getStaff(db, salonId, id) {
     [salonId, requiredId(id)]
   );
   if (!row) rowNotFound("staff");
-  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, [row]);
-  const merged = mergeHrStatus(row, hrStatusMaps);
+  const [canonicalRow] = await attachCanonicalServiceAssignments(db, salonId, [row]);
+  const hrStatusMaps = await hrStatusMapsForStaff(db, salonId, [canonicalRow]);
+  const merged = mergeHrStatus(canonicalRow, hrStatusMaps);
   return merged;
 }
 
