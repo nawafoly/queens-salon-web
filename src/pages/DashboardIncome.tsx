@@ -337,6 +337,39 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   return "other";
 }
 
+function formatIncomeFinanceNote(raw: unknown, language: DashboardLanguage): string {
+  if (language === "ar" || !isSystemFinanceNote(raw)) return formatFinanceNote(raw);
+
+  const parts = String(raw ?? "")
+    .split("|")
+    .map((part) => {
+      const clean = part.trim();
+      const lower = clean.toLowerCase();
+      const method = clean.split(":")[1] || "";
+      const paymentMethod = methodLabel(normalizePaymentMethod(method), language);
+
+      if (lower.startsWith("booking_edit_payment:")) {
+        return `${incomeText(language, "تعديل دفعة حجز")} — ${paymentMethod}`;
+      }
+      if (lower.startsWith("invoice_from_reception:")) {
+        return `${incomeText(language, "فاتورة من الاستقبال")} — ${paymentMethod}`;
+      }
+      if (lower.startsWith("internal_payment:")) {
+        return `${incomeText(language, "دفع حجز داخلي")} — ${paymentMethod}`;
+      }
+      if (lower.startsWith("payment_method:")) {
+        return `${incomeText(language, "طريقة الدفع")} — ${paymentMethod}`;
+      }
+      if (lower === "package_purchase" || lower.startsWith("package_purchase:")) {
+        return incomeText(language, "شراء باقة");
+      }
+      return clean;
+    })
+    .filter(Boolean);
+
+  return parts.join(" — ");
+}
+
 function normalizeIncomeSourceInput(raw: string): string {
   const trimmed = String(raw || "").trim();
   if (!trimmed) return "other";
@@ -416,7 +449,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   const [date, setDate] = useState(todayISO());
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [source, setSource] = useState("يدوي");
+  const [source, setSource] = useState(language === "en" ? "Manual" : "يدوي");
   const [note, setNote] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<IncomeItem | null>(null);
@@ -430,6 +463,15 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   const [deleteTarget, setDeleteTarget] = useState<IncomeItem | null>(null);
   const [deletePin, setDeletePin] = useState("");
   const [deleteError, setDeleteError] = useState("");
+
+  useEffect(() => {
+    setSource((current) => {
+      if (current === "يدوي" || current === "Manual") {
+        return language === "en" ? "Manual" : "يدوي";
+      }
+      return current;
+    });
+  }, [language]);
 
   // Filters
   const [q, setQ] = useState("");
@@ -581,7 +623,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       const bm = bookingMetaById[linkedBookingId];
       const effectiveDate = effectiveDateOf(x);
       const paymentSummary = buildPaymentSummary(bm, language);
-      const noteText = formatFinanceNote(x.note);
+      const noteText = formatIncomeFinanceNote(x.note, language);
       const effectiveAmount = Number(x.amount || 0);
       const a =
         `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "", language)} ${x.note || ""} ${noteText} ${
@@ -901,7 +943,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       const remainingAmount = isRefund
         ? 0
         : round2(Math.max(0, totalAmount - paidAmount));
-      const noteText = formatFinanceNote(x.note);
+      const noteText = formatIncomeFinanceNote(x.note, language);
 
       return {
         date: rowEffectiveDate(x),
@@ -966,7 +1008,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
   const hasActiveFilters = Boolean(q.trim() || fMethod !== "all" || from || to);
   const detailsBookingMeta = detailsTarget ? rowBookingMeta(detailsTarget) : undefined;
   const detailsAmount = detailsTarget ? rowEffectiveAmount(detailsTarget) : 0;
-  const detailsNote = detailsTarget ? formatFinanceNote(detailsTarget.note) : "";
+  const detailsNote = detailsTarget ? formatIncomeFinanceNote(detailsTarget.note, language) : "";
 
   const clearFilters = () => {
     setQ("");
@@ -1196,7 +1238,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                       const bookingMeta = rowBookingMeta(item);
                       const paymentRows = buildPaymentSummaryRows(bookingMeta, language);
                       const amountToShow = rowEffectiveAmount(item);
-                      const noteText = formatFinanceNote(item.note);
+                      const noteText = formatIncomeFinanceNote(item.note, language);
                       const srcKind = sourceKind(item.source || "");
                       const displayClientName = resolveDisplayClientName(item, bookingMeta, language);
                       const displayBookingRef = resolveDisplayBookingRef(item, bookingMeta, language);
@@ -1271,7 +1313,7 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
                 {filtered.map((item) => {
                   const bookingMeta = rowBookingMeta(item);
                   const amountToShow = rowEffectiveAmount(item);
-                  const noteText = formatFinanceNote(item.note);
+                  const noteText = formatIncomeFinanceNote(item.note, language);
                   return (
                     <article className="income-v2-mobile-card" key={`mobile-${item.id}`}>
                       <header>
