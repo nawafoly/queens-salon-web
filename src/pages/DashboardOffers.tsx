@@ -496,7 +496,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       const name =
         String(service.categoryName || "").trim() ||
         String(categoryNameById[id] || "").trim() ||
-        resolveCategoryLabel(id);
+        resolveCategoryLabel(id, language);
       const current = map.get(id);
       map.set(id, {
         id,
@@ -1132,12 +1132,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         String((s as any).sectionTitle || "").trim() ||
           String(sectionNameById[String(s.sectionId || "").trim()] || "").trim() ||
           String(s.sectionId || "").trim() ||
-          "قسم غير محدد"
+          t("قسم غير محدد"),
+        language
       );
       const categoryTitle = normalizeGroupLabel(
         String(s.categoryName || "").trim() ||
           String(s.categoryId || "").trim() ||
-          "تصنيف غير محدد"
+          t("تصنيف غير محدد"),
+        language
       );
       const same =
         categoryTitle === sectionTitle ||
@@ -1148,7 +1150,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       current.services.push(s);
       groups.set(key, current);
     });
-    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
+    const collator = new Intl.Collator(language === "en" ? "en" : "ar", { sensitivity: "base", numeric: true });
     return Array.from(groups.values())
       .map((g) => ({
         ...g,
@@ -1439,7 +1441,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
   };
 
   return (
-    <main className="dsv2-page dsv2-offers-page" dir="rtl">
+    <main className="dsv2-page dsv2-offers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       {inlineNotice ? (
         <div
           className={`offers-inline-notice offers-inline-notice--${inlineNotice.type}`}
@@ -1453,14 +1455,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         <div className="offers-head-main">
           <span className="offers-kicker">COMMERCIAL WORKSPACE</span>
           <h1>
-            <FontAwesomeIcon icon={faTag} /> العروض والباقات
+            <FontAwesomeIcon icon={faTag} /> {t("العروض والباقات")}
           </h1>
           <p className="offers-sub">
-            إدارة الحملات الترويجية والكوبونات والباقات من مساحة موحدة، مع متابعة الحالة والتواريخ والاستخدام.
+            {t("إدارة الحملات الترويجية والكوبونات والباقات من مساحة موحدة، مع متابعة الحالة والتواريخ والاستخدام.")}
           </p>
         </div>
 
-        <div className="offers-hero-actions" aria-label="إجراءات العروض والباقات">
+        <div className="offers-hero-actions" aria-label={t("إجراءات العروض والباقات")}>
           <button
             className="dash-pill dash-pill-primary offers-hero-action offers-hero-action--primary"
             type="button"
@@ -1468,7 +1470,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
             aria-expanded={open}
           >
             <FontAwesomeIcon icon={open ? faXmark : faPlus} />
-            {open ? "إغلاق نموذج العرض" : "إضافة عرض"}
+            {open ? t("إغلاق نموذج العرض") : t("إضافة عرض")}
           </button>
           <button
             className="dash-pill dash-pill-outline offers-hero-action"
@@ -1477,14 +1479,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
             aria-expanded={packageFormOpen}
           >
             <FontAwesomeIcon icon={faTag} />
-            {packageFormOpen ? "إغلاق نموذج الباقة" : "إنشاء باقة"}
+            {packageFormOpen ? t("إغلاق نموذج الباقة") : t("إنشاء باقة")}
           </button>
           <button
             className="dash-pill dash-pill-outline offers-hero-action offers-hero-action--refresh"
             type="button"
             onClick={refresh}
           >
-            <FontAwesomeIcon icon={faRotateLeft} /> تحديث
+            <FontAwesomeIcon icon={faRotateLeft} /> {t("تحديث")}
           </button>
         </div>
       </div>
@@ -1493,48 +1495,48 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         <article className="offers-enterprise-kpi offers-enterprise-kpi--primary">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faCheck} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>العروض النشطة</span>
+            <span>{t("العروض النشطة")}</span>
             <strong>{stats.activeNowCount}</strong>
-            <small>من أصل {stats.total} عرض</small>
+            <small>{t("من أصل")} {stats.total} {t("عرض")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faWandMagicSparkles} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>العروض المجدولة</span>
+            <span>{t("العروض المجدولة")}</span>
             <strong>{stats.scheduledCount}</strong>
-            <small>{stats.expiredCount} منتهٍ أو موقوف</small>
+            <small>{stats.expiredCount} {t("منتهٍ أو موقوف")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faTag} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>الباقات النشطة</span>
+            <span>{t("الباقات النشطة")}</span>
             <strong>{packageStats.activeNowCount}</strong>
-            <small>من أصل {packageStats.total} باقة</small>
+            <small>{t("من أصل")} {packageStats.total} {t("باقة")}</small>
           </div>
         </article>
 
         <article className="offers-enterprise-kpi">
           <span className="offers-enterprise-kpi__icon"><FontAwesomeIcon icon={faImage} /></span>
           <div className="offers-enterprise-kpi__copy">
-            <span>المعروض للبيع</span>
+            <span>{t("المعروض للبيع")}</span>
             <strong>{packageStats.saleEnabledCount}</strong>
-            <small>{stats.used} عروض مستخدمة</small>
+            <small>{stats.used} {t("عروض مستخدمة")}</small>
           </div>
         </article>
       </div>
 
       <div className="offers-card dsv2-card dsv2-card--padded offers-section offers-section--packages-list">
         <div className="offers-card-title offers-section-heading">
-          <span><FontAwesomeIcon icon={faTag} /> الباقات المحفوظة</span>
+          <span><FontAwesomeIcon icon={faTag} /> {t("الباقات المحفوظة")}</span>
           <span className="offers-section-count">{packagesCatalog.length}</span>
         </div>
-        <div className="offers-section-note">إدارة الباقات الجاهزة للبيع، جلساتها، أسعارها وصلاحيتها من مكان واحد.</div>
+        <div className="offers-section-note">{t("إدارة الباقات الجاهزة للبيع، جلساتها، أسعارها وصلاحيتها من مكان واحد.")}</div>
         {!packagesCatalog.length ? (
-          <div className="offers-hint">لا توجد باكيجات محفوظة</div>
+          <div className="offers-hint">{t("لا توجد باكيجات محفوظة")}</div>
         ) : (
           <div className="pkg-offers-grid">
             {packagesCatalog.map((p) => {
@@ -1542,8 +1544,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
               const pkgExpired = isPackageExpiredByToday(p);
               const pkgScheduled = isPackageScheduledByToday(p);
               const pkgActiveNow = isPackageActiveNow(p);
-              const pkgStatus = getPackageStatusLabel(p);
-              const packageActionLabel = pkgExpired ? "تجديد" : pkgActiveNow || pkgScheduled ? "إيقاف" : "تفعيل";
+              const pkgStatus = getPackageStatusLabel(p, language);
+              const packageActionLabel = pkgExpired ? t("تجديد") : pkgActiveNow || pkgScheduled ? t("إيقاف") : t("تفعيل");
               const packageActionIcon = pkgExpired ? faPen : pkgActiveNow || pkgScheduled ? faBan : faCheck;
               const packageActionClass =
                 pkgExpired ? "dash-pill-outline" : pkgActiveNow || pkgScheduled ? "dash-pill-warning" : "dash-pill-success";
@@ -1558,42 +1560,42 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       )}
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الاسم</div>
+                      <div className="pkg-offer-label">{t("الاسم")}</div>
                       <div className="pkg-offer-value">{p.name || p.id}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الخدمات</div>
+                      <div className="pkg-offer-label">{t("الخدمات")}</div>
                       <div className="pkg-offer-value">{Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">السعر</div>
-                      <div className="pkg-offer-value">{Math.round(Number(p.price || 0))} ر.س</div>
+                      <div className="pkg-offer-label">{t("السعر")}</div>
+                      <div className="pkg-offer-value">{Math.round(Number(p.price || 0))} {currency}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">عدد الجلسات</div>
+                      <div className="pkg-offer-label">{t("عدد الجلسات")}</div>
                       <div className="pkg-offer-value">{Math.max(1, Number(p.sessionsCount || 1))}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الصلاحية</div>
+                      <div className="pkg-offer-label">{t("الصلاحية")}</div>
                       <div className="pkg-offer-value">
-                        {p.validityDays ? `${p.validityDays} يوم` : "—"}
+                        {p.validityDays ? `${p.validityDays} ${t("يوم")}` : "—"}
                       </div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">يبدأ</div>
+                      <div className="pkg-offer-label">{t("يبدأ")}</div>
                       <div className="pkg-offer-value">{String(p.startsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">ينتهي</div>
+                      <div className="pkg-offer-label">{t("ينتهي")}</div>
                       <div className="pkg-offer-value">{String(p.endsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-label">{t("الحالة")}</div>
                       <div className="pkg-offer-value"><span className={`offers-status-badge ${pkgActiveNow ? "is-active" : pkgScheduled ? "is-scheduled" : "is-muted"}`}>{pkgStatus}</span></div>
                     </div>
                     {!!String(p.description || "").trim() && (
                       <div className="pkg-offer-row">
-                        <div className="pkg-offer-label">الوصف</div>
+                        <div className="pkg-offer-label">{t("الوصف")}</div>
                         <div className="pkg-offer-value pkg-offer-desc">{String(p.description)}</div>
                       </div>
                     )}
@@ -1603,7 +1605,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                         className="dash-pill dash-pill-outline dash-pill-sm"
                         onClick={() => openPackageForEdit(p)}
                       >
-                        <FontAwesomeIcon icon={faPen} /> تعديل
+                        <FontAwesomeIcon icon={faPen} /> {t("تعديل")}
                       </button>
                       <button
                         type="button"
@@ -1619,7 +1621,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                         className="dash-pill dash-pill-danger dash-pill-sm"
                         onClick={() => deletePackageById(p.id)}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> حذف
+                        <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                       </button>
                     </div>
                   </div>
@@ -1644,11 +1646,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <span className="package-editor__eyebrow">
                   {editingPackageId ? "PACKAGE EDITOR · UPDATE" : "PACKAGE EDITOR · NEW"}
                 </span>
-                <h2>{editingPackageId ? "تعديل الباقة" : "إنشاء باقة جديدة"}</h2>
-                <p>
-                  أدخل البيانات التجارية، حدّد الخدمات، ثم راجع الملخص قبل الحفظ.
-                  سيتم تحديث نفس السجل عند التعديل.
-                </p>
+                <h2>{editingPackageId ? t("تعديل الباقة") : t("إنشاء باقة جديدة")}</h2>
+                <p>{t("أدخل البيانات التجارية، حدّد الخدمات، ثم راجع الملخص قبل الحفظ. سيتم تحديث نفس السجل عند التعديل.")}</p>
               </div>
             </div>
 
@@ -1658,14 +1657,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 className="dash-pill dash-pill-outline"
                 onClick={() => setPackageFormOpen(false)}
               >
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
+                <FontAwesomeIcon icon={faXmark} /> {t("إغلاق")}
               </button>
               <button
                 type="button"
                 className="dash-pill dash-pill-outline"
                 onClick={resetPackageDraft}
               >
-                <FontAwesomeIcon icon={faRotateLeft} /> تفريغ
+                <FontAwesomeIcon icon={faRotateLeft} /> {t("تفريغ")}
               </button>
               <button
                 type="button"
@@ -1673,7 +1672,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 onClick={savePackageDraft}
               >
                 <FontAwesomeIcon icon={faCheck} />
-                {editingPackageId ? "حفظ التعديلات" : "إنشاء الباقة"}
+                {editingPackageId ? t("حفظ التعديلات") : t("إنشاء الباقة")}
               </button>
             </div>
           </header>
@@ -1684,41 +1683,41 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">01</span>
                   <div>
-                    <h3>البيانات الأساسية</h3>
-                    <p>الاسم والوصف اللذان سيظهران للعميلة وفي لوحة الإدارة.</p>
+                    <h3>{t("البيانات الأساسية")}</h3>
+                    <p>{t("الاسم والوصف اللذان سيظهران للعميلة وفي لوحة الإدارة.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__grid package-editor__grid--identity">
                   <div className="pkgm__field package-editor__field--wide">
-                    <label>اسم الباقة <em>مطلوب</em></label>
+                    <label>{t("اسم الباقة")} <em>{t("مطلوب")}</em></label>
                     <input
                       value={packageDraft.name}
-                      placeholder="مثال: باقة العناية الشهرية"
+                      placeholder={t("مثال: باقة العناية الشهرية")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, name: e.target.value }))
                       }
                     />
-                    <small>استخدم اسمًا واضحًا وقصيرًا يسهل تمييزه في الحجز.</small>
+                    <small>{t("استخدم اسمًا واضحًا وقصيرًا يسهل تمييزه في الحجز.")}</small>
                   </div>
 
                   <div className="pkgm__field">
-                    <label>المعرف الداخلي</label>
+                    <label>{t("المعرف الداخلي")}</label>
                     <input
                       value={packageDraft.id}
-                      placeholder="يُنشأ تلقائيًا عند تركه فارغًا"
+                      placeholder={t("يُنشأ تلقائيًا عند تركه فارغًا")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, id: e.target.value }))
                       }
                     />
-                    <small>للاستخدام التقني فقط، ولا يظهر للعميلة.</small>
+                    <small>{t("للاستخدام التقني فقط، ولا يظهر للعميلة.")}</small>
                   </div>
 
                   <div className="pkgm__field package-editor__field--wide">
-                    <label>وصف الباقة</label>
+                    <label>{t("وصف الباقة")}</label>
                     <textarea
                       value={packageDraft.description}
-                      placeholder="اكتب فائدة الباقة وما الذي تحصل عليه العميلة..."
+                      placeholder={t("اكتب فائدة الباقة وما الذي تحصل عليه العميلة...")}
                       onChange={(e) =>
                         setPackageDraft((p) => ({ ...p, description: e.target.value }))
                       }
@@ -1731,14 +1730,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">02</span>
                   <div>
-                    <h3>التسعير والجلسات</h3>
-                    <p>اضبط سعر البيع، الرصيد، مدة الصلاحية وترتيب الظهور.</p>
+                    <h3>{t("التسعير والجلسات")}</h3>
+                    <p>{t("اضبط سعر البيع، الرصيد، مدة الصلاحية وترتيب الظهور.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__commercial-grid">
                   <div className="pkgm__field package-editor__commercial-field is-price">
-                    <label>سعر الباقة</label>
+                    <label>{t("سعر الباقة")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -1750,12 +1749,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           }))
                         }
                       />
-                      <span>ر.س</span>
+                      <span>{currency}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>عدد الجلسات</label>
+                    <label>{t("عدد الجلسات")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={1}
@@ -1770,12 +1769,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           }))
                         }
                       />
-                      <span>جلسة</span>
+                      <span>{t("جلسة")}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>مدة الصلاحية</label>
+                    <label>{t("مدة الصلاحية")}</label>
                     <div className="package-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={1}
@@ -1790,12 +1789,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           }))
                         }
                       />
-                      <span>يوم</span>
+                      <span>{t("يوم")}</span>
                     </div>
                   </div>
 
                   <div className="pkgm__field package-editor__commercial-field">
-                    <label>ترتيب الظهور</label>
+                    <label>{t("ترتيب الظهور")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={packageDraft.sortOrder}
@@ -1815,8 +1814,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__commercial-note">
                   <FontAwesomeIcon icon={faWandMagicSparkles} />
                   <span>
-                    متوسط سعر الجلسة حاليًا
-                    <strong>{packageComputed.averageSessionPrice.toFixed(2)} ر.س</strong>
+                    {t("متوسط سعر الجلسة حاليًا")}
+                    <strong>{packageComputed.averageSessionPrice.toFixed(2)} {currency}</strong>
                   </span>
                 </div>
               </section>
@@ -1825,14 +1824,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">03</span>
                   <div>
-                    <h3>الإتاحة والنشر</h3>
-                    <p>حدد فترة ظهور الباقة وحالتها في البيع والحجز.</p>
+                    <h3>{t("الإتاحة والنشر")}</h3>
+                    <p>{t("حدد فترة ظهور الباقة وحالتها في البيع والحجز.")}</p>
                   </div>
                 </div>
 
                 <div className="package-editor__availability-grid">
                   <div className="pkgm__field">
-                    <label>تاريخ البداية</label>
+                    <label>{t("تاريخ البداية")}</label>
                     <DashboardDatePickerV2
                       value={packageDraft.startDate}
                       onChange={(value) =>
@@ -1841,7 +1840,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                     />
                   </div>
                   <div className="pkgm__field">
-                    <label>تاريخ الانتهاء</label>
+                    <label>{t("تاريخ الانتهاء")}</label>
                     <DashboardDatePickerV2
                       value={packageDraft.endDate}
                       onChange={(value) =>
@@ -1864,8 +1863,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       <FontAwesomeIcon icon={faCheck} />
                     </span>
                     <span>
-                      <strong>الباقة مفعّلة</strong>
-                      <small>تُعامل كسجل نشط داخل النظام.</small>
+                      <strong>{t("الباقة مفعّلة")}</strong>
+                      <small>{t("تُعامل كسجل نشط داخل النظام.")}</small>
                     </span>
                   </label>
 
@@ -1884,8 +1883,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       <FontAwesomeIcon icon={faTag} />
                     </span>
                     <span>
-                      <strong>معروضة للبيع والحجز</strong>
-                      <small>تظهر في القنوات المسموح لها ببيع الباقات.</small>
+                      <strong>{t("معروضة للبيع والحجز")}</strong>
+                      <small>{t("تظهر في القنوات المسموح لها ببيع الباقات.")}</small>
                     </span>
                   </label>
                 </div>
@@ -1895,8 +1894,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__section-head">
                   <span className="package-editor__step">04</span>
                   <div>
-                    <h3>الصورة والشروط</h3>
-                    <p>ارفع صورة مناسبة وأضف شروط الاستخدام عند الحاجة.</p>
+                    <h3>{t("الصورة والشروط")}</h3>
+                    <p>{t("ارفع صورة مناسبة وأضف شروط الاستخدام عند الحاجة.")}</p>
                   </div>
                 </div>
 
@@ -1910,24 +1909,24 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       }
                     />
                     {packageDraft.imageUrl ? (
-                      <img src={packageDraft.imageUrl} alt="معاينة صورة الباقة" />
+                      <img src={packageDraft.imageUrl} alt={t("معاينة صورة الباقة")} />
                     ) : (
                       <span className="package-editor__upload-icon">
                         <FontAwesomeIcon icon={faImage} />
                       </span>
                     )}
                     <span className="package-editor__upload-copy">
-                      <strong>{packageDraft.imageUrl ? "تغيير صورة الباقة" : "رفع صورة الباقة"}</strong>
-                      <small>{packagePickedImageName || `PNG أو JPG · أقل من ${MAX_PACKAGE_IMAGE_MB}MB`}</small>
+                      <strong>{packageDraft.imageUrl ? t("تغيير صورة الباقة") : t("رفع صورة الباقة")}</strong>
+                      <small>{packagePickedImageName === "__existing__" ? t("تم اختيار صورة") : packagePickedImageName || (language === "en" ? `PNG or JPG · under ${MAX_PACKAGE_IMAGE_MB}MB` : `PNG أو JPG · أقل من ${MAX_PACKAGE_IMAGE_MB}MB`)}</small>
                     </span>
                   </label>
 
                   <div className="package-editor__media-fields">
                     <div className="pkgm__field">
-                      <label>شروط استخدام الباقة</label>
+                      <label>{t("شروط استخدام الباقة")}</label>
                       <textarea
                         value={packageDraft.terms}
-                        placeholder="مثال: غير قابلة للتحويل، الحجز المسبق مطلوب..."
+                        placeholder={t("مثال: غير قابلة للتحويل، الحجز المسبق مطلوب...")}
                         onChange={(e) =>
                           setPackageDraft((p) => ({ ...p, terms: e.target.value }))
                         }
@@ -1942,7 +1941,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           setPackageDraft((p) => ({ ...p, imageUrl: "" }));
                         }}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> إزالة الصورة
+                        <FontAwesomeIcon icon={faTrash} /> {t("إزالة الصورة")}
                       </button>
                     )}
                   </div>
@@ -1953,11 +1952,11 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 <div className="package-editor__section-head package-editor__section-head--services">
                   <span className="package-editor__step">05</span>
                   <div>
-                    <h3>الخدمات المشمولة</h3>
-                    <p>اختر الخدمات التي يمكن للعميلة استخدام رصيد الجلسات عليها.</p>
+                    <h3>{t("الخدمات المشمولة")}</h3>
+                    <p>{t("اختر الخدمات التي يمكن للعميلة استخدام رصيد الجلسات عليها.")}</p>
                   </div>
                   <span className="package-editor__count-badge">
-                    {packageComputed.picked.length} محددة
+                    {packageComputed.picked.length} {t("محددة")}
                   </span>
                 </div>
 
@@ -1968,7 +1967,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       type="text"
                       value={packageServiceSearch}
                       onChange={(e) => setPackageServiceSearch(e.target.value)}
-                      placeholder="ابحث باسم الخدمة أو السعر أو المدة..."
+                      placeholder={t("ابحث باسم الخدمة أو السعر أو المدة...")}
                     />
                   </div>
                   <div className="pkgm__services-actions">
@@ -1977,14 +1976,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       className="dash-pill dash-pill-outline dash-pill-sm"
                       onClick={selectAllVisiblePackageServices}
                     >
-                      تحديد النتائج
+                      {t("تحديد النتائج")}
                     </button>
                     <button
                       type="button"
                       className="dash-pill dash-pill-outline dash-pill-sm"
                       onClick={clearVisiblePackageServices}
                     >
-                      إلغاء النتائج
+                      {t("إلغاء النتائج")}
                     </button>
                   </div>
                 </div>
@@ -1995,21 +1994,21 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                     className={packageListMode === "all" ? "is-active" : ""}
                     onClick={() => setPackageListMode("all")}
                   >
-                    جميع الخدمات <span>{filteredPackageServices.length}</span>
+                    {t("جميع الخدمات")} <span>{filteredPackageServices.length}</span>
                   </button>
                   <button
                     type="button"
                     className={packageListMode === "selected" ? "is-active" : ""}
                     onClick={() => setPackageListMode("selected")}
                   >
-                    المحددة <span>{selectedPackageServices.length}</span>
+                    {t("المحددة")} <span>{selectedPackageServices.length}</span>
                   </button>
                   <button
                     type="button"
                     className={packageListMode === "unselected" ? "is-active" : ""}
                     onClick={() => setPackageListMode("unselected")}
                   >
-                    غير المحددة <span>{unselectedPackageServices.length}</span>
+                    {t("غير المحددة")} <span>{unselectedPackageServices.length}</span>
                   </button>
                 </div>
 
@@ -2019,7 +2018,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       <FontAwesomeIcon icon={faCheck} />
                     </span>
                     <div>
-                      <strong>{packageComputed.picked.length} خدمة ضمن الباقة</strong>
+                      <strong>{packageComputed.picked.length} {t("خدمة ضمن الباقة")}</strong>
                       <p>
                         {packageComputed.picked
                           .slice(0, 5)
@@ -2053,8 +2052,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           <span className="pkgm__group-toggle-label">
                             <strong>{group.title}</strong>
                             <small>
-                              {group.services.length} خدمة
-                              {selectedInGroup > 0 ? ` · ${selectedInGroup} محددة` : ""}
+                              {group.services.length} {t("خدمة")}
+                              {selectedInGroup > 0 ? ` · ${selectedInGroup} ${t("محددة")}` : ""}
                             </small>
                           </span>
                           <span className="pkgm__group-toggle-caret" aria-hidden="true">
@@ -2066,7 +2065,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           <div className="pkgm__group-items">
                             {group.services.map((service) => {
                               const selected = packageDraft.serviceIds.includes(service.id);
-                              const sectionText = resolveSectionLabel(service.sectionId || "");
+                              const sectionText = resolveSectionLabel(service.sectionId || "", language);
                               const categoryText = resolveCategoryLabel(
                                 service.categoryName || service.categoryId || ""
                               );
@@ -2085,11 +2084,11 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                                   <span className="pkgm__service-main">
                                     <span className="pkgm__service-name">{service.name}</span>
                                     <span className="pkgm__service-meta">
-                                      {sectionText} · {categoryText} · {service.durationMin} دقيقة
+                                      {sectionText} · {categoryText} · {service.durationMin} {t("دقيقة")}
                                     </span>
                                   </span>
                                   <span className="package-editor__service-price">
-                                    {service.price} <small>ر.س</small>
+                                    {service.price} <small>{currency}</small>
                                   </span>
                                 </button>
                               );
@@ -2101,15 +2100,15 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   })}
 
                   {!filteredPackageServices.length && (
-                    <div className="pkgm__empty">لا توجد خدمات مطابقة للبحث</div>
+                    <div className="pkgm__empty">{t("لا توجد خدمات مطابقة للبحث")}</div>
                   )}
                   {filteredPackageServices.length > 0 &&
                     !visibleSelectedGroups.length &&
                     !visibleUnselectedGroups.length && (
                       <div className="pkgm__empty">
                         {packageListMode === "selected"
-                          ? "لا توجد خدمات محددة حسب البحث الحالي"
-                          : "كل الخدمات الحالية محددة بالفعل"}
+                          ? t("لا توجد خدمات محددة حسب البحث الحالي")
+                          : t("كل الخدمات الحالية محددة بالفعل")}
                       </div>
                     )}
                 </div>
@@ -2120,44 +2119,44 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
               <div className="package-editor__preview-card">
                 <div className="package-editor__preview-media">
                   {packageDraft.imageUrl ? (
-                    <img src={packageDraft.imageUrl} alt="صورة الباقة" />
+                    <img src={packageDraft.imageUrl} alt={t("صورة الباقة")} />
                   ) : (
                     <span><FontAwesomeIcon icon={faImage} /></span>
                   )}
                   <div className="package-editor__preview-badges">
                     <span className={packageDraft.active !== false ? "is-live" : "is-off"}>
-                      {packageDraft.active !== false ? "مفعّلة" : "موقوفة"}
+                      {packageDraft.active !== false ? t("مفعّلة") : t("موقوفة")}
                     </span>
                     <span className={packageDraft.saleEnabled !== false ? "is-sale" : "is-off"}>
-                      {packageDraft.saleEnabled !== false ? "متاحة للبيع" : "غير معروضة"}
+                      {packageDraft.saleEnabled !== false ? t("متاحة للبيع") : t("غير معروضة")}
                     </span>
                   </div>
                 </div>
 
                 <div className="package-editor__preview-body">
-                  <span className="package-editor__preview-label">معاينة الباقة</span>
-                  <h3>{String(packageDraft.name || "").trim() || "اسم الباقة"}</h3>
+                  <span className="package-editor__preview-label">{t("معاينة الباقة")}</span>
+                  <h3>{String(packageDraft.name || "").trim() || t("اسم الباقة")}</h3>
                   <p>
                     {String(packageDraft.description || "").trim() ||
-                      "سيظهر وصف الباقة هنا بعد إدخاله."}
+                      t("سيظهر وصف الباقة هنا بعد إدخاله.")}
                   </p>
 
                   <div className="package-editor__preview-kpis">
-                    <div><strong>{packageComputed.picked.length}</strong><span>خدمة</span></div>
-                    <div><strong>{packageComputed.sessionsCount}</strong><span>جلسة</span></div>
-                    <div><strong>{packageComputed.validityDays}</strong><span>يوم</span></div>
+                    <div><strong>{packageComputed.picked.length}</strong><span>{t("خدمة")}</span></div>
+                    <div><strong>{packageComputed.sessionsCount}</strong><span>{t("جلسة")}</span></div>
+                    <div><strong>{packageComputed.validityDays}</strong><span>{t("يوم")}</span></div>
                   </div>
 
                   <div className="package-editor__price-box">
-                    <span>سعر البيع</span>
-                    <strong>{packageComputed.price.toFixed(2)} <small>ر.س</small></strong>
-                    <em>{packageComputed.averageSessionPrice.toFixed(2)} ر.س للجلسة</em>
+                    <span>{t("سعر البيع")}</span>
+                    <strong>{packageComputed.price.toFixed(2)} <small>{currency}</small></strong>
+                    <em>{packageComputed.averageSessionPrice.toFixed(2)} {currency} للجلسة</em>
                   </div>
 
                   <dl className="package-editor__preview-details">
-                    <div><dt>بداية الإتاحة</dt><dd>{packageDraft.startDate || "غير محدد"}</dd></div>
-                    <div><dt>نهاية الإتاحة</dt><dd>{packageDraft.endDate || "غير محدد"}</dd></div>
-                    <div><dt>ترتيب الظهور</dt><dd>{packageDraft.sortOrder || 0}</dd></div>
+                    <div><dt>{t("بداية الإتاحة")}</dt><dd>{packageDraft.startDate || t("غير محدد")}</dd></div>
+                    <div><dt>{t("نهاية الإتاحة")}</dt><dd>{packageDraft.endDate || t("غير محدد")}</dd></div>
+                    <div><dt>{t("ترتيب الظهور")}</dt><dd>{packageDraft.sortOrder || 0}</dd></div>
                   </dl>
                 </div>
               </div>
@@ -2165,7 +2164,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
               <div className={`package-editor__readiness ${packageEditorChecks.isReady ? "is-ready" : ""}`}>
                 <div className="package-editor__readiness-head">
                   <div>
-                    <span>جاهزية الحفظ</span>
+                    <span>{t("جاهزية الحفظ")}</span>
                     <strong>{packageEditorChecks.readyCount} / {packageEditorChecks.items.length}</strong>
                   </div>
                   <span className="package-editor__readiness-score">
@@ -2198,14 +2197,14 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   onClick={savePackageDraft}
                 >
                   <FontAwesomeIcon icon={faCheck} />
-                  {editingPackageId ? "حفظ التعديلات" : "إنشاء الباقة"}
+                  {editingPackageId ? t("حفظ التعديلات") : t("إنشاء الباقة")}
                 </button>
                 <button
                   type="button"
                   className="dash-pill dash-pill-outline"
                   onClick={() => setPackageFormOpen(false)}
                 >
-                  إلغاء والعودة
+                  {t("إلغاء والعودة")}
                 </button>
               </div>
             </aside>
@@ -2317,7 +2316,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       <div className="pkg-offer-value">{o.startDate || "—"} → {o.endDate || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-label">{t("الحالة")}</div>
                       <div className="pkg-offer-value"><span className={`offers-status-badge ${deleted ? "is-deleted" : scheduled ? "is-scheduled" : expired || !o.active ? "is-muted" : "is-active"}`}>{statusLabel}</span></div>
                     </div>
                     <div className="pkg-offer-row">
@@ -2333,7 +2332,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                       {!deleted && (
                         <>
                           <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" onClick={() => openEdit(o)}>
-                            <FontAwesomeIcon icon={faPen} /> تعديل
+                            <FontAwesomeIcon icon={faPen} /> {t("تعديل")}
                           </button>
                           <button
                             className={`dash-pill ${o.active ? "dash-pill-warning" : "dash-pill-success"} dash-pill-sm`}
@@ -2345,7 +2344,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                             {o.active ? " إيقاف" : " تفعيل"}
                           </button>
                           <button className="dash-pill dash-pill-danger dash-pill-sm" type="button" onClick={() => softDelete(o)}>
-                            <FontAwesomeIcon icon={faTrash} /> حذف
+                            <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                           </button>
                         </>
                       )}
@@ -2391,7 +2390,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
             <div className="offer-editor__header-actions">
               <button className="dash-pill dash-pill-outline" type="button" onClick={close}>
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
+                <FontAwesomeIcon icon={faXmark} /> {t("إغلاق")}
               </button>
               <button className="dash-pill dash-pill-primary offer-editor__save-top" type="button" onClick={save}>
                 <FontAwesomeIcon icon={faCheck} /> حفظ العرض
@@ -2412,7 +2411,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 <div className="offer-editor__grid offer-editor__grid--identity">
                   <div className="offer-editor__field">
-                    <label>عنوان العرض <em>مطلوب</em></label>
+                    <label>عنوان العرض <em>{t("مطلوب")}</em></label>
                     <input
                       value={form.title}
                       onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -2422,7 +2421,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   </div>
 
                   <div className="offer-editor__field">
-                    <label>كود العرض <em>مطلوب</em></label>
+                    <label>كود العرض <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__code-row">
                       <input
                         value={form.code}
@@ -2483,7 +2482,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 <div className="offer-editor__commercial-grid">
                   <div className="offer-editor__field offer-editor__commercial-field is-primary">
-                    <label>قيمة الخصم <em>مطلوب</em></label>
+                    <label>قيمة الخصم <em>{t("مطلوب")}</em></label>
                     <div className="offer-editor__input-suffix">
                       <DashboardNumberInputV2
                         min={0}
@@ -2523,7 +2522,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                   </div>
 
                   <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>ترتيب الظهور</label>
+                    <label>{t("ترتيب الظهور")}</label>
                     <DashboardNumberInputV2
                       min={0}
                       value={form.sortOrder}
@@ -2607,7 +2606,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 <div className="offer-editor__grid">
                   <div className="offer-editor__field">
-                    <label>تاريخ البداية</label>
+                    <label>{t("تاريخ البداية")}</label>
                     <DashboardDatePickerV2
                       value={form.startDate}
                       onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
@@ -2984,7 +2983,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                           setForm((prev) => ({ ...prev, imageUrl: "" }));
                         }}
                       >
-                        <FontAwesomeIcon icon={faTrash} /> إزالة الصورة
+                        <FontAwesomeIcon icon={faTrash} /> {t("إزالة الصورة")}
                       </button>
                     )}
                   </div>
