@@ -18,6 +18,7 @@ import {
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
+import { offersText, type DashboardLanguage } from "../helpers/dashboardOffersLanguage";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
@@ -129,22 +130,22 @@ const offerFieldLabels: Record<string, string> = {
   sortOrder: "ترتيب الظهور",
 };
 
-function getOfferSaveErrorMessage(error: any): string {
+function getOfferSaveErrorMessage(error: any, language: DashboardLanguage = "ar"): string {
   const serverMessage = String(error?.details?.message || error?.details?.error || "").trim();
   const field = Object.keys(offerFieldLabels).find((key) => serverMessage.startsWith(`${key} `));
   if (field) {
     const requirement = error?.code === "core_validation:invalid_integer"
-      ? "يجب أن تكون قيمته عددًا صحيحًا ضمن النطاق المسموح."
-      : "القيمة المدخلة غير صحيحة.";
-    return `${offerFieldLabels[field]}: ${requirement}`;
+      ? offersText(language, "يجب أن تكون قيمته عددًا صحيحًا ضمن النطاق المسموح.")
+      : offersText(language, "القيمة المدخلة غير صحيحة.");
+    return `${offersText(language, offerFieldLabels[field])}: ${requirement}`;
   }
   if (error?.code === "core_validation:invalid_integer") {
-    return "أحد الحقول العددية غير صحيح. راجع حدود الاستخدام والأسعار وترتيب الظهور.";
+    return offersText(language, "أحد الحقول العددية غير صحيح. راجع حدود الاستخدام والأسعار وترتيب الظهور.");
   }
   if (error?.code === "core_validation:invalid_number") {
-    return "قيمة الخصم غير صحيحة. استخدم رقمًا موجبًا وبحد أقصى منزلتين عشريتين.";
+    return offersText(language, "قيمة الخصم غير صحيحة. استخدم رقمًا موجبًا وبحد أقصى منزلتين عشريتين.");
   }
-  return String(error?.message || "تعذر حفظ العرض في قاعدة البيانات.");
+  return String(error?.message || offersText(language, "تعذر حفظ العرض في قاعدة البيانات."));
 }
 
 // ✅ NEW: QS + 3 digits, no dash (مثال: QS123)
@@ -178,7 +179,7 @@ function hasArabicText(value: string) {
   return /[\u0600-\u06FF]/.test(value);
 }
 
-function normalizeGroupLabel(raw: string) {
+function normalizeGroupLabel(raw: string, language: DashboardLanguage = "ar") {
   const base = humanizeLabel(raw);
   if (!base) return "";
   const dict: Record<string, string> = {
@@ -194,16 +195,16 @@ function normalizeGroupLabel(raw: string) {
     blowdry: "استشوار",
   };
   const direct = dict[base.toLowerCase()];
-  if (direct) return direct;
+  if (direct) return offersText(language, direct);
   if (hasArabicText(base) && /[A-Za-z]/.test(base)) {
     return base.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
   }
   return base;
 }
 
-function resolveSectionLabel(raw: string) {
+function resolveSectionLabel(raw: string, language: DashboardLanguage = "ar") {
   const src = String(raw || "").trim();
-  const x = normalizeGroupLabel(src);
+  const x = normalizeGroupLabel(src, language);
   const lower = src.toLowerCase();
   const map: Record<string, string> = {
     services: "الخدمات",
@@ -216,19 +217,19 @@ function resolveSectionLabel(raw: string) {
     consultation: "استشارة",
     blowdry: "استشوار",
   };
-  if (map[lower]) return map[lower];
+  if (map[lower]) return offersText(language, map[lower]);
   if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  return "قسم عام";
+  return offersText(language, "قسم عام");
 }
 
-function resolveCategoryLabel(raw: string) {
+function resolveCategoryLabel(raw: string, language: DashboardLanguage = "ar") {
   const src = String(raw || "").trim();
   const preferred = src.includes(">") ? src.split(">").pop() || src : src;
   const x = humanizeLabel(preferred);
   if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  const mapped = normalizeGroupLabel(x);
+  const mapped = normalizeGroupLabel(x, language);
   if (hasArabicText(mapped)) return mapped.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
-  return "غير محدد";
+  return offersText(language, "غير محدد");
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -318,15 +319,17 @@ function isPackageActiveNow(p: CorePackage) {
   return true;
 }
 
-function getPackageStatusLabel(p: CorePackage) {
-  if (isPackageExpiredByToday(p)) return "منتهي";
-  if (p?.active === false) return "موقوف";
-  if (p?.saleEnabled === false) return "غير معروض للبيع";
-  if (isPackageScheduledByToday(p)) return "مجدول";
-  return "نشط";
+function getPackageStatusLabel(p: CorePackage, language: DashboardLanguage = "ar") {
+  if (isPackageExpiredByToday(p)) return offersText(language, "منتهي");
+  if (p?.active === false) return offersText(language, "موقوف");
+  if (p?.saleEnabled === false) return offersText(language, "غير معروض للبيع");
+  if (isPackageScheduledByToday(p)) return offersText(language, "مجدول");
+  return offersText(language, "نشط");
 }
 
-const DashboardOffers: React.FC = () => {
+const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const t = (text: string) => offersText(language, text);
+  const currency = language === "en" ? "SAR" : "ر.س";
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<DashboardPackage[]>([]);
   const [packageServices, setPackageServices] = useState<PackageServiceRow[]>([]);
@@ -502,9 +505,9 @@ const DashboardOffers: React.FC = () => {
       });
     });
     return Array.from(map.values()).sort((a, b) =>
-      new Intl.Collator("ar", { sensitivity: "base" }).compare(a.name, b.name)
+      new Intl.Collator(language === "en" ? "en" : "ar", { sensitivity: "base" }).compare(a.name, b.name)
     );
-  }, [packageServices, categoryNameById]);
+  }, [categoryNameById, language, packageServices]);
 
   const selectedOfferServices = useMemo(
     () =>
@@ -531,12 +534,12 @@ const DashboardOffers: React.FC = () => {
       0
     );
     const dateStatus = isScheduledByToday(form)
-      ? "مجدول"
+      ? t("مجدول")
       : isExpiredByToday(form)
-        ? "منتهي"
+        ? t("منتهي")
         : form.active
-          ? "نشط"
-          : "موقوف";
+          ? t("نشط")
+          : t("موقوف");
 
     return {
       priceBefore,
@@ -547,7 +550,7 @@ const DashboardOffers: React.FC = () => {
       serviceValue,
       dateStatus,
     };
-  }, [form, selectedOfferServices]);
+  }, [form, language, selectedOfferServices]);
 
   const offerEditorChecks = useMemo(() => {
     const scopeReady =
@@ -559,18 +562,18 @@ const DashboardOffers: React.FC = () => {
       .map((item) => item.trim())
       .filter(Boolean);
     const items = [
-      { label: "عنوان العرض والكود مكتملان", ready: Boolean(form.title.trim() && form.code.trim()) },
-      { label: "قيمة الخصم صحيحة", ready: Number(form.value) > 0 && (form.discountType !== "percent" || Number(form.value) <= 100) },
-      { label: "فترة العرض صحيحة", ready: !form.startDate || !form.endDate || form.startDate <= form.endDate },
-      { label: "نطاق التطبيق محدد", ready: scopeReady },
-      { label: "الاستهداف جاهز", ready: form.targetScope === "all" || targetIds.length > 0 },
+      { label: t("عنوان العرض والكود مكتملان"), ready: Boolean(form.title.trim() && form.code.trim()) },
+      { label: t("قيمة الخصم صحيحة"), ready: Number(form.value) > 0 && (form.discountType !== "percent" || Number(form.value) <= 100) },
+      { label: t("فترة العرض صحيحة"), ready: !form.startDate || !form.endDate || form.startDate <= form.endDate },
+      { label: t("نطاق التطبيق محدد"), ready: scopeReady },
+      { label: t("الاستهداف جاهز"), ready: form.targetScope === "all" || targetIds.length > 0 },
     ];
     return {
       items,
       readyCount: items.filter((item) => item.ready).length,
       isReady: items.every((item) => item.ready),
     };
-  }, [form]);
+  }, [form, language]);
 
   const refresh = async () => {
     try {
@@ -651,7 +654,7 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر تحميل العروض أو الباقات من Core API.");
+      showNotice(t("تعذر تحميل العروض أو الباقات من Core API."));
     }
   };
 
@@ -764,7 +767,7 @@ const DashboardOffers: React.FC = () => {
     setServiceSearch("");
     setServicesPickerOpen(false);
     setSequenceEditorOpen(Array.isArray((o as any).sequenceSteps) && (o as any).sequenceSteps.length > 0);
-    setPickedImageName((o as any).imageUrl ? "تم اختيار صورة" : "");
+    setPickedImageName((o as any).imageUrl ? "__existing__" : "");
 
     setForm({
       title: (o as any).title || "",
@@ -810,26 +813,26 @@ const DashboardOffers: React.FC = () => {
   };
 
   const save = async () => {
-    if (!form.title.trim()) return showNotice("اكتب عنوان العرض");
-    if (!form.code.trim()) return showNotice("اكتب الكود أو اضغط توليد");
+    if (!form.title.trim()) return showNotice(t("اكتب عنوان العرض"));
+    if (!form.code.trim()) return showNotice(t("اكتب الكود أو اضغط توليد"));
     const discountValue = Number(form.value);
-    if (!Number.isFinite(discountValue) || discountValue <= 0) return showNotice("قيمة الخصم لازم تكون رقمًا أكبر من صفر");
-    if (!hasAtMostTwoDecimals(discountValue)) return showNotice("قيمة الخصم تقبل منزلتين عشريتين كحد أقصى");
-    if (form.discountType === "percent" && discountValue > 100) return showNotice("النسبة المئوية لا تتجاوز 100%");
-    if (form.startDate && form.endDate && form.startDate > form.endDate) return showNotice("تاريخ البداية لازم يكون قبل النهاية");
-    if (form.priceBefore < 0 || form.priceAfter < 0) return showNotice("أسعار العرض لا يمكن أن تكون سالبة");
-    if (form.priceBefore > 0 && form.priceAfter > form.priceBefore) return showNotice("السعر بعد الخصم يجب ألا يتجاوز السعر السابق");
+    if (!Number.isFinite(discountValue) || discountValue <= 0) return showNotice(t("قيمة الخصم لازم تكون رقمًا أكبر من صفر"));
+    if (!hasAtMostTwoDecimals(discountValue)) return showNotice(t("قيمة الخصم تقبل منزلتين عشريتين كحد أقصى"));
+    if (form.discountType === "percent" && discountValue > 100) return showNotice(t("النسبة المئوية لا تتجاوز 100%"));
+    if (form.startDate && form.endDate && form.startDate > form.endDate) return showNotice(t("تاريخ البداية لازم يكون قبل النهاية"));
+    if (form.priceBefore < 0 || form.priceAfter < 0) return showNotice(t("أسعار العرض لا يمكن أن تكون سالبة"));
+    if (form.priceBefore > 0 && form.priceAfter > form.priceBefore) return showNotice(t("السعر بعد الخصم يجب ألا يتجاوز السعر السابق"));
     const targetClientIds = form.targetClientIdsText.split(/[،,\n]/).map((item) => item.trim()).filter(Boolean);
-    if (form.targetScope === "specific" && targetClientIds.length === 0) return showNotice("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد");
+    if (form.targetScope === "specific" && targetClientIds.length === 0) return showNotice(t("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد"));
 
     if (form.appliesTo === "services" && form.serviceIds.length === 0) {
-      return showNotice("اختر خدمة واحدة على الأقل أو اجعل العرض على جميع الخدمات");
+      return showNotice(t("اختر خدمة واحدة على الأقل أو اجعل العرض على جميع الخدمات"));
     }
     if (form.appliesTo === "categories" && form.categoryIds.length === 0) {
-      return showNotice("اختر تصنيفًا واحدًا على الأقل أو غيّر نطاق العرض");
+      return showNotice(t("اختر تصنيفًا واحدًا على الأقل أو غيّر نطاق العرض"));
     }
     if (form.usageLimit < 0 || form.minOrder < 0 || form.maxDiscount < 0 || form.perClientLimit < 0) {
-      return showNotice("حدود الاستخدام والطلب والخصم لا يمكن أن تكون سالبة");
+      return showNotice(t("حدود الاستخدام والطلب والخصم لا يمكن أن تكون سالبة"));
     }
 
     const normalizedSeq = normalizeSequenceSteps(form.sequenceSteps, form.serviceIds);
@@ -882,7 +885,7 @@ const DashboardOffers: React.FC = () => {
       close();
     } catch (e: any) {
       console.error("❌ upsertOffer error:", e?.code, e?.message, e);
-      showNotice(getOfferSaveErrorMessage(e));
+      showNotice(getOfferSaveErrorMessage(e, language));
     }
   };
 
@@ -893,14 +896,14 @@ const DashboardOffers: React.FC = () => {
       await refresh();
     } catch (e: any) {
       console.error("❌ toggleActive error:", e?.code, e?.message, e);
-      showNotice("تعذر تحديث حالة العرض.");
+      showNotice(t("تعذر تحديث حالة العرض."));
     }
   };
 
   // ✅ حذف ناعم (Soft Delete) بدل حذف نهائي
   const softDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return showNotice("لا يمكن حذف عرض مستخدم");
-    if (!confirm("حذف العرض (نقل للمحذوفات)؟")) return;
+    if (Number((o as any).usageCount || 0) > 0) return showNotice(t("لا يمكن حذف عرض مستخدم"));
+    if (!confirm(t("حذف العرض (نقل للمحذوفات)؟"))) return;
 
     try {
       await upsertOffer(
@@ -910,12 +913,12 @@ const DashboardOffers: React.FC = () => {
       await refresh();
     } catch (e: any) {
       console.error("❌ softDelete error:", e?.code, e?.message, e);
-      showNotice("تعذر حذف العرض.");
+      showNotice(t("تعذر حذف العرض."));
     }
   };
 
   const restore = async (o: Offer) => {
-    if (!confirm("استرجاع العرض من المحذوفات؟")) return;
+    if (!confirm(t("استرجاع العرض من المحذوفات؟"))) return;
 
     try {
       await upsertOffer({ ...(o as any), id: (o as any).id, deletedAt: null } as any, SALON_ID);
@@ -923,21 +926,21 @@ const DashboardOffers: React.FC = () => {
       setFilterMode("active_now");
     } catch (e: any) {
       console.error("❌ restore error:", e?.code, e?.message, e);
-      showNotice("تعذر استرجاع العرض.");
+      showNotice(t("تعذر استرجاع العرض."));
     }
   };
 
   // ✅ حذف نهائي (اختياري فقط من تبويب المحذوفات)
   const hardDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return showNotice("لا يمكن حذف عرض مستخدم");
-    if (!confirm("⚠️ حذف نهائي؟ لا يمكن التراجع")) return;
+    if (Number((o as any).usageCount || 0) > 0) return showNotice(t("لا يمكن حذف عرض مستخدم"));
+    if (!confirm(t("⚠️ حذف نهائي؟ لا يمكن التراجع"))) return;
 
     try {
       await removeOffer((o as any).id, SALON_ID);
       await refresh();
     } catch (e: any) {
       console.error("❌ removeOffer error:", e?.code, e?.message, e);
-      showNotice("تعذر حذف العرض نهائيًا.");
+      showNotice(t("تعذر حذف العرض نهائيًا."));
     }
   };
 
@@ -946,7 +949,7 @@ const DashboardOffers: React.FC = () => {
 
     const sizeMb = file.size / (1024 * 1024);
     if (sizeMb > MAX_IMAGE_MB) {
-      showNotice(`حجم الصورة لازم يكون أقل من ${MAX_IMAGE_MB}MB`);
+      showNotice(language === "en" ? `Image size must be less than ${MAX_IMAGE_MB}MB` : `حجم الصورة لازم يكون أقل من ${MAX_IMAGE_MB}MB`);
       return;
     }
 
@@ -1011,7 +1014,7 @@ const DashboardOffers: React.FC = () => {
 
   const calculateOfferPriceAfter = () => {
     if (offerEditorComputed.priceBefore <= 0) {
-      showNotice("أدخل السعر قبل الخصم أولًا");
+      showNotice(t("أدخل السعر قبل الخصم أولًا"));
       return;
     }
     setForm((prev) => ({
@@ -1094,10 +1097,10 @@ const DashboardOffers: React.FC = () => {
     const startDate = String(packageDraft.startDate || "").trim();
     const endDate = String(packageDraft.endDate || "").trim();
     const items = [
-      { label: "اسم الباقة مكتمل", ready: Boolean(String(packageDraft.name || "").trim()) },
-      { label: "تم اختيار خدمة واحدة على الأقل", ready: packageComputed.picked.length > 0 },
-      { label: "السعر وعدد الجلسات صالحان", ready: packageComputed.price >= 0 && packageComputed.sessionsCount > 0 },
-      { label: "فترة الإتاحة صحيحة", ready: !startDate || !endDate || startDate <= endDate },
+      { label: t("اسم الباقة مكتمل"), ready: Boolean(String(packageDraft.name || "").trim()) },
+      { label: t("تم اختيار خدمة واحدة على الأقل"), ready: packageComputed.picked.length > 0 },
+      { label: t("السعر وعدد الجلسات صالحان"), ready: packageComputed.price >= 0 && packageComputed.sessionsCount > 0 },
+      { label: t("فترة الإتاحة صحيحة"), ready: !startDate || !endDate || startDate <= endDate },
     ];
 
     return {
@@ -1105,7 +1108,7 @@ const DashboardOffers: React.FC = () => {
       readyCount: items.filter((item) => item.ready).length,
       isReady: items.every((item) => item.ready),
     };
-  }, [packageDraft, packageComputed]);
+  }, [language, packageDraft, packageComputed]);
   const filteredPackageServices = useMemo(() => {
     const q = String(packageServiceSearch || "").trim().toLowerCase();
     if (!q) return packageServices;
@@ -1234,7 +1237,7 @@ const DashboardOffers: React.FC = () => {
     setEditingPackageId(String(pkg.id || "").trim());
     setPackageFormOpen(true);
     setPackagePickedImageName(
-      String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : ""
+      String(pkg.imageUrl || "").trim() ? "__existing__" : ""
     );
     setPackageDraft({
       id: String(pkg.id || "").trim(),
@@ -1275,7 +1278,7 @@ const DashboardOffers: React.FC = () => {
     if (!file) return;
     const sizeMb = file.size / (1024 * 1024);
     if (sizeMb > MAX_PACKAGE_IMAGE_MB) {
-      showNotice(`حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`);
+      showNotice(language === "en" ? `Package image size must be less than ${MAX_PACKAGE_IMAGE_MB}MB` : `حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`);
       return;
     }
     const b64 = await fileToBase64(file);
@@ -1297,21 +1300,21 @@ const DashboardOffers: React.FC = () => {
       Math.floor(Number(packageDraft.validityDays || 1))
     );
 
-    if (!name) return showNotice("اكتب اسم الباقة");
+    if (!name) return showNotice(t("اكتب اسم الباقة"));
     if (startDate && endDate && startDate > endDate) {
-      return showNotice("تاريخ بداية الباقة يجب أن يكون قبل تاريخ الانتهاء");
+      return showNotice(t("تاريخ بداية الباقة يجب أن يكون قبل تاريخ الانتهاء"));
     }
     if (endDate && endDate < todayISO()) {
-      return showNotice("تاريخ انتهاء الباقة يجب أن يكون اليوم أو بعده");
+      return showNotice(t("تاريخ انتهاء الباقة يجب أن يكون اليوم أو بعده"));
     }
     if (!packageComputed.picked.length) {
-      return showNotice("اختر خدمة واحدة على الأقل");
+      return showNotice(t("اختر خدمة واحدة على الأقل"));
     }
     if (sessionsCount <= 0) {
-      return showNotice("عدد الجلسات يجب أن يكون أكبر من صفر");
+      return showNotice(t("عدد الجلسات يجب أن يكون أكبر من صفر"));
     }
     if (price < 0) {
-      return showNotice("سعر الباقة لا يمكن أن يكون سالبًا");
+      return showNotice(t("سعر الباقة لا يمكن أن يكون سالبًا"));
     }
 
     const id =
@@ -1364,7 +1367,7 @@ const DashboardOffers: React.FC = () => {
       resetPackageDraft();
       if (isUpdateMode) setPackageFormOpen(false);
       showNotice(
-        isUpdateMode ? "تم تحديث الباقة بنجاح" : "تم حفظ الباقة بنجاح",
+        isUpdateMode ? t("تم تحديث الباقة بنجاح") : t("تم حفظ الباقة بنجاح"),
         "success"
       );
     } catch (error: any) {
@@ -1374,21 +1377,21 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر حفظ الباقة في Core API.");
+      showNotice(t("تعذر حفظ الباقة في Core API."));
     }
   };
 
   const deletePackageById = async (idRaw: string) => {
     const id = String(idRaw || "").trim();
     if (!id) return;
-    if (!confirm("هل أنت متأكد من حذف هذه الباقة؟")) return;
+    if (!confirm(t("هل أنت متأكد من حذف هذه الباقة؟"))) return;
 
     try {
       await PackageService.remove(id);
       await removeOffer(id, SALON_ID).catch(() => undefined);
       await refresh();
       if (editingPackageId === id) resetPackageDraft();
-      showNotice("تم حذف الباقة", "success");
+      showNotice(t("تم حذف الباقة"), "success");
     } catch (error: any) {
       console.error(
         "Core package delete failed:",
@@ -1396,7 +1399,7 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر حذف الباقة من Core API.");
+      showNotice(t("تعذر حذف الباقة من Core API."));
     }
   };
 
@@ -1431,7 +1434,7 @@ const DashboardOffers: React.FC = () => {
         error?.message,
         error
       );
-      showNotice("تعذر تحديث حالة الباقة.");
+      showNotice(t("تعذر تحديث حالة الباقة."));
     }
   };
 
