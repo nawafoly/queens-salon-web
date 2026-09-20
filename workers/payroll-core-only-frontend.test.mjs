@@ -55,6 +55,20 @@ test("admin HR payroll preview uses canonical Core payroll engine", () => {
   );
   assert.doesNotMatch(admin, /hr-overview-payroll-base/);
 });
+
+test("dashboard payroll keeps active employees visible when payroll setup is incomplete", () => {
+  const page = read("src/pages/DashboardPayroll.tsx");
+  const service = read("src/services/CorePayrollService.ts");
+
+  assert.match(page, /CoreHrService\.listEmployees\(\{ status: "active" \}\)/);
+  assert.match(page, /setEmployees\(employeeRows\)/);
+  assert.doesNotMatch(page, /setEmployees\(eligibleEmployeeRows\)/);
+  assert.match(service, /function payrollPreviewUnavailableEntry/);
+  assert.match(service, /catch \(error\)[\s\S]*payrollPreviewUnavailableEntry/);
+  assert.match(service, /payrollSetupComplete: false/);
+  assert.match(service, /payrollSetupMissing:/);
+});
+
 test("legacy Firestore payroll artifacts stay deleted", () => {
   assert.equal(existsSync("src/helpers/hr/employeePayroll.ts"), false);
 
