@@ -791,7 +791,7 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
                     </header>
                     <div className="settings-attendance-v2-actions">
                       <button className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" type="button" disabled={!hasAdminPower || saving} onClick={useCurrentLocation}>
-                        <FontAwesomeIcon icon={faLocationDot} /> استخدام موقعي الحالي
+                        <FontAwesomeIcon icon={faLocationDot} /> {t("استخدام موقعي الحالي")}
                       </button>
                       <button
                         className={`dsv2-btn dsv2-btn--sm ${manualPickMode ? "dsv2-btn--primary" : "dsv2-btn--secondary"}`}
@@ -805,7 +805,7 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
                         {manualPickMode ? t("إلغاء وضع المركز") : t("التحديد من مركز الخريطة")}
                       </button>
                       <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={!hasAdminPower || saving || !manualPickMode} onClick={adoptMapCenter}>
-                        اعتماد مركز الخريطة
+                        {t("اعتماد مركز الخريطة")}
                       </button>
                     </div>
 
@@ -967,13 +967,13 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
 
             <div className="settings-attendance-v2-form-actions">
               <button className="dsv2-btn dsv2-btn--primary" type="button" disabled={!hasAdminPower || saving} onClick={saveZone}>
-                <FontAwesomeIcon icon={faSave} /> حفظ المنطقة
+                <FontAwesomeIcon icon={faSave} /> {t("حفظ المنطقة")}
               </button>
               <button className="dsv2-btn dsv2-btn--secondary" type="button" disabled={!hasAdminPower || saving} onClick={useCurrentLocation}>
-                <FontAwesomeIcon icon={faLocationDot} /> استخدام موقعي
+                <FontAwesomeIcon icon={faLocationDot} /> {t("استخدام موقعي")}
               </button>
               <button className="dsv2-btn dsv2-btn--secondary" type="button" disabled={!hasAdminPower || saving} onClick={resetZoneDraft}>
-                <FontAwesomeIcon icon={faPlus} /> منطقة جديدة
+                <FontAwesomeIcon icon={faPlus} /> {t("منطقة جديدة")}
               </button>
             </div>
           </div>
@@ -985,7 +985,7 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
                 <small>Firestore + Attendance Worker</small>
               </div>
               <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" disabled={zonesLoading} onClick={() => void loadZones()}>
-                <FontAwesomeIcon icon={faRotateRight} /> تحديث
+                <FontAwesomeIcon icon={faRotateRight} /> {t("تحديث")}
               </button>
             </div>
 
@@ -1015,10 +1015,10 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
                   </div>
                   <div className="settings-attendance-v2-zone__actions">
                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={!hasAdminPower || saving} onClick={() => editZone(zone)}>
-                      تعديل
+                      {t("تعديل")}
                     </button>
                     <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!hasAdminPower || saving} onClick={() => void deleteZone(zone.id)}>
-                      <FontAwesomeIcon icon={faTrash} /> حذف
+                      <FontAwesomeIcon icon={faTrash} /> {t("حذف")}
                     </button>
                   </div>
                 </article>
@@ -1042,7 +1042,7 @@ export default function SettingsAttendance({ hasAdminPower, language = "ar" }: P
         </div>
         <div className="settings-attendance-v2-savebar__actions">
           <button className="dsv2-btn dsv2-btn--secondary" type="button" disabled={saving} onClick={() => void load()}>
-            <FontAwesomeIcon icon={faRotateRight} /> تحديث
+            <FontAwesomeIcon icon={faRotateRight} /> {t("تحديث")}
           </button>
           <button className="dsv2-btn dsv2-btn--primary" type="button" disabled={!hasAdminPower || saving} onClick={saveSettings}>
             <FontAwesomeIcon icon={faSave} /> {saving ? t("جاري الحفظ...") : t("حفظ إعدادات الحضور")}
