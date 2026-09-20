@@ -166,6 +166,7 @@ async function setup() {
     '0055_attendance_deferral_recreate_after_cancel.sql',
     '0057_leave_rest_workflows.sql',
     '0059_payroll_carryover_compliance_authority.sql',
+    '0078_staff_services_specialties_backfill.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
