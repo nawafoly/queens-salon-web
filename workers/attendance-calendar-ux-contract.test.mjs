@@ -85,3 +85,19 @@ test("past resolved Core workdays without punches are inferred as absence", () =
   assert.match(source, /!hasAbsence/);
   assert.match(source, /isPastScheduledNoPunch[\s\S]*\\u063a\\u064a\\u0627\\u0628/);
 });
+
+
+test("empty attendance months preserve the calendar toolbar target and controls", () => {
+  assert.match(
+    source,
+    /viewState === "empty"[\s\S]*className="dsv2-ew-attendance-calendar-card"/
+  );
+  assert.match(
+    source,
+    /viewState === "empty"[\s\S]*onClick=\{goToToday\}[\s\S]*>اليوم<\/button>/
+  );
+  assert.match(
+    source,
+    /viewState === "empty"[\s\S]*onClick=\{onReload\}[\s\S]*>تحديث<\/button>/
+  );
+});
