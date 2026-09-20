@@ -310,6 +310,9 @@ const offersEnglish: Record<string, string> = {
   "قيمة الخدمات المحددة": "Selected services value",
   "قيمة إرشادية محسوبة من أسعار الخدمات المختارة.": "Indicative value calculated from selected service prices.",
   "إلغاء": "Cancel"
+  "تاريخ النهاية": "End date",
+  "معاينة صورة العرض": "Offer image preview",
+  "PNG أو JPG أو WEBP": "PNG or JPG or WEBP",
 };
 
 export function offersText(language: DashboardLanguage, arabic: string): string {
