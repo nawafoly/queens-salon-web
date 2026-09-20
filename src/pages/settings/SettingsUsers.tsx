@@ -540,7 +540,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               className="dsv2-btn dsv2-btn--primary"
               onClick={() => setCreateOpen(true)}
             >
-              إنشاء حساب D1
+              {t("إنشاء حساب D1")}
             </button>
           ) : null}
         </div>
@@ -588,7 +588,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
           </span>
           <p className="dsv2-metric-card__label">{t("مرتبطة بموظفة")}</p>
           <p className="dsv2-metric-card__value">{stats.linked}</p>
-          <p className="dsv2-metric-card__meta">غير مرتبطة: {stats.unlinked}</p>
+          <p className="dsv2-metric-card__meta">{t("غير مرتبطة")}: {stats.unlinked}</p>
         </article>
       </section>
 
@@ -751,7 +751,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                           >
                             {account.employeeLink?.employee?.name ||
                               account.employeeLink?.employeeId ||
-                              "غير مرتبط"}
+                              t("غير مرتبط")}
                           </span>
                         </td>
 
@@ -769,7 +769,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                               setDetailsOpen(true);
                             }}
                           >
-                            عرض التفاصيل
+                            {t("عرض التفاصيل")}
                           </button>
                         </td>
                       </tr>
@@ -793,7 +793,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
         open={detailsOpen && Boolean(selected)}
         onClose={() => setDetailsOpen(false)}
         eyebrow={t("تفاصيل الحساب")}
-        title={selected?.displayName || selected?.email || "تفاصيل الحساب"}
+        title={selected?.displayName || selected?.email || t("تفاصيل الحساب")}
         description={
           selected?.email ||
           selected?.firebaseUid ||
@@ -855,7 +855,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                       openEdit(selected);
                     }}
                   >
-                    تعديل الحساب
+                    {t("تعديل الحساب")}
                   </button>
                 ) : null}
               </div>
@@ -879,7 +879,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 <strong>
                   {selected.employeeLink?.employee?.name ||
                     selected.employeeLink?.employeeId ||
-                    "غير مرتبط"}
+                    t("غير مرتبط")}
                 </strong>
               </div>
             </div>
@@ -995,7 +995,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   disabled={saving}
                   onClick={() => void runAccountAction("disable", selected)}
                 >
-                  تعطيل
+                  {t("تعطيل")}
                 </button>
               ) : null}
 
@@ -1006,7 +1006,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   disabled={saving}
                   onClick={() => void runAccountAction("restore", selected)}
                 >
-                  استعادة
+                  {t("استعادة")}
                 </button>
               ) : null}
 
@@ -1017,7 +1017,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   disabled={saving}
                   onClick={() => setPendingDeleteAccount(selected)}
                 >
-                  حذف منطقي
+                  {t("حذف منطقي")}
                 </button>
               ) : null}
 
@@ -1028,7 +1028,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   disabled={saving || !selected.email}
                   onClick={() => void runAccountAction("reset", selected)}
                 >
-                  إرسال رابط كلمة المرور
+                  {t("إرسال رابط كلمة المرور")}
                 </button>
               ) : null}
             </div>
@@ -1053,7 +1053,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               disabled={saving}
               onClick={() => void handleCreate()}
             >
-              حفظ في D1
+              {t("حفظ في D1")}
             </button>
             <button
               type="button"
@@ -1061,7 +1061,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               disabled={saving}
               onClick={() => setCreateOpen(false)}
             >
-              إلغاء
+              {t("إلغاء")}
             </button>
           </>
         }
@@ -1149,7 +1149,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
         open={Boolean(editDraft)}
         onClose={() => setEditDraft(null)}
         eyebrow={t("تعديل الحساب")}
-        title={editDraft?.displayName || editDraft?.email || "تعديل الحساب"}
+        title={editDraft?.displayName || editDraft?.email || t("تعديل الحساب")}
         description={t("تعديل البيانات والدور والربط والصلاحيات الفعلية.")}
         size="xl"
         tone="default"
@@ -1162,7 +1162,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 disabled={saving}
                 onClick={() => void handleSaveEdit()}
               >
-                حفظ التعديلات
+                {t("حفظ التعديلات")}
               </button>
               <button
                 type="button"
@@ -1170,7 +1170,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 disabled={saving}
                 onClick={() => setEditDraft(null)}
               >
-                إلغاء
+                {t("إلغاء")}
               </button>
             </>
           ) : null
@@ -1288,7 +1288,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 <div>
                   <h3 className="dsv2-section-title">{t("الصلاحيات الفعلية")}</h3>
                   <p className="dsv2-section-caption">
-                    Worker يحول القائمة إلى allow/deny حسب الدور المحدد.
+                    {t("Worker يحول القائمة إلى allow/deny حسب الدور المحدد.")}
                   </p>
                 </div>
 

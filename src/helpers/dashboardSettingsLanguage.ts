@@ -681,6 +681,7 @@ const settingsEnglish: Record<string, string> = {
   "الكتالوج والعروض ومحتوى الموقع والشريكات.": "Catalog, offers, website content and partners.",
   "النظام والحسابات": "System and accounts",
   "الإعدادات والحسابات والأدوار والصلاحيات.": "Settings, accounts, roles and permissions.",
+  "تعديل:": "Edit:",
 };
 
 export function settingsText(language: DashboardLanguage, arabic: string): string {

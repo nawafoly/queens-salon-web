@@ -961,7 +961,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           </p>
           <div className="settings-catalog-v2-hero__badges">
             <span className="dsv2-badge dsv2-badge--success">{t("تحكم إداري")}</span>
-            <span className="dsv2-badge">{services.length} خدمة</span>
+            <span className="dsv2-badge">{services.length} {t("خدمة")}</span>
           </div>
         </div>
         <button
@@ -1119,8 +1119,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                       <small>ID: {section.id}</small>
                     </span>
                     <span className="settings-catalog-v2-row__meta">
-                      <span>{categories.filter((category) => category.sectionId === section.id).length} تصنيف</span>
-                      <span>{services.filter((service) => service.sectionId === section.id).length} خدمة</span>
+                      <span>{categories.filter((category) => category.sectionId === section.id).length} {t("التصنيف")}</span>
+                      <span>{services.filter((service) => service.sectionId === section.id).length} {t("خدمة")}</span>
                       <span className={`dsv2-badge ${section.active ? "dsv2-badge--success" : ""}`}>{section.active ? t("نشط") : t("معطل")}</span>
                     </span>
                   </button>
@@ -1130,7 +1130,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                   <button key={service.id} type="button" className={`settings-catalog-v2-row ${selectedId === service.id ? "is-selected" : ""}`} onClick={() => setSelectedId(service.id)}>
                     <span className="settings-catalog-v2-row__copy">
                       <strong>{service.name}</strong>
-                      <small>{sectionById.get(service.sectionId)?.name || "قسم غير محدد"} · {categoryById.get(service.categoryId)?.name || "بدون تصنيف"}</small>
+                      <small>{sectionById.get(service.sectionId)?.name || t("قسم غير محدد")} · {categoryById.get(service.categoryId)?.name || t("بدون تصنيف")}</small>
                     </span>
                     <span className="settings-catalog-v2-row__meta">
                       <span>{service.durationMin} {t("دقيقة")}</span>
@@ -1145,7 +1145,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
 
           <section className="dsv2-card dsv2-card--padded settings-catalog-v2-summary-panel">
             <span className="dsv2-badge dsv2-badge--gold">{t("المعاينة")}</span>
-            <h2>{activeListMode === "sections" ? "إدارة الأقسام والتصنيفات" : "إدارة الخدمات"}</h2>
+            <h2>{activeListMode === "sections" ? t("إدارة الأقسام والتصنيفات") : t("إدارة الخدمات")}</h2>
             <p>{t("اختر عنصرًا من القائمة لفتح نافذة التفاصيل الكاملة، التعديل، التعطيل أو الحذف.")}</p>
             <div className="settings-catalog-v2-summary-grid">
               <div><span>{t("المعروض")}</span><strong>{activeListMode === "sections" ? filteredSections.length : filteredServices.length}</strong></div>
@@ -1160,10 +1160,10 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           <header className="settings-catalog-v2-panel__head">
             <div>
               <span className="settings-catalog-v2-panel__eyebrow">02</span>
-              <h2>{editingPackageId ? "تعديل باقة جلسات" : "إنشاء باقة جلسات"}</h2>
+              <h2>{editingPackageId ? t("تعديل باقة جلسات") : t("إنشاء باقة جلسات")}</h2>
               <p>{t("حدد محتوى الباقة، الخدمات المسموحة، فترة الإتاحة وحالة البيع.")}</p>
             </div>
-            {editingPackageId ? <span className="dsv2-badge dsv2-badge--gold">تعديل: {editingPackageId}</span> : null}
+            {editingPackageId ? <span className="dsv2-badge dsv2-badge--gold">{t("تعديل:")} {editingPackageId}</span> : null}
           </header>
 
           <div className="settings-catalog-v2-form-grid settings-catalog-v2-form-grid--packages">
@@ -1200,7 +1200,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
               <DashboardSelectV2 value={packageServiceSectionFilter} options={[{ value: "all", label: t("كل الأقسام") }, ...sectionOptions]} onChange={setPackageServiceSectionFilter} />
               <div className="settings-catalog-v2-segmented">
                 <button type="button" className={packageServiceView === "all" ? "is-active" : ""} onClick={() => setPackageServiceView("all")}>{t("كل الخدمات")}</button>
-                <button type="button" className={packageServiceView === "selected" ? "is-active" : ""} onClick={() => setPackageServiceView("selected")}>المختارة ({selectedPackageServiceIds.length})</button>
+                <button type="button" className={packageServiceView === "selected" ? "is-active" : ""} onClick={() => setPackageServiceView("selected")}>{t("المختارة")} ({selectedPackageServiceIds.length})</button>
               </div>
             </div>
 
@@ -1213,7 +1213,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                       <span className="settings-catalog-v2-service-option__check">{checked ? "✓" : ""}</span>
                       <span className="settings-catalog-v2-service-option__copy">
                         <strong>{service.name}</strong>
-                        <small>{sectionById.get(service.sectionId)?.name || "قسم غير محدد"} · {categoryById.get(service.categoryId)?.name || "بدون تصنيف"}</small>
+                        <small>{sectionById.get(service.sectionId)?.name || t("قسم غير محدد")} · {categoryById.get(service.categoryId)?.name || t("بدون تصنيف")}</small>
                       </span>
                       <span className="settings-catalog-v2-service-option__meta">{service.durationMin} {language === "en" ? "min" : "د"} · {money(service.price, language)} {language === "en" ? "SAR" : "ر.س"}</span>
                     </button>
@@ -1280,7 +1280,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
             <Field language={language} label={t("إلى تاريخ")}><DashboardDatePickerV2 value={seasonPricingTo} disabled={!seasonPricingEnabled} onChange={setSeasonPricingTo} /></Field>
           </div>
           <div className="settings-catalog-v2-panel-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={seasonLoading} onClick={() => void saveSeasonPricing()}>{seasonLoading ? "جاري الحفظ…" : "حفظ موسم الأسعار"}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={seasonLoading} onClick={() => void saveSeasonPricing()}>{seasonLoading ? t("جاري الحفظ…") : t("حفظ موسم الأسعار")}</button>
           </div>
         </section>
       ) : null}
@@ -1354,7 +1354,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                           <input className="dsv2-input" value={category.name} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, name: event.target.value } : row))} />
                           <DashboardNumberInputV2 className="dsv2-input settings-catalog-v2-category-order" value={category.order} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, order: Number(event.target.value || 0) } : row))} />
                           <button type="button" className={`dsv2-btn dsv2-btn--sm ${category.active ? "dsv2-btn--success" : "dsv2-btn--secondary"}`} disabled={mode !== "edit"} aria-pressed={category.active} onClick={() => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, active: !row.active } : row))}>{category.active ? t("نشط") : t("معطل")}</button>
-                          <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setActiveCategoryId(category.id); setOpenedServiceId(null); }}>الخدمات ({services.filter((service) => service.categoryId === category.id).length})</button>
+                          <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setActiveCategoryId(category.id); setOpenedServiceId(null); }}>{t("الخدمات")} ({services.filter((service) => service.categoryId === category.id).length})</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => void saveCategory(category)}>{t("حفظ")}</button>
                           <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => void deleteCategory(category.id)}>{t("حذف")}</button>
                         </div>
