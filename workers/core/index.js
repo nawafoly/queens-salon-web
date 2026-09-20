@@ -1643,7 +1643,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       );
     case "booking:complete":
       requirePermission(ctx, "bookings.update");
-      return completeBooking(db, ctx.salonId, route.id);
+      return completeBooking(db, ctx.salonId, route.id, actorInfo);
 
     case "booking:cancel":
       requirePermission(ctx, "bookings.cancel");
