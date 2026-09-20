@@ -4539,6 +4539,48 @@ test('HR employee save atomically creates canonical booking staff row and canoni
   assert.deepEqual(JSON.parse(atomicStaff.specialties_json || '[]'), ['svc-b']);
 });
 
+test('staff service backfill migrates valid legacy specialties into canonical assignments', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.exec(`
+    INSERT INTO services
+      (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at)
+    VALUES
+      ('svc-backfill-active', 'main', 'Backfill Active', 30, 5000, 1, 0, '2026-01-01', '2026-01-01'),
+      ('svc-backfill-inactive', 'main', 'Backfill Inactive', 30, 5000, 0, 1, '2026-01-01', '2026-01-01');
+
+    INSERT INTO staff
+      (id, salon_id, name, active, employment_status, specialties_json, created_at, updated_at)
+    VALUES
+      ('staff-backfill', 'main', 'Backfill Staff', 1, 'active',
+       '["svc-backfill-active","svc-backfill-inactive","missing-service"]',
+       '2026-01-01', '2026-01-01');
+  `);
+
+  const sql = (await readFile(
+    new URL('../migrations/core/0078_staff_services_specialties_backfill.sql', import.meta.url),
+    'utf8'
+  ))
+    .replace(/\r/g, '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+
+  for (const statement of splitMigrationStatements(sql)) {
+    await db.prepare(statement).run();
+  }
+
+  const rows = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id='main' AND staff_id='staff-backfill' ORDER BY service_id"
+  ).all();
+
+  assert.deepEqual(
+    rows.results.map((row) => [row.service_id, Number(row.active)]),
+    [['svc-backfill-active', 1]]
+  );
+});
+
 test('public booking tracking returns sanitized Core data without client PII', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
