@@ -2915,7 +2915,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   path="bookings"
                   element={
                     <PermissionRoute permission="bookings.view">
-                      <DashboardBookings currentRole={userInfo.role} />
+                      <DashboardBookings currentRole={userInfo.role} language={dashboardLanguage} />
                     </PermissionRoute>
                   }
                 />

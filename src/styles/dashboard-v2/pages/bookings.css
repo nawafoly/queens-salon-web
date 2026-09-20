@@ -3,6 +3,32 @@
    Single source of truth for /dashboard/bookings.
 ========================================================= */
 
+.dashboard-v2 .bookings-v2-page[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
+.dashboard-v2 .bookings-v2-page[dir="ltr"] .dsv2-table th,
+.dashboard-v2 .bookings-v2-page[dir="ltr"] .dsv2-table td,
+.dashboard-v2 .bookings-v2-page[dir="ltr"] .bk-custom-select__trigger,
+.dashboard-v2 .bookings-v2-page[dir="ltr"] .bk-filter-date-trigger {
+  text-align: left;
+}
+
+.dashboard-v2 .bookings-v2-page[dir="ltr"] .bk-command-result span {
+  direction: ltr;
+}
+
+body .bk-custom-select__portal-panel[dir="ltr"],
+body .bk-filter-calendar-portal[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
+body .bk-custom-select__portal-panel[dir="ltr"] .bk-custom-select__option {
+  text-align: left;
+}
+
 .dashboard-v2 .bookings-v2-page{
   display: grid;
   gap: var(--dsv2-section-gap);
