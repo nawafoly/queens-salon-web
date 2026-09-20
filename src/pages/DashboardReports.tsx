@@ -520,7 +520,7 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 
 export default function DashboardReports({ language = "ar" }: { language?: DashboardLanguage }) {
   const t = (text: string) => reportsText(language, text);
-  const money = (value: number) => money(value, language);
+  const money = (value: number) => formatMoney(value, language);
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
   const [customFrom, setCustomFrom] = useState("");
@@ -1549,7 +1549,7 @@ export default function DashboardReports({ language = "ar" }: { language?: Dashb
         <article className="dsv2-card dsv2-card--padded chart-card chart-card--wide chart-card--trend">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
-              <span className="chart-eyebrow">التحليل المالي</span>
+              <span className="chart-eyebrow">{t("التحليل المالي")}</span>
               <h2>
                 {t("اتجاه التدفقات")} {trendMode === "month" ? t("الشهرية") : t("اليومية")}
                 {trendMode === "month" ? ` (${chartsModel.selectedYear})` : ""}
