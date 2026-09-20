@@ -27,6 +27,7 @@ import {
   type PackageSessionDashboardTransaction,
 } from "../../services/PackageOperationsService";
 import { CoreClientService } from "../../services/CoreClientService";
+import { bookingsText, type DashboardLanguage } from "../../helpers/dashboardBookingsLanguage";
 
 type SessionsTab = "overview" | "subscribers" | "packages" | "ledger" | "expiring";
 
@@ -46,20 +47,20 @@ const EMPTY_DASHBOARD: PackageSessionDashboardResult = {
   transactions: [],
 };
 
-function dateText(value: string) {
+function dateText(value: string, language: DashboardLanguage = "ar") {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(timestamp));
 }
 
-function dateTimeText(value: string) {
+function dateTimeText(value: string, language: DashboardLanguage = "ar") {
   const timestamp = Date.parse(String(value || ""));
   if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -68,15 +69,15 @@ function dateTimeText(value: string) {
   }).format(new Date(timestamp));
 }
 
-function statusLabel(status: string) {
-  if (status === "active") return "نشطة";
-  if (status === "exhausted") return "مستنفدة";
-  if (status === "expired") return "منتهية";
-  if (status === "cancelled") return "ملغاة";
-  return status || "غير محددة";
+function statusLabel(status: string, language: DashboardLanguage = "ar") {
+  if (status === "active") return bookingsText(language, "نشطة");
+  if (status === "exhausted") return bookingsText(language, "مستنفدة");
+  if (status === "expired") return bookingsText(language, "منتهية");
+  if (status === "cancelled") return bookingsText(language, "ملغاة");
+  return status || bookingsText(language, "غير محددة");
 }
 
-function transactionLabel(type: string) {
+function transactionLabel(type: string, language: DashboardLanguage = "ar") {
   const labels: Record<string, string> = {
     purchase: "شراء باقة",
     reserve: "حجز جلسة",
@@ -89,7 +90,7 @@ function transactionLabel(type: string) {
     admin_grant: "إضافة جلسة يدوية",
     admin_restore: "استرجاع إداري",
   };
-  return labels[type] || type || "حركة جلسة";
+  return labels[type] ? bookingsText(language, labels[type]) : type || bookingsText(language, "حركة جلسة");
 }
 
 function matchesSearch(search: string, values: unknown[]) {
@@ -116,7 +117,8 @@ function packageNeedsAttention(pkg: PackageSessionDashboardPackage) {
   return expiry >= Date.now() && expiry <= Date.now() + 30 * 24 * 60 * 60 * 1000;
 }
 
-export default function PackageSessionsManager() {
+export default function PackageSessionsManager({ language = "ar" }: { language?: DashboardLanguage }) {
+  const t = (text: string) => bookingsText(language, text);
   const [activeTab, setActiveTab] = useState<SessionsTab>("overview");
   const [dashboard, setDashboard] = useState<PackageSessionDashboardResult>(EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(true);
@@ -271,15 +273,15 @@ export default function PackageSessionsManager() {
     const sessionsCount = Number(adjustForm.sessionsCount);
     const reason = adjustForm.reason.trim();
     if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
-      setAdjustError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
+      setAdjustError(t("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000."));
       return;
     }
     if (!reason) {
-      setAdjustError("اكتبي سبب التعديل ليظهر في سجل الجلسات.");
+      setAdjustError(t("اكتبي سبب التعديل ليظهر في سجل الجلسات."));
       return;
     }
     if (adjustForm.operation === "subtract" && sessionsCount > adjustPackage.remainingSessions) {
-      setAdjustError("لا يمكن خصم عدد أكبر من الجلسات المتبقية.");
+      setAdjustError(t("لا يمكن خصم عدد أكبر من الجلسات المتبقية."));
       return;
     }
 
@@ -291,7 +293,7 @@ export default function PackageSessionsManager() {
       setAdjustPackage(null);
       await load();
     } catch (error: any) {
-      setAdjustError(String(error?.message || "تعذر تعديل رصيد الجلسات."));
+      setAdjustError(String(error?.message || t("تعذر تعديل رصيد الجلسات.")));
     } finally {
       setAdjustSaving(false);
     }
@@ -312,7 +314,7 @@ export default function PackageSessionsManager() {
     if (!detailsPackage || detailsSaving) return;
     const packageName = detailsForm.packageName.trim();
     if (!packageName) {
-      setDetailsError("اكتبي اسم الباقة.");
+      setDetailsError(t("اكتبي اسم الباقة."));
       return;
     }
     try {
@@ -328,7 +330,7 @@ export default function PackageSessionsManager() {
       setDetailsPackage(null);
       await load();
     } catch (error: any) {
-      setDetailsError(String(error?.message || "تعذر تعديل بيانات الباقة."));
+      setDetailsError(String(error?.message || t("تعذر تعديل بيانات الباقة.")));
     } finally {
       setDetailsSaving(false);
     }
@@ -336,14 +338,16 @@ export default function PackageSessionsManager() {
 
   const deletePackage = async (pkg: PackageSessionDashboardPackage) => {
     if (mutationLoading) return;
-    const ok = window.confirm(`حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
+    const ok = window.confirm(language === "en"
+      ? `Permanently delete package ${pkg.packageName} from Cloudflare D1 along with its movement history?`
+      : `حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
     if (!ok) return;
     try {
       setMutationLoading(true);
       await PackageOperationsService.deleteClientPackage(pkg.id);
       await load();
     } catch (error: any) {
-      window.alert(String(error?.message || "تعذر حذف الباقة."));
+      window.alert(String(error?.message || t("تعذر حذف الباقة.")));
     } finally {
       setMutationLoading(false);
     }
@@ -370,19 +374,19 @@ export default function PackageSessionsManager() {
     const sessionsCount = Number(grantForm.sessionsCount);
 
     if (!clientName) {
-      setGrantError("أدخلي اسم العميلة.");
+      setGrantError(t("أدخلي اسم العميلة."));
       return;
     }
     if (!phone) {
-      setGrantError("أدخلي رقم جوال سعودي صحيح.");
+      setGrantError(t("أدخلي رقم جوال سعودي صحيح."));
       return;
     }
     if (!packageCatalogId) {
-      setGrantError("اختاري الباقة أو الخدمة المرتبطة بالجلسة.");
+      setGrantError(t("اختاري الباقة أو الخدمة المرتبطة بالجلسة."));
       return;
     }
     if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
-      setGrantError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
+      setGrantError(t("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000."));
       return;
     }
 
@@ -395,7 +399,7 @@ export default function PackageSessionsManager() {
       );
       if (exactClients.length > 1) {
         throw new Error(
-          "يوجد أكثر من ملف عميلة بنفس رقم الجوال. يجب دمج الملفات المكررة أولًا."
+          t("يوجد أكثر من ملف عميلة بنفس رقم الجوال. يجب دمج الملفات المكررة أولًا.")
         );
       }
       const client =
@@ -412,10 +416,12 @@ export default function PackageSessionsManager() {
         packageCatalogId,
         sessionsCount,
         expiresAt: grantForm.expiresAt || undefined,
-        reason: grantForm.reason.trim() || "إضافة جلسة للعميلة من لوحة الإدارة",
+        reason: grantForm.reason.trim() || t("إضافة جلسة للعميلة من لوحة الإدارة"),
       });
       setGrantSuccess(
-        `تمت إضافة ${result.sessionsCount} جلسة إلى ${clientName} بنجاح.`
+        language === "en"
+        ? `Added ${result.sessionsCount} session(s) to ${clientName} successfully.`
+        : `تمت إضافة ${result.sessionsCount} جلسة إلى ${clientName} بنجاح.`
       );
       setSearch(phone);
       setActiveTab("packages");
@@ -430,7 +436,7 @@ export default function PackageSessionsManager() {
       });
     } catch (grantCause: any) {
       setGrantError(
-        String(grantCause?.message || "تعذر إضافة الجلسة للعميلة.")
+        String(grantCause?.message || t("تعذر إضافة الجلسة للعميلة."))
       );
     } finally {
       setGrantSaving(false);
