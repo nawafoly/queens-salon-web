@@ -139,6 +139,12 @@ import {
   resolveSelfClient,
 } from './repositories/client-portal.js';
 import {
+  getCashbackPolicy,
+  getClientCashbackWallet,
+  redeemCashbackForBooking,
+  upsertCashbackPolicy,
+} from './repositories/cashback.js';
+import {
   assignConnectConversation,
   getConnectSecurityEventContext,
   listClientConnectConversations,
@@ -607,6 +613,17 @@ function match(url, method) {
   const loyaltyAdjustment = /^\/api\/core\/clients\/([^/]+)\/loyalty-adjustments$/.exec(path);
   if (loyaltyAdjustment && method === "POST") {
     return { name: "client:loyalty-adjustment", id: loyaltyAdjustment[1] };
+  }
+  if (path === "/api/core/admin/cashback/policy" && ["GET", "PATCH"].includes(method)) {
+    return { name: "cashback:policy" };
+  }
+  const clientCashbackRedeem = /^\/api\/core\/clients\/([^/]+)\/cashback\/redeem$/.exec(path);
+  if (clientCashbackRedeem && method === "POST") {
+    return { name: "cashback:redeem", id: clientCashbackRedeem[1] };
+  }
+  const clientCashback = /^\/api\/core\/clients\/([^/]+)\/cashback$/.exec(path);
+  if (clientCashback && method === "GET") {
+    return { name: "cashback:client-wallet", id: clientCashback[1] };
   }
 
   if (path === "/api/core/public/booking-track" && method === "GET") {
@@ -1329,6 +1346,54 @@ async function dispatch(ctx, route, method, body, query, env) {
         after: { assignedStaffId: updated.assigned_staff_id },
       }, actorInfo);
       return updated;
+    }
+
+    case "cashback:policy":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return getCashbackPolicy(db, ctx.salonId);
+      if (method === "PATCH") {
+        const updated = await upsertCashbackPolicy(
+          db,
+          ctx.salonId,
+          body,
+          ctx.identity?.uid || ""
+        );
+        await recordAudit(db, ctx.salonId, {
+          action: "cashback_policy_updated",
+          entityType: "cashback_policy",
+          entityId: ctx.salonId,
+          description: "MALIKAT cashback policy updated.",
+          after: updated,
+        }, actorInfo);
+        return updated;
+      }
+      break;
+
+    case "cashback:client-wallet":
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      return getClientCashbackWallet(db, ctx.salonId, route.id);
+
+    case "cashback:redeem": {
+      requirePermission(ctx, "bookings.update");
+      const wallet = await redeemCashbackForBooking(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        ctx.identity?.uid || ""
+      );
+      await recordAudit(db, ctx.salonId, {
+        action: "cashback_redeemed",
+        entityType: "client",
+        entityId: route.id,
+        description: body.reason || "Cashback redeemed inside MALIKAT.",
+        after: {
+          bookingId: body.bookingId || body.booking_id,
+          amountHalalas: Number(body.amountHalalas ?? body.amount_halalas),
+          balanceHalalas: wallet.balanceHalalas,
+        },
+      }, actorInfo);
+      return wallet;
     }
 
     case "client:loyalty-summary":
