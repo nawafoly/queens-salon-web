@@ -200,6 +200,10 @@ test("other leave uses an explicit manager-authorized manual policy path", () =>
     new URL("../workers/core/repositories/employee-requests-legacy.js", import.meta.url),
     "utf8"
   );
+  const employeeRequestGuardSource = readFileSync(
+    new URL("../workers/core/repositories/employee-requests.js", import.meta.url),
+    "utf8"
+  );
   const leavesSource = readFileSync(
     new URL("../workers/core/repositories/leaves.js", import.meta.url),
     "utf8"
@@ -215,11 +219,15 @@ test("other leave uses an explicit manager-authorized manual policy path", () =>
   );
   assert.match(
     canonicalServiceSource,
-    /manualLeavePolicy[\s\S]*?act\(current, "execute"[\s\S]*?manualLeavePolicy:/
+    /act\(current, "approve"[\s\S]*?manualLeavePolicy:[\s\S]*?act\(current, "execute"[\s\S]*?manualLeavePolicy:/
   );
   assert.match(
     coreIndexSource,
     /manualLeavePolicyAuthorized: leaveManager/
+  );
+  assert.match(
+    employeeRequestGuardSource,
+    /runtime === 'hr_review_block'[\s\S]*?manualLeavePolicyAuthorized === true[\s\S]*?typeof manualPolicy\.deductFromBalance === 'boolean'[\s\S]*?typeof manualPolicy\.affectsPayroll === 'boolean'[\s\S]*?return;/
   );
   assert.match(
     employeeRequestsSource,
@@ -227,7 +235,7 @@ test("other leave uses an explicit manager-authorized manual policy path", () =>
   );
   assert.match(
     employeeRequestsSource,
-    /legal_basis = 'HR_MANUAL_POLICY'[\s\S]*?manualHrReviewResolved:[\s\S]*?manualPolicy !== null/
+    /\['other', 'other_hr_review'\][\s\S]*?legal_basis = 'HR_MANUAL_POLICY'[\s\S]*?manualHrReviewResolved:[\s\S]*?manualPolicy !== null/
   );
   assert.match(
     leavesSource,
