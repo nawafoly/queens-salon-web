@@ -1338,43 +1338,43 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       <DashboardModalV2
         open={addOpen}
         onClose={() => { if (!loading) setAddOpen(false); }}
-        title="إضافة مصروف"
-        description="سجّل بيانات المصروف ليظهر مباشرة في السجل والتقارير."
-        eyebrow="المصروفات"
+        title={t("إضافة مصروف")}
+        description={t("سجّل بيانات المصروف ليظهر مباشرة في السجل والتقارير.")}
+        eyebrow={t("المصروفات")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
         closeOnEscape={!loading}
         footer={
           <>
-            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addExpense()} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ المصروف"}</button>
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>إلغاء</button>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addExpense()} disabled={loading}>{loading ? t("جارٍ الحفظ...") : t("حفظ المصروف")}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>{t("إلغاء")}</button>
           </>
         }
       >
         <div className="expenses-v2-modal-grid">
-          <DashboardFieldV2 id="expenses-v2-add-title" label="اسم المصروف" required>
-            <input id="expenses-v2-add-title" className="dsv2-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: شراء منتجات" />
+          <DashboardFieldV2 id="expenses-v2-add-title" label={t("اسم المصروف")} required>
+            <input id="expenses-v2-add-title" className="dsv2-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("مثال: شراء منتجات")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-category" label="التصنيف" required>
-            <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={category} onChange={setCategory} disabled={loading} />
+          <DashboardFieldV2 id="expenses-v2-add-category" label={t("التصنيف")} required>
+            <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: t("أخرى") }]} value={category} onChange={setCategory} disabled={loading} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-amount" label="المبلغ (ر.س)" required>
+          <DashboardFieldV2 id="expenses-v2-add-amount" label={t("المبلغ (ر.س)")} required>
             <DashboardNumberInputV2 id="expenses-v2-add-amount" className="dsv2-input" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-date" label="التاريخ" required>
+          <DashboardFieldV2 id="expenses-v2-add-date" label={t("التاريخ")} required>
             <DashboardDatePickerV2 id="expenses-v2-add-date" value={date} onChange={setDate} required clearable={false} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-payment" label="طريقة الدفع" required>
-            <DashboardSelectV2 id="expenses-v2-add-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={String(paymentMethod)} onChange={(value) => setPaymentMethod(value as PaymentMethod)} disabled={loading} />
+          <DashboardFieldV2 id="expenses-v2-add-payment" label={t("طريقة الدفع")} required>
+            <DashboardSelectV2 id="expenses-v2-add-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: t("كاش") }, { value: "شبكة", label: t("شبكة") }, { value: "تحويل", label: t("تحويل") }]} value={String(paymentMethod)} onChange={(value) => setPaymentMethod(value as PaymentMethod)} disabled={loading} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-add-note" label="ملاحظات" className="expenses-v2-field--wide">
-            <textarea id="expenses-v2-add-note" className="dsv2-textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="أي تفاصيل إضافية" />
+          <DashboardFieldV2 id="expenses-v2-add-note" label={t("ملاحظات")} className="expenses-v2-field--wide">
+            <textarea id="expenses-v2-add-note" className="dsv2-textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder={t("أي تفاصيل إضافية")} />
           </DashboardFieldV2>
           <div className="expenses-v2-quick-category expenses-v2-field--wide">
-            <div><strong>إضافة تصنيف سريع</strong><span>سيُحفظ ضمن إعدادات التصنيفات المالية.</span></div>
-            <input className="dsv2-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="مثال: تأمين" />
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={addCategoryQuick}>إضافة</button>
+            <div><strong>{t("إضافة تصنيف سريع")}</strong><span>{t("سيُحفظ ضمن إعدادات التصنيفات المالية.")}</span></div>
+            <input className="dsv2-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder={t("مثال: تأمين")} />
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={addCategoryQuick}>{t("إضافة")}</button>
           </div>
         </div>
       </DashboardModalV2>
@@ -1382,37 +1382,37 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
       <DashboardModalV2
         open={Boolean(editTarget)}
         onClose={cancelEdit}
-        title="تعديل المصروف"
-        description="عدّل بيانات السجل اليدوي ثم احفظ التغييرات."
-        eyebrow="تعديل السجل"
+        title={t("تعديل المصروف")}
+        description={t("عدّل بيانات السجل اليدوي ثم احفظ التغييرات.")}
+        eyebrow={t("تعديل السجل")}
         size="md"
         tone="gold"
         closeOnBackdrop={!loading}
         closeOnEscape={!loading}
         footer={
           <>
-            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => editTarget && void saveEdit(editTarget)} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ التعديل"}</button>
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={cancelEdit} disabled={loading}>إلغاء</button>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => editTarget && void saveEdit(editTarget)} disabled={loading}>{loading ? t("جارٍ الحفظ...") : t("حفظ التعديل")}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={cancelEdit} disabled={loading}>{t("إلغاء")}</button>
           </>
         }
       >
         <div className="expenses-v2-modal-grid">
-          <DashboardFieldV2 id="expenses-v2-edit-title" label="اسم المصروف" required>
+          <DashboardFieldV2 id="expenses-v2-edit-title" label={t("اسم المصروف")} required>
             <input id="expenses-v2-edit-title" className="dsv2-input" value={editForm.title} onChange={(event) => setEditForm((prev) => ({ ...prev, title: event.target.value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-category" label="التصنيف" required>
-            <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
+          <DashboardFieldV2 id="expenses-v2-edit-category" label={t("التصنيف")} required>
+            <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: t("أخرى") }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-amount" label="المبلغ (ر.س)" required>
+          <DashboardFieldV2 id="expenses-v2-edit-amount" label={t("المبلغ (ر.س)")} required>
             <DashboardNumberInputV2 id="expenses-v2-edit-amount" className="dsv2-input" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((prev) => ({ ...prev, amount: event.target.value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-date" label="التاريخ" required>
+          <DashboardFieldV2 id="expenses-v2-edit-date" label={t("التاريخ")} required>
             <DashboardDatePickerV2 id="expenses-v2-edit-date" value={editForm.date} onChange={(value) => setEditForm((prev) => ({ ...prev, date: value }))} required clearable={false} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-payment" label="طريقة الدفع" required>
-            <DashboardSelectV2 id="expenses-v2-edit-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={editForm.paymentMethod} onChange={(value) => setEditForm((prev) => ({ ...prev, paymentMethod: value }))} />
+          <DashboardFieldV2 id="expenses-v2-edit-payment" label={t("طريقة الدفع")} required>
+            <DashboardSelectV2 id="expenses-v2-edit-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: t("كاش") }, { value: "شبكة", label: t("شبكة") }, { value: "تحويل", label: t("تحويل") }]} value={editForm.paymentMethod} onChange={(value) => setEditForm((prev) => ({ ...prev, paymentMethod: value }))} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="expenses-v2-edit-note" label="ملاحظات" className="expenses-v2-field--wide">
+          <DashboardFieldV2 id="expenses-v2-edit-note" label={t("ملاحظات")} className="expenses-v2-field--wide">
             <textarea id="expenses-v2-edit-note" className="dsv2-textarea" value={editForm.note} onChange={(event) => setEditForm((prev) => ({ ...prev, note: event.target.value }))} />
           </DashboardFieldV2>
         </div>
@@ -1422,55 +1422,55 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
         open={confirmState.open}
         onClose={() => setConfirmState({ open: false })}
         onConfirm={async () => { await confirmState.onConfirm?.(); }}
-        title={confirmState.title || "تأكيد الإجراء"}
+        title={confirmState.title || t("تأكيد الإجراء")}
         description={confirmState.message}
         tone="danger"
-        confirmLabel="تأكيد"
-        cancelLabel="تراجع"
+        confirmLabel={t("تأكيد")}
+        cancelLabel={t("تراجع")}
       />
 
       <DashboardModalV2
         open={Boolean(modalMsg)}
         onClose={() => setModalMsg("")}
-        title={modalMsg.includes("تعذر") || modalMsg.includes("غير مصرح") || modalMsg.includes("⚠️") ? "تعذر تنفيذ العملية" : "تم تنفيذ العملية"}
+        title={modalMsg.includes("تعذر") || modalMsg.includes("غير مصرح") || modalMsg.includes("Could not") || modalMsg.includes("Access denied") || modalMsg.includes("⚠️") ? t("تعذر تنفيذ العملية") : t("تم تنفيذ العملية")}
         description={modalMsg}
         size="sm"
-        tone={modalMsg.includes("تعذر") || modalMsg.includes("⚠️") ? "danger" : "success"}
-        footer={<button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setModalMsg("")}>حسنًا</button>}
+        tone={modalMsg.includes("تعذر") || modalMsg.includes("Could not") || modalMsg.includes("⚠️") ? "danger" : "success"}
+        footer={<button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setModalMsg("")}>{t("حسنًا")}</button>}
       ><div /></DashboardModalV2>
 
       {detailsTarget ? (
         <DashboardDrawerV2
           open={Boolean(detailsTarget)}
           onClose={() => setDetailsTarget(null)}
-          title="تفاصيل المصروف"
-          description="عرض سريع لبيانات السجل ومصدره."
+          title={t("تفاصيل المصروف")}
+          description={t("عرض سريع لبيانات السجل ومصدره.")}
           eyebrow={detailsTarget.id}
           size="md"
           side="end"
           tone={payrollKindFromExpense(detailsTarget) === "manual" ? "gold" : "success"}
           footer={
             <>
-              {!isAutoPayrollExpenseId(detailsTarget.id) ? <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { startEdit(detailsTarget); setDetailsTarget(null); }}>تعديل المصروف</button> : null}
-              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>إغلاق</button>
+              {!isAutoPayrollExpenseId(detailsTarget.id) ? <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { startEdit(detailsTarget); setDetailsTarget(null); }}>{t("تعديل المصروف")}</button> : null}
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>{t("إغلاق")}</button>
             </>
           }
         >
           <div className="expenses-v2-drawer-content">
             <article className="dsv2-metric-card dsv2-metric-card--danger">
-              <p className="dsv2-metric-card__label">المبلغ المسجل</p>
-              <p className="dsv2-metric-card__value">{formatSar(detailsTarget.amount)}</p>
-              <p className="dsv2-metric-card__meta">{expenseTypeLabel(detailsTarget)}</p>
+              <p className="dsv2-metric-card__label">{t("المبلغ المسجل")}</p>
+              <p className="dsv2-metric-card__value">{formatSar(detailsTarget.amount, language)}</p>
+              <p className="dsv2-metric-card__meta">{expenseTypeLabel(detailsTarget, language)}</p>
             </article>
             <dl className="expenses-v2-detail-list">
-              <div><dt>الوصف</dt><dd>{detailsTarget.title || "—"}</dd></div>
-              <div><dt>التاريخ</dt><dd>{formatDateDisplay(detailsTarget.date)}</dd></div>
-              <div><dt>التصنيف</dt><dd>{detailsTarget.category || "أخرى"}</dd></div>
-              <div><dt>طريقة الدفع</dt><dd>{paymentMethodLabel(detailsTarget.paymentMethod)}</dd></div>
-              <div><dt>الموظفة</dt><dd>{expenseEmployeeLabel(detailsTarget)}</dd></div>
-              <div><dt>المصدر</dt><dd>{expenseSourceLabel(detailsTarget)}</dd></div>
-              <div><dt>دورة الرواتب</dt><dd>{detailsTarget.monthKey || "—"}</dd></div>
-              <div><dt>ملاحظات</dt><dd>{detailsTarget.note || "لا توجد ملاحظات"}</dd></div>
+              <div><dt>{t("الوصف")}</dt><dd>{expenseDisplayTitle(detailsTarget, language) || "—"}</dd></div>
+              <div><dt>{t("التاريخ")}</dt><dd>{formatDateDisplay(detailsTarget.date)}</dd></div>
+              <div><dt>{t("التصنيف")}</dt><dd>{t(detailsTarget.category || "أخرى")}</dd></div>
+              <div><dt>{t("طريقة الدفع")}</dt><dd>{paymentMethodLabel(detailsTarget.paymentMethod, language)}</dd></div>
+              <div><dt>{t("الموظفة")}</dt><dd>{expenseEmployeeLabel(detailsTarget)}</dd></div>
+              <div><dt>{t("المصدر")}</dt><dd>{expenseSourceLabel(detailsTarget, language)}</dd></div>
+              <div><dt>{t("دورة الرواتب")}</dt><dd>{detailsTarget.monthKey || "—"}</dd></div>
+              <div><dt>{t("ملاحظات")}</dt><dd>{detailsTarget.note || t("لا توجد ملاحظات")}</dd></div>
             </dl>
           </div>
         </DashboardDrawerV2>
