@@ -1291,19 +1291,19 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                       return (
                         <tr key={item.id}>
                           <td><span className="dsv2-table__primary">{formatDateDisplay(item.date)}</span>{item.monthKey ? <small className="dsv2-table__secondary">{item.monthKey}</small> : null}</td>
-                          <td><span className="expenses-v2-type-badge" data-type={payrollKindFromExpense(item)}>{expenseTypeLabel(item)}</span></td>
-                          <td><span className="dsv2-table__primary expenses-v2-title-cell" title={item.title || item.note || "—"}>{item.title || item.note || "—"}</span></td>
+                          <td><span className="expenses-v2-type-badge" data-type={payrollKindFromExpense(item)}>{expenseTypeLabel(item, language)}</span></td>
+                          <td><span className="dsv2-table__primary expenses-v2-title-cell" title={expenseDisplayTitle(item, language) || item.note || "—"}>{expenseDisplayTitle(item, language) || item.note || "—"}</span></td>
                           <td>{expenseEmployeeLabel(item)}</td>
-                          <td>{item.category || "أخرى"}</td>
-                          <td><span className="expenses-v2-payment-badge" data-method={paymentMethodTone(item.paymentMethod)}>{paymentMethodLabel(item.paymentMethod)}</span></td>
-                          <td><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></td>
-                          <td>{expenseSourceLabel(item)}</td>
-                          <td className="expenses-v2-note-cell">{item.note || <span className="expenses-v2-missing-note">بدون ملاحظة</span>}</td>
+                          <td>{t(item.category || "أخرى")}</td>
+                          <td><span className="expenses-v2-payment-badge" data-method={paymentMethodTone(item.paymentMethod)}>{paymentMethodLabel(item.paymentMethod, language)}</span></td>
+                          <td><strong className="expenses-v2-amount">{formatSar(item.amount, language)}</strong></td>
+                          <td>{expenseSourceLabel(item, language)}</td>
+                          <td className="expenses-v2-note-cell">{item.note || <span className="expenses-v2-missing-note">{t("بدون ملاحظة")}</span>}</td>
                           <td>
                             <div className="expenses-v2-row-actions">
-                              <button className="dsv2-icon-btn" type="button" aria-label="عرض التفاصيل" title="عرض التفاصيل" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /></button>
-                              {!autoPayroll ? <button className="dsv2-icon-btn" type="button" aria-label="تعديل" title="تعديل" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /></button> : null}
-                              {!autoPayroll ? <button className="dsv2-icon-btn expenses-v2-delete-action" type="button" aria-label="حذف" title="حذف" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /></button> : null}
+                              <button className="dsv2-icon-btn" type="button" aria-label={t("عرض التفاصيل")} title={t("عرض التفاصيل")} onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /></button>
+                              {!autoPayroll ? <button className="dsv2-icon-btn" type="button" aria-label={t("تعديل")} title={t("تعديل")} onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /></button> : null}
+                              {!autoPayroll ? <button className="dsv2-icon-btn expenses-v2-delete-action" type="button" aria-label={t("حذف")} title={t("حذف")} onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /></button> : null}
                             </div>
                           </td>
                         </tr>
@@ -1318,13 +1318,13 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
                   const autoPayroll = isAutoPayrollExpenseId(item.id);
                   return (
                     <article className="expenses-v2-mobile-card" key={item.id}>
-                      <header><div><span>{formatDateDisplay(item.date)}</span><strong>{item.title || item.note || "—"}</strong></div><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></header>
-                      <div className="expenses-v2-mobile-meta"><span>{expenseTypeLabel(item)}</span><span>{item.category || "أخرى"}</span><span>{paymentMethodLabel(item.paymentMethod)}</span><span>{expenseSourceLabel(item)}</span></div>
-                      <p>{item.note || "بدون ملاحظة"}</p>
+                      <header><div><span>{formatDateDisplay(item.date)}</span><strong>{expenseDisplayTitle(item, language) || item.note || "—"}</strong></div><strong className="expenses-v2-amount">{formatSar(item.amount, language)}</strong></header>
+                      <div className="expenses-v2-mobile-meta"><span>{expenseTypeLabel(item, language)}</span><span>{t(item.category || "أخرى")}</span><span>{paymentMethodLabel(item.paymentMethod, language)}</span><span>{expenseSourceLabel(item, language)}</span></div>
+                      <p>{item.note || t("بدون ملاحظة")}</p>
                       <footer>
-                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /> التفاصيل</button>
-                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /> تعديل</button> : null}
-                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /> حذف</button> : null}
+                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /> {t("التفاصيل")}</button>
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /> {t("تعديل")}</button> : null}
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /> {t("حذف")}</button> : null}
                       </footer>
                     </article>
                   );
