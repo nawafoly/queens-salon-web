@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiEdit3, FiRefreshCw } from "react-icons/fi";
 import { DashboardModalV2 } from "../../components/dashboard-v2";
+import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
@@ -34,60 +35,61 @@ function bookingStatusBadgeClass(status: BookingStatus): string {
   return "dsv2-badge--gold";
 }
 
-function plainNumber(value: unknown, maximumFractionDigits = 0): string {
+function plainNumber(value: unknown, maximumFractionDigits = 0, language: DashboardLanguage = "ar"): string {
   const amount = Number(value ?? 0);
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits }).format(
     Number.isFinite(amount) ? amount : 0
   );
 }
 
-function formatHalalas(value: unknown): string {
-  return `${plainNumber(Number(value ?? 0) / 100, 2)} ريال`;
+function formatHalalas(value: unknown, language: DashboardLanguage): string {
+  return `${plainNumber(Number(value ?? 0) / 100, 2, language)} ${clientsText(language, "ريال")}`;
 }
 
-function formatMoney(value: unknown): string {
-  return `${plainNumber(value, 2)} ريال`;
+function formatMoney(value: unknown, language: DashboardLanguage): string {
+  return `${plainNumber(value, 2, language)} ${clientsText(language, "ريال")}`;
 }
 
-function formatDateTime(value: unknown): string {
+function formatDateTime(value: unknown, language: DashboardLanguage): string {
   const raw = String(value ?? "").trim();
-  if (!raw) return "لا يوجد نشاط";
+  if (!raw) return clientsText(language, "لا يوجد نشاط");
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString("ar-SA-u-ca-gregory-nu-latn", {
+  return date.toLocaleString(language === "en" ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", {
     dateStyle: "medium",
     timeStyle: "short",
   });
 }
 
-function bookingNoOf(booking: BookingDocWithId): string {
+function bookingNoOf(booking: BookingDocWithId, language: DashboardLanguage): string {
   const row = booking as BookingDocWithId & { bookingNumber?: unknown; bookingNo?: unknown };
   const raw = [row.publicId, row.bookingNumber, row.bookingNo]
     .map((value) => String(value ?? "").trim())
     .find(Boolean) || "";
-  if (!raw) return "غير متوفر";
+  if (!raw) return clientsText(language, "غير متوفر");
   const upper = raw.toUpperCase();
   if (/^MK-\d+$/.test(upper)) return upper;
   if (/^\d+$/.test(upper)) return `MK-${upper}`;
-  return "غير متوفر";
+  return clientsText(language, "غير متوفر");
 }
 
-function editErrorMessage(cause: unknown): string {
+function editErrorMessage(cause: unknown, language: DashboardLanguage): string {
   if (cause instanceof CoreApiError) {
     if (cause.code === "core_client:phone_conflict") {
-      return "رقم الجوال مستخدم في ملف عميلة أخرى. أدخلي رقمًا مختلفًا.";
+      return clientsText(language, "رقم الجوال مستخدم في ملف عميلة أخرى. أدخلي رقمًا مختلفًا.");
     }
     if (cause.code === "core_client:invalid_phone") {
-      return "رقم الجوال غير صحيح. استخدمي إحدى الصيغ السعودية المعتمدة.";
+      return clientsText(language, "رقم الجوال غير صحيح. استخدمي إحدى الصيغ السعودية المعتمدة.");
     }
     if (cause.code.includes("required_text")) {
-      return "اسم العميلة مطلوب ولا يمكن أن يتكون من مسافات فقط.";
+      return clientsText(language, "اسم العميلة مطلوب ولا يمكن أن يتكون من مسافات فقط.");
     }
   }
-  return cause instanceof Error ? cause.message : "تعذر حفظ بيانات العميلة.";
+  return cause instanceof Error ? cause.message : clientsText(language, "تعذر حفظ بيانات العميلة.");
 }
 
 type Props = {
+  language: DashboardLanguage;
   customer: CustomerRow;
   bookings: BookingDocWithId[];
   currentRole: UiRole;
@@ -96,12 +98,14 @@ type Props = {
 };
 
 export default function CustomerRecordModal({
+  language,
   customer,
   bookings,
   currentRole,
   onCustomerUpdated,
   onClose,
 }: Props) {
+  const t = (text: string) => clientsText(language, text);
   const canManage = currentRole === "owner" || currentRole === "admin";
   const [overview, setOverview] = useState<CoreClientOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -134,7 +138,7 @@ export default function CustomerRecordModal({
     const clientId = String(customer.clientId || "").trim();
     if (!clientId) {
       setOverview(null);
-      setOverviewError("هذه العميلة غير مرتبطة بعد بمعرّف Core D1 موحّد.");
+      setOverviewError(t("هذه العميلة غير مرتبطة بعد بمعرّف Core D1 موحّد."));
       return;
     }
     setOverviewLoading(true);
@@ -143,11 +147,11 @@ export default function CustomerRecordModal({
       setOverview(await CoreClientService.overview(clientId));
     } catch (cause) {
       setOverview(null);
-      setOverviewError(cause instanceof Error ? cause.message : "تعذر تحميل السجل المالي للعميلة");
+      setOverviewError(cause instanceof Error ? cause.message : t("تعذر تحميل السجل المالي للعميلة"));
     } finally {
       setOverviewLoading(false);
     }
-  }, [customer.clientId]);
+  }, [customer.clientId, language]);
 
   useEffect(() => {
     void loadOverview();
@@ -189,15 +193,15 @@ export default function CustomerRecordModal({
     const phone = normalizeSaudiCustomerPhone(editPhone);
 
     if (!clientId) {
-      setEditFeedback({ type: "error", text: "لا يمكن تعديل عميلة غير مرتبطة بسجل Core D1." });
+      setEditFeedback({ type: "error", text: t("لا يمكن تعديل عميلة غير مرتبطة بسجل Core D1.") });
       return;
     }
     if (!name) {
-      setEditFeedback({ type: "error", text: "اسم العميلة مطلوب ولا يمكن أن يتكون من مسافات فقط." });
+      setEditFeedback({ type: "error", text: t("اسم العميلة مطلوب ولا يمكن أن يتكون من مسافات فقط.") });
       return;
     }
     if (!phone) {
-      setEditFeedback({ type: "error", text: "أدخلي رقم جوال سعوديًا صحيحًا مثل 0500000000." });
+      setEditFeedback({ type: "error", text: t("أدخلي رقم جوال سعوديًا صحيحًا مثل 0500000000.") });
       return;
     }
 
@@ -210,9 +214,9 @@ export default function CustomerRecordModal({
       setEditName(updated.name);
       setEditPhone(updated.phoneNormalized);
       setEditing(false);
-      setEditFeedback({ type: "success", text: "تم حفظ اسم العميلة ورقم الجوال في Core بنجاح." });
+      setEditFeedback({ type: "success", text: t("تم حفظ اسم العميلة ورقم الجوال في Core بنجاح.") });
     } catch (cause) {
-      setEditFeedback({ type: "error", text: editErrorMessage(cause) });
+      setEditFeedback({ type: "error", text: editErrorMessage(cause, language) });
     } finally {
       setEditSaving(false);
     }
@@ -222,7 +226,7 @@ export default function CustomerRecordModal({
     if (noteSaving) return;
     const clientId = String(customer.clientId || "").trim();
     if (!clientId) {
-      setNoteFeedback({ type: "error", text: "لا يمكن حفظ ملاحظة لعميلة غير مرتبطة بسجل Core D1." });
+      setNoteFeedback({ type: "error", text: t("لا يمكن حفظ ملاحظة لعميلة غير مرتبطة بسجل Core D1.") });
       return;
     }
 
@@ -234,13 +238,13 @@ export default function CustomerRecordModal({
       setNoteText(canonicalNote);
       onCustomerUpdated(updated);
       setOverview((current) => current ? { ...current, client: updated } : current);
-      setNoteFeedback({ type: "success", text: "تم حفظ الملاحظة في Core." });
+      setNoteFeedback({ type: "success", text: t("تم حفظ الملاحظة في Core.") });
       if (noteSavedTimer.current) window.clearTimeout(noteSavedTimer.current);
       noteSavedTimer.current = window.setTimeout(() => setNoteFeedback(null), 2500);
     } catch (cause) {
       setNoteFeedback({
         type: "error",
-        text: cause instanceof Error ? cause.message : "تعذر حفظ الملاحظة في Core.",
+        text: cause instanceof Error ? cause.message : t("تعذر حفظ الملاحظة في Core."),
       });
     } finally {
       setNoteSaving(false);
@@ -252,7 +256,7 @@ export default function CustomerRecordModal({
     const points = Number(loyaltyPoints);
     const reason = loyaltyReason.trim();
     if (!clientId || !Number.isInteger(points) || points === 0 || !reason) {
-      setLoyaltyMessage("أدخل عدد نقاط صحيحًا غير صفري وسبب التعديل.");
+      setLoyaltyMessage(t("أدخل عدد نقاط صحيحًا غير صفري وسبب التعديل."));
       return;
     }
     setLoyaltySaving(true);
@@ -263,9 +267,9 @@ export default function CustomerRecordModal({
       setOverview((current) => current ? { ...current, loyalty } : current);
       setLoyaltyPoints("");
       setLoyaltyReason("");
-      setLoyaltyMessage("تم تسجيل حركة النقاط بنجاح.");
+      setLoyaltyMessage(t("تم تسجيل حركة النقاط بنجاح."));
     } catch (cause) {
-      setLoyaltyMessage(cause instanceof Error ? cause.message : "تعذر تعديل النقاط");
+      setLoyaltyMessage(cause instanceof Error ? cause.message : t("تعذر تعديل النقاط"));
     } finally {
       setLoyaltySaving(false);
     }
@@ -275,9 +279,9 @@ export default function CustomerRecordModal({
     <DashboardModalV2
       open
       onClose={onClose}
-      title={normalizeCustomerName(customer.name)}
-      description={<bdi dir="ltr">{customer.phone === "—" ? "بدون رقم جوال" : customer.phone}</bdi>}
-      eyebrow="ملف العميلة"
+      title={t(normalizeCustomerName(customer.name))}
+      description={<bdi dir="ltr">{customer.phone === "—" ? t("بدون رقم جوال") : customer.phone}</bdi>}
+      eyebrow={t("ملف العميلة")}
       size="xl"
       tone="gold"
       className="dsv2-customers-record-modal"
@@ -285,7 +289,7 @@ export default function CustomerRecordModal({
       <div className="dsv2-customers-modal-stack">
         <div className="dsv2-customers-modal-identity-row">
           <div className="dsv2-customers-badges">
-            <span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>{getCustomerStatusLabel(customer.status)}</span>
+            <span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>{getCustomerStatusLabel(customer.status, language)}</span>
             {customer.vip ? <span className="dsv2-badge dsv2-badge--gold">VIP</span> : null}
           </div>
 
@@ -293,12 +297,12 @@ export default function CustomerRecordModal({
         <section className="dsv2-card dsv2-card--padded dsv2-customers-client-data" aria-labelledby="customer-data-title">
           <header className="dsv2-section-head">
             <div>
-              <p className="dsv2-customers-eyebrow">البيانات الأساسية</p>
-              <h3 id="customer-data-title" className="dsv2-section-title">بيانات العميلة</h3>
+              <p className="dsv2-customers-eyebrow">{t("البيانات الأساسية")}</p>
+              <h3 id="customer-data-title" className="dsv2-section-title">{t("بيانات العميلة")}</h3>
             </div>
             {!editing && canManage && customer.clientId ? (
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm dsv2-customers-section-edit" onClick={beginEditing}>
-                <FiEdit3 /> تعديل البيانات
+                <FiEdit3 /> {t("تعديل البيانات")}
               </button>
             ) : null}
           </header>
@@ -306,90 +310,90 @@ export default function CustomerRecordModal({
           {editing ? (
             <div className="dsv2-customers-client-edit-form">
               <label className="dsv2-field">
-                <span className="dsv2-field__label">اسم العميلة</span>
-                <input className="dsv2-input" value={editName} onChange={(event) => setEditName(event.target.value)} autoComplete="name" placeholder="أدخلي اسم العميلة" disabled={editSaving} />
+                <span className="dsv2-field__label">{t("اسم العميلة")}</span>
+                <input className="dsv2-input" value={editName} onChange={(event) => setEditName(event.target.value)} autoComplete="name" placeholder={t("أدخلي اسم العميلة")} disabled={editSaving} />
               </label>
               <label className="dsv2-field">
-                <span className="dsv2-field__label">رقم الجوال</span>
+                <span className="dsv2-field__label">{t("رقم الجوال")}</span>
                 <input className="dsv2-input" dir="ltr" inputMode="tel" value={editPhone} onChange={(event) => setEditPhone(event.target.value)} autoComplete="tel" placeholder="05XXXXXXXX" disabled={editSaving} />
               </label>
               <div className="dsv2-customers-client-edit-actions">
-                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={cancelEditing} disabled={editSaving}>إلغاء</button>
+                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={cancelEditing} disabled={editSaving}>{t("إلغاء")}</button>
                 <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveProfile()} disabled={editSaving}>
-                  {editSaving ? "جارٍ حفظ التعديلات..." : "حفظ التعديلات"}
+                  {editSaving ? t("جارٍ حفظ التعديلات...") : t("حفظ التعديلات")}
                 </button>
               </div>
             </div>
           ) : (
             <dl className="dsv2-customers-client-data-grid">
-              <div><dt>اسم العميلة</dt><dd>{normalizeCustomerName(customer.name)}</dd></div>
-              <div><dt>رقم الجوال</dt><dd><bdi dir="ltr">{customer.phone === "—" ? "غير مسجل" : customer.phone}</bdi></dd></div>
+              <div><dt>{t("اسم العميلة")}</dt><dd>{t(normalizeCustomerName(customer.name))}</dd></div>
+              <div><dt>{t("رقم الجوال")}</dt><dd><bdi dir="ltr">{customer.phone === "—" ? t("غير مسجل") : customer.phone}</bdi></dd></div>
             </dl>
           )}
 
           {editFeedback ? <p className={`dsv2-customers-form-feedback is-${editFeedback.type}`} role="status">{editFeedback.text}</p> : null}
-          {!canManage ? <p className="dsv2-section-caption">التعديل متاح للمديرة أو المشرفة فقط.</p> : null}
+          {!canManage ? <p className="dsv2-section-caption">{t("التعديل متاح للمديرة أو المشرفة فقط.")}</p> : null}
         </section>
 
         <section className="dsv2-customers-record-summary">
-          <article><strong>{plainNumber(selectedBookings.length)}</strong><span>عدد الحجوزات</span></article>
-          <article><strong>{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime)}</strong><span>آخر زيارة</span></article>
-          <article><strong>{formatMoney(totalSpend)}</strong><span>إجمالي الصرف</span></article>
+          <article><strong>{plainNumber(selectedBookings.length, 0, language)}</strong><span>{t("عدد الحجوزات")}</span></article>
+          <article><strong>{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime, language)}</strong><span>{t("آخر زيارة")}</span></article>
+          <article><strong>{formatMoney(totalSpend, language)}</strong><span>{t("إجمالي الصرف")}</span></article>
         </section>
 
-        <section className="dsv2-card dsv2-card--padded dsv2-customers-overview-section" aria-label="السجل المالي والولاء">
+        <section className="dsv2-card dsv2-card--padded dsv2-customers-overview-section" aria-label={t("السجل المالي والولاء")}>
           <header className="dsv2-section-head">
-            <div><h3 className="dsv2-section-title">السجل الموحد للعميلة</h3><p className="dsv2-section-caption">الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.</p></div>
-            {customer.clientId ? <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void loadOverview()} disabled={overviewLoading}><FiRefreshCw className={overviewLoading ? "dsv2-customers-spin" : ""} /> تحديث</button> : null}
+            <div><h3 className="dsv2-section-title">{t("السجل الموحد للعميلة")}</h3><p className="dsv2-section-caption">{t("الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.")}</p></div>
+            {customer.clientId ? <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void loadOverview()} disabled={overviewLoading}><FiRefreshCw className={overviewLoading ? "dsv2-customers-spin" : ""} /> {t("تحديث")}</button> : null}
           </header>
 
-          {overviewLoading ? <div className="dsv2-customers-overview-state"><span className="dsv2-skeleton" /> جارٍ تحميل السجل...</div>
+          {overviewLoading ? <div className="dsv2-customers-overview-state"><span className="dsv2-skeleton" /> {t("جارٍ تحميل السجل...")}</div>
             : overviewError ? <div className="dsv2-customers-overview-state is-error">{overviewError}</div>
               : overview ? (
                 <>
                   <div className="dsv2-customers-overview-grid">
-                    <article><span>صافي المدفوع</span><strong>{formatHalalas(overview.summary.netPaidHalalas)}</strong></article>
-                    <article><span>الاسترجاعات</span><strong>{formatHalalas(overview.summary.refundedHalalas)}</strong></article>
-                    <article><span>الرصيد الحالي</span><strong>{plainNumber(overview.loyalty.balance)} نقطة</strong></article>
-                    <article><span>آخر نشاط</span><strong>{formatDateTime(overview.summary.lastActivityAt)}</strong></article>
+                    <article><span>{t("صافي المدفوع")}</span><strong>{formatHalalas(overview.summary.netPaidHalalas, language)}</strong></article>
+                    <article><span>{t("الاسترجاعات")}</span><strong>{formatHalalas(overview.summary.refundedHalalas, language)}</strong></article>
+                    <article><span>{t("الرصيد الحالي")}</span><strong>{plainNumber(overview.loyalty.balance, 0, language)} {t("نقطة")}</strong></article>
+                    <article><span>{t("آخر نشاط")}</span><strong>{formatDateTime(overview.summary.lastActivityAt, language)}</strong></article>
                   </div>
                   <div className="dsv2-customers-overview-columns">
                     <section>
-                      <h4>النقاط والولاء</h4>
+                      <h4>{t("النقاط والولاء")}</h4>
                       <div className="dsv2-customers-loyalty-summary">
-                        <span>المستوى <b>{overview.loyalty.levelLabel || "غير محدد"}</b></span>
-                        <span>مكتسبة <b>{plainNumber(overview.loyalty.earned)}</b></span>
-                        <span>مستخدمة <b>{plainNumber(overview.loyalty.used)}</b></span>
-                        <span>معكوسة <b>{plainNumber(overview.loyalty.reversed)}</b></span>
+                        <span>{t("المستوى")} <b>{overview.loyalty.levelLabel || t("غير محدد")}</b></span>
+                        <span>{t("مكتسبة")} <b>{plainNumber(overview.loyalty.earned, 0, language)}</b></span>
+                        <span>{t("مستخدمة")} <b>{plainNumber(overview.loyalty.used, 0, language)}</b></span>
+                        <span>{t("معكوسة")} <b>{plainNumber(overview.loyalty.reversed, 0, language)}</b></span>
                       </div>
                       <div className="dsv2-customers-record-list">
                         {overview.loyalty.transactions.slice(0, 5).map((transaction) => (
-                          <div key={transaction.id}><span>{repairCustomerDisplayText(transaction.reason || transaction.type)}</span><b className={transaction.points < 0 ? "is-negative" : "is-positive"}>{transaction.points > 0 ? "+" : ""}{plainNumber(transaction.points)}</b></div>
+                          <div key={transaction.id}><span>{repairCustomerDisplayText(transaction.reason || transaction.type)}</span><b className={transaction.points < 0 ? "is-negative" : "is-positive"}>{transaction.points > 0 ? "+" : ""}{plainNumber(transaction.points, 0, language)}</b></div>
                         ))}
-                        {!overview.loyalty.transactions.length ? <p>لا توجد حركات نقاط.</p> : null}
+                        {!overview.loyalty.transactions.length ? <p>{t("لا توجد حركات نقاط.")}</p> : null}
                       </div>
                       {canManage ? (
                         <div className="dsv2-customers-loyalty-adjust">
-                          <DashboardNumberInputV2 className="dsv2-input" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
-                          <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder="سبب التعديل" aria-label="سبب تعديل النقاط" />
-                          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? "جارٍ الحفظ" : "تسجيل الحركة"}</button>
+                          <DashboardNumberInputV2 className="dsv2-input" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder={language === "en" ? "20 or -20" : "20 أو -20"} aria-label={t("عدد النقاط")} />
+                          <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder={t("سبب التعديل")} aria-label={t("سبب تعديل النقاط")} />
+                          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? t("جارٍ الحفظ") : t("تسجيل الحركة")}</button>
                         </div>
                       ) : null}
                       {loyaltyMessage ? <p className="dsv2-customers-loyalty-message">{loyaltyMessage}</p> : null}
                     </section>
                     <section>
-                      <h4>الدفعات والاسترجاعات</h4>
+                      <h4>{t("الدفعات والاسترجاعات")}</h4>
                       <div className="dsv2-customers-record-list">
-                        {overview.payments.slice(0, 4).map((payment, index) => <div key={String(payment.id || `payment-${index}`)}><span>دفعة · {String(payment.method || payment.provider || "غير محدد")}</span><b className="is-positive">{formatHalalas(payment.amount_halalas)}</b></div>)}
-                        {overview.refunds.slice(0, 4).map((refund, index) => <div key={String(refund.id || `refund-${index}`)}><span>استرجاع · {formatDateTime(refund.refunded_at || refund.created_at)}</span><b className="is-negative">-{formatHalalas(refund.amount_halalas)}</b></div>)}
-                        {!overview.payments.length && !overview.refunds.length ? <p>لا توجد حركات مالية.</p> : null}
+                        {overview.payments.slice(0, 4).map((payment, index) => <div key={String(payment.id || `payment-${index}`)}><span>{t("دفعة")} · {String(payment.method || payment.provider || t("غير محدد"))}</span><b className="is-positive">{formatHalalas(payment.amount_halalas, language)}</b></div>)}
+                        {overview.refunds.slice(0, 4).map((refund, index) => <div key={String(refund.id || `refund-${index}`)}><span>{t("استرجاع")} · {formatDateTime(refund.refunded_at || refund.created_at, language)}</span><b className="is-negative">-{formatHalalas(refund.amount_halalas, language)}</b></div>)}
+                        {!overview.payments.length && !overview.refunds.length ? <p>{t("لا توجد حركات مالية.")}</p> : null}
                       </div>
                     </section>
                     <section>
-                      <h4>العروض المستخدمة</h4>
+                      <h4>{t("العروض المستخدمة")}</h4>
                       <div className="dsv2-customers-record-list">
-                        {overview.offersUsed.map((offer, index) => <div key={String(offer.id || offer.code || index)}><span>{repairCustomerDisplayText(offer.title)}</span><b>{formatDateTime(offer.usedAt)}</b></div>)}
-                        {!overview.offersUsed.length ? <p>لم تُستخدم عروض مسجلة.</p> : null}
+                        {overview.offersUsed.map((offer, index) => <div key={String(offer.id || offer.code || index)}><span>{repairCustomerDisplayText(offer.title)}</span><b>{formatDateTime(offer.usedAt, language)}</b></div>)}
+                        {!overview.offersUsed.length ? <p>{t("لم تُستخدم عروض مسجلة.")}</p> : null}
                       </div>
                     </section>
                   </div>
@@ -398,46 +402,46 @@ export default function CustomerRecordModal({
         </section>
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card">
-          <h3 className="dsv2-section-title">ملاحظات إدارية داخلية</h3>
-          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة..." disabled={noteSaving || !customer.clientId} />
+          <h3 className="dsv2-section-title">{t("ملاحظات إدارية داخلية")}</h3>
+          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder={t("مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة...")} disabled={noteSaving || !customer.clientId} />
           <div className="dsv2-customers-note-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving || !customer.clientId}>{noteSaving ? "جارٍ حفظ الملاحظة..." : "حفظ الملاحظة"}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving || !customer.clientId}>{noteSaving ? t("جارٍ حفظ الملاحظة...") : t("حفظ الملاحظة")}</button>
             {noteFeedback ? <span className={`dsv2-customers-form-feedback is-${noteFeedback.type}`} role="status">{noteFeedback.text}</span> : null}
           </div>
         </section>
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-packages">
-          <ClientPackagesPanel clientId={customer.clientId || customer.legacyClientDocId} canManage={canManage} />
+          <ClientPackagesPanel clientId={customer.clientId || customer.legacyClientDocId} canManage={canManage} language={language} />
         </section>
 
         <section className="dsv2-table-card dsv2-customers-bookings-history">
-          <header className="dsv2-card--padded dsv2-customers-history-heading"><div><p className="dsv2-customers-eyebrow">السجل</p><h3 className="dsv2-section-title">حجوزات العميلة</h3></div><span className="dsv2-badge">{plainNumber(selectedBookings.length)} حجزًا</span></header>
+          <header className="dsv2-card--padded dsv2-customers-history-heading"><div><p className="dsv2-customers-eyebrow">{t("السجل")}</p><h3 className="dsv2-section-title">{t("حجوزات العميلة")}</h3></div><span className="dsv2-badge">{plainNumber(selectedBookings.length, 0, language)} {t("حجزًا")}</span></header>
           <div className="dsv2-table-scroll dsv2-customers-history-table-wrap">
             <table className="dsv2-table dsv2-customers-history-table">
-              <thead><tr><th>رقم الحجز</th><th>الخدمة</th><th>الموظفة</th><th>التاريخ والوقت</th><th>الحالة</th><th>الإجمالي</th></tr></thead>
+              <thead><tr><th>{t("رقم الحجز")}</th><th>{t("الخدمة")}</th><th>{t("الموظفة")}</th><th>{t("التاريخ والوقت")}</th><th>{t("الحالة")}</th><th>{t("الإجمالي")}</th></tr></thead>
               <tbody>
                 {selectedBookings.map((booking) => (
                   <tr key={booking.id}>
-                    <td><bdi dir="ltr">{bookingNoOf(booking)}</bdi></td>
-                    <td>{String(booking.serviceName || "غير محددة")}</td>
-                    <td>{String(booking.employeeName || "غير محددة")}</td>
-                    <td>{formatCustomerLastVisit(booking.date, booking.time)}</td>
-                    <td><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{bookingStatusLabel[booking.status] || booking.status}</span></td>
-                    <td>{formatMoney(booking.total)}</td>
+                    <td><bdi dir="ltr">{bookingNoOf(booking, language)}</bdi></td>
+                    <td>{String(booking.serviceName || t("غير محددة"))}</td>
+                    <td>{String(booking.employeeName || t("غير محددة"))}</td>
+                    <td>{formatCustomerLastVisit(booking.date, booking.time, language)}</td>
+                    <td><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel[booking.status] || booking.status)}</span></td>
+                    <td>{formatMoney(booking.total, language)}</td>
                   </tr>
                 ))}
-                {!selectedBookings.length ? <tr><td colSpan={6} className="dsv2-customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</td></tr> : null}
+                {!selectedBookings.length ? <tr><td colSpan={6} className="dsv2-customers-history-empty">{t("لا توجد حجوزات مسجلة لهذه العميلة.")}</td></tr> : null}
               </tbody>
             </table>
           </div>
           <div className="dsv2-customers-history-mobile">
             {selectedBookings.map((booking) => (
               <article className="dsv2-card dsv2-card--padded" key={booking.id}>
-                <header><bdi dir="ltr">{bookingNoOf(booking)}</bdi><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{bookingStatusLabel[booking.status] || booking.status}</span></header>
-                <dl><div><dt>الخدمة</dt><dd>{String(booking.serviceName || "غير محددة")}</dd></div><div><dt>الموظفة</dt><dd>{String(booking.employeeName || "غير محددة")}</dd></div><div><dt>التاريخ والوقت</dt><dd>{formatCustomerLastVisit(booking.date, booking.time)}</dd></div><div><dt>الإجمالي</dt><dd>{formatMoney(booking.total)}</dd></div></dl>
+                <header><bdi dir="ltr">{bookingNoOf(booking, language)}</bdi><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel[booking.status] || booking.status)}</span></header>
+                <dl><div><dt>{t("الخدمة")}</dt><dd>{String(booking.serviceName || t("غير محددة"))}</dd></div><div><dt>{t("الموظفة")}</dt><dd>{String(booking.employeeName || t("غير محددة"))}</dd></div><div><dt>{t("التاريخ والوقت")}</dt><dd>{formatCustomerLastVisit(booking.date, booking.time, language)}</dd></div><div><dt>{t("الإجمالي")}</dt><dd>{formatMoney(booking.total, language)}</dd></div></dl>
               </article>
             ))}
-            {!selectedBookings.length ? <p className="dsv2-customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</p> : null}
+            {!selectedBookings.length ? <p className="dsv2-customers-history-empty">{t("لا توجد حجوزات مسجلة لهذه العميلة.")}</p> : null}
           </div>
         </section>
       </div>
