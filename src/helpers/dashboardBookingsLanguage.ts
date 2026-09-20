@@ -663,12 +663,17 @@ export function bookingsText(language: DashboardLanguage, arabic: string): strin
   return bookingEnglish[arabic] ?? dashboardText(language, arabic);
 }
 
+
 export type BookingCatalogLabelKind = "section" | "category" | "service";
 
 function normalizeCatalogArabic(value: string): string {
-  const digits: Record<string, string> = { "٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9" };
+  const digits: Record<string, string> = {
+    "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+    "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+  };
+
   return String(value || "")
-    .replace(/[٠-٩]/g, (d) => digits[d] || d)
+    .replace(/[٠-٩]/g, (digit) => digits[digit] || digit)
     .replace(/[\u064B-\u065F\u0670]/g, "")
     .replace(/\u0640/g, "")
     .replace(/[أإآ]/g, "ا")
@@ -681,167 +686,417 @@ function normalizeCatalogArabic(value: string): string {
 
 const catalogExactEnglish: Record<string, string> = Object.fromEntries(
   [
-    ["قسم الشعر","Hair"],["الشعر","Hair"],
-    ["قسم بديكير و منيكير","Pedicure & manicure"],["قسم بديكير ومينيكير","Pedicure & manicure"],
-    ["قسم بديكير و مناكير","Pedicure & manicure"],["قسم البديكير والمناكير","Pedicure & manicure"],
-    ["قسم البدكير والمناكير","Pedicure & manicure"],["البديكير والمناكير","Pedicure & manicure"],
-    ["البدكير والمناكير","Pedicure & manicure"],["بديكير و منيكير","Pedicure & manicure"],
-    ["بديكير ومينيكير","Pedicure & manicure"],["بديكير ومناكير","Pedicure & manicure"],["بدكير ومانكير","Pedicure & manicure"],
-    ["قسم المكياج","Makeup"],["المكياج","Makeup"],["مكياج","Makeup"],["ميك اب","Makeup"],["ميكاب","Makeup"],
-    ["قسم الصبغات","Hair color"],["قسم الصبغات والمعالجات","Color & treatments"],["الصبغات","Hair color"],["صبغات","Hair color"],
-    ["معالجات","Treatments"],["قسم الخدمات","Services"],["الخدمات","Services"],["خدمات","Services"],
-    ["قسم الخدمات (الشمع وإزالة الشعر)","Waxing & hair removal"],["الشمع وإزالة الشعر","Waxing & hair removal"],["إزالة الشعر","Hair removal"],
-    ["الاستشوار","Blow-dry"],["استشوار","Blow-dry"],["سشوار","Blow-dry"],["سيشوار","Blow-dry"],
-    ["التساريح","Hairstyling"],["تساريح","Hairstyling"],["التسريحات","Hairstyling"],["القص","Haircuts"],["قص","Haircuts"],
-    ["تنظيف فروة شعر","Scalp cleansing"],["تنظيف فروة الشعر","Scalp cleansing"],["فلر","Hair filler"],["فلر شعر","Hair filler"],
-    ["الكافيار","Caviar treatment"],["كافيار","Caviar treatment"],["رفع رموش","Lash lift"],["رموش","Lashes"],["حواجب","Eyebrows"],
-    ["بديكير","Pedicure"],["بدكير","Pedicure"],["مناكير","Manicure"],["مانيكير","Manicure"],["منيكير","Manicure"],
-    ["ببي كريم","BB cream"],["بيبي كريم","BB cream"],
-    ["استشوار شعر قصير","Short-hair blow-dry"],["استشوار شعر قصير جداً","Extra-short-hair blow-dry"],
-    ["استشوار شعر وسط","Medium-hair blow-dry"],["استشوار شعر متوسط","Medium-hair blow-dry"],
-    ["استشوار شعر طويل","Long-hair blow-dry"],["استشوار شعر طويل جداً","Extra-long-hair blow-dry"],
-    ["شعر قصير","Short hair"],["شعر قصير جداً","Extra-short hair"],["شعر وسط","Medium hair"],["شعر متوسط","Medium hair"],
-    ["شعر طويل","Long hair"],["شعر طويل جداً","Extra-long hair"],["شعر طويل جداً ومدرج","Extra-long layered hair"],
-    ["غرة","Bangs"],["أطراف","Ends trim"],["قص أطراف الشعر","Hair ends trim"],["قص شعر اطراف","Hair ends trim"],
-    ["قص شعر طول واحد","One-length haircut"],["قص طول واحد","One-length haircut"],["قص شعر طبقات","Layered haircut"],["قص طبقات","Layered haircut"],
-    ["تسريحة عروس","Bridal hairstyle"],["تسريحة ناعمة","Soft hairstyle"],["تسريحة مناسبة","Occasion hairstyle"],
-    ["تسريحة شعر قصير","Short-hair styling"],["تسريحة شعر متوسط","Medium-hair styling"],["تسريحة شعر وسط","Medium-hair styling"],
-    ["تسريحة شعر طويل","Long-hair styling"],["تسريحة شعر طويل جداً","Extra-long-hair styling"],
-    ["تساريح اميرات سن ٨ الى ١٣","Princess hairstyle (ages 8–13)"],["تسريحات اميرات سن ٨ الى ١٣","Princess hairstyle (ages 8–13)"],
-    ["صبغة جذور","Root color"],["صبغة الشعر","Hair color"],
-    ["صبغة لون واحد شعر قصير","Single-color dye — short hair"],["صبغة لون واحد شعر وسط","Single-color dye — medium hair"],
-    ["صبغة لون واحد شعر متوسط","Single-color dye — medium hair"],["صبغة لون واحد شعر طويل","Single-color dye — long hair"],
-    ["سحب لون مع صبغة شعر قصير","Color removal + dye — short hair"],["سحب لون مع صبغة شعر متوسط","Color removal + dye — medium hair"],
-    ["سحب لون مع صبغة شعر طويل","Color removal + dye — long hair"],
-    ["هايلايت","Highlights"],["بالياج","Balayage"],["تونر","Toner"],["بروتين","Protein treatment"],["كيراتين","Keratin treatment"],
-    ["بوتكس شعر","Hair botox"],["حمام زيت","Hot oil treatment"],["ماسك شعر","Hair mask"],
-    ["رسمة آيلاينر","Eyeliner"],["رسمة حواجب","Eyebrow styling"],["رسمة عيون ناعمة","Soft eye makeup"],["رسمة عيون سهرة","Evening eye makeup"],
-    ["مكياج ناعم","Soft makeup"],["مكياج سهرة","Evening makeup"],["مكياج عروس","Bridal makeup"],
-    ["تركيب رموش","Lash application"],["تركيب رموش من العملية","Lash application"],["تركيب رموش من ملكات","MALIKAT lash application"],
-    ["صبغة رموش","Lash tint"],["صبغة حواجب","Eyebrow tint"],["تشقير حواجب","Eyebrow bleaching"],
-    ["بدكير ومناكير كامل يد ورجل (الأدوات مجاناً)","Full hand & foot pedicure/manicure (tools included)"],
-    ["بدكير ومناكير يدين كامل (الأدوات 15 ريال)","Full hand manicure (tools 15 SAR)"],["بدكير قدمين كامل (الأدوات 15 ريال)","Full foot pedicure (tools 15 SAR)"],
-    ["تشقير أو صبغة","Bleaching or tint"],["تشقير مع صبغة","Bleaching + tint"],["شمع وجه","Face waxing"],["واكس وجه","Face waxing"],
-    ["واكس يدين أو رجلين نصف","Half arms or legs waxing"],["واكس يدين أو رجلين كامل","Full arms or legs waxing"],
-    ["واكس ظهر أو بطن","Back or abdomen waxing"],["واكس جسم كامل","Full-body waxing"],
-    ["فتلة وجه","Face threading"],["فتلة حواجب","Eyebrow threading"],["تنظيف بشرة","Facial cleansing"],["ماسك وجه","Face mask"],["قناع وجه","Face mask"]
-  ].map(([ar,en]) => [normalizeCatalogArabic(ar), en])
+    // Sections and categories.
+    ["قسم الشعر", "Hair"],
+    ["الشعر", "Hair"],
+    ["قسم بديكير و منيكير", "Pedicure & Manicure"],
+    ["قسم بديكير ومينيكير", "Pedicure & Manicure"],
+    ["قسم بديكير و مناكير", "Pedicure & Manicure"],
+    ["قسم البديكير والمناكير", "Pedicure & Manicure"],
+    ["قسم البدكير والمناكير", "Pedicure & Manicure"],
+    ["البديكير والمناكير", "Pedicure & Manicure"],
+    ["البدكير والمناكير", "Pedicure & Manicure"],
+    ["بديكير و منيكير", "Pedicure & Manicure"],
+    ["بديكير ومينيكير", "Pedicure & Manicure"],
+    ["بديكير ومناكير", "Pedicure & Manicure"],
+    ["بدكير ومانكير", "Pedicure & Manicure"],
+    ["قسم المكياج", "Makeup"],
+    ["المكياج", "Makeup"],
+    ["مكياج", "Makeup"],
+    ["ميك اب", "Makeup"],
+    ["ميكاب", "Makeup"],
+    ["قسم الصبغات", "Hair Color"],
+    ["قسم الصبغات والمعالجات", "Color & Treatments"],
+    ["الصبغات", "Hair Color"],
+    ["صبغات", "Hair Color"],
+    ["معالجات", "Treatments"],
+    ["قسم الخدمات", "Services"],
+    ["الخدمات", "Services"],
+    ["خدمات", "Services"],
+    ["قسم الخدمات (الشمع وإزالة الشعر)", "Waxing & Hair Removal"],
+    ["الشمع وإزالة الشعر", "Waxing & Hair Removal"],
+    ["إزالة الشعر", "Hair Removal"],
+    ["الاستشوار", "Blow Dry"],
+    ["استشوار", "Blow Dry"],
+    ["سشوار", "Blow Dry"],
+    ["سيشوار", "Blow Dry"],
+    ["التساريح", "Hair Styling"],
+    ["تساريح", "Hair Styling"],
+    ["التسريحات", "Hair Styling"],
+    ["القص", "Haircuts"],
+    ["قص", "Haircuts"],
+    ["تنظيف فروة شعر", "Scalp Cleansing"],
+    ["تنظيف فروة الشعر", "Scalp Cleansing"],
+    ["فلر", "Hair Filler"],
+    ["فلر شعر", "Hair Filler"],
+    ["الكافيار", "Caviar Treatment"],
+    ["كافيار", "Caviar Treatment"],
+    ["رفع رموش", "Lash Lift"],
+    ["رموش", "Lashes"],
+    ["حواجب", "Eyebrows"],
+    ["بديكير", "Pedicure"],
+    ["بدكير", "Pedicure"],
+    ["مناكير", "Manicure"],
+    ["مانيكير", "Manicure"],
+    ["منيكير", "Manicure"],
+    ["ببي كريم", "BB Cream"],
+    ["بيبي كريم", "BB Cream"],
+
+    // Blow dry and hair length.
+    ["استشوار شعر قصير", "Short Hair Blow Dry"],
+    ["استشوار شعر قصير جداً", "Extra Short Hair Blow Dry"],
+    ["استشوار شعر وسط", "Medium Hair Blow Dry"],
+    ["استشوار شعر متوسط", "Medium Hair Blow Dry"],
+    ["استشوار شعر طويل", "Long Hair Blow Dry"],
+    ["استشوار شعر طويل جداً", "Extra Long Hair Blow Dry"],
+    ["شعر قصير", "Short Hair"],
+    ["شعر قصير جداً", "Extra Short Hair"],
+    ["شعر وسط", "Medium Hair"],
+    ["شعر متوسط", "Medium Hair"],
+    ["شعر طويل", "Long Hair"],
+    ["شعر طويل جداً", "Extra Long Hair"],
+    ["شعر طويل جداً ومدرج", "Extra Long Layered Hair"],
+
+    // Haircuts.
+    ["غرة", "Bangs"],
+    ["أطراف", "Hair Ends Trim"],
+    ["قص أطراف الشعر", "Hair Ends Trim"],
+    ["قص شعر اطراف", "Hair Ends Trim"],
+    ["قص شعر طول واحد", "One Length Haircut"],
+    ["قص طول واحد", "One Length Haircut"],
+    ["قص شعر طبقات", "Layered Haircut"],
+    ["قص طبقات", "Layered Haircut"],
+    ["قص شعر مدرج", "Layered Haircut"],
+    ["قص شعر غره", "Bangs Trim"],
+
+    // Hair styling.
+    ["تسريحة عروس", "Bridal Hairstyle"],
+    ["تسريحة ناعمة", "Soft Hairstyle"],
+    ["تسريحة مناسبة", "Occasion Hairstyle"],
+    ["تسريحة شعر قصير", "Short Hair Styling"],
+    ["تسريحة شعر متوسط", "Medium Hair Styling"],
+    ["تسريحة شعر وسط", "Medium Hair Styling"],
+    ["تسريحة شعر طويل", "Long Hair Styling"],
+    ["تسريحة شعر طويل جداً", "Extra Long Hair Styling"],
+    ["تساريح اميرات سن ٨ الى ١٣", "Princess Hairstyle Ages 8 to 13"],
+    ["تسريحات اميرات سن ٨ الى ١٣", "Princess Hairstyle Ages 8 to 13"],
+
+    // Hair color and treatments.
+    ["صبغة جذور", "Root Color"],
+    ["صبغة الشعر", "Hair Color"],
+    ["صبغة شعر قصير", "Short Hair Dye"],
+    ["صبغة شعر قصير جداً", "Extra Short Hair Dye"],
+    ["صبغة شعر متوسط", "Medium Hair Dye"],
+    ["صبغة شعر وسط", "Medium Hair Dye"],
+    ["صبغة شعر طويل", "Long Hair Dye"],
+    ["صبغة شعر طويل جداً", "Extra Long Hair Dye"],
+    ["صبغة شعر قصير جدا مع سحب لون", "Extra Short Hair Dye with Color Removal"],
+    ["صبغة شعر قصير جداً مع سحب لون", "Extra Short Hair Dye with Color Removal"],
+    ["صبغة شعر متوسط مع سحب لون", "Medium Hair Dye with Color Removal"],
+    ["صبغة شعر طويل مع سحب لون", "Long Hair Dye with Color Removal"],
+    ["صبغة شعر طويل جدا مع سحب لون", "Extra Long Hair Dye with Color Removal"],
+    ["صبغة شعر طويل جداً مع سحب لون", "Extra Long Hair Dye with Color Removal"],
+    ["صبغة لون واحد شعر قصير", "Short Hair Single Color Dye"],
+    ["صبغة لون واحد شعر وسط", "Medium Hair Single Color Dye"],
+    ["صبغة لون واحد شعر متوسط", "Medium Hair Single Color Dye"],
+    ["صبغة لون واحد شعر طويل", "Long Hair Single Color Dye"],
+    ["سحب لون مع صبغة شعر قصير", "Short Hair Dye with Color Removal"],
+    ["سحب لون مع صبغة شعر متوسط", "Medium Hair Dye with Color Removal"],
+    ["سحب لون مع صبغة شعر طويل", "Long Hair Dye with Color Removal"],
+    ["هايلايت", "Highlights"],
+    ["بالياج", "Balayage"],
+    ["تونر", "Hair Toner"],
+    ["رنساج", "Hair Toner"],
+    ["بروتين", "Protein Treatment"],
+    ["كيراتين", "Keratin Treatment"],
+    ["بوتكس شعر", "Hair Botox"],
+    ["حمام زيت", "Hot Oil Treatment"],
+    ["ماسك شعر", "Hair Mask"],
+    ["فلر شعر قصير", "Short Hair Filler Treatment"],
+    ["فلر شعر متوسط", "Medium Hair Filler Treatment"],
+    ["فلر شعر طويل", "Long Hair Filler Treatment"],
+    ["كافيار شعر قصير", "Short Hair Caviar Treatment"],
+    ["كافيار شعر متوسط", "Medium Hair Caviar Treatment"],
+    ["كافيار شعر طويل", "Long Hair Caviar Treatment"],
+
+    // Makeup, lashes and brows.
+    ["رسمة آيلاينر", "Eyeliner"],
+    ["رسمة ايلينر", "Eyeliner"],
+    ["رسمة حواجب", "Eyebrow Styling"],
+    ["رسمة عيون ناعمة", "Soft Eye Makeup"],
+    ["رسمة عيون سهرة", "Evening Eye Makeup"],
+    ["مكياج ناعم", "Soft Makeup"],
+    ["مكياج سهرة", "Evening Makeup"],
+    ["مكياج سهره", "Evening Makeup"],
+    ["مكياج عروس", "Bridal Makeup"],
+    ["مكياج بناتي", "Girls Makeup"],
+    ["مكياج لبناني", "Lebanese Makeup"],
+    ["تركيب رموش", "Lash Application"],
+    ["تركيب رموش من العملية", "Lash Application"],
+    ["تركيب رموش من ملكات", "MALIKAT Lash Application"],
+    ["تركيب رموش مؤقته من العميلة", "Temporary Lash Application with Client Lashes"],
+    ["تركيب رموش مؤقته من العميله", "Temporary Lash Application with Client Lashes"],
+    ["تركيب رموش بالحبة اسبوعية", "Weekly Individual Lash Extensions"],
+    ["تركيب رموش بالحبه اسبوعيه", "Weekly Individual Lash Extensions"],
+    ["تركيب رموش بالحبة شهرية (رتوش مجاناً)", "Monthly Individual Lash Extensions with Free Retouch"],
+    ["تركيب رموش بالحبه شهريه (رتوش مجانا)", "Monthly Individual Lash Extensions with Free Retouch"],
+    ["تركيب رموش بالحبة يومية", "Daily Individual Lash Extensions"],
+    ["تركيب رموش بالحبه يوميه", "Daily Individual Lash Extensions"],
+    ["صبغة رموش", "Lash Tint"],
+    ["صبغة حواجب", "Eyebrow Tint"],
+    ["تشقير حواجب", "Eyebrow Bleaching"],
+    ["تشقير وصبغه حواجب", "Eyebrow Bleaching and Tint"],
+    ["تشقير وصبغة حواجب", "Eyebrow Bleaching and Tint"],
+
+    // Nails.
+    ["برد اظافر", "Nail Filing"],
+    ["برد أظافر", "Nail Filing"],
+    ["بدكير ومناكير كامل يد ورجل (الأدوات مجاناً)", "Full Hand and Foot Pedicure & Manicure"],
+    ["بدكير ومناكير يدين كامل (الأدوات 15 ريال)", "Full Hand Manicure"],
+    ["بدكير قدمين كامل (الأدوات 15 ريال)", "Full Foot Pedicure"],
+
+    // Sugaring, waxing and threading.
+    ["حلاوة جسم", "Body Sugaring"],
+    ["حلاوه جسم", "Body Sugaring"],
+    ["حلاوة كامل / رجل", "Full Leg Sugaring"],
+    ["حلاوه كامل / رجل", "Full Leg Sugaring"],
+    ["حلاوة كامل / يد", "Full Arm Sugaring"],
+    ["حلاوه كامل / يد", "Full Arm Sugaring"],
+    ["حلاوة نصف / رجل", "Half Leg Sugaring"],
+    ["حلاوه نصف / رجل", "Half Leg Sugaring"],
+    ["حلاوة نصف/ يد", "Half Arm Sugaring"],
+    ["حلاوه نصف/ يد", "Half Arm Sugaring"],
+    ["تشقير أو صبغة", "Bleaching or Tint"],
+    ["تشقير مع صبغة", "Bleaching and Tint"],
+    ["شمع وجه", "Face Waxing"],
+    ["واكس وجه", "Face Waxing"],
+    ["واكس يدين أو رجلين نصف", "Half Arm or Leg Waxing"],
+    ["واكس يدين أو رجلين كامل", "Full Arm or Leg Waxing"],
+    ["واكس ظهر أو بطن", "Back or Abdomen Waxing"],
+    ["واكس جسم كامل", "Full Body Waxing"],
+    ["فتلة وجه", "Face Threading"],
+    ["فتلة حواجب", "Eyebrow Threading"],
+    ["تنظيف بشرة", "Facial Cleansing"],
+    ["ماسك وجه", "Face Mask"],
+    ["قناع وجه", "Face Mask"],
+  ].map(([arabic, english]) => [normalizeCatalogArabic(arabic), english])
 );
 
 function catalogHairLength(raw: string): string {
-  const v = normalizeCatalogArabic(raw).replace(/^شعر\s+/, "").trim();
-  if (v === "قصير") return "short";
-  if (v === "قصير جدا") return "extra-short";
-  if (v === "وسط" || v === "متوسط") return "medium";
-  if (v === "طويل") return "long";
-  if (v === "طويل جدا") return "extra-long";
-  if (v.includes("طويل") && v.includes("مدرج")) return "long layered";
+  const value = normalizeCatalogArabic(raw)
+    .replace(/^شعر\s+/, "")
+    .replace(/\s+مع\s+سحب\s+لون$/, "")
+    .trim();
+
+  if (value === "قصير") return "Short";
+  if (value === "قصير جدا") return "Extra Short";
+  if (value === "وسط" || value === "متوسط") return "Medium";
+  if (value === "طويل") return "Long";
+  if (value === "طويل جدا") return "Extra Long";
+  if (value.includes("طويل") && value.includes("مدرج")) return "Long Layered";
   return "";
 }
 
 function catalogRuleEnglish(raw: string): string {
-  const v = normalizeCatalogArabic(raw);
-  const exact = catalogExactEnglish[v];
+  const value = normalizeCatalogArabic(raw);
+  const exact = catalogExactEnglish[value];
   if (exact) return exact;
 
-  const section = v.match(/^قسم\s+(.+)$/);
+  const section = value.match(/^قسم\s+(.+)$/);
   if (section) return catalogRuleEnglish(section[1]);
 
-  const blow = v.match(/^(?:استشوار|سشوار|سيشوار)(?:\s+شعر)?(?:\s+(.+))?$/);
-  if (blow) {
-    const len = catalogHairLength(blow[1] || "");
-    return len ? len.charAt(0).toUpperCase() + len.slice(1) + "-hair blow-dry" : "Blow-dry";
+  const blowDry = value.match(/^(?:استشوار|سشوار|سيشوار)(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (blowDry) {
+    const length = catalogHairLength(blowDry[1] || "");
+    return length ? length + " Hair Blow Dry" : "Blow Dry";
   }
 
-  const style = v.match(/^(?:تسريحة|تسريحه|تسريحات|تساريح|تصفيف)(?:\s+(.+))?$/);
-  if (style) {
-    const s = String(style[1] || "");
-    const age = s.match(/(?:اميرات|اميرة).*(\d+)\s*(?:الى|-|–)\s*(\d+)/);
-    if (age) return "Princess hairstyle (ages " + age[1] + "–" + age[2] + ")";
-    if (s.includes("عروس")) return "Bridal hairstyle";
-    if (s.includes("ناعم")) return "Soft hairstyle";
-    if (s.includes("مناسب")) return "Occasion hairstyle";
-    const len = catalogHairLength(s);
-    if (len) return len.charAt(0).toUpperCase() + len.slice(1) + "-hair styling";
-    if (!s) return "Hairstyling";
+  const styling = value.match(/^(?:تسريحه|تسريحات|تساريح|تصفيف)(?:\s+(.+))?$/);
+  if (styling) {
+    const suffix = String(styling[1] || "").trim();
+    const age = suffix.match(/(?:اميرات|اميره).*(\d+)\s*(?:الى|-|–)\s*(\d+)/);
+    if (age) return "Princess Hairstyle Ages " + age[1] + " to " + age[2];
+    if (suffix.includes("عروس")) return "Bridal Hairstyle";
+    if (suffix.includes("ناعم")) return "Soft Hairstyle";
+    if (suffix.includes("مناسب")) return "Occasion Hairstyle";
+    const length = catalogHairLength(suffix);
+    if (length) return length + " Hair Styling";
+    if (!suffix) return "Hair Styling";
   }
 
-  const cut = v.match(/^قص(?:\s+شعر)?(?:\s+(.+))?$/);
-  if (cut) {
-    const s = String(cut[1] || "");
-    if (!s) return "Haircut";
-    if (s.includes("اطراف")) return "Hair ends trim";
-    if (s.includes("طول واحد")) return "One-length haircut";
-    if (s.includes("طبقات") || s.includes("مدرج")) return "Layered haircut";
-    if (s.includes("غره")) return "Bangs trim";
-    const len = catalogHairLength(s);
-    if (len) return len.charAt(0).toUpperCase() + len.slice(1) + "-hair haircut";
+  const haircut = value.match(/^قص(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (haircut) {
+    const suffix = String(haircut[1] || "").trim();
+    if (!suffix) return "Haircut";
+    if (suffix.includes("اطراف")) return "Hair Ends Trim";
+    if (suffix.includes("طول واحد")) return "One Length Haircut";
+    if (suffix.includes("طبقات") || suffix.includes("مدرج")) return "Layered Haircut";
+    if (suffix.includes("غره")) return "Bangs Trim";
+    const length = catalogHairLength(suffix);
+    if (length) return length + " Haircut";
   }
 
-  const single = v.match(/^صبغه لون واحد(?:\s+شعر)?(?:\s+(.+))?$/);
-  if (single) {
-    const len = catalogHairLength(single[1] || "");
-    return len ? "Single-color dye — " + len + " hair" : "Single-color hair dye";
-  }
-  const removal = v.match(/^سحب لون مع صبغه(?:\s+شعر)?(?:\s+(.+))?$/);
-  if (removal) {
-    const len = catalogHairLength(removal[1] || "");
-    return len ? "Color removal + dye — " + len + " hair" : "Color removal + dye";
+  const singleColor = value.match(/^صبغه\s+لون\s+واحد(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (singleColor) {
+    const length = catalogHairLength(singleColor[1] || "");
+    return length ? length + " Hair Single Color Dye" : "Single Color Hair Dye";
   }
 
-  const makeup = v.match(/^(?:مكياج|ميك اب|ميكاب)(?:\s+(.+))?$/);
+  const dye = value.match(/^صبغه(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (dye && !value.includes("حواجب") && !value.includes("رموش")) {
+    const suffix = String(dye[1] || "").trim();
+    if (suffix.includes("جذور")) return "Root Color";
+    const withRemoval = suffix.includes("سحب لون");
+    const cleaned = suffix.replace(/\s*مع\s+سحب\s+لون\s*/g, " ").replace(/\s+/g, " ").trim();
+    const length = catalogHairLength(cleaned);
+    if (length) return length + " Hair Dye" + (withRemoval ? " with Color Removal" : "");
+    if (!suffix) return "Hair Dye";
+  }
+
+  const colorRemoval = value.match(/^سحب\s+لون\s+مع\s+صبغه(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (colorRemoval) {
+    const length = catalogHairLength(colorRemoval[1] || "");
+    return length ? length + " Hair Dye with Color Removal" : "Hair Dye with Color Removal";
+  }
+
+  const filler = value.match(/^فلر(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (filler) {
+    const length = catalogHairLength(filler[1] || "");
+    return length ? length + " Hair Filler Treatment" : "Hair Filler Treatment";
+  }
+
+  const caviar = value.match(/^كافيار(?:\s+شعر)?(?:\s+(.+))?$/);
+  if (caviar) {
+    const length = catalogHairLength(caviar[1] || "");
+    return length ? length + " Hair Caviar Treatment" : "Caviar Treatment";
+  }
+
+  if (value === "رنساج" || value.includes("تونر")) return "Hair Toner";
+
+  const makeup = value.match(/^(?:مكياج|ميك اب|ميكاب)(?:\s+(.+))?$/);
   if (makeup) {
-    const s = String(makeup[1] || "");
-    if (!s) return "Makeup";
-    if (s.includes("ناعم")) return "Soft makeup";
-    if (s.includes("سهره")) return "Evening makeup";
-    if (s.includes("عروس")) return "Bridal makeup";
+    const suffix = String(makeup[1] || "").trim();
+    if (!suffix) return "Makeup";
+    if (suffix.includes("ناعم")) return "Soft Makeup";
+    if (suffix.includes("سهره")) return "Evening Makeup";
+    if (suffix.includes("عروس")) return "Bridal Makeup";
+    if (suffix.includes("بناتي")) return "Girls Makeup";
+    if (suffix.includes("لبناني")) return "Lebanese Makeup";
   }
 
-  if (/^(?:تركيب|رفع|صبغه)\s+رموش/.test(v)) return v.startsWith("رفع") ? "Lash lift" : v.startsWith("صبغه") ? "Lash tint" : "Lash application";
-  if (/^(?:صبغه|تشقير|تنظيف|رسم)\s+حواجب/.test(v)) return v.startsWith("صبغه") ? "Eyebrow tint" : v.startsWith("تشقير") ? "Eyebrow bleaching" : "Eyebrow styling";
-  if (/^(?:واكس|شمع)\s+/.test(v)) {
-    if (v.includes("وجه")) return "Face waxing";
-    if (v.includes("جسم كامل")) return "Full-body waxing";
-    if (v.includes("ظهر") || v.includes("بطن")) return "Back or abdomen waxing";
-    if (v.includes("يد") || v.includes("رجل")) return v.includes("نصف") ? "Half arms or legs waxing" : "Full arms or legs waxing";
+  if (/^رسمه\s+(?:ايلينر|ايلاينر)/.test(value)) return "Eyeliner";
+
+  if (/^تركيب\s+رموش/.test(value)) {
+    if (value.includes("بالحبه") || value.includes("بالحبة")) {
+      if (value.includes("اسبوع")) return "Weekly Individual Lash Extensions";
+      if (value.includes("شهر")) return value.includes("رتوش") ? "Monthly Individual Lash Extensions with Free Retouch" : "Monthly Individual Lash Extensions";
+      if (value.includes("يومي")) return "Daily Individual Lash Extensions";
+    }
+    if (value.includes("مؤقت") && value.includes("العميل")) return "Temporary Lash Application with Client Lashes";
+    return "Lash Application";
+  }
+
+  if (/^رفع\s+رموش/.test(value)) return "Lash Lift";
+  if (/^صبغه\s+رموش/.test(value)) return "Lash Tint";
+
+  if (value.includes("حواجب")) {
+    if (value.includes("تشقير") && value.includes("صبغه")) return "Eyebrow Bleaching and Tint";
+    if (value.includes("تشقير")) return "Eyebrow Bleaching";
+    if (value.includes("صبغه")) return "Eyebrow Tint";
+    if (value.includes("رسم") || value.includes("رسمه")) return "Eyebrow Styling";
+  }
+
+  if (/^برد\s+اظافر/.test(value)) return "Nail Filing";
+
+  if (/^حلاوه/.test(value)) {
+    if (value.includes("جسم")) return "Body Sugaring";
+    const full = value.includes("كامل");
+    const half = value.includes("نصف");
+    if (value.includes("رجل")) return (full ? "Full" : half ? "Half" : "") + " Leg Sugaring";
+    if (value.includes("يد")) return (full ? "Full" : half ? "Half" : "") + " Arm Sugaring";
+    return "Sugaring";
+  }
+
+  if (/^(?:واكس|شمع)\s+/.test(value)) {
+    if (value.includes("وجه")) return "Face Waxing";
+    if (value.includes("جسم كامل")) return "Full Body Waxing";
+    if (value.includes("ظهر") || value.includes("بطن")) return "Back or Abdomen Waxing";
+    if (value.includes("يد") || value.includes("رجل")) return value.includes("نصف") ? "Half Arm or Leg Waxing" : "Full Arm or Leg Waxing";
     return "Waxing";
   }
-  if (/^فتله\s+/.test(v)) return v.includes("وجه") ? "Face threading" : v.includes("حواجب") ? "Eyebrow threading" : "Threading";
-  if (/^(?:بديكير|بدكير|مناكير|مانيكير|منيكير)/.test(v)) {
-    const p = /(?:بديكير|بدكير)/.test(v), m = /(?:مناكير|مانيكير|منيكير)/.test(v);
-    return p && m ? "Pedicure & manicure" : p ? "Pedicure" : "Manicure";
+
+  if (/^فتله\s+/.test(value)) {
+    if (value.includes("وجه")) return "Face Threading";
+    if (value.includes("حواجب")) return "Eyebrow Threading";
+    return "Threading";
   }
-  if (v.includes("تنظيف فروه")) return "Scalp cleansing";
-  if (v.includes("كافيار")) return "Caviar treatment";
-  if (v.includes("فلر")) return "Hair filler";
-  if (v.includes("كيراتين")) return "Keratin treatment";
-  if (v.includes("بروتين")) return "Protein treatment";
-  if (v.includes("بوتكس")) return "Hair botox";
-  if (v.includes("حمام زيت")) return "Hot oil treatment";
+
+  if (/^(?:بديكير|بدكير|مناكير|مانيكير|منيكير)/.test(value)) {
+    const hasPedicure = /(?:بديكير|بدكير)/.test(value);
+    const hasManicure = /(?:مناكير|مانيكير|منيكير)/.test(value);
+    if (hasPedicure && hasManicure) return "Pedicure & Manicure";
+    if (hasPedicure) return "Pedicure";
+    if (hasManicure) return "Manicure";
+  }
+
+  if (value.includes("تنظيف فروه")) return "Scalp Cleansing";
+  if (value.includes("كيراتين")) return "Keratin Treatment";
+  if (value.includes("بروتين")) return "Protein Treatment";
+  if (value.includes("بوتكس")) return "Hair Botox";
+  if (value.includes("حمام زيت")) return "Hot Oil Treatment";
+
   return "";
 }
 
 function catalogLatinFallback(raw: string): string {
-  const m: Record<string,string> = {"ا":"a","ب":"b","ت":"t","ث":"th","ج":"j","ح":"h","خ":"kh","د":"d","ذ":"dh","ر":"r","ز":"z","س":"s","ش":"sh","ص":"s","ض":"d","ط":"t","ظ":"z","ع":"a","غ":"gh","ف":"f","ق":"q","ك":"k","ل":"l","م":"m","ن":"n","ه":"h","و":"w","ي":"y","ء":"","،":",","؛":";","؟":"?"};
+  const letters: Record<string, string> = {
+    "ا": "a", "ب": "b", "ت": "t", "ث": "th", "ج": "j", "ح": "h", "خ": "kh",
+    "د": "d", "ذ": "dh", "ر": "r", "ز": "z", "س": "s", "ش": "sh", "ص": "s",
+    "ض": "d", "ط": "t", "ظ": "z", "ع": "a", "غ": "gh", "ف": "f", "ق": "q",
+    "ك": "k", "ل": "l", "م": "m", "ن": "n", "ه": "h", "و": "w", "ي": "y",
+    "ء": "", "،": ",", "؛": ";", "؟": "?",
+  };
+
   return normalizeCatalogArabic(raw)
     .split("")
-    .map((ch) => m[ch] ?? ch)
+    .map((char) => letters[char] ?? char)
     .join("")
     .replace(/[\u0600-\u06FF]/g, "")
+    .replace(/[-–—]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-export function translateBookingCatalogLabel(language: DashboardLanguage, value: string, kind: BookingCatalogLabelKind = "service"): string {
+function naturalizeCatalogEnglish(value: string): string {
+  return String(value || "")
+    .replace(/[-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function translateBookingCatalogLabel(
+  language: DashboardLanguage,
+  value: string,
+  kind: BookingCatalogLabelKind = "service"
+): string {
   const raw = String(value || "").trim();
   if (!raw || language === "ar") return raw;
-  const exact = bookingsText(language, raw);
-  if (exact !== raw && !/[\u0600-\u06FF]/.test(exact)) return exact;
+
+  // Catalog rules are intentionally evaluated before the legacy booking dictionary
+  // so service names always use natural client-facing English.
   const translated = catalogRuleEnglish(raw);
-  if (translated) return translated;
-  if (!/[\u0600-\u06FF]/.test(raw)) return raw;
+  if (translated) return naturalizeCatalogEnglish(translated);
+
+  const dictionaryValue = bookingsText(language, raw);
+  if (dictionaryValue !== raw && !/[\u0600-\u06FF]/.test(dictionaryValue)) {
+    return naturalizeCatalogEnglish(dictionaryValue);
+  }
+
+  if (!/[\u0600-\u06FF]/.test(raw)) return naturalizeCatalogEnglish(raw);
+
+  // Safety fallback: never leak Arabic text in English mode.
+  // This should be rare because salon service families are covered by the rules above.
   const prefix = kind === "section" ? "Section" : kind === "category" ? "Category" : "Service";
   const latin = catalogLatinFallback(raw);
-  return latin ? prefix + " — " + latin : prefix;
+  return latin ? prefix + " " + latin : prefix;
 }
