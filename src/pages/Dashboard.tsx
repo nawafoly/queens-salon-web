@@ -2906,7 +2906,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   path="booking-internal-v2"
                   element={
                     <PermissionRoute permission="bookings.create">
-                      <BookingInternalV2 />
+                      <BookingInternalV2 language={dashboardLanguage} />
                     </PermissionRoute>
                   }
                 />
