@@ -1,0 +1,64 @@
+name: Temporary deploy current main to Vercel production
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project_name: queens-salon-web
+            project_id: prj_ZehJnaAbkRySkMRZt2OkGiL5DfyE
+          - project_name: queens-salon-web-gnxk
+            project_id: prj_e6hUxpG7nKUA77JfTdHv4f3ZlUkK
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_khR1A1T2Em8nnJl73n77REf2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify Vercel token
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN secret is not configured"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Link project
+        env:
+          VERCEL_PROJECT_ID: ${{ matrix.project_id }}
+        run: |
+          mkdir -p .vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build prebuilt production artifact
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt artifact to production
+        id: deploy
+        run: |
+          url="$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Production deployment: $url"
+
+      - name: Inspect production deployment
+        run: vercel inspect "${{ steps.deploy.outputs.url }}" --token="$VERCEL_TOKEN"
