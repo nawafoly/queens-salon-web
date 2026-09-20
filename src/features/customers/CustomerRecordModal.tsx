@@ -279,7 +279,7 @@ export default function CustomerRecordModal({
     <DashboardModalV2
       open
       onClose={onClose}
-      title={t(normalizeCustomerName(customer.name))}
+      title={normalizeCustomerName(customer.name) === UNNAMED_CUSTOMER_LABEL ? t(UNNAMED_CUSTOMER_LABEL) : normalizeCustomerName(customer.name)}
       description={<bdi dir="ltr">{customer.phone === "—" ? t("بدون رقم جوال") : customer.phone}</bdi>}
       eyebrow={t("ملف العميلة")}
       size="xl"
