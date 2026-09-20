@@ -2442,10 +2442,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="container-fluid">
         <div className="row">
           {/* Sidebar */}
-          <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
+          <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} language={dashboardLanguage} />
 
           <MalikatPortalSidebarV2
             variant="dashboard"
+            language={dashboardLanguage}
             logoSrc={logo1}
             logoAlt="MALIKAT SALON Logo"
             collapsed={isSidebarCollapsed}
@@ -2453,7 +2454,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             mobileOpen={isSidebarOpen}
             onMobileClose={() => setIsSidebarOpen(false)}
             className="col-md-3 col-lg-2"
-            ariaLabel="التنقل داخل لوحة التحكم"
+            ariaLabel={t("التنقل داخل لوحة التحكم")}
             profileTooltip={`${userInfo.name} — ${displayedRoleTitle}`}
             profile={
               <div className="user-info">

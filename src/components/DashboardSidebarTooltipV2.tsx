@@ -10,6 +10,7 @@ type TooltipState = {
 
 type DashboardSidebarTooltipV2Props = {
   enabled: boolean;
+  language?: "ar" | "en";
 };
 
 const TOOLTIP_SELECTOR = "[data-sidebar-tooltip]";
@@ -18,6 +19,7 @@ const TOOLTIP_SAFE_WIDTH = 250;
 
 export default function DashboardSidebarTooltipV2({
   enabled,
+  language = "ar",
 }: DashboardSidebarTooltipV2Props) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const showTimerRef = useRef<number | null>(null);
@@ -122,6 +124,8 @@ export default function DashboardSidebarTooltipV2({
   return createPortal(
     <div
       className="dsv2-sidebar-tooltip"
+      lang={language}
+      dir={language === "en" ? "ltr" : "rtl"}
       data-side={tooltip.side}
       role="tooltip"
       style={{ left: tooltip.left, top: tooltip.top }}

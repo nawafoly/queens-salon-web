@@ -6,6 +6,7 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/MalikatPortalSidebarTablet.css";
+import type { DashboardLanguage } from "../helpers/dashboardLanguage";
 
 type PortalSidebarVariant = "dashboard" | "admin" | "employee";
 
@@ -26,6 +27,7 @@ type MalikatPortalSidebarV2Props = {
   loading?: boolean;
   profileTooltip?: string;
   primaryActionTooltip?: string;
+  language?: DashboardLanguage;
 };
 
 const variantClasses: Record<
@@ -76,10 +78,15 @@ export default function MalikatPortalSidebarV2({
   loading = false,
   profileTooltip,
   primaryActionTooltip,
+  language = "ar",
 }: MalikatPortalSidebarV2Props) {
   const classes = variantClasses[variant];
   const expanded = !collapsed;
   const visibleFooter = variant === "employee" ? null : footer;
+  const englishDashboard = variant === "dashboard" && language === "en";
+  const collapseLabel = collapsed
+    ? englishDashboard ? "Expand menu" : "توسيع القائمة"
+    : englishDashboard ? "Collapse menu" : "طي القائمة";
 
   return (
     <aside
@@ -102,8 +109,8 @@ export default function MalikatPortalSidebarV2({
           type="button"
           className={`malikat-portal-sidebar-v2__mobile-close ${classes.mobileClose || ""}`}
           onClick={onMobileClose}
-          aria-label="إغلاق القائمة"
-          title="إغلاق"
+          aria-label={englishDashboard ? "Close menu" : "إغلاق القائمة"}
+          title={englishDashboard ? "Close" : "إغلاق"}
         >
           <FontAwesomeIcon icon={faXmark} />
         </button>
@@ -120,10 +127,10 @@ export default function MalikatPortalSidebarV2({
           className={`malikat-portal-sidebar-v2__collapse ${classes.toggle}`}
           onClick={onToggleCollapsed}
           aria-expanded={expanded}
-          aria-label={collapsed ? "توسيع القائمة" : "طي القائمة"}
-          title={collapsed ? "توسيع القائمة" : "طي القائمة"}
+          aria-label={collapseLabel}
+          title={collapseLabel}
         >
-          <FontAwesomeIcon icon={collapsed ? faChevronLeft : faChevronRight} />
+          <FontAwesomeIcon icon={englishDashboard ? (collapsed ? faChevronRight : faChevronLeft) : (collapsed ? faChevronLeft : faChevronRight)} />
         </button>
       </header>
 
