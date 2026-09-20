@@ -956,17 +956,18 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         totalAmount,
         paidAmount,
         remainingAmount,
-        status: exportV2ResolveFinancialStatus({
+        status: t(exportV2ResolveFinancialStatus({
           totalAmount,
           paidAmount,
           remainingAmount,
           isRefund,
-        }).label,
+        }).label),
         note: resolveDisplayNoteText(x, noteText, language),
       };
     });
 
     return {
+    language,
     rows: reportRows,
     filters: {
       fromDate: from || undefined,
