@@ -54,6 +54,13 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_payroll:attendance_deferral_idempotency_conflict": "يوجد تأجيل حضور سابق يتعارض مع الطلب الحالي. حدّث البيانات وراجع سجل الالتزامات.",
   "core_payroll:obligation_target_payroll_locked": "لا يمكن تعديل تحصيل شهر له مسير معتمد أو مدفوع.",
   "core_payroll:attendance_obligation_requires_canonical_path": "خصم الحضور التلقائي يجب إدارته من مسار تأجيل خصم الحضور في الرواتب.",
+  "core_employee_request:version_conflict": "تم تحديث الطلب أثناء فتحه. أعد تحميل الطلب ثم نفّذ الإجراء مرة أخرى.",
+  "core_employee_request:invalid_transition": "حالة الطلب الحالية لا تسمح بهذا الإجراء. أعد تحميل الطلب وراجع حالته.",
+  "core_employee_request:insufficient_leave_balance": "رصيد الإجازة المتاح لا يكفي لتنفيذ هذه الإجازة.",
+  "core_employee_request:insufficient_annual_leave_balance": "رصيد الإجازة السنوية لا يكفي لتنفيذ هذه الإجازة.",
+  "core_leave:hr_review_resolution_required": "نوع الإجازة يحتاج قرار موارد بشرية إضافيًا قبل الاعتماد.",
+  "core_leave:statutory_validation_required": "نوع الإجازة يحتاج تحققًا نظاميًا إضافيًا قبل الاعتماد.",
+  "core_leave:entitlement_consumption_runtime_required": "هذه الإجازة تعتمد على رصيد استحقاق زمني ولم يكتمل مسار خصم الاستحقاق.",
 };
 
 const CORE_WRITE_OUTCOME_UNKNOWN_EVENT = "queens:core-write-outcome-unknown";
@@ -205,6 +212,13 @@ async function requestOnce<T>(
 
     if (!response.ok || payload.ok === false) {
       const code = String(payload.error || `core_api:http_${response.status}`);
+      console.warn("[core-api-error]", {
+        requestId,
+        method,
+        path: url.pathname,
+        status: response.status,
+        code,
+      });
       throw new CoreApiError(
         response.status,
         code,
