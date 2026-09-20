@@ -5,6 +5,7 @@ import { Miniflare } from 'miniflare';
 
 import { normalizeError } from './core/errors.js';
 import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-employees.js';
+import { listStaff } from './core/repositories/staff.js';
 import {
   createScheduleException,
   resolveEmployeeShift,
@@ -4525,6 +4526,16 @@ test('HR employee save atomically creates canonical booking staff row and canoni
     afterPartialSave.results.map((row) => [row.service_id, Number(row.active)]),
     [['svc-a', 0], ['svc-b', 1]]
   );
+
+  // Even if the compatibility mirror drifts, staff reads must project the
+  // canonical staff_services rows used by booking.
+  await db.prepare(
+    "UPDATE staff SET specialties_json='[\"stale-service\"]' WHERE salon_id='main' AND id='emp-atomic-staff'"
+  ).run();
+  const listedStaff = await listStaff(db, 'main', { active: 'true' });
+  const atomicStaff = listedStaff.find((row) => row.id === 'emp-atomic-staff');
+  assert.ok(atomicStaff);
+  assert.deepEqual(JSON.parse(atomicStaff.specialties_json || '[]'), ['svc-b']);
 });
 
 test('public booking tracking returns sanitized Core data without client PII', async (t) => {
