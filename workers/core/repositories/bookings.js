@@ -1333,6 +1333,22 @@ function normalizeEditPaymentRows(data, paidHalalas) {
 }
 
 export async function patchBooking(db, salonId, id, data, actor = {}) {
+  const directPriceMutation = [
+    data.subtotalHalalas,
+    data.subtotal_halalas,
+    data.discountHalalas,
+    data.discount_halalas,
+    data.totalHalalas,
+    data.total_halalas,
+  ].some((value) => value !== undefined);
+  if (directPriceMutation) {
+    throw new AppError(
+      400,
+      "core_booking:direct_price_mutation_forbidden",
+      "Booking subtotal, discount and total are derived from item-level pricing and cannot be patched directly."
+    );
+  }
+
   if (cleanText(data.status).toLowerCase() === "cancelled") {
     return cancelBooking(db, salonId, id, data.reason || data.notes || "");
   }
@@ -1358,8 +1374,6 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     data.client_name,
     data.clientPhone,
     data.client_phone,
-    data.totalHalalas,
-    data.total_halalas,
     data.paidHalalas,
     data.paid_halalas,
     data.paymentMethod,
@@ -1385,18 +1399,6 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         data.paymentStatus === undefined && data.payment_status === undefined
           ? undefined
           : cleanText(data.paymentStatus || data.payment_status),
-      subtotal_halalas:
-        data.subtotalHalalas === undefined && data.subtotal_halalas === undefined
-          ? undefined
-          : integer(data.subtotalHalalas ?? data.subtotal_halalas, "subtotalHalalas", { min: 0, max: 100_000_000 }),
-      discount_halalas:
-        data.discountHalalas === undefined && data.discount_halalas === undefined
-          ? undefined
-          : integer(data.discountHalalas ?? data.discount_halalas, "discountHalalas", { min: 0, max: 100_000_000 }),
-      total_halalas:
-        data.totalHalalas === undefined && data.total_halalas === undefined
-          ? undefined
-          : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", { min: 0, max: 100_000_000 }),
     });
   }
 
@@ -1475,15 +1477,23 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     );
   }
 
-  const requestedTotal =
-    data.totalHalalas === undefined && data.total_halalas === undefined
-      ? Number(before.total_halalas || 0)
-      : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", {
-          min: 0,
-          max: 100_000_000,
-        });
+  const requestedTotal = Number(before.total_halalas || 0);
   const discountHalalas = Number(before.discount_halalas || 0);
-  const subtotalHalalas = Math.max(requestedTotal, requestedTotal + discountHalalas);
+  const subtotalHalalas = Number(
+    before.subtotal_halalas ?? requestedTotal + discountHalalas
+  );
+  const currentItemUnitHalalas = Number(currentItem.unit_price_halalas || 0);
+  const currentItemTotalHalalas = Number(
+    currentItem.total_halalas ??
+      currentItemUnitHalalas * Math.max(1, Number(currentItem.quantity || 1))
+  );
+  const currentItemFinalHalalas = Number(
+    currentItem.final_total_halalas ??
+      Math.max(
+        0,
+        currentItemTotalHalalas - Number(currentItem.discount_halalas || 0)
+      )
+  );
   const invoice = await dbFirst(
     db,
     "SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1",
@@ -1542,9 +1552,9 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         bookingDate,
         startTime,
         endTime,
-        subtotalHalalas,
-        subtotalHalalas,
-        requestedTotal,
+        currentItemUnitHalalas,
+        currentItemTotalHalalas,
+        currentItemFinalHalalas,
         salonId,
         bookingId,
         currentItem.id,
