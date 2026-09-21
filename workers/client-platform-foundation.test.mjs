@@ -61,6 +61,7 @@ test('client platform migrations enforce money and communication boundaries', ()
   const cashback = readFileSync('migrations/core/0079_client_cashback_wallet.sql', 'utf8');
   const connect = readFileSync('migrations/core/0080_client_connect_foundation.sql', 'utf8');
   const expiry = readFileSync('migrations/core/0081_cashback_expiry_lot_state.sql', 'utf8');
+  const connectRateLimit = readFileSync('migrations/core/0082_client_connect_security_rate_limit.sql', 'utf8');
 
   assert.match(cashback, /cash_withdrawal_allowed INTEGER NOT NULL DEFAULT 0 CHECK \(cash_withdrawal_allowed = 0\)/);
   assert.match(cashback, /transfer_allowed INTEGER NOT NULL DEFAULT 0 CHECK \(transfer_allowed = 0\)/);
@@ -75,6 +76,9 @@ test('client platform migrations enforce money and communication boundaries', ()
   assert.match(expiry, /cashback_expiry_lot_state/);
   assert.match(expiry, /idx_cashback_wallet_expiry_earn_scan/);
   assert.match(expiry, /PRIMARY KEY \(salon_id, source_transaction_id\)/);
+
+  assert.match(connectRateLimit, /idx_client_connect_security_actor_recent/);
+  assert.match(connectRateLimit, /conversation_id,[\s\S]*actor_uid,[\s\S]*detected_at DESC/);
 });
 
 
