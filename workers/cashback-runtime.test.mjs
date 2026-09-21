@@ -39,6 +39,7 @@ async function setup() {
 
   for (const name of [
     '0001_core_schema.sql',
+    '0003_booking_availability.sql',
     '0004_admin_operations.sql',
     '0079_client_cashback_wallet.sql',
   ]) {
