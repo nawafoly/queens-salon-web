@@ -224,7 +224,7 @@ export async function listStaffConnectConversations(db, salonId, actor = {}, que
 
   return dbAll(
     db,
-    'SELECT c.*, cl.name AS client_name, cl.phone_normalized AS client_phone, s.name AS assigned_staff_name FROM client_connect_conversations c JOIN clients cl ON cl.salon_id = c.salon_id AND cl.id = c.client_id LEFT JOIN staff s ON s.salon_id = c.salon_id AND s.id = c.assigned_staff_id WHERE ' + where.join(' AND ') + ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC LIMIT ?',
+    'SELECT c.*, cl.name AS client_name, s.name AS assigned_staff_name FROM client_connect_conversations c JOIN clients cl ON cl.salon_id = c.salon_id AND cl.id = c.client_id LEFT JOIN staff s ON s.salon_id = c.salon_id AND s.id = c.assigned_staff_id WHERE ' + where.join(' AND ') + ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC LIMIT ?',
     params
   );
 }
@@ -258,8 +258,8 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
 
   const recentRows = await dbAll(
     db,
-    'SELECT body FROM client_connect_messages WHERE salon_id = ? AND conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT 12',
-    [salonId, conversation.id]
+    'SELECT body FROM client_connect_messages WHERE salon_id = ? AND conversation_id = ? AND sender_uid = ? ORDER BY created_at DESC, id DESC LIMIT 12',
+    [salonId, conversation.id, uid]
   );
   const inspection = inspectContactExchange({
     body,
@@ -446,7 +446,7 @@ export async function getConnectSecurityEventContext(db, salonId, eventIdValue) 
   const eventId = requiredId(eventIdValue, 'securityEventId');
   const event = await dbFirst(
     db,
-    'SELECT e.*, c.client_id, c.assigned_staff_id, c.status AS conversation_status, cl.name AS client_name, cl.phone_normalized AS client_phone, s.name AS assigned_staff_name FROM client_connect_security_events e JOIN client_connect_conversations c ON c.salon_id = e.salon_id AND c.id = e.conversation_id JOIN clients cl ON cl.salon_id = c.salon_id AND cl.id = c.client_id LEFT JOIN staff s ON s.salon_id = c.salon_id AND s.id = c.assigned_staff_id WHERE e.salon_id = ? AND e.id = ? LIMIT 1',
+    'SELECT e.*, c.client_id, c.assigned_staff_id, c.status AS conversation_status, cl.name AS client_name, s.name AS assigned_staff_name FROM client_connect_security_events e JOIN client_connect_conversations c ON c.salon_id = e.salon_id AND c.id = e.conversation_id JOIN clients cl ON cl.salon_id = c.salon_id AND cl.id = c.client_id LEFT JOIN staff s ON s.salon_id = c.salon_id AND s.id = c.assigned_staff_id WHERE e.salon_id = ? AND e.id = ? LIMIT 1',
     [salonId, eventId]
   );
   if (!event) throw new AppError(404, 'core_client_connect:security_event_not_found');
