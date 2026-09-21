@@ -320,6 +320,7 @@ import {
   getAccountDetail,
   getPermissionCatalog,
   getRoleCatalog,
+  hasPermission,
   listAccounts,
   replaceAccountPermissions,
   replaceEmployeeLink,
@@ -1622,7 +1623,15 @@ async function dispatch(ctx, route, method, body, query, env) {
           db,
           ctx.salonId,
           bookingBody,
-          actorInfo
+          actorInfo,
+          {
+            allowPriceAdjustment:
+              OPERATIONS_ROLES.has(ctx.role) &&
+              hasPermission(ctx, "bookings.price.adjust"),
+            allowManualDiscount:
+              OPERATIONS_ROLES.has(ctx.role) &&
+              hasPermission(ctx, "bookings.discount.apply"),
+          }
         );
       }
       if (method === "PATCH" && route.id) {
@@ -1709,7 +1718,17 @@ async function dispatch(ctx, route, method, body, query, env) {
         ctx.salonId,
         { ...body, source: "internal", channel: "internal" },
         actorInfo,
-        { allowPastDates: true }
+        {
+          allowPastDates: true,
+          allowPriceAdjustment: hasPermission(
+            ctx,
+            "bookings.price.adjust"
+          ),
+          allowManualDiscount: hasPermission(
+            ctx,
+            "bookings.discount.apply"
+          ),
+        }
       );
     case "booking:complete":
       requirePermission(ctx, "bookings.update");
