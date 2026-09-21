@@ -2166,9 +2166,6 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
     return json(400, { ok: false, message: "missing_attendance_time" });
   }
 
-  const dayStart = parseRiyadhDateBoundary(date, false);
-  const dayEnd = parseRiyadhDateBoundary(date, true);
-
   try {
     const existingResult = await db
       .prepare(
