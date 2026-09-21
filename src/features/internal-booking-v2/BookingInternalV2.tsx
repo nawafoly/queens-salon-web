@@ -1106,6 +1106,37 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
     if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
     if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
+
+    for (const service of cart) {
+      const key = String(service.id || "").trim();
+      const catalogPrice = Math.max(0, servicePrice(service));
+      const draft = priceAdjustments[key];
+      if (!draft) continue;
+      const rawPrice = String(draft.price ?? "").trim();
+      const parsedPrice = Number(rawPrice);
+      if (!rawPrice || !Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        setSubmitError(t("أدخلي سعر حجز صحيح للخدمة المعدلة."));
+        return;
+      }
+      const changed = Math.abs(parsedPrice - catalogPrice) > 0.005;
+      if (changed && !canAdjustBookingPrice) {
+        setSubmitError(t("ليس لديك صلاحية تعديل سعر الحجز."));
+        return;
+      }
+      if (changed && !draft.reason) {
+        setSubmitError(t("اختاري سبب تعديل السعر لكل خدمة تم تعديلها."));
+        return;
+      }
+    }
+
+    if (
+      (discountMode === "fixed" || discountMode === "percent") &&
+      !canApplyManualDiscount
+    ) {
+      setSubmitError(t("ليس لديك صلاحية تطبيق خصم يدوي."));
+      return;
+    }
+
     if (discountMode !== "none" && !discountResult.ok) {
       setSubmitError(discountMessage || t("الخصم المحدد غير صالح."));
       return;
@@ -1203,7 +1234,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const itemRows = cart.map((service, index) => {
         const key = String(service.id);
         const schedule = scheduleByService[key];
-        const itemOriginal = Math.max(0, servicePrice(service));
+        const catalogPrice = Math.max(0, servicePrice(service));
+        const itemOriginal = Math.max(0, bookingPriceForService(service));
+        const priceDraft = priceAdjustments[key];
+        const priceAdjusted = Math.abs(itemOriginal - catalogPrice) > 0.005;
         const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(key);
         const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
         const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
@@ -1234,6 +1268,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           employeeName: schedule.staffName,
           date: bookingDate,
           time: schedule.time,
+          catalogPrice,
+          bookingPrice: itemOriginal,
+          priceAdjustmentReason: priceAdjusted ? priceDraft?.reason || undefined : undefined,
+          priceAdjustmentNote: priceAdjusted ? priceDraft?.note?.trim() || undefined : undefined,
           originalAmount: itemOriginal,
           discountAmount: itemDiscount,
           discountSnapshot: finalDiscountSnapshot || undefined,
@@ -1261,7 +1299,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         employeeId: undefined,
         employeeUid: null,
         employeeName: "عدة موظفات",
-        originalAmount: cartTotal,
+        originalAmount: bookingSubtotal,
         discountAmount,
         discountSnapshot: finalDiscountSnapshot || undefined,
         total,
@@ -1381,7 +1419,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, eligibleStaffByService, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, bookingSubtotal, priceAdjustments, bookingPriceForService, canAdjustBookingPrice, canApplyManualDiscount, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, eligibleStaffByService, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
 
   const requestSubmitBooking = useCallback(() => {
     if (submittingRef.current) return;
@@ -1412,6 +1450,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       cardAmount,
       transferAmount,
       selectedSectionId,
+      bookingPriceByService: Object.fromEntries(
+        cart.map((service) => [
+          String(service.id || "").trim(),
+          bookingPriceForService(service),
+        ])
+      ),
       discountSnapshot,
     });
     if (!rows.length) {
@@ -1433,10 +1477,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
     popup.focus();
-  }, [createdBookingIds, selectedClient, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot]);
+  }, [createdBookingIds, selectedClient, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot, bookingPriceForService]);
 
   const resetCompletedBooking = useCallback(() => {
-    setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
+    setCart([]); setPriceAdjustments({}); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
     setBookingDate(todayISO()); setShowPastDateConfirmation(false);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
