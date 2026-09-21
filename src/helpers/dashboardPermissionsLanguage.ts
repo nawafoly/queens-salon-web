@@ -9,6 +9,8 @@ const LABELS: Partial<Record<AppPermission, string>> = {
   "bookings.cancel": "Cancel bookings",
   "bookings.delete": "Permanently delete bookings",
   "bookings.payment.manage": "Manage booking payments",
+  "bookings.price.adjust": "Adjust booking item price",
+  "bookings.discount.apply": "Apply manual booking discounts",
   "bookings.print": "Print booking invoices",
   "bookings.bulk.manage": "Bulk booking actions",
   "bookings.day_audit.manage": "Day and shift close",
