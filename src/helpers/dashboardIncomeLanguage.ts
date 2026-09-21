@@ -73,6 +73,7 @@ const incomeEnglish: Record<string, string> = {
   "الرقم السري": "PIN",
   "أدخل الرقم السري": "Enter PIN",
   "إجمالي الحجز (ر.س)": "Booking total (SAR)",
+  "إجمالي الحجز (للقراءة فقط)": "Booking total (read only)",
   "نوع الدفع": "Payment type",
   "المبلغ المدفوع (ر.س)": "Paid amount (SAR)",
   "المدفوع": "Paid",
