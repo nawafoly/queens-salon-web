@@ -49,3 +49,21 @@ test('MALIKAT Connect runtime is Core-authoritative and audits security review a
   assert.match(repository, /conversation_restricted/);
   assert.doesNotMatch(repository, /firestore|firebase\/firestore/i);
 });
+
+
+test('MALIKAT Connect guard uses same-sender bounded history and redacts personal contact fields', () => {
+  const repository = readFileSync('workers/core/repositories/client-connect.js', 'utf8');
+
+  assert.match(
+    repository,
+    /conversation_id = \? AND sender_uid = \? ORDER BY created_at DESC, id DESC LIMIT 12/
+  );
+  assert.doesNotMatch(
+    repository,
+    /cl\.phone_normalized AS client_phone/
+  );
+  assert.match(
+    repository,
+    /c\.assigned_staff_id = \?/
+  );
+});
