@@ -20,7 +20,7 @@ export type LegacyPermission =
   | "SETTINGS_MANAGE"
   | "USERS_MANAGE";
 
-export const PERMISSION_SCHEMA_VERSION = 4;
+export const PERMISSION_SCHEMA_VERSION = 5;
 
 export type PermissionGroup =
   | "workspace"
@@ -42,6 +42,8 @@ export type AppPermission =
   | "bookings.cancel"
   | "bookings.delete"
   | "bookings.payment.manage"
+  | "bookings.price.adjust"
+  | "bookings.discount.apply"
   | "bookings.print"
   | "bookings.bulk.manage"
   | "bookings.day_audit.manage"
@@ -185,6 +187,8 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "bookings.cancel", label: "إلغاء الحجز", hint: "إلغاء حجز قائم مع تسجيل العملية.", group: "bookings", action: "manage" },
   { key: "bookings.delete", label: "حذف الحجز نهائيًا", hint: "حذف الحجوزات نهائيًا. صلاحية حساسة.", group: "bookings", action: "delete", sensitive: true },
   { key: "bookings.payment.manage", label: "إدارة دفعات الحجز", hint: "تسجيل الدفعات وتعديل طرق الدفع والمبالغ.", group: "bookings", action: "manage", sensitive: true },
+  { key: "bookings.price.adjust", label: "تعديل سعر الحجز", hint: "تغيير السعر المتفق عليه لخدمة داخل حجز واحد دون تعديل سعر الكتالوج.", group: "bookings", action: "manage", sensitive: true },
+  { key: "bookings.discount.apply", label: "تطبيق خصم يدوي", hint: "تطبيق خصم يدوي ثابت أو نسبي على الحجز بشكل مستقل عن السعر والدفع.", group: "bookings", action: "manage", sensitive: true },
   { key: "bookings.print", label: "طباعة الفاتورة", hint: "عرض وطباعة فاتورة الحجز.", group: "bookings", action: "use" },
   { key: "bookings.bulk.manage", label: "الإجراءات الجماعية", hint: "تحديث مجموعة حجوزات دفعة واحدة.", group: "bookings", action: "manage", sensitive: true },
   { key: "bookings.day_audit.manage", label: "إغلاق اليوم والشفت", hint: "مراجعة وإغلاق اليوم المالي والتشغيلي.", group: "bookings", action: "manage", sensitive: true },
@@ -352,6 +356,10 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "bookings.update",
     "bookings.cancel",
     "bookings.payment.manage",
+    "bookings.price.adjust",
+    "bookings.discount.apply",
+    "bookings.price.adjust",
+    "bookings.discount.apply",
     "bookings.print",
     "bookings.bulk.manage",
     "bookings.day_audit.manage",
