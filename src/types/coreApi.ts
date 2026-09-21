@@ -98,7 +98,12 @@ export type CoreBookingItem = {
   staffName?: string | null;
   quantity: number;
   unitPriceHalalas: number;
+  catalogUnitPriceHalalas?: number | null;
   totalHalalas: number;
+  priceAdjustmentReason?: "catalog_pending_update" | "management_approved" | "special_price" | "other" | null;
+  priceAdjustmentNote?: string | null;
+  priceAdjustedByUid?: string | null;
+  priceAdjustedAt?: string | null;
   discountHalalas?: number;
   finalTotalHalalas?: number | null;
   packageCovered: boolean;
@@ -293,6 +298,8 @@ export type CoreCreateBookingInput = {
     staffId?: string;
     quantity?: number;
     unitPriceHalalas?: number;
+    priceAdjustmentReason?: "catalog_pending_update" | "management_approved" | "special_price" | "other";
+    priceAdjustmentNote?: string;
     discountHalalas?: number;
     finalTotalHalalas?: number;
     packageCovered?: boolean;
