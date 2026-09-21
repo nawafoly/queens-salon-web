@@ -65,7 +65,11 @@ test("employee attendance UI follows an active prior work day after midnight and
   const overview = read("src/pages/hr/EmployeeOverview.tsx");
   const discipline = read("src/helpers/hr/attendanceDiscipline.ts");
 
+  const coreAttendance = read("workers/core/repositories/attendance.js");
+
   assert.match(service, /result\.state\?\.status === "checked_in"/);
+  assert.match(coreAttendance, /date_key: cleanText\(row\.work_date\) \|\| riyadhDateKey\(recordedAt\)/);
+  assert.match(coreAttendance, /client_time, work_date, location_lat/);
   assert.match(service, /cleanText\(result\.state\.workDate\)/);
   assert.match(service, /result\.state\?\.expiredIncomplete === true/);
   assert.match(service, /status: "incomplete" as const/);
