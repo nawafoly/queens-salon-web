@@ -3039,7 +3039,6 @@ type EditBookingPaymentSectionProps = {
   mixedCashAmount: string;
   mixedCardAmount: string;
   disabled: boolean;
-  onPriceChange: (value: string) => void;
   onPaymentModeChange: (mode: UiPaymentMode) => void;
   onPaymentMethodChange: (method: EditPaymentMethodOption) => void;
   onPaidAmountChange: (value: string) => void;
@@ -3056,7 +3055,6 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   mixedCashAmount,
   mixedCardAmount,
   disabled,
-  onPriceChange,
   onPaymentModeChange,
   onPaymentMethodChange,
   onPaidAmountChange,
@@ -3132,7 +3130,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
     <>
       <label>
         <div className="bk-field-label">
-          السعر النهائي
+          إجمالي الحجز (للقراءة فقط)
         </div>
 
         <DashboardNumberInputV2
@@ -3140,12 +3138,12 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           step="0.01"
           className="bk-input"
           value={price}
-          onChange={(event) =>
-            onPriceChange(event.target.value)
-          }
-          placeholder="مثال: 120"
-          disabled={disabled}
+          onChange={() => {}}
+          disabled
         />
+        <small className="bk-helper-text">
+          تعديل السعر لا يتم من الدفع؛ يستخدم مسار تعديل سعر الحجز المخصص.
+        </small>
       </label>
 
       <BookingSelectField
@@ -3580,22 +3578,14 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
   const onServiceChange = useCallback(
     (nextServiceId: string) => {
       const nextService = filteredServices.find((service) => service.id === nextServiceId) || null;
-      setDraft((prev) => {
-        const originalServiceId = resolvePrimaryBookingServiceSelection(target).serviceId;
-        const isOriginalService = nextServiceId === originalServiceId;
-        return {
-          ...prev,
-          serviceId: nextServiceId,
-          categoryId: nextService?.categoryId || prev.categoryId,
-          // Preserve the historical booked price when the same service is selected.
-          // Use the current catalog price only when the administrator intentionally changes the service.
-          price: nextService
-            ? isOriginalService
-              ? String(readBookingTotalAmount(target))
-              : String(nextService.price || 0)
-            : prev.price,
-        };
-      });
+      setDraft((prev) => ({
+        ...prev,
+        serviceId: nextServiceId,
+        categoryId: nextService?.categoryId || prev.categoryId,
+        // Service edits must not silently change financial totals.
+        // Booking price changes use the dedicated audited pricing path.
+        price: prev.price,
+      }));
     },
     [filteredServices, target]
   );
@@ -3608,9 +3598,6 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
   const onTimeChange = useCallback((value: string) => {
     const normalizedValue = normalizeEditBookingTimeInput(value) || String(value || "").trim();
     setDraft((prev) => (prev.time === normalizedValue ? prev : { ...prev, time: normalizedValue }));
-  }, []);
-  const onPriceChange = useCallback((value: string) => {
-    setDraft((prev) => (prev.price === value ? prev : { ...prev, price: value }));
   }, []);
   const onPaymentModeChange = useCallback((nextMode: UiPaymentMode) => {
     setDraft((p) => {
@@ -4024,7 +4011,6 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             mixedCashAmount={draft.mixedCashAmount}
             mixedCardAmount={draft.mixedCardAmount}
             disabled={saving}
-            onPriceChange={onPriceChange}
             onPaymentModeChange={onPaymentModeChange}
             onPaymentMethodChange={onPaymentMethodChange}
             onPaidAmountChange={onPaidAmountChange}
