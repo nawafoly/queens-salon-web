@@ -1039,16 +1039,18 @@ async function getAttendanceSecurityDashboard(url, db, directoryDb) {
     bindings.push(deviceId);
   }
   if (fromDate) {
-    const boundary = parseRiyadhDateBoundary(fromDate, false);
-    if (!boundary) return invalidRecordsQuery("fromDate");
-    filters.push("server_time >= ?");
-    bindings.push(boundary);
+    if (!parseRiyadhDateBoundary(fromDate, false)) {
+      return invalidRecordsQuery("fromDate");
+    }
+    filters.push("COALESCE(work_date, date(server_time, '+3 hours')) >= ?");
+    bindings.push(fromDate);
   }
   if (toDate) {
-    const boundary = parseRiyadhDateBoundary(toDate, true);
-    if (!boundary) return invalidRecordsQuery("toDate");
-    filters.push("server_time < ?");
-    bindings.push(boundary);
+    if (!parseRiyadhDateBoundary(toDate, false)) {
+      return invalidRecordsQuery("toDate");
+    }
+    filters.push("COALESCE(work_date, date(server_time, '+3 hours')) <= ?");
+    bindings.push(toDate);
   }
 
   const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
