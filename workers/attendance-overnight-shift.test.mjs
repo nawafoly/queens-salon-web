@@ -76,6 +76,9 @@ test("employee attendance UI follows an active prior work day after midnight and
 
   assert.match(overview, /incomplete: "غير مكتمل"/);
   assert.match(overview, /لم تُسجّل بصمة الخروج/);
+  assert.match(overview, /shiftWorkDate: "شفت العمل"/);
+  assert.match(overview, /attendanceWorkDate !== attendanceDate/);
+  assert.match(overview, /attendanceStatus === "incomplete"[\s\S]{0,120}copy\.incompleteHint/);
   assert.match(discipline, /status: "incomplete"/);
   assert.match(discipline, /statusLabel: "غير مكتمل"/);
 
