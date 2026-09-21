@@ -33,8 +33,39 @@ function looksLikeKsaPhone(digits) {
     /^009665\d{8}$/.test(value);
 }
 
+function isBenignNumericContext(value) {
+  const normalized = normalizeConnectText(value);
+
+  // Legitimate standalone time such as 6:30 or 18:45.
+  if (/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(normalized)) return true;
+
+  // Legitimate calendar date such as 21/9, 21-09 or 21/09/2026.
+  if (
+    /^(?:0?[1-9]|[12]\d|3[01])[\/-](?:0?[1-9]|1[0-2])(?:[\/-]\d{2,4})?$/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  // Amounts/quantities with explicit business context are not contact fragments.
+  if (
+    /^\d+(?:[.,]\d{1,2})?\s*(?:ريال|ر\.?س|sar)$/iu.test(normalized) ||
+    /^\d+\s*(?:جلس(?:ة|ات)|خدم(?:ة|ات)|مرة|مرات|شخص|اشخاص|أشخاص)$/iu.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function numericFragment(value) {
-  const normalized = normalizeConnectText(value)
+  const source = normalizeConnectText(value);
+  if (isBenignNumericContext(source)) return '';
+
+  const normalized = source
     .replace(/[\s._,;:!?()[\]{}+\-—–/\\|~"'،؛]+/g, '');
   if (!normalized || /[^0-9]/.test(normalized)) return '';
   return normalized.length <= 4 ? normalized : '';
