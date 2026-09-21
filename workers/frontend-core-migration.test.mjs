@@ -333,6 +333,10 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
 
   assert.match(v2, /bookings\.price\.adjust/);
   assert.match(v2, /bookings\.discount\.apply/);
+  assert.match(v2, /disabled=\{!canAdjustBookingPrice\}/);
+  assert.match(v2, /disabled=\{!canApplyManualDiscount\}/);
+  assert.match(v2, /لا تملك صلاحية تعديل سعر الحجز/);
+  assert.match(v2, /الخصم اليدوي يحتاج صلاحية مستقلة/);
   assert.match(v2, /سعر الكتالوج/);
   assert.match(v2, /سعر الحجز المعدل/);
   assert.match(v2, /سبب تعديل السعر/);
