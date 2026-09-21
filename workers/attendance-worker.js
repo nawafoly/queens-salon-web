@@ -2273,7 +2273,7 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
                SET employee_uid = ?, employee_doc_id = ?,
                    server_time = ?, client_time = ?, source = ?,
                    updated_at = ?, created_by_uid = ?, created_by_email = ?,
-                   created_by_role = ?
+                   created_by_role = ?, work_date = ?
                WHERE id = ?`
             )
             .bind(
@@ -2286,6 +2286,7 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
               requester.uid,
               requester.email || null,
               normalizeText(requester.runtime?.role) || "hr",
+              date,
               operation.existingId
             )
         );
@@ -2308,9 +2309,9 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
               zone_type, allowed_zone_ids, distance_meters, result,
               rejection_reason, accuracy_accepted, device_info, source,
               created_by_uid, created_by_email, created_by_role, created_at,
-              updated_at
+              updated_at, work_date
             ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, '[]',
-              NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)`
+              NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             id,
@@ -2325,7 +2326,8 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
             requester.email || null,
             normalizeText(requester.runtime?.role) || "hr",
             now,
-            now
+            now,
+            date
           )
       );
       changed.push({
@@ -2359,6 +2361,9 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
                  last_location_accuracy = NULL,
                  last_zone_id = NULL,
                  status = 'checked_out',
+                 work_date = NULL,
+                 shift_end_at = NULL,
+                 checkout_deadline_at = NULL,
                  updated_at = ?
              WHERE employee_uid = ? AND last_record_id IN (${placeholders})`
           )
@@ -2370,9 +2375,9 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
           .prepare(
             `DELETE FROM attendance_records
              WHERE employee_uid = ? AND id IN (${placeholders})
-               AND server_time >= ? AND server_time < ?`
+               AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
           )
-          .bind(employeeUid, ...clearIds, dayStart, dayEnd)
+          .bind(employeeUid, ...clearIds, date)
       );
     }
 
