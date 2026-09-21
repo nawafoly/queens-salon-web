@@ -23,6 +23,7 @@ on:
       - "src/types/coreApi.ts"
       - "workers/core/**"
       - "workers/client-platform-foundation.test.mjs"
+      - "workers/cashback-runtime.test.mjs"
       - "migrations/core/0079_client_cashback_wallet.sql"
       - "migrations/core/0080_client_connect_foundation.sql"
       - "workers/core-worker.test.mjs"
