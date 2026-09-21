@@ -4,7 +4,9 @@ import test from 'node:test';
 import { Miniflare } from 'miniflare';
 
 import {
+  expireCashbackCredits,
   getClientCashbackWallet,
+  recordCashbackMovement,
   reconcileCashbackForBooking,
   redeemCashbackForBooking,
   upsertCashbackPolicy,
@@ -43,6 +45,7 @@ async function setup() {
     '0004_admin_operations.sql',
     '0006_booking_discount_snapshots.sql',
     '0079_client_cashback_wallet.sql',
+    '0081_cashback_expiry_lot_state.sql',
   ]) {
     const raw = await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8');
     const sql = raw
@@ -241,4 +244,281 @@ test('refunds reverse earned cashback and spent credit becomes future recovery',
       ),
     { code: 'core_cashback:insufficient_balance' }
   );
+});
+
+
+test('wallet balance is not truncated by the 500-row history window', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedCompletedBooking(db);
+
+  await db.prepare(`
+    WITH RECURSIVE seq(n) AS (
+      SELECT 1
+      UNION ALL
+      SELECT n + 1 FROM seq WHERE n < 501
+    )
+    INSERT INTO cashback_wallet_transactions
+      (id, salon_id, client_id, type, amount_halalas, reason,
+       idempotency_key, created_at)
+    SELECT
+      'bulk-adjust-' || n,
+      'main',
+      'client-cashback',
+      'adjustment',
+      1,
+      'bulk projection test',
+      'bulk-adjust-' || n,
+      '2026-09-20T12:30:00.000Z'
+    FROM seq
+  `).run();
+
+  const wallet = await getClientCashbackWallet(
+    db,
+    'main',
+    'client-cashback'
+  );
+
+  assert.equal(wallet.balanceHalalas, 501);
+  assert.equal(wallet.ledgerBalanceHalalas, 501);
+  assert.equal(wallet.pendingRecoveryHalalas, 0);
+  assert.equal(wallet.transactions.length, 500);
+});
+
+test('refund recovery does not consume cashback from another booking', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedCompletedBooking(db);
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'earn-booking-a',
+      clientId: 'client-cashback',
+      type: 'earn',
+      amountHalalas: 5000,
+      bookingId: 'booking-earned',
+      reason: 'booking A earn',
+      idempotencyKey: 'earn-booking-a',
+      createdAt: '2026-09-20T12:01:00.000Z',
+    },
+    'system'
+  );
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'earn-booking-b',
+      clientId: 'client-cashback',
+      type: 'earn',
+      amountHalalas: 4000,
+      bookingId: 'booking-next',
+      reason: 'booking B earn',
+      idempotencyKey: 'earn-booking-b',
+      createdAt: '2026-09-20T12:02:00.000Z',
+    },
+    'system'
+  );
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'redeem-a-first',
+      clientId: 'client-cashback',
+      type: 'redeem',
+      amountHalalas: -5000,
+      bookingId: 'booking-next',
+      reason: 'spent booking A credit first',
+      idempotencyKey: 'redeem-a-first',
+      createdAt: '2026-09-20T12:03:00.000Z',
+    },
+    'system'
+  );
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'reverse-booking-a',
+      clientId: 'client-cashback',
+      type: 'reverse',
+      amountHalalas: -2000,
+      bookingId: 'booking-earned',
+      reason: 'refund booking A',
+      idempotencyKey: 'reverse-booking-a',
+      createdAt: '2026-09-20T12:04:00.000Z',
+    },
+    'system'
+  );
+
+  let wallet = await getClientCashbackWallet(
+    db,
+    'main',
+    'client-cashback'
+  );
+
+  assert.equal(wallet.balanceHalalas, 4000);
+  assert.equal(wallet.pendingRecoveryHalalas, 2000);
+  assert.equal(wallet.ledgerBalanceHalalas, 2000);
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'earn-after-recovery',
+      clientId: 'client-cashback',
+      type: 'earn',
+      amountHalalas: 3000,
+      bookingId: 'booking-future',
+      reason: 'future earning repays recovery first',
+      idempotencyKey: 'earn-after-recovery',
+      createdAt: '2026-09-20T12:05:00.000Z',
+    },
+    'system'
+  );
+
+  wallet = await getClientCashbackWallet(
+    db,
+    'main',
+    'client-cashback'
+  );
+
+  assert.equal(wallet.balanceHalalas, 5000);
+  assert.equal(wallet.pendingRecoveryHalalas, 0);
+  assert.equal(wallet.ledgerBalanceHalalas, 5000);
+});
+
+test('expiry removes only the remaining reward lot and is terminal', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedCompletedBooking(db);
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'earn-expiring',
+      clientId: 'client-cashback',
+      type: 'earn',
+      amountHalalas: 5000,
+      bookingId: 'booking-earned',
+      reason: 'expiring lot',
+      idempotencyKey: 'earn-expiring',
+      expiresAt: '2026-09-21T00:00:00.000Z',
+      createdAt: '2026-09-20T00:00:00.000Z',
+    },
+    'system'
+  );
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'redeem-before-expiry',
+      clientId: 'client-cashback',
+      type: 'redeem',
+      amountHalalas: -2000,
+      bookingId: 'booking-next',
+      reason: 'partial spend before expiry',
+      idempotencyKey: 'redeem-before-expiry',
+      createdAt: '2026-09-20T01:00:00.000Z',
+    },
+    'system'
+  );
+
+  const first = await expireCashbackCredits(
+    db,
+    'main',
+    '2026-09-21T01:00:00.000Z'
+  );
+
+  assert.equal(first.lotsProcessed, 1);
+  assert.equal(first.lotsExpired, 1);
+  assert.equal(first.expiredHalalas, 3000);
+
+  const wallet = await getClientCashbackWallet(
+    db,
+    'main',
+    'client-cashback'
+  );
+  assert.equal(wallet.balanceHalalas, 0);
+
+  const terminal = await db.prepare(`
+    SELECT status, expired_halalas
+      FROM cashback_expiry_lot_state
+     WHERE salon_id = 'main'
+       AND source_transaction_id = 'earn-expiring'
+  `).first();
+
+  assert.equal(terminal.status, 'expired');
+  assert.equal(Number(terminal.expired_halalas), 3000);
+
+  const second = await expireCashbackCredits(
+    db,
+    'main',
+    '2026-09-21T02:00:00.000Z'
+  );
+  assert.equal(second.lotsProcessed, 0);
+  assert.equal(second.expiredHalalas, 0);
+});
+
+test('redemption cannot spend a lot that is already expired but cron has not run', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await seedCompletedBooking(db);
+
+  await upsertCashbackPolicy(
+    db,
+    'main',
+    { enabled: true, earnBps: 1000 },
+    'uid-admin'
+  );
+
+  await recordCashbackMovement(
+    db,
+    'main',
+    {
+      id: 'earn-already-expired',
+      clientId: 'client-cashback',
+      type: 'earn',
+      amountHalalas: 1000,
+      bookingId: 'booking-earned',
+      reason: 'already expired lot',
+      idempotencyKey: 'earn-already-expired',
+      expiresAt: '2026-09-20T00:00:00.000Z',
+      createdAt: '2026-09-19T00:00:00.000Z',
+    },
+    'system'
+  );
+
+  await assert.rejects(
+    () =>
+      redeemCashbackForBooking(
+        db,
+        'main',
+        'client-cashback',
+        {
+          bookingId: 'booking-next',
+          amountHalalas: 1,
+          operationId: 'redeem-expired-credit',
+        },
+        'uid-admin'
+      ),
+    { code: 'core_cashback:insufficient_balance' }
+  );
+
+  const expiry = await db.prepare(`
+    SELECT amount_halalas, source_transaction_id
+      FROM cashback_wallet_transactions
+     WHERE salon_id = 'main'
+       AND type = 'expire'
+       AND source_transaction_id = 'earn-already-expired'
+     LIMIT 1
+  `).first();
+
+  assert.equal(Number(expiry.amount_halalas), -1000);
+  assert.equal(expiry.source_transaction_id, 'earn-already-expired');
 });
