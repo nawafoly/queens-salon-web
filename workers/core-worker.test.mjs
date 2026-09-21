@@ -4008,6 +4008,12 @@ test("internal booking price adjustment stays separate from discount and payment
   assert.equal(fake.find("invoices", "main", "invoice-price-adjust").paid_halalas, 4500);
   assert.equal(fake.find("bookings", "main", "booking-price-adjust").payment_status, "partial");
   assert.equal(fake.find("bookings", "main", "booking-price-adjust").total_halalas, 5000);
+  const income = fake.rows("income_entries").find(
+    (row) => row.booking_id === "booking-price-adjust"
+  );
+  assert.ok(income);
+  assert.equal(income.amount_halalas, 4500);
+  assert.equal(income.source, "booking");
 });
 
 test("price adjustment then manual discount calculates in the correct order", async () => {
