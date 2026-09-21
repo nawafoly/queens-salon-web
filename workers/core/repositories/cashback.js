@@ -515,6 +515,186 @@ export async function reconcileCashbackForBooking(
   };
 }
 
+function consumeLots(lots, amount, predicate = () => true) {
+  let remaining = Math.max(0, finiteInteger(amount));
+  if (!remaining) return 0;
+
+  const candidates = lots
+    .filter((lot) => lot.remainingHalalas > 0 && predicate(lot))
+    .sort((left, right) => {
+      const leftExpiry = left.expiresAt || '9999-12-31T23:59:59.999Z';
+      const rightExpiry = right.expiresAt || '9999-12-31T23:59:59.999Z';
+      return (
+        leftExpiry.localeCompare(rightExpiry) ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id)
+      );
+    });
+
+  let consumed = 0;
+  for (const lot of candidates) {
+    if (!remaining) break;
+    const take = Math.min(remaining, lot.remainingHalalas);
+    lot.remainingHalalas -= take;
+    remaining -= take;
+    consumed += take;
+  }
+  return consumed;
+}
+
+function rebuildEarnLots(rows) {
+  const lots = [];
+  const byId = new Map();
+
+  for (const row of rows) {
+    const type = cleanText(row.type).toLowerCase();
+    const amount = finiteInteger(row.amount_halalas);
+
+    if (type === 'earn' && amount > 0) {
+      const lot = {
+        id: cleanText(row.id),
+        bookingId: cleanText(row.booking_id),
+        createdAt: cleanText(row.created_at),
+        expiresAt: cleanText(row.expires_at) || null,
+        originalHalalas: amount,
+        remainingHalalas: amount,
+      };
+      lots.push(lot);
+      byId.set(lot.id, lot);
+      continue;
+    }
+
+    if (amount >= 0) continue;
+    const debit = Math.abs(amount);
+
+    if (type === 'reverse' && cleanText(row.booking_id)) {
+      // A refund reverses the earning that came from the same booking. If that
+      // earning was already spent, the ledger is allowed to go negative as a
+      // recovery balance; unrelated future/older earnings must not be consumed.
+      consumeLots(
+        lots,
+        debit,
+        (lot) => lot.bookingId === cleanText(row.booking_id)
+      );
+      continue;
+    }
+
+    if (type === 'expire' && cleanText(row.source_transaction_id)) {
+      const sourceLot = byId.get(cleanText(row.source_transaction_id));
+      if (sourceLot) {
+        const take = Math.min(debit, sourceLot.remainingHalalas);
+        sourceLot.remainingHalalas -= take;
+      }
+      continue;
+    }
+
+    if (type === 'redeem' || type === 'expire' || type === 'adjustment') {
+      consumeLots(lots, debit);
+    }
+  }
+
+  return lots;
+}
+
+export async function expireCashbackCredits(
+  db,
+  salonId,
+  asOf = nowIso(),
+  options = {}
+) {
+  const clientLimit = Math.max(
+    1,
+    Math.min(500, finiteInteger(options.clientLimit, 100))
+  );
+  const dueClients = await dbAll(
+    db,
+    `SELECT client_id, MIN(expires_at) AS first_expiry
+       FROM cashback_wallet_transactions
+      WHERE salon_id = ?
+        AND type = 'earn'
+        AND expires_at IS NOT NULL
+        AND expires_at <= ?
+      GROUP BY client_id
+      ORDER BY first_expiry ASC
+      LIMIT ?`,
+    [salonId, asOf, clientLimit]
+  );
+
+  let clientsProcessed = 0;
+  let movementsCreated = 0;
+  let expiredHalalas = 0;
+
+  for (const candidate of dueClients) {
+    const clientId = cleanText(candidate.client_id);
+    if (!clientId) continue;
+
+    const rows = await dbAll(
+      db,
+      `SELECT *
+         FROM cashback_wallet_transactions
+        WHERE salon_id = ?
+          AND client_id = ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 5000`,
+      [salonId, clientId]
+    );
+    if (!rows.length) continue;
+
+    clientsProcessed += 1;
+    const lots = rebuildEarnLots(rows);
+    let availableHalalas = Math.max(
+      0,
+      rows.reduce(
+        (sum, row) => sum + finiteInteger(row.amount_halalas),
+        0
+      )
+    );
+
+    for (const lot of lots) {
+      if (!availableHalalas) break;
+      if (
+        !lot.expiresAt ||
+        lot.expiresAt > asOf ||
+        lot.remainingHalalas <= 0
+      ) {
+        continue;
+      }
+
+      const amount = Math.min(lot.remainingHalalas, availableHalalas);
+      if (!amount) continue;
+
+      const beforeCount = rows.length;
+      await recordCashbackMovement(
+        db,
+        salonId,
+        {
+          clientId,
+          type: 'expire',
+          amountHalalas: -amount,
+          sourceTransactionId: lot.id,
+          bookingId: lot.bookingId || null,
+          reason: 'Expired MALIKAT cashback credit',
+          idempotencyKey: `cashback:expire:${lot.id}`,
+          createdAt: asOf,
+        },
+        'system'
+      );
+
+      lot.remainingHalalas -= amount;
+      availableHalalas -= amount;
+      expiredHalalas += amount;
+      movementsCreated += beforeCount >= 0 ? 1 : 0;
+    }
+  }
+
+  return {
+    asOf,
+    clientsProcessed,
+    movementsCreated,
+    expiredHalalas,
+  };
+}
+
 export async function redeemCashbackForBooking(
   db,
   salonId,
