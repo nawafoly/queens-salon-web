@@ -2439,8 +2439,6 @@ export async function clearAttendanceRecordsForDay({
   serverTimes = [],
   note,
 }) {
-  const dayStart = parseRiyadhDateBoundary(date, false);
-  const dayEnd = parseRiyadhDateBoundary(date, true);
   const source = JSON.stringify({
     area: "hr",
     page: "hr_employees",
@@ -2467,9 +2465,9 @@ export async function clearAttendanceRecordsForDay({
            FROM attendance_records
            WHERE employee_uid = ?
              AND id IN (${placeholders})
-             AND server_time >= ? AND server_time < ?`
+             AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
         )
-        .bind(employeeUid, ...normalizedRecordIds, dayStart, dayEnd)
+        .bind(employeeUid, ...normalizedRecordIds, date)
         .all();
       idsToClear = (result.results || [])
         .map((row) => normalizeText(row.id))
@@ -2484,9 +2482,9 @@ export async function clearAttendanceRecordsForDay({
            FROM attendance_records
            WHERE employee_uid = ?
              AND server_time IN (${placeholders})
-             AND server_time >= ? AND server_time < ?`
+             AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
         )
-        .bind(employeeUid, ...normalizedServerTimes, dayStart, dayEnd)
+        .bind(employeeUid, ...normalizedServerTimes, date)
         .all();
       idsToClear = (result.results || [])
         .map((row) => normalizeText(row.id))
@@ -2498,9 +2496,10 @@ export async function clearAttendanceRecordsForDay({
         .prepare(
           `SELECT id
            FROM attendance_records
-           WHERE employee_uid = ? AND server_time >= ? AND server_time < ?`
+           WHERE employee_uid = ?
+             AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
         )
-        .bind(employeeUid, dayStart, dayEnd)
+        .bind(employeeUid, date)
         .all();
       idsToClear = (result.results || [])
         .map((row) => normalizeText(row.id))
@@ -2547,6 +2546,9 @@ export async function clearAttendanceRecordsForDay({
                last_location_accuracy = NULL,
                last_zone_id = NULL,
                status = 'checked_out',
+               work_date = NULL,
+               shift_end_at = NULL,
+               checkout_deadline_at = NULL,
                updated_at = ?
            WHERE employee_uid = ? AND last_record_id IN (${idPlaceholders})`
         )
@@ -2555,9 +2557,9 @@ export async function clearAttendanceRecordsForDay({
         .prepare(
           `DELETE FROM attendance_records
            WHERE employee_uid = ? AND id IN (${idPlaceholders})
-             AND server_time >= ? AND server_time < ?`
+             AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
         )
-        .bind(employeeUid, ...idsToClear, dayStart, dayEnd),
+        .bind(employeeUid, ...idsToClear, date),
     ]);
 
     const result = results[1];
