@@ -336,6 +336,8 @@ async function assertStaffRangeAvailable(
 export async function listBookings(db, salonId, query = {}) {
   const date = cleanText(query.date || query.bookingDate);
   const staffId = cleanText(query.staffId || query.staff_id);
+  const clientId = cleanText(query.clientId || query.client_id);
+  const status = cleanText(query.status);
 
   const where = [
     "b.salon_id = ?",
@@ -360,6 +362,16 @@ export async function listBookings(db, salonId, query = {}) {
       )
     )`);
     params.push(staffId, staffId);
+  }
+
+  if (clientId) {
+    where.push("b.client_id = ?");
+    params.push(clientId);
+  }
+
+  if (status) {
+    where.push("b.status = ?");
+    params.push(status);
   }
 
   const rows = await dbAll(
@@ -479,12 +491,8 @@ export async function listBookings(db, salonId, query = {}) {
   });
 
   const search = cleanText(query.search || query.q).toLowerCase();
-  const clientId = cleanText(query.clientId || query.client_id);
-  const status = cleanText(query.status);
 
   return enriched.filter((row) => {
-    if (clientId && cleanText(row.client_id) !== clientId) return false;
-
     if (
       staffId &&
       cleanText(row.staff_id) !== staffId &&
@@ -493,7 +501,6 @@ export async function listBookings(db, salonId, query = {}) {
       return false;
     }
 
-    if (status && cleanText(row.status) !== status) return false;
     if (!search) return true;
 
     return [
