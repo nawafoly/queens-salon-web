@@ -780,11 +780,24 @@ export async function getAttendanceForDateFromWorker(
     );
   }
 
-  return buildAttendanceDay(
+  const day = buildAttendanceDay(
     result.records,
     input.employeeId,
     input.date
   );
+
+  if (
+    result.state?.expiredIncomplete === true &&
+    cleanText(result.state.workDate) === input.date &&
+    day.status === "checked_in"
+  ) {
+    return {
+      ...day,
+      status: "incomplete" as const,
+    };
+  }
+
+  return day;
 }
 
 export async function listAttendanceByDateRangeFromWorker(
