@@ -96,12 +96,32 @@ export type CoreClientOverview = {
     bookingId?: string | null;
     usedAt?: string | null;
   }>;
+  relationship: {
+    preferredSpecialist: {
+      id: string;
+      name: string;
+      source?: string | null;
+    } | null;
+    mostBookedSpecialists: Array<{
+      id: string;
+      name: string;
+      visits: number;
+    }>;
+    mostBookedServices: Array<{
+      id: string;
+      name: string;
+      visits: number;
+    }>;
+  };
   summary: {
     bookings: number;
     completedBookings: number;
+    cancelledBookings: number;
+    noShowBookings: number;
     paidHalalas: number;
     refundedHalalas: number;
     netPaidHalalas: number;
+    averageCompletedVisitHalalas: number;
     lastActivityAt?: string | null;
   };
 };
@@ -204,6 +224,11 @@ function mapCashback(row: Record<string, unknown>): CoreClientCashback {
 function mapOverview(row: Record<string, unknown>): CoreClientOverview {
   const summary = (row.summary ?? {}) as Record<string, unknown>;
   const rawClient = (row.client ?? {}) as Record<string, unknown>;
+  const relationship = (row.relationship ?? {}) as Record<string, unknown>;
+  const preferredSpecialistRaw = relationship.preferredSpecialist as
+    | Record<string, unknown>
+    | null
+    | undefined;
   return {
     client: mapClient(rawClient),
     bookings: Array.isArray(row.bookings)
@@ -220,12 +245,44 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
     offersUsed: Array.isArray(row.offersUsed)
       ? (row.offersUsed as CoreClientOverview["offersUsed"])
       : [],
+    relationship: {
+      preferredSpecialist: preferredSpecialistRaw
+        ? {
+            id: text(preferredSpecialistRaw.id),
+            name: text(preferredSpecialistRaw.name),
+            source: text(preferredSpecialistRaw.source) || null,
+          }
+        : null,
+      mostBookedSpecialists: Array.isArray(relationship.mostBookedSpecialists)
+        ? (relationship.mostBookedSpecialists as Array<Record<string, unknown>>).map(
+            (item) => ({
+              id: text(item.id),
+              name: text(item.name),
+              visits: finiteNumber(item.visits),
+            })
+          )
+        : [],
+      mostBookedServices: Array.isArray(relationship.mostBookedServices)
+        ? (relationship.mostBookedServices as Array<Record<string, unknown>>).map(
+            (item) => ({
+              id: text(item.id),
+              name: text(item.name),
+              visits: finiteNumber(item.visits),
+            })
+          )
+        : [],
+    },
     summary: {
       bookings: finiteNumber(summary.bookings),
       completedBookings: finiteNumber(summary.completedBookings),
+      cancelledBookings: finiteNumber(summary.cancelledBookings),
+      noShowBookings: finiteNumber(summary.noShowBookings),
       paidHalalas: finiteNumber(summary.paidHalalas),
       refundedHalalas: finiteNumber(summary.refundedHalalas),
       netPaidHalalas: finiteNumber(summary.netPaidHalalas),
+      averageCompletedVisitHalalas: finiteNumber(
+        summary.averageCompletedVisitHalalas
+      ),
       lastActivityAt: text(summary.lastActivityAt) || null,
     },
   };
