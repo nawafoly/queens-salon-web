@@ -118,3 +118,35 @@ test('cashback lifecycle stays disabled until policy activation and supports clo
   assert.match(worker, /\/api\/core\/admin\/cashback\/policy/);
   assert.match(worker, /cashback:redeem/);
 });
+
+
+test('client and staff MALIKAT Connect UI uses canonical Core routes', () => {
+  const service = readFileSync('src/services/ClientConnectService.ts', 'utf8');
+  const profile = readFileSync('src/pages/Profile.tsx', 'utf8');
+  const clientPanel = readFileSync('src/components/client/ClientConnectPanel.tsx', 'utf8');
+  const inbox = readFileSync('src/pages/hr/ClientConnectInboxV2.tsx', 'utf8');
+  const router = readFileSync('src/pages/hr/EmployeeMessages.tsx', 'utf8');
+
+  assert.match(service, /\/api\/core\/client\/connect\/conversations/);
+  assert.match(service, /\/api\/core\/hr\/client-connect\/conversations/);
+  assert.match(service, /\/api\/core\/admin\/client-connect\/security-events/);
+  assert.match(service, /assignConversation/);
+
+  assert.match(profile, /"connect"/);
+  assert.match(profile, /\/client\/connect/);
+  assert.match(profile, /ClientConnectPanel/);
+  assert.match(profile, /تواصلي مع مختصتك/);
+
+  assert.match(clientPanel, /ClientConnectService\.sendClientMessage/);
+  assert.match(clientPanel, /لا يمكن مشاركة أرقام الجوال أو البريد أو حسابات التواصل الخارجية/);
+
+  assert.match(inbox, /ClientConnectService\.listStaffConversations/);
+  assert.match(inbox, /ClientConnectService\.listSecurityEvents/);
+  assert.match(inbox, /ClientConnectService\.reviewSecurityEvent/);
+  assert.match(inbox, /ClientConnectService\.assignConversation/);
+  assert.match(inbox, /يتم تسجيل فتح المراجعة في Audit Log/);
+
+  assert.match(router, /ClientConnectInboxV2/);
+  assert.match(router, /محادثات العميلات/);
+  assert.match(router, /الرسائل الداخلية/);
+});
