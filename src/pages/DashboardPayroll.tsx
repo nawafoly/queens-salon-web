@@ -332,7 +332,7 @@ function attendanceLinkLabel(entry: PayrollEntryView) {
 
   const status = entry.attendanceSummary.attendanceLinkStatus;
   if (status === "confirmed") {
-    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - بصمة ناقصة" : "مؤكد";
+    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - سجل حضور غير مكتمل" : "مؤكد";
   }
   if (status === "not_ready") return "غير جاهز";
   return "غير مربوط";
