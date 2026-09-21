@@ -104,7 +104,7 @@ export function payrollAttendanceReadiness(summary = {}) {
     return {
       ready: false,
       code: "payroll_attendance_incomplete",
-      message: `لا يمكن اعتماد أو تصدير الراتب رسميًا: توجد ${incompleteDays} يوم/أيام ببصمة ناقصة وتحتاج مراجعة.`,
+      message: `لا يمكن اعتماد أو تصدير الراتب رسميًا: توجد ${incompleteDays} يوم/أيام غير مكتملة وتحتاج مراجعة.`,
       attendancePayrollMode: "required",
       attendancePayrollExemptionReason: "",
       attendanceLinkStatus,
