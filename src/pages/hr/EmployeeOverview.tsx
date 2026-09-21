@@ -91,7 +91,7 @@ const overviewCopy = {
     leaveUntil: "في إجازة حتى", onLeave: "في إجازة", checkingLeave: "جاري التحقق من الإجازات", leaveUnavailable: "حالة الإجازة غير متاحة", active: "نشط",
     runtimeUnavailable: "بعض البيانات التشغيلية غير متاحة الآن.", runtimeLegacy: "لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.", leaveLoadFailed: "تعذر تحميل الإجازات المعتمدة من النظام المركزي.", leaveBalanceLoadFailed: "تعذر تحميل رصيد الإجازة من النظام المركزي.", shiftLoadFailed: "تعذر تحميل شفت اليوم.",
     notificationSummary: "ملخص التنبيهات", unreadNotifications: "التنبيهات غير المقروءة", messages: "الرسائل", fileUpdates: "تحديثات الملفات", leavePayroll: "الإجازات والرواتب",
-    attendance: "الحضور والانصراف", attendanceEntry: "تسجيل الدوام", gps: "GPS + تصوير حسب الفرع",
+    attendance: "الحضور والانصراف", attendanceEntry: "تسجيل الدوام", shiftWorkDate: "شفت العمل", gps: "GPS + تصوير حسب الفرع",
     checkIn: "الحضور", checkedIn: "تم الحضور", notCheckedIn: "لم يتم الحضور", checkOut: "الانصراف", checkedOut: "تم الانصراف", notCheckedOut: "لم يتم الانصراف",
     registering: "جاري التسجيل", updatingToday: "جاري تحديث حالة اليوم...", attendanceComplete: "تم تسجيل الحضور والانصراف", attendanceRecorded: "تم تسجيل الحضور", attendanceNotRecorded: "لم يتم تسجيل الحضور",
     punchOutHint: "اضغط البصمة لتسجيل الانصراف وإكمال دوام اليوم.", completedHint: "تم اكتمال دوام اليوم وحفظ الحضور والانصراف.", punchInHint: "اضغط البصمة لتسجيل الحضور، والضغطة التالية في نفس اليوم تسجل الانصراف تلقائيًا.",
@@ -116,7 +116,7 @@ const overviewCopy = {
     leaveUntil: "On leave until", onLeave: "On leave", checkingLeave: "Checking leave status", leaveUnavailable: "Leave status unavailable", active: "Active",
     runtimeUnavailable: "Some operational data is currently unavailable.", runtimeLegacy: "No legacy schedule or leave status was used as a fallback.", leaveLoadFailed: "Could not load approved leave.", leaveBalanceLoadFailed: "Could not load your leave balance.", shiftLoadFailed: "Could not load today's shift.",
     notificationSummary: "Notification summary", unreadNotifications: "Unread notifications", messages: "Messages", fileUpdates: "File updates", leavePayroll: "Leave and payroll",
-    attendance: "Attendance", attendanceEntry: "Clock in and out", gps: "GPS + branch photo verification",
+    attendance: "Attendance", attendanceEntry: "Clock in and out", shiftWorkDate: "Work shift", gps: "GPS + branch photo verification",
     checkIn: "Clock in", checkedIn: "Clocked in", notCheckedIn: "Not clocked in", checkOut: "Clock out", checkedOut: "Clocked out", notCheckedOut: "Not clocked out",
     registering: "Recording...", updatingToday: "Updating today’s status...", attendanceComplete: "Clock-in and clock-out recorded", attendanceRecorded: "Clock-in recorded", attendanceNotRecorded: "No clock-in recorded",
     punchOutHint: "Tap the fingerprint to clock out and complete today’s shift.", completedHint: "Today’s attendance has been completed and saved.", punchInHint: "Tap the fingerprint to clock in. The next tap today will clock you out automatically.",
@@ -1187,6 +1187,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         ? copy.leaveUnavailable
         : copy.active;
   const attendanceStatus = attendance?.status || "not_started";
+  const attendanceWorkDate = cleanText(attendance?.date);
+  const previousOpenShiftDate =
+    attendanceStatus === "checked_in" &&
+    attendanceWorkDate &&
+    attendanceWorkDate !== attendanceDate
+      ? attendanceWorkDate
+      : "";
+  const previousOpenShiftLabel = previousOpenShiftDate
+    ? formatAttendanceDateLabel(previousOpenShiftDate, language)
+    : "";
   const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
   const canAttemptCheckInWithServerValidation =
     Boolean(todayResolvedShiftError) ||
@@ -1420,6 +1430,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <div>
             <small><FontAwesomeIcon icon={faClock} /> {copy.attendance}</small>
             <h2>{copy.attendanceEntry}</h2>
+            {previousOpenShiftLabel ? (
+              <small>{copy.shiftWorkDate}: {previousOpenShiftLabel}</small>
+            ) : null}
           </div>
           <span className="employee-gps-chip"><i aria-hidden="true" /> {copy.gps}</span>
         </div>
@@ -1463,9 +1476,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
                 ? copy.updatingToday
                 : attendanceStatus === "checked_out"
                   ? copy.attendanceComplete
-                  : attendanceStatus === "checked_in"
-                    ? copy.attendanceRecorded
-                    : copy.attendanceNotRecorded
+                  : attendanceStatus === "incomplete"
+                    ? copy.incompleteHint
+                    : attendanceStatus === "checked_in"
+                      ? copy.attendanceRecorded
+                      : copy.attendanceNotRecorded
             )}
           </span>
         </div>
@@ -1476,7 +1491,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
               ? copy.punchOutHint
               : attendanceStatus === "checked_out"
                 ? copy.completedHint
-                : copy.punchInHint
+                : attendanceStatus === "incomplete"
+                  ? copy.incompleteHint
+                  : copy.punchInHint
           )}
         </div>
 
