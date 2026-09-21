@@ -159,6 +159,8 @@ const bookingEnglish: Record<string, string> = {
   "سعر الحجز قبل الخصم": "Booking price before discount",
   "أدخلي سعر حجز صحيح للخدمة المعدلة.": "Enter a valid booking price for the adjusted service.",
   "ليس لديك صلاحية تعديل سعر الحجز.": "You do not have permission to adjust booking prices.",
+  "لا تملك صلاحية تعديل سعر الحجز.": "You do not have permission to adjust booking prices.",
+  "الخصم اليدوي يحتاج صلاحية مستقلة.": "Manual discounts require a separate permission.",
   "اختاري سبب تعديل السعر لكل خدمة تم تعديلها.": "Choose a price adjustment reason for every adjusted service.",
   "ليس لديك صلاحية تطبيق خصم يدوي.": "You do not have permission to apply a manual discount.",
   "بانتظار السداد": "Awaiting payment",
