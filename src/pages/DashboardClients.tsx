@@ -33,9 +33,7 @@ import type {
   CustomerSource,
   CustomerStats,
 } from "../features/customers/customerTypes";
-import { PackageOperationsService } from "../services/PackageOperationsService";
 import { CoreClientService } from "../services/CoreClientService";
-import { listCoreBookings, type BookingDocWithId } from "../services/firestoreBookings";
 import type { CoreClient } from "../types/coreApi";
 
 /**
@@ -66,48 +64,11 @@ function loadSettings(): AppSettings {
   }
 }
 
-function bookingClientId(booking: BookingDocWithId): string {
-  const row = booking as BookingDocWithId & { clientId?: unknown; userId?: unknown };
-  return String(row.clientId ?? row.userId ?? "").trim();
-}
-
-function bookingCreatedAt(booking?: BookingDocWithId): string {
-  if (!booking) return "";
-  const row = booking as BookingDocWithId & { createdAt?: unknown; createdAtMs?: unknown };
-  const raw = String(row.createdAt ?? "").trim();
-  if (raw && Number.isFinite(Date.parse(raw))) return new Date(raw).toISOString();
-  const timestamp = Number(row.createdAtMs || 0);
-  return timestamp > 0 ? new Date(timestamp).toISOString() : "";
-}
-
-function sortBookingsNewest(first: BookingDocWithId, second: BookingDocWithId): number {
-  const date = String(second.date || "").localeCompare(String(first.date || ""));
-  return date || String(second.time || "").localeCompare(String(first.time || ""));
-}
-
-function riyadhDateKey(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Riyadh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 function downloadXLSX(filename: string, rows: unknown[][], sheetName: string) {
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.writeFile(workbook, filename);
-}
-
-function customerMatchesBooking(customer: CustomerRow, booking: BookingDocWithId): boolean {
-  const clientId = bookingClientId(booking);
-  if (customer.clientId && clientId) return customer.clientId === clientId;
-  const customerPhone = customerPhoneDigits(customer.phone);
-  const bookingPhone = customerPhoneDigits(booking.clientPhone);
-  if (customerPhone && bookingPhone) return customerPhone === bookingPhone;
-  return normalizeCustomerSearchText(customer.name) === normalizeCustomerSearchText(booking.clientName);
 }
 
 type DashboardClientsProps = { currentRole?: UiRole; language?: DashboardLanguage };
@@ -116,10 +77,8 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   const navigate = useNavigate();
   const t = (text: string) => clientsText(language, text);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-  const [bookings, setBookings] = useState<BookingDocWithId[]>([]);
   const [coreClients, setCoreClients] = useState<CoreClient[]>([]);
-  const [activePackageKeys, setActivePackageKeys] = useState<Map<string, number>>(new Map());
-  const [packagesFilterAvailable, setPackagesFilterAvailable] = useState(false);
+  const packagesFilterAvailable = true;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -155,43 +114,22 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     }
     setLoading(true);
     setError("");
-    const [bookingsResult, clientsResult, packagesResult] = await Promise.allSettled([
-      listCoreBookings(),
-      CoreClientService.list(),
-      PackageOperationsService.sessionDashboard(),
-    ]);
-
-    const errors: string[] = [];
-    if (bookingsResult.status === "fulfilled") setBookings(Array.isArray(bookingsResult.value) ? bookingsResult.value : []);
-    else {
-      setBookings([]);
-      errors.push(bookingsResult.reason instanceof Error ? bookingsResult.reason.message : t("تعذر تحميل الحجوزات"));
-    }
-
-    if (clientsResult.status === "fulfilled") setCoreClients(Array.isArray(clientsResult.value) ? clientsResult.value : []);
-    else {
+    try {
+      const clients = await CoreClientService.list("", {
+        includeMetrics: true,
+        limit: 500,
+      });
+      setCoreClients(Array.isArray(clients) ? clients : []);
+    } catch (cause) {
       setCoreClients([]);
-      errors.push(clientsResult.reason instanceof Error ? clientsResult.reason.message : t("تعذر تحميل ملفات العملاء"));
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : t("تعذر تحميل ملفات العملاء")
+      );
+    } finally {
+      setLoading(false);
     }
-
-    if (packagesResult.status === "fulfilled") {
-      const keys = new Map<string, number>();
-      for (const pkg of packagesResult.value.packages || []) {
-        if (pkg.status !== "active") continue;
-        const id = String(pkg.canonicalClientId || "").trim();
-        const phone = customerPhoneDigits(pkg.phone);
-        if (id) keys.set(`id:${id}`, (keys.get(`id:${id}`) || 0) + 1);
-        if (phone) keys.set(`phone:${phone}`, (keys.get(`phone:${phone}`) || 0) + 1);
-      }
-      setActivePackageKeys(keys);
-      setPackagesFilterAvailable(true);
-    } else {
-      setActivePackageKeys(new Map());
-      setPackagesFilterAvailable(false);
-    }
-
-    setError(errors.join(" · "));
-    setLoading(false);
   }, [canViewClients, language]);
 
   useEffect(() => {
@@ -199,64 +137,26 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   }, [loadData]);
 
   const customers = useMemo<CustomerRow[]>(() => {
-    type Group = { key: string; core?: CoreClient; bookings: BookingDocWithId[]; rawName: string; rawPhone: string };
-    const coreById = new Map(coreClients.map((client) => [String(client.id), client]));
-    const coreByPhone = new Map<string, CoreClient>();
-    coreClients.forEach((client) => {
-      const phone = customerPhoneDigits(client.phoneNormalized);
-      if (phone) coreByPhone.set(phone, client);
-    });
-    const groups = new Map<string, Group>();
-
-    bookings.forEach((booking) => {
-      const id = bookingClientId(booking);
-      const phoneDigits = customerPhoneDigits(booking.clientPhone);
-      const core = (id ? coreById.get(id) : undefined) || (phoneDigits ? coreByPhone.get(phoneDigits) : undefined);
-      const rawName = String(core?.name || booking.clientName || "").trim();
-      const rawPhone = String(core?.phoneNormalized || booking.clientPhone || "").trim();
-      const key = core?.id ? `id:${core.id}` : id ? `id:${id}` : phoneDigits ? `phone:${phoneDigits}` : `name:${normalizeCustomerSearchText(rawName)}`;
-      const group: Group = groups.get(key) || { key, core, bookings: [], rawName, rawPhone };
-      group.core ||= core;
-      group.rawName ||= rawName;
-      group.rawPhone ||= rawPhone;
-      group.bookings.push(booking);
-      groups.set(key, group);
-    });
-
-    coreClients.forEach((client) => {
-      const key = `id:${client.id}`;
-      if (!groups.has(key)) groups.set(key, { key, core: client, bookings: [], rawName: client.name, rawPhone: client.phoneNormalized });
-    });
-
-    const today = riyadhDateKey();
-    return Array.from(groups.values()).map((group) => {
-      const sortedBookings = [...group.bookings].sort(sortBookingsNewest);
-      const completedVisits = sortedBookings.filter((booking) => booking.status !== "cancelled" && String(booking.date || "") <= today);
-      const last = completedVisits[0];
-      const phone = formatCustomerPhone(group.core?.phoneNormalized || group.rawPhone);
-      const clientId = String(group.core?.id || bookingClientId(sortedBookings[0]) || "").trim() || undefined;
-      const createdAt = String(group.core?.createdAt || bookingCreatedAt(sortedBookings.at(-1)) || "").trim() || undefined;
-      const phoneKey = customerPhoneDigits(phone);
-      const activePackagesCount = (clientId ? activePackageKeys.get(`id:${clientId}`) : 0) || (phoneKey ? activePackageKeys.get(`phone:${phoneKey}`) : 0) || 0;
-      const sourceValue: CustomerSource = group.core && group.bookings.length ? "combined" : group.core ? "client-record" : "booking-only";
+    return coreClients.map((client) => {
+      const bookingsCount = Number(client.bookingsCount || 0);
       return {
-        key: group.key,
-        clientId,
-        legacyClientDocId: group.core?.legacyClientDocId || undefined,
-        name: normalizeCustomerName(group.core?.name || group.rawName),
-        phone,
-        bookingsCount: group.bookings.length,
-        lastVisitDate: String(last?.date || ""),
-        lastVisitTime: String(last?.time || ""),
-        vip: Boolean(group.core?.vip || (!group.core && group.bookings.length >= 5)),
-        status: String(group.core?.status || "active"),
-        importedNote: String(group.core?.notes || "").trim() || undefined,
-        source: sourceValue,
-        createdAt,
-        activePackagesCount,
-      };
+        key: `id:${client.id}`,
+        clientId: client.id,
+        legacyClientDocId: client.legacyClientDocId || undefined,
+        name: normalizeCustomerName(client.name),
+        phone: formatCustomerPhone(client.phoneNormalized),
+        bookingsCount,
+        lastVisitDate: String(client.lastVisitDate || ""),
+        lastVisitTime: String(client.lastVisitTime || ""),
+        vip: Boolean(client.vip),
+        status: String(client.status || "active"),
+        importedNote: String(client.notes || "").trim() || undefined,
+        source: bookingsCount > 0 ? "combined" : "client-record",
+        createdAt: client.createdAt || undefined,
+        activePackagesCount: Number(client.activePackagesCount || 0),
+      } satisfies CustomerRow;
     });
-  }, [activePackageKeys, bookings, coreClients]);
+  }, [coreClients]);
 
   const stats = useMemo<CustomerStats>(() => {
     const now = new Date();
@@ -265,17 +165,27 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     const newThisMonth = customers.filter((customer) => {
       if (!customer.createdAt) return false;
       const created = new Date(customer.createdAt);
-      return !Number.isNaN(created.getTime()) && created.getMonth() === currentMonth && created.getFullYear() === currentYear;
+      return (
+        !Number.isNaN(created.getTime()) &&
+        created.getMonth() === currentMonth &&
+        created.getFullYear() === currentYear
+      );
     }).length;
+    const totalBookings = customers.reduce(
+      (sum, customer) => sum + customer.bookingsCount,
+      0
+    );
     return {
       totalClients: customers.length,
-      totalBookings: bookings.length,
-      activeClients: customers.filter((customer) => isCustomerActive(customer.status)).length,
+      totalBookings,
+      activeClients: customers.filter((customer) =>
+        isCustomerActive(customer.status)
+      ).length,
       newThisMonth,
       vipClients: customers.filter((customer) => customer.vip).length,
-      averageBookings: customers.length ? bookings.length / customers.length : 0,
+      averageBookings: customers.length ? totalBookings / customers.length : 0,
     };
-  }, [bookings.length, customers]);
+  }, [customers]);
 
   const visibleCustomers = useMemo(() => {
     const searchText = normalizeCustomerSearchText(deferredQuery);
@@ -299,8 +209,6 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
       return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
     });
   }, [customers, deferredQuery, language, lastVisit, segment, sort, source]);
-
-  const selectedBookings = useMemo(() => selectedCustomer ? bookings.filter((booking) => customerMatchesBooking(selectedCustomer, booking)) : [], [bookings, selectedCustomer]);
 
   const hasActiveFilters = Boolean(query.trim()) || segment !== "all" || sort !== "latest" || source !== "all" || lastVisit !== "all";
   const clearFilters = () => {
@@ -331,24 +239,37 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   };
 
   const handleCustomerUpdated = (updated: CoreClient) => {
-    setCoreClients((current) => current.map((client) => (
-      client.id === updated.id ? updated : client
-    )));
-    setBookings((current) => current.map((booking) => (
-      bookingClientId(booking) === updated.id
-        ? { ...booking, clientName: updated.name, clientPhone: updated.phoneNormalized }
-        : booking
-    )));
-    setSelectedCustomer((current) => current && current.clientId === updated.id
-      ? {
-          ...current,
-          name: normalizeCustomerName(updated.name),
-          phone: formatCustomerPhone(updated.phoneNormalized),
-          status: updated.status,
-          vip: Boolean(updated.vip),
-          importedNote: String(updated.notes || "").trim() || undefined,
-        }
-      : current);
+    setCoreClients((current) =>
+      current.map((client) =>
+        client.id === updated.id
+          ? {
+              ...client,
+              ...updated,
+              bookingsCount: client.bookingsCount,
+              completedBookingsCount: client.completedBookingsCount,
+              cancelledBookingsCount: client.cancelledBookingsCount,
+              noShowBookingsCount: client.noShowBookingsCount,
+              lastVisitDate: client.lastVisitDate,
+              lastVisitTime: client.lastVisitTime,
+              activePackagesCount: client.activePackagesCount,
+              remainingPackageSessions: client.remainingPackageSessions,
+            }
+          : client
+      )
+    );
+    setSelectedCustomer((current) =>
+      current && current.clientId === updated.id
+        ? {
+            ...current,
+            name: normalizeCustomerName(updated.name),
+            phone: formatCustomerPhone(updated.phoneNormalized),
+            status: updated.status,
+            vip: Boolean(updated.vip),
+            importedNote:
+              String(updated.notes || "").trim() || undefined,
+          }
+        : current
+    );
   };
 
   const exportCustomers = () => {
@@ -405,7 +326,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
         </>
       ) : null}
 
-      {selectedCustomer ? <CustomerRecordModal language={language} customer={selectedCustomer} bookings={selectedBookings} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
+      {selectedCustomer ? <CustomerRecordModal language={language} customer={selectedCustomer} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
       <CustomersImportModal language={language} open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
       {copyToast ? <div className="dsv2-customers-copy-toast" role="status">{copyToast}</div> : null}
     </main>
