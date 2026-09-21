@@ -6,7 +6,8 @@ import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumbe
 import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
 import { CoreClientService, type CoreClientOverview } from "../../services/CoreClientService";
-import type { CoreBooking, CoreClient } from "../../types/coreApi";
+import { CoreStaffService } from "../../services/CoreStaffService";
+import type { CoreBooking, CoreClient, CoreStaff } from "../../types/coreApi";
 import {
   formatCustomerLastVisit,
   getCustomerStatusLabel,
@@ -122,6 +123,9 @@ export default function CustomerRecordModal({
   const [loyaltyReason, setLoyaltyReason] = useState("");
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltyMessage, setLoyaltyMessage] = useState("");
+  const [staffOptions, setStaffOptions] = useState<CoreStaff[]>([]);
+  const [preferenceSaving, setPreferenceSaving] = useState(false);
+  const [preferenceMessage, setPreferenceMessage] = useState("");
   const [noteText, setNoteText] = useState(() => repairCustomerDisplayText(customer.importedNote));
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteFeedback, setNoteFeedback] = useState<Feedback>(null);
@@ -165,6 +169,24 @@ export default function CustomerRecordModal({
   useEffect(() => {
     void loadOverview();
   }, [loadOverview]);
+
+  useEffect(() => {
+    if (!canManage) {
+      setStaffOptions([]);
+      return;
+    }
+    let active = true;
+    void CoreStaffService.list({ activeOnly: true })
+      .then((rows) => {
+        if (active) setStaffOptions(rows);
+      })
+      .catch(() => {
+        if (active) setStaffOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canManage]);
 
   useEffect(() => {
     if (editing) return;
@@ -257,6 +279,32 @@ export default function CustomerRecordModal({
       });
     } finally {
       setNoteSaving(false);
+    }
+  };
+
+  const updatePreferredSpecialist = async (preferredStaffId: string) => {
+    const clientId = String(customer.clientId || "").trim();
+    if (!clientId || preferenceSaving) return;
+    setPreferenceSaving(true);
+    setPreferenceMessage("");
+    try {
+      await CoreClientService.updatePreferences(clientId, {
+        preferredStaffId: preferredStaffId || null,
+      });
+      await loadOverview();
+      setPreferenceMessage(
+        preferredStaffId
+          ? t("تم تحديث المختصة المفضلة.")
+          : t("تم إلغاء تحديد المختصة المفضلة.")
+      );
+    } catch (cause) {
+      setPreferenceMessage(
+        cause instanceof Error
+          ? cause.message
+          : t("تعذر تحديث المختصة المفضلة.")
+      );
+    } finally {
+      setPreferenceSaving(false);
     }
   };
 
@@ -377,6 +425,27 @@ export default function CustomerRecordModal({
                         <span>{t("المختصة المفضلة")} <b>{overview.relationship.preferredSpecialist?.name || t("غير محددة")}</b></span>
                         <span>{t("مصدر التفضيل")} <b>{overview.relationship.preferredSpecialist?.source || t("غير محدد")}</b></span>
                       </div>
+                      {canManage ? (
+                        <label className="dsv2-field">
+                          <span className="dsv2-field__label">{t("تغيير المختصة المفضلة")}</span>
+                          <select
+                            className="dsv2-input"
+                            value={overview.relationship.preferredSpecialist?.id || ""}
+                            onChange={(event) => void updatePreferredSpecialist(event.target.value)}
+                            disabled={preferenceSaving}
+                          >
+                            <option value="">{t("بدون مختصة مفضلة")}</option>
+                            {staffOptions.map((staff) => (
+                              <option key={staff.id} value={staff.id}>
+                                {staff.name || staff.id}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      {preferenceMessage ? (
+                        <p className="dsv2-customers-loyalty-message">{preferenceMessage}</p>
+                      ) : null}
                       <div className="dsv2-customers-record-list">
                         {overview.relationship.mostBookedSpecialists.slice(0, 3).map((specialist) => (
                           <div key={specialist.id}>
