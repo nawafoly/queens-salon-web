@@ -163,6 +163,12 @@ export type BookingDoc = {
 
   total?: number;
   finalPrice?: number;
+  /** Catalog service price captured for internal audit only. */
+  catalogPrice?: number;
+  /** Agreed price for this booking item before discounts. */
+  bookingPrice?: number;
+  priceAdjustmentReason?: "catalog_pending_update" | "management_approved" | "special_price" | "other";
+  priceAdjustmentNote?: string;
   discountAmount?: number;
   discountSnapshot?: any;
   paymentMethod?: BookingPaymentMethod;
