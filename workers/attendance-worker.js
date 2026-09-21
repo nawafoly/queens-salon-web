@@ -1055,8 +1055,19 @@ async function getAttendanceSecurityDashboard(url, db, directoryDb) {
 
   const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const today = getRiyadhDayBounds();
+  const stateEmployeeUid = normalizeText(identity?.employeeUid || requestedEmployeeUid);
+  const stateEmployeeDocId = normalizeText(identity?.employeeDocId || requestedEmployeeDocId);
 
   try {
+    const effectiveState = stateEmployeeUid
+      ? await readEffectiveAttendanceState({
+          db,
+          directoryDb,
+          salonId,
+          employeeUid: stateEmployeeUid,
+          employeeDocId: stateEmployeeDocId,
+        })
+      : null;
     const results = await db.batch([
       db.prepare(`
         SELECT
@@ -1382,7 +1393,7 @@ async function listAttendanceRecords(
           `
           SELECT
             id, employee_uid, employee_doc_id, type, server_time, client_time,
-            location_lat, location_lng, location_accuracy,
+            work_date, location_lat, location_lng, location_accuracy,
             zone_id, zone_name, zone_type, allowed_zone_ids, distance_meters,
             result, rejection_reason, accuracy_accepted, device_info,
             created_by_email, created_by_role
@@ -1464,6 +1475,15 @@ async function listAttendanceRecords(
         hasMore && lastRow
           ? encodeAttendanceCursor(lastRow.server_time, lastRow.id)
           : null,
+      state: effectiveState
+        ? {
+            status: normalizeText(effectiveState.status) || "checked_out",
+            workDate: normalizeText(effectiveState.work_date) || null,
+            shiftEndAt: normalizeText(effectiveState.shift_end_at) || null,
+            checkoutDeadlineAt: normalizeText(effectiveState.checkout_deadline_at) || null,
+            expiredIncomplete: Number(effectiveState.expired_incomplete || 0) === 1,
+          }
+        : null,
       summary: {
         checkIns: Number(summary.check_ins || 0),
         checkOuts: Number(summary.check_outs || 0),
@@ -1978,6 +1998,10 @@ function mapAttendanceRecordRow(row, employeeName, sharedDeviceUsage = null) {
     result: row.result,
     serverTime: row.server_time,
     clientTime: row.client_time || null,
+    workDate:
+      normalizeText(row.work_date) ||
+      getRiyadhDateKeyFromIso(row.server_time) ||
+      null,
     location: {
       lat: Number(row.location_lat),
       lng: Number(row.location_lng),
