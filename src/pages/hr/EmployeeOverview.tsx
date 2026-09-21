@@ -107,7 +107,7 @@ const overviewCopy = {
     announcements: "الإعلانات", announcementsSubtitle: "لا توجد إعلانات مرتبطة حاليًا.", noAnnouncements: "لا توجد إعلانات حاليًا.",
     targetSessionExpired: "انتهت جلسة الدخول.", targetLinkRequired: "الحساب غير مربوط بملف موظفة.", targetForbidden: "لا توجد صلاحية لعرض التارقت.", targetLoadFailed: "تعذر تحميل التارقت.",
     shiftLoadingBlocked: "انتظري حتى يكتمل تحميل شفت اليوم.", noShiftBlocked: "لا يوجد شفت منشور لهذا اليوم.", approvedLeaveBlocked: "اليوم مسجل كإجازة معتمدة، لذلك لا يمكن تسجيل حضور جديد.", offDayBlocked: "اليوم مسجل كيوم راحة، لذلك لا يمكن تسجيل حضور جديد.", windowClosedBlocked: "انتهت مهلة تسجيل الحضور. تم إغلاق بصمة الحضور، ويرجى مراجعة الإدارة.", attendanceDisabled: "تسجيل الحضور متوقف من إعدادات الإدارة.", locating: "جاري الحصول على موقعك بدقة...", biometric: "افتح التحقق بالبصمة من جهازك...", sendingIn: "جاري إرسال الحضور إلى Cloudflare...", sendingOut: "جاري إرسال الانصراف إلى Cloudflare...", saveFailed: "تعذر حفظ عملية الحضور.",
-    dutyCompleted: "تم اكتمال الدوام", registerOut: "تسجيل انصراف", loadingShift: "جاري تحميل الشفت", approvedLeave: "إجازة معتمدة", offDay: "يوم راحة", noShift: "لا يوجد شفت اليوم", windowClosed: "انتهت مهلة الحضور", registerIn: "تسجيل حضور", savedToday: "تم حفظ الحضور والانصراف لهذا اليوم", readingShift: "جاري قراءة الشفت المنشور من النظام المركزي.", shiftFallback: "تعذر عرض بيانات الشفت في التقويم. عند تسجيل الحضور سيتم التحقق من الشفت مباشرة من Core داخل خادم الحضور.", leaveCovered: "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية.", noDuty: "لا يوجد دوام مطلوب لهذا اليوم حسب الشفت المنشور.", noPublishedShift: "لا يوجد شفت منشور لهذا اليوم. راجعي الإدارة إذا كان يفترض وجود دوام.", autoAbsence: "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر.", keepOpen: "لا تغلق الصفحة أثناء التحقق",
+    dutyCompleted: "تم اكتمال الدوام", incomplete: "غير مكتمل", incompleteHint: "لم تُسجّل بصمة الخروج. راجعي الإدارة لتصحيح السجل.", registerOut: "تسجيل انصراف", loadingShift: "جاري تحميل الشفت", approvedLeave: "إجازة معتمدة", offDay: "يوم راحة", noShift: "لا يوجد شفت اليوم", windowClosed: "انتهت مهلة الحضور", registerIn: "تسجيل حضور", savedToday: "تم حفظ الحضور والانصراف لهذا اليوم", readingShift: "جاري قراءة الشفت المنشور من النظام المركزي.", shiftFallback: "تعذر عرض بيانات الشفت في التقويم. عند تسجيل الحضور سيتم التحقق من الشفت مباشرة من Core داخل خادم الحضور.", leaveCovered: "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية.", noDuty: "لا يوجد دوام مطلوب لهذا اليوم حسب الشفت المنشور.", noPublishedShift: "لا يوجد شفت منشور لهذا اليوم. راجعي الإدارة إذا كان يفترض وجود دوام.", autoAbsence: "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر.", keepOpen: "لا تغلق الصفحة أثناء التحقق",
   },
   en: {
     evening: "Good evening", morning: "Good morning", afternoon: "Good afternoon",
@@ -132,7 +132,7 @@ const overviewCopy = {
     announcements: "Announcements", announcementsSubtitle: "No announcements are currently linked.", noAnnouncements: "No announcements right now.",
     targetSessionExpired: "Your session has expired.", targetLinkRequired: "This account is not linked to an employee profile.", targetForbidden: "You do not have permission to view targets.", targetLoadFailed: "Could not load targets.",
     shiftLoadingBlocked: "Wait until today’s shift finishes loading.", noShiftBlocked: "No shift is published for today.", approvedLeaveBlocked: "Today is approved leave, so a new clock-in cannot be recorded.", offDayBlocked: "Today is a rest day, so a new clock-in cannot be recorded.", windowClosedBlocked: "The clock-in window has closed. Please contact management.", attendanceDisabled: "Attendance is disabled in management settings.", locating: "Getting your precise location...", biometric: "Open biometric verification on your device...", sendingIn: "Sending clock-in to Cloudflare...", sendingOut: "Sending clock-out to Cloudflare...", saveFailed: "Could not save attendance.",
-    dutyCompleted: "Shift completed", registerOut: "Clock out", loadingShift: "Loading shift", approvedLeave: "Approved leave", offDay: "Rest day", noShift: "No shift today", windowClosed: "Clock-in window closed", registerIn: "Clock in", savedToday: "Today’s clock-in and clock-out are saved", readingShift: "Reading the published shift from the central system.", shiftFallback: "Shift details are unavailable. On clock-in, Core will verify the shift through the attendance server.", leaveCovered: "This day is covered by approved leave in the HR system.", noDuty: "No work is required today according to the published shift.", noPublishedShift: "No shift is published today. Contact management if you should be working.", autoAbsence: "The clock-in window is closed and absence will be recorded automatically. Contact management if you have an excuse.", keepOpen: "Keep this page open during verification",
+    dutyCompleted: "Shift completed", incomplete: "Incomplete", incompleteHint: "No clock-out was recorded. Contact management to correct the attendance record.", registerOut: "Clock out", loadingShift: "Loading shift", approvedLeave: "Approved leave", offDay: "Rest day", noShift: "No shift today", windowClosed: "Clock-in window closed", registerIn: "Clock in", savedToday: "Today’s clock-in and clock-out are saved", readingShift: "Reading the published shift from the central system.", shiftFallback: "Shift details are unavailable. On clock-in, Core will verify the shift through the attendance server.", leaveCovered: "This day is covered by approved leave in the HR system.", noDuty: "No work is required today according to the published shift.", noPublishedShift: "No shift is published today. Contact management if you should be working.", autoAbsence: "The clock-in window is closed and absence will be recorded automatically. Contact management if you have an excuse.", keepOpen: "Keep this page open during verification",
   },
 } as const;
 
@@ -1209,9 +1209,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     attendanceStatus === "checked_in";
   const punchAction = canCheckOut ? "check_out" : "check_in";
   const punchDisabled = !canCheckIn && !canCheckOut;
-  const punchLabel = attendanceStatus === "checked_out"
-    ? copy.dutyCompleted
-    : canCheckOut
+  const punchLabel = attendanceStatus === "incomplete"
+    ? copy.incomplete
+    : attendanceStatus === "checked_out"
+      ? copy.dutyCompleted
+      : canCheckOut
       ? copy.registerOut
       : todayResolvedShiftLoading
         ? copy.loadingShift
@@ -1224,7 +1226,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
                 : checkInWindowClosed
                   ? copy.windowClosed
                   : copy.registerIn;
-  const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
+  const punchTone =
+    attendanceStatus === "checked_out" || attendanceStatus === "incomplete"
+      ? "done"
+      : canCheckOut
+        ? "out"
+        : "in";
   const checkInTime = formatAttendanceTime(attendance?.checkInAtClient, language);
   const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient, language);
   const latestVerification =
@@ -1260,9 +1267,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         ? "—"
         : `${employeeLeaveBalance} ${copy.day}`;
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate, language);
-  const punchHint = attendanceStatus === "checked_out"
-    ? copy.savedToday
-    : todayResolvedShiftLoading
+  const punchHint = attendanceStatus === "incomplete"
+    ? copy.incompleteHint
+    : attendanceStatus === "checked_out"
+      ? copy.savedToday
+      : todayResolvedShiftLoading
       ? copy.readingShift
       : todayResolvedShiftError
         ? copy.shiftFallback
