@@ -97,9 +97,10 @@ function originalHalalasForBooking(booking: BookingDoc): number {
   const finalAmount = Number(booking.finalPrice ?? booking.total ?? booking.serviceSnapshot?.priceAtBooking ?? 0);
   const discountAmount = Number((booking as BookingDoc & { discountAmount?: number }).discountAmount || 0);
   const explicit = Number(
-    (booking as BookingDoc & { originalAmount?: number; subtotal?: number }).originalAmount ??
+    booking.bookingPrice ??
+      (booking as BookingDoc & { originalAmount?: number; subtotal?: number }).originalAmount ??
       (booking as BookingDoc & { originalAmount?: number; subtotal?: number }).subtotal ??
-      (booking.serviceSnapshot as Record<string, unknown> | undefined)?.originalAmountAtBooking ??
+      (booking.serviceSnapshot as Record<string, unknown> | undefined)?.bookingPriceAtBooking ??
       (booking.serviceSnapshot as Record<string, unknown> | undefined)?.priceBeforeDiscountAtBooking ??
       finalAmount + discountAmount
   );
@@ -363,6 +364,8 @@ export const coreD1BookingDataSource: BookingDataSource = {
         staffId:
           String(item.employeeId || "").trim() || undefined,
         unitPriceHalalas: originalHalalasForBooking(item),
+        priceAdjustmentReason: item.priceAdjustmentReason,
+        priceAdjustmentNote: item.priceAdjustmentNote,
         discountHalalas: discountHalalasForBooking(item),
         finalTotalHalalas: finalHalalasForBooking(item),
         packageCovered: isPackageCovered(item),
