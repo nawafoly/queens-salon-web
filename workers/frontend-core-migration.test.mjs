@@ -326,6 +326,10 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
     "src/services/ClientPortalService.ts",
     "utf8"
   );
+  const clientPortalRepo = readFileSync(
+    "workers/core/repositories/client-portal.js",
+    "utf8"
+  );
 
   assert.match(v2, /bookings\.price\.adjust/);
   assert.match(v2, /bookings\.discount\.apply/);
@@ -366,6 +370,12 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
   assert.doesNotMatch(clientMapItem, /price_adjustment_reason/);
   assert.doesNotMatch(clientMapItem, /price_adjusted_by_uid/);
   assert.doesNotMatch(clientMapItem, /price_adjusted_at/);
+
+  assert.match(clientPortalRepo, /sanitizeClientBookingItem/);
+  assert.match(clientPortalRepo, /delete safe\.catalog_unit_price_halalas/);
+  assert.match(clientPortalRepo, /delete safe\.price_adjustment_reason/);
+  assert.match(clientPortalRepo, /delete safe\.price_adjusted_by_uid/);
+  assert.match(clientPortalRepo, /delete safe\.price_adjusted_at/);
 });
 
 test("internal booking V2 keeps internal staff visible independently from public booking visibility", () => {
