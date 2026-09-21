@@ -1,6 +1,6 @@
 import { coreApiRequest } from "./coreApiClient";
-import { mapCoreClient } from "./coreBookingMappers";
-import type { CoreClient } from "../types/coreApi";
+import { mapCoreBooking, mapCoreClient } from "./coreBookingMappers";
+import type { CoreBooking, CoreClient } from "../types/coreApi";
 
 export type CoreClientLoyaltySummary = {
   totalClients: number;
@@ -84,7 +84,7 @@ export type CoreClientMoneyRow = Record<string, unknown> & {
 
 export type CoreClientOverview = {
   client: CoreClient;
-  bookings: Array<Record<string, unknown>>;
+  bookings: CoreBooking[];
   payments: CoreClientMoneyRow[];
   refunds: CoreClientMoneyRow[];
   loyalty: CoreClientLoyalty;
@@ -207,7 +207,7 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
   return {
     client: mapClient(rawClient),
     bookings: Array.isArray(row.bookings)
-      ? (row.bookings as Array<Record<string, unknown>>)
+      ? (row.bookings as Array<Record<string, unknown>>).map(mapCoreBooking)
       : [],
     payments: Array.isArray(row.payments)
       ? (row.payments as CoreClientMoneyRow[])
