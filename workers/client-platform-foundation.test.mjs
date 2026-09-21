@@ -150,3 +150,34 @@ test('client and staff MALIKAT Connect UI uses canonical Core routes', () => {
   assert.match(router, /محادثات العميلات/);
   assert.match(router, /الرسائل الداخلية/);
 });
+
+
+test('client dashboard uses the server-side Client 360 read model', () => {
+  const clientsRepo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+  const bookingsRepo = readFileSync('workers/core/repositories/bookings.js', 'utf8');
+  const service = readFileSync('src/services/CoreClientService.ts', 'utf8');
+  const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const modal = readFileSync('src/features/customers/CustomerRecordModal.tsx', 'utf8');
+
+  assert.match(clientsRepo, /wantsClientMetrics/);
+  assert.match(clientsRepo, /WITH selected_clients AS/);
+  assert.match(clientsRepo, /booking_metrics AS/);
+  assert.match(clientsRepo, /package_metrics AS/);
+  assert.match(clientsRepo, /active_packages_count/);
+  assert.match(clientsRepo, /remaining_package_sessions/);
+
+  const listStart = bookingsRepo.indexOf('export async function listBookings');
+  const rowsQuery = bookingsRepo.indexOf('const rows = await dbAll', listStart);
+  const clientScope = bookingsRepo.indexOf('where.push("b.client_id = ?")', listStart);
+  assert.ok(clientScope > listStart && clientScope < rowsQuery, 'client filter must be pushed into SQL before the LIMIT/hydration query');
+
+  assert.match(service, /includeMetrics\?: boolean/);
+  assert.match(service, /cashback: CoreClientCashback/);
+  assert.match(service, /mapCoreBooking/);
+  assert.match(page, /includeMetrics:\s*true/);
+  assert.doesNotMatch(page, /listCoreBookings/);
+  assert.doesNotMatch(page, /PackageOperationsService/);
+  assert.doesNotMatch(modal, /services\/firestoreBookings/);
+  assert.match(modal, /overview\?\.bookings/);
+  assert.match(modal, /overview\.cashback\.balanceHalalas/);
+});
