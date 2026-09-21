@@ -3915,6 +3915,350 @@ test("booking manual percent discount supports 100 percent and rejects values ov
   assert.equal(body.error, "core_discount:percent_over_100");
 });
 
+test("internal booking price adjustment stays separate from discount and payment", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  fake.seed("services", {
+    id: "svc-price-adjust",
+    salon_id: "main",
+    name: "Price Adjust Service",
+    category_id: null,
+    description: null,
+    duration_minutes: 30,
+    price_halalas: 4500,
+    active: 1,
+    image_url: null,
+    sort_order: 0,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+  fake.seed("staff_services", {
+    id: "staff-a__svc-price-adjust",
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-price-adjust",
+    active: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  let response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    token: "test:reception1:reception",
+    body: {
+      id: "booking-price-adjust",
+      invoiceId: "invoice-price-adjust",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-03-10",
+      startTime: "10:00",
+      items: [{
+        id: "item-price-adjust",
+        serviceId: "svc-price-adjust",
+        unitPriceHalalas: 5000,
+        priceAdjustmentReason: "catalog_pending_update",
+        priceAdjustmentNote: "Current salon price",
+      }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const item = fake.find("booking_items", "main", "item-price-adjust");
+  const booking = fake.find("bookings", "main", "booking-price-adjust");
+  const invoice = fake.find("invoices", "main", "invoice-price-adjust");
+  assert.equal(item.catalog_unit_price_halalas, 4500);
+  assert.equal(item.unit_price_halalas, 5000);
+  assert.equal(item.discount_halalas, 0);
+  assert.equal(item.final_total_halalas, 5000);
+  assert.equal(item.price_adjustment_reason, "catalog_pending_update");
+  assert.equal(item.price_adjustment_note, "Current salon price");
+  assert.equal(item.price_adjusted_by_uid, "reception1");
+  assert.ok(Date.parse(item.price_adjusted_at) > 0);
+  assert.equal(booking.subtotal_halalas, 5000);
+  assert.equal(booking.discount_halalas, 0);
+  assert.equal(booking.total_halalas, 5000);
+  assert.equal(invoice.subtotal_halalas, 5000);
+  assert.equal(invoice.discount_halalas, 0);
+  assert.equal(invoice.total_halalas, 5000);
+
+  const priceAudit = fake.rows("audit_logs").find(
+    (row) =>
+      row.action === "booking_price_adjusted" &&
+      row.entity_id === "item-price-adjust"
+  );
+  assert.ok(priceAudit);
+  const priceAfter = JSON.parse(priceAudit.after_json);
+  assert.equal(priceAfter.catalogUnitPriceHalalas, 4500);
+  assert.equal(priceAfter.bookingUnitPriceHalalas, 5000);
+  assert.equal(priceAfter.adjustmentDeltaHalalas, 500);
+
+  response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      bookingId: "booking-price-adjust",
+      method: "cash",
+      amountHalalas: 4500,
+      idempotencyKey: "booking-price-adjust:cash:4500",
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(fake.find("invoices", "main", "invoice-price-adjust").paid_halalas, 4500);
+  assert.equal(fake.find("bookings", "main", "booking-price-adjust").payment_status, "partial");
+  assert.equal(fake.find("bookings", "main", "booking-price-adjust").total_halalas, 5000);
+});
+
+test("price adjustment then manual discount calculates in the correct order", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  fake.seed("services", {
+    id: "svc-price-discount",
+    salon_id: "main",
+    name: "Price Discount Service",
+    category_id: null,
+    description: null,
+    duration_minutes: 30,
+    price_halalas: 4500,
+    active: 1,
+    image_url: null,
+    sort_order: 0,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+  fake.seed("staff_services", {
+    id: "staff-a__svc-price-discount",
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-price-discount",
+    active: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    token: "test:reception1:reception",
+    body: {
+      id: "booking-price-then-discount",
+      invoiceId: "invoice-price-then-discount",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-03-11",
+      startTime: "10:00",
+      discountSnapshot: {
+        source: "manual",
+        type: "fixed",
+        value: 5,
+      },
+      items: [{
+        id: "item-price-then-discount",
+        cartItemId: "item_0",
+        serviceId: "svc-price-discount",
+        unitPriceHalalas: 5000,
+        priceAdjustmentReason: "management_approved",
+      }],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const item = fake.find("booking_items", "main", "item-price-then-discount");
+  const booking = fake.find("bookings", "main", "booking-price-then-discount");
+  assert.equal(item.catalog_unit_price_halalas, 4500);
+  assert.equal(item.unit_price_halalas, 5000);
+  assert.equal(item.discount_halalas, 500);
+  assert.equal(item.final_total_halalas, 4500);
+  assert.equal(booking.subtotal_halalas, 5000);
+  assert.equal(booking.discount_halalas, 500);
+  assert.equal(booking.total_halalas, 4500);
+});
+
+test("booking pricing permissions are independent", async () => {
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+    fake.tables.role_permissions.delete(
+      fake.key("role_permissions", {
+        salon_id: "main",
+        role_key: "reception",
+        permission_key: "bookings.price.adjust",
+      })
+    );
+
+    const response = await worker.fetch(request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-price-no-permission",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-03-12",
+        startTime: "10:00",
+        items: [{
+          serviceId: "svc-a",
+          unitPriceHalalas: 8000,
+          priceAdjustmentReason: "management_approved",
+        }],
+      },
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 403, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:price_adjustment_forbidden");
+    assert.equal(fake.rows("bookings").length, 0);
+  }
+
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+    fake.tables.role_permissions.delete(
+      fake.key("role_permissions", {
+        salon_id: "main",
+        role_key: "reception",
+        permission_key: "bookings.discount.apply",
+      })
+    );
+
+    const response = await worker.fetch(request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-discount-no-permission",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-03-13",
+        startTime: "10:00",
+        discountSnapshot: { source: "manual", type: "fixed", value: 5 },
+        items: [{ serviceId: "svc-a" }],
+      },
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 403, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:manual_discount_forbidden");
+    assert.equal(fake.rows("bookings").length, 0);
+  }
+});
+
+test("price adjustment requires a fixed reason and public booking cannot forge price", async () => {
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+    const response = await worker.fetch(request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-price-invalid-reason",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-03-14",
+        startTime: "10:00",
+        items: [{
+          serviceId: "svc-a",
+          unitPriceHalalas: 8000,
+          priceAdjustmentReason: "free_text_reason",
+        }],
+      },
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:price_adjustment_reason_required");
+  }
+
+  {
+    const fake = new FakeD1();
+    seedCore(fake);
+    const response = await worker.fetch(request("/api/core/bookings", {
+      method: "POST",
+      token: "",
+      body: {
+        id: "booking-public-forged-price",
+        clientId: "client-a",
+        staffId: "staff-a",
+        source: "client",
+        bookingDate: "2027-03-15",
+        startTime: "10:00",
+        items: [{
+          serviceId: "svc-a",
+          unitPriceHalalas: 1,
+          priceAdjustmentReason: "special_price",
+        }],
+      },
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 403, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:price_adjustment_forbidden");
+    assert.equal(fake.rows("bookings").length, 0);
+  }
+});
+
+test("multi-item booking preserves item-level price provenance", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("services", {
+    id: "svc-b-price",
+    salon_id: "main",
+    name: "Service B Price",
+    category_id: null,
+    description: null,
+    duration_minutes: 30,
+    price_halalas: 3000,
+    active: 1,
+    image_url: null,
+    sort_order: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+  fake.seed("staff_services", {
+    id: "staff-a__svc-b-price",
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-b-price",
+    active: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    token: "test:reception1:reception",
+    body: {
+      id: "booking-multi-price",
+      invoiceId: "invoice-multi-price",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-03-16",
+      startTime: "10:00",
+      items: [
+        {
+          id: "item-multi-a",
+          serviceId: "svc-a",
+          unitPriceHalalas: 8000,
+          priceAdjustmentReason: "special_price",
+        },
+        {
+          id: "item-multi-b",
+          serviceId: "svc-b-price",
+        },
+      ],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const adjusted = fake.find("booking_items", "main", "item-multi-a");
+  const unchanged = fake.find("booking_items", "main", "item-multi-b");
+  assert.equal(adjusted.catalog_unit_price_halalas, 7500);
+  assert.equal(adjusted.unit_price_halalas, 8000);
+  assert.equal(adjusted.price_adjustment_reason, "special_price");
+  assert.equal(unchanged.catalog_unit_price_halalas, 3000);
+  assert.equal(unchanged.unit_price_halalas, 3000);
+  assert.equal(unchanged.price_adjustment_reason, null);
+  assert.equal(fake.find("bookings", "main", "booking-multi-price").subtotal_halalas, 11000);
+  assert.equal(fake.find("invoices", "main", "invoice-multi-price").total_halalas, 11000);
+});
+
 test("booking offer discount applies only to eligible services and rounds allocations", async () => {
   const fake = new FakeD1();
   seedCore(fake);
