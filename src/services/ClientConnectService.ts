@@ -9,7 +9,6 @@ export type ConnectConversation = {
   assignedStaffId: string;
   assignedStaffName: string;
   clientName: string;
-  clientPhone: string;
   status: ConnectConversationStatus;
   lastMessageAt: string;
   lastMessagePreview: string;
@@ -86,7 +85,6 @@ function mapConversation(row: Record<string, unknown>): ConnectConversation {
     assignedStaffId: text(row.assignedStaffId ?? row.assigned_staff_id),
     assignedStaffName: text(row.assignedStaffName ?? row.assigned_staff_name),
     clientName: text(row.clientName ?? row.client_name),
-    clientPhone: text(row.clientPhone ?? row.client_phone),
     status: (text(row.status) || "open") as ConnectConversationStatus,
     lastMessageAt: text(row.lastMessageAt ?? row.last_message_at),
     lastMessagePreview: text(row.lastMessagePreview ?? row.last_message_preview),
