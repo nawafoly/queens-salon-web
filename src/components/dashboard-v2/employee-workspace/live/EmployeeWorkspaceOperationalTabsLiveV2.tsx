@@ -182,7 +182,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   const rawStatus = cleanText(row.status).toLowerCase();
   if (type === "leave") return "إجازة";
   if (type === "absent" || row.absentFullDay || rawStatus === "absent") return "غياب";
-  if (rawStatus === "partial" || rawStatus === "incomplete") return "بصمة ناقصة";
+  if (rawStatus === "partial" || rawStatus === "incomplete") return "غير مكتمل";
 
   const late = Number(row.lateMinutes || 0) > 0;
   const early = Number(row.earlyLeaveMinutes || 0) > 0;
@@ -202,7 +202,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status.includes("تأخير") || status.includes("نقص ساعات") || status.includes("خروج مبكر") || status === "بصمة ناقصة" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
+  if (status.includes("تأخير") || status.includes("نقص ساعات") || status.includes("خروج مبكر") || status === "غير مكتمل" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
@@ -214,7 +214,7 @@ function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" |
 
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
   if (status === "غياب") return "يحتاج مراجعة";
-  if (status === "بصمة ناقصة") return "بصمة ناقصة — يجب مراجعتها قبل اعتماد الراتب";
+  if (status === "غير مكتمل") return "لم تُسجّل بصمة الخروج — يجب مراجعة السجل قبل اعتماد الراتب";
   if (status.includes("تأخير") || status.includes("خروج مبكر") || status.includes("نقص ساعات")) {
     const details = [
       Number(row?.lateMinutes || 0) > 0 ? `تأخير ${formatNumber(row?.lateMinutes)} دقيقة` : "",
