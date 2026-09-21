@@ -679,7 +679,6 @@ function toAttendanceRawRecord(record: AttendanceWorkerRecord): AttendanceRawRec
     result: record.result,
     serverTime: record.serverTime,
     clientTime: record.clientTime || null,
-    workDate: recordWorkDate(record),
     location: record.location,
     zoneId: record.zoneId || null,
     zoneName: record.zoneName || null,
