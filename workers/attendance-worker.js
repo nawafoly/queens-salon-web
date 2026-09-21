@@ -1660,13 +1660,14 @@ export async function generateAttendanceMonthlySummary(db, employeeUid, yearMont
       `
         SELECT
           id, employee_uid, employee_doc_id, type, result, server_time,
-          device_info, zone_id
+          work_date, device_info, zone_id
         FROM attendance_records
-        WHERE employee_uid = ? AND server_time >= ? AND server_time < ?
+        WHERE employee_uid = ?
+          AND substr(COALESCE(work_date, date(server_time, '+3 hours')), 1, 7) = ?
         ORDER BY server_time ASC, id ASC
       `
     )
-    .bind(uid, bounds.start, bounds.end)
+    .bind(uid, month)
     .all();
 
   const rows = result.results || [];
@@ -1675,7 +1676,7 @@ export async function generateAttendanceMonthlySummary(db, employeeUid, yearMont
   const checkOutRows = allowedRows.filter(row => row.type === "check_out");
   const presentDays = new Set(
     checkInRows
-      .map(row => getRiyadhDateKeyFromIso(row.server_time))
+      .map(row => normalizeText(row.work_date) || getRiyadhDateKeyFromIso(row.server_time))
       .filter(Boolean)
   );
   const deviceIds = Array.from(
