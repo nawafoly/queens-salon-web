@@ -1,0 +1,43 @@
+name: Core D1 Migration Safety
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/core/**"
+      - "scripts/verify-core-migration-safety.mjs"
+      - "workers/database-migration-safety.test.mjs"
+      - "wrangler.core.jsonc"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/core-migration-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-core-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Migration verifier contract
+        run: node --test workers/database-migration-safety.test.mjs
+
+      - name: Fresh and upgrade D1 migration safety
+        run: npm run test:migration-safety
+
+      - name: Diff whitespace check
+        run: git diff --check
