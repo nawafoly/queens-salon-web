@@ -40,6 +40,27 @@ import { reconcileCashbackForBooking } from './cashback.js';
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 const LOCK_GRANULARITY_MIN = 5;
 const BOOKING_REFERENCE_BASE = 10422;
+const PRICE_ADJUSTMENT_REASONS = new Set([
+  'catalog_pending_update',
+  'management_approved',
+  'special_price',
+  'other',
+]);
+
+function bookingDiscountSource(data = {}) {
+  const raw =
+    data.discountSnapshot ??
+    data.discount_snapshot ??
+    data.discount_snapshot_json;
+  if (!raw) return '';
+  if (typeof raw === 'object') return cleanText(raw.source).toLowerCase();
+  try {
+    const parsed = JSON.parse(String(raw));
+    return cleanText(parsed?.source).toLowerCase();
+  } catch {
+    return '';
+  }
+}
 
 function normalizeItems(data) {
   const items = Array.isArray(data.items) ? data.items : [];
@@ -688,13 +709,49 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       max: 20,
       fallback: 1,
     });
+    const catalogUnit = integer(
+      service.price_halalas,
+      "catalogUnitPriceHalalas",
+      { min: 0, max: 10_000_000 }
+    );
     const unit = integer(
       item.unitPriceHalalas ??
         item.unit_price_halalas ??
-        service.price_halalas,
+        catalogUnit,
       "unitPriceHalalas",
       { min: 0, max: 10_000_000 }
     );
+    const priceAdjusted = unit !== catalogUnit;
+    const priceAdjustmentReason = priceAdjusted
+      ? cleanText(
+          item.priceAdjustmentReason ??
+            item.price_adjustment_reason
+        ).toLowerCase()
+      : "";
+    const priceAdjustmentNote = priceAdjusted
+      ? optionalText(
+          item.priceAdjustmentNote ??
+            item.price_adjustment_note
+        ) || null
+      : null;
+
+    if (priceAdjusted && options?.allowPriceAdjustment !== true) {
+      throw new AppError(
+        403,
+        "core_booking:price_adjustment_forbidden",
+        "Booking item price adjustment requires bookings.price.adjust"
+      );
+    }
+    if (
+      priceAdjusted &&
+      !PRICE_ADJUSTMENT_REASONS.has(priceAdjustmentReason)
+    ) {
+      throw new AppError(
+        400,
+        "core_booking:price_adjustment_reason_required"
+      );
+    }
+
     const total = unit * quantity;
     const durationMinutes = Math.max(
       1,
@@ -772,8 +829,13 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       service_name_snapshot: service.name,
       staff_id: staffId,
       quantity,
+      catalog_unit_price_halalas: catalogUnit,
       unit_price_halalas: unit,
       total_halalas: total,
+      price_adjustment_reason: priceAdjusted ? priceAdjustmentReason : null,
+      price_adjustment_note: priceAdjustmentNote,
+      price_adjusted_by_uid: priceAdjusted ? actorUid || null : null,
+      price_adjusted_at: priceAdjusted ? now : null,
       package_covered: item.packageCovered ? 1 : 0,
       client_package_id:
         optionalText(item.clientPackageId || item.client_package_id) || null,
@@ -812,6 +874,17 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         endTime: row.end_time,
       });
     }
+  }
+
+  if (
+    bookingDiscountSource(data) === "manual" &&
+    options?.allowManualDiscount !== true
+  ) {
+    throw new AppError(
+      403,
+      "core_booking:manual_discount_forbidden",
+      "Manual booking discount requires bookings.discount.apply"
+    );
   }
 
   const discountApplication = await resolveBookingDiscount(
@@ -899,9 +972,11 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
     ...rows.map((row) => ({
       sql: `INSERT INTO booking_items
         (id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity,
-         unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at,
+         catalog_unit_price_halalas, unit_price_halalas, total_halalas,
+         price_adjustment_reason, price_adjustment_note, price_adjusted_by_uid, price_adjusted_at,
+         package_covered, client_package_id, duration_minutes, created_at,
          booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas, final_total_halalas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         row.id,
         bookingId,
@@ -910,8 +985,13 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         row.service_name_snapshot,
         row.staff_id,
         row.quantity,
+        row.catalog_unit_price_halalas,
         row.unit_price_halalas,
         row.total_halalas,
+        row.price_adjustment_reason,
+        row.price_adjustment_note,
+        row.price_adjusted_by_uid,
+        row.price_adjusted_at,
         row.package_covered,
         row.client_package_id,
         row.duration_minutes,
@@ -993,6 +1073,30 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       itemCount: rows.length,
     },
   }, actor).statement);
+
+  for (const row of rows) {
+    if (row.unit_price_halalas === row.catalog_unit_price_halalas) continue;
+    statements.push(auditInsertStatement(salonId, {
+      action: "booking_price_adjusted",
+      entityType: "booking_item",
+      entityId: row.id,
+      description: "Internal booking item price adjusted from catalog price",
+      source: "core-booking",
+      after: {
+        bookingId,
+        bookingItemId: row.id,
+        serviceId: row.service_id,
+        catalogUnitPriceHalalas: row.catalog_unit_price_halalas,
+        bookingUnitPriceHalalas: row.unit_price_halalas,
+        adjustmentDeltaHalalas:
+          row.unit_price_halalas - row.catalog_unit_price_halalas,
+        reason: row.price_adjustment_reason,
+        note: row.price_adjustment_note,
+        adjustedByUid: row.price_adjusted_by_uid,
+        adjustedAt: row.price_adjusted_at,
+      },
+    }, actor).statement);
+  }
 
   for (const action of discountApplication.auditActions || []) {
     statements.push(auditInsertStatement(salonId, {
