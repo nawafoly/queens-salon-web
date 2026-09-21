@@ -2172,13 +2172,13 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
   try {
     const existingResult = await db
       .prepare(
-        `SELECT id, type, server_time
+        `SELECT id, type, server_time, work_date
          FROM attendance_records
          WHERE employee_uid = ? AND result = 'allowed'
-           AND server_time >= ? AND server_time < ?
+           AND COALESCE(work_date, date(server_time, '+3 hours')) = ?
          ORDER BY server_time ASC, id ASC`
       )
-      .bind(employeeUid, dayStart, dayEnd)
+      .bind(employeeUid, date)
       .all();
     const existingRows = existingResult.results || [];
     const dayExists = existingRows.length > 0;
@@ -2203,9 +2203,29 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       }
     }
 
+    const existingCheckIn = existingRows
+      .filter((row) => normalizeText(row.type) === "check_in")
+      .sort((left, right) =>
+        `${left.server_time}:${left.id}`.localeCompare(
+          `${right.server_time}:${right.id}`
+        )
+      )[0] || null;
+    const checkInReferenceMinutes =
+      attendanceTimeMinutes(checkInTime) ??
+      riyadhClockParts(existingCheckIn?.server_time)?.minutes ??
+      null;
+
     const operations = [];
     for (const [type, time] of requested) {
-      const serverTime = parseRiyadhDateTime(date, time);
+      const punchMinutes = attendanceTimeMinutes(time);
+      const punchDate =
+        type === "check_out" &&
+        punchMinutes != null &&
+        checkInReferenceMinutes != null &&
+        punchMinutes <= checkInReferenceMinutes
+          ? addAttendanceDays(date, 1)
+          : date;
+      const serverTime = parseRiyadhDateTime(punchDate, time);
       if (!serverTime) {
         return json(400, { ok: false, message: "invalid_attendance_time" });
       }
