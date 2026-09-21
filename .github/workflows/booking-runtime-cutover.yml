@@ -44,6 +44,7 @@ on:
       - "workers/frontend-core-migration.test.mjs"
       - "scripts/audit-legacy-booking-runtime.mjs"
       - "scripts/check-no-legacy-booking-runtime.mjs"
+      - "scripts/restore-local-d1-from-production.mjs"
       - ".github/workflows/booking-runtime-cutover.yml"
   workflow_dispatch:
 
@@ -68,6 +69,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Local D1 recovery script syntax
+        run: node --check scripts/restore-local-d1-from-production.mjs
 
       - name: Repository-wide legacy booking audit
         run: node scripts/audit-legacy-booking-runtime.mjs --fail-on-high-risk
