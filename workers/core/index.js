@@ -139,6 +139,10 @@ import {
   resolveSelfClient,
 } from './repositories/client-portal.js';
 import {
+  getClientPreferences,
+  updateClientPreferences,
+} from './repositories/client-preferences.js';
+import {
   getCashbackPolicy,
   getClientCashbackWallet,
   redeemCashbackForBooking,
@@ -565,6 +569,7 @@ function match(url, method) {
     ["/api/core/client/loyalty", "client:loyalty"],
     ["/api/core/client/cashback", "client:cashback"],
     ["/api/core/client/offers", "client:offers"],
+    ["/api/core/client/preferences", "client:preferences"],
   ]);
   if (clientPortalRoutes.has(path)) {
     return { name: clientPortalRoutes.get(path) };
@@ -604,6 +609,11 @@ function match(url, method) {
 
   if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
     return { name: "client:loyalty-summary" };
+  }
+
+  const clientPreferences = /^\/api\/core\/clients\/([^/]+)\/preferences$/.exec(path);
+  if (clientPreferences && ["GET", "PATCH"].includes(method)) {
+    return { name: "client:admin-preferences", id: clientPreferences[1] };
   }
 
   const clientOverview = /^\/api\/core\/clients\/([^/]+)\/overview$/.exec(path);
@@ -1077,6 +1087,7 @@ async function dispatch(ctx, route, method, body, query, env) {
     "client:loyalty",
     "client:cashback",
     "client:offers",
+    "client:preferences",
     "client-connect:client-conversations",
     "client-connect:client-messages",
   ]).has(route.name);
@@ -1206,6 +1217,64 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "client:offers":
       if (method === "GET") return listSelfOffers(db, ctx.salonId, ctx.identity);
       break;
+
+    case "client:preferences": {
+      if (ctx.role !== "client") {
+        throw new AppError(403, "core_client_preferences:client_role_required");
+      }
+      const selfClient = await resolveSelfClient(
+        db,
+        ctx.salonId,
+        ctx.identity,
+        { createIfMissing: true }
+      );
+      if (method === "GET") {
+        return getClientPreferences(db, ctx.salonId, selfClient.id);
+      }
+      if (method === "PATCH") {
+        const updated = await updateClientPreferences(
+          db,
+          ctx.salonId,
+          selfClient.id,
+          body,
+          actorInfo,
+          { clientSelf: true }
+        );
+        await recordAudit(db, ctx.salonId, {
+          action: "client_preferences_self_updated",
+          entityType: "client",
+          entityId: selfClient.id,
+          description: "Client relationship preferences updated by the client.",
+          after: updated,
+        }, actorInfo);
+        return updated;
+      }
+      break;
+    }
+
+    case "client:admin-preferences": {
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      if (method === "GET") {
+        return getClientPreferences(db, ctx.salonId, route.id);
+      }
+      requirePermission(ctx, "clients.update");
+      const updated = await updateClientPreferences(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        { clientSelf: false }
+      );
+      await recordAudit(db, ctx.salonId, {
+        action: "client_preferences_admin_updated",
+        entityType: "client",
+        entityId: route.id,
+        description: "Client relationship preferences updated by operations.",
+        after: updated,
+      }, actorInfo);
+      return updated;
+    }
 
     case "client-connect:client-conversations": {
       if (ctx.role !== "client") throw new AppError(403, "core_client_connect:client_role_required");
