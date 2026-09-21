@@ -116,6 +116,7 @@ test("attendance migration adds work-date and checkout-window state without inve
   assert.ok(stateColumns.includes("work_date"));
   assert.ok(stateColumns.includes("shift_end_at"));
   assert.ok(stateColumns.includes("checkout_deadline_at"));
+  assert.ok(stateColumns.includes("expired_incomplete"));
 
   const migration = read(
     "workers/attendance-migrations/0006_shift_work_date_and_checkout_window.sql"
