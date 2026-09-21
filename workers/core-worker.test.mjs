@@ -4016,6 +4016,123 @@ test("internal booking price adjustment stays separate from discount and payment
   assert.equal(income.source, "booking");
 });
 
+
+test("generic booking edits preserve adjusted pricing and reject direct derived-price mutation", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  fake.seed("services", {
+    id: "svc-price-guard",
+    salon_id: "main",
+    name: "Price Guard Service",
+    category_id: null,
+    description: null,
+    duration_minutes: 30,
+    price_halalas: 4500,
+    active: 1,
+    image_url: null,
+    sort_order: 0,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+  fake.seed("staff_services", {
+    id: "staff-a__svc-price-guard",
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-price-guard",
+    active: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  let response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    token: "test:reception1:reception",
+    body: {
+      id: "booking-price-guard",
+      invoiceId: "invoice-price-guard",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-03-20",
+      startTime: "10:00",
+      items: [{
+        id: "item-price-guard",
+        serviceId: "svc-price-guard",
+        unitPriceHalalas: 5000,
+        priceAdjustmentReason: "catalog_pending_update",
+      }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  for (const patch of [
+    { totalHalalas: 5100 },
+    { subtotalHalalas: 5100 },
+    { discountHalalas: 100 },
+  ]) {
+    response = await worker.fetch(request("/api/core/bookings/booking-price-guard", {
+      method: "PATCH",
+      token: "test:reception1:reception",
+      body: patch,
+    }), env(fake));
+    body = await json(response);
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:direct_price_mutation_forbidden");
+  }
+
+  response = await worker.fetch(request("/api/core/bookings/booking-price-guard", {
+    method: "PATCH",
+    token: "test:reception1:reception",
+    body: {
+      paidHalalas: 4500,
+      paymentMethod: "cash",
+      reconcilePayment: true,
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  let item = fake.find("booking_items", "main", "item-price-guard");
+  let booking = fake.find("bookings", "main", "booking-price-guard");
+  let invoice = fake.find("invoices", "main", "invoice-price-guard");
+  assert.equal(item.catalog_unit_price_halalas, 4500);
+  assert.equal(item.unit_price_halalas, 5000);
+  assert.equal(item.total_halalas, 5000);
+  assert.equal(item.final_total_halalas, 5000);
+  assert.equal(booking.subtotal_halalas, 5000);
+  assert.equal(booking.total_halalas, 5000);
+  assert.equal(booking.payment_status, "partial");
+  assert.equal(invoice.total_halalas, 5000);
+  assert.equal(invoice.paid_halalas, 4500);
+  assert.equal(invoice.status, "partial");
+  assert.ok(fake.rows("income_entries").some(
+    (row) => row.booking_id === "booking-price-guard" && row.amount_halalas === 4500
+  ));
+
+  response = await worker.fetch(request("/api/core/bookings/booking-price-guard", {
+    method: "PATCH",
+    token: "test:reception1:reception",
+    body: { startTime: "11:00" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  item = fake.find("booking_items", "main", "item-price-guard");
+  booking = fake.find("bookings", "main", "booking-price-guard");
+  invoice = fake.find("invoices", "main", "invoice-price-guard");
+  assert.equal(item.start_time, "11:00");
+  assert.equal(item.catalog_unit_price_halalas, 4500);
+  assert.equal(item.unit_price_halalas, 5000);
+  assert.equal(item.total_halalas, 5000);
+  assert.equal(item.final_total_halalas, 5000);
+  assert.equal(booking.subtotal_halalas, 5000);
+  assert.equal(booking.total_halalas, 5000);
+  assert.equal(invoice.total_halalas, 5000);
+  assert.equal(invoice.paid_halalas, 4500);
+});
+
+
 test("price adjustment then manual discount calculates in the correct order", async () => {
   const fake = new FakeD1();
   seedCore(fake);
