@@ -14,6 +14,14 @@ export type CoreClient = {
   loyaltyUsed?: number;
   loyaltyReversed?: number;
   lastCompletedAt?: string | null;
+  bookingsCount?: number;
+  completedBookingsCount?: number;
+  cancelledBookingsCount?: number;
+  noShowBookingsCount?: number;
+  lastVisitDate?: string | null;
+  lastVisitTime?: string | null;
+  activePackagesCount?: number;
+  remainingPackageSessions?: number;
   createdAt: string;
   updatedAt: string;
 };
