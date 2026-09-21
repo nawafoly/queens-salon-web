@@ -403,6 +403,14 @@ export function coreBookingToLegacy(
     startTime: booking.startTime,
     total,
     finalPrice: total,
+    catalogPrice: firstItem?.catalogUnitPriceHalalas == null
+      ? undefined
+      : sarFromHalalas(firstItem.catalogUnitPriceHalalas),
+    bookingPrice: firstItem?.unitPriceHalalas == null
+      ? undefined
+      : sarFromHalalas(firstItem.unitPriceHalalas),
+    priceAdjustmentReason: firstItem?.priceAdjustmentReason || undefined,
+    priceAdjustmentNote: firstItem?.priceAdjustmentNote || undefined,
     discountAmount,
     discountSnapshot,
     paymentType: isPaid ? "full" : isPartial ? "partial" : "none",
@@ -436,7 +444,8 @@ export function legacyBookingToCoreInput(
   const originalTotal = Math.max(
     0,
     Number(
-      (booking as any).originalAmount ??
+      booking.bookingPrice ??
+        (booking as any).originalAmount ??
         (booking as any).subtotal ??
         (booking.serviceSnapshot as any)?.originalAmountAtBooking ??
         (booking.serviceSnapshot as any)?.priceBeforeDiscountAtBooking ??
@@ -466,6 +475,8 @@ export function legacyBookingToCoreInput(
         serviceName: text(booking.serviceName || booking.serviceSnapshot?.serviceNameAtBooking) || undefined,
         staffId: text(booking.employeeId) || undefined,
         unitPriceHalalas: Math.max(0, Math.round(originalTotal * 100)),
+        priceAdjustmentReason: booking.priceAdjustmentReason,
+        priceAdjustmentNote: booking.priceAdjustmentNote,
         discountHalalas: Math.max(0, Math.round(discountAmount * 100)),
         finalTotalHalalas: Math.max(0, Math.round(finalTotal * 100)),
         packageCovered: Boolean(
