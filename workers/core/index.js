@@ -143,6 +143,7 @@ import {
   updateClientPreferences,
 } from './repositories/client-preferences.js';
 import {
+  expireCashbackCredits,
   getCashbackPolicy,
   getClientCashbackWallet,
   redeemCashbackForBooking,
@@ -3937,6 +3938,7 @@ export default {
     ctx.waitUntil((async () => {
       await Promise.all([
         expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
+        expireCashbackCredits(env.CORE_DB, salonId),
         notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
       ]);
       await flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null);
