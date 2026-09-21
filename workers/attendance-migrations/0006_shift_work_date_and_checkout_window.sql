@@ -26,6 +26,10 @@ ALTER TABLE attendance_state
 ALTER TABLE attendance_state
   ADD COLUMN checkout_deadline_at TEXT;
 
+ALTER TABLE attendance_state
+  ADD COLUMN expired_incomplete INTEGER NOT NULL DEFAULT 0
+  CHECK (expired_incomplete IN (0, 1));
+
 UPDATE attendance_state
    SET work_date = date(last_server_time, '+3 hours')
  WHERE work_date IS NULL
