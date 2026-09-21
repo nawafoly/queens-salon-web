@@ -1790,12 +1790,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                   </span>
                                 </div>
 
-                                {canAdjustBookingPrice ? (
-                                  <div className="bk2-price-adjustment">
-                                    {!draft ? (
+                                <div className="bk2-price-adjustment">
+                                    {canAdjustBookingPrice && !draft ? (
                                       <button
                                         type="button"
                                         className="bk2-price-adjust-toggle"
+                                        disabled={!canAdjustBookingPrice}
                                         onClick={() =>
                                           setPriceAdjustments((current) => ({
                                             ...current,
@@ -1809,7 +1809,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                       >
                                         {t("تعديل سعر الحجز")}
                                       </button>
-                                    ) : (
+                                    ) : canAdjustBookingPrice && draft ? (
                                       <div className="bk2-price-adjustment-editor">
                                         <label>
                                           <span>{t("السعر الفعلي للحجز")}</span>
@@ -1904,9 +1904,24 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                           {t("إلغاء تعديل السعر")}
                                         </button>
                                       </div>
-                                    )}
-                                  </div>
-                                ) : null}
+                                    ) : null}
+                                  {!canAdjustBookingPrice ? (
+                                    <div className="bk2-price-permission-note">
+                                      {t("لا تملك صلاحية تعديل سعر الحجز.")}
+                                    </div>
+                                  ) : null}
+                                  {!draft && !canAdjustBookingPrice ? (
+                                    <button
+                                      type="button"
+                                      className="bk2-price-adjust-toggle"
+                                      disabled
+                                      title={t("لا تملك صلاحية تعديل سعر الحجز.")}
+                                    >
+                                      {t("تعديل سعر الحجز")}
+                                    </button>
+                                  ) : null}
+                                  {draft && !canAdjustBookingPrice ? null : null}
+                                </div>
                               </div>
                             </article>
                           );
