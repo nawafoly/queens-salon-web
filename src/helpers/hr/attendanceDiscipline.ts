@@ -375,7 +375,7 @@ export function calculateAttendanceDisciplineDay(
       afterScheduleHours: 0,
       netHourDifference: 0,
       status: "incomplete",
-      statusLabel: "بصمة ناقصة",
+      statusLabel: "غير مكتمل",
     });
   }
 
@@ -393,7 +393,7 @@ export function calculateAttendanceDisciplineDay(
       afterScheduleHours: 0,
       netHourDifference: 0,
       status: "incomplete",
-      statusLabel: "بصمة ناقصة",
+      statusLabel: "غير مكتمل",
     });
   }
 
