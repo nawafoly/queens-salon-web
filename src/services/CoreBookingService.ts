@@ -115,9 +115,6 @@ export const CoreBookingService = {
       clientPhone: string | null;
       serviceId: string;
       durationMinutes: number;
-      subtotalHalalas: number;
-      discountHalalas: number;
-      totalHalalas: number;
       paidHalalas: number;
       paymentMethod: string | null;
       paymentBreakdown: Record<string, number> | null;
