@@ -1,0 +1,538 @@
+/* MALIKAT Connect — shared client/staff/admin messaging workspace */
+
+.malikat-connect-client,
+.client-connect-inbox-v2,
+.client-connect-security-v2 {
+  min-width: 0;
+}
+
+.is-spinning {
+  animation: malikat-connect-spin 0.9s linear infinite;
+}
+
+@keyframes malikat-connect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.malikat-connect-client {
+  display: grid;
+  gap: 14px;
+}
+
+.malikat-connect-client__hero,
+.malikat-connect-policy,
+.malikat-connect-notice,
+.malikat-connect-thread,
+.malikat-connect-client__threads,
+.client-connect-inbox-v2__hero,
+.client-connect-inbox-v2__list,
+.client-connect-inbox-v2__thread,
+.client-connect-security-v2__events,
+.client-connect-security-v2__review,
+.malikat-messages-hub-tabs {
+  border: 1px solid var(--qs-border);
+  border-radius: 18px;
+  background: var(--qs-card);
+  box-shadow: var(--qs-shadow-soft);
+}
+
+.malikat-connect-client__hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+}
+
+.malikat-connect-client__hero-icon,
+.malikat-connect-icon-btn,
+.client-connect-inbox-v2__avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.malikat-connect-client__hero-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+  font-size: 1.35rem;
+}
+
+.malikat-connect-client__hero span,
+.malikat-connect-thread__head span,
+.client-connect-inbox-v2__hero p,
+.client-connect-inbox-v2__list small,
+.client-connect-inbox-v2__list p,
+.client-connect-inbox-v2__thread header span,
+.client-connect-inbox-v2__message small,
+.client-connect-security-v2__events small,
+.client-connect-security-v2__events p,
+.client-connect-security-v2__review header p,
+.client-connect-security-v2__messages small {
+  color: var(--qs-text-muted);
+}
+
+.malikat-connect-client__hero h3,
+.client-connect-inbox-v2__hero h1,
+.client-connect-security-v2__review h2 {
+  margin: 4px 0;
+}
+
+.malikat-connect-client__hero p,
+.client-connect-inbox-v2__hero p,
+.client-connect-inbox-v2__list p,
+.client-connect-security-v2__events p,
+.client-connect-security-v2__review header p {
+  margin: 4px 0 0;
+}
+
+.malikat-connect-icon-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--qs-border);
+  border-radius: 14px;
+  background: var(--qs-card-2);
+  color: var(--qs-text);
+}
+
+.malikat-connect-policy,
+.malikat-connect-notice,
+.malikat-connect-restricted,
+.client-connect-inbox-v2__notice,
+.client-connect-inbox-v2__locked {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.malikat-connect-policy {
+  color: var(--qs-text-muted);
+}
+
+.malikat-connect-notice,
+.client-connect-inbox-v2__notice {
+  color: var(--qs-text);
+}
+
+.malikat-connect-empty,
+.client-connect-inbox-v2__empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 160px;
+  padding: 24px;
+  text-align: center;
+  color: var(--qs-text-muted);
+}
+
+.malikat-connect-empty.compact {
+  min-height: 120px;
+}
+
+.malikat-connect-empty button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+  font-weight: 800;
+}
+
+.malikat-connect-client__workspace {
+  display: grid;
+  gap: 12px;
+}
+
+.malikat-connect-client__threads {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px;
+}
+
+.malikat-connect-client__threads > button {
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--qs-border);
+  border-radius: 14px;
+  background: var(--qs-card-2);
+  color: var(--qs-text);
+  text-align: start;
+}
+
+.malikat-connect-client__threads > button.is-active {
+  border-color: var(--qs-accent);
+}
+
+.malikat-connect-client__threads span,
+.malikat-connect-client__threads strong {
+  display: block;
+}
+
+.malikat-connect-client__threads span {
+  margin-top: 4px;
+  color: var(--qs-text-muted);
+  font-size: 0.82rem;
+}
+
+.malikat-connect-thread {
+  overflow: hidden;
+}
+
+.malikat-connect-thread__head,
+.client-connect-inbox-v2__thread > header,
+.client-connect-security-v2__review > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--qs-border);
+}
+
+.malikat-connect-thread__head div,
+.client-connect-inbox-v2__thread > header div {
+  display: grid;
+  gap: 3px;
+}
+
+.malikat-connect-messages,
+.client-connect-inbox-v2__messages,
+.client-connect-security-v2__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 280px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.malikat-connect-message,
+.client-connect-inbox-v2__message,
+.client-connect-security-v2__messages article {
+  width: min(82%, 560px);
+  padding: 10px 12px;
+  border: 1px solid var(--qs-border);
+  border-radius: 16px;
+  background: var(--qs-card-2);
+}
+
+.malikat-connect-message.is-mine,
+.client-connect-inbox-v2__message.is-mine {
+  align-self: flex-start;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+}
+
+.malikat-connect-message.is-staff,
+.client-connect-security-v2__messages article.is-staff {
+  align-self: flex-end;
+}
+
+.malikat-connect-message small,
+.client-connect-inbox-v2__message small,
+.client-connect-security-v2__messages small {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.74rem;
+}
+
+.malikat-connect-composer,
+.client-connect-inbox-v2__composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--qs-border);
+}
+
+.malikat-connect-composer textarea,
+.client-connect-inbox-v2__composer textarea,
+.client-connect-inbox-v2__thread select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--qs-border);
+  border-radius: 14px;
+  background: var(--qs-control-bg);
+  color: var(--qs-text);
+  font: inherit;
+}
+
+.malikat-connect-composer textarea,
+.client-connect-inbox-v2__composer textarea {
+  min-height: 48px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.malikat-connect-composer button,
+.client-connect-inbox-v2__composer button {
+  min-width: 94px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+  font-weight: 800;
+}
+
+.malikat-connect-composer button:disabled,
+.client-connect-inbox-v2__composer button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.malikat-messages-hub-tabs {
+  display: flex;
+  gap: 8px;
+  width: min(100% - 32px, 1180px);
+  margin: 16px auto 0;
+  padding: 6px;
+}
+
+.malikat-messages-hub-tabs button,
+.client-connect-mode-tabs button {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--qs-text-muted);
+  font-weight: 800;
+}
+
+.malikat-messages-hub-tabs button.is-active,
+.client-connect-mode-tabs button.is-active {
+  border-color: var(--qs-border);
+  background: var(--qs-card-2);
+  color: var(--qs-text);
+}
+
+.client-connect-inbox-v2 {
+  display: grid;
+  gap: 14px;
+}
+
+.client-connect-inbox-v2__hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.client-connect-mode-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.client-connect-mode-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.client-connect-mode-tabs em {
+  min-width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+  font-style: normal;
+  font-size: 0.75rem;
+}
+
+.client-connect-inbox-v2__workspace,
+.client-connect-security-v2 {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.38fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 560px;
+}
+
+.client-connect-inbox-v2__list,
+.client-connect-security-v2__events {
+  overflow: hidden auto;
+  max-height: 680px;
+  padding: 8px;
+}
+
+.client-connect-inbox-v2__list > button,
+.client-connect-security-v2__events > button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  width: 100%;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--qs-text);
+  text-align: start;
+}
+
+.client-connect-inbox-v2__list > button.is-active,
+.client-connect-security-v2__events > button.is-active {
+  border-color: var(--qs-border);
+  background: var(--qs-card-2);
+}
+
+.client-connect-inbox-v2__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
+  font-weight: 900;
+}
+
+.client-connect-inbox-v2__list span,
+.client-connect-security-v2__events span {
+  min-width: 0;
+}
+
+.client-connect-inbox-v2__list strong,
+.client-connect-inbox-v2__list small,
+.client-connect-inbox-v2__list p,
+.client-connect-security-v2__events strong,
+.client-connect-security-v2__events small,
+.client-connect-security-v2__events p {
+  display: block;
+}
+
+.client-connect-inbox-v2__list p,
+.client-connect-security-v2__events p {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.client-connect-inbox-v2__list em {
+  font-style: normal;
+  font-size: 0.73rem;
+  color: var(--qs-text-muted);
+}
+
+.client-connect-inbox-v2__thread,
+.client-connect-security-v2__review {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.client-connect-inbox-v2__thread > header label {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.client-connect-inbox-v2__thread > header select {
+  min-height: 40px;
+  padding: 6px 10px;
+}
+
+.client-connect-security-v2__events > button {
+  grid-template-columns: auto 1fr;
+}
+
+.client-connect-security-v2__messages article.is-blocked {
+  align-self: stretch;
+  width: 100%;
+  border-style: dashed;
+  background: var(--qs-card-2);
+}
+
+.client-connect-security-v2__messages article.is-client {
+  align-self: flex-start;
+}
+
+.client-connect-security-v2__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--qs-border);
+}
+
+.client-connect-security-v2__actions button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--qs-border);
+  border-radius: 12px;
+  background: var(--qs-card-2);
+  color: var(--qs-text);
+  font-weight: 800;
+}
+
+.client-connect-inbox-v2__locked,
+.malikat-connect-restricted {
+  border-top: 1px solid var(--qs-border);
+  color: var(--qs-text-muted);
+}
+
+@media (max-width: 860px) {
+  .client-connect-inbox-v2__workspace,
+  .client-connect-security-v2 {
+    grid-template-columns: 1fr;
+  }
+
+  .client-connect-inbox-v2__list,
+  .client-connect-security-v2__events {
+    max-height: 260px;
+  }
+
+  .client-connect-inbox-v2__thread > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .malikat-connect-client__hero {
+    grid-template-columns: auto 1fr;
+  }
+
+  .malikat-connect-client__hero .malikat-connect-icon-btn {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .malikat-connect-composer,
+  .client-connect-inbox-v2__composer {
+    grid-template-columns: 1fr;
+  }
+
+  .malikat-connect-composer button,
+  .client-connect-inbox-v2__composer button {
+    min-height: 44px;
+  }
+
+  .malikat-connect-message,
+  .client-connect-inbox-v2__message {
+    width: 92%;
+  }
+
+  .malikat-messages-hub-tabs {
+    width: calc(100% - 20px);
+  }
+
+  .malikat-messages-hub-tabs button {
+    flex: 1;
+    padding-inline: 8px;
+  }
+
+  .client-connect-inbox-v2__hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
