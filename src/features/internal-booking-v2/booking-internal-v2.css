@@ -497,3 +497,27 @@
   font-weight:800;
   line-height:1.55;
 }
+
+/* Internal booking item pricing */
+.bk2-service-price{display:grid;gap:2px;text-align:end}
+.bk2-service-price small{font-size:10px;font-weight:800}
+.bk2-review-item{align-items:start!important}
+.bk2-review-content{min-width:0;display:grid;gap:10px}
+.bk2-review-index{margin-top:2px}
+.bk2-item-price-breakdown{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.bk2-item-price-breakdown>span{display:grid;gap:3px;padding:9px 10px;border:1px solid var(--bk2-line);border-radius:10px;font-size:11px}
+.bk2-item-price-breakdown strong{font-size:13px}
+.bk2-price-adjustment{padding-top:2px}
+.bk2-price-adjust-toggle,.bk2-price-reset{border:1px solid var(--bk2-line);border-radius:10px;background:#fff;padding:9px 12px;font-weight:850;cursor:pointer}
+.bk2-price-adjustment-editor{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;padding:12px;border:1px dashed var(--bk2-line);border-radius:12px}
+.bk2-price-adjustment-editor label{display:grid;gap:6px;font-size:12px;font-weight:800}
+.bk2-price-adjustment-editor label.is-wide{grid-column:1/-1}
+.bk2-price-adjustment-editor input,.bk2-price-adjustment-editor select{width:100%;box-sizing:border-box;border:1px solid var(--bk2-line);border-radius:10px;padding:11px 12px;background:#fff;font:inherit}
+.bk2-price-input{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
+.bk2-price-input em{font-style:normal}
+.bk2-price-reset{grid-column:1/-1;width:max-content}
+@media(max-width:720px){
+  .bk2-item-price-breakdown{grid-template-columns:1fr 1fr}
+  .bk2-price-adjustment-editor{grid-template-columns:1fr}
+  .bk2-price-adjustment-editor label.is-wide,.bk2-price-reset{grid-column:auto}
+}
