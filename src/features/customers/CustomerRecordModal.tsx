@@ -352,7 +352,7 @@ export default function CustomerRecordModal({
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-overview-section" aria-label={t("السجل المالي والولاء")}>
           <header className="dsv2-section-head">
-            <div><h3 className="dsv2-section-title">{t("السجل الموحد للعميلة")}</h3><p className="dsv2-section-caption">{t("الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.")}</p></div>
+            <div><h3 className="dsv2-section-title">{t("السجل الموحد للعميلة")}</h3><p className="dsv2-section-caption">{t("الحجوزات والدفعات والاسترجاعات والكاش باك والعلاقة مع المختصات من Core D1.")}</p></div>
             {customer.clientId ? <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void loadOverview()} disabled={overviewLoading}><FiRefreshCw className={overviewLoading ? "dsv2-customers-spin" : ""} /> {t("تحديث")}</button> : null}
           </header>
 
@@ -362,11 +362,41 @@ export default function CustomerRecordModal({
                 <>
                   <div className="dsv2-customers-overview-grid">
                     <article><span>{t("صافي المدفوع")}</span><strong>{formatHalalas(overview.summary.netPaidHalalas, language)}</strong></article>
-                    <article><span>{t("الاسترجاعات")}</span><strong>{formatHalalas(overview.summary.refundedHalalas, language)}</strong></article>
+                    <article><span>{t("متوسط الزيارة المكتملة")}</span><strong>{formatHalalas(overview.summary.averageCompletedVisitHalalas, language)}</strong></article>
                     <article><span>{t("رصيد الكاش باك")}</span><strong>{formatHalalas(overview.cashback.balanceHalalas, language)}</strong></article>
+                    <article><span>{t("الزيارات المكتملة")}</span><strong>{plainNumber(overview.summary.completedBookings, 0, language)}</strong></article>
+                    <article><span>{t("الإلغاءات")}</span><strong>{plainNumber(overview.summary.cancelledBookings, 0, language)}</strong></article>
+                    <article><span>{t("عدم الحضور")}</span><strong>{plainNumber(overview.summary.noShowBookings, 0, language)}</strong></article>
+                    <article><span>{t("الاسترجاعات")}</span><strong>{formatHalalas(overview.summary.refundedHalalas, language)}</strong></article>
                     <article><span>{t("آخر نشاط")}</span><strong>{formatDateTime(overview.summary.lastActivityAt, language)}</strong></article>
                   </div>
                   <div className="dsv2-customers-overview-columns">
+                    <section>
+                      <h4>{t("العلاقة مع المختصات")}</h4>
+                      <div className="dsv2-customers-loyalty-summary">
+                        <span>{t("المختصة المفضلة")} <b>{overview.relationship.preferredSpecialist?.name || t("غير محددة")}</b></span>
+                        <span>{t("مصدر التفضيل")} <b>{overview.relationship.preferredSpecialist?.source || t("غير محدد")}</b></span>
+                      </div>
+                      <div className="dsv2-customers-record-list">
+                        {overview.relationship.mostBookedSpecialists.slice(0, 3).map((specialist) => (
+                          <div key={specialist.id}>
+                            <span>{specialist.name}</span>
+                            <b>{plainNumber(specialist.visits, 0, language)} {t("زيارة")}</b>
+                          </div>
+                        ))}
+                        {!overview.relationship.mostBookedSpecialists.length ? <p>{t("لا يوجد سجل كافٍ للمختصات بعد.")}</p> : null}
+                      </div>
+                      <h4>{t("الخدمات الأكثر حجزًا")}</h4>
+                      <div className="dsv2-customers-record-list">
+                        {overview.relationship.mostBookedServices.slice(0, 3).map((service) => (
+                          <div key={service.id || service.name}>
+                            <span>{service.name}</span>
+                            <b>{plainNumber(service.visits, 0, language)} {t("مرة")}</b>
+                          </div>
+                        ))}
+                        {!overview.relationship.mostBookedServices.length ? <p>{t("لا يوجد سجل خدمات مكتملة بعد.")}</p> : null}
+                      </div>
+                    </section>
                     <section>
                       <h4>{t("الكاش باك")}</h4>
                       <div className="dsv2-customers-loyalty-summary">
