@@ -14,6 +14,7 @@ import {
   LuImage,
   LuLogOut,
   LuMapPin,
+  LuMessageCircle,
   LuPackage,
   LuBadgePercent,
   LuPencil,
@@ -31,6 +32,7 @@ import { logoutFirebase } from "../services/authService";
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
+import ClientConnectPanel from "../components/client/ClientConnectPanel";
 import {
   ClientPortalService,
   type ClientPortalCashback,
@@ -81,7 +83,7 @@ interface BookingData {
 }
 
 type ProfileMode = "firebase" | "local";
-type ProfileTab = "profile" | "loyalty" | "bookings" | "packages" | "offers";
+type ProfileTab = "profile" | "loyalty" | "bookings" | "packages" | "offers" | "connect";
 type ProfileViewData = {
   name: string;
   phone: string;
@@ -102,7 +104,7 @@ type EditProfileForm = {
 const PROFILE_ACTIVE_TAB_STORAGE_KEY = "profile_active_tab_v1";
 
 function isProfileTab(value: string | null): value is ProfileTab {
-  return value === "profile" || value === "loyalty" || value === "bookings" || value === "packages" || value === "offers";
+  return value === "profile" || value === "loyalty" || value === "bookings" || value === "packages" || value === "offers" || value === "connect";
 }
 
 function writeStoredProfileTab(tab: ProfileTab) {
@@ -120,6 +122,7 @@ function profileTabFromPath(pathname: string): ProfileTab {
   if (path.endsWith("/bookings")) return "bookings";
   if (path.endsWith("/packages")) return "packages";
   if (path.endsWith("/offers")) return "offers";
+  if (path.endsWith("/connect")) return "connect";
   if (path.endsWith("/profile")) return "loyalty";
   return "profile";
 }
@@ -128,6 +131,7 @@ function profilePathForTab(tab: ProfileTab): string {
   if (tab === "bookings") return "/client/bookings";
   if (tab === "packages") return "/client/packages";
   if (tab === "offers") return "/client/offers";
+  if (tab === "connect") return "/client/connect";
   if (tab === "loyalty") return "/client/profile";
   return "/client";
 }
@@ -909,9 +913,11 @@ const Profile: React.FC = () => {
       ? "باقاتي"
       : activeTab === "offers"
         ? "العروض الخاصة"
-        : activeTab === "loyalty"
-          ? "حسابي"
-          : "الرئيسية";
+        : activeTab === "connect"
+          ? "تواصلي مع مختصتك"
+          : activeTab === "loyalty"
+            ? "حسابي"
+            : "الرئيسية";
 
   const money = (value?: number) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")} ريال`;
   const paymentMethodLabel = (value?: string) => {
@@ -995,6 +1001,7 @@ const Profile: React.FC = () => {
                   <span className="p-link-action-plus">+</span><span>حجز جديد</span>
                 </button>
                 <button className="p-link-action p-link-action-soft" onClick={() => selectProfileTab("bookings")} type="button">حجوزاتي</button>
+                <button className="p-link-action p-link-action-soft" onClick={() => selectProfileTab("connect")} type="button"><LuMessageCircle /> تواصلي مع مختصتك</button>
                 <button className="p-link-action p-link-action-ghost" onClick={() => selectProfileTab("packages")} type="button">باقاتي</button>
               </div>
             </section>
@@ -1075,6 +1082,8 @@ const Profile: React.FC = () => {
             </section>
           </>
         ) : null}
+
+        {activeTab === "connect" ? <ClientConnectPanel /> : null}
 
         {activeTab === "loyalty" ? (
           <>
