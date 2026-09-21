@@ -26,6 +26,7 @@ import {
 import { getAuth } from "firebase/auth";
 import { formatBookingReference } from "../../helpers/bookingReference";
 import { bookingsText, translateBookingCatalogLabel, type DashboardLanguage } from "../../helpers/dashboardBookingsLanguage";
+import { usePermissions } from "../../security/PermissionContext";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -47,6 +48,16 @@ type ScheduleSelection = { staffId: string; staffName: string; time: string };
 type PaymentMethod = "cash" | "card" | "transfer" | "mixed";
 type PaymentType = "full" | "partial" | "none";
 type DiscountMode = "none" | "fixed" | "percent" | "offer" | "coupon";
+type PriceAdjustmentReason =
+  | "catalog_pending_update"
+  | "management_approved"
+  | "special_price"
+  | "other";
+type BookingPriceAdjustment = {
+  price: string;
+  reason: PriceAdjustmentReason | "";
+  note: string;
+};
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingBusinessHoursDay = { enabled: boolean; start: string; end: string };
 type InternalBookingConfig = {
@@ -233,13 +244,22 @@ function buildInternalV2InvoiceRows(args: {
   cardAmount: string;
   transferAmount: string;
   selectedSectionId: string;
+  bookingPriceByService: Record<string, number>;
   discountSnapshot?: DiscountSnapshot | null;
 }) {
   const bookingIds = Array.isArray(args.createdBookingIds) ? args.createdBookingIds : [];
   const parentId = String(bookingIds[0] || "").trim();
   if (!parentId || !args.selectedClient || !args.cart.length) return [];
 
-  const rowOriginalPrices = args.cart.map((service) => Math.max(0, servicePrice(service)));
+  // Client-facing invoice uses the agreed booking price before discount.
+  // Catalog price and adjustment metadata are internal/audit-only.
+  const rowOriginalPrices = args.cart.map((service) => {
+    const key = String(service.id || "").trim();
+    const agreed = Number(args.bookingPriceByService[key]);
+    return Number.isFinite(agreed)
+      ? Math.max(0, agreed)
+      : Math.max(0, servicePrice(service));
+  });
   const allocationByItem = new Map(
     (args.discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
   );
@@ -371,6 +391,9 @@ const steps = [
 
 export default function BookingInternalV2({ language = "ar" }: { language?: DashboardLanguage }) {
   const t = (text: string) => bookingsText(language, text);
+  const { hasPermission } = usePermissions();
+  const canAdjustBookingPrice = hasPermission("bookings.price.adjust");
+  const canApplyManualDiscount = hasPermission("bookings.discount.apply");
   const locale = language === "en" ? "en-US" : "ar-SA-u-nu-latn";
   const currency = language === "en" ? "SAR" : "ر.س";
   const money = (value: number) => `${Number(value || 0).toLocaleString(locale)} ${currency}`;
@@ -402,6 +425,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogMessage, setCatalogMessage] = useState("");
   const [cart, setCart] = useState<CatalogService[]>([]);
+  const [priceAdjustments, setPriceAdjustments] = useState<Record<string, BookingPriceAdjustment>>({});
   const [bookingDate, setBookingDate] = useState(todayISO());
   const [eligibleStaffByService, setEligibleStaffByService] = useState<Record<string, StaffRow[]>>({});
   const [staffLoading, setStaffLoading] = useState(false);
@@ -726,7 +750,31 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     });
   }, [services, selectedCategoryId, serviceQuery, language]);
 
-  const cartTotal = useMemo(() => cart.reduce((sum, service) => sum + servicePrice(service), 0), [cart]);
+  const catalogTotal = useMemo(
+    () => cart.reduce((sum, service) => sum + servicePrice(service), 0),
+    [cart]
+  );
+  const bookingPriceForService = useCallback(
+    (service: CatalogService) => {
+      const key = String(service.id || "").trim();
+      const catalogPrice = Math.max(0, servicePrice(service));
+      const raw = priceAdjustments[key]?.price;
+      if (raw == null || String(raw).trim() === "") return catalogPrice;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : catalogPrice;
+    },
+    [priceAdjustments]
+  );
+  const bookingSubtotal = useMemo(
+    () => cart.reduce((sum, service) => sum + bookingPriceForService(service), 0),
+    [cart, bookingPriceForService]
+  );
+  const hasPriceAdjustments = useMemo(
+    () => cart.some((service) =>
+      Math.abs(bookingPriceForService(service) - servicePrice(service)) > 0.005
+    ),
+    [cart, bookingPriceForService]
+  );
   const selectedOffer = useMemo(() => {
     const id = String(selectedOfferId || "").trim();
     if (!id) return null;
@@ -736,8 +784,20 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     bookingItemId: `item_${index}`,
     serviceId: String(service.id || "").trim(),
     categoryId: String(service?.categoryId || service?.category || "").trim() || undefined,
-    originalAmountHalalas: toHalalas(servicePrice(service)),
-  })), [cart]);
+    originalAmountHalalas: toHalalas(bookingPriceForService(service)),
+  })), [cart, bookingPriceForService]);
+  useEffect(() => {
+    if (
+      !canApplyManualDiscount &&
+      (discountMode === "fixed" || discountMode === "percent")
+    ) {
+      setDiscountMode("none");
+      setManualFixedDiscount("");
+      setManualPercentDiscount("");
+      setManualMaxDiscount("");
+    }
+  }, [canApplyManualDiscount, discountMode]);
+
   const discountRequest = useMemo(() => {
     if (discountMode === "fixed") {
       return {
