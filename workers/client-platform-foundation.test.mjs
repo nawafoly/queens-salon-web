@@ -60,6 +60,7 @@ test('cashback policy is salon-only, non-withdrawable and non-transferable', () 
 test('client platform migrations enforce money and communication boundaries', () => {
   const cashback = readFileSync('migrations/core/0079_client_cashback_wallet.sql', 'utf8');
   const connect = readFileSync('migrations/core/0080_client_connect_foundation.sql', 'utf8');
+  const expiry = readFileSync('migrations/core/0081_cashback_expiry_lot_state.sql', 'utf8');
 
   assert.match(cashback, /cash_withdrawal_allowed INTEGER NOT NULL DEFAULT 0 CHECK \(cash_withdrawal_allowed = 0\)/);
   assert.match(cashback, /transfer_allowed INTEGER NOT NULL DEFAULT 0 CHECK \(transfer_allowed = 0\)/);
@@ -70,6 +71,10 @@ test('client platform migrations enforce money and communication boundaries', ()
   assert.match(connect, /delivery_status IN \('sent', 'blocked'\)/);
   assert.match(connect, /split_phone_number/);
   assert.match(connect, /review_status/);
+
+  assert.match(expiry, /cashback_expiry_lot_state/);
+  assert.match(expiry, /idx_cashback_wallet_expiry_earn_scan/);
+  assert.match(expiry, /PRIMARY KEY \(salon_id, source_transaction_id\)/);
 });
 
 
@@ -117,6 +122,10 @@ test('cashback lifecycle stays disabled until policy activation and supports clo
   assert.match(refunds, /reconcileCashbackForBooking/);
   assert.match(worker, /\/api\/core\/admin\/cashback\/policy/);
   assert.match(worker, /cashback:redeem/);
+  assert.match(worker, /expireCashbackCredits\(env\.CORE_DB, salonId\)/);
+  assert.match(cashback, /loadCashbackLedgerRows/);
+  assert.match(cashback, /recoveryHalalas/);
+  assert.match(cashback, /cashback_expiry_lot_state/);
 });
 
 
