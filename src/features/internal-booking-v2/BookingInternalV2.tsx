@@ -1626,7 +1626,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const inCart = cart.some((item) => String(item.id) === String(service.id));
-                      return <button key={service.id} className={inCart ? "is-selected" : ""} onClick={() => setCart((current) => inCart ? current.filter((item) => String(item.id) !== String(service.id)) : [...current, service])}><span className="bk2-service-copy"><strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong><small>{serviceDuration(service) ? `${serviceDuration(service)} ${t("دقيقة")}` : t("المدة حسب الخدمة")}</small></span><span className="bk2-service-price">{money(servicePrice(service))}</span><span className="bk2-service-add">{inCart ? "✓" : "+"}</span></button>;
+                      return <button
+                        key={service.id}
+                        className={inCart ? "is-selected" : ""}
+                        onClick={() => {
+                          if (inCart) {
+                            const key = String(service.id);
+                            setCart((current) => current.filter((item) => String(item.id) !== key));
+                            setPriceAdjustments((current) => {
+                              const next = { ...current };
+                              delete next[key];
+                              return next;
+                            });
+                          } else {
+                            setCart((current) => [...current, service]);
+                          }
+                        }}
+                      >
+                        <span className="bk2-service-copy">
+                          <strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong>
+                          <small>{serviceDuration(service) ? `${serviceDuration(service)} ${t("دقيقة")}` : t("المدة حسب الخدمة")}</small>
+                        </span>
+                        <span className="bk2-service-price">
+                          <small>{t("سعر الكتالوج")}</small>
+                          {money(servicePrice(service))}
+                        </span>
+                        <span className="bk2-service-add">{inCart ? "✓" : "+"}</span>
+                      </button>;
                     })}
                   </div>
                   {!catalogLoading && !visibleServices.length ? <div className="bk2-no-results">{t("لا توجد خدمات مطابقة في هذا القسم.")}</div> : null}
@@ -1704,12 +1730,200 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                     <div className="bk2-booking-success"><strong>✓ {t("تم حفظ الحجز بنجاح")}</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t("رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div></div>
                   ) : (
                     <>
-                      <div className="bk2-review-list">{cart.map((service, index) => { const schedule = scheduleByService[String(service.id)]; const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id)); const originalAmount = servicePrice(service); const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0; const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount; return <article key={service.id}><span>{index + 1}</span><div><strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong><small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>{rowDiscount > 0 ? <small>{t("خصم هذه الخدمة")}: {money(rowDiscount)}</small> : null}</div><b>{rowDiscount > 0 ? <small className="bk2-price-before">{money(originalAmount)}</small> : null}{money(rowFinal)}</b></article>; })}</div>
-                      <div className="bk2-payment-block bk2-discount-block"><h3>{t("إضافة خصم أو كوبون")}</h3><><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("بدون خصم")}</button><button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("مبلغ ثابت")}</button><button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("نسبة")}</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>{t("عرض محفوظ")}</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>{t("كوبون")}</button></div>{discountMode === "fixed" ? <label className="bk2-payment-input"><span>{t("قيمة الخصم")}</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>{t("النسبة")}</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>{t("حد أقصى اختياري")}</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t("بدون حد")} /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>{t("جاري تحميل العروض...")}</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer, language)} · {preview.ok ? `${t("خصم متوقع")} ${money(halalasToSar(preview.discountHalalas))}` : discountReasonText(preview.reason, language)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>{t("خدمات محددة")}: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>{t("تصنيفات محددة")}: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>{t("كود الكوبون")}</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? t("جاري التحقق...") : t("تحقق")}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>{t("الإجمالي المؤهل")}: {money(halalasToSar(discountSnapshot.eligibleSubtotalHalalas))}</span><strong>{t("الخصم")}: {money(discountAmount)}</strong></div> : null}</></div>
+                      <div className="bk2-review-list">
+                        {cart.map((service, index) => {
+                          const key = String(service.id);
+                          const schedule = scheduleByService[key];
+                          const allocation = discountSnapshot?.allocations?.find(
+                            (row) =>
+                              row.bookingItemId === `item_${index}` ||
+                              row.serviceId === key
+                          );
+                          const catalogPrice = Math.max(0, servicePrice(service));
+                          const bookingPrice = Math.max(0, bookingPriceForService(service));
+                          const draft = priceAdjustments[key];
+                          const adjusted = Math.abs(bookingPrice - catalogPrice) > 0.005;
+                          const rowDiscount = allocation
+                            ? halalasToSar(allocation.discountAmountHalalas)
+                            : 0;
+                          const rowFinal = allocation
+                            ? halalasToSar(allocation.finalAmountHalalas)
+                            : bookingPrice;
+
+                          return (
+                            <article
+                              key={service.id}
+                              className={`bk2-review-item ${adjusted ? "has-price-adjustment" : ""}`}
+                            >
+                              <span className="bk2-review-index">{index + 1}</span>
+                              <div className="bk2-review-content">
+                                <strong>
+                                  {translateBookingCatalogLabel(
+                                    language,
+                                    serviceTitle(service),
+                                    "service"
+                                  )}
+                                </strong>
+                                <small>
+                                  {schedule?.staffName} · {bookingDate} ·{" "}
+                                  {formatTime12(schedule?.time, schedule?.time)}
+                                </small>
+
+                                <div className="bk2-item-price-breakdown">
+                                  <span>
+                                    {t("سعر الكتالوج")}
+                                    <strong>{money(catalogPrice)}</strong>
+                                  </span>
+                                  <span className={adjusted ? "is-adjusted" : ""}>
+                                    {adjusted
+                                      ? t("سعر الحجز المعدل")
+                                      : t("سعر الحجز")}
+                                    <strong>{money(bookingPrice)}</strong>
+                                  </span>
+                                  <span>
+                                    {t("الخصم")}
+                                    <strong>{money(rowDiscount)}</strong>
+                                  </span>
+                                  <span className="is-final">
+                                    {t("السعر النهائي")}
+                                    <strong>{money(rowFinal)}</strong>
+                                  </span>
+                                </div>
+
+                                {canAdjustBookingPrice ? (
+                                  <div className="bk2-price-adjustment">
+                                    {!draft ? (
+                                      <button
+                                        type="button"
+                                        className="bk2-price-adjust-toggle"
+                                        onClick={() =>
+                                          setPriceAdjustments((current) => ({
+                                            ...current,
+                                            [key]: {
+                                              price: String(catalogPrice),
+                                              reason: "",
+                                              note: "",
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        {t("تعديل سعر الحجز")}
+                                      </button>
+                                    ) : (
+                                      <div className="bk2-price-adjustment-editor">
+                                        <label>
+                                          <span>{t("السعر الفعلي للحجز")}</span>
+                                          <div className="bk2-price-input">
+                                            <input
+                                              inputMode="decimal"
+                                              value={draft.price}
+                                              onChange={(event) => {
+                                                const value = normalizeDigits(event.target.value)
+                                                  .replace(/[^0-9.]/g, "");
+                                                setPriceAdjustments((current) => ({
+                                                  ...current,
+                                                  [key]: {
+                                                    ...current[key],
+                                                    price: value,
+                                                  },
+                                                }));
+                                              }}
+                                            />
+                                            <em>{currency}</em>
+                                          </div>
+                                        </label>
+
+                                        <label>
+                                          <span>
+                                            {t("سبب تعديل السعر")}
+                                            {adjusted ? " *" : ""}
+                                          </span>
+                                          <select
+                                            value={draft.reason}
+                                            onChange={(event) =>
+                                              setPriceAdjustments((current) => ({
+                                                ...current,
+                                                [key]: {
+                                                  ...current[key],
+                                                  reason: event.target.value as
+                                                    | PriceAdjustmentReason
+                                                    | "",
+                                                },
+                                              }))
+                                            }
+                                          >
+                                            <option value="">
+                                              {t("اختاري السبب")}
+                                            </option>
+                                            <option value="catalog_pending_update">
+                                              {t("السعر محدث ولم يحدث الكتالوج")}
+                                            </option>
+                                            <option value="management_approved">
+                                              {t("سعر معتمد من الإدارة")}
+                                            </option>
+                                            <option value="special_price">
+                                              {t("سعر خاص")}
+                                            </option>
+                                            <option value="other">
+                                              {t("أخرى")}
+                                            </option>
+                                          </select>
+                                        </label>
+
+                                        <label className="is-wide">
+                                          <span>
+                                            {t("ملاحظة إضافية (اختياري)")}
+                                          </span>
+                                          <input
+                                            value={draft.note}
+                                            maxLength={300}
+                                            onChange={(event) =>
+                                              setPriceAdjustments((current) => ({
+                                                ...current,
+                                                [key]: {
+                                                  ...current[key],
+                                                  note: event.target.value,
+                                                },
+                                              }))
+                                            }
+                                            placeholder={t("تفاصيل داخلية للإدارة فقط")}
+                                          />
+                                        </label>
+
+                                        <button
+                                          type="button"
+                                          className="bk2-price-reset"
+                                          onClick={() =>
+                                            setPriceAdjustments((current) => {
+                                              const next = { ...current };
+                                              delete next[key];
+                                              return next;
+                                            })
+                                          }
+                                        >
+                                          {t("إلغاء تعديل السعر")}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                      <div className="bk2-payment-block bk2-discount-block"><h3>{t("إضافة خصم أو كوبون")}</h3><><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("بدون خصم")}</button>{canApplyManualDiscount ? <button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("مبلغ ثابت")}</button> : null}{canApplyManualDiscount ? <button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("نسبة")}</button> : null}<button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>{t("عرض محفوظ")}</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>{t("كوبون")}</button></div>{discountMode === "fixed" ? <label className="bk2-payment-input"><span>{t("قيمة الخصم")}</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>{t("النسبة")}</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>{t("حد أقصى اختياري")}</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t("بدون حد")} /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>{t("جاري تحميل العروض...")}</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer, language)} · {preview.ok ? `${t("خصم متوقع")} ${money(halalasToSar(preview.discountHalalas))}` : discountReasonText(preview.reason, language)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>{t("خدمات محددة")}: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>{t("تصنيفات محددة")}: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>{t("كود الكوبون")}</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? t("جاري التحقق...") : t("تحقق")}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>{t("الإجمالي المؤهل")}: {money(halalasToSar(discountSnapshot.eligibleSubtotalHalalas))}</span><strong>{t("الخصم")}: {money(discountAmount)}</strong></div> : null}</></div>
                       <div className="bk2-payment-block"><h3>{t("نوع التحصيل")}</h3><div className="bk2-choice-grid"><button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>{t("دفع كامل")}</button><button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>{t("عربون")}</button><button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>{t("بدون دفع الآن")}</button></div>{paymentType === "partial" ? <label className="bk2-payment-input"><span>{t("قيمة العربون")}</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}</div>
                       {paymentType !== "none" ? <div className="bk2-payment-block"><h3>{t("طريقة الدفع")}</h3><div className="bk2-choice-grid four"><button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>{t("كاش")}</button><button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>{t("شبكة")}</button><button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>{t("تحويل")}</button><button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>{t("مختلط")}</button></div>{paymentMethod === "mixed" ? <div className="bk2-mixed-grid"><label><span>{t("كاش")}</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("شبكة")}</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("تحويل")}</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><p>{t("المجموع")}: {money(mixedTotal)} {t("من")} {money(effectivePaidAmount)}</p></div> : null}</div> : null}
                       <label className="bk2-note-field"><span>{t("ملاحظة الحجز (اختياري)")}</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder={t("أي تفاصيل مهمة للموظفة أو الاستقبال...")} /></label>
-                      <div className="bk2-payment-summary"><div><span>{t("الإجمالي قبل الخصم")}</span><strong>{money(cartTotal)}</strong></div><div><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div><div><span>{t("الإجمالي بعد الخصم")}</span><strong>{money(finalTotal)}</strong></div><div><span>{t("المدفوع الآن")}</span><strong>{money(effectivePaidAmount)}</strong></div><div><span>{t("المتبقي")}</span><strong>{money(remainingAmount)}</strong></div></div>
+                      <div className="bk2-payment-summary">
+                        {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
+                        <div><span>{t("سعر الحجز قبل الخصم")}</span><strong>{money(bookingSubtotal)}</strong></div>
+                        <div><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div>
+                        <div><span>{t("الإجمالي بعد الخصم")}</span><strong>{money(finalTotal)}</strong></div>
+                        <div><span>{t("المدفوع الآن")}</span><strong>{money(effectivePaidAmount)}</strong></div>
+                        <div><span>{t("المتبقي")}</span><strong>{money(remainingAmount)}</strong></div>
+                      </div>
                       {submitError ? <p className="bk2-inline-warning">{submitError}</p> : null}
                       <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>{t("العودة للموعد")}</button><button type="button" className="is-primary" onClick={requestSubmitBooking} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${money(effectivePaidAmount)}` : `حفظ الحجز وتحصيل ${money(effectivePaidAmount)}`}</button></div>
                     </>
@@ -1722,8 +1936,19 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient?.phone || t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
-              {cart.length ? <div className="bk2-summary-services">{cart.map((service) => { const schedule = scheduleByService[String(service.id)]; return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}</span><strong>{money(servicePrice(service))}</strong></div>; })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
-              <div className="bk2-totals"><div><span>{t("الإجمالي الفرعي")}</span><strong>{money(cartTotal)}</strong></div><div className="is-discount"><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div><div className="is-total"><span>{t("الإجمالي")}</span><strong>{money(finalTotal)}</strong></div></div>
+              {cart.length ? <div className="bk2-summary-services">{cart.map((service) => {
+                const schedule = scheduleByService[String(service.id)];
+                const catalogPrice = servicePrice(service);
+                const bookingPrice = bookingPriceForService(service);
+                const adjusted = Math.abs(bookingPrice - catalogPrice) > 0.005;
+                return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
+              })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
+              <div className="bk2-totals">
+                {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
+                <div><span>{t("سعر الحجز")}</span><strong>{money(bookingSubtotal)}</strong></div>
+                <div className="is-discount"><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div>
+                <div className="is-total"><span>{t("الإجمالي")}</span><strong>{money(finalTotal)}</strong></div>
+              </div>
               <button className="bk2-continue" disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4} onClick={() => { if (step === 1 && canContinue) setStep(2); else if (step === 2 && cart.length) setStep(3); else if (step === 3 && allScheduled) setStep(4); }}>{step === 1 ? t("المتابعة للخدمات") : step === 2 ? t("المتابعة للموظفة والموعد") : step === 3 ? t("المتابعة للمراجعة والدفع") : t("راجعي وأكدي الحجز أعلاه")}<FiChevronLeft /></button>
               <p className="bk2-safe-note">{t("هذه نسخة V2 تجريبية منفصلة، ولم تستبدل نظام الحجز الحالي.")}</p>
             </aside>
