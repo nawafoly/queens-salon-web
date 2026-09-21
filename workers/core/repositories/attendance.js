@@ -42,7 +42,7 @@ function normalizeMalikatAttendance(row) {
     salon_id: null,
     employee_id: cleanText(row.employee_doc_id),
     employee_uid: cleanText(row.employee_uid) || null,
-    date_key: riyadhDateKey(recordedAt),
+    date_key: cleanText(row.work_date) || riyadhDateKey(recordedAt),
     record_type: cleanText(row.type).toLowerCase(),
     recorded_at: recordedAt,
     latitude: row.location_lat === undefined || row.location_lat === null ? null : Number(row.location_lat),
@@ -89,7 +89,7 @@ export async function listAttendance(db, salonId, query = {}, externalAttendance
   if (externalAttendanceDb) {
     const malikatRows = await dbAll(
       externalAttendanceDb,
-      `SELECT id, employee_uid, employee_doc_id, type, server_time, client_time, location_lat,
+      `SELECT id, employee_uid, employee_doc_id, type, server_time, client_time, work_date, location_lat,
         location_lng, location_accuracy, zone_id, zone_name, result, rejection_reason, created_at
        FROM attendance_records
        WHERE result = ? AND type IN (?, ?)
