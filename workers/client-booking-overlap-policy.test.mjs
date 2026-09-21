@@ -30,6 +30,36 @@ test("Core rejects overlapping services in one booking across employees", () => 
   );
 });
 
+test("04:20 thirty-minute service blocks a second service at 04:30 but allows 04:50", () => {
+  const first = row("service-a", "staff-a", "04:20", "04:50");
+
+  const overlapping = findClientItemOverlap([
+    first,
+    row("service-b", "staff-b", "04:30", "05:00"),
+  ]);
+  assert.ok(overlapping, "04:30 must overlap the active 04:20-04:50 service");
+
+  assert.throws(
+    () =>
+      assertNoClientItemOverlap([
+        first,
+        row("service-b", "staff-b", "04:30", "05:00"),
+      ]),
+    (error) =>
+      error?.status === 409 &&
+      error?.code === "core_booking:client_schedule_conflict"
+  );
+
+  assert.equal(
+    findClientItemOverlap([
+      first,
+      row("service-b", "staff-b", "04:50", "05:20"),
+    ]),
+    null,
+    "04:50 is the first valid adjacent start"
+  );
+});
+
 test("adjacent services are allowed; employee buffer is not client service time", () => {
   assert.equal(findClientItemOverlap([
     row("hair", "staff-a", "15:00", "15:30"),
