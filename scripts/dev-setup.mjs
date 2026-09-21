@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { createConnection } from "node:net";
 
 const projectRoot = process.cwd();
 const wranglerBin = resolve(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
@@ -55,6 +56,26 @@ function findNumericValue(value, key) {
   return null;
 }
 
+async function assertPortFree(port, label) {
+  const inUse = await new Promise((resolvePort) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    const done = (value) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolvePort(value);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(700, () => done(false));
+  });
+
+  if (inUse) {
+    fail(
+      `${label} is already running on port ${port}. Stop the current npm run dev session first, then rerun npm run dev:setup.`
+    );
+  }
+}
+
 function createLocalOnlyCoreConfig() {
   const source = readFileSync(coreDevConfig, "utf8");
   const localOnly = source.replace(
@@ -81,6 +102,7 @@ if (!existsSync(partnersDevConfig)) {
 }
 
 try {
+  await assertPortFree(8807, "Local Core worker");
   createLocalOnlyCoreConfig();
 
   run("Apply pending Core D1 migrations locally", [
