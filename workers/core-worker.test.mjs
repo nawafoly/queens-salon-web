@@ -2007,8 +2007,60 @@ class FakeD1 {
           created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json,
         }));
       } else if (sql.startsWith("INSERT INTO booking_items")) {
-        const [id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas = 0, final_total_halalas = total_halalas] = params;
-        results.push(this.insert("booking_items", { id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas, final_total_halalas }));
+        const [
+          id,
+          booking_id,
+          salon_id,
+          service_id,
+          service_name_snapshot,
+          staff_id,
+          quantity,
+          catalog_unit_price_halalas,
+          unit_price_halalas,
+          total_halalas,
+          price_adjustment_reason,
+          price_adjustment_note,
+          price_adjusted_by_uid,
+          price_adjusted_at,
+          package_covered,
+          client_package_id,
+          duration_minutes,
+          created_at,
+          booking_date,
+          start_time,
+          end_time,
+          cart_item_id,
+          package_reservation_id,
+          discount_halalas = 0,
+          final_total_halalas = total_halalas,
+        ] = params;
+        results.push(this.insert("booking_items", {
+          id,
+          booking_id,
+          salon_id,
+          service_id,
+          service_name_snapshot,
+          staff_id,
+          quantity,
+          catalog_unit_price_halalas,
+          unit_price_halalas,
+          total_halalas,
+          price_adjustment_reason,
+          price_adjustment_note,
+          price_adjusted_by_uid,
+          price_adjusted_at,
+          package_covered,
+          client_package_id,
+          duration_minutes,
+          created_at,
+          booking_date,
+          start_time,
+          end_time,
+          cart_item_id,
+          package_reservation_id,
+          discount_halalas,
+          final_total_halalas,
+        }));
       } else if (sql.startsWith("INSERT INTO booking_slot_locks")) {
         const [salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at] = params;
         const key = `${salon_id}\u0000${staff_id}\u0000${booking_date}\u0000${slot_time}`;
