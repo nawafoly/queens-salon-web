@@ -21,6 +21,7 @@ const ATTENDANCE_BASE_MAX_ACCURACY_METERS = 150;
 const ATTENDANCE_MAX_ACCURACY_METERS = 200;
 const ATTENDANCE_RECORDS_DEFAULT_LIMIT = 50;
 const ATTENDANCE_RECORDS_MAX_LIMIT = 200;
+const ATTENDANCE_CHECKOUT_GRACE_MINUTES = 180;
 const EARTH_RADIUS_METERS = 6371008.8;
 
 
@@ -55,6 +56,166 @@ function riyadhClockParts(value = new Date().toISOString()) {
   const minute = Number(get("minute"));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
   return { dateKey, minutes: hour * 60 + minute };
+}
+
+function addAttendanceDays(dateKey, days) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizeText(dateKey));
+  if (!match) return "";
+  const date = new Date(Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]) + Number(days || 0),
+    12,
+    0,
+    0,
+    0
+  ));
+  return date.toISOString().slice(0, 10);
+}
+
+function attendanceShiftTime(shift, kind) {
+  const values = kind === "start"
+    ? [
+        shift?.template_start_time,
+        shift?.templateStartTime,
+        shift?.start_time,
+        shift?.startTime,
+      ]
+    : [
+        shift?.template_end_time,
+        shift?.templateEndTime,
+        shift?.end_time,
+        shift?.endTime,
+      ];
+  for (const value of values) {
+    if (attendanceTimeMinutes(value) != null) return normalizeText(value);
+  }
+  return "";
+}
+
+export function resolveAttendanceCheckoutWindow({
+  workDate,
+  shift,
+  graceMinutes = ATTENDANCE_CHECKOUT_GRACE_MINUTES,
+}) {
+  const startTime = attendanceShiftTime(shift, "start");
+  const endTime = attendanceShiftTime(shift, "end");
+  const startMinutes = attendanceTimeMinutes(startTime);
+  const endMinutes = attendanceTimeMinutes(endTime);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizeText(workDate)) || endMinutes == null) {
+    return null;
+  }
+
+  const explicitlyCrossesMidnight = attendanceBool(
+    shift?.crosses_midnight ?? shift?.crossesMidnight
+  );
+  const crossesMidnight =
+    explicitlyCrossesMidnight ||
+    (startMinutes != null && endMinutes <= startMinutes);
+  const endDate = crossesMidnight ? addAttendanceDays(workDate, 1) : workDate;
+  const shiftEndAt = parseRiyadhDateTime(endDate, endTime);
+  if (!shiftEndAt) return null;
+
+  const grace = Math.max(0, Math.round(Number(graceMinutes || 0)));
+  const checkoutDeadlineAt = new Date(
+    Date.parse(shiftEndAt) + grace * 60_000
+  ).toISOString();
+
+  return {
+    workDate: normalizeText(workDate),
+    shiftEndAt,
+    checkoutDeadlineAt,
+    graceMinutes: grace,
+    crossesMidnight,
+  };
+}
+
+async function readEffectiveAttendanceState({
+  db,
+  directoryDb,
+  salonId,
+  employeeUid,
+  employeeDocId,
+  now = new Date().toISOString(),
+}) {
+  const state = await db
+    .prepare(
+      `SELECT employee_uid, employee_doc_id, status, last_type, last_record_id,
+              last_server_time, last_location_lat, last_location_lng,
+              last_location_accuracy, last_zone_id, updated_at,
+              work_date, shift_end_at, checkout_deadline_at
+         FROM attendance_state
+        WHERE employee_uid = ?`
+    )
+    .bind(employeeUid)
+    .first();
+
+  if (!state || normalizeText(state.status) !== "checked_in") {
+    return state || null;
+  }
+
+  let workDate =
+    normalizeText(state.work_date) ||
+    getRiyadhDateKeyFromIso(state.last_server_time);
+  let shiftEndAt = normalizeText(state.shift_end_at);
+  let checkoutDeadlineAt = normalizeText(state.checkout_deadline_at);
+
+  if ((!shiftEndAt || !checkoutDeadlineAt) && directoryDb && workDate && employeeDocId) {
+    try {
+      const shift = await resolveEmployeeShift(
+        directoryDb,
+        salonId,
+        employeeDocId,
+        workDate
+      );
+      const window = resolveAttendanceCheckoutWindow({ workDate, shift });
+      if (window) {
+        shiftEndAt = window.shiftEndAt;
+        checkoutDeadlineAt = window.checkoutDeadlineAt;
+        await db
+          .prepare(
+            `UPDATE attendance_state
+                SET work_date = ?, shift_end_at = ?, checkout_deadline_at = ?, updated_at = ?
+              WHERE employee_uid = ? AND status = 'checked_in'`
+          )
+          .bind(workDate, shiftEndAt, checkoutDeadlineAt, now, employeeUid)
+          .run();
+      }
+    } catch (error) {
+      console.warn("[attendance] open shift checkout window resolution failed", error);
+    }
+  }
+
+  if (
+    checkoutDeadlineAt &&
+    Number.isFinite(Date.parse(checkoutDeadlineAt)) &&
+    Date.parse(now) > Date.parse(checkoutDeadlineAt)
+  ) {
+    await db
+      .prepare(
+        `UPDATE attendance_state
+            SET status = 'checked_out', updated_at = ?
+          WHERE employee_uid = ? AND status = 'checked_in'`
+      )
+      .bind(now, employeeUid)
+      .run();
+
+    return {
+      ...state,
+      status: "checked_out",
+      work_date: workDate || null,
+      shift_end_at: shiftEndAt || null,
+      checkout_deadline_at: checkoutDeadlineAt || null,
+      expired_incomplete: 1,
+    };
+  }
+
+  return {
+    ...state,
+    work_date: workDate || null,
+    shift_end_at: shiftEndAt || null,
+    checkout_deadline_at: checkoutDeadlineAt || null,
+  };
 }
 
 export function evaluateCheckInWindow({ type, now, shift }) {
