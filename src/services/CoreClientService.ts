@@ -44,6 +44,17 @@ export type CoreClientLoyalty = {
   transactions: CoreClientLoyaltyTransaction[];
 };
 
+export type CoreClientPreferences = {
+  clientId: string;
+  preferredStaffId: string | null;
+  preferredStaffName: string | null;
+  preferredStaffSource: string | null;
+  serviceMessagesEnabled: boolean;
+  marketingConsent: boolean;
+  connectEnabled: boolean;
+  updatedAt: string | null;
+};
+
 export type CoreClientCashbackTransaction = {
   id: string;
   type: string;
@@ -182,6 +193,31 @@ function mapClient(row: Record<string, unknown>): CoreClient {
     remainingPackageSessions: finiteNumber(
       row.remainingPackageSessions ?? row.remaining_package_sessions
     ),
+  };
+}
+
+function mapPreferences(row: Record<string, unknown>): CoreClientPreferences {
+  return {
+    clientId: text(row.clientId ?? row.client_id),
+    preferredStaffId:
+      text(row.preferredStaffId ?? row.preferred_staff_id) || null,
+    preferredStaffName:
+      text(row.preferredStaffName ?? row.preferred_staff_name) || null,
+    preferredStaffSource:
+      text(row.preferredStaffSource ?? row.preferred_staff_source) || null,
+    serviceMessagesEnabled:
+      row.serviceMessagesEnabled === undefined &&
+      row.service_messages_enabled === undefined
+        ? true
+        : row.serviceMessagesEnabled === true ||
+          Number(row.service_messages_enabled) === 1,
+    marketingConsent:
+      row.marketingConsent === true || Number(row.marketing_consent) === 1,
+    connectEnabled:
+      row.connectEnabled === undefined && row.connect_enabled === undefined
+        ? true
+        : row.connectEnabled === true || Number(row.connect_enabled) === 1,
+    updatedAt: text(row.updatedAt ?? row.updated_at) || null,
   };
 }
 
@@ -358,6 +394,29 @@ export const CoreClientService = {
       `/api/core/clients/${encodeURIComponent(id)}/overview`
     );
     return mapOverview(row);
+  },
+
+  async preferences(id: string): Promise<CoreClientPreferences> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/clients/${encodeURIComponent(id)}/preferences`
+    );
+    return mapPreferences(row);
+  },
+
+  async updatePreferences(
+    id: string,
+    input: {
+      preferredStaffId?: string | null;
+      serviceMessagesEnabled?: boolean;
+      marketingConsent?: boolean;
+      connectEnabled?: boolean;
+    }
+  ): Promise<CoreClientPreferences> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/clients/${encodeURIComponent(id)}/preferences`,
+      { method: "PATCH", body: input }
+    );
+    return mapPreferences(row);
   },
 
   async adjustLoyalty(
