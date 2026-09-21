@@ -143,7 +143,7 @@ async function readEffectiveAttendanceState({
       `SELECT employee_uid, employee_doc_id, status, last_type, last_record_id,
               last_server_time, last_location_lat, last_location_lng,
               last_location_accuracy, last_zone_id, updated_at,
-              work_date, shift_end_at, checkout_deadline_at
+              work_date, shift_end_at, checkout_deadline_at, expired_incomplete
          FROM attendance_state
         WHERE employee_uid = ?`
     )
@@ -194,7 +194,7 @@ async function readEffectiveAttendanceState({
     await db
       .prepare(
         `UPDATE attendance_state
-            SET status = 'checked_out', updated_at = ?
+            SET status = 'checked_out', expired_incomplete = 1, updated_at = ?
           WHERE employee_uid = ? AND status = 'checked_in'`
       )
       .bind(now, employeeUid)
@@ -2364,6 +2364,7 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
                  work_date = NULL,
                  shift_end_at = NULL,
                  checkout_deadline_at = NULL,
+                 expired_incomplete = 0,
                  updated_at = ?
              WHERE employee_uid = ? AND last_record_id IN (${placeholders})`
           )
@@ -2549,6 +2550,7 @@ export async function clearAttendanceRecordsForDay({
                work_date = NULL,
                shift_end_at = NULL,
                checkout_deadline_at = NULL,
+               expired_incomplete = 0,
                updated_at = ?
            WHERE employee_uid = ? AND last_record_id IN (${idPlaceholders})`
         )
@@ -3410,8 +3412,8 @@ async function recordAttendance({
           `
         INSERT OR IGNORE INTO attendance_state (
           employee_uid, employee_doc_id, status, updated_at,
-          work_date, shift_end_at, checkout_deadline_at
-        ) VALUES (?, ?, 'checked_out', ?, NULL, NULL, NULL)
+          work_date, shift_end_at, checkout_deadline_at, expired_incomplete
+        ) VALUES (?, ?, 'checked_out', ?, NULL, NULL, NULL, 0)
       `
         )
         .bind(requester.uid, employeeDocId, now),
@@ -3422,7 +3424,8 @@ async function recordAttendance({
         SET employee_doc_id = ?, status = ?, last_type = ?, last_record_id = ?,
             last_server_time = ?, last_location_lat = ?, last_location_lng = ?,
             last_location_accuracy = ?, last_zone_id = ?, updated_at = ?,
-            work_date = ?, shift_end_at = ?, checkout_deadline_at = ?
+            work_date = ?, shift_end_at = ?, checkout_deadline_at = ?,
+            expired_incomplete = 0
         WHERE employee_uid = ? AND ${stateUpdateWhere}
       `
         )
@@ -3596,7 +3599,8 @@ async function readAttendanceState(db, uid) {
   return db
     .prepare(
       `SELECT employee_uid, employee_doc_id, status, last_type, last_record_id,
-              last_server_time, work_date, shift_end_at, checkout_deadline_at
+              last_server_time, work_date, shift_end_at, checkout_deadline_at,
+              expired_incomplete
          FROM attendance_state WHERE employee_uid = ?`
     )
     .bind(uid)
@@ -3633,8 +3637,8 @@ async function rebuildAttendanceState(db, employeeUid) {
         employee_uid, employee_doc_id, status, last_type, last_record_id,
         last_server_time, last_location_lat, last_location_lng,
         last_location_accuracy, last_zone_id, updated_at,
-        work_date, shift_end_at, checkout_deadline_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+        work_date, shift_end_at, checkout_deadline_at, expired_incomplete
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
       ON CONFLICT(employee_uid) DO UPDATE SET
         employee_doc_id = excluded.employee_doc_id,
         status = excluded.status,
@@ -3648,7 +3652,8 @@ async function rebuildAttendanceState(db, employeeUid) {
         updated_at = excluded.updated_at,
         work_date = excluded.work_date,
         shift_end_at = excluded.shift_end_at,
-        checkout_deadline_at = excluded.checkout_deadline_at
+        checkout_deadline_at = excluded.checkout_deadline_at,
+        expired_incomplete = excluded.expired_incomplete
     `
     )
     .bind(
