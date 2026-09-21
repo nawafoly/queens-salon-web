@@ -53,12 +53,28 @@ VALUES
     '2026-09-21T00:00:00.000Z'
   );
 
+-- Grants are tenant-safe: apply to every existing salon role instead of
+-- hard-coding the seed tenant.
 INSERT OR IGNORE INTO role_permissions
   (salon_id, role_key, permission_key, created_at)
-VALUES
-  ('main', 'owner', 'bookings.price.adjust', '2026-09-21T00:00:00.000Z'),
-  ('main', 'owner', 'bookings.discount.apply', '2026-09-21T00:00:00.000Z'),
-  ('main', 'admin', 'bookings.price.adjust', '2026-09-21T00:00:00.000Z'),
-  ('main', 'admin', 'bookings.discount.apply', '2026-09-21T00:00:00.000Z'),
-  ('main', 'reception', 'bookings.price.adjust', '2026-09-21T00:00:00.000Z'),
-  ('main', 'reception', 'bookings.discount.apply', '2026-09-21T00:00:00.000Z');
+SELECT
+  r.salon_id,
+  r.role_key,
+  'bookings.price.adjust',
+  '2026-09-21T00:00:00.000Z'
+FROM roles r
+WHERE r.role_key IN ('owner', 'admin', 'reception')
+  AND r.salon_id IS NOT NULL
+  AND TRIM(r.salon_id) <> '';
+
+INSERT OR IGNORE INTO role_permissions
+  (salon_id, role_key, permission_key, created_at)
+SELECT
+  r.salon_id,
+  r.role_key,
+  'bookings.discount.apply',
+  '2026-09-21T00:00:00.000Z'
+FROM roles r
+WHERE r.role_key IN ('owner', 'admin', 'reception')
+  AND r.salon_id IS NOT NULL
+  AND TRIM(r.salon_id) <> '';
