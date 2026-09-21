@@ -215,6 +215,21 @@ function computedBookingStatus(booking, refundedHalalas) {
   return original;
 }
 
+function sanitizeClientBookingItem(item = {}) {
+  const safe = { ...item };
+  delete safe.catalog_unit_price_halalas;
+  delete safe.catalogUnitPriceHalalas;
+  delete safe.price_adjustment_reason;
+  delete safe.priceAdjustmentReason;
+  delete safe.price_adjustment_note;
+  delete safe.priceAdjustmentNote;
+  delete safe.price_adjusted_by_uid;
+  delete safe.priceAdjustedByUid;
+  delete safe.price_adjusted_at;
+  delete safe.priceAdjustedAt;
+  return safe;
+}
+
 export async function listSelfBookings(db, salonId, identity) {
   const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const [bookings, payments, refunds] = await Promise.all([
@@ -241,7 +256,12 @@ export async function listSelfBookings(db, salonId, identity) {
   return bookings.map((booking) => {
     const refundState = refundsByBooking.get(cleanText(booking.id)) || { total: 0, rows: [] };
     const payment = paymentByBooking.get(cleanText(booking.id));
-    const clientBooking = { ...booking };
+    const clientBooking = {
+      ...booking,
+      items: Array.isArray(booking.items)
+        ? booking.items.map(sanitizeClientBookingItem)
+        : [],
+    };
     delete clientBooking.admin_notes;
     delete clientBooking.adminNotes;
     return {
