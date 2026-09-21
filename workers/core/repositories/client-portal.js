@@ -418,12 +418,75 @@ export async function getAdminClientOverview(db, salonId, clientId) {
   const client = await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
   if (!client) throw new AppError(404, 'core_client:not_found');
 
-  const [bookings, payments, refunds, loyalty, cashback] = await Promise.all([
+  const [
+    bookings,
+    payments,
+    refunds,
+    loyalty,
+    cashback,
+    preference,
+    specialistRows,
+    serviceRows,
+  ] = await Promise.all([
     listBookings(db, salonId, { clientId: id }),
     dbAll(db, `SELECT * FROM payments WHERE salon_id = ? AND client_id = ? ORDER BY COALESCE(paid_at, created_at) DESC LIMIT 500`, [salonId, id]),
     dbAll(db, `SELECT * FROM refunds WHERE salon_id = ? AND client_id = ? ORDER BY refunded_at DESC LIMIT 500`, [salonId, id]),
     getClientLoyaltyById(db, salonId, id),
     getClientCashbackWallet(db, salonId, id),
+    dbFirst(
+      db,
+      `SELECT cp.preferred_staff_id, cp.preferred_staff_source, s.name AS preferred_staff_name
+         FROM client_preferences cp
+         LEFT JOIN staff s
+           ON s.salon_id = cp.salon_id
+          AND s.id = cp.preferred_staff_id
+        WHERE cp.salon_id = ?
+          AND cp.client_id = ?
+        LIMIT 1`,
+      [salonId, id]
+    ),
+    dbAll(
+      db,
+      `SELECT
+          COALESCE(bi.staff_id, b.staff_id) AS staff_id,
+          s.name AS staff_name,
+          COUNT(*) AS visit_count
+        FROM bookings b
+        JOIN booking_items bi
+          ON bi.salon_id = b.salon_id
+         AND bi.booking_id = b.id
+        LEFT JOIN staff s
+          ON s.salon_id = b.salon_id
+         AND s.id = COALESCE(bi.staff_id, b.staff_id)
+       WHERE b.salon_id = ?
+         AND b.client_id = ?
+         AND b.status = 'completed'
+         AND b.deleted_at IS NULL
+         AND COALESCE(bi.staff_id, b.staff_id) IS NOT NULL
+       GROUP BY COALESCE(bi.staff_id, b.staff_id), s.name
+       ORDER BY visit_count DESC, s.name
+       LIMIT 5`,
+      [salonId, id]
+    ),
+    dbAll(
+      db,
+      `SELECT
+          bi.service_id,
+          bi.service_name_snapshot AS service_name,
+          COUNT(*) AS visit_count
+        FROM bookings b
+        JOIN booking_items bi
+          ON bi.salon_id = b.salon_id
+         AND bi.booking_id = b.id
+       WHERE b.salon_id = ?
+         AND b.client_id = ?
+         AND b.status = 'completed'
+         AND b.deleted_at IS NULL
+       GROUP BY bi.service_id, bi.service_name_snapshot
+       ORDER BY visit_count DESC, bi.service_name_snapshot
+       LIMIT 5`,
+      [salonId, id]
+    ),
   ]);
 
   const completedRefunds = refunds.filter((row) => cleanText(row.status) === 'completed');
@@ -458,6 +521,17 @@ export async function getAdminClientOverview(db, salonId, clientId) {
     ...cashback.transactions.map((row) => row.created_at),
   ].map(cleanText).filter(Boolean).sort((a, b) => b.localeCompare(a));
 
+  const completedBookings = bookings.filter(
+    (row) => cleanText(row.status).toLowerCase() === 'completed'
+  );
+  const cancelledBookings = bookings.filter((row) =>
+    ['cancelled', 'canceled'].includes(cleanText(row.status).toLowerCase())
+  );
+  const noShowBookings = bookings.filter(
+    (row) => cleanText(row.status).toLowerCase() === 'no_show'
+  );
+  const netPaidHalalas = Math.max(0, paidHalalas - refundedHalalas);
+
   return {
     client,
     bookings,
@@ -466,12 +540,38 @@ export async function getAdminClientOverview(db, salonId, clientId) {
     loyalty,
     cashback,
     offersUsed: [...offersUsedMap.values()],
+    relationship: {
+      preferredSpecialist: cleanText(preference?.preferred_staff_id)
+        ? {
+            id: cleanText(preference.preferred_staff_id),
+            name:
+              cleanText(preference.preferred_staff_name) ||
+              cleanText(preference.preferred_staff_id),
+            source: cleanText(preference.preferred_staff_source) || null,
+          }
+        : null,
+      mostBookedSpecialists: specialistRows.map((row) => ({
+        id: cleanText(row.staff_id),
+        name: cleanText(row.staff_name) || cleanText(row.staff_id),
+        visits: Number(row.visit_count || 0),
+      })),
+      mostBookedServices: serviceRows.map((row) => ({
+        id: cleanText(row.service_id),
+        name: cleanText(row.service_name) || cleanText(row.service_id),
+        visits: Number(row.visit_count || 0),
+      })),
+    },
     summary: {
       bookings: bookings.length,
-      completedBookings: bookings.filter((row) => cleanText(row.status) === 'completed').length,
+      completedBookings: completedBookings.length,
+      cancelledBookings: cancelledBookings.length,
+      noShowBookings: noShowBookings.length,
       paidHalalas,
       refundedHalalas,
-      netPaidHalalas: Math.max(0, paidHalalas - refundedHalalas),
+      netPaidHalalas,
+      averageCompletedVisitHalalas: completedBookings.length
+        ? Math.round(netPaidHalalas / completedBookings.length)
+        : 0,
       lastActivityAt: activityDates[0] || client.updated_at || client.created_at || null,
     },
   };
