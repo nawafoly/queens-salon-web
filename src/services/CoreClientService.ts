@@ -44,6 +44,32 @@ export type CoreClientLoyalty = {
   transactions: CoreClientLoyaltyTransaction[];
 };
 
+export type CoreClientCashbackTransaction = {
+  id: string;
+  type: string;
+  amountHalalas: number;
+  bookingId?: string | null;
+  refundId?: string | null;
+  reason?: string | null;
+  createdAt: string;
+};
+
+export type CoreClientCashback = {
+  clientId: string;
+  enabled: boolean;
+  balanceHalalas: number;
+  ledgerBalanceHalalas: number;
+  pendingRecoveryHalalas: number;
+  earnedHalalas: number;
+  redeemedHalalas: number;
+  reversedHalalas: number;
+  currency: "SAR";
+  redeemScope: "salon_only";
+  cashWithdrawalAllowed: false;
+  transferAllowed: false;
+  transactions: CoreClientCashbackTransaction[];
+};
+
 export type CoreClientMoneyRow = Record<string, unknown> & {
   id?: string;
   booking_id?: string;
@@ -62,6 +88,7 @@ export type CoreClientOverview = {
   payments: CoreClientMoneyRow[];
   refunds: CoreClientMoneyRow[];
   loyalty: CoreClientLoyalty;
+  cashback: CoreClientCashback;
   offersUsed: Array<{
     id?: string | null;
     code?: string | null;
@@ -117,6 +144,60 @@ function mapClient(row: Record<string, unknown>): CoreClient {
     loyaltyUsed: finiteNumber(row.loyaltyUsed ?? row.loyalty_used),
     loyaltyReversed: finiteNumber(row.loyaltyReversed ?? row.loyalty_reversed),
     lastCompletedAt: text(row.lastCompletedAt ?? row.last_completed_at) || null,
+    bookingsCount: finiteNumber(row.bookingsCount ?? row.bookings_count),
+    completedBookingsCount: finiteNumber(
+      row.completedBookingsCount ?? row.completed_bookings_count
+    ),
+    cancelledBookingsCount: finiteNumber(
+      row.cancelledBookingsCount ?? row.cancelled_bookings_count
+    ),
+    noShowBookingsCount: finiteNumber(
+      row.noShowBookingsCount ?? row.no_show_bookings_count
+    ),
+    lastVisitDate: text(row.lastVisitDate ?? row.last_visit_date) || null,
+    lastVisitTime: text(row.lastVisitTime ?? row.last_visit_time) || null,
+    activePackagesCount: finiteNumber(
+      row.activePackagesCount ?? row.active_packages_count
+    ),
+    remainingPackageSessions: finiteNumber(
+      row.remainingPackageSessions ?? row.remaining_package_sessions
+    ),
+  };
+}
+
+function mapCashback(row: Record<string, unknown>): CoreClientCashback {
+  const transactions = Array.isArray(row.transactions)
+    ? row.transactions.map((entry) => {
+        const item = entry as Record<string, unknown>;
+        return {
+          id: text(item.id),
+          type: text(item.type),
+          amountHalalas: finiteNumber(item.amountHalalas ?? item.amount_halalas),
+          bookingId: text(item.bookingId ?? item.booking_id) || null,
+          refundId: text(item.refundId ?? item.refund_id) || null,
+          reason: text(item.reason) || null,
+          createdAt: text(item.createdAt ?? item.created_at),
+        };
+      })
+    : [];
+  return {
+    clientId: text(row.clientId ?? row.client_id),
+    enabled: row.enabled === true || Number(row.enabled) === 1,
+    balanceHalalas: finiteNumber(row.balanceHalalas ?? row.balance_halalas),
+    ledgerBalanceHalalas: finiteNumber(
+      row.ledgerBalanceHalalas ?? row.ledger_balance_halalas
+    ),
+    pendingRecoveryHalalas: finiteNumber(
+      row.pendingRecoveryHalalas ?? row.pending_recovery_halalas
+    ),
+    earnedHalalas: finiteNumber(row.earnedHalalas ?? row.earned_halalas),
+    redeemedHalalas: finiteNumber(row.redeemedHalalas ?? row.redeemed_halalas),
+    reversedHalalas: finiteNumber(row.reversedHalalas ?? row.reversed_halalas),
+    currency: "SAR",
+    redeemScope: "salon_only",
+    cashWithdrawalAllowed: false,
+    transferAllowed: false,
+    transactions,
   };
 }
 
@@ -135,6 +216,7 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
       ? (row.refunds as CoreClientMoneyRow[])
       : [],
     loyalty: mapLoyalty((row.loyalty ?? {}) as Record<string, unknown>),
+    cashback: mapCashback((row.cashback ?? {}) as Record<string, unknown>),
     offersUsed: Array.isArray(row.offersUsed)
       ? (row.offersUsed as CoreClientOverview["offersUsed"])
       : [],
@@ -152,7 +234,12 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
 export const CoreClientService = {
   async list(
     search = "",
-    options: { includeLoyalty?: boolean } = {}
+    options: {
+      includeLoyalty?: boolean;
+      includeMetrics?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {}
   ): Promise<CoreClient[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/clients",
@@ -160,6 +247,9 @@ export const CoreClientService = {
         query: {
           search,
           ...(options.includeLoyalty ? { includeLoyalty: "1" } : {}),
+          ...(options.includeMetrics ? { includeMetrics: "1" } : {}),
+          limit: options.limit,
+          offset: options.offset,
         },
       }
     );
