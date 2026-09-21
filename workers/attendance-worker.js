@@ -3196,6 +3196,39 @@ async function recordAttendance({
     type,
     now,
   });
+  const effectiveState = await readEffectiveAttendanceState({
+    db,
+    directoryDb,
+    salonId,
+    employeeUid: requester.uid,
+    employeeDocId,
+    now,
+  });
+  const checkInCheckoutWindow =
+    type === "check_in" && policyDecision.result !== "rejected"
+      ? resolveAttendanceCheckoutWindow({
+          workDate: policyDecision.dateKey,
+          shift: policyDecision.shift,
+        })
+      : null;
+  const currentClock = riyadhClockParts(now);
+  const punchWorkDate =
+    type === "check_out" &&
+    normalizeText(effectiveState?.status) === "checked_in" &&
+    normalizeText(effectiveState?.work_date)
+      ? normalizeText(effectiveState.work_date)
+      : normalizeText(policyDecision.dateKey) ||
+        normalizeText(currentClock?.dateKey);
+  const stateConflictReason =
+    type === "check_in" && normalizeText(effectiveState?.status) === "checked_in"
+      ? "open_shift_requires_checkout"
+      : type === "check_out" && normalizeText(effectiveState?.status) !== "checked_in"
+        ? "not_checked_in"
+        : type === "check_in" &&
+            policyDecision.result !== "rejected" &&
+            !checkInCheckoutWindow
+          ? "core_shift_window_unavailable"
+          : null;
   const deviceInfo = normalizeDeviceInfo(input.data?.deviceInfo);
   const previousDeviceId = await readLastSuccessfulDeviceId(db, requester.uid);
   const deviceContext = await readAttendanceDeviceSecurityContext(
@@ -3210,14 +3243,18 @@ async function recordAttendance({
   const blockedDevice = deviceContext.trustStatus === "blocked";
   const initialResult = policyDecision.result === "rejected"
     ? "rejected"
-    : blockedDevice
+    : stateConflictReason
       ? "rejected"
-      : locationDecision.result;
+      : blockedDevice
+        ? "rejected"
+        : locationDecision.result;
   const initialReason = policyDecision.result === "rejected"
     ? policyDecision.rejectionReason
-    : blockedDevice
-      ? "blocked_device"
-      : locationDecision.rejectionReason;
+    : stateConflictReason
+      ? stateConflictReason
+      : blockedDevice
+        ? "blocked_device"
+        : locationDecision.rejectionReason;
   const zone = zoneCheck.zone;
   const role = normalizeText(requester.runtime?.role) || "guest";
   const source = buildAttendanceSource({ clientIp, zone });
@@ -3239,6 +3276,7 @@ async function recordAttendance({
         deviceInfo,
         role,
         source,
+        workDate: punchWorkDate,
       });
       await syncAttendanceDeviceSecurity({
         db,
@@ -3262,7 +3300,7 @@ async function recordAttendance({
           policyDecision.dateKey
         ).catch((error) => console.warn("mark automatic lock absence failed", error));
       }
-      const currentState = await readAttendanceState(db, requester.uid);
+      const currentState = effectiveState || await readAttendanceState(db, requester.uid);
       return attendanceResponse({
         recordId,
         type,
@@ -3281,11 +3319,19 @@ async function recordAttendance({
     const targetStatus = type === "check_in" ? "checked_in" : "checked_out";
     const stateRejection =
       type === "check_in" ? "duplicate_check_in" : "not_checked_in";
-    const currentDay = getRiyadhDayBounds();
     const stateUpdateWhere =
       type === "check_in"
-        ? "(status = 'checked_out' OR last_server_time IS NULL OR last_server_time < ? OR last_server_time >= ?)"
-        : "(status = 'checked_in' AND last_server_time >= ? AND last_server_time < ?)";
+        ? "status = 'checked_out'"
+        : "status = 'checked_in'";
+    const stateWorkDate = punchWorkDate;
+    const stateShiftEndAt =
+      type === "check_in"
+        ? checkInCheckoutWindow?.shiftEndAt || null
+        : effectiveState?.shift_end_at || null;
+    const stateCheckoutDeadlineAt =
+      type === "check_in"
+        ? checkInCheckoutWindow?.checkoutDeadlineAt || null
+        : effectiveState?.checkout_deadline_at || null;
     const results = await db.batch([
       buildRecordInsert(db, {
         recordId,
@@ -3303,13 +3349,15 @@ async function recordAttendance({
         deviceInfo,
         role,
         source,
+        workDate: stateWorkDate,
       }),
       db
         .prepare(
           `
         INSERT OR IGNORE INTO attendance_state (
-          employee_uid, employee_doc_id, status, updated_at
-        ) VALUES (?, ?, 'checked_out', ?)
+          employee_uid, employee_doc_id, status, updated_at,
+          work_date, shift_end_at, checkout_deadline_at
+        ) VALUES (?, ?, 'checked_out', ?, NULL, NULL, NULL)
       `
         )
         .bind(requester.uid, employeeDocId, now),
@@ -3319,7 +3367,8 @@ async function recordAttendance({
         UPDATE attendance_state
         SET employee_doc_id = ?, status = ?, last_type = ?, last_record_id = ?,
             last_server_time = ?, last_location_lat = ?, last_location_lng = ?,
-            last_location_accuracy = ?, last_zone_id = ?, updated_at = ?
+            last_location_accuracy = ?, last_zone_id = ?, updated_at = ?,
+            work_date = ?, shift_end_at = ?, checkout_deadline_at = ?
         WHERE employee_uid = ? AND ${stateUpdateWhere}
       `
         )
@@ -3334,9 +3383,10 @@ async function recordAttendance({
           location.accuracy,
           zone?.id || null,
           now,
-          requester.uid,
-          currentDay.start,
-          currentDay.end
+          stateWorkDate || null,
+          stateShiftEndAt,
+          stateCheckoutDeadlineAt,
+          requester.uid
         ),
       db
         .prepare(
@@ -3442,8 +3492,8 @@ function buildRecordInsert(db, values) {
       location_lat, location_lng, location_accuracy, zone_id, zone_name, zone_type,
       allowed_zone_ids, distance_meters, result, rejection_reason, accuracy_accepted,
       device_info, source, created_by_uid, created_by_email, created_by_role,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, work_date
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
     )
     .bind(
@@ -3476,7 +3526,8 @@ function buildRecordInsert(db, values) {
       values.requester.email || null,
       values.role,
       values.now,
-      values.now
+      values.now,
+      normalizeText(values.workDate) || null
     );
 }
 
@@ -3489,7 +3540,11 @@ async function insertRejectedRecord(db, values) {
 
 async function readAttendanceState(db, uid) {
   return db
-    .prepare("SELECT status FROM attendance_state WHERE employee_uid = ?")
+    .prepare(
+      `SELECT employee_uid, employee_doc_id, status, last_type, last_record_id,
+              last_server_time, work_date, shift_end_at, checkout_deadline_at
+         FROM attendance_state WHERE employee_uid = ?`
+    )
     .bind(uid)
     .first();
 }
@@ -3498,7 +3553,7 @@ async function rebuildAttendanceState(db, employeeUid) {
   const latest = await db
     .prepare(
       `
-      SELECT employee_uid, employee_doc_id, type, id, server_time,
+      SELECT employee_uid, employee_doc_id, type, id, server_time, work_date,
              location_lat, location_lng, location_accuracy, zone_id
       FROM attendance_records
       WHERE employee_uid = ? AND result = 'allowed'
@@ -3523,8 +3578,9 @@ async function rebuildAttendanceState(db, employeeUid) {
       INSERT INTO attendance_state (
         employee_uid, employee_doc_id, status, last_type, last_record_id,
         last_server_time, last_location_lat, last_location_lng,
-        last_location_accuracy, last_zone_id, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_location_accuracy, last_zone_id, updated_at,
+        work_date, shift_end_at, checkout_deadline_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
       ON CONFLICT(employee_uid) DO UPDATE SET
         employee_doc_id = excluded.employee_doc_id,
         status = excluded.status,
@@ -3535,7 +3591,10 @@ async function rebuildAttendanceState(db, employeeUid) {
         last_location_lng = excluded.last_location_lng,
         last_location_accuracy = excluded.last_location_accuracy,
         last_zone_id = excluded.last_zone_id,
-        updated_at = excluded.updated_at
+        updated_at = excluded.updated_at,
+        work_date = excluded.work_date,
+        shift_end_at = excluded.shift_end_at,
+        checkout_deadline_at = excluded.checkout_deadline_at
     `
     )
     .bind(
@@ -3549,7 +3608,8 @@ async function rebuildAttendanceState(db, employeeUid) {
       latest.location_lng,
       latest.location_accuracy,
       latest.zone_id || null,
-      new Date().toISOString()
+      new Date().toISOString(),
+      normalizeText(latest.work_date) || getRiyadhDateKeyFromIso(latest.server_time) || null
     )
     .run();
 }
