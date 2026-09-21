@@ -126,6 +126,8 @@ class FakeD1 {
       "bookings.update",
       "bookings.cancel",
       "bookings.payment.manage",
+      "bookings.price.adjust",
+      "bookings.discount.apply",
       "bookings.delete",
       "income.view",
       "income.manage",
@@ -150,7 +152,7 @@ class FakeD1 {
     grantRole("admin", permissionKeys.filter((key) => !["accounts.delete", "permissions.manage", "roles.manage"].includes(key)));
     grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
     grantRole("accountant", ["finance.view", "finance.manage", "income.view", "income.manage", "reports.view", "audit.read"]);
-    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage"]);
+    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage", "bookings.price.adjust", "bookings.discount.apply"]);
     grantRole("staff", ["bookings.view", "targets.view_own"]);
 
     const accounts = [
