@@ -1643,15 +1643,17 @@ async function dispatch(ctx, route, method, body, query, env) {
         if (cancelling) {
           requirePermission(ctx, "bookings.cancel");
         } else {
-          const financialFields = new Set([
-            "paymentStatus",
-            "payment_status",
+          const derivedPriceFields = new Set([
             "subtotalHalalas",
             "subtotal_halalas",
             "discountHalalas",
             "discount_halalas",
             "totalHalalas",
             "total_halalas",
+          ]);
+          const paymentFields = new Set([
+            "paymentStatus",
+            "payment_status",
             "paidHalalas",
             "paid_halalas",
             "paymentMethod",
@@ -1661,17 +1663,25 @@ async function dispatch(ctx, route, method, body, query, env) {
             "reconcilePayment",
           ]);
 
-          const hasFinancialMutation = patchKeys.some((key) =>
-            financialFields.has(key)
+          if (patchKeys.some((key) => derivedPriceFields.has(key))) {
+            throw new AppError(
+              400,
+              "core_booking:direct_price_mutation_forbidden",
+              "Booking subtotal, discount and total are derived from item-level pricing and cannot be patched directly."
+            );
+          }
+
+          const hasPaymentMutation = patchKeys.some((key) =>
+            paymentFields.has(key)
           );
           const hasOperationalMutation =
             patchKeys.length === 0 ||
-            patchKeys.some((key) => !financialFields.has(key));
+            patchKeys.some((key) => !paymentFields.has(key));
 
           if (hasOperationalMutation) {
             requirePermission(ctx, "bookings.update");
           }
-          if (hasFinancialMutation) {
+          if (hasPaymentMutation) {
             requirePermission(ctx, "bookings.payment.manage");
           }
         }
