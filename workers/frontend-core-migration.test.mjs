@@ -378,6 +378,27 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
   assert.match(clientPortalRepo, /delete safe\.price_adjusted_at/);
 });
 
+test("internal booking disables cross-service overlapping time choices before submit", () => {
+  const v2 = readFileSync(
+    "src/features/internal-booking-v2/BookingInternalV2.tsx",
+    "utf8"
+  );
+
+  assert.match(
+    v2,
+    /start < otherClientEnd && otherStart < clientEnd/
+  );
+  assert.match(
+    v2,
+    /const conflict = getCartScheduleConflict\(key, selection\.staffId, time\)/
+  );
+  assert.match(v2, /disabled=\{conflicting\}/);
+  assert.match(
+    v2,
+    /هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة/
+  );
+});
+
 test("internal booking V2 keeps internal staff visible independently from public booking visibility", () => {
   const helper = readFileSync("src/helpers/bookingAvailabilityUtils.ts", "utf8");
   const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
