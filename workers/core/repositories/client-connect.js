@@ -60,6 +60,16 @@ function conversationStatusForSecurityReview(status) {
 
 export { conversationStatusForSecurityReview };
 
+function blockedEvidenceSummary(body, inspection = {}) {
+  const length = cleanText(body).length;
+  return [
+    `type=${cleanText(inspection.detectionType) || 'unknown'}`,
+    `severity=${cleanText(inspection.severity) || 'unknown'}`,
+    'content_withheld=true',
+    `length=${length}`,
+  ].join(';');
+}
+
 async function getConversation(db, salonId, conversationId) {
   const id = requiredId(conversationId, 'conversationId');
   const row = await dbFirst(
@@ -278,7 +288,27 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
 
   if (inspection.blocked) {
     const securityEventId = generatedId('client_connect_security');
-    const nextStatus = inspection.severity === 'critical' ? 'restricted' : 'review';
+    const windowStart = new Date(
+      Date.parse(now) - 10 * 60 * 1000
+    ).toISOString();
+    const recentBlocked = await dbFirst(
+      db,
+      `SELECT COUNT(*) AS count
+         FROM client_connect_security_events
+        WHERE salon_id = ?
+          AND conversation_id = ?
+          AND actor_uid = ?
+          AND detected_at >= ?`,
+      [salonId, conversation.id, uid, windowStart]
+    );
+    const priorBlockedCount = Number(recentBlocked?.count || 0);
+    const repeatedBlock = priorBlockedCount >= 2;
+    const nextStatus =
+      inspection.severity === 'critical' || repeatedBlock
+        ? 'restricted'
+        : 'review';
+    const blockedBody = 'تم حجب محتوى الرسالة أمنيًا.';
+    const evidenceSummary = blockedEvidenceSummary(body, inspection);
     const statements = [
       {
         sql: 'INSERT INTO client_connect_messages (id, salon_id, conversation_id, sender_kind, sender_uid, sender_client_id, sender_staff_id, body, delivery_status, blocked_reason, security_event_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -290,7 +320,7 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
           uid,
           senderClientId,
           senderStaffId,
-          body,
+          blockedBody,
           'blocked',
           inspection.detectionType,
           securityEventId,
@@ -309,7 +339,7 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
           inspection.detectionType,
           inspection.severity,
           'new',
-          body,
+          evidenceSummary,
           now,
           null,
           null,
@@ -322,18 +352,30 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
       },
     ];
 
-    const recipients = await managementNotificationRecipients(db, salonId, uid);
-    for (const targetUid of recipients) {
-      statements.push(notificationStatement({
-        id: generatedId('notification'),
+    if (priorBlockedCount === 0 || nextStatus === 'restricted') {
+      const recipients = await managementNotificationRecipients(
+        db,
         salonId,
-        targetUid,
-        title: 'تنبيه أمني في محادثات العملاء',
-        body: 'تم منع محاولة تبادل بيانات تواصل خارج منصة ملكات.',
-        route: '/dashboard/messages',
-        createdByUid: uid,
-        now,
-      }));
+        uid
+      );
+      for (const targetUid of recipients) {
+        statements.push(notificationStatement({
+          id: generatedId('notification'),
+          salonId,
+          targetUid,
+          title:
+            nextStatus === 'restricted'
+              ? 'تم تقييد محادثة أمنيًا'
+              : 'تنبيه أمني في محادثات العملاء',
+          body:
+            nextStatus === 'restricted'
+              ? 'تكررت محاولات مشاركة بيانات تواصل خارج منصة ملكات وتم تقييد المحادثة للمراجعة.'
+              : 'تم منع محاولة تبادل بيانات تواصل خارج منصة ملكات.',
+          route: '/dashboard/messages',
+          createdByUid: uid,
+          now,
+        }));
+      }
     }
 
     await dbBatch(db, statements);
@@ -345,7 +387,11 @@ export async function sendConnectMessage(db, salonId, conversationId, input = {}
       detectionType: inspection.detectionType,
       severity: inspection.severity,
       conversationStatus: nextStatus,
-      userMessage: 'لم يتم إرسال الرسالة لأنها تحتوي على بيانات تواصل خارج منصة ملكات.',
+      cooldownApplied: repeatedBlock,
+      userMessage:
+        nextStatus === 'restricted'
+          ? 'تم إيقاف الإرسال مؤقتًا بعد تكرار محاولات مشاركة بيانات تواصل خارج منصة ملكات حتى تنتهي مراجعة الإدارة.'
+          : 'لم يتم إرسال الرسالة لأنها تحتوي على بيانات تواصل خارج منصة ملكات.',
     };
   }
 
