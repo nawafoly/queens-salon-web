@@ -521,3 +521,6 @@
   .bk2-price-adjustment-editor{grid-template-columns:1fr}
   .bk2-price-adjustment-editor label.is-wide,.bk2-price-reset{grid-column:auto}
 }
+
+.bk2-price-permission-note{margin:8px 0 0;font-size:12px;font-weight:750;color:#667085}
+.bk2-price-adjust-toggle:disabled,.bk2-discount-block .bk2-choice-grid button:disabled{opacity:.5;cursor:not-allowed}
