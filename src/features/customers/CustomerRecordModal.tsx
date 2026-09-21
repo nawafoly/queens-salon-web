@@ -6,8 +6,7 @@ import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumbe
 import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
 import { CoreClientService, type CoreClientOverview } from "../../services/CoreClientService";
-import type { BookingDocWithId, BookingStatus } from "../../services/firestoreBookings";
-import type { CoreClient } from "../../types/coreApi";
+import type { CoreBooking, CoreClient } from "../../types/coreApi";
 import {
   formatCustomerLastVisit,
   getCustomerStatusLabel,
@@ -22,16 +21,22 @@ import type { CustomerRow } from "./customerTypes";
 type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "guest";
 type Feedback = { type: "success" | "error"; text: string } | null;
 
-const bookingStatusLabel: Record<BookingStatus, string> = {
-  confirmed: "مؤكد",
-  pending: "في الانتظار",
-  cancelled: "ملغي",
-  completed: "مكتمل",
-};
+function bookingStatusLabel(status: string): string {
+  const value = String(status || "").toLowerCase();
+  if (value === "confirmed") return "مؤكد";
+  if (value === "pending") return "في الانتظار";
+  if (value === "cancelled" || value === "canceled") return "ملغي";
+  if (value === "completed") return "مكتمل";
+  if (value === "refunded") return "مسترجع";
+  if (value === "partially_refunded") return "استرجاع جزئي";
+  if (value === "no_show") return "لم تحضر";
+  return status || "غير محددة";
+}
 
-function bookingStatusBadgeClass(status: BookingStatus): string {
-  if (status === "confirmed" || status === "completed") return "dsv2-badge--success";
-  if (status === "cancelled") return "dsv2-badge--danger";
+function bookingStatusBadgeClass(status: string): string {
+  const value = String(status || "").toLowerCase();
+  if (value === "confirmed" || value === "completed") return "dsv2-badge--success";
+  if (value === "cancelled" || value === "canceled" || value === "no_show") return "dsv2-badge--danger";
   return "dsv2-badge--gold";
 }
 
@@ -61,8 +66,8 @@ function formatDateTime(value: unknown, language: DashboardLanguage): string {
   });
 }
 
-function bookingNoOf(booking: BookingDocWithId, language: DashboardLanguage): string {
-  const row = booking as BookingDocWithId & { bookingNumber?: unknown; bookingNo?: unknown };
+function bookingNoOf(booking: CoreBooking, language: DashboardLanguage): string {
+  const row = booking as CoreBooking & { bookingNumber?: unknown; bookingNo?: unknown };
   const raw = [row.publicId, row.bookingNumber, row.bookingNo]
     .map((value) => String(value ?? "").trim())
     .find(Boolean) || "";
@@ -91,7 +96,6 @@ function editErrorMessage(cause: unknown, language: DashboardLanguage): string {
 type Props = {
   language: DashboardLanguage;
   customer: CustomerRow;
-  bookings: BookingDocWithId[];
   currentRole: UiRole;
   onCustomerUpdated: (client: CoreClient) => void;
   onClose: () => void;
@@ -100,7 +104,6 @@ type Props = {
 export default function CustomerRecordModal({
   language,
   customer,
-  bookings,
   currentRole,
   onCustomerUpdated,
   onClose,
@@ -124,15 +127,21 @@ export default function CustomerRecordModal({
   const [noteFeedback, setNoteFeedback] = useState<Feedback>(null);
   const noteSavedTimer = useRef<number | null>(null);
 
-  const selectedBookings = useMemo(() => [...bookings].sort((a, b) => {
-    const dateCompare = String(b.date || "").localeCompare(String(a.date || ""));
-    return dateCompare || String(b.time || "").localeCompare(String(a.time || ""));
-  }), [bookings]);
+  const selectedBookings = useMemo(
+    () =>
+      [...(overview?.bookings || [])].sort((a, b) => {
+        const dateCompare = String(b.bookingDate || "").localeCompare(
+          String(a.bookingDate || "")
+        );
+        return (
+          dateCompare ||
+          String(b.startTime || "").localeCompare(String(a.startTime || ""))
+        );
+      }),
+    [overview?.bookings]
+  );
 
-  const totalSpend = useMemo(() => selectedBookings.reduce((sum, booking) => {
-    const total = Number(booking.total ?? 0);
-    return sum + (Number.isFinite(total) ? total : 0);
-  }, 0), [selectedBookings]);
+  const totalSpendHalalas = overview?.summary.netPaidHalalas ?? 0;
 
   const loadOverview = useCallback(async () => {
     const clientId = String(customer.clientId || "").trim();
@@ -338,7 +347,7 @@ export default function CustomerRecordModal({
         <section className="dsv2-customers-record-summary">
           <article><strong>{plainNumber(selectedBookings.length, 0, language)}</strong><span>{t("عدد الحجوزات")}</span></article>
           <article><strong>{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime, language)}</strong><span>{t("آخر زيارة")}</span></article>
-          <article><strong>{formatMoney(totalSpend, language)}</strong><span>{t("إجمالي الصرف")}</span></article>
+          <article><strong>{formatHalalas(totalSpendHalalas, language)}</strong><span>{t("صافي الصرف")}</span></article>
         </section>
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-overview-section" aria-label={t("السجل المالي والولاء")}>
@@ -354,12 +363,37 @@ export default function CustomerRecordModal({
                   <div className="dsv2-customers-overview-grid">
                     <article><span>{t("صافي المدفوع")}</span><strong>{formatHalalas(overview.summary.netPaidHalalas, language)}</strong></article>
                     <article><span>{t("الاسترجاعات")}</span><strong>{formatHalalas(overview.summary.refundedHalalas, language)}</strong></article>
-                    <article><span>{t("الرصيد الحالي")}</span><strong>{plainNumber(overview.loyalty.balance, 0, language)} {t("نقطة")}</strong></article>
+                    <article><span>{t("رصيد الكاش باك")}</span><strong>{formatHalalas(overview.cashback.balanceHalalas, language)}</strong></article>
                     <article><span>{t("آخر نشاط")}</span><strong>{formatDateTime(overview.summary.lastActivityAt, language)}</strong></article>
                   </div>
                   <div className="dsv2-customers-overview-columns">
                     <section>
-                      <h4>{t("النقاط والولاء")}</h4>
+                      <h4>{t("الكاش باك")}</h4>
+                      <div className="dsv2-customers-loyalty-summary">
+                        <span>{t("الرصيد المتاح")} <b>{formatHalalas(overview.cashback.balanceHalalas, language)}</b></span>
+                        <span>{t("مكتسب")} <b>{formatHalalas(overview.cashback.earnedHalalas, language)}</b></span>
+                        <span>{t("مستخدم")} <b>{formatHalalas(overview.cashback.redeemedHalalas, language)}</b></span>
+                        <span>{t("معكوس/منتهي")} <b>{formatHalalas(overview.cashback.reversedHalalas, language)}</b></span>
+                      </div>
+                      {overview.cashback.pendingRecoveryHalalas > 0 ? (
+                        <p className="dsv2-customers-loyalty-message">
+                          {t("استرداد معلّق على الرصيد")}: {formatHalalas(overview.cashback.pendingRecoveryHalalas, language)}
+                        </p>
+                      ) : null}
+                      <div className="dsv2-customers-record-list">
+                        {overview.cashback.transactions.slice(0, 5).map((transaction) => (
+                          <div key={transaction.id}>
+                            <span>{repairCustomerDisplayText(transaction.reason || transaction.type)}</span>
+                            <b className={transaction.amountHalalas < 0 ? "is-negative" : "is-positive"}>
+                              {transaction.amountHalalas > 0 ? "+" : ""}{formatHalalas(transaction.amountHalalas, language)}
+                            </b>
+                          </div>
+                        ))}
+                        {!overview.cashback.transactions.length ? <p>{t("لا توجد حركات كاش باك.")}</p> : null}
+                      </div>
+                    </section>
+                    <section>
+                      <h4>{t("حالة الولاء")}</h4>
                       <div className="dsv2-customers-loyalty-summary">
                         <span>{t("المستوى")} <b>{overview.loyalty.levelLabel || t("غير محدد")}</b></span>
                         <span>{t("مكتسبة")} <b>{plainNumber(overview.loyalty.earned, 0, language)}</b></span>
@@ -423,11 +457,11 @@ export default function CustomerRecordModal({
                 {selectedBookings.map((booking) => (
                   <tr key={booking.id}>
                     <td><bdi dir="ltr">{bookingNoOf(booking, language)}</bdi></td>
-                    <td>{String(booking.serviceName || t("غير محددة"))}</td>
-                    <td>{String(booking.employeeName || t("غير محددة"))}</td>
-                    <td>{formatCustomerLastVisit(booking.date, booking.time, language)}</td>
-                    <td><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel[booking.status] || booking.status)}</span></td>
-                    <td>{formatMoney(booking.total, language)}</td>
+                    <td>{String(booking.items?.[0]?.serviceNameSnapshot || t("غير محددة"))}</td>
+                    <td>{String(booking.items?.[0]?.staffName || booking.staffName || t("غير محددة"))}</td>
+                    <td>{formatCustomerLastVisit(booking.bookingDate, booking.startTime, language)}</td>
+                    <td><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel(booking.status))}</span></td>
+                    <td>{formatHalalas(booking.totalHalalas, language)}</td>
                   </tr>
                 ))}
                 {!selectedBookings.length ? <tr><td colSpan={6} className="dsv2-customers-history-empty">{t("لا توجد حجوزات مسجلة لهذه العميلة.")}</td></tr> : null}
@@ -437,8 +471,8 @@ export default function CustomerRecordModal({
           <div className="dsv2-customers-history-mobile">
             {selectedBookings.map((booking) => (
               <article className="dsv2-card dsv2-card--padded" key={booking.id}>
-                <header><bdi dir="ltr">{bookingNoOf(booking, language)}</bdi><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel[booking.status] || booking.status)}</span></header>
-                <dl><div><dt>{t("الخدمة")}</dt><dd>{String(booking.serviceName || t("غير محددة"))}</dd></div><div><dt>{t("الموظفة")}</dt><dd>{String(booking.employeeName || t("غير محددة"))}</dd></div><div><dt>{t("التاريخ والوقت")}</dt><dd>{formatCustomerLastVisit(booking.date, booking.time, language)}</dd></div><div><dt>{t("الإجمالي")}</dt><dd>{formatMoney(booking.total, language)}</dd></div></dl>
+                <header><bdi dir="ltr">{bookingNoOf(booking, language)}</bdi><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{t(bookingStatusLabel(booking.status))}</span></header>
+                <dl><div><dt>{t("الخدمة")}</dt><dd>{String(booking.items?.[0]?.serviceNameSnapshot || t("غير محددة"))}</dd></div><div><dt>{t("الموظفة")}</dt><dd>{String(booking.items?.[0]?.staffName || booking.staffName || t("غير محددة"))}</dd></div><div><dt>{t("التاريخ والوقت")}</dt><dd>{formatCustomerLastVisit(booking.bookingDate, booking.startTime, language)}</dd></div><div><dt>{t("الإجمالي")}</dt><dd>{formatHalalas(booking.totalHalalas, language)}</dd></div></dl>
               </article>
             ))}
             {!selectedBookings.length ? <p className="dsv2-customers-history-empty">{t("لا توجد حجوزات مسجلة لهذه العميلة.")}</p> : null}
