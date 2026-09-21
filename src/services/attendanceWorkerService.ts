@@ -52,6 +52,7 @@ export type AttendanceWorkerRecord = {
   result: AttendanceWorkerResult;
   serverTime: string;
   clientTime?: string | null;
+  workDate?: string | null;
   location: {
     lat: number;
     lng: number;
@@ -68,9 +69,18 @@ export type AttendanceWorkerRecord = {
   createdByRole?: string | null;
 };
 
+type AttendanceWorkerState = {
+  status: "checked_in" | "checked_out";
+  workDate?: string | null;
+  shiftEndAt?: string | null;
+  checkoutDeadlineAt?: string | null;
+  expiredIncomplete?: boolean;
+};
+
 type AttendanceRecordsResponse = {
   ok?: boolean;
   records?: AttendanceWorkerRecord[];
+  state?: AttendanceWorkerState | null;
   total?: number;
   page?: number;
   limit?: number;
@@ -567,6 +577,7 @@ export async function fetchAttendanceRecordsFromWorker(
 
   return {
     records,
+    state: payload.state || null,
     total: Number(payload.total || 0),
     nextCursor: cleanText(payload.nextCursor) || null,
   };
@@ -594,6 +605,28 @@ function toRiyadhDateKey(value: string) {
   );
 
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function recordWorkDate(record: AttendanceWorkerRecord) {
+  return cleanText(record.workDate) || toRiyadhDateKey(record.serverTime);
+}
+
+function addAttendanceDateDays(dateKey: string, days: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cleanText(dateKey));
+  if (!match) return "";
+  return new Date(
+    Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]) + days,
+      12,
+      0,
+      0,
+      0
+    )
+  )
+    .toISOString()
+    .slice(0, 10);
 }
 
 function recordVerification(
@@ -646,6 +679,7 @@ function toAttendanceRawRecord(record: AttendanceWorkerRecord): AttendanceRawRec
     result: record.result,
     serverTime: record.serverTime,
     clientTime: record.clientTime || null,
+    workDate: recordWorkDate(record),
     location: record.location,
     zoneId: record.zoneId || null,
     zoneName: record.zoneName || null,
@@ -664,7 +698,7 @@ function getRecordDateKeysInRange(
   const dates = new Set<string>();
 
   for (const record of records) {
-    const date = toRiyadhDateKey(record.serverTime);
+    const date = recordWorkDate(record);
 
     if (date && date >= fromDate && date <= toDate) {
       dates.add(date);
@@ -683,7 +717,7 @@ function buildAttendanceDay(
     .filter(
       (record) =>
         record.result === "allowed" &&
-        toRiyadhDateKey(record.serverTime) === date
+        recordWorkDate(record) === date
     )
     .sort(
       (left, right) =>
@@ -742,6 +776,29 @@ export async function getAttendanceForDateFromWorker(
       limit: 20,
     });
 
+  const activeWorkDate =
+    result.state?.status === "checked_in"
+      ? cleanText(result.state.workDate)
+      : "";
+
+  if (activeWorkDate && activeWorkDate !== input.date) {
+    const activeResult =
+      await fetchAttendanceRecordsFromWorker({
+        employeeUid: input.employeeUid,
+        employeeDocId: input.employeeId,
+        fromDate: activeWorkDate,
+        toDate: activeWorkDate,
+        result: "allowed",
+        limit: 20,
+      });
+
+    return buildAttendanceDay(
+      activeResult.records,
+      input.employeeId,
+      activeWorkDate
+    );
+  }
+
   return buildAttendanceDay(
     result.records,
     input.employeeId,
@@ -770,9 +827,7 @@ export async function listAttendanceByDateRangeFromWorker(
   const dates = new Set<string>();
 
   for (const record of result.records) {
-    const date = toRiyadhDateKey(
-      record.serverTime
-    );
+    const date = recordWorkDate(record);
 
     if (
       date &&
