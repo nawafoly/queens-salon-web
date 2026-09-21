@@ -281,7 +281,7 @@ function attendanceStatus(entry: PayrollEntryView, isForecast = false) {
 
   const status = entry.attendanceSummary.attendanceLinkStatus;
   if (status === "confirmed") {
-    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - بصمة ناقصة" : "مؤكد";
+    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - سجل حضور غير مكتمل" : "مؤكد";
   }
   if (status === "not_ready") return "غير جاهز";
   return "غير مربوط";
@@ -545,7 +545,7 @@ export function buildPayrollReportDataV2(
       { key: "contractualAllowances", header: "البدلات التعاقدية", type: "currency", width: 17, align: "center" },
       { key: "attendanceDays", header: "الحضور", type: "number", width: 11, align: "center", hideInPdf: true },
       { key: "absentDays", header: "الغياب", type: "number", width: 11, align: "center", hideInPdf: true },
-      { key: "incompleteDays", header: "بصمة ناقصة", type: "number", width: 13, align: "center", hideInPdf: true },
+      { key: "incompleteDays", header: "أيام غير مكتملة", type: "number", width: 13, align: "center", hideInPdf: true },
       { key: "scheduledHours", header: "الساعات المطلوبة", width: 16, align: "center", hideInPdf: true },
       { key: "actualWorkedHours", header: "الساعات الفعلية", width: 16, align: "center", hideInPdf: true },
       { key: "missingHours", header: "نقص الساعات", width: 14, align: "center", hideInPdf: true },
