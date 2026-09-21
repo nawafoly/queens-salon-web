@@ -363,6 +363,11 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
   assert.match(migration, /price_adjustment_reason/);
   assert.match(migration, /price_adjusted_by_uid/);
   assert.match(migration, /price_adjusted_at/);
+  assert.match(migration, /FROM roles r/);
+  assert.doesNotMatch(
+    migration,
+    /\('main',\s*'(?:owner|admin|reception)',\s*'bookings\.(?:price\.adjust|discount\.apply)'/
+  );
 
   // Client mapping intentionally exposes only the agreed booking price/final
   // amount. Internal catalog delta and adjustment audit metadata stay hidden.
