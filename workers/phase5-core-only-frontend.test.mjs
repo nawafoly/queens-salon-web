@@ -142,10 +142,20 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.equal(
     dashboardClientsPage.includes("listAllBookings"),
     false,
-    "Dashboard clients must use the explicit Core booking reader"
+    "Dashboard clients must not use a broad booking reader"
   );
-  assert.match(dashboardClientsPage, /listCoreBookings/);
+  assert.equal(
+    dashboardClientsPage.includes("listCoreBookings"),
+    false,
+    "Dashboard clients must use server-side customer metrics instead of loading all bookings"
+  );
+  assert.equal(
+    dashboardClientsPage.includes("PackageOperationsService"),
+    false,
+    "Dashboard clients must not load the broad package dashboard"
+  );
   assert.match(dashboardClientsPage, /CoreClientService/);
+  assert.match(dashboardClientsPage, /includeMetrics:\s*true/);
 
   assert.equal(
     dashboardBookingsPage.includes("firebase/firestore"),
