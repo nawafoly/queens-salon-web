@@ -196,13 +196,114 @@ export function calculateCashbackEarnHalalas(eligibleHalalas, earnBps) {
   return Math.floor((basis * bps) / 10000);
 }
 
-async function rawWalletBalance(db, salonId, clientId) {
-  const row = await dbFirst(
-    db,
-    'SELECT COALESCE(SUM(amount_halalas), 0) AS balance_halalas FROM cashback_wallet_transactions WHERE salon_id = ? AND client_id = ?',
-    [salonId, clientId]
+async function loadCashbackLedgerRows(
+  db,
+  salonId,
+  clientId,
+  options = {}
+) {
+  const maxRows = Math.max(
+    1,
+    Math.min(20000, finiteInteger(options.maxRows, 10000))
   );
-  return finiteInteger(row?.balance_halalas);
+  const pageSize = Math.max(
+    50,
+    Math.min(1000, finiteInteger(options.pageSize, 500))
+  );
+  const rows = [];
+  let cursorCreatedAt = '';
+  let cursorId = '';
+
+  while (rows.length <= maxRows) {
+    const hasCursor = Boolean(cursorCreatedAt || cursorId);
+    const page = await dbAll(
+      db,
+      `SELECT id, type, amount_halalas, booking_id, refund_id,
+              source_transaction_id, idempotency_key, expires_at,
+              created_by_uid, created_at, reason
+         FROM cashback_wallet_transactions
+        WHERE salon_id = ?
+          AND client_id = ?
+          ${
+            hasCursor
+              ? 'AND (created_at > ? OR (created_at = ? AND id > ?))'
+              : ''
+          }
+        ORDER BY created_at ASC, id ASC
+        LIMIT ?`,
+      hasCursor
+        ? [salonId, clientId, cursorCreatedAt, cursorCreatedAt, cursorId, pageSize]
+        : [salonId, clientId, pageSize]
+    );
+
+    if (!page.length) break;
+    rows.push(...page);
+
+    if (rows.length > maxRows) {
+      throw new AppError(503, 'core_cashback:ledger_too_large');
+    }
+
+    const last = page[page.length - 1];
+    cursorCreatedAt = cleanText(last.created_at);
+    cursorId = cleanText(last.id);
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+function projectCashbackLedger(rows) {
+  const rebuilt = rebuildEarnLots(rows);
+  const spendableHalalas =
+    rebuilt.unexpiringHalalas +
+    rebuilt.lots.reduce(
+      (sum, lot) => sum + Math.max(0, finiteInteger(lot.remainingHalalas)),
+      0
+    );
+  const ledgerBalanceHalalas = rows.reduce(
+    (sum, row) => sum + finiteInteger(row.amount_halalas),
+    0
+  );
+  const earnedHalalas = rows
+    .filter((row) => cleanText(row.type).toLowerCase() === 'earn')
+    .reduce(
+      (sum, row) => sum + Math.max(0, finiteInteger(row.amount_halalas)),
+      0
+    );
+  const redeemedHalalas = Math.abs(
+    rows
+      .filter((row) => cleanText(row.type).toLowerCase() === 'redeem')
+      .reduce((sum, row) => sum + finiteInteger(row.amount_halalas), 0)
+  );
+  const reversedHalalas = Math.abs(
+    rows
+      .filter((row) =>
+        ['reverse', 'expire'].includes(cleanText(row.type).toLowerCase())
+      )
+      .reduce((sum, row) => sum + finiteInteger(row.amount_halalas), 0)
+  );
+
+  return {
+    ...rebuilt,
+    spendableHalalas,
+    ledgerBalanceHalalas,
+    earnedHalalas,
+    redeemedHalalas,
+    reversedHalalas,
+  };
+}
+
+async function getCashbackProjection(db, salonId, clientId, options = {}) {
+  const rows = await loadCashbackLedgerRows(
+    db,
+    salonId,
+    clientId,
+    options
+  );
+  return {
+    rows,
+    ...projectCashbackLedger(rows),
+  };
 }
 
 export async function recordCashbackMovement(db, salonId, input = {}, actorUid = '') {
@@ -230,8 +331,10 @@ export async function recordCashbackMovement(db, salonId, input = {}, actorUid =
   if (!client) throw new AppError(404, 'core_client:not_found');
 
   if (type === 'redeem' || type === 'expire') {
-    const available = Math.max(0, await rawWalletBalance(db, salonId, clientId));
-    if (Math.abs(amountHalalas) > available) {
+    const projection = await getCashbackProjection(db, salonId, clientId, {
+      maxRows: 10000,
+    });
+    if (Math.abs(amountHalalas) > projection.spendableHalalas) {
       throw new AppError(409, 'core_cashback:insufficient_balance');
     }
   }
@@ -279,51 +382,26 @@ export async function getClientCashbackWallet(db, salonId, clientId) {
   );
   if (!client) throw new AppError(404, 'core_client:not_found');
 
-  const [policy, summary, rows] = await Promise.all([
+  const [policy, projection] = await Promise.all([
     getCashbackPolicy(db, salonId),
-    dbFirst(
-      db,
-      `SELECT
-         COALESCE(SUM(amount_halalas), 0) AS ledger_balance_halalas,
-         COALESCE(SUM(CASE WHEN type = 'earn' AND amount_halalas > 0 THEN amount_halalas ELSE 0 END), 0) AS earned_halalas,
-         COALESCE(SUM(CASE WHEN type = 'redeem' AND amount_halalas < 0 THEN -amount_halalas ELSE 0 END), 0) AS redeemed_halalas,
-         COALESCE(SUM(CASE WHEN type IN ('reverse', 'expire') AND amount_halalas < 0 THEN -amount_halalas ELSE 0 END), 0) AS reversed_halalas
-       FROM cashback_wallet_transactions
-       WHERE salon_id = ?
-         AND client_id = ?`,
-      [salonId, id]
-    ),
-    dbAll(
-      db,
-      `SELECT * FROM cashback_wallet_transactions
-        WHERE salon_id = ? AND client_id = ?
-        ORDER BY created_at DESC, id DESC
-        LIMIT 500`,
-      [salonId, id]
-    ),
+    getCashbackProjection(db, salonId, id, { maxRows: 10000 }),
   ]);
-
-  // Wallet totals must cover the complete ledger. The 500-row limit is history
-  // pagination only and must never define the monetary balance.
-  const ledgerBalanceHalalas = finiteInteger(summary?.ledger_balance_halalas);
-  const balanceHalalas = Math.max(0, ledgerBalanceHalalas);
-  const pendingRecoveryHalalas = Math.max(0, -ledgerBalanceHalalas);
 
   return {
     clientId: id,
     enabled: policy.enabled,
-    balanceHalalas,
-    ledgerBalanceHalalas,
-    pendingRecoveryHalalas,
-    earnedHalalas: Math.max(0, finiteInteger(summary?.earned_halalas)),
-    redeemedHalalas: Math.max(0, finiteInteger(summary?.redeemed_halalas)),
-    reversedHalalas: Math.max(0, finiteInteger(summary?.reversed_halalas)),
+    balanceHalalas: projection.spendableHalalas,
+    ledgerBalanceHalalas: projection.ledgerBalanceHalalas,
+    pendingRecoveryHalalas: projection.recoveryHalalas,
+    earnedHalalas: projection.earnedHalalas,
+    redeemedHalalas: projection.redeemedHalalas,
+    reversedHalalas: projection.reversedHalalas,
     currency: 'SAR',
     redeemScope: 'salon_only',
     cashWithdrawalAllowed: false,
     transferAllowed: false,
     policy,
-    transactions: rows,
+    transactions: projection.rows.slice(-500).reverse(),
   };
 }
 
@@ -544,6 +622,7 @@ function rebuildEarnLots(rows) {
   const lots = [];
   const byId = new Map();
   let recoveryHalalas = 0;
+  let unexpiringHalalas = 0;
 
   for (const row of rows) {
     const type = cleanText(row.type).toLowerCase();
@@ -551,11 +630,11 @@ function rebuildEarnLots(rows) {
 
     if (amount > 0) {
       if (type === 'earn') {
-        // A previous refund can create recovery debt when its original reward
-        // had already been spent. Future earnings repay that debt first; only
-        // the residual becomes a live reward lot that can later expire.
-        const recoveredHalalas = Math.min(amount, recoveryHalalas);
-        recoveryHalalas -= recoveredHalalas;
+        // Recovery debt is separate from already-existing unrelated lots.
+        // A later earning repays recovery first; only its residual becomes a
+        // spendable reward lot.
+        const recoveryAppliedHalalas = Math.min(amount, recoveryHalalas);
+        recoveryHalalas -= recoveryAppliedHalalas;
 
         const lot = {
           id: cleanText(row.id),
@@ -563,13 +642,15 @@ function rebuildEarnLots(rows) {
           createdAt: cleanText(row.created_at),
           expiresAt: cleanText(row.expires_at) || null,
           originalHalalas: amount,
-          recoveryAppliedHalalas: recoveredHalalas,
-          remainingHalalas: amount - recoveredHalalas,
+          recoveryAppliedHalalas,
+          remainingHalalas: amount - recoveryAppliedHalalas,
         };
         lots.push(lot);
         byId.set(lot.id, lot);
       } else if (type === 'adjustment') {
-        recoveryHalalas = Math.max(0, recoveryHalalas - amount);
+        const recoveryAppliedHalalas = Math.min(amount, recoveryHalalas);
+        recoveryHalalas -= recoveryAppliedHalalas;
+        unexpiringHalalas += amount - recoveryAppliedHalalas;
       }
       continue;
     }
@@ -578,6 +659,9 @@ function rebuildEarnLots(rows) {
     const debit = Math.abs(amount);
 
     if (type === 'reverse' && cleanText(row.booking_id)) {
+      // Reverse only the reward lot(s) produced by the refunded booking.
+      // If those credits were already spent, create recovery debt instead of
+      // consuming unrelated reward lots.
       const consumed = consumeLots(
         lots,
         debit,
@@ -596,20 +680,35 @@ function rebuildEarnLots(rows) {
       continue;
     }
 
-    if (type === 'redeem' || type === 'expire') {
-      // Spend credits in earliest-expiry order. Any remainder can be backed by
-      // non-expiring positive adjustments and does not create recovery debt.
-      consumeLots(lots, debit);
+    if (type === 'redeem') {
+      const fromLots = consumeLots(lots, debit);
+      const remainder = Math.max(0, debit - fromLots);
+      const fromUnexpiring = Math.min(remainder, unexpiringHalalas);
+      unexpiringHalalas -= fromUnexpiring;
+      recoveryHalalas += Math.max(0, remainder - fromUnexpiring);
       continue;
     }
 
     if (type === 'adjustment') {
-      const consumed = consumeLots(lots, debit);
-      recoveryHalalas += Math.max(0, debit - consumed);
+      const fromLots = consumeLots(lots, debit);
+      const remainder = Math.max(0, debit - fromLots);
+      const fromUnexpiring = Math.min(remainder, unexpiringHalalas);
+      unexpiringHalalas -= fromUnexpiring;
+      recoveryHalalas += Math.max(0, remainder - fromUnexpiring);
+      continue;
+    }
+
+    if (type === 'expire') {
+      consumeLots(lots, debit);
     }
   }
 
-  return { lots, byId, recoveryHalalas };
+  return {
+    lots,
+    byId,
+    recoveryHalalas,
+    unexpiringHalalas,
+  };
 }
 
 async function closeExpiryLot(
@@ -696,24 +795,27 @@ export async function expireCashbackCredits(
   let oversizedClients = 0;
 
   for (const [clientId, candidateIds] of byClient) {
-    const rows = await dbAll(
-      db,
-      `SELECT id, type, amount_halalas, booking_id, source_transaction_id,
-              expires_at, created_at
-         FROM cashback_wallet_transactions
-        WHERE salon_id = ?
-          AND client_id = ?
-        ORDER BY created_at ASC, id ASC
-        LIMIT 5001`,
-      [salonId, clientId]
-    );
-
-    if (rows.length > 5000) {
-      if (onlyClientId || options.failOnLedgerOverflow === true) {
-        throw new AppError(409, 'core_cashback:ledger_too_large_for_expiry');
+    let rows;
+    try {
+      rows = await loadCashbackLedgerRows(db, salonId, clientId, {
+        maxRows: 5000,
+        pageSize: 500,
+      });
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === 'core_cashback:ledger_too_large'
+      ) {
+        if (onlyClientId || options.failOnLedgerOverflow === true) {
+          throw new AppError(
+            409,
+            'core_cashback:ledger_too_large_for_expiry'
+          );
+        }
+        oversizedClients += 1;
+        continue;
       }
-      oversizedClients += 1;
-      continue;
+      throw error;
     }
 
     clientsProcessed += 1;
