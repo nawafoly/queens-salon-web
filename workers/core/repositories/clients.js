@@ -28,8 +28,30 @@ function wantsLoyaltySummary(query = {}) {
   return ['1', 'true', 'yes'].includes(raw);
 }
 
+function wantsClientMetrics(query = {}) {
+  const raw = cleanText(
+    query.includeMetrics ?? query.include_metrics ?? query.metrics
+  ).toLowerCase();
+  return ['1', 'true', 'yes'].includes(raw);
+}
+
+function clientListLimit(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 500;
+  return Math.max(1, Math.min(500, Math.trunc(parsed)));
+}
+
+function clientListOffset(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(50_000, Math.trunc(parsed)));
+}
+
 export async function listClients(db, salonId, query = {}) {
   const includeLoyalty = wantsLoyaltySummary(query);
+  const includeMetrics = wantsClientMetrics(query);
+  const limit = clientListLimit(query.limit);
+  const offset = clientListOffset(query.offset);
   const search = cleanText(query.search || query.q).toLowerCase();
   const phone = normalizePhone(search);
 
@@ -55,6 +77,103 @@ export async function listClients(db, salonId, query = {}) {
         phone || '',
       ]
     : [];
+
+  if (includeMetrics) {
+    const now = nowIso();
+    return dbAll(
+      db,
+      `WITH selected_clients AS (
+         SELECT c.*
+           FROM clients c
+          WHERE c.salon_id = ?${searchClause}
+          ORDER BY c.updated_at DESC
+          LIMIT ? OFFSET ?
+       ),
+       booking_metrics AS (
+         SELECT
+           b.client_id,
+           COUNT(*) AS bookings_count,
+           SUM(CASE WHEN b.status = 'completed' THEN 1 ELSE 0 END) AS completed_bookings_count,
+           SUM(CASE WHEN b.status IN ('cancelled', 'canceled') THEN 1 ELSE 0 END) AS cancelled_bookings_count,
+           SUM(CASE WHEN b.status = 'no_show' THEN 1 ELSE 0 END) AS no_show_bookings_count
+         FROM bookings b
+         INNER JOIN selected_clients sc
+           ON sc.id = b.client_id
+         WHERE b.salon_id = ?
+           AND b.deleted_at IS NULL
+         GROUP BY b.client_id
+       ),
+       latest_completed_ranked AS (
+         SELECT
+           b.client_id,
+           b.booking_date,
+           b.start_time,
+           COALESCE(b.completed_at, b.updated_at, b.created_at) AS completed_at,
+           ROW_NUMBER() OVER (
+             PARTITION BY b.client_id
+             ORDER BY b.booking_date DESC, b.start_time DESC, b.created_at DESC
+           ) AS rn
+         FROM bookings b
+         INNER JOIN selected_clients sc
+           ON sc.id = b.client_id
+         WHERE b.salon_id = ?
+           AND b.status = 'completed'
+           AND b.deleted_at IS NULL
+       ),
+       latest_completed AS (
+         SELECT
+           client_id,
+           booking_date AS last_visit_date,
+           start_time AS last_visit_time,
+           completed_at AS last_completed_at
+         FROM latest_completed_ranked
+         WHERE rn = 1
+       ),
+       package_metrics AS (
+         SELECT
+           cp.canonical_client_id AS client_id,
+           COUNT(*) AS active_packages_count,
+           COALESCE(SUM(cp.remaining_sessions), 0) AS remaining_package_sessions
+         FROM client_packages cp
+         INNER JOIN selected_clients sc
+           ON sc.canonical_client_id = cp.canonical_client_id
+         WHERE cp.salon_id = ?
+           AND cp.status = 'active'
+           AND (cp.expires_at IS NULL OR cp.expires_at >= ?)
+           AND (cp.remaining_sessions > 0 OR cp.reserved_sessions > 0)
+         GROUP BY cp.canonical_client_id
+       )
+       SELECT
+         sc.*,
+         COALESCE(bm.bookings_count, 0) AS bookings_count,
+         COALESCE(bm.completed_bookings_count, 0) AS completed_bookings_count,
+         COALESCE(bm.cancelled_bookings_count, 0) AS cancelled_bookings_count,
+         COALESCE(bm.no_show_bookings_count, 0) AS no_show_bookings_count,
+         lc.last_visit_date,
+         lc.last_visit_time,
+         lc.last_completed_at,
+         COALESCE(pm.active_packages_count, 0) AS active_packages_count,
+         COALESCE(pm.remaining_package_sessions, 0) AS remaining_package_sessions
+       FROM selected_clients sc
+       LEFT JOIN booking_metrics bm
+         ON bm.client_id = sc.id
+       LEFT JOIN latest_completed lc
+         ON lc.client_id = sc.id
+       LEFT JOIN package_metrics pm
+         ON pm.client_id = sc.canonical_client_id
+       ORDER BY sc.updated_at DESC`,
+      [
+        salonId,
+        ...searchParams,
+        limit,
+        offset,
+        salonId,
+        salonId,
+        salonId,
+        now,
+      ]
+    );
+  }
 
   if (includeLoyalty) {
     return dbAll(
@@ -168,8 +287,8 @@ export async function listClients(db, salonId, query = {}) {
      FROM clients
      WHERE salon_id = ?${plainSearchClause}
      ORDER BY updated_at DESC
-     LIMIT 500`,
-    [salonId, ...searchParams]
+     LIMIT ? OFFSET ?`,
+    [salonId, ...searchParams, limit, offset]
   );
 }
 
