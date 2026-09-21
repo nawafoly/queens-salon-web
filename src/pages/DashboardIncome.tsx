@@ -857,12 +857,19 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
       setEditError("");
 
       if (canAdjustPayment) {
-        const totalAmountRaw = parseMoneyInput(editBookingTotal);
-        if (!Number.isFinite(totalAmountRaw) || totalAmountRaw <= 0) {
+        const totalAmount = round2(
+          Math.max(
+            0,
+            Number(
+              bookingMetaById[bookingId]?.totalAmount ??
+                parseMoneyInput(editBookingTotal)
+            )
+          )
+        );
+        if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
           setEditError(t("إجمالي الحجز غير صحيح."));
           return;
         }
-        const totalAmount = round2(totalAmountRaw);
 
         let paymentType: BookingPaymentType = editPaymentType === "partial" ? "partial" : "full";
         let paidAmount =
@@ -895,8 +902,6 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
         const paymentMethod = editTarget.method;
 
         await CoreBookingService.patch(bookingId, {
-          subtotalHalalas: Math.round(totalAmount * 100),
-          totalHalalas: Math.round(totalAmount * 100),
           paidHalalas: Math.round(paidRounded * 100),
           paymentStatus: paymentType === "full" ? "paid" : "partial",
           reconcilePayment: true,
@@ -1427,8 +1432,16 @@ function DashboardIncomeContent({ language }: { language: DashboardLanguage }) {
           </DashboardFieldV2>
           {editCanAdjustPayment ? (
             <>
-              <DashboardFieldV2 id="income-v2-edit-total" label={t("إجمالي الحجز (ر.س)")} required>
-                <DashboardNumberInputV2 id="income-v2-edit-total" className="dsv2-input" min="0" step="0.01" value={editBookingTotal} onChange={(event) => setEditBookingTotal(event.target.value)} disabled={loading} />
+              <DashboardFieldV2 id="income-v2-edit-total" label={t("إجمالي الحجز (للقراءة فقط)")}>
+                <DashboardNumberInputV2
+                  id="income-v2-edit-total"
+                  className="dsv2-input"
+                  min="0"
+                  step="0.01"
+                  value={editBookingTotal}
+                  onChange={() => {}}
+                  disabled
+                />
               </DashboardFieldV2>
               <DashboardFieldV2 id="income-v2-edit-payment-type" label={t("نوع الدفع")} required>
                 <DashboardSelectV2 id="income-v2-edit-payment-type" options={BOOKING_PAYMENT_TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} value={editPaymentType} onChange={(value) => setEditPaymentType(value as BookingPaymentType)} disabled={loading} />
