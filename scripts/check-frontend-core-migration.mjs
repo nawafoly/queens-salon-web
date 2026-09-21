@@ -78,6 +78,8 @@ const forbiddenChecks = [
       /services\/firebase/,
       /getDataSourceFlags/,
       /listAllBookings/,
+      /listCoreBookings/,
+      /PackageOperationsService/,
       /CLIENTS_COLLECTION/,
     ],
   },
@@ -253,7 +255,7 @@ const requiredChecks = [
   },
   {
     file: "src/pages/DashboardClients.tsx",
-    required: [/listCoreBookings/, /CoreClientService/],
+    required: [/CoreClientService/, /includeMetrics:\s*true/],
   },
   {
     file: "src/pages/DashboardReports.tsx",
