@@ -421,7 +421,6 @@ export const coreD1BookingDataSource: BookingDataSource = {
 
   async updateBooking(id, patch) {
     const current = await CoreBookingService.get(id);
-    const totalSar = Number(patch.finalPrice ?? patch.total);
     const paidSar = Number(patch.paidAmount);
     const rawBreakdown = patch.paymentBreakdown as Record<string, unknown> | null | undefined;
     const paymentBreakdown = rawBreakdown
@@ -468,10 +467,6 @@ export const coreD1BookingDataSource: BookingDataSource = {
         patch.durationMin === undefined
           ? undefined
           : Math.max(1, Math.round(Number(patch.durationMin || 0))),
-      totalHalalas:
-        Number.isFinite(totalSar)
-          ? Math.max(0, Math.round(totalSar * 100))
-          : undefined,
       paidHalalas:
         Number.isFinite(paidSar)
           ? Math.max(0, Math.round(paidSar * 100))
