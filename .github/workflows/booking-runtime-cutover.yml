@@ -40,6 +40,7 @@ on:
       - "migrations/core/0079_client_cashback_wallet.sql"
       - "migrations/core/0080_client_connect_foundation.sql"
       - "migrations/core/0081_cashback_expiry_lot_state.sql"
+      - "migrations/core/0082_client_connect_security_rate_limit.sql"
       - "workers/core-worker.test.mjs"
       - "workers/hr-core-worker.test.mjs"
       - "workers/frontend-core-migration.test.mjs"
