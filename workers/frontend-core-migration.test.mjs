@@ -380,6 +380,20 @@ test("internal booking pricing keeps catalog, agreed price, discount and payment
   assert.match(clientPortalRepo, /delete safe\.price_adjustment_reason/);
   assert.match(clientPortalRepo, /delete safe\.price_adjusted_by_uid/);
   assert.match(clientPortalRepo, /delete safe\.price_adjusted_at/);
+
+  const incomePage = readFileSync("src/pages/DashboardIncome.tsx", "utf8");
+  const bookingsPage = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  assert.match(incomePage, /إجمالي الحجز \(للقراءة فقط\)/);
+  assert.doesNotMatch(
+    incomePage,
+    /CoreBookingService\.patch\(bookingId, \{[\s\S]{0,240}totalHalalas/
+  );
+  assert.doesNotMatch(
+    dataSource,
+    /async updateBooking\(id, patch\)[\s\S]{0,2400}totalHalalas:/
+  );
+  assert.match(bookingsPage, /إجمالي الحجز \(للقراءة فقط\)/);
+  assert.match(bookingsPage, /تعديل السعر لا يتم من الدفع/);
 });
 
 test("internal booking disables cross-service overlapping time choices before submit", () => {
