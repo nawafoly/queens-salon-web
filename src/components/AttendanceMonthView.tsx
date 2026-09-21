@@ -69,14 +69,14 @@ const attendanceCopy = {
   ar: {
     week: ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"],
     hour: "ساعة", minute: "دقيقة", and: "و", in: "دخول", out: "خروج", record: "سجل", meter: "م",
-    presentComplete: "حضور مكتمل", late: "متأخر", missingHours: "ناقص ساعات", waitingOut: "بانتظار الانصراف", needsCompletion: "بصمة تحتاج إكمال", absent: "غياب", offDay: "يوم راحة", leave: "إجازة", notRecorded: "لم يسجل بعد", scheduleUnavailable: "الدوام المعتمد غير متاح", future: "يوم قادم",
+    presentComplete: "حضور مكتمل", late: "متأخر", missingHours: "ناقص ساعات", waitingOut: "بانتظار الانصراف", needsCompletion: "غير مكتمل", absent: "غياب", offDay: "يوم راحة", leave: "إجازة", notRecorded: "لم يسجل بعد", scheduleUnavailable: "الدوام المعتمد غير متاح", future: "يوم قادم",
     exception: "استثناء", noDuty: "لا يوجد دوام", weeklyRest: "راحة أسبوعية",
     attendanceManagement: "إدارة الدوام", updating: "جاري التحديث...", refresh: "تحديث السجلات", selectedDay: "اليوم المحدد", loading: "تحميل", shiftUsed: "الشفت المستخدم للحساب",
     attendanceCalendar: "تقويم الحضور", chooseMonth: "اختيار الشهر", year: "السنة", chooseYear: "اختيار السنة", previousYear: "السنة السابقة", nextYear: "السنة التالية", today: "اليوم",
     legend: "دليل حالات الحضور", present: "حاضر", needsReview: "يحتاج مراجعة", records: "السجلات", rest: "راحة",
     review: "مراجعة", registerLeave: "تسجيل إجازة", editPunch: "تعديل البصمة", addPunch: "إضافة بصمة", deletePunch: "مسح البصمة", oneRecord: "سجل واحد", recordsCount: "سجل",
     undefined: "غير محدد", notFound: "غير موجود", no: "لا", yes: "نعم", none: "لا يوجد", date: "التاريخ", startTime: "وقت البداية", endTime: "وقت النهاية", lateGrace: "سماح التأخير", shiftName: "اسم الشفت", source: "المصدر", sourceType: "نوع المصدر", sourceDocument: "مستند المصدر", coreShift: "Core resolved shift", exceptionType: "نوع الاستثناء", active: "نشط", fromPunch: "من سجل البصمة", fromCore: "من Core", calculationTime: "وقت الحساب", coreError: "خطأ Core",
-    cancelLeave: "إلغاء الإجازة", scheduleUnavailableDetails: "تعذر الحصول على الشفت المعتمد من Malikat Core. لم يتم استخدام أي جدول قديم كبديل.", recordOptions: "خيارات السجل", status: "الحالة", checkInTime: "وقت الحضور", checkOutTime: "وقت الانصراف", workDuration: "مدة العمل", recordStatus: "حالة السجل", needsFinish: "غير مكتمل", delay: "التأخير", coveredPermission: "استئذان محتسب", requestDuration: "مدة الطلب", shortage: "نقص الساعات", overtime: "وقت إضافي", commitment: "الالتزام", committed: "ملتزم",
+    cancelLeave: "إلغاء الإجازة", scheduleUnavailableDetails: "تعذر الحصول على الشفت المعتمد من Malikat Core. لم يتم استخدام أي جدول قديم كبديل.", recordOptions: "خيارات السجل", status: "الحالة", checkInTime: "وقت الحضور", checkOutTime: "وقت الانصراف", workDuration: "مدة العمل", recordStatus: "حالة السجل", needsFinish: "غير مكتمل", missingCheckoutDetails: "لم تُسجّل بصمة الخروج.", delay: "التأخير", coveredPermission: "استئذان محتسب", requestDuration: "مدة الطلب", shortage: "نقص الساعات", overtime: "وقت إضافي", commitment: "الالتزام", committed: "ملتزم",
     noCoreShift: "Core: لا يوجد شفت", exceptionalRestWork: "عمل استثنائي في يوم الراحة", exceptionOff: "استثناء: يوم راحة", exceptionCustom: "استثناء: وقت مخصص", exceptionAlternative: "استثناء: شفت بديل", publishedShift: "شفت منشور", weeklyCore: "جدول أسبوعي من Core", attendanceRecord: "سجل البصمة", core: "Core",
   },
   en: {
@@ -89,7 +89,7 @@ const attendanceCopy = {
     legend: "Attendance status guide", present: "Present", needsReview: "Needs review", records: "Records", rest: "Rest",
     review: "Review", registerLeave: "Record leave", editPunch: "Edit attendance", addPunch: "Add attendance", deletePunch: "Delete attendance", oneRecord: "1 record", recordsCount: "records",
     undefined: "Not specified", notFound: "Not found", no: "No", yes: "Yes", none: "None", date: "Date", startTime: "Start time", endTime: "End time", lateGrace: "Late grace", shiftName: "Shift name", source: "Source", sourceType: "Source type", sourceDocument: "Source document", coreShift: "Core resolved shift", exceptionType: "Exception type", active: "Active", fromPunch: "From attendance record", fromCore: "From Core", calculationTime: "Calculation time", coreError: "Core error",
-    cancelLeave: "Cancel leave", scheduleUnavailableDetails: "The approved shift could not be retrieved from Malikat Core. No legacy schedule was used as a fallback.", recordOptions: "Record options", status: "Status", checkInTime: "Clock-in time", checkOutTime: "Clock-out time", workDuration: "Work duration", recordStatus: "Record status", needsFinish: "Incomplete", delay: "Late time", coveredPermission: "Covered permission", requestDuration: "Request duration", shortage: "Missing hours", overtime: "Overtime", commitment: "Commitment", committed: "Committed",
+    cancelLeave: "Cancel leave", scheduleUnavailableDetails: "The approved shift could not be retrieved from Malikat Core. No legacy schedule was used as a fallback.", recordOptions: "Record options", status: "Status", checkInTime: "Clock-in time", checkOutTime: "Clock-out time", workDuration: "Work duration", recordStatus: "Record status", needsFinish: "Incomplete", missingCheckoutDetails: "No clock-out was recorded.", delay: "Late time", coveredPermission: "Covered permission", requestDuration: "Request duration", shortage: "Missing hours", overtime: "Overtime", commitment: "Commitment", committed: "Committed",
     noCoreShift: "Core: no shift", exceptionalRestWork: "Exceptional work on a rest day", exceptionOff: "Exception: rest day", exceptionCustom: "Exception: custom time", exceptionAlternative: "Exception: alternate shift", publishedShift: "Published shift", weeklyCore: "Weekly schedule from Core", attendanceRecord: "Attendance record", core: "Core",
   },
 } as const;
@@ -411,6 +411,9 @@ export default function AttendanceMonthView({
         : `${safeMonthKey}-01`;
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
   const selectedDayRecords = recordsFromRow(selectedRow);
+  const selectedMissingCheckout =
+    Boolean(selectedRow?.checkInAtClient) &&
+    !Boolean(selectedRow?.checkOutAtClient);
   const selectedCoreShift = coreResolvedShifts?.[safeSelectedDate] || null;
   const selectedResolvedDay = computeResolvedAttendanceDay({
     dateKey: safeSelectedDate,
@@ -1016,6 +1019,9 @@ export default function AttendanceMonthView({
                   <FontAwesomeIcon icon={faClock} />
                   <span>{copy.recordStatus}</span>
                   <b>{copy.needsFinish}</b>
+                  {selectedMissingCheckout ? (
+                    <small>{copy.missingCheckoutDetails}</small>
+                  ) : null}
                 </div>
               ) : (
                 <>
