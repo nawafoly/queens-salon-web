@@ -19,7 +19,7 @@ import {
 import type { AttendanceLocation, WorkZoneMatch } from "./attendanceSettingsService";
 
 export type AttendanceViolationType = "absent" | "late" | "leave";
-export type AttendancePunchStatus = "not_started" | "checked_in" | "checked_out";
+export type AttendancePunchStatus = "not_started" | "checked_in" | "checked_out" | "incomplete";
 
 export type AttendanceVerification = {
   biometricVerified?: boolean;
@@ -112,6 +112,7 @@ function getRiyadhDateKey(date = new Date()) {
 
 function normalizePunchStatus(data: any): AttendancePunchStatus {
   const raw = String(data?.status || "").trim();
+  if (raw === "incomplete") return "incomplete";
   if (raw === "checked_out" || data?.checkOutAt || data?.checkOutAtClient) return "checked_out";
   if (raw === "checked_in" || data?.checkInAt || data?.checkInAtClient) return "checked_in";
   return "not_started";
