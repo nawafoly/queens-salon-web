@@ -304,6 +304,70 @@ test("internal booking V2 uses shared discount snapshot flow instead of hardcode
 });
 
 
+test("internal booking pricing keeps catalog, agreed price, discount and payment separate", () => {
+  const v2 = readFileSync(
+    "src/features/internal-booking-v2/BookingInternalV2.tsx",
+    "utf8"
+  );
+  const dataSource = readFileSync(
+    "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    "utf8"
+  );
+  const bookingRepo = readFileSync(
+    "workers/core/repositories/bookings.js",
+    "utf8"
+  );
+  const permissions = readFileSync("src/helpers/permissions.ts", "utf8");
+  const migration = readFileSync(
+    "migrations/core/0083_internal_booking_price_adjustments.sql",
+    "utf8"
+  );
+  const clientPortal = readFileSync(
+    "src/services/ClientPortalService.ts",
+    "utf8"
+  );
+
+  assert.match(v2, /bookings\.price\.adjust/);
+  assert.match(v2, /bookings\.discount\.apply/);
+  assert.match(v2, /سعر الكتالوج/);
+  assert.match(v2, /سعر الحجز المعدل/);
+  assert.match(v2, /سبب تعديل السعر/);
+  assert.match(v2, /bookingPriceForService/);
+  assert.match(v2, /originalAmountHalalas:\s*toHalalas\(bookingPriceForService\(service\)\)/);
+  assert.match(v2, /bookingPrice:\s*itemOriginal/);
+  assert.match(v2, /priceAdjustmentReason:/);
+  assert.match(v2, /bookingPriceByService/);
+  assert.doesNotMatch(
+    v2,
+    /buildInternalV2InvoiceRows[\s\S]*?catalogPriceAtBooking/
+  );
+
+  assert.match(dataSource, /booking\.bookingPrice/);
+  assert.match(dataSource, /priceAdjustmentReason/);
+  assert.match(bookingRepo, /catalog_unit_price_halalas/);
+  assert.match(bookingRepo, /booking_price_adjusted/);
+  assert.match(bookingRepo, /allowPriceAdjustment/);
+  assert.match(bookingRepo, /allowManualDiscount/);
+
+  assert.match(permissions, /"bookings\.price\.adjust"/);
+  assert.match(permissions, /"bookings\.discount\.apply"/);
+  assert.match(migration, /catalog_unit_price_halalas/);
+  assert.match(migration, /price_adjustment_reason/);
+  assert.match(migration, /price_adjusted_by_uid/);
+  assert.match(migration, /price_adjusted_at/);
+
+  // Client mapping intentionally exposes only the agreed booking price/final
+  // amount. Internal catalog delta and adjustment audit metadata stay hidden.
+  const clientMapStart = clientPortal.indexOf("function mapItem");
+  const clientMapEnd = clientPortal.indexOf("function mapBooking", clientMapStart);
+  const clientMapItem = clientPortal.slice(clientMapStart, clientMapEnd);
+  assert.match(clientMapItem, /unit_price_halalas/);
+  assert.doesNotMatch(clientMapItem, /catalog_unit_price_halalas/);
+  assert.doesNotMatch(clientMapItem, /price_adjustment_reason/);
+  assert.doesNotMatch(clientMapItem, /price_adjusted_by_uid/);
+  assert.doesNotMatch(clientMapItem, /price_adjusted_at/);
+});
+
 test("internal booking V2 keeps internal staff visible independently from public booking visibility", () => {
   const helper = readFileSync("src/helpers/bookingAvailabilityUtils.ts", "utf8");
   const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
