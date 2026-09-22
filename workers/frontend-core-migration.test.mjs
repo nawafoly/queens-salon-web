@@ -687,11 +687,19 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
   assert.match(clientRepo, /core_client:phone_conflict/);
   assert.match(clientRepo, /core_client:invalid_birthdate/);
   assert.match(clientRepo, /getClientPreferences\(db, salonId, client\.id\)/);
+  assert.match(clientRepo, /serviceMessagesEnabled/);
+  assert.match(clientRepo, /marketingConsent/);
+  assert.match(clientRepo, /connectEnabled/);
 
   for (const field of ["البريد الإلكتروني", "المدينة", "تاريخ الميلاد", "رقم العضوية"]) {
     assert.match(adminRecord, new RegExp(field));
   }
   assert.match(adminRecord, /CoreClientService\.updateProfile\(clientId, \{[\s\S]*email,[\s\S]*city,[\s\S]*birthdate/);
+  assert.match(adminRecord, /updateCommunicationPreference/);
+  assert.match(adminRecord, /serviceMessagesEnabled/);
+  assert.match(adminRecord, /marketingConsent/);
+  assert.match(adminRecord, /connectEnabled/);
+  assert.match(adminRecord, /إدارة تفضيلات التواصل/);
   assert.match(adminRepo, /avatar_url:/);
   assert.match(adminRepo, /normalizedClientBirthdate/);
 });
