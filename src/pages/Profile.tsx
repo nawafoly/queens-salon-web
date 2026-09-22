@@ -28,8 +28,6 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../services/firebase";
 import { logoutFirebase } from "../services/authService";
 
-
-import { createOrLoadUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
 import ClientConnectPanel from "../components/client/ClientConnectPanel";
@@ -295,7 +293,6 @@ const Profile: React.FC = () => {
   const [profileMode, setProfileMode] = useState<ProfileMode>("local");
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
   const cachedProfile = useMemo(() => {
     try {
@@ -352,10 +349,10 @@ const Profile: React.FC = () => {
   useEffect(() => {
     let alive = true;
 
-    const applyProfileData = (raw: Partial<UserProfile> | null | undefined) => {
+    const applyProfileData = (raw: Record<string, any> | null | undefined) => {
       if (!raw || !alive) return;
 
-      const stableAvatar = resolveStableAvatarUrl((raw as any)?.avatarUrl);
+      const stableAvatar = resolveStableAvatarUrl(raw?.avatarUrl);
       const fallbackAvatar = resolveStableAvatarUrl(localStorage.getItem("userAvatar"));
 
       setUserData((prev) => {
@@ -385,7 +382,6 @@ const Profile: React.FC = () => {
       if (!user) {
         setProfileMode("local");
         setFirebaseUid(null);
-        setProfileDoc(null);
 
         try {
           const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
@@ -410,38 +406,15 @@ const Profile: React.FC = () => {
         return;
       }
 
-      if (cachedProfile && String((cachedProfile as any)?.uid || "").trim() === user.uid) {
-        setProfileDoc(cachedProfile as UserProfile);
-        applyProfileData(cachedProfile as UserProfile);
+      // Cache is only a warm-start presentation layer. The authenticated
+      // /client route is authorized in App.tsx and the canonical profile is
+      // immediately replaced by ClientPortalService.snapshot() from Core D1.
+      if (
+        cachedProfile &&
+        String(cachedProfile?.uid || "").trim() === user.uid
+      ) {
+        applyProfileData(cachedProfile);
       }
-
-      void createOrLoadUserProfile(user)
-        .then((p) => {
-          if (!alive) return;
-
-          const pr = String((p as any)?.role || "").toLowerCase().trim();
-          if (pr && pr !== "client") {
-            if (leavingForBookingRef.current) return;
-            clearClientCacheOnly();
-            navigate("/dashboard-pending", { replace: true });
-            return;
-          }
-
-          setProfileDoc(p);
-          applyProfileData(p);
-
-          localStorage.setItem("user_profile_v1", JSON.stringify(p));
-          if (p?.name) localStorage.setItem("userName", String(p.name));
-          if (p?.email) localStorage.setItem("userEmail", String(p.email));
-          if (p?.phone) localStorage.setItem("userPhone", normalizeKsaPhone(String(p.phone)));
-        })
-        .catch((e) => {
-          if (!alive) return;
-          if (leavingForBookingRef.current) return;
-          console.error("Profile load error:", e);
-          clearClientCacheOnly();
-          navigate("/dashboard-pending", { replace: true });
-        });
     });
 
     return () => {
@@ -646,7 +619,7 @@ const Profile: React.FC = () => {
 
     try {
       const effectiveUid =
-        String(firebaseUid || firebaseUser?.uid || profileDoc?.uid || cachedProfile?.uid || "").trim();
+        String(firebaseUid || firebaseUser?.uid || cachedProfile?.uid || "").trim();
 
       if (!effectiveUid) {
         throw new Error("تعذر تحديد الحساب الحالي. افتحي الصفحة مرة ثانية ثم حاولي مجددًا.");
@@ -717,9 +690,6 @@ const Profile: React.FC = () => {
         ...prev,
         avatar: canonicalAvatar,
       }));
-      setProfileDoc((prev) =>
-        prev ? { ...prev, avatarUrl: canonicalAvatar } : prev
-      );
       localStorage.setItem("userAvatar", canonicalAvatar);
 
       try {
@@ -870,20 +840,6 @@ const Profile: React.FC = () => {
       setUserData((prev) =>
         sameProfileViewData(prev, next) ? prev : next
       );
-      setProfileDoc((prev) =>
-        prev
-          ? {
-              ...prev,
-              name: next.name,
-              phone: next.phone,
-              email: next.email,
-              city: next.city,
-              birthdate: next.birthdate,
-              avatarUrl: next.avatar,
-            }
-          : prev
-      );
-
       const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "{}");
       localStorage.setItem(
         "user_profile_v1",
