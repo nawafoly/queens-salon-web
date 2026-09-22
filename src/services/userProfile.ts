@@ -130,7 +130,6 @@ async function ensureClientAccount(input: {
   city?: string;
   birthdate?: string;
   avatarUrl?: string;
-  membershipId?: string;
 }) {
   return coreApiRequest<{
     user?: Record<string, unknown>;
@@ -228,7 +227,6 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     await ensureClientAccount({
       name: authDisplayName,
       email: authEmail,
-      membershipId: `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`,
     });
     me = await CoreAccountService.me();
   }
@@ -278,10 +276,6 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
   if (typeof cleaned.city === "string") body.city = cleaned.city;
   if (typeof cleaned.birthdate === "string") body.birthdate = cleaned.birthdate;
   if (typeof cleaned.avatarUrl === "string") body.avatarUrl = cleaned.avatarUrl;
-  if (typeof cleaned.membershipId === "string") body.membershipId = cleaned.membershipId;
-  if (typeof cleaned.membershipPercent === "number") {
-    body.membershipPercent = cleaned.membershipPercent;
-  }
 
   const before = await loadClientMe();
   await coreApiRequest("/api/core/client/me", { method: "PATCH", body });
