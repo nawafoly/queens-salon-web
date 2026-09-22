@@ -199,18 +199,17 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   return cleanText(row.status) || "حضور";
 }
 
-function attendanceStatusTone(status: string): "default" | "gold" | "warning" | "success" | "danger" {
+function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status.includes("نقص ساعات") && !status.includes("تأخير") && !status.includes("غياب")) return "warning";
+  if (status.includes("نقص ساعات") && !status.includes("تأخير") && !status.includes("غياب")) return "gold";
   if (status.includes("تأخير") || status.includes("خروج مبكر")) return "gold";
-  if (status.includes("نقص ساعات")) return "warning";
-  if (false)
+  if (status.includes("نقص ساعات")) return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
 
-function attendanceSurfaceTone(status: string): "neutral" | "gold" | "warning" | "success" | "danger" {
+function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" | "danger" {
   const tone = attendanceStatusTone(status);
   if (tone === "default") return "neutral";
   return tone;
