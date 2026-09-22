@@ -30,6 +30,28 @@ function isInternalEmail(email) {
   return normalizeEmail(email).endsWith('@malikat.com');
 }
 
+function normalizeBirthdate(value) {
+  const raw = optionalText(value);
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate must use YYYY-MM-DD.');
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getTime() > Date.now()
+  ) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate is invalid.');
+  }
+  return raw;
+}
+
 async function serializeClientAccount(db, salonId, account, client) {
   const permissionBundle = await getAccountPermissionBundle(db, salonId, account);
   const link = await getActiveEmployeeLink(db, salonId, account.id);
@@ -79,9 +101,17 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
     cleanText(data.name || data.displayName || identity?.claims?.name || identity?.claims?.displayName) ||
     (email ? email.split('@')[0] : '') ||
     'عميلة';
-  const phone = normalizePhone(data.phone || identity?.claims?.phone_number || '') || null;
+  const phoneInput = data.phone ?? identity?.claims?.phone_number ?? '';
+  const phone = normalizePhone(phoneInput) || null;
+  if (cleanText(phoneInput) && !phone) {
+    throw new AppError(
+      400,
+      'core_client:invalid_phone',
+      'A valid Saudi mobile number is required.'
+    );
+  }
   const city = optionalText(data.city) || null;
-  const birthdate = optionalText(data.birthdate) || null;
+  const birthdate = normalizeBirthdate(data.birthdate);
   const avatarUrl = optionalText(data.avatarUrl || data.avatar_url) || null;
 
   if (isInternalEmail(email)) {
@@ -130,9 +160,6 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
 
   if (!account) {
     const id = requiredId(generatedId('user'), 'accountId');
-    const membershipId =
-      optionalText(data.membershipId || data.membership_id) ||
-      `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
     await dbRun(
       db,
       `INSERT INTO app_users
@@ -153,8 +180,6 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
         uid,
       ]
     );
-    // membership stored on clients row below
-    void membershipId;
     account = await getAccountByFirebaseUid(db, salonId, uid);
   } else if (cleanText(account.primary_role) === 'client') {
     await dbRun(
@@ -178,8 +203,23 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
     { createIfMissing: true }
   );
 
+  if (phone) {
+    const duplicatePhone = await dbFirst(
+      db,
+      "SELECT id FROM clients WHERE salon_id = ? AND phone_normalized = ? AND id <> ? LIMIT 1",
+      [salonId, phone, client.id]
+    );
+    if (duplicatePhone) {
+      throw new AppError(
+        409,
+        'core_client:phone_conflict',
+        'Another client already uses this mobile number.'
+      );
+    }
+  }
+
+  // Membership identity/tier are system-owned. Never trust self-registration input.
   const membershipId =
-    optionalText(data.membershipId || data.membership_id) ||
     client.membership_id ||
     `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
 
