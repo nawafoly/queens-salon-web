@@ -2676,9 +2676,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/service-promo-prices" className="nav-link" data-sidebar-tooltip="أسعار العروض" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/service-promo-prices" className="nav-link" data-sidebar-tooltip={dashboardLanguage === "en" ? "Promo prices" : "أسعار العروض"} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
-                      أسعار العروض
+                      {dashboardLanguage === "en" ? "Promo prices" : "أسعار العروض"}
                     </NavLink>
                   </li>
                 ) : null}
@@ -2935,7 +2935,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="clients" element={<PermissionRoute permission="clients.view"><DashboardClients currentRole={userInfo.role} language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="partners" element={<PermissionRoute permission="partners.manage"><DashboardPartners /></PermissionRoute>} />
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty language={dashboardLanguage} /></PermissionRoute>} />
-                <Route path="service-promo-prices" element={<PermissionRoute permission="offers.manage"><DashboardServicePromoPrices /></PermissionRoute>} />
+                <Route path="service-promo-prices" element={<PermissionRoute permission="offers.manage"><DashboardServicePromoPrices language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><DashboardInventory /></PermissionRoute>} />
                 <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports language={dashboardLanguage} /></PermissionRoute>} />
