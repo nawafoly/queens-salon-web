@@ -727,6 +727,10 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
   const legacyUpdateEnd = userProfileService.indexOf("export function canAccessDashboard", legacyUpdateStart);
   const legacyUpdateBlock = userProfileService.slice(legacyUpdateStart, legacyUpdateEnd);
   assert.doesNotMatch(legacyUpdateBlock, /body\.membershipId|body\.membershipPercent/);
+  assert.match(legacyUpdateBlock, /k === "membershipId"/);
+  assert.match(legacyUpdateBlock, /k === "membershipPercent"/);
+  assert.match(legacyUpdateBlock, /const merged = \{ \.\.\.\(current \|\| \{\}\), \.\.\.body, uid \}/);
+  assert.doesNotMatch(legacyUpdateBlock, /const merged = \{[^\n]*\.\.\.updates/);
 
   for (const field of ["البريد الإلكتروني", "المدينة", "تاريخ الميلاد", "رقم العضوية"]) {
     assert.match(adminRecord, new RegExp(field));
