@@ -353,8 +353,6 @@ export const ClientPortalService = {
     city?: string;
     birthdate?: string;
     avatarUrl?: string;
-    membershipId?: string;
-    membershipPercent?: number;
   }): Promise<ClientPortalProfile> {
     const raw = await coreApiRequest<Record<string, unknown>>("/api/core/client/me", {
       method: "PATCH",
