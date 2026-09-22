@@ -32,10 +32,15 @@ test("booking item pricing uses the active promo as the final unit price by defa
 
 test("promo prices dashboard is bilingual and receives the selected dashboard language", () => {
   assert.match(promoPage, /import type \{ DashboardLanguage \}/);
+  assert.match(promoPage, /import \{ translateBookingCatalogLabel \}/);
+  assert.match(promoPage, /function serviceDisplayName\(service: CoreService, language: DashboardLanguage\)/);
+  assert.match(promoPage, /translateBookingCatalogLabel\(language, service\.name, "service"\)/);
   assert.match(promoPage, /title:\s*"أسعار العروض"/);
   assert.match(promoPage, /title:\s*"Promo Prices"/);
   assert.match(promoPage, /language = "ar"/);
   assert.match(promoPage, /lang=\{language\}/);
+  assert.match(promoPage, /label: `\$\{serviceDisplayName\(service, language\)\}/);
+  assert.match(promoPage, /<strong>\{serviceDisplayName\(service, language\)\}<\/strong>/);
   assert.match(dashboardPage, /DashboardServicePromoPrices language=\{dashboardLanguage\}/);
   assert.match(dashboardPage, /dashboardLanguage === "en" \? "Promo prices" : "أسعار العروض"/);
 });

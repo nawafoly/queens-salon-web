@@ -7,6 +7,7 @@ import {
   DashboardSelectV2,
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
+import { translateBookingCatalogLabel } from "../helpers/dashboardBookingsLanguage";
 import type { DashboardLanguage } from "../helpers/dashboardLanguage";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
@@ -144,6 +145,10 @@ function halalasToRiyal(value: unknown) {
 
 function formatMoney(value: unknown, language: DashboardLanguage) {
   return `${halalasToRiyal(value)} ${text[language].sar}`;
+}
+
+function serviceDisplayName(service: CoreService, language: DashboardLanguage) {
+  return translateBookingCatalogLabel(language, service.name, "service");
 }
 
 function riyalInputToHalalas(value: string) {
@@ -341,7 +346,7 @@ export default function DashboardServicePromoPrices({
               placeholder={t.chooseService}
               options={services.map((service) => ({
                 value: service.id,
-                label: `${service.name} - ${formatMoney(serviceCatalogPrice(service), language)}`,
+                label: `${serviceDisplayName(service, language)} - ${formatMoney(serviceCatalogPrice(service), language)}`,
               }))}
               onChange={(serviceId) => setForm((current) => ({ ...current, serviceId }))}
               disabled={saving}
@@ -415,7 +420,7 @@ export default function DashboardServicePromoPrices({
                   const activePromo = activePromoByService.get(service.id);
                   return (
                     <tr key={service.id}>
-                      <td><strong>{service.name}</strong><small>{service.durationMinutes || 0} {t.durationMinute}</small></td>
+                      <td><strong>{serviceDisplayName(service, language)}</strong><small>{service.durationMinutes || 0} {t.durationMinute}</small></td>
                       <td>{formatMoney(serviceCatalogPrice(service), language)}</td>
                       <td>{activePromo ? <b>{formatMoney(activePromo.promo_price_halalas, language)}</b> : <span className="service-promos-muted">{t.noPromo}</span>}</td>
                       <td>{activePromo ? <span>{localDateTimeValue(activePromo.starts_at)} - {localDateTimeValue(activePromo.ends_at)}</span> : <span className="service-promos-muted">{t.originalPrice}</span>}</td>
