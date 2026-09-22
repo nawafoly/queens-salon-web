@@ -353,6 +353,46 @@ export default function CustomerRecordModal({
     }
   };
 
+  const updateCommunicationPreference = async (
+    key: "serviceMessagesEnabled" | "marketingConsent" | "connectEnabled",
+    value: boolean
+  ) => {
+    const clientId = String(customer.clientId || "").trim();
+    if (!clientId || preferenceSaving) return;
+    setPreferenceSaving(true);
+    setPreferenceMessage("");
+    try {
+      const updated = await CoreClientService.updatePreferences(clientId, {
+        [key]: value,
+      });
+      setOverview((current) =>
+        current
+          ? {
+              ...current,
+              relationship: {
+                ...current.relationship,
+                preferences: {
+                  serviceMessagesEnabled: updated.serviceMessagesEnabled,
+                  marketingConsent: updated.marketingConsent,
+                  connectEnabled: updated.connectEnabled,
+                  updatedAt: updated.updatedAt,
+                },
+              },
+            }
+          : current
+      );
+      setPreferenceMessage(t("تم تحديث تفضيلات التواصل."));
+    } catch (cause) {
+      setPreferenceMessage(
+        cause instanceof Error
+          ? cause.message
+          : t("تعذر تحديث تفضيلات التواصل.")
+      );
+    } finally {
+      setPreferenceSaving(false);
+    }
+  };
+
   const adjustLoyalty = async () => {
     const clientId = String(customer.clientId || "").trim();
     const points = Number(loyaltyPoints);
@@ -486,6 +526,58 @@ export default function CustomerRecordModal({
                         <span>{t("المختصة المفضلة")} <b>{overview.relationship.preferredSpecialist?.name || t("غير محددة")}</b></span>
                         <span>{t("مصدر التفضيل")} <b>{overview.relationship.preferredSpecialist?.source || t("غير محدد")}</b></span>
                       </div>
+                      <div className="dsv2-customers-loyalty-summary">
+                        <span>
+                          {t("رسائل الخدمة")}{" "}
+                          <b>{overview.relationship.preferences.serviceMessagesEnabled ? t("مفعلة") : t("موقفة")}</b>
+                        </span>
+                        <span>
+                          {t("العروض والرسائل التسويقية")}{" "}
+                          <b>{overview.relationship.preferences.marketingConsent ? t("مسموح") : t("غير مسموح")}</b>
+                        </span>
+                        <span>
+                          {t("MALIKAT Connect")}{" "}
+                          <b>{overview.relationship.preferences.connectEnabled ? t("مفعّل") : t("موقوف")}</b>
+                        </span>
+                      </div>
+                      {canManage ? (
+                        <div className="dsv2-customers-client-edit-form">
+                          <label className="dsv2-field">
+                            <span className="dsv2-field__label">{t("إدارة تفضيلات التواصل")}</span>
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={overview.relationship.preferences.serviceMessagesEnabled}
+                                onChange={(event) => void updateCommunicationPreference("serviceMessagesEnabled", event.target.checked)}
+                                disabled={preferenceSaving}
+                              />{" "}
+                              {t("رسائل الخدمة")}
+                            </span>
+                          </label>
+                          <label className="dsv2-field">
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={overview.relationship.preferences.marketingConsent}
+                                onChange={(event) => void updateCommunicationPreference("marketingConsent", event.target.checked)}
+                                disabled={preferenceSaving}
+                              />{" "}
+                              {t("العروض والرسائل التسويقية")}
+                            </span>
+                          </label>
+                          <label className="dsv2-field">
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={overview.relationship.preferences.connectEnabled}
+                                onChange={(event) => void updateCommunicationPreference("connectEnabled", event.target.checked)}
+                                disabled={preferenceSaving}
+                              />{" "}
+                              {t("MALIKAT Connect")}
+                            </span>
+                          </label>
+                        </div>
+                      ) : null}
                       {canManage ? (
                         <label className="dsv2-field">
                           <span className="dsv2-field__label">{t("تغيير المختصة المفضلة")}</span>
