@@ -159,3 +159,28 @@
   line-height: 1.25;
   text-align: center;
 }
+
+/* Mobile calendar: color + number only. Labels belong in the legend. */
+@media (max-width: 720px) {
+  .dashboard-v2 .attendance-month__primary-status-label,
+  .dashboard-v2 .attendance-month__exception-label,
+  .dashboard-v2.employee-portal .attendance-month__primary-status-label,
+  .dashboard-v2.employee-portal .attendance-month__exception-label {
+    display: none !important;
+  }
+  .dashboard-v2 .attendance-month__day,
+  .dashboard-v2.employee-portal .attendance-month__day {
+    min-height: 52px !important;
+    aspect-ratio: 1 / 1 !important;
+    align-content: space-between;
+  }
+}
+
+.dashboard-v2.employee-portal .attendance-month__day.is-shortage,
+.dashboard-v2.employee-portal .attendance-month__legend span.is-shortage {
+  --employee-attendance-day-accent: #c2410c !important;
+  --employee-attendance-day-bg: #fff7ed !important;
+  --employee-attendance-day-border: #fdba74 !important;
+  background: #fff7ed !important;
+  border-color: #fdba74 !important;
+}
