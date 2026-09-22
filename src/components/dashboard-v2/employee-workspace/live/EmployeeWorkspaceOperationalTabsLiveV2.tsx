@@ -254,18 +254,33 @@ function attendanceCalendarLeaveType(day: AttendanceCalendarDayLiveV2) {
   return "";
 }
 
-function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
-  if (day.employmentState === "pre_employment") return "\u0642\u0628\u0644 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629";
-  if (day.employmentState === "post_employment") return "\u0628\u0639\u062f \u0627\u0646\u062a\u0647\u0627\u0621 \u0627\u0644\u062e\u062f\u0645\u0629";
+function attendanceCalendarLeaveLabel(day: AttendanceCalendarDayLiveV2) {
   switch (attendanceCalendarLeaveType(day)) {
-    case "weekly_rest": return "\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
-    case "compensatory": return "\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629";
-    case "annual": return "\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629";
-    case "exceptional": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629";
-    case "emergency": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0636\u0637\u0631\u0627\u0631\u064a\u0629";
-    case "sick": return "\u0625\u062c\u0627\u0632\u0629 \u0645\u0631\u0636\u064a\u0629";
-    default: return day.status;
+    case "weekly_rest": return "راحة أسبوعية";
+    case "compensatory": return "إجازة تعويضية";
+    case "annual": return "إجازة سنوية";
+    case "exceptional": return "إجازة استثنائية";
+    case "emergency": return "إجازة اضطرارية";
+    case "sick": return "إجازة مرضية";
+    default: return "";
   }
+}
+
+function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
+  if (day.employmentState === "pre_employment") return "قبل المباشرة";
+  if (day.employmentState === "post_employment") return "بعد انتهاء الخدمة";
+  const leaveType = attendanceCalendarLeaveType(day);
+  const leaveLabel =
+    leaveType === "weekly_rest" ? "راحة أسبوعية" :
+    leaveType === "compensatory" ? "إجازة تعويضية" :
+    leaveType === "annual" ? "إجازة سنوية" :
+    leaveType === "exceptional" ? "إجازة استثنائية" :
+    leaveType === "emergency" ? "إجازة اضطرارية" :
+    leaveType === "sick" ? "إجازة مرضية" : "";
+  const hasPunch = Boolean(day.row?.checkInAtClient || day.row?.checkOutAtClient);
+  if (leaveLabel && hasPunch) return "دوام في " + leaveLabel;
+  if (leaveLabel) return leaveLabel;
+  return day.status;
 }
 
 function attendanceCalendarTimeLabel(input: {
