@@ -21,6 +21,28 @@ function normalizedClientName(value) {
   return cleanText(value).replace(/\s+/gu, ' ');
 }
 
+function normalizedClientBirthdate(value) {
+  const raw = optionalText(value);
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate must use YYYY-MM-DD.');
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getTime() > Date.now()
+  ) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate is invalid.');
+  }
+  return raw;
+}
+
 function wantsLoyaltySummary(query = {}) {
   const raw = cleanText(
     query.includeLoyalty ?? query.include_loyalty ?? query.loyalty
@@ -531,7 +553,7 @@ export async function patchClient(db, salonId, id, data) {
     birthdate:
       data.birthdate === undefined
         ? undefined
-        : optionalText(data.birthdate) || null,
+        : normalizedClientBirthdate(data.birthdate),
     avatar_url:
       data.avatarUrl === undefined && data.avatar_url === undefined
         ? undefined
