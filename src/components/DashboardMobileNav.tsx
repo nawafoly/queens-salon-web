@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
+  faBoxesStacked,
   faCalendarAlt,
   faChartLine,
   faChartPie,
@@ -44,6 +45,7 @@ type NavigationItem = PermissionRule & {
   label: string;
   icon: typeof faHouse;
   primary?: boolean;
+  mobilePriority?: number;
 };
 
 type MoreGroupId = "operations" | "hr" | "management" | "settings";
@@ -52,6 +54,19 @@ type MoreItem = NavigationItem & {
   description?: string;
   group: MoreGroupId;
 };
+
+const BOTTOM_NAV_PRIORITY: Record<string, number> = {
+  "/dashboard/overview": 10,
+  "/dashboard/booking-internal": 20,
+  "/dashboard/bookings": 30,
+  "/dashboard/clients": 40,
+  "/dashboard/reports": 50,
+  "/dashboard/income": 60,
+  "/dashboard/expenses": 70,
+};
+
+const BOTTOM_NAV_PRIMARY_ROUTE = "/dashboard/booking-internal";
+const BOTTOM_NAV_VISIBLE_SLOTS = 4;
 
 const MORE_GROUPS: Array<{ id: MoreGroupId; label: string }> = [
   { id: "operations", label: "الحجوزات والعملاء والمالية" },
@@ -100,7 +115,7 @@ export default function DashboardMobileNav({
     return Boolean(item.permission || item.anyOf?.length || item.allOf?.length);
   };
 
-  const primaryItems = useMemo<NavigationItem[]>(() => {
+  const primarySeedItems = useMemo<NavigationItem[]>(() => {
     const items: NavigationItem[] = [
       { to: "/dashboard/bookings", label: "الحجوزات", icon: faCalendarAlt, permission: "bookings.view" },
       { to: "/dashboard/income", label: "الإيرادات", icon: faWallet, permission: "income.view" },
@@ -259,10 +274,26 @@ export default function DashboardMobileNav({
         group: "management",
       },
       {
-        to: "/dashboard/offers",
-        label: "العروض والكوبونات",
+        to: "/dashboard/service-promo-prices",
+        label: "أسعار العروض",
+        description: "أسعار ترويجية مرتبطة بالخدمات",
         icon: faPercent,
         permission: "offers.manage",
+        group: "management",
+      },
+      {
+        to: "/dashboard/offers",
+        label: "إدارة العروض",
+        icon: faPercent,
+        permission: "offers.manage",
+        group: "management",
+      },
+      {
+        to: "/dashboard/inventory",
+        label: "المخزون",
+        description: "الأصناف والمخزون والصرف",
+        icon: faFileLines,
+        anyOf: ["inventory.view", "inventory.items.manage"],
         group: "management",
       },
       {
@@ -333,33 +364,68 @@ export default function DashboardMobileNav({
 
     return items
       .filter(canOpenItem)
-      .filter((item) => !primaryItems.some((primary) => primary.to === item.to))
+      .filter((item) => !primarySeedItems.some((primary) => primary.to === item.to))
       .map((item) =>
         item.to === "/dashboard/expenses" && missingExpenseNotesCount > 0
           ? { ...item, label: `${dashboardText(language, "المصروفات")} (${missingExpenseNotesCount})` }
           : item
       );
-  }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primaryItems, language]);
+  }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primarySeedItems, language]);
+
+  const bottomPrimaryItems = useMemo<NavigationItem[]>(() => {
+    const byRoute = new Map<string, NavigationItem>();
+    [...primarySeedItems, ...moreItems]
+      .filter((item) => BOTTOM_NAV_PRIORITY[item.to] != null)
+      .forEach((item) => {
+        if (!byRoute.has(item.to)) byRoute.set(item.to, item);
+      });
+
+    return [...byRoute.values()]
+      .sort((left, right) => BOTTOM_NAV_PRIORITY[left.to] - BOTTOM_NAV_PRIORITY[right.to])
+      .slice(0, BOTTOM_NAV_VISIBLE_SLOTS)
+      .map((item) => ({
+        ...item,
+        primary: item.to === BOTTOM_NAV_PRIMARY_ROUTE,
+      }));
+  }, [primarySeedItems, moreItems]);
+
+  const bottomMoreItems = useMemo<MoreItem[]>(() => {
+    const primaryRoutes = new Set(bottomPrimaryItems.map((item) => item.to));
+    const overflowPrimaryItems: MoreItem[] = primarySeedItems
+      .filter((item) => !primaryRoutes.has(item.to))
+      .map((item) => ({
+        ...item,
+        primary: false,
+        group: item.to === "/dashboard/reports" ? "management" : "operations",
+      }));
+
+    return [
+      ...overflowPrimaryItems,
+      ...moreItems.filter((item) => !primaryRoutes.has(item.to)),
+    ];
+  }, [bottomPrimaryItems, primarySeedItems, moreItems]);
+
+  const slotCount = bottomPrimaryItems.length + (bottomMoreItems.length ? 1 : 0);
 
   const moreGroups = useMemo(
     () => MORE_GROUPS.map((group) => ({
       ...group,
       label: dashboardText(language, group.label),
-      items: moreItems.filter((item) => item.group === group.id),
+      items: bottomMoreItems.filter((item) => item.group === group.id),
     })).filter((group) => group.items.length > 0),
-    [moreItems, language]
+    [bottomMoreItems, language]
   );
 
-  const isMoreActive = moreItems.some(
+  const isMoreActive = bottomMoreItems.some(
     (item) => item.to !== "/" && location.pathname.startsWith(item.to)
   );
 
-  if (!primaryItems.length && !moreItems.length) return null;
+  if (!bottomPrimaryItems.length && !bottomMoreItems.length) return null;
 
   return (
     <>
-      <nav className="dashboard-mobile-bottom-nav" aria-label={t("تنقل لوحة التحكم")}>
-        {primaryItems.map((item) => (
+      <nav className="dashboard-mobile-bottom-nav" aria-label={t("تنقل لوحة التحكم")} style={{ ["--bottom-nav-slots" as string]: String(slotCount) }}>
+        {bottomPrimaryItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -380,7 +446,7 @@ export default function DashboardMobileNav({
           </NavLink>
         ))}
 
-        {moreItems.length ? (
+        {bottomMoreItems.length ? (
           <button
             type="button"
             className={`dashboard-mobile-bottom-nav__item ${moreOpen || isMoreActive ? "is-active" : ""}`}

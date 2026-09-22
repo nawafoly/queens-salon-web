@@ -774,7 +774,7 @@
     left: 0;
     z-index: 2000;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--bottom-nav-slots, 4), minmax(0, 1fr));
     align-items: end;
     min-height: 70px;
     padding: 7px 7px calc(7px + env(safe-area-inset-bottom));
