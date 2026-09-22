@@ -279,6 +279,19 @@ test('MALIKAT Connect withholds blocked PII and restricts repeated same-sender a
   assert.equal(Number(notifications.count), 2);
 });
 
+test('MALIKAT Connect honors the canonical connect-enabled preference', () => {
+  const repository = readFileSync('workers/core/repositories/client-connect.js', 'utf8');
+  const panel = readFileSync('src/components/client/ClientConnectPanel.tsx', 'utf8');
+  const profile = readFileSync('src/pages/Profile.tsx', 'utf8');
+
+  assert.match(repository, /requireClientConnectEnabled/);
+  assert.match(repository, /conversation\.client_id/);
+  assert.match(repository, /core_client_connect:disabled_for_client/);
+  assert.match(panel, /enabled\?: boolean/);
+  assert.match(panel, /يمكنك قراءة المحادثات السابقة/);
+  assert.match(profile, /preferencesData\?\.connectEnabled !== false/);
+});
+
 test('MALIKAT Connect transport inherits Core request idempotency', () => {
   const api = readFileSync('src/services/coreApiClient.ts', 'utf8');
   const service = readFileSync('src/services/ClientConnectService.ts', 'utf8');
