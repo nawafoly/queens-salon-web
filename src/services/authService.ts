@@ -97,11 +97,7 @@ export async function registerClientWithEmail(params: {
   await setPersistence(auth, browserLocalPersistence);
 
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  const uid = cred.user.uid;
-
   await updateProfile(cred.user, { displayName: name });
-
-  const membershipId = `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
 
   // Force a fresh ID token so Core ensure-client sees the new Auth user.
   await cred.user.getIdToken(true);
@@ -114,8 +110,6 @@ export async function registerClientWithEmail(params: {
       phone: params.phone ?? "",
       city: params.city ?? "",
       birthdate: params.birthdate ?? "",
-      membershipId,
-      membershipPercent: 0,
     },
   });
 
