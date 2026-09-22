@@ -265,7 +265,13 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
       }
       return;
     }
-    if (k === "role" || k === "active" || k === "createdAt") return;
+    if (
+      k === "role" ||
+      k === "active" ||
+      k === "createdAt" ||
+      k === "membershipId" ||
+      k === "membershipPercent"
+    ) return;
     cleaned[k] = v;
   });
 
@@ -300,7 +306,9 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
 
   try {
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-    const merged = { ...(current || {}), ...updates, uid };
+    // Mirror only the fields Core actually accepted. Never let caller-supplied
+    // system-owned fields leak into the presentation cache.
+    const merged = { ...(current || {}), ...body, uid };
     if (current?.role) merged.role = current.role;
     if (typeof current?.active === "boolean") merged.active = current.active;
     if (current?.createdAt) merged.createdAt = current.createdAt;
