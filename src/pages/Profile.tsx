@@ -1223,7 +1223,9 @@ const Profile: React.FC = () => {
           </>
         ) : null}
 
-        {activeTab === "connect" ? <ClientConnectPanel /> : null}
+        {activeTab === "connect" ? (
+          <ClientConnectPanel enabled={preferencesData?.connectEnabled !== false} />
+        ) : null}
 
         {activeTab === "loyalty" ? (
           <>
