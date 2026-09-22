@@ -16,6 +16,7 @@ import {
 import { AppError } from '../errors.js';
 import { listBookings } from './bookings.js';
 import { getClientCashbackWallet } from './cashback.js';
+import { getClientPreferences } from './client-preferences.js';
 
 const HALALAS_PER_POINT = 100; // 1 point per paid SAR; change in one place only.
 const LOYALTY_LEVELS = [
@@ -766,13 +767,22 @@ export async function patchSelfProfile(db, salonId, identity, data) {
 export async function getClientPortalSnapshot(db, salonId, identity) {
   // Resolve/link the account once before parallel reads. Without this guard a
   // first-time account could race and attempt to create more than one client.
-  await resolveCanonicalSelfClient(db, salonId, identity);
-  const [profile, bookings, loyalty, cashback, offers] = await Promise.all([
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
+  const [profile, bookings, loyalty, cashback, offers, preferences] = await Promise.all([
     getSelfProfile(db, salonId, identity),
     listSelfBookings(db, salonId, identity),
     getSelfLoyalty(db, salonId, identity),
     getSelfCashback(db, salonId, identity),
     listSelfOffers(db, salonId, identity),
+    getClientPreferences(db, salonId, client.id),
   ]);
-  return { profile, bookings, loyalty, cashback, offers, generatedAt: nowIso() };
+  return {
+    profile,
+    bookings,
+    loyalty,
+    cashback,
+    offers,
+    preferences,
+    generatedAt: nowIso(),
+  };
 }
