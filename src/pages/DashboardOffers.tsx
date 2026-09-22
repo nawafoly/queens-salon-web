@@ -257,6 +257,7 @@ type FlatService = {
   category: string;
   name: string;
   basePrice: number;
+  durationMin: number;
 };
 
 function todayISO() {
@@ -365,7 +366,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
   const [queryText, setQueryText] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
-  const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
   const [sequenceEditorOpen, setSequenceEditorOpen] = useState(false);
   const [pickedImageName, setPickedImageName] = useState("");
   const [filterMode, setFilterMode] = useState<OfferFilterMode>("all");
@@ -411,7 +411,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
   useEffect(() => {
     if (form.appliesTo !== "services") {
-      setServicesPickerOpen(false);
       setServiceSearch("");
     }
   }, [form.appliesTo]);
@@ -435,6 +434,16 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
           t("عام"),
         name: String(s.name || "").trim(),
         basePrice: Math.max(0, Number(s.price || 0)),
+        durationMin: Math.max(
+          0,
+          Number(
+            (s as any).durationMin ??
+              (s as any).durationMinutes ??
+              (s as any).duration_minutes ??
+              (s as any).duration ??
+              0
+          )
+        ),
       }))
       .filter((s) => s.id && s.name);
   }, [categoryNameById, language, packageServices, sectionNameById]);
@@ -465,13 +474,18 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
     return m;
   }, [servicesFlat]);
 
+  const durationMinFromService = (serviceId: string) => {
+    const service = serviceById.get(String(serviceId || "").trim());
+    return Math.max(0, Number(service?.durationMin || 0));
+  };
+
   const normalizeSequenceSteps = (raw: any, fallbackServiceIds: string[] = []): OfferSequenceStep[] => {
     const fromRaw = Array.isArray(raw) ? raw : [];
     const mapped = fromRaw
       .map((x: any, idx: number) => ({
         serviceId: String(x?.serviceId || "").trim(),
         orderIndex: Number.isFinite(Number(x?.orderIndex)) ? Number(x.orderIndex) : idx,
-        gapAfterMin: Math.max(0, Number(x?.gapAfterMin || 0)),
+        gapAfterMin: Math.max(0, Number(x?.gapAfterMin || 0) || durationMinFromService(x?.serviceId)),
         titleSnapshot: String(x?.titleSnapshot || "").trim() || undefined,
       }))
       .filter((x) => x.serviceId)
@@ -483,7 +497,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       .map((id, idx) => ({
         serviceId: String(id || "").trim(),
         orderIndex: idx,
-        gapAfterMin: 0,
+        gapAfterMin: durationMinFromService(id),
       }))
       .filter((x) => x.serviceId);
   };
@@ -508,6 +522,53 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       new Intl.Collator(language === "en" ? "en" : "ar", { sensitivity: "base" }).compare(a.name, b.name)
     );
   }, [categoryNameById, language, packageServices]);
+
+  useEffect(() => {
+    const selectedIds = Array.isArray(form.serviceIds) ? form.serviceIds : [];
+    const priceBefore = selectedIds.reduce((sum, id) => {
+      const service = serviceById.get(String(id || "").trim());
+      return sum + Math.max(0, Number(service?.basePrice || 0));
+    }, 0);
+    if (form.appliesTo !== "services" || selectedIds.length === 0 || !(priceBefore > 0)) return;
+
+    setForm((prev) => {
+      const discountValue = Math.max(0, Number(prev.value || 0));
+      const typedPriceAfter = Math.max(0, Number(prev.priceAfter || 0));
+      let nextValue = discountValue;
+      let nextPriceAfter = typedPriceAfter;
+
+      if (discountValue > 0) {
+        nextPriceAfter =
+          prev.discountType === "percent"
+            ? priceBefore * (1 - Math.min(discountValue, 100) / 100)
+            : Math.max(0, priceBefore - discountValue);
+      } else if (prev.discountType === "fixed" && typedPriceAfter > 0) {
+        nextValue = Math.max(0, priceBefore - typedPriceAfter);
+        nextPriceAfter = typedPriceAfter;
+      }
+
+      nextValue = Number(nextValue.toFixed(2));
+      nextPriceAfter = Number(Math.max(0, nextPriceAfter).toFixed(2));
+      const currentPriceBefore = Number(prev.priceBefore || 0);
+      const currentPriceAfter = Number(prev.priceAfter || 0);
+      const currentValue = Number(prev.value || 0);
+
+      if (
+        currentPriceBefore === priceBefore &&
+        currentPriceAfter === nextPriceAfter &&
+        currentValue === nextValue
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        priceBefore,
+        priceAfter: nextPriceAfter,
+        value: nextValue,
+      };
+    });
+  }, [form.appliesTo, form.discountType, form.serviceIds, form.value, form.priceAfter, serviceById]);
 
   const selectedOfferServices = useMemo(
     () =>
@@ -640,7 +701,16 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 row.categoryId ||
                 ""
             ).trim() || undefined,
-          durationMin: Math.max(0, Number(row.durationMinutes || 0)),
+          durationMin: Math.max(
+            0,
+            Number(
+              (row as any).durationMin ??
+                (row as any).durationMinutes ??
+                (row as any).duration_minutes ??
+                (row as any).duration ??
+                0
+            )
+          ),
           price: Math.max(0, Number(row.priceHalalas || 0) / 100),
           active: row.active !== false,
         }))
@@ -721,7 +791,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
     setEditingPackageId("");
     setEditing(null);
     setServiceSearch("");
-    setServicesPickerOpen(false);
     setSequenceEditorOpen(false);
     setPickedImageName("");
 
@@ -765,7 +834,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
     setEditingPackageId("");
     setEditing(o);
     setServiceSearch("");
-    setServicesPickerOpen(false);
     setSequenceEditorOpen(Array.isArray((o as any).sequenceSteps) && (o as any).sequenceSteps.length > 0);
     setPickedImageName((o as any).imageUrl ? "__existing__" : "");
 
@@ -808,7 +876,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
     setOpen(false);
     setEditing(null);
     setServiceSearch("");
-    setServicesPickerOpen(false);
     setSequenceEditorOpen(false);
   };
 
@@ -966,7 +1033,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       const currentSteps = normalizeSequenceSteps(p.sequenceSteps, p.serviceIds);
       const nextSteps = exists
         ? currentSteps.filter((s) => String(s.serviceId || "").trim() !== id).map((s, idx) => ({ ...s, orderIndex: idx }))
-        : [...currentSteps, { serviceId: id, orderIndex: currentSteps.length, gapAfterMin: 0 }];
+        : [...currentSteps, { serviceId: id, orderIndex: currentSteps.length, gapAfterMin: durationMinFromService(id) }];
       return { ...p, serviceIds: next, sequenceSteps: nextSteps };
     });
   };
@@ -990,7 +1057,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
       const nextSteps = [...currentSteps];
       ids.forEach((id) => {
         if (!stepIds.has(id)) {
-          nextSteps.push({ serviceId: id, orderIndex: nextSteps.length, gapAfterMin: 0 });
+          nextSteps.push({ serviceId: id, orderIndex: nextSteps.length, gapAfterMin: durationMinFromService(id) });
         }
       });
       return {
@@ -1010,17 +1077,6 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         .map((step, index) => ({ ...step, orderIndex: index }));
       return { ...prev, serviceIds: nextIds, sequenceSteps: nextSteps };
     });
-  };
-
-  const calculateOfferPriceAfter = () => {
-    if (offerEditorComputed.priceBefore <= 0) {
-      showNotice(t("أدخل السعر قبل الخصم أولًا"));
-      return;
-    }
-    setForm((prev) => ({
-      ...prev,
-      priceAfter: Number(offerEditorComputed.suggestedPriceAfter.toFixed(2)),
-    }));
   };
 
   const moveSequenceStep = (serviceId: string, dir: -1 | 1) => {
@@ -2452,282 +2508,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 </div>
               </section>
 
-              <section className="offer-editor__section">
+              <section className="offer-editor__section offer-editor__section--scope">
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">02</span>
                   <div>
-                    <h3>{t("الخصم والتسعير")}</h3>
-                    <p>{t("حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__discount-selector" role="group" aria-label={t("نوع الخصم")}>
-                  <button
-                    type="button"
-                    className={form.discountType === "fixed" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, discountType: "fixed" }))}
-                  >
-                    <strong>{t("مبلغ ثابت")}</strong>
-                    <span>{t("خصم قيمة محددة بالريال")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={form.discountType === "percent" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, discountType: "percent" }))}
-                  >
-                    <strong>{t("نسبة مئوية")}</strong>
-                    <span>{t("خصم نسبة من قيمة الخدمة")}</span>
-                  </button>
-                </div>
-
-                <div className="offer-editor__commercial-grid">
-                  <div className="offer-editor__field offer-editor__commercial-field is-primary">
-                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        max={form.discountType === "percent" ? 100 : undefined}
-                        step="0.01"
-                        value={form.value}
-                        onChange={(e) => setForm((prev) => ({ ...prev, value: Number(e.target.value) }))}
-                      />
-                      <span>{form.discountType === "percent" ? "%" : t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("السعر قبل الخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.priceBefore}
-                        onChange={(e) => setForm((prev) => ({ ...prev, priceBefore: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("السعر بعد الخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.priceAfter}
-                        onChange={(e) => setForm((prev) => ({ ...prev, priceAfter: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("ترتيب الظهور")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.sortOrder}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value) }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="offer-editor__pricing-summary">
-                  <div>
-                    <span>{t("الخصم المحسوب")}</span>
-                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                  <div>
-                    <span>{t("السعر المقترح بعد الخصم")}</span>
-                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                  <div>
-                    <span>{t("التوفير الظاهر")}</span>
-                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                  <button type="button" className="dash-pill dash-pill-outline" onClick={calculateOfferPriceAfter}>
-                    {t("احتساب السعر تلقائيًا")}
-                  </button>
-                </div>
-
-                <div className="offer-editor__limits-grid">
-                  <div className="offer-editor__field">
-                    <label>{t("إجمالي مرات الاستخدام")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.usageLimit}
-                      onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
-                    />
-                    <small>{t("ضع 0 لعدم تحديد حد إجمالي.")}</small>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد لكل عميلة")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.perClientLimit}
-                      onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
-                    />
-                    <small>{t("ضع 0 للسماح بدون حد فردي.")}</small>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد الأدنى للطلب")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.minOrder}
-                        onChange={(e) => setForm((prev) => ({ ...prev, minOrder: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد الأعلى للخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.maxDiscount}
-                        onChange={(e) => setForm((prev) => ({ ...prev, maxDiscount: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="offer-editor__section">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">03</span>
-                  <div>
-                    <h3>{t("الفترة وحالة النشر")}</h3>
-                    <p>{t("تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__grid">
-                  <div className="offer-editor__field">
-                    <label>{t("تاريخ البداية")}</label>
-                    <DashboardDatePickerV2
-                      value={form.startDate}
-                      onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("تاريخ النهاية")}</label>
-                    <DashboardDatePickerV2
-                      value={form.endDate}
-                      onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("حالة النشر")}</label>
-                    <DashboardSelectV2
-                      options={OFFER_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
-                      value={form.status}
-                      onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
-                    />
-                  </div>
-                  <div className="offer-editor__status-card">
-                    <span>{t("الحالة الفعلية حسب التاريخ")}</span>
-                    <strong>{offerEditorComputed.dateStatus}</strong>
-                  </div>
-                </div>
-
-                <div className="offer-editor__toggle-grid">
-                  <label className={`offer-editor__toggle-card ${form.active ? "is-on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={form.active}
-                      onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
-                    />
-                    <span>
-                      <strong>{t("تفعيل العرض")}</strong>
-                      <small>{t("يسمح للنظام بتطبيق الخصم خلال فترة العرض.")}</small>
-                    </span>
-                    <i>{form.active ? t("مفعّل") : t("موقوف")}</i>
-                  </label>
-
-                  <label className={`offer-editor__toggle-card ${form.published ? "is-on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={form.published}
-                      onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
-                    />
-                    <span>
-                      <strong>{t("النشر للعميلات")}</strong>
-                      <small>{t("إظهار العرض في تطبيق العميلة وصفحات العروض.")}</small>
-                    </span>
-                    <i>{form.published ? t("منشور") : t("مخفي")}</i>
-                  </label>
-                </div>
-              </section>
-
-              <section className="offer-editor__section">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">04</span>
-                  <div>
-                    <h3>{t("الجمهور وزر الإجراء")}</h3>
-                    <p>{t("حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__choice-grid offer-editor__choice-grid--two">
-                  <button
-                    type="button"
-                    className={form.targetScope === "all" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "all", targetClientIdsText: "" }))}
-                  >
-                    <strong>{t("جميع العميلات")}</strong>
-                    <span>{t("عرض عام متاح لكل الحسابات المؤهلة.")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={form.targetScope === "specific" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "specific" }))}
-                  >
-                    <strong>{t("عميلات محددات")}</strong>
-                    <span>{t("استهداف قائمة معرفات أو حسابات بعينها.")}</span>
-                  </button>
-                </div>
-
-                {form.targetScope === "specific" && (
-                  <div className="offer-editor__field offer-editor__field--spaced">
-                    <label>{t("معرفات العميلات المستهدفات")} <em>{t("مطلوب للنطاق المحدد")}</em></label>
-                    <textarea
-                      rows={3}
-                      value={form.targetClientIdsText}
-                      onChange={(e) => setForm((prev) => ({ ...prev, targetClientIdsText: e.target.value }))}
-                      placeholder={t("clientId أو Firebase UID، مفصولة بفواصل أو أسطر")}
-                    />
-                  </div>
-                )}
-
-                <div className="offer-editor__grid offer-editor__grid--action">
-                  <div className="offer-editor__field">
-                    <label>{t("نص زر الإجراء")}</label>
-                    <input
-                      value={form.ctaLabel}
-                      onChange={(e) => setForm((prev) => ({ ...prev, ctaLabel: e.target.value }))}
-                      placeholder={t("احجزي الآن")}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("رابط الإجراء")}</label>
-                    <input
-                      value={form.ctaUrl}
-                      onChange={(e) => setForm((prev) => ({ ...prev, ctaUrl: e.target.value }))}
-                      placeholder={t("/booking أو رابط داخلي")}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <section className="offer-editor__section offer-editor__section--scope">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">05</span>
-                  <div>
-                    <h3>{t("نطاق تطبيق العرض")}</h3>
-                    <p>{t("حدد ما إذا كان الخصم عامًا أو مرتبطًا بخدمات أو تصنيفات محددة.")}</p>
+                    <h3>{t("الخدمات المشمولة")}</h3>
+                    <p>{t("ابحث واختر الخدمة التي يسري عليها العرض.")}</p>
                   </div>
                 </div>
 
@@ -2760,78 +2546,65 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
                 {form.appliesTo === "services" && (
                   <div className="offer-editor__scope-panel">
+                    <div className="offer-editor__service-search">
+                      <FontAwesomeIcon icon={faMagnifyingGlass} />
+                      <input
+                        value={serviceSearch}
+                        onChange={(e) => setServiceSearch(e.target.value)}
+                        placeholder={t("ابحث باسم الخدمة أو القسم أو السعر...")}
+                      />
+                    </div>
+
                     <div className="offer-editor__service-toolbar">
                       <div>
                         <strong>{t("اختيار الخدمات")}</strong>
                         <span>{form.serviceIds.length} {t("من أصل")} {servicesFlat.length} {t("خدمة")}</span>
-                      </div>
-                      <div className="offer-editor__toolbar-actions">
-                        <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={selectAllVisibleOfferServices}>
-                          {t("تحديد الظاهر")}
-                        </button>
-                        <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={clearVisibleOfferServices}>
-                          {t("إلغاء الظاهر")}
-                        </button>
-                        <button
-                          type="button"
-                          className="dash-pill dash-pill-outline dash-pill-sm"
-                          onClick={() => setServicesPickerOpen((current) => !current)}
-                        >
-                          {servicesPickerOpen ? t("إخفاء القائمة") : t("عرض القائمة")}
-                        </button>
                       </div>
                     </div>
 
                     {form.serviceIds.length > 0 && (
                       <div className="offer-editor__selected-summary">
                         <span>{t("الخدمات المختارة")}</span>
-                        <strong>{selectedOfferServices.map((service) => service.name).join(language === "en" ? ", " : "، ") || `${form.serviceIds.length} ${t("خدمة")}`}</strong>
+                        <strong>
+                          {selectedOfferServices.map((service) => (
+                            <b key={service.id} className="offer-editor__selected-chip">
+                              {service.name}
+                            </b>
+                          ))}
+                        </strong>
                       </div>
                     )}
 
-                    {servicesPickerOpen && (
-                      <>
-                        <div className="offer-editor__service-search">
-                          <FontAwesomeIcon icon={faMagnifyingGlass} />
-                          <input
-                            value={serviceSearch}
-                            onChange={(e) => setServiceSearch(e.target.value)}
-                            placeholder={t("ابحث باسم الخدمة أو القسم أو السعر...")}
-                          />
-                        </div>
-
-                        <div className="offer-editor__service-groups">
-                          {servicesGrouped.length === 0 ? (
-                            <div className="offer-editor__empty">{t("لا توجد خدمات مطابقة للبحث.")}</div>
-                          ) : (
-                            servicesGrouped.map(([groupName, list]) => (
-                              <div key={groupName} className="offer-editor__service-group">
-                                <div className="offer-editor__service-group-head">
-                                  <strong>{groupName}</strong>
-                                  <span>{list.length} {t("خدمة")}</span>
-                                </div>
-                                <div className="offer-editor__service-list">
-                                  {list.map((service) => {
-                                    const selected = form.serviceIds.includes(service.id);
-                                    return (
-                                      <label key={service.id} className={`offer-editor__service-row ${selected ? "is-selected" : ""}`}>
-                                        <input type="checkbox" checked={selected} onChange={() => toggleServiceId(service.id)} />
-                                        <span className="offer-editor__service-check"><FontAwesomeIcon icon={faCheck} /></span>
-                                        <span className="offer-editor__service-copy">
-                                          <strong>{service.name}</strong>
-                                          <small>{service.sectionTitle} · {service.category}</small>
-                                        </span>
-                                        <span className="offer-editor__service-price">{service.basePrice.toFixed(2)} {t("ريال")}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </>
-                    )}
+                    <div className="offer-editor__service-groups">
+                      {servicesGrouped.length === 0 ? (
+                        <div className="offer-editor__empty">{t("لا توجد خدمات مطابقة للبحث.")}</div>
+                      ) : (
+                        servicesGrouped.map(([groupName, list]) => (
+                          <div key={groupName} className="offer-editor__service-group">
+                            <div className="offer-editor__service-group-head">
+                              <strong>{groupName}</strong>
+                              <span>{list.length} {t("خدمة")}</span>
+                            </div>
+                            <div className="offer-editor__service-list">
+                              {list.map((service) => {
+                                const selected = form.serviceIds.includes(service.id);
+                                return (
+                                  <label key={service.id} className={`offer-editor__service-row ${selected ? "is-selected" : ""}`}>
+                                    <input type="checkbox" checked={selected} onChange={() => toggleServiceId(service.id)} />
+                                    <span className="offer-editor__service-check"><FontAwesomeIcon icon={faCheck} /></span>
+                                    <span className="offer-editor__service-copy">
+                                      <strong>{service.name}</strong>
+                                      <small>{service.sectionTitle} · {service.category}</small>
+                                    </span>
+                                    <span className="offer-editor__service-price">{service.basePrice.toFixed(2)} {t("ريال")}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
 
                     {form.serviceIds.length > 0 && (
                       <div className="offer-editor__sequence-panel">
@@ -2862,6 +2635,10 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                               <tbody>
                                 {normalizeSequenceSteps(form.sequenceSteps, form.serviceIds).map((step, index, rows) => {
                                   const service = serviceById.get(String(step.serviceId || "").trim());
+                                  const displayedGapAfterMin = Math.max(
+                                    0,
+                                    Number(step.gapAfterMin || 0) || durationMinFromService(step.serviceId)
+                                  );
                                   return (
                                     <tr key={`offer-sequence-${step.serviceId}`}>
                                       <td>{index + 1}</td>
@@ -2870,7 +2647,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                                         <div className="offer-editor__input-suffix">
                                           <DashboardNumberInputV2
                                             min={0}
-                                            value={Math.max(0, Number(step.gapAfterMin || 0))}
+                                            value={displayedGapAfterMin}
                                             onChange={(e) => updateSequenceStepGap(step.serviceId, Number(e.target.value || 0))}
                                           />
                                           <span>{t("دقيقة")}</span>
@@ -2945,6 +2722,283 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">03</span>
+                  <div>
+                    <h3>{t("الخصم والتسعير")}</h3>
+                    <p>{t("حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__discount-selector" role="group" aria-label={t("نوع الخصم")}>
+                  <button
+                    type="button"
+                    className={form.discountType === "fixed" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, discountType: "fixed" }))}
+                  >
+                    <strong>{t("مبلغ ثابت")}</strong>
+                    <span>{t("خصم قيمة محددة بالريال")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.discountType === "percent" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, discountType: "percent" }))}
+                  >
+                    <strong>{t("نسبة مئوية")}</strong>
+                    <span>{t("خصم نسبة من قيمة الخدمة")}</span>
+                  </button>
+                </div>
+
+                <div className="offer-editor__commercial-grid">
+                  <div className="offer-editor__field offer-editor__commercial-field is-primary">
+                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        max={form.discountType === "percent" ? 100 : undefined}
+                        step="0.01"
+                        value={form.value}
+                        onChange={(e) => setForm((prev) => ({ ...prev, value: Number(e.target.value) }))}
+                      />
+                      <span>{form.discountType === "percent" ? "%" : t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("السعر قبل الخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.priceBefore}
+                        onChange={(e) => setForm((prev) => ({ ...prev, priceBefore: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("السعر بعد الخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.priceAfter}
+                        onChange={(e) => {
+                          const priceAfter = Math.max(0, Number(e.target.value || 0));
+                          setForm((prev) => ({
+                            ...prev,
+                            priceAfter,
+                            value:
+                              prev.discountType === "fixed" && Number(prev.priceBefore || 0) > 0
+                                ? Number(Math.max(0, Number(prev.priceBefore || 0) - priceAfter).toFixed(2))
+                                : prev.value,
+                          }));
+                        }}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("ترتيب الظهور")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.sortOrder}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="offer-editor__pricing-summary">
+                  <div>
+                    <span>{t("الخصم المحسوب")}</span>
+                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                  <div>
+                    <span>{t("السعر المقترح بعد الخصم")}</span>
+                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                  <div>
+                    <span>{t("التوفير الظاهر")}</span>
+                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                </div>
+
+                <div className="offer-editor__limits-grid">
+                  <div className="offer-editor__field">
+                    <label>{t("إجمالي مرات الاستخدام")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.usageLimit}
+                      onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
+                    />
+                    <small>{t("ضع 0 لعدم تحديد حد إجمالي.")}</small>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد لكل عميلة")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.perClientLimit}
+                      onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
+                    />
+                    <small>{t("ضع 0 للسماح بدون حد فردي.")}</small>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد الأدنى للطلب")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.minOrder}
+                        onChange={(e) => setForm((prev) => ({ ...prev, minOrder: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد الأعلى للخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.maxDiscount}
+                        onChange={(e) => setForm((prev) => ({ ...prev, maxDiscount: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">04</span>
+                  <div>
+                    <h3>{t("الفترة وحالة النشر")}</h3>
+                    <p>{t("تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__grid">
+                  <div className="offer-editor__field">
+                    <label>{t("تاريخ البداية")}</label>
+                    <DashboardDatePickerV2
+                      value={form.startDate}
+                      onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("تاريخ النهاية")}</label>
+                    <DashboardDatePickerV2
+                      value={form.endDate}
+                      onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("حالة النشر")}</label>
+                    <DashboardSelectV2
+                      options={OFFER_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+                      value={form.status}
+                      onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
+                    />
+                  </div>
+                  <div className="offer-editor__status-card">
+                    <span>{t("الحالة الفعلية حسب التاريخ")}</span>
+                    <strong>{offerEditorComputed.dateStatus}</strong>
+                  </div>
+                </div>
+
+                <div className="offer-editor__toggle-grid">
+                  <label className={`offer-editor__toggle-card ${form.active ? "is-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.active}
+                      onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
+                    />
+                    <span>
+                      <strong>{t("تفعيل العرض")}</strong>
+                      <small>{t("يسمح للنظام بتطبيق الخصم خلال فترة العرض.")}</small>
+                    </span>
+                    <i>{form.active ? t("مفعّل") : t("موقوف")}</i>
+                  </label>
+
+                  <label className={`offer-editor__toggle-card ${form.published ? "is-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.published}
+                      onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
+                    />
+                    <span>
+                      <strong>{t("النشر للعميلات")}</strong>
+                      <small>{t("إظهار العرض في تطبيق العميلة وصفحات العروض.")}</small>
+                    </span>
+                    <i>{form.published ? t("منشور") : t("مخفي")}</i>
+                  </label>
+                </div>
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">05</span>
+                  <div>
+                    <h3>{t("الجمهور وزر الإجراء")}</h3>
+                    <p>{t("حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__choice-grid offer-editor__choice-grid--two">
+                  <button
+                    type="button"
+                    className={form.targetScope === "all" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "all", targetClientIdsText: "" }))}
+                  >
+                    <strong>{t("جميع العميلات")}</strong>
+                    <span>{t("عرض عام متاح لكل الحسابات المؤهلة.")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.targetScope === "specific" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "specific" }))}
+                  >
+                    <strong>{t("عميلات محددات")}</strong>
+                    <span>{t("استهداف قائمة معرفات أو حسابات بعينها.")}</span>
+                  </button>
+                </div>
+
+                {form.targetScope === "specific" && (
+                  <div className="offer-editor__field offer-editor__field--spaced">
+                    <label>{t("معرفات العميلات المستهدفات")} <em>{t("مطلوب للنطاق المحدد")}</em></label>
+                    <textarea
+                      rows={3}
+                      value={form.targetClientIdsText}
+                      onChange={(e) => setForm((prev) => ({ ...prev, targetClientIdsText: e.target.value }))}
+                      placeholder={t("clientId أو Firebase UID، مفصولة بفواصل أو أسطر")}
+                    />
+                  </div>
+                )}
+
+                <div className="offer-editor__grid offer-editor__grid--action">
+                  <div className="offer-editor__field">
+                    <label>{t("نص زر الإجراء")}</label>
+                    <input
+                      value={form.ctaLabel}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ctaLabel: e.target.value }))}
+                      placeholder={t("احجزي الآن")}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("رابط الإجراء")}</label>
+                    <input
+                      value={form.ctaUrl}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ctaUrl: e.target.value }))}
+                      placeholder={t("/booking أو رابط داخلي")}
+                    />
+                  </div>
+                </div>
               </section>
 
               <section className="offer-editor__section offer-editor__section--media">
