@@ -29,7 +29,7 @@ import { auth } from "../services/firebase";
 import { logoutFirebase } from "../services/authService";
 
 
-import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
+import { createOrLoadUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
 import ClientConnectPanel from "../components/client/ClientConnectPanel";
@@ -500,12 +500,44 @@ const Profile: React.FC = () => {
         setCashbackData(snapshot.cashback ?? null);
         setClientOffers(snapshot.offers);
         setBookingsErr("");
-        setUserData((prev) => ({
-          ...prev,
-          name: snapshot.profile.name || prev.name,
-          phone: normalizeKsaPhone(snapshot.profile.phoneNormalized || prev.phone),
-          email: snapshot.profile.email || prev.email,
-        }));
+        const canonicalProfile = {
+          name: snapshot.profile.name || "عميلة",
+          phone: normalizeKsaPhone(snapshot.profile.phoneNormalized || ""),
+          email: snapshot.profile.email || "",
+          city: snapshot.profile.city || "",
+          birthdate: snapshot.profile.birthdate || "",
+          avatar: resolveStableAvatarUrl(snapshot.profile.avatarUrl) || "",
+        };
+        setUserData((prev) =>
+          sameProfileViewData(prev, canonicalProfile) ? prev : canonicalProfile
+        );
+
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem("user_profile_v1") || "{}"
+          );
+          localStorage.setItem(
+            "user_profile_v1",
+            JSON.stringify({
+              ...cached,
+              name: canonicalProfile.name,
+              phone: canonicalProfile.phone,
+              email: canonicalProfile.email,
+              city: canonicalProfile.city,
+              birthdate: canonicalProfile.birthdate,
+              avatarUrl: canonicalProfile.avatar,
+            })
+          );
+          localStorage.setItem("userName", canonicalProfile.name);
+          if (canonicalProfile.phone) localStorage.setItem("userPhone", canonicalProfile.phone);
+          else localStorage.removeItem("userPhone");
+          if (canonicalProfile.email) localStorage.setItem("userEmail", canonicalProfile.email);
+          else localStorage.removeItem("userEmail");
+          if (canonicalProfile.avatar) localStorage.setItem("userAvatar", canonicalProfile.avatar);
+          else localStorage.removeItem("userAvatar");
+        } catch {
+          // Local cache is presentation-only; Core D1 remains authoritative.
+        }
       } catch (error: any) {
         if (!alive) return;
         console.error("Client portal load error:", error);
@@ -674,33 +706,36 @@ const Profile: React.FC = () => {
       // 4) رابط العرض
       const publicUrl = `${PUBLIC_DEV_BASE.replace(/\/+$/, "")}/${key}`;
 
-      // 5) تحديث UI
+      // 5) Core D1 هو مصدر الحقيقة للصورة؛ R2 يحفظ الملف فقط.
+      const canonical = await ClientPortalService.patchProfile({
+        avatarUrl: publicUrl,
+      });
+      const canonicalAvatar =
+        resolveStableAvatarUrl(canonical.avatarUrl) || publicUrl;
+
       setUserData((prev) => ({
         ...prev,
-        avatar: publicUrl,
+        avatar: canonicalAvatar,
       }));
-
-      localStorage.setItem("userAvatar", publicUrl);
-      setProfileDoc((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : prev));
+      setProfileDoc((prev) =>
+        prev ? { ...prev, avatarUrl: canonicalAvatar } : prev
+      );
+      localStorage.setItem("userAvatar", canonicalAvatar);
 
       try {
-        const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
+        const cached =
+          JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
         localStorage.setItem(
           "user_profile_v1",
           JSON.stringify({
             ...cached,
             uid: effectiveUid,
-            avatarUrl: publicUrl,
+            avatarUrl: canonicalAvatar,
           })
         );
       } catch {
-        // ignore
+        // Presentation cache only.
       }
-
-      // 6) حفظ في Firestore بشكل مؤكد
-      await updateUserProfile(effectiveUid, {
-        avatarUrl: publicUrl,
-      } as any);
 
       alert("تم رفع الصورة وحفظها ✅");
     } catch (err: any) {
@@ -812,29 +847,62 @@ const Profile: React.FC = () => {
     };
 
     try {
-      if (profileMode === "firebase" && firebaseUid && profileDoc) {
-        await Promise.all([
-          updateUserProfile(firebaseUid, updated),
-          ClientPortalService.patchProfile({
-            name: updated.name,
-            phone: updated.phone,
-            email: updated.email,
-          }),
-        ]);
+      if (profileMode !== "firebase" || !firebaseUid || !firebaseUser) {
+        throw new Error("يلزم تسجيل الدخول لحفظ بيانات الحساب.");
       }
 
-      setUserData((prev) => {
-        const next = { ...prev, ...updated };
-        return sameProfileViewData(prev, next) ? prev : next;
+      const canonical = await ClientPortalService.patchProfile({
+        name: updated.name,
+        phone: updated.phone,
+        email: updated.email,
+        city: updated.city,
+        birthdate: updated.birthdate,
       });
+      const next = {
+        name: canonical.name || "عميلة",
+        phone: normalizeKsaPhone(canonical.phoneNormalized || ""),
+        email: canonical.email || "",
+        city: canonical.city || "",
+        birthdate: canonical.birthdate || "",
+        avatar: resolveStableAvatarUrl(canonical.avatarUrl) || userData.avatar,
+      };
+
+      setUserData((prev) =>
+        sameProfileViewData(prev, next) ? prev : next
+      );
+      setProfileDoc((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: next.name,
+              phone: next.phone,
+              email: next.email,
+              city: next.city,
+              birthdate: next.birthdate,
+              avatarUrl: next.avatar,
+            }
+          : prev
+      );
 
       const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "{}");
-      const merged = { ...cached, ...updated };
-      localStorage.setItem("user_profile_v1", JSON.stringify(merged));
+      localStorage.setItem(
+        "user_profile_v1",
+        JSON.stringify({
+          ...cached,
+          name: next.name,
+          phone: next.phone,
+          email: next.email,
+          city: next.city,
+          birthdate: next.birthdate,
+          avatarUrl: next.avatar,
+        })
+      );
 
-      if (updated.name) localStorage.setItem("userName", updated.name);
-      if (updated.email) localStorage.setItem("userEmail", updated.email);
-      if (updated.phone) localStorage.setItem("userPhone", updated.phone);
+      localStorage.setItem("userName", next.name);
+      if (next.email) localStorage.setItem("userEmail", next.email);
+      else localStorage.removeItem("userEmail");
+      if (next.phone) localStorage.setItem("userPhone", next.phone);
+      else localStorage.removeItem("userPhone");
 
       setIsEditOpen(false);
       window.setTimeout(() => {
