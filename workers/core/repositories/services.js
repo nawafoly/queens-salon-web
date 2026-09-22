@@ -46,14 +46,30 @@ export async function listServices(db, salonId, query = {}) {
   return rows.map((row) => {
     const promo = promos.get(row.id);
     if (!promo) {
-      return { ...row, promo_active: 0, catalog_price_halalas: row.price_halalas };
+      return {
+        ...row,
+        promo_active: 0,
+        promoActive: false,
+        catalog_price_halalas: row.price_halalas,
+        catalogPriceHalalas: row.price_halalas,
+      };
     }
     return {
       ...row,
       promo_active: 1,
+      promoActive: true,
       catalog_price_halalas: row.price_halalas,
+      catalogPriceHalalas: row.price_halalas,
       price_halalas: promo.promo_price_halalas,
+      priceHalalas: promo.promo_price_halalas,
       promo_price_halalas: promo.promo_price_halalas,
+      promoPriceHalalas: promo.promo_price_halalas,
+      promo_id: promo.id,
+      promoId: promo.id,
+      promo_starts_at: promo.starts_at,
+      promoStartsAt: promo.starts_at,
+      promo_ends_at: promo.ends_at,
+      promoEndsAt: promo.ends_at,
     };
   });
 }

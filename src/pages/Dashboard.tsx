@@ -2676,7 +2676,16 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/service-promo-prices" className="nav-link" data-sidebar-tooltip="أسعار العروض" onClick={() => setIsSidebarOpen(false)}>أسعار العروض</NavLink></li><li><NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip={t("العروض والكوبونات")} onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/service-promo-prices" className="nav-link" data-sidebar-tooltip="أسعار العروض" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faPercent} />
+                      أسعار العروض
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("offers.manage") ? (
+                  <li>
+                    <NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip={t("العروض والكوبونات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       {t("العروض والكوبونات")}
                     </NavLink>

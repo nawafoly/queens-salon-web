@@ -55,13 +55,23 @@ export function mapCoreService(row: Record<string, unknown>): CoreService {
     category_id: "categoryId",
     duration_minutes: "durationMinutes",
     price_halalas: "priceHalalas",
+    promo_active: "promoActive",
+    catalog_price_halalas: "catalogPriceHalalas",
+    promo_price_halalas: "promoPriceHalalas",
+    promo_id: "promoId",
+    promo_starts_at: "promoStartsAt",
+    promo_ends_at: "promoEndsAt",
     season_price_halalas: "seasonPriceHalalas",
     image_url: "imageUrl",
     sort_order: "sortOrder",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
-  return { ...mapped, active: Number(row.active) === 1 };
+  return {
+    ...mapped,
+    active: Number(row.active) === 1,
+    promoActive: row.promoActive === true || Number(row.promo_active) === 1,
+  };
 }
 
 function mapCoreStaffSchedule(
@@ -284,11 +294,16 @@ export function mapCoreExpense(
 }
 
 export function coreServiceToLegacy(service: CoreService): ServiceDoc {
+  const catalogPriceHalalas = service.catalogPriceHalalas ?? service.priceHalalas;
   return {
     id: service.id,
     الاسم: service.name,
     sectionId: text(service.sectionId || service.categoryId || "services"),
     categoryId: service.categoryId || null,
+    promoActive: service.promoActive === true,
+    catalogPriceHalalas,
+    catalogPrice: sarFromHalalas(catalogPriceHalalas),
+    promoPriceHalalas: service.promoPriceHalalas ?? null,
     السعر: sarFromHalalas(service.priceHalalas),
     المدة: Math.max(1, Number(service.durationMinutes || 30)),
     active: service.active,

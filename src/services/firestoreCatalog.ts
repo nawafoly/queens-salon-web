@@ -46,6 +46,10 @@ import {
     الاسم: string;
     sectionId: string;
     categoryId?: string | null;
+    promoActive?: boolean;
+    catalogPriceHalalas?: number | null;
+    catalogPrice?: number | null;
+    promoPriceHalalas?: number | null;
     السعر: number;
     المدة: number; // بالدقائق
     active?: boolean;

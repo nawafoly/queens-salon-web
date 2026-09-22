@@ -4,6 +4,7 @@ export type ServicePromoPrice = {
   id: string;
   service_id: string;
   service_name?: string;
+  service_catalog_price_halalas?: number;
   catalog_price_halalas: number;
   promo_price_halalas: number;
   starts_at: string;
@@ -16,7 +17,10 @@ export const CoreServicePromoPriceService = {
   list(query: Record<string, string> = {}) {
     return coreApiRequest<ServicePromoPrice[]>("/api/core/service-promo-prices", { query });
   },
-  create(input: { serviceId: string; promoPriceHalalas: number; startsAt: string; endsAt: string; note?: string }) {
+  active(serviceId: string) {
+    return coreApiRequest<ServicePromoPrice | null>("/api/core/service-promo-prices/active", { query: { serviceId } });
+  },
+  create(input: { id?: string; serviceId: string; promoPriceHalalas: number; startsAt: string; endsAt: string; note?: string }) {
     return coreApiRequest<ServicePromoPrice>("/api/core/service-promo-prices", { method: "POST", body: input });
   },
   deactivate(id: string) {

@@ -25,6 +25,7 @@ import { getClient } from './clients.js';
 import { AppError } from '../errors.js';
 import { auditInsertStatement, recordAudit } from './audit.js';
 import { getService, resolveBookingService, serviceIsActive } from './services.js';
+import { getActivePromoForService } from './service-promo-prices.js';
 import {
   getStaff,
   staffIsActive,
@@ -714,14 +715,21 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       "catalogUnitPriceHalalas",
       { min: 0, max: 10_000_000 }
     );
+    const activePromo = await getActivePromoForService(db, salonId, service.id, now);
+    const effectiveCatalogUnit = activePromo
+      ? integer(activePromo.promo_price_halalas, "promoPriceHalalas", {
+          min: 0,
+          max: 10_000_000,
+        })
+      : catalogUnit;
     const unit = integer(
       item.unitPriceHalalas ??
         item.unit_price_halalas ??
-        catalogUnit,
+        effectiveCatalogUnit,
       "unitPriceHalalas",
       { min: 0, max: 10_000_000 }
     );
-    const priceAdjusted = unit !== catalogUnit;
+    const priceAdjusted = unit !== effectiveCatalogUnit;
     const priceAdjustmentReason = priceAdjusted
       ? cleanText(
           item.priceAdjustmentReason ??

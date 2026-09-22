@@ -20,6 +20,20 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 5173,
       strictPort: true,
+      watch: {
+        ignored: [
+          "**/.git/**",
+          "**/.vercel/**",
+          "**/.wrangler/**",
+          "**/dist/**",
+          "**/dist-customer/**",
+          "**/dist-staff/**",
+          "**/android/build/**",
+          "**/android-hr/build/**",
+          "**/android/.gradle/**",
+          "**/android-hr/.gradle/**",
+        ],
+      },
       proxy: {
         "/api": {
           target: partnersApiTarget,

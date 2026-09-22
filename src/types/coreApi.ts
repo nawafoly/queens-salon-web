@@ -50,6 +50,12 @@ export type CoreService = {
   description?: string | null;
   durationMinutes: number;
   priceHalalas: number;
+  promoActive?: boolean;
+  catalogPriceHalalas?: number | null;
+  promoPriceHalalas?: number | null;
+  promoId?: string | null;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
   seasonPriceHalalas?: number | null;
   active: boolean;
   imageUrl?: string | null;

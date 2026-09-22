@@ -34,6 +34,7 @@ import {
 } from './repositories/services.js';
 import {
   listPromoPrices,
+  getActivePromoForService,
   upsertPromoPrice,
   deactivatePromoPrice,
 } from './repositories/service-promo-prices.js';
@@ -567,6 +568,16 @@ function match(url, method) {
   }
   if (path === "/api/core/testimonials") {
     return { name: "testimonials" };
+  }
+  if (path === "/api/core/service-promo-prices") {
+    return { name: "service-promo-prices" };
+  }
+  if (path === "/api/core/service-promo-prices/active" && method === "GET") {
+    return { name: "service-promo-prices:active" };
+  }
+  const servicePromoDeactivate = /^\/api\/core\/service-promo-prices\/([^/]+)\/deactivate$/.exec(path);
+  if (servicePromoDeactivate && method === "POST") {
+    return { name: "service-promo-deactivate", id: servicePromoDeactivate[1] };
   }
 
   const clientPortalRoutes = new Map([
@@ -1550,22 +1561,28 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "service-promo-prices":
-    if (method === "GET") {
-      requireAnyPermission(ctx, ["offers.manage", "bookings.create", "bookings.view"]);
-      return listPromoPrices(db, ctx.salonId, readQuery);
-    }
-    if (method === "POST") {
-      requirePermission(ctx, "offers.manage");
-      return upsertPromoPrice(db, ctx.salonId, body, actorInfo);
-    }
-    break;
-  case "service-promo-deactivate":
-    if (method === "POST") {
-      requirePermission(ctx, "offers.manage");
-      return deactivatePromoPrice(db, ctx.salonId, route.id);
-    }
-    break;
-  case "services":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["offers.manage", "bookings.create", "bookings.view"]);
+        return listPromoPrices(db, ctx.salonId, readQuery);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "offers.manage");
+        return upsertPromoPrice(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+    case "service-promo-prices:active":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["offers.manage", "bookings.create", "bookings.view"]);
+        return getActivePromoForService(db, ctx.salonId, readQuery.serviceId || readQuery.service_id, readQuery.at || undefined);
+      }
+      break;
+    case "service-promo-deactivate":
+      if (method === "POST") {
+        requirePermission(ctx, "offers.manage");
+        return deactivatePromoPrice(db, ctx.salonId, route.id, actorInfo);
+      }
+      break;
+    case "services":
       if (method === "GET") {
         return listServices(db, ctx.salonId, readQuery);
       }
