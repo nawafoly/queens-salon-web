@@ -672,25 +672,41 @@ export async function listSelfOffers(db, salonId, identity) {
 
 export async function getSelfProfile(db, salonId, identity) {
   const client = await resolveCanonicalSelfClient(db, salonId, identity);
-  const bookings = await listSelfBookings(db, salonId, identity);
+  const countRow = await dbFirst(
+    db,
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed,
+       SUM(
+         CASE
+           WHEN status NOT IN ('cancelled', 'completed', 'refunded')
+            AND (
+              booking_date > date('now', '+3 hours')
+              OR (
+                booking_date = date('now', '+3 hours')
+                AND start_time > time('now', '+3 hours')
+              )
+            )
+           THEN 1 ELSE 0
+         END
+       ) AS upcoming
+     FROM bookings
+     WHERE salon_id = ?
+       AND client_id = ?
+       AND deleted_at IS NULL`,
+    [salonId, client.id]
+  );
   const counts = {
-    total: bookings.length,
-    completed: 0,
-    upcoming: 0,
-    cancelled: 0,
-    pending: 0,
-    confirmed: 0,
+    total: Number(countRow?.total || 0),
+    completed: Number(countRow?.completed || 0),
+    upcoming: Number(countRow?.upcoming || 0),
+    cancelled: Number(countRow?.cancelled || 0),
+    pending: Number(countRow?.pending || 0),
+    confirmed: Number(countRow?.confirmed || 0),
   };
-  const now = Date.now();
-  for (const booking of bookings) {
-    const status = cleanText(booking.status);
-    if (status === 'completed') counts.completed += 1;
-    if (status === 'cancelled') counts.cancelled += 1;
-    if (status === 'pending') counts.pending += 1;
-    if (status === 'confirmed') counts.confirmed += 1;
-    const at = Date.parse(`${booking.booking_date || ''}T${booking.start_time || '00:00'}:00`);
-    if (Number.isFinite(at) && at > now && !['cancelled', 'completed', 'refunded'].includes(status)) counts.upcoming += 1;
-  }
   return {
     ...client,
     city: client.city || '',
