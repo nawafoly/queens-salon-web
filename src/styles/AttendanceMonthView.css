@@ -873,3 +873,15 @@
     display: none;
   }
 }
+
+
+/* calendar-cell-label-lock */
+.attendance-month__primary-status-label {
+  max-width: 100%;
+  padding: 0 4px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

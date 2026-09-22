@@ -758,15 +758,13 @@ export default function AttendanceMonthView({
                 <strong>{cell.day}</strong>
                 {viewerMode === "employee" ? (
                   <span className="attendance-month__primary-status-label">
-                    {displayStatusLabel(cell.status, viewerMode, copy, cell.coreShift)}
+                    {cell.status === "off_day" && cell.isException
+                      ? copy.exception
+                      : cell.status === "off_day"
+                        ? copy.rest
+                        : displayStatusLabel(cell.status, viewerMode, copy, cell.coreShift)}
                   </span>
                 ) : null}
-                {cell.isException && cell.status !== "off_day" ? (
-                  <span className="attendance-month__exception-label">
-                    {copy.exception}
-                  </span>
-                ) : null}
-                {todayKey === cell.dateKey ? <span className="attendance-month__today-label">{copy.today}</span> : null}
               </button>
             )
           )}
