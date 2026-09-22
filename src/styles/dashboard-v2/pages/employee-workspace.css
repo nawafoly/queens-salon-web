@@ -2542,3 +2542,39 @@
 
 .dashboard-v2 .dsv2-ew-metric[data-tone="warning"] { box-shadow: inset 3px 0 0 #c2410c; }
 .dashboard-v2 .dsv2-ew-notice[data-tone="warning"] { border-inline-start-color: #c2410c; background: #fff7ed; }
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="حضور"] {
+  background: #ecfdf3 !important;
+  border-color: #86efac !important;
+  box-shadow: inset 0 -3px 0 #15803d !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="تأخير"] {
+  background: #fef9c3 !important;
+  border-color: #facc15 !important;
+  box-shadow: inset 0 -3px 0 #a16207 !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="نقص ساعات"] {
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+  box-shadow: inset 0 -3px 0 #c2410c !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="تأخير"][data-status*="نقص"] {
+  background: #ffedd5 !important;
+  border-color: #f59e0b !important;
+  box-shadow: inset 0 -3px 0 #b45309 !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="غياب"] {
+  background: #ffe4e6 !important;
+  border-color: #fb7185 !important;
+  box-shadow: inset 0 -3px 0 #9f1239 !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="راحة"] {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: inset 0 -3px 0 #475569 !important;
+}
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="غير مكتمل"] {
+  background: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+  box-shadow: inset 0 -3px 0 #0284c7 !important;
+}
