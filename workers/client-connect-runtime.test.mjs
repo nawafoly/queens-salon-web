@@ -289,7 +289,7 @@ test('MALIKAT Connect honors the canonical connect-enabled preference', () => {
   assert.match(repository, /core_client_connect:disabled_for_client/);
   assert.match(panel, /enabled\?: boolean/);
   assert.match(panel, /يمكنك قراءة المحادثات السابقة/);
-  assert.match(profile, /preferencesData\?\.connectEnabled !== false/);
+  assert.match(profile, /preferencesData\?\.connectEnabled === true/);
 });
 
 test('MALIKAT Connect transport inherits Core request idempotency', () => {
