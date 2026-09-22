@@ -646,6 +646,47 @@ test("client portal uses authenticated Core D1 snapshot instead of fixed profile
   assert.match(worker, /listSelfOffers/);
 });
 
+test("client profile and admin Client 360 keep profile fields Core-authoritative", () => {
+  const profile = readFileSync("src/pages/Profile.tsx", "utf8");
+  const portalService = readFileSync("src/services/ClientPortalService.ts", "utf8");
+  const adminRecord = readFileSync(
+    "src/features/customers/CustomerRecordModal.tsx",
+    "utf8"
+  );
+  const clientRepo = readFileSync(
+    "workers/core/repositories/client-portal.js",
+    "utf8"
+  );
+  const adminRepo = readFileSync(
+    "workers/core/repositories/clients.js",
+    "utf8"
+  );
+
+  assert.match(profile, /ClientPortalService\.patchProfile\(\{[\s\S]*city: updated\.city,[\s\S]*birthdate: updated\.birthdate/);
+  assert.match(profile, /ClientPortalService\.patchProfile\(\{\s*avatarUrl: publicUrl/);
+  assert.match(profile, /snapshot\.profile\.city/);
+  assert.match(profile, /snapshot\.profile\.birthdate/);
+  assert.match(profile, /snapshot\.profile\.avatarUrl/);
+  assert.doesNotMatch(profile, /updateUserProfile\(/);
+
+  const patchProfileStart = portalService.indexOf("async patchProfile(input:");
+  const patchProfileEnd = portalService.indexOf("): Promise<ClientPortalProfile>", patchProfileStart);
+  const patchProfileSignature = portalService.slice(patchProfileStart, patchProfileEnd);
+  assert.doesNotMatch(patchProfileSignature, /membershipId|membershipPercent/);
+
+  assert.match(clientRepo, /Membership identity\/tier are system-owned/);
+  assert.match(clientRepo, /const membershipId = client\.membership_id \|\| null/);
+  assert.match(clientRepo, /core_client:phone_conflict/);
+  assert.match(clientRepo, /core_client:invalid_birthdate/);
+
+  for (const field of ["البريد الإلكتروني", "المدينة", "تاريخ الميلاد", "رقم العضوية"]) {
+    assert.match(adminRecord, new RegExp(field));
+  }
+  assert.match(adminRecord, /CoreClientService\.updateProfile\(clientId, \{[\s\S]*email,[\s\S]*city,[\s\S]*birthdate/);
+  assert.match(adminRepo, /avatar_url:/);
+  assert.match(adminRepo, /normalizedClientBirthdate/);
+});
+
 test("public booking repairs stale service IDs before creating a Core booking", () => {
   const booking = readFileSync("src/pages/Booking.tsx", "utf8");
   const serviceRepo = readFileSync(
