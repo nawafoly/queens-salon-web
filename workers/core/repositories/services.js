@@ -15,6 +15,7 @@ import {
   rowNotFound,
   updateById,
 } from '../d1.js';
+import { getActivePromosMap } from './service-promo-prices.js';
 
 export async function listServices(db, salonId, query = {}) {
   const activeOnly = ["1", "true", "yes"].includes(
@@ -24,7 +25,6 @@ export async function listServices(db, salonId, query = {}) {
   const categoryId = cleanText(query.categoryId || query.category_id);
   const where = ["salon_id = ?"];
   const params = [salonId];
-
   if (activeOnly) where.push("active = 1");
   if (sectionId) {
     where.push("section_id = ?");
@@ -34,8 +34,7 @@ export async function listServices(db, salonId, query = {}) {
     where.push("category_id = ?");
     params.push(categoryId);
   }
-
-  return dbAll(
+  const rows = await dbAll(
     db,
     `SELECT * FROM services
       WHERE ${where.join(" AND ")}
@@ -43,6 +42,20 @@ export async function listServices(db, salonId, query = {}) {
       LIMIT 1000`,
     params
   );
+  const promos = await getActivePromosMap(db, salonId);
+  return rows.map((row) => {
+    const promo = promos.get(row.id);
+    if (!promo) {
+      return { ...row, promo_active: 0, catalog_price_halalas: row.price_halalas };
+    }
+    return {
+      ...row,
+      promo_active: 1,
+      catalog_price_halalas: row.price_halalas,
+      price_halalas: promo.promo_price_halalas,
+      promo_price_halalas: promo.promo_price_halalas,
+    };
+  });
 }
 
 export async function getService(db, salonId, id) {

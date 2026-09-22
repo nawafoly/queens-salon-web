@@ -40,6 +40,7 @@ import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
 import DashboardOffers from "../pages/DashboardOffers";
+import DashboardServicePromoPrices from "./DashboardServicePromoPrices";
 import DashboardInventory from "./DashboardInventory";
 import DashboardReports from "./DashboardReports";
 import DashboardClients from "./DashboardClients";
@@ -2675,7 +2676,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip={t("العروض والكوبونات")} onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/service-promo-prices" className="nav-link" data-sidebar-tooltip="أسعار العروض" onClick={() => setIsSidebarOpen(false)}>أسعار العروض</NavLink></li><li><NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip={t("العروض والكوبونات")} onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       {t("العروض والكوبونات")}
                     </NavLink>
@@ -2925,6 +2926,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="clients" element={<PermissionRoute permission="clients.view"><DashboardClients currentRole={userInfo.role} language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="partners" element={<PermissionRoute permission="partners.manage"><DashboardPartners /></PermissionRoute>} />
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty language={dashboardLanguage} /></PermissionRoute>} />
+                <Route path="service-promo-prices" element={<PermissionRoute permission="offers.manage"><DashboardServicePromoPrices /></PermissionRoute>} />
                 <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><DashboardInventory /></PermissionRoute>} />
                 <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports language={dashboardLanguage} /></PermissionRoute>} />

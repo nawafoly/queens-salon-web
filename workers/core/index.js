@@ -33,6 +33,11 @@ import {
   patchService,
 } from './repositories/services.js';
 import {
+  listPromoPrices,
+  upsertPromoPrice,
+  deactivatePromoPrice,
+} from './repositories/service-promo-prices.js';
+import {
   getStaff,
   listStaff,
   patchStaff,
@@ -1544,7 +1549,23 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
-    case "services":
+    case "service-promo-prices":
+    if (method === "GET") {
+      requireAnyPermission(ctx, ["offers.manage", "bookings.create", "bookings.view"]);
+      return listPromoPrices(db, ctx.salonId, readQuery);
+    }
+    if (method === "POST") {
+      requirePermission(ctx, "offers.manage");
+      return upsertPromoPrice(db, ctx.salonId, body, actorInfo);
+    }
+    break;
+  case "service-promo-deactivate":
+    if (method === "POST") {
+      requirePermission(ctx, "offers.manage");
+      return deactivatePromoPrice(db, ctx.salonId, route.id);
+    }
+    break;
+  case "services":
       if (method === "GET") {
         return listServices(db, ctx.salonId, readQuery);
       }
