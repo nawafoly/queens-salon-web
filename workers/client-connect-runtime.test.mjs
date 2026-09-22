@@ -292,6 +292,33 @@ test('MALIKAT Connect honors the canonical connect-enabled preference', () => {
   assert.match(profile, /preferencesData\?\.connectEnabled === true/);
 });
 
+test('disabled Connect rejects new messages for an existing conversation', async (t) => {
+  const { mf, db } = await setupConnectRuntime();
+  t.after(() => mf.dispose());
+
+  const now = '2026-09-22T10:00:00.000Z';
+  await db.prepare(
+    "INSERT INTO client_preferences (salon_id, client_id, service_messages_enabled, marketing_consent, connect_enabled, created_at, updated_at) VALUES (?, ?, 1, 0, 0, ?, ?)"
+  ).bind('main', 'client-connect-1', now, now).run();
+
+  await assert.rejects(
+    sendConnectMessage(
+      db,
+      'main',
+      'conversation-1',
+      { id: 'disabled-message', body: 'مرحبا' },
+      { uid: 'uid-client' },
+      { clientId: 'client-connect-1', actorKind: 'client' }
+    ),
+    (error) => error?.code === 'core_client_connect:disabled_for_client'
+  );
+
+  const row = await db.prepare(
+    "SELECT COUNT(*) AS count FROM client_connect_messages WHERE salon_id = ? AND conversation_id = ?"
+  ).bind('main', 'conversation-1').first();
+  assert.equal(Number(row.count), 0);
+});
+
 test('MALIKAT Connect transport inherits Core request idempotency', () => {
   const api = readFileSync('src/services/coreApiClient.ts', 'utf8');
   const service = readFileSync('src/services/ClientConnectService.ts', 'utf8');
