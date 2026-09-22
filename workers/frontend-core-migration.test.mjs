@@ -661,6 +661,12 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
     "workers/core/repositories/clients.js",
     "utf8"
   );
+  const authRegister = readFileSync(
+    "workers/core/repositories/auth-register.js",
+    "utf8"
+  );
+  const authService = readFileSync("src/services/authService.ts", "utf8");
+  const userProfileService = readFileSync("src/services/userProfile.ts", "utf8");
 
   assert.match(profile, /ClientPortalService\.patchProfile\(\{[\s\S]*city: updated\.city,[\s\S]*birthdate: updated\.birthdate/);
   assert.match(profile, /ClientPortalService\.patchProfile\(\{\s*avatarUrl: publicUrl/);
@@ -690,6 +696,37 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
   assert.match(clientRepo, /serviceMessagesEnabled/);
   assert.match(clientRepo, /marketingConsent/);
   assert.match(clientRepo, /connectEnabled/);
+
+  // Registration is another profile-write path: it must enforce the same Core
+  // invariants and must never accept membership identity/tier from the client.
+  assert.match(authRegister, /Membership identity\/tier are system-owned/);
+  assert.doesNotMatch(
+    authRegister,
+    /data\.membership(?:Id|_id|Percent|_percent)/
+  );
+  assert.match(authRegister, /const birthdate = normalizeBirthdate\(data\.birthdate\)/);
+  assert.match(authRegister, /core_client:invalid_birthdate/);
+  assert.match(authRegister, /core_client:invalid_phone/);
+  assert.match(authRegister, /core_client:phone_conflict/);
+  assert.match(
+    authRegister,
+    /SELECT id FROM clients WHERE salon_id = \? AND phone_normalized = \? AND id <> \? LIMIT 1/
+  );
+
+  const registerClientStart = authService.indexOf("export async function registerClientWithEmail");
+  const registerClientEnd = authService.indexOf("export async function logoutFirebase", registerClientStart);
+  const registerClientBlock = authService.slice(registerClientStart, registerClientEnd);
+  assert.doesNotMatch(registerClientBlock, /membershipId|membershipPercent/);
+
+  const ensureClientInputStart = userProfileService.indexOf("async function ensureClientAccount");
+  const ensureClientInputEnd = userProfileService.indexOf("async function loadClientMe", ensureClientInputStart);
+  const ensureClientInputBlock = userProfileService.slice(ensureClientInputStart, ensureClientInputEnd);
+  assert.doesNotMatch(ensureClientInputBlock, /membershipId|membershipPercent/);
+
+  const legacyUpdateStart = userProfileService.indexOf("export async function updateUserProfile");
+  const legacyUpdateEnd = userProfileService.indexOf("export function canAccessDashboard", legacyUpdateStart);
+  const legacyUpdateBlock = userProfileService.slice(legacyUpdateStart, legacyUpdateEnd);
+  assert.doesNotMatch(legacyUpdateBlock, /body\.membershipId|body\.membershipPercent/);
 
   for (const field of ["البريد الإلكتروني", "المدينة", "تاريخ الميلاد", "رقم العضوية"]) {
     assert.match(adminRecord, new RegExp(field));
