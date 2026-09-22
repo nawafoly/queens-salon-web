@@ -524,6 +524,18 @@ export async function patchClient(db, salonId, id, data) {
       data.email === undefined
         ? undefined
         : optionalText(data.email) || null,
+    city:
+      data.city === undefined
+        ? undefined
+        : optionalText(data.city) || null,
+    birthdate:
+      data.birthdate === undefined
+        ? undefined
+        : optionalText(data.birthdate) || null,
+    avatar_url:
+      data.avatarUrl === undefined && data.avatar_url === undefined
+        ? undefined
+        : optionalText(data.avatarUrl || data.avatar_url) || null,
     firebase_uid:
       data.firebaseUid === undefined && data.uid === undefined
         ? undefined
