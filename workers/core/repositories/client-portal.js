@@ -478,7 +478,14 @@ export async function getAdminClientOverview(db, salonId, clientId) {
     getClientCashbackWallet(db, salonId, id),
     dbFirst(
       db,
-      `SELECT cp.preferred_staff_id, cp.preferred_staff_source, s.name AS preferred_staff_name
+      `SELECT
+          cp.preferred_staff_id,
+          cp.preferred_staff_source,
+          cp.service_messages_enabled,
+          cp.marketing_consent,
+          cp.connect_enabled,
+          cp.updated_at,
+          s.name AS preferred_staff_name
          FROM client_preferences cp
          LEFT JOIN staff s
            ON s.salon_id = cp.salon_id
@@ -593,6 +600,18 @@ export async function getAdminClientOverview(db, salonId, clientId) {
             source: cleanText(preference.preferred_staff_source) || null,
           }
         : null,
+      preferences: {
+        serviceMessagesEnabled: preference
+          ? Number(preference.service_messages_enabled) === 1
+          : true,
+        marketingConsent: preference
+          ? Number(preference.marketing_consent) === 1
+          : false,
+        connectEnabled: preference
+          ? Number(preference.connect_enabled) === 1
+          : true,
+        updatedAt: cleanText(preference?.updated_at) || null,
+      },
       mostBookedSpecialists: specialistRows.map((row) => ({
         id: cleanText(row.staff_id),
         name: cleanText(row.staff_name) || cleanText(row.staff_id),
