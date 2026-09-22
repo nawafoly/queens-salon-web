@@ -1,0 +1,35 @@
+.service-promos-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.service-promos-list { display: none; }
+.service-promos-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(20, 18, 16, 0.10);
+  border-radius: 16px;
+  background: #fff;
+}
+.service-promos-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.service-promos-card__top strong { display: block; font-size: 14px; line-height: 1.35; }
+.service-promos-card__top small { display: block; margin-top: 2px; opacity: .7; }
+.service-promos-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.service-promos-card__meta span { display: block; font-size: 11px; opacity: .65; }
+.service-promos-card__meta b,
+.service-promos-card__meta em { display: block; margin-top: 2px; font-style: normal; font-weight: 650; font-size: 13px; }
+.service-promos-card__period { grid-column: 1 / -1; font-size: 12px; opacity: .8; word-break: break-word; }
+.service-promos-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 1100px) {
+  .service-promos-table-wrap { display: none; }
+  .service-promos-list { display: grid; gap: 10px; }
+}
+@media (min-width: 720px) and (max-width: 1100px) {
+  .service-promos-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

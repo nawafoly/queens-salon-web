@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBan, faPen, faRotateRight, faSave, faTag } from "@fortawesome/free-solid-svg-icons";
 import {
+  DashboardDatePickerV2,
   DashboardEmptyStateV2,
   DashboardFieldV2,
   DashboardSelectV2,
   DashboardSkeletonV2,
+  DashboardTimePickerV2,
 } from "../components/dashboard-v2";
 import { translateBookingCatalogLabel } from "../helpers/dashboardBookingsLanguage";
 import type { DashboardLanguage } from "../helpers/dashboardLanguage";
+import "../styles/dashboard-v2/service-promos.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
   CoreServicePromoPriceService,
@@ -161,6 +164,16 @@ function localDateTimeValue(value: string) {
   if (!date || Number.isNaN(date.getTime())) return "";
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function splitLocalDateTime(value: string) {
+  const [datePart = "", timePart = ""] = String(value || "").split("T");
+  return { date: datePart.slice(0, 10), time: timePart.slice(0, 5) };
+}
+
+function joinLocalDateTime(date: string, time: string) {
+  if (!date) return "";
+  return date + "T" + (time || "00:00");
 }
 
 function isoFromLocalInput(value: string) {
@@ -371,11 +384,61 @@ export default function DashboardServicePromoPrices({
           </DashboardFieldV2>
 
           <DashboardFieldV2 id="service-promo-starts" label={t.startsAt} required>
-            <input id="service-promo-starts" className="dsv2-input" type="text" value={form.startsAt} onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))} placeholder="2026-09-22T09:00" disabled={saving} dir="ltr" />
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(110px, 0.8fr)", gap: 8 }}>
+              <DashboardDatePickerV2
+                id="service-promo-starts"
+                language={language}
+                value={splitLocalDateTime(form.startsAt).date}
+                onChange={(date) =>
+                  setForm((current) => ({
+                    ...current,
+                    startsAt: joinLocalDateTime(date, splitLocalDateTime(current.startsAt).time || "09:00"),
+                  }))
+                }
+                disabled={saving}
+              />
+              <DashboardTimePickerV2
+                id="service-promo-starts-time"
+                value={splitLocalDateTime(form.startsAt).time}
+                onChange={(time) =>
+                  setForm((current) => ({
+                    ...current,
+                    startsAt: joinLocalDateTime(splitLocalDateTime(current.startsAt).date, time),
+                  }))
+                }
+                disabled={saving}
+                clock="24h"
+              />
+            </div>
           </DashboardFieldV2>
 
           <DashboardFieldV2 id="service-promo-ends" label={t.endsAt} required>
-            <input id="service-promo-ends" className="dsv2-input" type="text" value={form.endsAt} onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))} placeholder="2026-09-30T22:00" disabled={saving} dir="ltr" />
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(110px, 0.8fr)", gap: 8 }}>
+              <DashboardDatePickerV2
+                id="service-promo-ends"
+                language={language}
+                value={splitLocalDateTime(form.endsAt).date}
+                onChange={(date) =>
+                  setForm((current) => ({
+                    ...current,
+                    endsAt: joinLocalDateTime(date, splitLocalDateTime(current.endsAt).time || "22:00"),
+                  }))
+                }
+                disabled={saving}
+              />
+              <DashboardTimePickerV2
+                id="service-promo-ends-time"
+                value={splitLocalDateTime(form.endsAt).time}
+                onChange={(time) =>
+                  setForm((current) => ({
+                    ...current,
+                    endsAt: joinLocalDateTime(splitLocalDateTime(current.endsAt).date, time),
+                  }))
+                }
+                disabled={saving}
+                clock="24h"
+              />
+            </div>
           </DashboardFieldV2>
 
           <DashboardFieldV2 id="service-promo-note" label={t.note} className="service-promos-field--wide">
@@ -403,7 +466,7 @@ export default function DashboardServicePromoPrices({
             <DashboardSkeletonV2 />
           </div>
         ) : services.length ? (
-          <div className="service-promos-table-wrap">
+          <div className="service-promos-results"><div className="service-promos-table-wrap">
             <table className="service-promos-table">
               <thead>
                 <tr>
@@ -448,6 +511,48 @@ export default function DashboardServicePromoPrices({
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="service-promos-list">
+            {services.map((service) => {
+              const activePromo = activePromoByService.get(service.id);
+              return (
+                <article key={"card-" + service.id} className="service-promos-card">
+                  <div className="service-promos-card__top">
+                    <div>
+                      <strong>{serviceDisplayName(service, language)}</strong>
+                      <small>{service.durationMinutes || 0} {t.durationMinute}</small>
+                    </div>
+                    <span className={`service-promos-status ${activePromo ? "is-active" : ""}`}>
+                      {activePromo ? t.active : t.withoutPromo}
+                    </span>
+                  </div>
+                  <div className="service-promos-card__meta">
+                    <div>
+                      <span>{t.catalogPrice}</span>
+                      <em>{formatMoney(serviceCatalogPrice(service), language)}</em>
+                    </div>
+                    <div>
+                      <span>{t.currentPromoPrice}</span>
+                      {activePromo ? <b>{formatMoney(activePromo.promo_price_halalas, language)}</b> : <em>{t.noPromo}</em>}
+                    </div>
+                    <div className="service-promos-card__period">
+                      {activePromo ? `${localDateTimeValue(activePromo.starts_at)} — ${localDateTimeValue(activePromo.ends_at)}` : t.originalPrice}
+                    </div>
+                  </div>
+                  <div className="service-promos-row-actions">
+                    {activePromo ? (
+                      <>
+                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editPromo(activePromo)} disabled={saving}>{t.edit}</button>
+                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void deactivate(activePromo.id)} disabled={saving}>{t.deactivate}</button>
+                      </>
+                    ) : (
+                      <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setForm((current) => ({ ...emptyForm, serviceId: service.id, startsAt: current.startsAt, endsAt: current.endsAt }))} disabled={saving}>{t.create}</button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
           </div>
         ) : (
           <DashboardEmptyStateV2 title={t.noServicesTitle} description={t.noServicesDescription} />
