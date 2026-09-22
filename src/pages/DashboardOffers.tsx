@@ -2508,289 +2508,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                 </div>
               </section>
 
-              <section className="offer-editor__section">
+              <section className="offer-editor__section offer-editor__section--scope">
                 <div className="offer-editor__section-head">
                   <span className="offer-editor__step">02</span>
                   <div>
-                    <h3>{t("الخصم والتسعير")}</h3>
-                    <p>{t("حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__discount-selector" role="group" aria-label={t("نوع الخصم")}>
-                  <button
-                    type="button"
-                    className={form.discountType === "fixed" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, discountType: "fixed" }))}
-                  >
-                    <strong>{t("مبلغ ثابت")}</strong>
-                    <span>{t("خصم قيمة محددة بالريال")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={form.discountType === "percent" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, discountType: "percent" }))}
-                  >
-                    <strong>{t("نسبة مئوية")}</strong>
-                    <span>{t("خصم نسبة من قيمة الخدمة")}</span>
-                  </button>
-                </div>
-
-                <div className="offer-editor__commercial-grid">
-                  <div className="offer-editor__field offer-editor__commercial-field is-primary">
-                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        max={form.discountType === "percent" ? 100 : undefined}
-                        step="0.01"
-                        value={form.value}
-                        onChange={(e) => setForm((prev) => ({ ...prev, value: Number(e.target.value) }))}
-                      />
-                      <span>{form.discountType === "percent" ? "%" : t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("السعر قبل الخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.priceBefore}
-                        onChange={(e) => setForm((prev) => ({ ...prev, priceBefore: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("السعر بعد الخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.priceAfter}
-                        onChange={(e) => {
-                          const priceAfter = Math.max(0, Number(e.target.value || 0));
-                          setForm((prev) => ({
-                            ...prev,
-                            priceAfter,
-                            value:
-                              prev.discountType === "fixed" && Number(prev.priceBefore || 0) > 0
-                                ? Number(Math.max(0, Number(prev.priceBefore || 0) - priceAfter).toFixed(2))
-                                : prev.value,
-                          }));
-                        }}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-
-                  <div className="offer-editor__field offer-editor__commercial-field">
-                    <label>{t("ترتيب الظهور")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.sortOrder}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value) }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="offer-editor__pricing-summary">
-                  <div>
-                    <span>{t("الخصم المحسوب")}</span>
-                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                  <div>
-                    <span>{t("السعر المقترح بعد الخصم")}</span>
-                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                  <div>
-                    <span>{t("التوفير الظاهر")}</span>
-                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} {t("ريال")}</strong>
-                  </div>
-                </div>
-
-                <div className="offer-editor__limits-grid">
-                  <div className="offer-editor__field">
-                    <label>{t("إجمالي مرات الاستخدام")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.usageLimit}
-                      onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
-                    />
-                    <small>{t("ضع 0 لعدم تحديد حد إجمالي.")}</small>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد لكل عميلة")}</label>
-                    <DashboardNumberInputV2
-                      min={0}
-                      value={form.perClientLimit}
-                      onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
-                    />
-                    <small>{t("ضع 0 للسماح بدون حد فردي.")}</small>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد الأدنى للطلب")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.minOrder}
-                        onChange={(e) => setForm((prev) => ({ ...prev, minOrder: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("الحد الأعلى للخصم")}</label>
-                    <div className="offer-editor__input-suffix">
-                      <DashboardNumberInputV2
-                        min={0}
-                        step="0.01"
-                        value={form.maxDiscount}
-                        onChange={(e) => setForm((prev) => ({ ...prev, maxDiscount: Number(e.target.value) }))}
-                      />
-                      <span>{t("ريال")}</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="offer-editor__section">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">03</span>
-                  <div>
-                    <h3>{t("الفترة وحالة النشر")}</h3>
-                    <p>{t("تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__grid">
-                  <div className="offer-editor__field">
-                    <label>{t("تاريخ البداية")}</label>
-                    <DashboardDatePickerV2
-                      value={form.startDate}
-                      onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("تاريخ النهاية")}</label>
-                    <DashboardDatePickerV2
-                      value={form.endDate}
-                      onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("حالة النشر")}</label>
-                    <DashboardSelectV2
-                      options={OFFER_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
-                      value={form.status}
-                      onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
-                    />
-                  </div>
-                  <div className="offer-editor__status-card">
-                    <span>{t("الحالة الفعلية حسب التاريخ")}</span>
-                    <strong>{offerEditorComputed.dateStatus}</strong>
-                  </div>
-                </div>
-
-                <div className="offer-editor__toggle-grid">
-                  <label className={`offer-editor__toggle-card ${form.active ? "is-on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={form.active}
-                      onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
-                    />
-                    <span>
-                      <strong>{t("تفعيل العرض")}</strong>
-                      <small>{t("يسمح للنظام بتطبيق الخصم خلال فترة العرض.")}</small>
-                    </span>
-                    <i>{form.active ? t("مفعّل") : t("موقوف")}</i>
-                  </label>
-
-                  <label className={`offer-editor__toggle-card ${form.published ? "is-on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={form.published}
-                      onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
-                    />
-                    <span>
-                      <strong>{t("النشر للعميلات")}</strong>
-                      <small>{t("إظهار العرض في تطبيق العميلة وصفحات العروض.")}</small>
-                    </span>
-                    <i>{form.published ? t("منشور") : t("مخفي")}</i>
-                  </label>
-                </div>
-              </section>
-
-              <section className="offer-editor__section">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">04</span>
-                  <div>
-                    <h3>{t("الجمهور وزر الإجراء")}</h3>
-                    <p>{t("حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.")}</p>
-                  </div>
-                </div>
-
-                <div className="offer-editor__choice-grid offer-editor__choice-grid--two">
-                  <button
-                    type="button"
-                    className={form.targetScope === "all" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "all", targetClientIdsText: "" }))}
-                  >
-                    <strong>{t("جميع العميلات")}</strong>
-                    <span>{t("عرض عام متاح لكل الحسابات المؤهلة.")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={form.targetScope === "specific" ? "is-active" : ""}
-                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "specific" }))}
-                  >
-                    <strong>{t("عميلات محددات")}</strong>
-                    <span>{t("استهداف قائمة معرفات أو حسابات بعينها.")}</span>
-                  </button>
-                </div>
-
-                {form.targetScope === "specific" && (
-                  <div className="offer-editor__field offer-editor__field--spaced">
-                    <label>{t("معرفات العميلات المستهدفات")} <em>{t("مطلوب للنطاق المحدد")}</em></label>
-                    <textarea
-                      rows={3}
-                      value={form.targetClientIdsText}
-                      onChange={(e) => setForm((prev) => ({ ...prev, targetClientIdsText: e.target.value }))}
-                      placeholder={t("clientId أو Firebase UID، مفصولة بفواصل أو أسطر")}
-                    />
-                  </div>
-                )}
-
-                <div className="offer-editor__grid offer-editor__grid--action">
-                  <div className="offer-editor__field">
-                    <label>{t("نص زر الإجراء")}</label>
-                    <input
-                      value={form.ctaLabel}
-                      onChange={(e) => setForm((prev) => ({ ...prev, ctaLabel: e.target.value }))}
-                      placeholder={t("احجزي الآن")}
-                    />
-                  </div>
-                  <div className="offer-editor__field">
-                    <label>{t("رابط الإجراء")}</label>
-                    <input
-                      value={form.ctaUrl}
-                      onChange={(e) => setForm((prev) => ({ ...prev, ctaUrl: e.target.value }))}
-                      placeholder={t("/booking أو رابط داخلي")}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <section className="offer-editor__section offer-editor__section--scope">
-                <div className="offer-editor__section-head">
-                  <span className="offer-editor__step">05</span>
-                  <div>
-                    <h3>{t("نطاق تطبيق العرض")}</h3>
-                    <p>{t("حدد ما إذا كان الخصم عامًا أو مرتبطًا بخدمات أو تصنيفات محددة.")}</p>
+                    <h3>{t("الخدمات المشمولة")}</h3>
+                    <p>{t("ابحث واختر الخدمة التي يسري عليها العرض.")}</p>
                   </div>
                 </div>
 
@@ -2999,6 +2722,283 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">03</span>
+                  <div>
+                    <h3>{t("الخصم والتسعير")}</h3>
+                    <p>{t("حدد آلية الخصم والأسعار المعروضة وحدود الحماية المالية.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__discount-selector" role="group" aria-label={t("نوع الخصم")}>
+                  <button
+                    type="button"
+                    className={form.discountType === "fixed" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, discountType: "fixed" }))}
+                  >
+                    <strong>{t("مبلغ ثابت")}</strong>
+                    <span>{t("خصم قيمة محددة بالريال")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.discountType === "percent" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, discountType: "percent" }))}
+                  >
+                    <strong>{t("نسبة مئوية")}</strong>
+                    <span>{t("خصم نسبة من قيمة الخدمة")}</span>
+                  </button>
+                </div>
+
+                <div className="offer-editor__commercial-grid">
+                  <div className="offer-editor__field offer-editor__commercial-field is-primary">
+                    <label>{t("قيمة الخصم")} <em>{t("مطلوب")}</em></label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        max={form.discountType === "percent" ? 100 : undefined}
+                        step="0.01"
+                        value={form.value}
+                        onChange={(e) => setForm((prev) => ({ ...prev, value: Number(e.target.value) }))}
+                      />
+                      <span>{form.discountType === "percent" ? "%" : t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("السعر قبل الخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.priceBefore}
+                        onChange={(e) => setForm((prev) => ({ ...prev, priceBefore: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("السعر بعد الخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.priceAfter}
+                        onChange={(e) => {
+                          const priceAfter = Math.max(0, Number(e.target.value || 0));
+                          setForm((prev) => ({
+                            ...prev,
+                            priceAfter,
+                            value:
+                              prev.discountType === "fixed" && Number(prev.priceBefore || 0) > 0
+                                ? Number(Math.max(0, Number(prev.priceBefore || 0) - priceAfter).toFixed(2))
+                                : prev.value,
+                          }));
+                        }}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+
+                  <div className="offer-editor__field offer-editor__commercial-field">
+                    <label>{t("ترتيب الظهور")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.sortOrder}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="offer-editor__pricing-summary">
+                  <div>
+                    <span>{t("الخصم المحسوب")}</span>
+                    <strong>{offerEditorComputed.calculatedDiscount.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                  <div>
+                    <span>{t("السعر المقترح بعد الخصم")}</span>
+                    <strong>{offerEditorComputed.suggestedPriceAfter.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                  <div>
+                    <span>{t("التوفير الظاهر")}</span>
+                    <strong>{offerEditorComputed.explicitSaving.toFixed(2)} {t("ريال")}</strong>
+                  </div>
+                </div>
+
+                <div className="offer-editor__limits-grid">
+                  <div className="offer-editor__field">
+                    <label>{t("إجمالي مرات الاستخدام")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.usageLimit}
+                      onChange={(e) => setForm((prev) => ({ ...prev, usageLimit: Number(e.target.value) }))}
+                    />
+                    <small>{t("ضع 0 لعدم تحديد حد إجمالي.")}</small>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد لكل عميلة")}</label>
+                    <DashboardNumberInputV2
+                      min={0}
+                      value={form.perClientLimit}
+                      onChange={(e) => setForm((prev) => ({ ...prev, perClientLimit: Number(e.target.value) }))}
+                    />
+                    <small>{t("ضع 0 للسماح بدون حد فردي.")}</small>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد الأدنى للطلب")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.minOrder}
+                        onChange={(e) => setForm((prev) => ({ ...prev, minOrder: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("الحد الأعلى للخصم")}</label>
+                    <div className="offer-editor__input-suffix">
+                      <DashboardNumberInputV2
+                        min={0}
+                        step="0.01"
+                        value={form.maxDiscount}
+                        onChange={(e) => setForm((prev) => ({ ...prev, maxDiscount: Number(e.target.value) }))}
+                      />
+                      <span>{t("ريال")}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">04</span>
+                  <div>
+                    <h3>{t("الفترة وحالة النشر")}</h3>
+                    <p>{t("تحكم في موعد ظهور العرض وحالته داخل النظام وتطبيق العميلة.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__grid">
+                  <div className="offer-editor__field">
+                    <label>{t("تاريخ البداية")}</label>
+                    <DashboardDatePickerV2
+                      value={form.startDate}
+                      onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("تاريخ النهاية")}</label>
+                    <DashboardDatePickerV2
+                      value={form.endDate}
+                      onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("حالة النشر")}</label>
+                    <DashboardSelectV2
+                      options={OFFER_STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+                      value={form.status}
+                      onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
+                    />
+                  </div>
+                  <div className="offer-editor__status-card">
+                    <span>{t("الحالة الفعلية حسب التاريخ")}</span>
+                    <strong>{offerEditorComputed.dateStatus}</strong>
+                  </div>
+                </div>
+
+                <div className="offer-editor__toggle-grid">
+                  <label className={`offer-editor__toggle-card ${form.active ? "is-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.active}
+                      onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
+                    />
+                    <span>
+                      <strong>{t("تفعيل العرض")}</strong>
+                      <small>{t("يسمح للنظام بتطبيق الخصم خلال فترة العرض.")}</small>
+                    </span>
+                    <i>{form.active ? t("مفعّل") : t("موقوف")}</i>
+                  </label>
+
+                  <label className={`offer-editor__toggle-card ${form.published ? "is-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.published}
+                      onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
+                    />
+                    <span>
+                      <strong>{t("النشر للعميلات")}</strong>
+                      <small>{t("إظهار العرض في تطبيق العميلة وصفحات العروض.")}</small>
+                    </span>
+                    <i>{form.published ? t("منشور") : t("مخفي")}</i>
+                  </label>
+                </div>
+              </section>
+
+              <section className="offer-editor__section">
+                <div className="offer-editor__section-head">
+                  <span className="offer-editor__step">05</span>
+                  <div>
+                    <h3>{t("الجمهور وزر الإجراء")}</h3>
+                    <p>{t("حدد من يمكنه رؤية العرض وإلى أين ينتقل زر الحجز.")}</p>
+                  </div>
+                </div>
+
+                <div className="offer-editor__choice-grid offer-editor__choice-grid--two">
+                  <button
+                    type="button"
+                    className={form.targetScope === "all" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "all", targetClientIdsText: "" }))}
+                  >
+                    <strong>{t("جميع العميلات")}</strong>
+                    <span>{t("عرض عام متاح لكل الحسابات المؤهلة.")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.targetScope === "specific" ? "is-active" : ""}
+                    onClick={() => setForm((prev) => ({ ...prev, targetScope: "specific" }))}
+                  >
+                    <strong>{t("عميلات محددات")}</strong>
+                    <span>{t("استهداف قائمة معرفات أو حسابات بعينها.")}</span>
+                  </button>
+                </div>
+
+                {form.targetScope === "specific" && (
+                  <div className="offer-editor__field offer-editor__field--spaced">
+                    <label>{t("معرفات العميلات المستهدفات")} <em>{t("مطلوب للنطاق المحدد")}</em></label>
+                    <textarea
+                      rows={3}
+                      value={form.targetClientIdsText}
+                      onChange={(e) => setForm((prev) => ({ ...prev, targetClientIdsText: e.target.value }))}
+                      placeholder={t("clientId أو Firebase UID، مفصولة بفواصل أو أسطر")}
+                    />
+                  </div>
+                )}
+
+                <div className="offer-editor__grid offer-editor__grid--action">
+                  <div className="offer-editor__field">
+                    <label>{t("نص زر الإجراء")}</label>
+                    <input
+                      value={form.ctaLabel}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ctaLabel: e.target.value }))}
+                      placeholder={t("احجزي الآن")}
+                    />
+                  </div>
+                  <div className="offer-editor__field">
+                    <label>{t("رابط الإجراء")}</label>
+                    <input
+                      value={form.ctaUrl}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ctaUrl: e.target.value }))}
+                      placeholder={t("/booking أو رابط داخلي")}
+                    />
+                  </div>
+                </div>
               </section>
 
               <section className="offer-editor__section offer-editor__section--media">
