@@ -231,3 +231,26 @@
   border-color: #2dd4bf !important;
   color: #0f766e !important;
 }
+
+.dashboard-v2 .attendance-month__legend span.is-off-day,
+.dashboard-v2 .attendance-month__day.is-off-day,
+.dashboard-v2.employee-portal .attendance-month__legend span.is-off-day,
+.dashboard-v2.employee-portal .attendance-month__day.is-off-day {
+  --employee-attendance-day-accent: #475569 !important;
+  --employee-attendance-day-bg: #f1f5f9 !important;
+  --employee-attendance-day-border: #cbd5e1 !important;
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+.dashboard-v2 .attendance-month__legend span.is-late,
+.dashboard-v2 .attendance-month__day.is-late,
+.dashboard-v2.employee-portal .attendance-month__legend span.is-late,
+.dashboard-v2.employee-portal .attendance-month__day.is-late {
+  --employee-attendance-day-accent: #a16207 !important;
+  --employee-attendance-day-bg: #fef9c3 !important;
+  --employee-attendance-day-border: #facc15 !important;
+  background: #fef9c3 !important;
+  border-color: #facc15 !important;
+  color: #854d0e !important;
+}
