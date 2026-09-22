@@ -101,6 +101,19 @@ async function assertClientExists(db, salonId, clientId) {
   return id;
 }
 
+async function requireClientConnectEnabled(db, salonId, clientIdValue) {
+  const clientId = requiredId(clientIdValue, 'clientId');
+  const preference = await dbFirst(
+    db,
+    'SELECT * FROM client_preferences WHERE salon_id = ? AND client_id = ? LIMIT 1',
+    [salonId, clientId]
+  );
+  if (preference && Number(preference.connect_enabled) === 0) {
+    throw new AppError(403, 'core_client_connect:disabled_for_client');
+  }
+  return preference || null;
+}
+
 async function resolveActiveStaff(db, salonId, staffIdValue) {
   const staffId = cleanText(staffIdValue);
   if (!staffId) return null;
@@ -175,14 +188,7 @@ export async function listClientConnectConversations(db, salonId, clientIdValue,
 
 export async function openClientConnectConversation(db, salonId, clientIdValue, input = {}) {
   const clientId = await assertClientExists(db, salonId, clientIdValue);
-  const preference = await dbFirst(
-    db,
-    'SELECT * FROM client_preferences WHERE salon_id = ? AND client_id = ? LIMIT 1',
-    [salonId, clientId]
-  );
-  if (preference && Number(preference.connect_enabled) === 0) {
-    throw new AppError(403, 'core_client_connect:disabled_for_client');
-  }
+  const preference = await requireClientConnectEnabled(db, salonId, clientId);
 
   const existing = await dbFirst(
     db,
@@ -253,6 +259,7 @@ export async function listConnectMessages(db, salonId, conversationId, access = 
 export async function sendConnectMessage(db, salonId, conversationId, input = {}, actor = {}, access = {}) {
   const conversation = await getConversation(db, salonId, conversationId);
   assertConversationAccess(conversation, access);
+  await requireClientConnectEnabled(db, salonId, conversation.client_id);
 
   const status = cleanText(conversation.status).toLowerCase();
   if (!SENDABLE_CONVERSATION_STATUSES.has(status)) {
