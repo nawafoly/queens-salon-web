@@ -67,6 +67,19 @@ function formatDateTime(value: unknown, language: DashboardLanguage): string {
   });
 }
 
+function isValidIsoDate(value: string): boolean {
+  const clean = String(value || "").trim();
+  if (!clean) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return false;
+  const [year, month, day] = clean.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 function bookingNoOf(booking: CoreBooking, language: DashboardLanguage): string {
   const row = booking as CoreBooking & { bookingNumber?: unknown; bookingNo?: unknown };
   const raw = [row.publicId, row.bookingNumber, row.bookingNo]
@@ -117,6 +130,9 @@ export default function CustomerRecordModal({
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editCity, setEditCity] = useState("");
+  const [editBirthdate, setEditBirthdate] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editFeedback, setEditFeedback] = useState<Feedback>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState("");
@@ -193,7 +209,17 @@ export default function CustomerRecordModal({
     const currentName = normalizeCustomerName(customer.name);
     setEditName(currentName === UNNAMED_CUSTOMER_LABEL ? "" : currentName);
     setEditPhone(customer.phone === "—" ? "" : customer.phone);
-  }, [customer.name, customer.phone, editing]);
+    setEditEmail(String(overview?.client.email || ""));
+    setEditCity(String(overview?.client.city || ""));
+    setEditBirthdate(String(overview?.client.birthdate || ""));
+  }, [
+    customer.name,
+    customer.phone,
+    editing,
+    overview?.client.email,
+    overview?.client.city,
+    overview?.client.birthdate,
+  ]);
 
   useEffect(() => {
     setNoteText(repairCustomerDisplayText(customer.importedNote));
@@ -208,6 +234,9 @@ export default function CustomerRecordModal({
     const currentName = normalizeCustomerName(customer.name);
     setEditName(currentName === UNNAMED_CUSTOMER_LABEL ? "" : currentName);
     setEditPhone(customer.phone === "—" ? "" : customer.phone);
+    setEditEmail(String(overview?.client.email || ""));
+    setEditCity(String(overview?.client.city || ""));
+    setEditBirthdate(String(overview?.client.birthdate || ""));
     setEditFeedback(null);
     setEditing(true);
   };
@@ -222,6 +251,9 @@ export default function CustomerRecordModal({
     const clientId = String(customer.clientId || "").trim();
     const name = editName.trim().replace(/\s+/gu, " ");
     const phone = normalizeSaudiCustomerPhone(editPhone);
+    const email = editEmail.trim().toLowerCase();
+    const city = editCity.trim().replace(/\s+/gu, " ");
+    const birthdate = editBirthdate.trim();
 
     if (!clientId) {
       setEditFeedback({ type: "error", text: t("لا يمكن تعديل عميلة غير مرتبطة بسجل Core D1.") });
@@ -235,17 +267,30 @@ export default function CustomerRecordModal({
       setEditFeedback({ type: "error", text: t("أدخلي رقم جوال سعوديًا صحيحًا مثل 0500000000.") });
       return;
     }
+    if (!isValidIsoDate(birthdate)) {
+      setEditFeedback({ type: "error", text: t("تاريخ الميلاد غير صحيح. استخدمي الصيغة YYYY-MM-DD.") });
+      return;
+    }
 
     setEditSaving(true);
     setEditFeedback(null);
     try {
-      const updated = await CoreClientService.updateProfile(clientId, { name, phone });
+      const updated = await CoreClientService.updateProfile(clientId, {
+        name,
+        phone,
+        email,
+        city,
+        birthdate,
+      });
       onCustomerUpdated(updated);
       setOverview((current) => current ? { ...current, client: updated } : current);
       setEditName(updated.name);
       setEditPhone(updated.phoneNormalized);
+      setEditEmail(String(updated.email || ""));
+      setEditCity(String(updated.city || ""));
+      setEditBirthdate(String(updated.birthdate || ""));
       setEditing(false);
-      setEditFeedback({ type: "success", text: t("تم حفظ اسم العميلة ورقم الجوال في Core بنجاح.") });
+      setEditFeedback({ type: "success", text: t("تم حفظ بيانات العميلة في Core بنجاح.") });
     } catch (cause) {
       setEditFeedback({ type: "error", text: editErrorMessage(cause, language) });
     } finally {
@@ -374,6 +419,18 @@ export default function CustomerRecordModal({
                 <span className="dsv2-field__label">{t("رقم الجوال")}</span>
                 <input className="dsv2-input" dir="ltr" inputMode="tel" value={editPhone} onChange={(event) => setEditPhone(event.target.value)} autoComplete="tel" placeholder="05XXXXXXXX" disabled={editSaving} />
               </label>
+              <label className="dsv2-field">
+                <span className="dsv2-field__label">{t("البريد الإلكتروني")}</span>
+                <input className="dsv2-input" dir="ltr" type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" disabled={editSaving} />
+              </label>
+              <label className="dsv2-field">
+                <span className="dsv2-field__label">{t("المدينة")}</span>
+                <input className="dsv2-input" value={editCity} onChange={(event) => setEditCity(event.target.value)} autoComplete="address-level2" placeholder={t("المدينة")} disabled={editSaving} />
+              </label>
+              <label className="dsv2-field">
+                <span className="dsv2-field__label">{t("تاريخ الميلاد")}</span>
+                <input className="dsv2-input" dir="ltr" type="date" value={editBirthdate} onChange={(event) => setEditBirthdate(event.target.value)} disabled={editSaving} />
+              </label>
               <div className="dsv2-customers-client-edit-actions">
                 <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={cancelEditing} disabled={editSaving}>{t("إلغاء")}</button>
                 <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveProfile()} disabled={editSaving}>
@@ -385,6 +442,10 @@ export default function CustomerRecordModal({
             <dl className="dsv2-customers-client-data-grid">
               <div><dt>{t("اسم العميلة")}</dt><dd>{t(normalizeCustomerName(customer.name))}</dd></div>
               <div><dt>{t("رقم الجوال")}</dt><dd><bdi dir="ltr">{customer.phone === "—" ? t("غير مسجل") : customer.phone}</bdi></dd></div>
+              <div><dt>{t("البريد الإلكتروني")}</dt><dd><bdi dir="ltr">{overview?.client.email || t("غير مسجل")}</bdi></dd></div>
+              <div><dt>{t("المدينة")}</dt><dd>{overview?.client.city || t("غير مسجلة")}</dd></div>
+              <div><dt>{t("تاريخ الميلاد")}</dt><dd><bdi dir="ltr">{overview?.client.birthdate || t("غير مسجل")}</bdi></dd></div>
+              <div><dt>{t("رقم العضوية")}</dt><dd><bdi dir="ltr">{overview?.client.membershipId || overview?.loyalty.membershipId || t("غير متوفر")}</bdi></dd></div>
             </dl>
           )}
 
