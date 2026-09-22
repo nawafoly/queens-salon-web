@@ -1641,3 +1641,14 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+.offer-editor__picked-services { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.offer-editor__picked-chip { border:0; background:#111; color:#fff; border-radius:999px; padding:6px 12px; font-size:13px; }
+.offer-editor__picked-chip span { margin-inline-start:6px; opacity:.7; }
+.offer-editor__service-search input, .offer-editor__service-search { min-height:44px; }
+.offer-editor__service-row, .offer-editor__service { min-height:44px; }
+
+.offer-editor__toolbar-actions { display: none !important; }
+.offer-editor__service-search { display: flex !important; min-height: 44px; margin: 12px 0; }
+.offer-editor__service-groups { max-height: 360px; overflow: auto; }
+.offer-editor__service-row { min-height: 48px; }
