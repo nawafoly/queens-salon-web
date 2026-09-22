@@ -35,6 +35,28 @@ function parseJsonArray(value) {
   }
 }
 
+function normalizeBirthdate(value) {
+  const raw = optionalText(value);
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate must use YYYY-MM-DD.');
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getTime() > Date.now()
+  ) {
+    throw new AppError(400, 'core_client:invalid_birthdate', 'Birthdate is invalid.');
+  }
+  return raw;
+}
+
 function identityValues(identity = {}) {
   const claims = identity.claims || {};
   return {
@@ -682,24 +704,38 @@ export async function getSelfProfile(db, salonId, identity) {
 export async function patchSelfProfile(db, salonId, identity, data) {
   const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const name = data.name === undefined ? client.name : requiredText(data.name, 'name');
-  const phone = data.phone === undefined && data.phoneNormalized === undefined
-    ? client.phone_normalized
-    : normalizePhone(data.phoneNormalized || data.phone) || null;
+  const hasPhoneUpdate =
+    data.phone !== undefined || data.phoneNormalized !== undefined;
+  const phone = hasPhoneUpdate
+    ? normalizePhone(data.phoneNormalized || data.phone)
+    : client.phone_normalized;
+  if (hasPhoneUpdate && !phone) {
+    throw new AppError(400, 'core_client:invalid_phone', 'A valid Saudi mobile number is required.');
+  }
+  if (phone && phone !== client.phone_normalized) {
+    const duplicate = await dbFirst(
+      db,
+      'SELECT id FROM clients WHERE salon_id = ? AND phone_normalized = ? AND id <> ? LIMIT 1',
+      [salonId, phone, client.id]
+    );
+    if (duplicate) {
+      throw new AppError(409, 'core_client:phone_conflict', 'Another client already uses this mobile number.');
+    }
+  }
+
   const email = data.email === undefined ? client.email : optionalText(data.email)?.toLowerCase() || null;
   const city = data.city === undefined ? (client.city || null) : (optionalText(data.city) || null);
-  const birthdate = data.birthdate === undefined ? (client.birthdate || null) : (optionalText(data.birthdate) || null);
+  const birthdate = data.birthdate === undefined
+    ? (client.birthdate || null)
+    : normalizeBirthdate(data.birthdate);
   const avatarUrl =
     data.avatarUrl === undefined && data.avatar_url === undefined
       ? (client.avatar_url || null)
       : (optionalText(data.avatarUrl || data.avatar_url) || null);
-  const membershipId =
-    data.membershipId === undefined && data.membership_id === undefined
-      ? (client.membership_id || null)
-      : (optionalText(data.membershipId || data.membership_id) || null);
-  const membershipPercent =
-    data.membershipPercent === undefined && data.membership_percent === undefined
-      ? Number(client.membership_percent || 0)
-      : Number(data.membershipPercent ?? data.membership_percent ?? 0);
+
+  // Membership identity/tier are system-owned and cannot be edited by the client.
+  const membershipId = client.membership_id || null;
+  const membershipPercent = Number(client.membership_percent || 0);
   const now = nowIso();
   await dbRun(
     db,
