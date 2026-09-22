@@ -3723,7 +3723,7 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
 
 
 
-test("dashboard booking edit updates schedule service client totals and payment atomically", async () => {
+test("dashboard booking edit updates schedule service client and payment while preserving agreed pricing", async () => {
   const fake = new FakeD1();
   seedCore(fake);
   const now = "2027-01-01T00:00:00.000Z";
@@ -3790,7 +3790,6 @@ test("dashboard booking edit updates schedule service client totals and payment 
       serviceId: "svc-b",
       durationMinutes: 45,
       notes: "ملاحظة نظيفة",
-      totalHalalas: 9000,
       paidHalalas: 3000,
       paymentMethod: "cash",
       reconcilePayment: true,
@@ -3804,14 +3803,15 @@ test("dashboard booking edit updates schedule service client totals and payment 
   assert.equal(body.data.booking_date, "2027-01-11");
   assert.equal(body.data.start_time, "11:00");
   assert.equal(body.data.end_time, "11:45");
-  assert.equal(body.data.total_halalas, 9000);
+  assert.equal(body.data.total_halalas, 7500);
   assert.equal(body.data.payment_status, "partial");
   assert.equal(body.data.paid_halalas, 3000);
   assert.equal(body.data.items[0].service_id, "svc-b");
   assert.equal(body.data.items[0].service_name_snapshot, "Service B");
-  assert.equal(body.data.items[0].final_total_halalas, 9000);
+  assert.equal(body.data.items[0].unit_price_halalas, 7500);
+  assert.equal(body.data.items[0].final_total_halalas, 7500);
   assert.equal(fake.find("clients", "main", "client-a").name, "Client Updated");
-  assert.equal(fake.find("invoices", "main", "invoice-edit-a").total_halalas, 9000);
+  assert.equal(fake.find("invoices", "main", "invoice-edit-a").total_halalas, 7500);
   assert.equal(fake.find("invoices", "main", "invoice-edit-a").paid_halalas, 3000);
   assert.equal(fake.rows("payments").length, 1);
   assert.equal(fake.rows("payments")[0].method, "cash");
