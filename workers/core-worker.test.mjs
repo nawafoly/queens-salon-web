@@ -1191,6 +1191,38 @@ class FakeD1 {
         ).length,
       }];
     }
+    if (
+      normalized.startsWith("SELECT COUNT(*) AS total,") &&
+      normalized.includes("FROM bookings WHERE salon_id = ? AND client_id = ?")
+    ) {
+      const [salonId, clientId] = params;
+      const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+      const today = now.toISOString().slice(0, 10);
+      const currentTime = now.toISOString().slice(11, 19);
+      const rows = this.rows("bookings").filter(
+        (row) =>
+          row.salon_id === salonId &&
+          row.client_id === clientId &&
+          !row.deleted_at
+      );
+      const count = (status) =>
+        rows.filter((row) => String(row.status || "").toLowerCase() === status)
+          .length;
+      return [{
+        total: rows.length,
+        completed: count("completed"),
+        cancelled: count("cancelled"),
+        pending: count("pending"),
+        confirmed: count("confirmed"),
+        upcoming: rows.filter((row) => {
+          const status = String(row.status || "").toLowerCase();
+          if (["cancelled", "completed", "refunded"].includes(status)) return false;
+          const date = String(row.booking_date || "");
+          const time = String(row.start_time || "");
+          return date > today || (date === today && time > currentTime);
+        }).length,
+      }];
+    }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ?")) {
       const [salonId] = params;
       return this.rows("bookings").filter((row) =>
