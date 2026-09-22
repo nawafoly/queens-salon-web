@@ -1298,6 +1298,12 @@ export function EmployeeAttendanceTabLiveV2({
               className="dsv2-ew-attendance-calendar-card"
             >
               <div className="dsv2-ew-calendar-legend" aria-label={"\u062f\u0644\u064a\u0644 \u0623\u0644\u0648\u0627\u0646 \u0627\u0644\u062a\u0642\u0648\u064a\u0645"}>
+                <span data-status="حضور"><i />حضور</span>
+                <span data-status="تأخير"><i />تأخير</span>
+                <span data-status="نقص ساعات"><i />نقص ساعات</span>
+                <span data-status="غير مكتمل"><i />غير مكتمل</span>
+                <span data-status="غياب"><i />غياب</span>
+                <span data-status="دوام في راحة أسبوعية"><i />دوام في راحة</span>
                 <span data-leave-type="weekly_rest"><i />{"\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629"}</span>
                 <span data-leave-type="compensatory"><i />{"\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629"}</span>
                 <span data-leave-type="annual"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629"}</span>
