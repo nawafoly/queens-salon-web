@@ -34,7 +34,11 @@ function statusLabel(status: string) {
   return "نشطة";
 }
 
-export default function ClientConnectPanel() {
+type Props = {
+  enabled?: boolean;
+};
+
+export default function ClientConnectPanel({ enabled = true }: Props) {
   const [conversations, setConversations] = useState<ConnectConversation[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [messages, setMessages] = useState<ConnectMessage[]>([]);
@@ -92,6 +96,10 @@ export default function ClientConnectPanel() {
   }, [selectedId]);
 
   const openConversation = async () => {
+    if (!enabled) {
+      setNotice("MALIKAT Connect موقوف لهذا الحساب. تواصلي مع الإدارة إذا احتجتِ إعادة تفعيله.");
+      return;
+    }
     setSending(true);
     setNotice("");
     try {
@@ -108,6 +116,10 @@ export default function ClientConnectPanel() {
 
   const send = async () => {
     const text = body.trim();
+    if (!enabled) {
+      setNotice("MALIKAT Connect موقوف لهذا الحساب. لا يمكن إرسال رسائل جديدة.");
+      return;
+    }
     if (!selected || !text || sending) return;
     setSending(true);
     setNotice("");
@@ -131,6 +143,7 @@ export default function ClientConnectPanel() {
   };
 
   const sendDisabled =
+    !enabled ||
     !selected ||
     selected.status === "restricted" ||
     selected.status === "closed" ||
@@ -168,6 +181,15 @@ export default function ClientConnectPanel() {
         </span>
       </div>
 
+      {!enabled ? (
+        <div className="malikat-connect-restricted" role="status">
+          <LuLockKeyhole />
+          <span>
+            MALIKAT Connect موقوف لهذا الحساب. يمكنك قراءة المحادثات السابقة، لكن لا يمكن فتح محادثة أو إرسال رسائل جديدة.
+          </span>
+        </div>
+      ) : null}
+
       {notice ? <div className="malikat-connect-notice" role="status">{notice}</div> : null}
 
       {loading && conversations.length === 0 ? (
@@ -180,9 +202,11 @@ export default function ClientConnectPanel() {
           <LuUserRound />
           <strong>ابدئي محادثة مع ملكات</strong>
           <p>سيتم ربط المحادثة بمختصتك أو تحويلها إلى المختصة المناسبة من الإدارة.</p>
-          <button type="button" onClick={() => void openConversation()} disabled={sending}>
-            {sending ? "جاري الفتح..." : "بدء المحادثة"}
-          </button>
+          {enabled ? (
+            <button type="button" onClick={() => void openConversation()} disabled={sending}>
+              {sending ? "جاري الفتح..." : "بدء المحادثة"}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="malikat-connect-client__workspace">
@@ -241,7 +265,12 @@ export default function ClientConnectPanel() {
               )}
             </div>
 
-            {selected?.status === "restricted" ? (
+            {!enabled ? (
+              <div className="malikat-connect-restricted">
+                <LuLockKeyhole />
+                <span>MALIKAT Connect موقوف لهذا الحساب. سجل المحادثة متاح للقراءة فقط.</span>
+              </div>
+            ) : selected?.status === "restricted" ? (
               <div className="malikat-connect-restricted">
                 <LuLockKeyhole />
                 <span>تم إيقاف الإرسال مؤقتًا حتى تنتهي مراجعة الإدارة.</span>
