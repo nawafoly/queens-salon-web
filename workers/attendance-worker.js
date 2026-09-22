@@ -1055,19 +1055,8 @@ async function getAttendanceSecurityDashboard(url, db, directoryDb) {
 
   const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const today = getRiyadhDayBounds();
-  const stateEmployeeUid = normalizeText(identity?.employeeUid || requestedEmployeeUid);
-  const stateEmployeeDocId = normalizeText(identity?.employeeDocId || requestedEmployeeDocId);
 
   try {
-    const effectiveState = stateEmployeeUid
-      ? await readEffectiveAttendanceState({
-          db,
-          directoryDb,
-          salonId,
-          employeeUid: stateEmployeeUid,
-          employeeDocId: stateEmployeeDocId,
-        })
-      : null;
     const results = await db.batch([
       db.prepare(`
         SELECT
@@ -1385,8 +1374,24 @@ async function listAttendanceRecords(
     ? [...cursorBindings, limit + 1]
     : [...cursorBindings, limit + 1, offset];
   const today = getRiyadhDayBounds();
+  const stateEmployeeUid = normalizeText(
+    identity?.employeeUid || requestedEmployeeUid
+  );
+  const stateEmployeeDocId = normalizeText(
+    identity?.employeeDocId || requestedEmployeeDocId
+  );
 
   try {
+    const effectiveState = stateEmployeeUid
+      ? await readEffectiveAttendanceState({
+          db,
+          directoryDb,
+          salonId,
+          employeeUid: stateEmployeeUid,
+          employeeDocId: stateEmployeeDocId,
+        })
+      : null;
+
     const results = await db.batch([
       db
         .prepare(
@@ -1830,16 +1835,18 @@ export function parseAttendanceRecordsQuery(searchParams) {
   }
 
   if (fromDate) {
-    const boundary = parseRiyadhDateBoundary(fromDate, false);
-    if (!boundary) return invalidRecordsQuery("fromDate");
-    filters.push("server_time >= ?");
-    bindings.push(boundary);
+    if (!parseRiyadhDateBoundary(fromDate, false)) {
+      return invalidRecordsQuery("fromDate");
+    }
+    filters.push("COALESCE(work_date, date(server_time, '+3 hours')) >= ?");
+    bindings.push(fromDate);
   }
   if (toDate) {
-    const boundary = parseRiyadhDateBoundary(toDate, true);
-    if (!boundary) return invalidRecordsQuery("toDate");
-    filters.push("server_time < ?");
-    bindings.push(boundary);
+    if (!parseRiyadhDateBoundary(toDate, false)) {
+      return invalidRecordsQuery("toDate");
+    }
+    filters.push("COALESCE(work_date, date(server_time, '+3 hours')) <= ?");
+    bindings.push(toDate);
   }
 
   const rawLimit = Number(searchParams.get("limit"));
