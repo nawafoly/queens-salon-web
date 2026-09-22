@@ -101,7 +101,12 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
     cleanText(data.name || data.displayName || identity?.claims?.name || identity?.claims?.displayName) ||
     (email ? email.split('@')[0] : '') ||
     'عميلة';
-  const phoneInput = data.phone ?? identity?.claims?.phone_number ?? '';
+  const phoneInput =
+    cleanText(data.phone) ||
+    identity?.claims?.phone_number ||
+    identity?.claims?.phone ||
+    identity?.claims?.mobile ||
+    '';
   const phone = normalizePhone(phoneInput) || null;
   if (cleanText(phoneInput) && !phone) {
     throw new AppError(
