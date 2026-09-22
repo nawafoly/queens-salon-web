@@ -36,6 +36,7 @@ import {
   type ClientPortalCashback,
   type ClientPortalOffer,
   type ClientPortalLoyalty,
+  type ClientPortalPreferences,
 } from "../services/ClientPortalService";
 
 // =======================
@@ -444,6 +445,10 @@ const Profile: React.FC = () => {
   const [loyaltyData, setLoyaltyData] = useState<ClientPortalLoyalty | null>(null);
   const [cashbackData, setCashbackData] = useState<ClientPortalCashback | null>(null);
   const [clientOffers, setClientOffers] = useState<ClientPortalOffer[]>([]);
+  const [preferencesData, setPreferencesData] = useState<ClientPortalPreferences | null>(null);
+  const [preferenceStaffOptions, setPreferenceStaffOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [preferenceSaving, setPreferenceSaving] = useState(false);
+  const [preferenceMessage, setPreferenceMessage] = useState("");
 
   useEffect(() => {
     if (profileMode !== "firebase" || !firebaseUid || !firebaseUser) {
@@ -451,6 +456,9 @@ const Profile: React.FC = () => {
       setLoyaltyData(null);
       setCashbackData(null);
       setClientOffers([]);
+      setPreferencesData(null);
+      setPreferenceStaffOptions([]);
+      setPreferenceMessage("");
       return;
     }
 
@@ -472,6 +480,32 @@ const Profile: React.FC = () => {
         setLoyaltyData(snapshot.loyalty);
         setCashbackData(snapshot.cashback ?? null);
         setClientOffers(snapshot.offers);
+        setPreferencesData(snapshot.preferences);
+        const specialistOptions = new Map<string, string>();
+        if (
+          snapshot.preferences.preferredStaffId &&
+          snapshot.preferences.preferredStaffName
+        ) {
+          specialistOptions.set(
+            snapshot.preferences.preferredStaffId,
+            snapshot.preferences.preferredStaffName
+          );
+        }
+        for (const booking of snapshot.bookings) {
+          if (booking.staffId && booking.staffName) {
+            specialistOptions.set(booking.staffId, booking.staffName);
+          }
+          for (const item of booking.items) {
+            if (item.staffId && item.staffName) {
+              specialistOptions.set(item.staffId, item.staffName);
+            }
+          }
+        }
+        setPreferenceStaffOptions(
+          [...specialistOptions.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((left, right) => left.name.localeCompare(right.name, "ar"))
+        );
         setBookingsErr("");
         const canonicalProfile = {
           name: snapshot.profile.name || "عميلة",
@@ -607,6 +641,53 @@ const Profile: React.FC = () => {
     pointsToNext: loyaltyData?.pointsToNext ?? 0,
     completedCount: bookings.filter((booking) => statusKey(booking.status) === "completed").length,
   }), [loyaltyData, bookings]);
+
+  const savePreferredSpecialist = async (preferredStaffId: string) => {
+    if (preferenceSaving) return;
+    setPreferenceSaving(true);
+    setPreferenceMessage("");
+    try {
+      const updated = await ClientPortalService.updatePreferences({
+        preferredStaffId: preferredStaffId || null,
+      });
+      setPreferencesData(updated);
+      if (updated.preferredStaffId && updated.preferredStaffName) {
+        setPreferenceStaffOptions((current) => {
+          const next = new Map(current.map((row) => [row.id, row.name]));
+          next.set(updated.preferredStaffId!, updated.preferredStaffName!);
+          return [...next.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((left, right) => left.name.localeCompare(right.name, "ar"));
+        });
+      }
+      setPreferenceMessage("تم تحديث المختصة المفضلة.");
+    } catch (error: any) {
+      setPreferenceMessage(
+        String(error?.message || "تعذر تحديث المختصة المفضلة.")
+      );
+    } finally {
+      setPreferenceSaving(false);
+    }
+  };
+
+  const saveMarketingConsent = async (marketingConsent: boolean) => {
+    if (preferenceSaving) return;
+    setPreferenceSaving(true);
+    setPreferenceMessage("");
+    try {
+      const updated = await ClientPortalService.updatePreferences({
+        marketingConsent,
+      });
+      setPreferencesData(updated);
+      setPreferenceMessage("تم تحديث تفضيلات العروض والتسويق.");
+    } catch (error: any) {
+      setPreferenceMessage(
+        String(error?.message || "تعذر تحديث تفضيلات العروض والتسويق.")
+      );
+    } finally {
+      setPreferenceSaving(false);
+    }
+  };
 
   // =======================
   // Avatar
@@ -1071,6 +1152,53 @@ const Profile: React.FC = () => {
                   <div><span>المختصة</span><strong>{mostVisitedSpecialist.name}</strong></div>
                   <div><span>عدد الزيارات معها</span><strong>{mostVisitedSpecialist.visits}</strong></div>
                 </div>
+              </section>
+            ) : null}
+
+            {preferencesData ? (
+              <section className="p-section-container">
+                <div className="p-section-header"><h3>تفضيلاتي</h3></div>
+                <div className="p-account-rows">
+                  <div>
+                    <span>المختصة المفضلة</span>
+                    <select
+                      className="p-modern-select"
+                      value={preferencesData.preferredStaffId || ""}
+                      onChange={(event) => void savePreferredSpecialist(event.target.value)}
+                      disabled={preferenceSaving}
+                      aria-label="المختصة المفضلة"
+                    >
+                      <option value="">بدون مختصة مفضلة</option>
+                      {preferenceStaffOptions.map((staff) => (
+                        <option key={staff.id} value={staff.id}>{staff.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span>العروض والرسائل التسويقية</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={preferencesData.marketingConsent}
+                        onChange={(event) => void saveMarketingConsent(event.target.checked)}
+                        disabled={preferenceSaving}
+                      />{" "}
+                      {preferencesData.marketingConsent ? "مسموح" : "غير مسموح"}
+                    </label>
+                  </div>
+                  <div>
+                    <span>رسائل الخدمة</span>
+                    <strong>{preferencesData.serviceMessagesEnabled ? "مفعلة" : "موقفة"}</strong>
+                  </div>
+                  <div>
+                    <span>MALIKAT Connect</span>
+                    <strong>{preferencesData.connectEnabled ? "مفعّل" : "موقوف"}</strong>
+                  </div>
+                </div>
+                <p className="p-section-caption">
+                  اختيار مختصة مفضلة يساعد ملكات في تخصيص تجربتك، ولا ينقل ملكية ملفك لأي موظفة.
+                </p>
+                {preferenceMessage ? <div className="p-empty-state">{preferenceMessage}</div> : null}
               </section>
             ) : null}
 
