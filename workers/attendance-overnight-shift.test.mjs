@@ -47,6 +47,31 @@ test("shift that crosses midnight starts its three-hour checkout grace after nex
   assert.equal(window?.crossesMidnight, true);
 });
 
+test("admin attendance editor accepts checkout on the next calendar day", () => {
+  const dashboard = read("src/pages/DashboardEmployees.tsx");
+
+  assert.match(
+    dashboard,
+    /function resolveAttendanceAdminPunchDateTimes/
+  );
+  assert.match(
+    dashboard,
+    /checkOutTime <= checkInTime/
+  );
+  assert.match(
+    dashboard,
+    /addDaysIso\(workDate, 1\)/
+  );
+  assert.match(
+    dashboard,
+    /سيُحسب الانصراف على اليوم التالي لنفس شفت العمل/
+  );
+  assert.doesNotMatch(
+    dashboard,
+    /setErrorMsg\("وقت الانصراف يجب أن يكون بعد وقت الحضور\."\)/
+  );
+});
+
 test("attendance records endpoint defines effective state and security dashboard has no leaked record variables", () => {
   const worker = read("workers/attendance-worker.js");
   const recordsStart = worker.indexOf("async function listAttendanceRecords");
