@@ -199,17 +199,21 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   return cleanText(row.status) || "حضور";
 }
 
-function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
+function attendanceStatusTone(status: string): "default" | "gold" | "warning" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status.includes("تأخير") || status.includes("نقص ساعات") || status.includes("خروج مبكر") || status === "غير مكتمل" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
+  if (status.includes("نقص ساعات") && !status.includes("تأخير") && !status.includes("غياب")) return "warning";
+  if (status.includes("تأخير") || status.includes("خروج مبكر")) return "gold";
+  if (status.includes("نقص ساعات")) return "warning";
+  if (false)
   if (status === "غياب") return "danger";
   return "default";
 }
 
-function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" | "danger" {
+function attendanceSurfaceTone(status: string): "neutral" | "gold" | "warning" | "success" | "danger" {
   const tone = attendanceStatusTone(status);
-  return tone === "default" ? "neutral" : tone;
+  if (tone === "default") return "neutral";
+  return tone;
 }
 
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
@@ -250,18 +254,33 @@ function attendanceCalendarLeaveType(day: AttendanceCalendarDayLiveV2) {
   return "";
 }
 
-function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
-  if (day.employmentState === "pre_employment") return "\u0642\u0628\u0644 \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629";
-  if (day.employmentState === "post_employment") return "\u0628\u0639\u062f \u0627\u0646\u062a\u0647\u0627\u0621 \u0627\u0644\u062e\u062f\u0645\u0629";
+function attendanceCalendarLeaveLabel(day: AttendanceCalendarDayLiveV2) {
   switch (attendanceCalendarLeaveType(day)) {
-    case "weekly_rest": return "\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
-    case "compensatory": return "\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629";
-    case "annual": return "\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629";
-    case "exceptional": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629";
-    case "emergency": return "\u0625\u062c\u0627\u0632\u0629 \u0627\u0636\u0637\u0631\u0627\u0631\u064a\u0629";
-    case "sick": return "\u0625\u062c\u0627\u0632\u0629 \u0645\u0631\u0636\u064a\u0629";
-    default: return day.status;
+    case "weekly_rest": return "راحة أسبوعية";
+    case "compensatory": return "إجازة تعويضية";
+    case "annual": return "إجازة سنوية";
+    case "exceptional": return "إجازة استثنائية";
+    case "emergency": return "إجازة اضطرارية";
+    case "sick": return "إجازة مرضية";
+    default: return "";
   }
+}
+
+function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
+  if (day.employmentState === "pre_employment") return "قبل المباشرة";
+  if (day.employmentState === "post_employment") return "بعد انتهاء الخدمة";
+  const leaveType = attendanceCalendarLeaveType(day);
+  const leaveLabel =
+    leaveType === "weekly_rest" ? "راحة أسبوعية" :
+    leaveType === "compensatory" ? "إجازة تعويضية" :
+    leaveType === "annual" ? "إجازة سنوية" :
+    leaveType === "exceptional" ? "إجازة استثنائية" :
+    leaveType === "emergency" ? "إجازة اضطرارية" :
+    leaveType === "sick" ? "إجازة مرضية" : "";
+  const hasPunch = Boolean(day.row?.checkInAtClient || day.row?.checkOutAtClient);
+  if (leaveLabel && hasPunch) return "دوام في " + leaveLabel;
+  if (leaveLabel) return leaveLabel;
+  return day.status;
 }
 
 function attendanceCalendarTimeLabel(input: {
@@ -1279,6 +1298,12 @@ export function EmployeeAttendanceTabLiveV2({
               className="dsv2-ew-attendance-calendar-card"
             >
               <div className="dsv2-ew-calendar-legend" aria-label={"\u062f\u0644\u064a\u0644 \u0623\u0644\u0648\u0627\u0646 \u0627\u0644\u062a\u0642\u0648\u064a\u0645"}>
+                <span data-status="حضور"><i />حضور</span>
+                <span data-status="تأخير"><i />تأخير</span>
+                <span data-status="نقص ساعات"><i />نقص ساعات</span>
+                <span data-status="غير مكتمل"><i />غير مكتمل</span>
+                <span data-status="غياب"><i />غياب</span>
+                <span data-status="دوام في راحة أسبوعية"><i />دوام في راحة</span>
                 <span data-leave-type="weekly_rest"><i />{"\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629"}</span>
                 <span data-leave-type="compensatory"><i />{"\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629"}</span>
                 <span data-leave-type="annual"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629"}</span>

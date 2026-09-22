@@ -2603,7 +2603,35 @@ async function dispatch(ctx, route, method, body, query, env) {
       return recordAttendance(db, ctx.salonId, { ...body, type: "check_in" }, actorInfo);
 
     case "attendance:check-out":
-      return recordAttendance(db, ctx.salonId, { ...body, type: "check_out" }, actorInfo);
+      const attendance = await recordAttendance(db, ctx.salonId, { ...body, type: "check_out" }, actorInfo);
+      const employeeId = attendance.employee_id || body.employeeId || body.employee_id;
+      const restDate = attendance.date_key || body.date || body.dateKey || body.date_key;
+      if (employeeId && restDate) {
+        try {
+          await createWeeklyRestWorkAssignment(db, ctx.salonId, {
+            employeeId,
+            restDate,
+            reason: "حضور مسجل في يوم الراحة الأسبوعية",
+          }, actorInfo);
+        } catch (error) {
+          if (!String(error?.code || "").includes("not_weekly_rest_day")) {
+            console.warn("weekly-rest assignment after checkout", error?.code || error?.message);
+          }
+        }
+        try {
+          await reconcileAssignedWeeklyRestWork(
+            db,
+            ctx.salonId,
+            employeeId,
+            restDate,
+            actorInfo,
+            env.ATTENDANCE_DB || null
+          );
+        } catch (error) {
+          console.warn("weekly-rest reconcile after checkout", error?.code || error?.message);
+        }
+      }
+      return attendance;
 
     case "leaves":
       if (method === "GET") {
