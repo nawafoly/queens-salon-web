@@ -101,7 +101,7 @@ test('client cashback is exposed through the canonical portal', () => {
   assert.match(worker, /case "client:cashback"/);
   assert.match(portal, /getSelfCashback/);
   assert.match(portal, /getClientCashbackWallet/);
-  assert.match(portal, /return \{ profile, bookings, loyalty, cashback, offers/);
+  assert.match(portal, /profile,[\s\S]*bookings,[\s\S]*loyalty,[\s\S]*cashback,[\s\S]*offers,[\s\S]*preferences/);
   assert.match(portal, /refunds,[\s\S]*loyalty,[\s\S]*cashback,[\s\S]*offersUsed/);
 });
 
