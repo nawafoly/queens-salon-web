@@ -47,6 +47,24 @@ test("shift that crosses midnight starts its three-hour checkout grace after nex
   assert.equal(window?.crossesMidnight, true);
 });
 
+test("attendance records endpoint defines effective state and security dashboard has no leaked record variables", () => {
+  const worker = read("workers/attendance-worker.js");
+  const recordsStart = worker.indexOf("async function listAttendanceRecords");
+  const recordsEnd = worker.indexOf("async function loadSharedDeviceUsage", recordsStart);
+  const recordsSource = worker.slice(recordsStart, recordsEnd);
+  const securityStart = worker.indexOf("async function getAttendanceSecurityDashboard");
+  const securityEnd = worker.indexOf("async function listAttendanceRecords", securityStart);
+  const securitySource = worker.slice(securityStart, securityEnd);
+
+  assert.match(
+    recordsSource,
+    /const effectiveState = stateEmployeeUid[\s\S]{0,260}readEffectiveAttendanceState/
+  );
+  assert.match(recordsSource, /state: effectiveState/);
+  assert.doesNotMatch(securitySource, /requestedEmployeeUid|requestedEmployeeDocId/);
+  assert.doesNotMatch(securitySource, /identity\?\./);
+});
+
 test("attendance worker keeps checkout ownership on work_date instead of calendar midnight", () => {
   const worker = read("workers/attendance-worker.js");
 
