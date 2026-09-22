@@ -1,0 +1,27 @@
+name: Sync Vercel projects
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Trigger both Vercel projects
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip-vercel-sync]') }}
+    steps:
+      - name: Trigger queens-salon-web
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_QUEENS_SALON_WEB }}
+        run: |
+          test -n "$DEPLOY_HOOK"
+          curl --fail --show-error --silent --request POST "$DEPLOY_HOOK"
+
+      - name: Trigger queens-salon-web-gnxk
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_QUEENS_SALON_WEB_GNXK }}
+        run: |
+          test -n "$DEPLOY_HOOK"
+          curl --fail --show-error --silent --request POST "$DEPLOY_HOOK"
