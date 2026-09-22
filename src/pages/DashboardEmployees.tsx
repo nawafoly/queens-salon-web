@@ -650,6 +650,35 @@ function attendanceDateTimeLocalToRiyadhIso(value: string) {
   ).toISOString();
 }
 
+function resolveAttendanceAdminPunchDateTimes(input: {
+  workDate: string;
+  checkInTime: string;
+  checkOutTime: string;
+}) {
+  const workDate = normalizeLeaveUntil(input.workDate);
+  const checkInTime = cleanText(input.checkInTime);
+  const checkOutTime = cleanText(input.checkOutTime);
+  const overnight =
+    Boolean(workDate && checkInTime && checkOutTime) &&
+    checkOutTime <= checkInTime;
+  const checkOutDate =
+    overnight
+      ? addDaysIso(workDate, 1)
+      : workDate;
+
+  return {
+    overnight,
+    checkInLocal:
+      workDate && checkInTime
+        ? `${workDate}T${checkInTime}`
+        : "",
+    checkOutLocal:
+      checkOutDate && checkOutTime
+        ? `${checkOutDate}T${checkOutTime}`
+        : "",
+  };
+}
+
 function uniqueCleanTexts(values: unknown[]) {
   return Array.from(
     new Set(values.map(cleanText).filter(Boolean))
@@ -2405,14 +2434,26 @@ function DashboardEmployeesContent() {
       return;
     }
 
-    const checkInIso = attendanceDateTimeLocalToRiyadhIso(attendanceEditCheckIn);
-    const checkOutIso = attendanceDateTimeLocalToRiyadhIso(attendanceEditCheckOut);
+    const resolvedPunchDateTimes =
+      resolveAttendanceAdminPunchDateTimes({
+        workDate: date,
+        checkInTime: requestedCheckInTime,
+        checkOutTime: requestedCheckOutTime,
+      });
+    const checkInIso = attendanceDateTimeLocalToRiyadhIso(
+      resolvedPunchDateTimes.checkInLocal
+    );
+    const checkOutIso = attendanceDateTimeLocalToRiyadhIso(
+      resolvedPunchDateTimes.checkOutLocal
+    );
     if (
       requestedCheckInTime &&
       requestedCheckOutTime &&
-      (!checkInIso || !checkOutIso || Date.parse(checkOutIso) <= Date.parse(checkInIso))
+      (!checkInIso ||
+        !checkOutIso ||
+        Date.parse(checkOutIso) <= Date.parse(checkInIso))
     ) {
-      setErrorMsg("وقت الانصراف يجب أن يكون بعد وقت الحضور.");
+      setErrorMsg("تعذر تحديد ترتيب وقت الحضور والانصراف.");
       return;
     }
 
@@ -2485,6 +2526,8 @@ function DashboardEmployeesContent() {
           employeeDocId: attendanceIdentity.employeeDocId,
           clearCheckIn,
           clearCheckOut,
+          overnightCheckout: resolvedPunchDateTimes.overnight,
+          workDate: date,
         },
       }).catch((auditError) => {
         console.warn("attendance audit log write failed", auditError);
@@ -10278,7 +10321,13 @@ const canonicalSchedules =
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-out"
                     label="وقت الانصراف"
-                    hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                    hint={
+                      attendanceEditCheckIn &&
+                      attendanceEditCheckOut &&
+                      attendanceEditCheckOut.slice(11, 16) <= attendanceEditCheckIn.slice(11, 16)
+                        ? "سيُحسب الانصراف على اليوم التالي لنفس شفت العمل. إذا كان بعد منتصف الليل اختاري (ص)."
+                        : "يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                    }
                   >
                     <div className="emp-attendance-edit-time-control-v2">
                       <DashboardTimeInputV2 id="employee-attendance-edit-check-out" className="dsv2-input" step={300} clock="12h" value={ attendanceEditCheckOut ? attendanceEditCheckOut.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckOut( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
