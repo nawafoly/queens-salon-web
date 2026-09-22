@@ -455,6 +455,9 @@ export const CoreClientService = {
       name: string;
       phone: string;
       email: string;
+      city: string;
+      birthdate: string;
+      avatarUrl: string;
       firebaseUid: string;
       status: string;
       notes: string;
@@ -472,7 +475,14 @@ export const CoreClientService = {
 
   async updateProfile(
     id: string,
-    input: { name: string; phone: string }
+    input: {
+      name: string;
+      phone: string;
+      email?: string;
+      city?: string;
+      birthdate?: string;
+      avatarUrl?: string;
+    }
   ): Promise<CoreClient> {
     const row = await coreApiRequest<Record<string, unknown>>(
       `/api/core/clients/${encodeURIComponent(id)}`,
