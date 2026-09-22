@@ -4,6 +4,11 @@ export type CoreClient = {
   name: string;
   phoneNormalized: string;
   email?: string | null;
+  city?: string | null;
+  birthdate?: string | null;
+  avatarUrl?: string | null;
+  membershipId?: string | null;
+  membershipPercent?: number;
   firebaseUid?: string | null;
   status: string;
   notes?: string | null;
