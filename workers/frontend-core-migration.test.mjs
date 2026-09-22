@@ -668,16 +668,23 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
   assert.match(profile, /snapshot\.profile\.birthdate/);
   assert.match(profile, /snapshot\.profile\.avatarUrl/);
   assert.doesNotMatch(profile, /updateUserProfile\(/);
+  assert.doesNotMatch(profile, /createOrLoadUserProfile\(/);
+  assert.match(profile, /snapshot\.preferences/);
+  assert.match(profile, /ClientPortalService\.updatePreferences/);
+  assert.match(profile, /اختيار مختصة مفضلة يساعد ملكات/);
 
   const patchProfileStart = portalService.indexOf("async patchProfile(input:");
   const patchProfileEnd = portalService.indexOf("): Promise<ClientPortalProfile>", patchProfileStart);
   const patchProfileSignature = portalService.slice(patchProfileStart, patchProfileEnd);
   assert.doesNotMatch(patchProfileSignature, /membershipId|membershipPercent/);
+  assert.match(portalService, /preferences: ClientPortalPreferences/);
+  assert.match(portalService, /"\/api\/core\/client\/preferences"/);
 
   assert.match(clientRepo, /Membership identity\/tier are system-owned/);
   assert.match(clientRepo, /const membershipId = client\.membership_id \|\| null/);
   assert.match(clientRepo, /core_client:phone_conflict/);
   assert.match(clientRepo, /core_client:invalid_birthdate/);
+  assert.match(clientRepo, /getClientPreferences\(db, salonId, client\.id\)/);
 
   for (const field of ["البريد الإلكتروني", "المدينة", "تاريخ الميلاد", "رقم العضوية"]) {
     assert.match(adminRecord, new RegExp(field));
