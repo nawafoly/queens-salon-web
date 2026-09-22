@@ -2538,3 +2538,7 @@
     margin-top: -60px;
   }
 }
+
+
+.dashboard-v2 .dsv2-ew-metric[data-tone="warning"] { box-shadow: inset 3px 0 0 #c2410c; }
+.dashboard-v2 .dsv2-ew-notice[data-tone="warning"] { border-inline-start-color: #c2410c; background: #fff7ed; }

@@ -138,7 +138,7 @@ export function WorkspaceMetricV2({
   label: string;
   value: ReactNode;
   note?: string;
-  tone?: "neutral" | "gold" | "success" | "danger" | "dark";
+  tone?: "neutral" | "gold" | "warning" | "success" | "danger" | "dark";
 }) {
   return (
     <article className="dsv2-ew-metric" data-tone={tone}>
@@ -154,7 +154,7 @@ export function WorkspaceStatusBadgeV2({
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "gold" | "success" | "danger";
+  tone?: "default" | "gold" | "warning" | "success" | "danger";
 }) {
   const modifier = tone === "default" ? "" : ` dsv2-badge--${tone}`;
   return <span className={`dsv2-badge${modifier}`}>{children}</span>;
@@ -313,7 +313,7 @@ export function WorkspaceNoticeV2({
 }: {
   title: string;
   description: string;
-  tone?: "gold" | "success" | "danger" | "neutral";
+  tone?: "gold" | "warning" | "success" | "danger" | "neutral";
   action?: ReactNode;
 }) {
   return (

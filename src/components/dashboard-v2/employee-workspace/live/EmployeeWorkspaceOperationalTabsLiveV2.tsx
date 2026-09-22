@@ -199,17 +199,21 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   return cleanText(row.status) || "حضور";
 }
 
-function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
+function attendanceStatusTone(status: string): "default" | "gold" | "warning" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status.includes("تأخير") || status.includes("نقص ساعات") || status.includes("خروج مبكر") || status === "غير مكتمل" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة أسبوعية" || status === "راحة أسبوعية مؤقتة" || status === "يوم راحة استثنائي" || status === "عمل استثنائي في يوم الراحة" || status === "راحة / يوم استثنائي") return "gold";
+  if (status.includes("نقص ساعات") && !status.includes("تأخير") && !status.includes("غياب")) return "warning";
+  if (status.includes("تأخير") || status.includes("خروج مبكر")) return "gold";
+  if (status.includes("نقص ساعات")) return "warning";
+  if (false)
   if (status === "غياب") return "danger";
   return "default";
 }
 
-function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" | "danger" {
+function attendanceSurfaceTone(status: string): "neutral" | "gold" | "warning" | "success" | "danger" {
   const tone = attendanceStatusTone(status);
-  return tone === "default" ? "neutral" : tone;
+  if (tone === "default") return "neutral";
+  return tone;
 }
 
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
