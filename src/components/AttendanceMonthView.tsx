@@ -220,7 +220,7 @@ function recordLocationLabel(record: AttendanceRecord, copy: AttendanceCopy) {
 function statusTone(status: AttendanceStatus) {
   if (status === "present") return "complete";
   if (status === "late") return "late";
-  if (status === "missing_hours") return "partial";
+  if (status === "missing_hours") return "shortage";
   if (status === "in_progress") return "partial";
   if (
     status === "partial" ||
@@ -773,6 +773,7 @@ export default function AttendanceMonthView({
           <span className="is-complete">{copy.present}</span>
           <span className="is-late">{copy.late}</span>
           <span className="is-partial">{copy.needsReview}</span>
+          <span className="is-shortage">{copy.missingHours}</span>
           <span className="is-absent">{copy.absent}</span>
           <span className="is-leave">{copy.leave}</span>
           {viewerMode === "employee" ? <span className="is-off-day">{copy.weeklyRest}</span> : null}

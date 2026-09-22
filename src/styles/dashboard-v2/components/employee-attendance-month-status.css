@@ -122,3 +122,40 @@
     overflow-wrap: anywhere;
   }
 }
+
+
+/* dashboard + portal: shortage distinct from late/absent */
+.dashboard-v2 .attendance-month__day.is-shortage,
+.dashboard-v2 .attendance-month__legend span.is-shortage,
+.dashboard-v2.employee-portal .attendance-month__day.is-shortage,
+.dashboard-v2.employee-portal .attendance-month__legend span.is-shortage {
+  --employee-attendance-day-accent: #c2410c;
+  --employee-attendance-day-bg: #fff7ed;
+  --employee-attendance-day-border: #fdba74;
+}
+
+.dashboard-v2 .attendance-month__day.is-late,
+.dashboard-v2 .attendance-month__legend span.is-late {
+  --employee-attendance-day-accent: #d97706;
+  --employee-attendance-day-bg: #fffbeb;
+  --employee-attendance-day-border: #fcd34d;
+}
+
+.dashboard-v2 .attendance-month__day.is-absent,
+.dashboard-v2 .attendance-month__legend span.is-absent {
+  --employee-attendance-day-accent: var(--dsv2-burgundy, #9f1239);
+  --employee-attendance-day-bg: var(--dsv2-burgundy-soft, #fff1f2);
+  --employee-attendance-day-border: var(--dsv2-burgundy-border, #fda4af);
+}
+
+.dashboard-v2 .attendance-month__primary-status-label,
+.dashboard-v2 .attendance-month__exception-label {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-height: 1.25;
+  text-align: center;
+}
