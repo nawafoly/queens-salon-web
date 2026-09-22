@@ -113,6 +113,12 @@ export type CoreClientOverview = {
       name: string;
       source?: string | null;
     } | null;
+    preferences: {
+      serviceMessagesEnabled: boolean;
+      marketingConsent: boolean;
+      connectEnabled: boolean;
+      updatedAt?: string | null;
+    };
     mostBookedSpecialists: Array<{
       id: string;
       name: string;
@@ -289,6 +295,9 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
             source: text(preferredSpecialistRaw.source) || null,
           }
         : null,
+      preferences: mapPreferences(
+        (relationship.preferences ?? {}) as Record<string, unknown>
+      ),
       mostBookedSpecialists: Array.isArray(relationship.mostBookedSpecialists)
         ? (relationship.mostBookedSpecialists as Array<Record<string, unknown>>).map(
             (item) => ({
