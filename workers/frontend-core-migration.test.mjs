@@ -669,6 +669,8 @@ test("client profile and admin Client 360 keep profile fields Core-authoritative
   assert.match(profile, /snapshot\.profile\.avatarUrl/);
   assert.doesNotMatch(profile, /updateUserProfile\(/);
   assert.doesNotMatch(profile, /createOrLoadUserProfile\(/);
+  assert.doesNotMatch(profile, /isMalikatAdminEmail/);
+  assert.match(profile, /Core account role/);
   assert.match(profile, /snapshot\.preferences/);
   assert.match(profile, /ClientPortalService\.updatePreferences/);
   assert.match(profile, /اختيار مختصة مفضلة يساعد ملكات/);
