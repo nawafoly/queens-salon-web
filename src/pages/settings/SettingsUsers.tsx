@@ -101,6 +101,28 @@ function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
+function roleRank(role: unknown) {
+  const key = cleanText(role).toLowerCase();
+  const ranks: Record<string, number> = {
+    owner: 100,
+    admin: 80,
+    hr: 60,
+    accountant: 55,
+    reception: 40,
+    staff: 30,
+    pending: 10,
+    client: 5,
+    guest: 0,
+  };
+  return ranks[key] ?? 0;
+}
+
+function canActorAssignRole(actorRole: string, nextRole: string) {
+  if (actorRole === "owner") return nextRole !== "guest" && nextRole !== "client";
+  if (nextRole === "owner") return false;
+  return roleRank(nextRole) < roleRank(actorRole);
+}
+
 function normalizeRole(value: unknown): UiRole {
   const role = cleanText(value).toLowerCase();
   if (role === "accounting" || role === "finance") return "accountant";
@@ -266,12 +288,13 @@ export default function SettingsUsers({
     // PermissionContext changes after /api/auth/me; reload when it does.
   }, [authReady, canReadAccounts]);
 
-  const roleOptions = useMemo(() => {
+    const roleOptions = useMemo(() => {
     const source = roles.length ? roles : FALLBACK_ROLES;
     return source
       .filter((role) => role.assignable !== 0 && !["guest", "client"].includes(role.role_key))
+      .filter((role) => canActorAssignRole(actorRole, role.role_key))
       .sort((a, b) => Number(b.rank || 0) - Number(a.rank || 0));
-  }, [roles]);
+  }, [actorRole, roles]);
 
   const filteredAccounts = useMemo(() => {
     const needle = search.trim().toLowerCase();
