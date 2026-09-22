@@ -131,12 +131,24 @@ export type ClientPortalOffer = {
   ctaUrl?: string;
 };
 
+export type ClientPortalPreferences = {
+  clientId: string;
+  preferredStaffId?: string | null;
+  preferredStaffName?: string | null;
+  preferredStaffSource?: "client" | "behavior" | "admin" | string | null;
+  serviceMessagesEnabled: boolean;
+  marketingConsent: boolean;
+  connectEnabled: boolean;
+  updatedAt?: string | null;
+};
+
 export type ClientPortalSnapshot = {
   profile: ClientPortalProfile;
   bookings: ClientPortalBooking[];
   loyalty: ClientPortalLoyalty;
   cashback?: ClientPortalCashback | null;
   offers: ClientPortalOffer[];
+  preferences: ClientPortalPreferences;
   generatedAt: string;
 };
 
@@ -305,6 +317,32 @@ function mapOffer(row: Record<string, unknown>): ClientPortalOffer {
   };
 }
 
+function mapPreferences(row: Record<string, unknown>): ClientPortalPreferences {
+  return {
+    clientId: text(row.clientId || row.client_id),
+    preferredStaffId:
+      text(row.preferredStaffId || row.preferred_staff_id) || null,
+    preferredStaffName:
+      text(row.preferredStaffName || row.preferred_staff_name) || null,
+    preferredStaffSource:
+      text(row.preferredStaffSource || row.preferred_staff_source) || null,
+    serviceMessagesEnabled:
+      row.serviceMessagesEnabled === undefined &&
+      row.service_messages_enabled === undefined
+        ? true
+        : row.serviceMessagesEnabled === true ||
+          Number(row.service_messages_enabled) === 1,
+    marketingConsent:
+      row.marketingConsent === true ||
+      Number(row.marketing_consent) === 1,
+    connectEnabled:
+      row.connectEnabled === undefined && row.connect_enabled === undefined
+        ? true
+        : row.connectEnabled === true || Number(row.connect_enabled) === 1,
+    updatedAt: text(row.updatedAt || row.updated_at) || null,
+  };
+}
+
 function mapSnapshot(raw: Record<string, unknown>): ClientPortalSnapshot {
   return {
     profile: mapProfile((raw.profile || {}) as Record<string, unknown>),
@@ -312,6 +350,9 @@ function mapSnapshot(raw: Record<string, unknown>): ClientPortalSnapshot {
     loyalty: mapLoyalty((raw.loyalty || {}) as Record<string, unknown>),
     cashback: mapCashback((raw.cashback || null) as Record<string, unknown> | null),
     offers: Array.isArray(raw.offers) ? raw.offers.map((row) => mapOffer(row as Record<string, unknown>)) : [],
+    preferences: mapPreferences(
+      (raw.preferences || {}) as Record<string, unknown>
+    ),
     generatedAt: text(raw.generatedAt || raw.generated_at),
   };
 }
@@ -366,6 +407,27 @@ export const ClientPortalService = {
       };
     }
     return profile;
+  },
+
+  async updatePreferences(input: {
+    preferredStaffId?: string | null;
+    marketingConsent?: boolean;
+  }): Promise<ClientPortalPreferences> {
+    const raw = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/client/preferences",
+      {
+        method: "PATCH",
+        body: input,
+      }
+    );
+    const preferences = mapPreferences(raw);
+    if (cachedPortalSnapshot) {
+      cachedPortalSnapshot = {
+        value: { ...cachedPortalSnapshot.value, preferences },
+        fetchedAt: Date.now(),
+      };
+    }
+    return preferences;
   },
 
   invalidateSnapshot() {
