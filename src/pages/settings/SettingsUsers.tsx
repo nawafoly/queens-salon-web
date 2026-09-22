@@ -191,7 +191,35 @@ function permissionGroup(permission: string, remoteCatalog: CorePermission[]) {
   return remoteCatalog.find((item) => item.permission_key === permission)?.group_key || "system";
 }
 
+function accountErrorCode(error: unknown) {
+  const anyErr = error as { code?: string; message?: string };
+  return String(anyErr?.code || anyErr?.message || "");
+}
+
 function errorMessage(error: unknown, language: DashboardLanguage = "ar") {
+  const code = accountErrorCode(error);
+  const ar = language !== "en";
+  if (code.includes("ACCOUNT_ROLE_ASSIGN_FORBIDDEN")) {
+    return ar
+      ? "لا يمكنك تعيين هذا الدور. صلاحيتك تسمح فقط بأدوار أقل من دورك."
+      : "You cannot assign this role. You may only assign roles below yours.";
+  }
+  if (code.includes("ACCOUNT_OWNER_PROTECTED")) {
+    return ar
+      ? "حساب المالك محمي. لا يمكن تعديله من هذا الحساب."
+      : "The owner account is protected.";
+  }
+  if (code.includes("ACCOUNT_LAST_OWNER_PROTECTED")) {
+    return ar
+      ? "لا يمكن إزالة آخر مالك نشط."
+      : "The last active owner cannot be removed.";
+  }
+  if (code.includes("ACCOUNT_PERMISSION_GRANT_FORBIDDEN")) {
+    return ar
+      ? "لا يمكنك منح صلاحية لا تملكها."
+      : "You cannot grant a permission you do not have.";
+  }
+
   if (error instanceof CoreApiError) {
     if (error.code === "ACCOUNT_OWNER_PROTECTED") return settingsText(language, "لا يمكن تعديل حساب المالك من دور أقل.");
     if (error.code === "ACCOUNT_LAST_OWNER_PROTECTED") return settingsText(language, "لا يمكن تعطيل أو حذف آخر مالك نشط.");
