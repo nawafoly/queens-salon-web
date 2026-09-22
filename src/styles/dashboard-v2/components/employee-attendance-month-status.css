@@ -184,3 +184,50 @@
   background: #fff7ed !important;
   border-color: #fdba74 !important;
 }
+
+/* legend + cells: unmistakable status colors */
+.dashboard-v2 .attendance-month__legend span.is-complete,
+.dashboard-v2 .attendance-month__day.is-complete {
+  --employee-attendance-day-accent: #15803d;
+  --employee-attendance-day-bg: #ecfdf3;
+  --employee-attendance-day-border: #86efac;
+  background: #ecfdf3 !important;
+  border-color: #86efac !important;
+  color: #15803d !important;
+}
+.dashboard-v2 .attendance-month__legend span.is-late,
+.dashboard-v2 .attendance-month__day.is-late {
+  --employee-attendance-day-accent: #a16207;
+  --employee-attendance-day-bg: #fef9c3;
+  --employee-attendance-day-border: #facc15;
+  background: #fef9c3 !important;
+  border-color: #facc15 !important;
+  color: #854d0e !important;
+}
+.dashboard-v2 .attendance-month__legend span.is-shortage,
+.dashboard-v2 .attendance-month__day.is-shortage {
+  --employee-attendance-day-accent: #c2410c;
+  --employee-attendance-day-bg: #ffedd5;
+  --employee-attendance-day-border: #fb923c;
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+  color: #9a3412 !important;
+}
+.dashboard-v2 .attendance-month__legend span.is-absent,
+.dashboard-v2 .attendance-month__day.is-absent {
+  --employee-attendance-day-accent: #9f1239;
+  --employee-attendance-day-bg: #ffe4e6;
+  --employee-attendance-day-border: #fb7185;
+  background: #ffe4e6 !important;
+  border-color: #fb7185 !important;
+  color: #9f1239 !important;
+}
+.dashboard-v2 .attendance-month__legend span.is-partial,
+.dashboard-v2 .attendance-month__day.is-partial {
+  --employee-attendance-day-accent: #0f766e;
+  --employee-attendance-day-bg: #ccfbf1;
+  --employee-attendance-day-border: #2dd4bf;
+  background: #ccfbf1 !important;
+  border-color: #2dd4bf !important;
+  color: #0f766e !important;
+}
