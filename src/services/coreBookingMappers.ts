@@ -37,6 +37,9 @@ export function mapCoreClient(row: Record<string, unknown>): CoreClient {
   const mapped = renameKeys<CoreClient>(row, {
     salon_id: "salonId",
     phone_normalized: "phoneNormalized",
+    avatar_url: "avatarUrl",
+    membership_id: "membershipId",
+    membership_percent: "membershipPercent",
     firebase_uid: "firebaseUid",
     legacy_client_doc_id: "legacyClientDocId",
     created_at: "createdAt",
