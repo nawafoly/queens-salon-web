@@ -653,7 +653,9 @@ const Profile: React.FC = () => {
       setPreferencesData(updated);
       if (updated.preferredStaffId && updated.preferredStaffName) {
         setPreferenceStaffOptions((current) => {
-          const next = new Map(current.map((row) => [row.id, row.name]));
+          const next = new Map<string, string>(
+            current.map((row) => [row.id, row.name] as const)
+          );
           next.set(updated.preferredStaffId!, updated.preferredStaffName!);
           return [...next.entries()]
             .map(([id, name]) => ({ id, name }))
