@@ -3367,6 +3367,78 @@ test("client profile update validates identity and keeps existing bookings linke
   assert.equal(fake.find("bookings", "main", "booking-client-profile").client_id, "client-a");
 });
 
+test("client self profile is Core-authoritative and protects membership fields", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("clients", {
+    ...fake.find("clients", "main", "client-a"),
+    city: "تبوك",
+    birthdate: "1995-07-20",
+    avatar_url: "https://example.test/old-avatar.jpg",
+    membership_id: "MEM-001",
+    membership_percent: 15,
+  });
+  fake.seed("clients", {
+    id: "client-b",
+    salon_id: "main",
+    name: "Client B",
+    phone_normalized: "0500000002",
+    email: "b@example.com",
+    firebase_uid: "client-b-uid",
+    status: "active",
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  let response = await worker.fetch(request("/api/core/client/me", {
+    method: "PATCH",
+    token: "test:client1:client",
+    body: {
+      name: "نورة",
+      phone: "0551234567",
+      email: "noura@example.com",
+      city: "الرياض",
+      birthdate: "1997-05-11",
+      avatarUrl: "https://example.test/new-avatar.jpg",
+      membershipId: "HACKED",
+      membershipPercent: 99,
+    },
+  }), env(fake));
+  let body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.name, "نورة");
+  assert.equal(body.data.phone_normalized, "0551234567");
+  assert.equal(body.data.email, "noura@example.com");
+  assert.equal(body.data.city, "الرياض");
+  assert.equal(body.data.birthdate, "1997-05-11");
+  assert.equal(body.data.avatarUrl, "https://example.test/new-avatar.jpg");
+  assert.equal(body.data.membershipId, "MEM-001");
+  assert.equal(body.data.membershipPercent, 15);
+
+  const stored = fake.find("clients", "main", "client-a");
+  assert.equal(stored.membership_id, "MEM-001");
+  assert.equal(stored.membership_percent, 15);
+
+  response = await worker.fetch(request("/api/core/client/me", {
+    method: "PATCH",
+    token: "test:client1:client",
+    body: { birthdate: "2099-01-01" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_client:invalid_birthdate");
+
+  response = await worker.fetch(request("/api/core/client/me", {
+    method: "PATCH",
+    token: "test:client1:client",
+    body: { phone: "0500000002" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_client:phone_conflict");
+});
+
 test("service CRUD uses D1", async () => {
   const fake = new FakeD1();
   let response = await worker.fetch(request("/api/core/services", {
