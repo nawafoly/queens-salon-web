@@ -18,7 +18,7 @@ import {
   type AppPermission,
   type UserRole,
 } from "../../helpers/permissions";
-import { ACCOUNT_JOB_PACKS, isJobPackEnabled, toggleJobPackPermissions } from "../../helpers/accountJobPacks";
+import { ACCOUNT_JOB_PACKS, leftoverPermissions, isJobPackEnabled, toggleJobPackPermissions, toggleSinglePermission } from "../../helpers/accountJobPacks";
 import {
   CoreAccountService,
   type CoreAccount,
@@ -1362,23 +1362,49 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                             <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
                 {ACCOUNT_JOB_PACKS.map((pack) => {
                   const enabled = isJobPackEnabled(editDraft.permissions, pack);
+                  const children = VISIBLE_APP_PERMISSION_CATALOG.filter((item) => pack.permissions.includes(item.key));
                   return (
-                    <div key={pack.id} className="dsv2-card dsv2-card--padded" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                      <div>
-                        <h4 className="dsv2-section-title">{language === "en" ? pack.titleEn : pack.titleAr}</h4>
-                        <p className="dsv2-section-caption">{language === "en" ? pack.hintEn : pack.hintAr}</p>
+                    <section key={pack.id} className="dsv2-card dsv2-card--padded" style={{ display: "grid", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                        <div>
+                          <h4 className="dsv2-section-title">{language === "en" ? pack.titleEn : pack.titleAr}</h4>
+                          <p className="dsv2-section-caption">{language === "en" ? pack.hintEn : pack.hintAr}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className={enabled ? "dsv2-btn dsv2-btn--success" : "dsv2-btn dsv2-btn--secondary"}
+                          disabled={!canManagePermissions}
+                          onClick={() => {
+                            setEditDraft((draft) => draft ? { ...draft, permissions: toggleJobPackPermissions(draft.permissions, pack) } : draft);
+                          }}
+                        >
+                          {enabled ? t("الكل مفعل") : t("تفعيل الكل")}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className={enabled ? "dsv2-btn dsv2-btn--success" : "dsv2-btn dsv2-btn--secondary"}
-                        disabled={!canManagePermissions}
-                        onClick={() => {
-                          setEditDraft((draft) => draft ? { ...draft, permissions: toggleJobPackPermissions(draft.permissions, pack) } : draft);
-                        }}
-                      >
-                        {enabled ? t("مفعل") : t("غير مفعل")}
-                      </button>
-                    </div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {children.map((permission) => {
+                          const childEnabled = editDraft.permissions.includes(permission.key);
+                          return (
+                            <div key={permission.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 10px", borderRadius: 12, background: "rgba(15,23,42,0.03)" }}>
+                              <div>
+                                <strong>{language === "en" ? permissionEnglishLabel(permission.key) : permission.label}</strong>
+                                <p className="dsv2-section-caption">{language === "en" ? permissionEnglishHint(permission.key, permission) : permission.hint}</p>
+                              </div>
+                              <button
+                                type="button"
+                                className={childEnabled ? "dsv2-btn dsv2-btn--success dsv2-btn--sm" : "dsv2-btn dsv2-btn--secondary dsv2-btn--sm"}
+                                disabled={!canManagePermissions}
+                                onClick={() => {
+                                  setEditDraft((draft) => draft ? { ...draft, permissions: toggleSinglePermission(draft.permissions, permission.key) } : draft);
+                                }}
+                              >
+                                {childEnabled ? t("مفعل") : t("غير مفعل")}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
                   );
                 })}
               </div>
