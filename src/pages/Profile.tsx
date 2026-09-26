@@ -1059,6 +1059,13 @@ const Profile: React.FC = () => {
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </div>
           <h2 className="p-user-name-hero">{userData.name || "عميلة"}</h2>
+          {activeTab === "loyalty" ? (
+            <div className="p-user-info-chips">
+              <button type="button" className="p-info-chip" onClick={copyMembershipId} dir="ltr">ID {membershipId}</button>
+              {userData.phone ? <span className="p-info-chip" dir="ltr">{userData.phone}</span> : null}
+              {userData.city ? <span className="p-info-chip">{userData.city}</span> : null}
+            </div>
+          ) : null}
         </div>
 
         {portalLoading && !bookingsErr ? <div className="p-loader">جاري تحميل بيانات حسابك...</div> : null}
@@ -1232,9 +1239,12 @@ const Profile: React.FC = () => {
             <section className="p-section-container p-account-card">
               <div className="p-section-header"><h3>بيانات الحساب</h3><button type="button" className="p-text-link" onClick={openEditProfile}>تعديل</button></div>
               <div className="p-account-rows">
+                <div><span>الاسم</span><strong>{userData.name || "—"}</strong></div>
                 <div><span>رقم العميلة</span><strong dir="ltr">{membershipId}</strong></div>
                 <div><span>رقم الجوال</span><strong dir="ltr">{userData.phone || "—"}</strong></div>
                 <div><span>البريد الإلكتروني</span><strong dir="ltr">{userData.email || "—"}</strong></div>
+                <div><span>المدينة</span><strong>{userData.city || "—"}</strong></div>
+                <div><span>تاريخ الميلاد</span><strong dir="ltr">{userData.birthdate || "—"}</strong></div>
               </div>
             </section>
 
@@ -1248,19 +1258,11 @@ const Profile: React.FC = () => {
                   <div className="p-points-card">
                     <div className="p-points-head"><h4>رصيد الكاش باك</h4><span className="p-points-badge">Cashback</span></div>
                     <div className="p-points-value-row"><strong>{money(cashbackData.balanceHalalas / 100)}</strong><span>متاح للاستخدام داخل صالون ملكات</span></div>
-                    <div className="p-points-meta">
-                      <span>مكتسب: {money(cashbackData.earnedHalalas / 100)}</span>
-                      <span>مستخدم: {money(cashbackData.redeemedHalalas / 100)}</span>
-                      <span>معكوس/منتهي: {money(cashbackData.reversedHalalas / 100)}</span>
-                      <span>لا يمكن سحبه نقدًا أو تحويله خارج ملكات</span>
-                    </div>
+                    <div className="p-home-summary-grid" style={{ marginTop: 12 }}><div><strong>{money(cashbackData.earnedHalalas / 100)}</strong><span>مكتسب</span></div><div><strong>{money(cashbackData.redeemedHalalas / 100)}</strong><span>مستخدم</span></div><div><strong>{money(cashbackData.reversedHalalas / 100)}</strong><span>معكوس / منتهي</span></div><div><strong>داخل ملكات</strong><span>لا سحب نقدي ولا تحويل</span></div></div>
                   </div>
                   {cashbackData.transactions.length ? (
                     <div className="p-loyalty-transactions">
-                      <h4>آخر حركات الكاش باك</h4>
-                      {cashbackData.transactions.slice(0, 10).map((tx) => (
-                        <div key={tx.id}><span>{tx.reason}</span><strong className={tx.amountHalalas >= 0 ? "is-positive" : "is-negative"}>{tx.amountHalalas > 0 ? "+" : ""}{money(tx.amountHalalas / 100)}</strong></div>
-                      ))}
+                      <h4>آخر الحركات</h4>{cashbackData.transactions.slice(0, 10).map((tx) => (<div key={tx.id}><span>{tx.reason}{tx.createdAt ? <small style={{ display: "block", opacity: 0.7 }}>{formatDateAr(String(tx.createdAt).slice(0, 10))}</small> : null}</span><strong className={tx.amountHalalas >= 0 ? "is-positive" : "is-negative"}>{tx.amountHalalas > 0 ? "+" : ""}{money(tx.amountHalalas / 100)}</strong></div>))}
                     </div>
                   ) : null}
                 </>
