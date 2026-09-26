@@ -24,6 +24,7 @@ import {
   isCustomerActive,
   normalizeCustomerName,
   normalizeCustomerSearchText,
+  unnamedCustomerSearchHaystack,
 } from "../features/customers/customerFormatters";
 import type {
   CustomerLastVisitFilter,
@@ -196,7 +197,10 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
       const customerDigits = customerPhoneDigits(customer.phone);
       const customerDisplayDigits = String(customer.phone || "").replace(/\D/g, "");
       const matchesPhone = Boolean(rawSearchDigits) && (customerDisplayDigits.includes(rawSearchDigits) || customerDigits.includes(searchDigits));
-      const matchesQuery = !searchText || normalizeCustomerSearchText(customer.name).includes(searchText) || matchesPhone;
+      const matchesQuery =
+        !searchText ||
+        unnamedCustomerSearchHaystack(customer.name).includes(searchText) ||
+        matchesPhone;
       const matchesSegment = segment === "all" || (segment === "vip" && customer.vip) || (segment === "with-bookings" && customer.bookingsCount > 0) || (segment === "without-bookings" && customer.bookingsCount === 0) || (segment === "active-packages" && customer.activePackagesCount > 0);
       const matchesSource = source === "all" || customer.source === source;
       const visitTimestamp = customerLastVisitTimestamp(customer.lastVisitDate, customer.lastVisitTime);

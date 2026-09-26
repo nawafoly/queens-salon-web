@@ -2,7 +2,16 @@ import type { CustomerSource } from "./customerTypes";
 import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 
 export const UNNAMED_CUSTOMER_LABEL = "عميلة بدون اسم";
+export const UNNAMED_CUSTOMER_LABEL_EN = "Unnamed client";
 export const EMPTY_VALUE_LABEL = "—";
+
+const UNNAMED_CUSTOMER_ALIASES = [
+  UNNAMED_CUSTOMER_LABEL,
+  UNNAMED_CUSTOMER_LABEL_EN,
+  "عميل بدون اسم",
+  "بدون اسم",
+  "unnamed",
+];
 
 /* CUSTOMER_TEXT_ENCODING_POLICY_V1
  * Repairs high-confidence legacy Arabic text that was UTF-8 bytes decoded as
@@ -120,6 +129,31 @@ export function normalizeCustomerName(value: unknown): string {
 export function normalizeCustomerSearchText(value: unknown): string {
   return normalizedToken(cleanText(value).replace(/\s+/gu, " ").trim());
 }
+export function isUnnamedCustomerName(value: unknown): boolean {
+  const raw = cleanText(value);
+  if (!raw) return true;
+  const token = normalizeCustomerSearchText(raw);
+  if (!token) return true;
+  return UNNAMED_CUSTOMER_ALIASES.some(
+    (alias) => normalizeCustomerSearchText(alias) === token
+  );
+}
+
+export function unnamedCustomerSearchHaystack(value: unknown): string {
+  const nameToken = normalizeCustomerSearchText(normalizeCustomerName(value));
+  if (!isUnnamedCustomerName(value) && !isUnnamedCustomerName(normalizeCustomerName(value))) {
+    return nameToken;
+  }
+  return [
+    nameToken,
+    normalizeCustomerSearchText(UNNAMED_CUSTOMER_LABEL),
+    normalizeCustomerSearchText(UNNAMED_CUSTOMER_LABEL_EN),
+    normalizeCustomerSearchText("بدون اسم"),
+    normalizeCustomerSearchText("unnamed"),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export function customerPhoneDigits(value: unknown): string {
   let digits = cleanText(value).replace(/\D/g, "");
@@ -153,7 +187,7 @@ export function hasCustomerPhone(value: unknown): boolean {
 
 export function getCustomerInitials(value: unknown): string {
   const name = normalizeCustomerName(value);
-  if (name === UNNAMED_CUSTOMER_LABEL) return "ع";
+  if (isUnnamedCustomerName(name)) return "ع";
   const words = name.split(" ").filter(Boolean);
   return `${words[0]?.slice(0, 1) || ""}${words.length > 1 ? words.at(-1)?.slice(0, 1) || "" : ""}`;
 }
