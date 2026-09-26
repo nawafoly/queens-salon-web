@@ -945,7 +945,14 @@ const Profile: React.FC = () => {
       alert("تم حفظ البيانات بنجاح ✅");
     } catch (e) {
       console.error("Save profile error:", e);
-      alert("صار خطأ أثناء حفظ البيانات. حاول مرة ثانية.");
+      const code = String((e as { code?: string })?.code || "");
+      if (code.includes("phone_conflict")) {
+        alert("هذا الجوال مرتبط بعميلة ثانية. استخدمي رقم ثاني أو اطلبي دمج الملفين من الإدارة.");
+      } else if (code.includes("invalid_phone")) {
+        alert("رقم الجوال غير صحيح. اكتبي رقم سعودي صحيح.");
+      } else {
+        alert("صار خطأ أثناء حفظ البيانات. حاول مرة ثانية.");
+      }
     } finally {
       setIsSavingProfile(false);
     }
