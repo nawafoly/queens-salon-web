@@ -1341,7 +1341,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 <div>
                   <h3 className="dsv2-section-title">{t("مهام الحساب")}</h3>
                   <p className="dsv2-section-caption">
-                    {t("فعّلي المهام اللي تحتاجها الموظفة. الباقي تحت خيارات متقدمة.")}
+                    {t("فعّلي المهام حسب القسم. كل صلاحية تحت القسم اللي تخصه.")}
                   </p>
                 </div>
 
@@ -1408,69 +1408,6 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   );
                 })}
               </div>
-              <button
-                type="button"
-                className="dsv2-btn dsv2-btn--secondary"
-                style={{ marginBottom: 16 }}
-                onClick={() => setShowAllPermissions((value) => !value)}
-              >
-                {showAllPermissions ? t("إخفاء الخيارات المتقدمة") : t("خيارات متقدمة")}
-              </button>
-              {showAllPermissions ? (
-              <div className="dsv2-grid--2">
-                {VISIBLE_APP_PERMISSION_CATALOG.map((permission) => {
-                  const enabled = editDraft.permissions.includes(permission.key);
-                  const actorCanGrant =
-                    actorIsOwner || actorPermissions.includes(permission.key);
-
-                  return (
-                    <article key={permission.key} className="dsv2-card dsv2-card--padded">
-                      <div className="dsv2-section-head">
-                        <div>
-                          <h4 className="dsv2-section-title">{language === "en" ? permissionEnglishLabel(permission.key) : permission.label}</h4>
-                          <p className="dsv2-section-caption">{permission.key}</p>
-                        </div>
-
-                        {permission.sensitive ? (
-                          <span className="dsv2-badge dsv2-badge--danger">{t("حساسة")}</span>
-                        ) : null}
-                      </div>
-
-                      <p className="dsv2-section-caption">{language === "en" ? permissionEnglishHint(permission.key, permission) : permission.hint}</p>
-
-                      <button
-                        type="button"
-                        className={
-                          enabled
-                            ? "dsv2-btn dsv2-btn--success dsv2-btn--block"
-                            : "dsv2-btn dsv2-btn--secondary dsv2-btn--block"
-                        }
-                        aria-pressed={enabled}
-                        disabled={!canManagePermissions || (!actorCanGrant && !enabled)}
-                        onClick={() => {
-                          setEditDraft((draft) => {
-                            if (!draft) return draft;
-
-                            const set = new Set(draft.permissions);
-                            if (set.has(permission.key)) set.delete(permission.key);
-                            else set.add(permission.key);
-
-                            return {
-                              ...draft,
-                              permissions: VISIBLE_APP_PERMISSION_CATALOG
-                                .map((item) => item.key)
-                                .filter((key) => set.has(key)),
-                            };
-                          });
-                        }}
-                      >
-                        {enabled ? t("مفعل") : t("غير مفعل")}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-              ) : null}
             </section>
           </div>
         ) : (
