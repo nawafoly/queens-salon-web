@@ -72,6 +72,7 @@ interface BookingData {
   publicId?: string;
   invoiceNumber?: string;
   serviceDetails?: string[];
+  cashbackHalalas?: number;
 }
 
 type ProfileMode = "firebase" | "local";
@@ -271,6 +272,13 @@ function mapPortalBookingToUi(row: import("../services/ClientPortalService").Cli
   };
 }
 
+
+function cashbackHalalasForBooking(booking: BookingData, cashback: ClientPortalCashback | null | undefined) {
+  if (!cashback?.transactions?.length) return 0;
+  return cashback.transactions
+    .filter((tx) => tx.bookingId && (tx.bookingId === booking.id || tx.bookingId === booking.publicId))
+    .reduce((sum, tx) => sum + Number(tx.amountHalalas || 0), 0);
+}
 function displayBookingRef(booking: BookingData) {
   const publicId = String(booking.publicId || "").trim();
   if (publicId) return publicId.toUpperCase();
@@ -457,7 +465,7 @@ const Profile: React.FC = () => {
       try {
         const snapshot = await ClientPortalService.snapshot();
         if (!alive) return;
-        const rows = snapshot.bookings.map(mapPortalBookingToUi).sort((a, b) => {
+        const rows = snapshot.bookings.map(mapPortalBookingToUi).map((booking) => ({ ...booking, cashbackHalalas: cashbackHalalasForBooking(booking, snapshot.cashback) })).sort((a, b) => {
           const tsA = toTs(a.date, a.time) || a.createdAt || 0;
           const tsB = toTs(b.date, b.time) || b.createdAt || 0;
           return tsB - tsA;
@@ -1059,7 +1067,7 @@ const Profile: React.FC = () => {
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </div>
           <h2 className="p-user-name-hero">{userData.name || "عميلة"}</h2>
-          {activeTab === "loyalty" ? (
+          {activeTab === "loyalty" || activeTab === "profile" || activeTab === "bookings" || activeTab === "packages" ? (
             <div className="p-user-info-chips">
               <button type="button" className="p-info-chip" onClick={copyMembershipId} dir="ltr">ID {membershipId}</button>
               {userData.phone ? <span className="p-info-chip" dir="ltr">{userData.phone}</span> : null}
@@ -1301,7 +1309,7 @@ const Profile: React.FC = () => {
         {activeTab === "bookings" ? (
           <>
             <section className="p-section-container">
-              <div className="p-section-header"><h3>الحجز القادم</h3></div>
+              <div className="p-section-header"><h3>الحجز القادم</h3>{cashbackData?.enabled ? <span className="p-info-chip">كاش باك {money(cashbackData.balanceHalalas / 100)}</span> : null}</div>
               {!upcomingBooking && !portalLoading && !bookingsErr ? (
                 <div className="p-empty-state">لا يوجد حجز قادم حاليًا.</div>
               ) : upcomingBooking ? (
@@ -1343,6 +1351,7 @@ const Profile: React.FC = () => {
                         <span>الدفع: <strong>{paymentMethodLabel(booking.paymentMethod)} · {paymentStatusLabel(booking.paymentStatus)}</strong></span>
                         {booking.packageSessionsUsed ? <span>الباقة: <strong>{booking.packageSessionsUsed} جلسة</strong></span> : null}
                         {booking.refunded ? <span>المسترجع: <strong>{money(booking.refunded)}</strong></span> : null}
+                        {booking.cashbackHalalas ? <span>الكاش باك: <strong>{money(booking.cashbackHalalas / 100)}</strong></span> : null}
                       </div>
                     </div>
                   </article>
@@ -1354,7 +1363,7 @@ const Profile: React.FC = () => {
 
         {activeTab === "packages" ? (
           <section className="p-section-container p-packages-page-section">
-            <div className="p-section-header"><h3>باقاتي</h3><button type="button" className="p-text-link" onClick={() => navigate("/offers")}>استعراض الباقات المتاحة</button></div>
+            <div className="p-section-header"><h3>باقاتي</h3><button type="button" className="p-text-link" onClick={() => navigate("/offers")}>الباقات المتاحة</button></div>
             <MyPackagesPanel
               enabled={profileMode === "firebase" && !!firebaseUser}
               onBrowse={() => navigate("/offers")}
