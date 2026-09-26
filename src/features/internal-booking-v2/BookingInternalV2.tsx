@@ -1103,6 +1103,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setCreatedBookingIds([]);
     setCreatedBookingReference("");
     if (!selectedClient) { setSubmitError(t("اختاري العميلة أولًا.")); setStep(1); return; }
+    if (phone10Digits(selectedClient.phone).length !== 10) { setSubmitError(t("هذه العميلة بدون رقم جوال. اختاري الملف المرتبط بالجوال أو أضيفي الرقم قبل إنشاء الحجز حتى لا يتكرر السجل.")); setStep(1); return; }
     if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
     if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
     if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
@@ -1533,7 +1534,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                     {visibleClients.map((client) => (
                       <button key={client.id} className={selectedClient?.id === client.id ? "is-selected" : ""} onClick={() => { setSelectedClient(client); markQuickClientUsage(client); }}>
                         <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
+                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone || t("بدون جوال")}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
                       </button>
                     ))}
                   </div>
