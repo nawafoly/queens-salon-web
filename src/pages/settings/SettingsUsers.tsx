@@ -18,7 +18,7 @@ import {
   type AppPermission,
   type UserRole,
 } from "../../helpers/permissions";
-import { ACCOUNT_JOB_PACKS, leftoverPermissions, isJobPackEnabled, toggleJobPackPermissions, toggleSinglePermission } from "../../helpers/accountJobPacks";
+import { ACCOUNT_JOB_PACKS, isJobPackEnabled, toggleJobPackPermissions, toggleSinglePermission } from "../../helpers/accountJobPacks";
 import {
   CoreAccountService,
   type CoreAccount,

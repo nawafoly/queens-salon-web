@@ -10,9 +10,12 @@ export type AccountJobPack = {
   permissions: AppPermission[];
 };
 
-function keysMatching(matchers: string[]): AppPermission[] {
+function keysMatching(matchers: string[], except: string[] = []): AppPermission[] {
   return VISIBLE_APP_PERMISSION_CATALOG
-    .filter((item) => matchers.some((matcher) => item.key === matcher || item.key.startsWith(`${matcher}.`)))
+    .filter((item) => {
+      if (except.some((rule) => item.key === rule || item.key.startsWith(`${rule}.`))) return false;
+      return matchers.some((matcher) => item.key === matcher || item.key.startsWith(`${matcher}.`));
+    })
     .map((item) => item.key);
 }
 
@@ -70,6 +73,94 @@ export const ACCOUNT_JOB_PACKS: AccountJobPack[] = [
     hintEn: "Items, consumption and movements.",
     permissions: keysMatching(["inventory"]),
   },
+  {
+    id: "finance",
+    titleAr: "المالية",
+    titleEn: "Finance",
+    hintAr: "الإيرادات والمصروفات.",
+    hintEn: "Income and expenses.",
+    permissions: keysMatching(["income", "expenses"]),
+  },
+  {
+    id: "team",
+    titleAr: "ملفات الموظفات",
+    titleEn: "Staff files",
+    hintAr: "دليل الموظفات والملفات والجداول.",
+    hintEn: "Staff directory, files and schedules.",
+    permissions: keysMatching(["employees"]),
+  },
+  {
+    id: "attendance-admin",
+    titleAr: "حضور الفريق",
+    titleEn: "Team attendance",
+    hintAr: "حضور الفريق والإجازات وإعدادات البصمة.",
+    hintEn: "Team attendance, leaves and fingerprint settings.",
+    permissions: keysMatching(["attendance"], ["attendance.own"]),
+  },
+  {
+    id: "requests-admin",
+    titleAr: "مركز الطلبات",
+    titleEn: "Request center",
+    hintAr: "طلبات الموظفات من جهة الإدارة.",
+    hintEn: "Admin handling of staff requests.",
+    permissions: keysMatching(["employee_requests"], ["employee_requests.own"]),
+  },
+  {
+    id: "payroll-targets",
+    titleAr: "الرواتب والتارقت",
+    titleEn: "Payroll and targets",
+    hintAr: "الرواتب والتارقت والبونص.",
+    hintEn: "Payroll, targets and bonus.",
+    permissions: keysMatching(["payroll", "targets"], ["targets.view_own"]),
+  },
+  {
+    id: "performance",
+    titleAr: "الأداء والتوظيف",
+    titleEn: "Performance and hiring",
+    hintAr: "أداء الموظفات وطلبات التوظيف.",
+    hintEn: "Staff performance and recruitment.",
+    permissions: keysMatching(["staffPerformance", "recruitment"]),
+  },
+  {
+    id: "messages",
+    titleAr: "الرسائل",
+    titleEn: "Messages",
+    hintAr: "الرسائل الداخلية.",
+    hintEn: "Internal messages.",
+    permissions: keysMatching(["messages"]),
+  },
+  {
+    id: "reports",
+    titleAr: "التقارير والسجلات",
+    titleEn: "Reports and logs",
+    hintAr: "التقارير والتدقيق وسجل الحركات.",
+    hintEn: "Reports, audit and activity logs.",
+    permissions: keysMatching(["reports", "weekly_reports", "logs", "audit"]),
+  },
+  {
+    id: "partners",
+    titleAr: "الشريكات",
+    titleEn: "Partners",
+    hintAr: "الشريكات والمساحات.",
+    hintEn: "Partners and rented spaces.",
+    permissions: keysMatching(["partners"]),
+  },
+  {
+    id: "settings",
+    titleAr: "إعدادات الصالون",
+    titleEn: "Salon settings",
+    hintAr: "الإعدادات العامة وإعدادات الحجز.",
+    hintEn: "General and booking settings.",
+    permissions: keysMatching(["settings"], ["settings.content"]),
+  },
+  {
+    id: "system",
+    titleAr: "الحسابات والصلاحيات",
+    titleEn: "Accounts and access",
+    hintAr: "الحسابات والأدوار وربط الموظفات.",
+    hintEn: "Accounts, roles and employee links.",
+    permissions: keysMatching(["admin_accounts", "accounts", "roles", "permissions", "employee_links"]),
+  },
 ];
 
 export function isJobPackEnabled(current: AppPermission[], pack: AccountJobPack) {
@@ -91,9 +182,4 @@ export function toggleSinglePermission(current: AppPermission[], permission: App
   if (next.has(permission)) next.delete(permission);
   else next.add(permission);
   return VISIBLE_APP_PERMISSION_CATALOG.map((item) => item.key).filter((key) => next.has(key));
-}
-
-export function leftoverPermissions(currentPacks = ACCOUNT_JOB_PACKS) {
-  const used = new Set(currentPacks.flatMap((pack) => pack.permissions));
-  return VISIBLE_APP_PERMISSION_CATALOG.filter((item) => !used.has(item.key));
 }
