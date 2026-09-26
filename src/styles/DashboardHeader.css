@@ -442,3 +442,70 @@
     border-radius: 10px;
   }
 }
+/* UNIFIED STICKY TOPBAR — dashboard + employee, all sizes */
+.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard,
+.employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--desktop,
+.employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--mobile {
+  box-sizing: border-box !important;
+  min-height: 74px !important;
+  padding: 10px 16px !important;
+  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.065) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+/* Desktop: sticky */
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard,
+  .employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--desktop {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 900 !important;
+    width: auto !important;
+    margin: 8px 8px 16px !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-portal-main {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 100dvh;
+    overflow: visible !important;
+  }
+}
+
+/* Phone + tablet: fixed so it never scrolls away */
+@media (max-width: 991.98px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard {
+    position: fixed !important;
+    top: 8px !important;
+    inset-inline: 8px !important;
+    width: auto !important;
+    z-index: 1200 !important;
+    margin: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
+    padding-top: 96px !important;
+  }
+
+  .employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--desktop,
+  .employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--mobile {
+    position: fixed !important;
+    top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    inset-inline: 8px !important;
+    width: auto !important;
+    z-index: 1200 !important;
+    margin: 0 !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-portal-layout--app {
+    top: calc(98px + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-app-route-scroll {
+    padding-top: 8px !important;
+  }
+}
