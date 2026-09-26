@@ -457,10 +457,8 @@
   -webkit-backdrop-filter: blur(14px) !important;
 }
 
-/* Desktop: sticky */
 @media (min-width: 992px) {
-  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard,
-  .employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--desktop {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard {
     position: sticky !important;
     top: 0 !important;
     z-index: 900 !important;
@@ -468,15 +466,38 @@
     margin: 8px 8px 16px !important;
   }
 
+  .employee-portal.madan-employee-portal,
+  .employee-portal.madan-employee-portal .employee-portal-layout--app {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
   .employee-portal.madan-employee-portal .employee-portal-main {
     display: flex !important;
     flex-direction: column !important;
-    min-height: 100dvh;
-    overflow: visible !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-workspace-header--desktop {
+    position: relative !important;
+    flex: 0 0 auto !important;
+    z-index: 20 !important;
+    width: auto !important;
+    margin: 8px 8px 16px !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-app-route-scroll {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 }
 
-/* Phone + tablet: fixed so it never scrolls away */
 @media (max-width: 991.98px) {
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard {
     position: fixed !important;
@@ -503,9 +524,5 @@
 
   .employee-portal.madan-employee-portal .employee-portal-layout--app {
     top: calc(98px + env(safe-area-inset-top, 0px)) !important;
-  }
-
-  .employee-portal.madan-employee-portal .employee-app-route-scroll {
-    padding-top: 8px !important;
   }
 }
