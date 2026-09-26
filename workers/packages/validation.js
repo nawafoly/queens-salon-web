@@ -478,3 +478,14 @@ export function salonPath(salonId, ...segments) {
 export function requireRole(role, allowed) {
   if (!allowed.has(role)) throw new AppError(403, "packages_auth:insufficient_permissions");
 }
+
+export function hasAppPermission(ctx, key) {
+  const list = Array.isArray(ctx?.permissions) ? ctx.permissions : [];
+  return list.includes(key);
+}
+
+export function requireCatalogManage(ctx) {
+  const role = String(ctx?.role || "").toLowerCase();
+  if (ADMIN_ROLES.has(role) || hasAppPermission(ctx, "catalog.manage")) return;
+  throw new AppError(403, "packages_auth:insufficient_permissions");
+}

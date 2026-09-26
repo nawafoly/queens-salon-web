@@ -20,6 +20,7 @@ import {
   requiredDocumentId,
   requiredExternalId,
   requireRole,
+  requireCatalogManage,
   timestampFromMs,
   timestampMs,
   timestampNow,
@@ -525,7 +526,7 @@ function catalogRow(row) {
 
 export async function listPackageCatalogD1(ctx, data = {}) {
   const includeInactive = cleanText(data.includeInactive).toLowerCase() === 'true';
-  if (includeInactive) requireRole(ctx.role, ADMIN_ROLES);
+  if (includeInactive) requireCatalogManage(ctx);
   const now = timestampNow();
   const rows = await dbAll(
     packagesDb(ctx),
@@ -565,7 +566,7 @@ export async function listMyPackageCatalogD1(ctx) {
 }
 
 export async function createPackageCatalogD1(ctx, data) {
-  requireRole(ctx.role, ADMIN_ROLES);
+  requireCatalogManage(ctx);
   const snapshot = buildPurchasedPackageSnapshot(data);
   const id = requiredDocumentId(data.id || `package_${crypto.randomUUID()}`, 'id');
   const now = timestampNow();
@@ -593,7 +594,7 @@ export async function createPackageCatalogD1(ctx, data) {
 }
 
 export async function updatePackageCatalogD1(ctx, data) {
-  requireRole(ctx.role, ADMIN_ROLES);
+  requireCatalogManage(ctx);
   const id = requiredDocumentId(data.id || data.packageCatalogId, 'id');
   const db = packagesDb(ctx);
   const current = await dbFirst(db, 'SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? LIMIT 1', [ctx.salonId, id]);
@@ -634,7 +635,7 @@ export async function updatePackageCatalogD1(ctx, data) {
 }
 
 export async function deletePackageCatalogD1(ctx, data) {
-  requireRole(ctx.role, ADMIN_ROLES);
+  requireCatalogManage(ctx);
   const id = requiredDocumentId(data.id || data.packageCatalogId, 'id');
   const db = packagesDb(ctx);
   const sold = await dbFirst(db, 'SELECT COUNT(*) AS count FROM client_packages WHERE salon_id = ? AND package_catalog_id = ?', [ctx.salonId, id]);

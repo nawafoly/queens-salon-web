@@ -1,4 +1,4 @@
-﻿// src/pages/settings/SettingsUsers.tsx
+// src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -18,6 +18,7 @@ import {
   type AppPermission,
   type UserRole,
 } from "../../helpers/permissions";
+import { ACCOUNT_JOB_PACKS, isJobPackEnabled, toggleJobPackPermissions } from "../../helpers/accountJobPacks";
 import {
   CoreAccountService,
   type CoreAccount,
@@ -262,6 +263,7 @@ export default function SettingsUsers({
   const [permissionSearch, setPermissionSearch] = useState("");
   const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("workspace");
   const [permissionsExpanded, setPermissionsExpanded] = useState(true);
+  const [showAllPermissions, setShowAllPermissions] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [pendingDeleteAccount, setPendingDeleteAccount] = useState<CoreAccount | null>(null);
@@ -1337,9 +1339,9 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
             <section>
               <div className="dsv2-section-head">
                 <div>
-                  <h3 className="dsv2-section-title">{t("الصلاحيات الفعلية")}</h3>
+                  <h3 className="dsv2-section-title">{t("مهام الحساب")}</h3>
                   <p className="dsv2-section-caption">
-                    {t("Worker يحول القائمة إلى allow/deny حسب الدور المحدد.")}
+                    {t("فعّلي المهام اللي تحتاجها الموظفة. الباقي تحت خيارات متقدمة.")}
                   </p>
                 </div>
 
@@ -1357,6 +1359,38 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 />
               ) : null}
 
+                            <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+                {ACCOUNT_JOB_PACKS.map((pack) => {
+                  const enabled = isJobPackEnabled(editDraft.permissions, pack);
+                  return (
+                    <div key={pack.id} className="dsv2-card dsv2-card--padded" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div>
+                        <h4 className="dsv2-section-title">{language === "en" ? pack.titleEn : pack.titleAr}</h4>
+                        <p className="dsv2-section-caption">{language === "en" ? pack.hintEn : pack.hintAr}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className={enabled ? "dsv2-btn dsv2-btn--success" : "dsv2-btn dsv2-btn--secondary"}
+                        disabled={!canManagePermissions}
+                        onClick={() => {
+                          setEditDraft((draft) => draft ? { ...draft, permissions: toggleJobPackPermissions(draft.permissions, pack) } : draft);
+                        }}
+                      >
+                        {enabled ? t("مفعل") : t("غير مفعل")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--secondary"
+                style={{ marginBottom: 16 }}
+                onClick={() => setShowAllPermissions((value) => !value)}
+              >
+                {showAllPermissions ? t("إخفاء الخيارات المتقدمة") : t("خيارات متقدمة")}
+              </button>
+              {showAllPermissions ? (
               <div className="dsv2-grid--2">
                 {VISIBLE_APP_PERMISSION_CATALOG.map((permission) => {
                   const enabled = editDraft.permissions.includes(permission.key);
@@ -1410,6 +1444,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                   );
                 })}
               </div>
+              ) : null}
             </section>
           </div>
         ) : (
