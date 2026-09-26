@@ -1,4 +1,4 @@
-const PUBLIC_R2_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
+﻿const PUBLIC_R2_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -7,6 +7,17 @@ function cleanText(value: unknown) {
 function makeSafeExt(fileName: string) {
   const ext = cleanText(fileName).split(".").pop()?.toLowerCase() || "bin";
   return ext.replace(/[^a-z0-9]/g, "") || "bin";
+}
+
+async function fileToBase64(file: File) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 export async function uploadFileToR2(args: {
@@ -21,36 +32,19 @@ export async function uploadFileToR2(args: {
   const yearMonth = `${ym.getFullYear()}-${String(ym.getMonth() + 1).padStart(2, "0")}`;
   const key = `${cleanText(keyPrefix).replace(/\/+$/, "")}/${yearMonth}/${safeOwner}/${Date.now()}.${ext}`;
 
-  const presignRes = await fetch("/api/r2-presign", {
+  const uploadRes = await fetch("/api/r2-upload", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       key,
       contentType: file.type || "application/octet-stream",
+      dataBase64: await fileToBase64(file),
     }),
   });
 
-  if (!presignRes.ok) {
-    const t = await presignRes.text();
-    throw new Error(`Presign failed: ${presignRes.status} ${t}`);
-  }
-
-  const { putUrl } = await presignRes.json();
-  if (!putUrl) throw new Error("Presign response missing putUrl");
-
-  const putRes = await fetch(putUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-    },
-    body: file,
-  });
-
-  if (!putRes.ok) {
-    const t = await putRes.text();
-    throw new Error(`Upload failed: ${putRes.status} ${t}`);
+  if (!uploadRes.ok) {
+    const t = await uploadRes.text();
+    throw new Error("Upload failed: " + uploadRes.status + " " + t);
   }
 
   return {

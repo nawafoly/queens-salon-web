@@ -29,6 +29,7 @@ import { auth } from "../services/firebase";
 import { logoutFirebase } from "../services/authService";
 
 import { formatTime12 } from "../helpers/timeDisplay";
+import { uploadFileToR2 } from "../services/r2Upload";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
 import ClientConnectPanel from "../components/client/ClientConnectPanel";
 import {
@@ -710,51 +711,12 @@ const Profile: React.FC = () => {
         (effectiveUid.replace(/\D/g, "") || userData.phone || "unknown")
           .replace(/\D/g, "") || "unknown";
 
-      const fileName = `avatar-${Date.now()}.${safeExt}`;
-
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const ym = `${yyyy}-${mm}`;
-
-      const key = `misc/${ym}/${ownerId}/${fileName}`;
-
-      // ✅ مهم: مسار نسبي (proxy)
-      const presignRes = await fetch("/api/r2-presign", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          key,
-          contentType: file.type || "image/jpeg",
-        }),
+      const uploaded = await uploadFileToR2({
+        file,
+        keyPrefix: "misc",
+        ownerId: ownerId,
       });
-
-      if (!presignRes.ok) {
-        const t = await presignRes.text();
-        throw new Error(`presign failed: ${presignRes.status} ${t}`);
-      }
-
-      const { putUrl } = await presignRes.json();
-      if (!putUrl) throw new Error("presign missing putUrl");
-
-      // 3) رفع الملف مباشرة إلى R2
-      const putRes = await fetch(putUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "image/jpeg",
-        },
-        body: file,
-      });
-
-      if (!putRes.ok) {
-        const t = await putRes.text();
-        throw new Error(`upload failed: ${putRes.status} ${t}`);
-      }
-
-      // 4) رابط العرض
-      const publicUrl = `${PUBLIC_DEV_BASE.replace(/\/+$/, "")}/${key}`;
+      const publicUrl = uploaded.storageUrl;
 
       // 5) Core D1 هو مصدر الحقيقة للصورة؛ R2 يحفظ الملف فقط.
       const canonical = await ClientPortalService.patchProfile({
