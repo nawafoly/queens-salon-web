@@ -1136,7 +1136,12 @@ const Profile: React.FC = () => {
                   </div>
                   <div className="p-booking-actions-modern"><button className="p-btn-modern primary" type="button" onClick={() => navigate(`/track/${encodeURIComponent(upcomingBooking.publicId || upcomingBooking.id)}`)}>تتبع الحجز</button></div>
                 </div>
-              ) : !portalLoading && !bookingsErr ? <div className="p-empty-state">لا يوجد حجز قادم حاليًا.</div> : null}
+              ) : !portalLoading && !bookingsErr ? <div className="p-empty-state">
+                  لا يوجد حجز قادم حاليًا.
+                  <div style={{ marginTop: 12 }}>
+                    <button className="p-btn-modern primary" type="button" onClick={() => navigate("/booking")}>احجزي الآن</button>
+                  </div>
+                </div> : null}
             </section>
 
             <section className="p-section-container">
@@ -1318,7 +1323,12 @@ const Profile: React.FC = () => {
             <section className="p-section-container">
               <div className="p-section-header"><h3>الحجز القادم</h3>{cashbackData?.enabled ? <span className="p-info-chip">كاش باك {money(cashbackData.balanceHalalas / 100)}</span> : null}</div>
               {!upcomingBooking && !portalLoading && !bookingsErr ? (
-                <div className="p-empty-state">لا يوجد حجز قادم حاليًا.</div>
+                <div className="p-empty-state">
+                  لا يوجد حجز قادم حاليًا.
+                  <div style={{ marginTop: 12 }}>
+                    <button className="p-btn-modern primary" type="button" onClick={() => navigate("/booking")}>احجزي الآن</button>
+                  </div>
+                </div>
               ) : upcomingBooking ? (
                 <div className="p-modern-booking-card">
                   <div className="p-booking-main-info">
@@ -1343,7 +1353,7 @@ const Profile: React.FC = () => {
                 </select>
               </div>
               <div className="p-bookings-list-modern">
-                {!bookingsFiltered.length && !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد حجوزات تطابق الفلتر.</div> : null}
+                {!bookingsFiltered.length && !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد حجوزات في السجل. <button className="p-text-link" type="button" onClick={() => navigate("/booking")}>احجزي أول موعد</button></div> : null}
                 {bookingsFiltered.map((booking) => (
                   <article key={booking.id} className="p-list-item-modern p-booking-history-card">
                     <div className="p-list-icon"><LuReceipt /></div>

@@ -20123,3 +20123,8 @@ textarea:disabled::placeholder {
   -webkit-text-fill-color: var(--ui-placeholder-disabled-color) !important;
   opacity: 1 !important;
 }
+
+.client-app-shell .p-user-name-hero {
+  color: #1f2937 !important;
+  opacity: 1 !important;
+}
