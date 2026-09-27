@@ -359,6 +359,7 @@ export async function listBookings(db, salonId, query = {}) {
   const date = cleanText(query.date || query.bookingDate);
   const staffId = cleanText(query.staffId || query.staff_id);
   const clientId = cleanText(query.clientId || query.client_id);
+  const partyId = cleanText(query.partyId || query.party_id);
   const status = cleanText(query.status);
 
   const where = [
@@ -389,6 +390,11 @@ export async function listBookings(db, salonId, query = {}) {
   if (clientId) {
     where.push("b.client_id = ?");
     params.push(clientId);
+  }
+
+  if (partyId) {
+    where.push("b.party_id = ?");
+    params.push(partyId);
   }
 
   if (status) {
@@ -679,7 +685,22 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
     { min: 0, max: 240, fallback: 0 }
   );
   const now = nowIso();
+  const partyId = optionalText(data.partyId || data.party_id) || null;
+  const partyLeadClientId = optionalText(data.partyLeadClientId || data.party_lead_client_id) || null;
+  const partyMemberOrder = partyId
+    ? integer(data.partyMemberOrder ?? data.party_member_order, "partyMemberOrder", { min: 0, max: 99, fallback: 0 })
+    : null;
+  const partySize = partyId
+    ? integer(data.partySize ?? data.party_size, "partySize", { min: 2, max: 20, fallback: 2 })
+    : null;
+  if (partyId && !partyLeadClientId) {
+    throw new AppError(400, "core_booking:party_lead_client_required");
+  }
+  if (partyId && partySize <= partyMemberOrder) {
+    throw new AppError(400, "core_booking:party_member_order_invalid");
+  }
   await getClient(db, salonId, clientId);
+  if (partyLeadClientId) await getClient(db, salonId, partyLeadClientId);
 
   const itemInputs = normalizeItems(data);
   const rows = [];
@@ -944,16 +965,21 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   const statements = [
     {
       sql: `INSERT INTO bookings
-        (id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
+        (id, public_id, salon_id, client_id, party_id, party_lead_client_id, party_member_order, party_size,
+         staff_id, booking_date, start_time, end_time, status, source, notes,
          subtotal_halalas, discount_halalas, total_halalas, payment_status, package_sessions_used,
          created_by_uid, created_at, updated_at, cancelled_at, completed_at, slot_step_min, buffer_min,
          discount_snapshot_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
       params: [
         bookingId,
         publicId,
         salonId,
         clientId,
+        partyId,
+        partyLeadClientId,
+        partyMemberOrder,
+        partySize,
         resolvedParentStaffId,
         firstRow.booking_date,
         firstRow.start_time,
@@ -1069,6 +1095,10 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       id: bookingId,
       publicId,
       clientId,
+      partyId,
+      partyLeadClientId,
+      partyMemberOrder,
+      partySize,
       invoiceId: invoiceId || null,
       status: bookingStatus,
       paymentStatus: "unpaid",
