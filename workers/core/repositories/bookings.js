@@ -193,6 +193,56 @@ export function findClientItemOverlap(rows = []) {
   return null;
 }
 
+async function assertPartyBookingConsistency(
+  db,
+  salonId,
+  { partyId, partyLeadClientId, partyMemberOrder, partySize, clientId }
+) {
+  if (!partyId) return;
+
+  if (partyMemberOrder === 0 && clientId !== partyLeadClientId) {
+    throw new AppError(400, "core_booking:party_lead_member_mismatch");
+  }
+  if (partyMemberOrder !== 0 && clientId === partyLeadClientId) {
+    throw new AppError(400, "core_booking:party_lead_member_order_invalid");
+  }
+
+  const existing = db.__fakeD1 && typeof db.rows === "function"
+    ? db.rows("bookings").filter(
+        (row) =>
+          row.salon_id === salonId &&
+          cleanText(row.party_id) === partyId &&
+          !row.deleted_at
+      )
+    : await dbAll(
+        db,
+        `SELECT id, client_id, party_lead_client_id, party_member_order, party_size
+           FROM bookings
+          WHERE salon_id = ? AND party_id = ? AND deleted_at IS NULL
+          ORDER BY party_member_order, created_at, id`,
+        [salonId, partyId]
+      );
+
+  for (const row of existing) {
+    if (cleanText(row.party_lead_client_id) !== partyLeadClientId) {
+      throw new AppError(409, "core_booking:party_lead_mismatch");
+    }
+    if (Number(row.party_size) !== partySize) {
+      throw new AppError(409, "core_booking:party_size_mismatch");
+    }
+    if (Number(row.party_member_order) === partyMemberOrder) {
+      throw new AppError(409, "core_booking:party_member_order_conflict");
+    }
+    if (cleanText(row.client_id) === clientId) {
+      throw new AppError(409, "core_booking:party_client_duplicate");
+    }
+  }
+
+  if (existing.length >= partySize) {
+    throw new AppError(409, "core_booking:party_full");
+  }
+}
+
 function clientScheduleConflict(details = {}) {
   return new AppError(
     409,
@@ -701,6 +751,13 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   }
   await getClient(db, salonId, clientId);
   if (partyLeadClientId) await getClient(db, salonId, partyLeadClientId);
+  await assertPartyBookingConsistency(db, salonId, {
+    partyId,
+    partyLeadClientId,
+    partyMemberOrder,
+    partySize,
+    clientId,
+  });
 
   const itemInputs = normalizeItems(data);
   const rows = [];
