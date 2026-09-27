@@ -2034,9 +2034,36 @@ class FakeD1 {
         throw new Error("simulated fake D1 batch failure");
       }
       if (sql.startsWith("INSERT INTO bookings")) {
-        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at, slot_step_min, buffer_min, discount_snapshot_json] = params;
+        const [
+          id,
+          public_id,
+          salon_id,
+          client_id,
+          party_id,
+          party_lead_client_id,
+          party_member_order,
+          party_size,
+          staff_id,
+          booking_date,
+          start_time,
+          end_time,
+          status,
+          source,
+          notes,
+          subtotal_halalas,
+          discount_halalas,
+          total_halalas,
+          package_sessions_used,
+          created_by_uid,
+          created_at,
+          updated_at,
+          slot_step_min,
+          buffer_min,
+          discount_snapshot_json,
+        ] = params;
         results.push(this.insert("bookings", {
-          id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
+          id, public_id, salon_id, client_id, party_id, party_lead_client_id, party_member_order, party_size,
+          staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
           created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json,
         }));
@@ -3622,6 +3649,96 @@ test("backdated booking creation requires the authenticated internal route", asy
   assert.ok(audit, "backdated creation must remain visible in the audit log");
   assert.equal(JSON.parse(audit.after_json).bookingDate, bookingDate);
   assert.equal(JSON.parse(audit.after_json).backdated, true);
+});
+
+test("internal party booking metadata is canonical, validated, and queryable", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const now = "2027-01-01T00:00:00.000Z";
+  fake.seed("clients", {
+    id: "client-b",
+    salon_id: "main",
+    name: "Client B",
+    phone_normalized: "0500000002",
+    email: null,
+    firebase_uid: null,
+    status: "active",
+    notes: null,
+    created_at: now,
+    updated_at: now,
+  });
+
+  let response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      id: "party-booking-lead",
+      clientId: "client-a",
+      partyId: "party-test-1",
+      partyLeadClientId: "client-a",
+      partyMemberOrder: 0,
+      partySize: 2,
+      staffId: "staff-a",
+      bookingDate: "2027-04-01",
+      startTime: "10:00",
+      items: [{ id: "party-item-lead", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      id: "party-booking-companion",
+      clientId: "client-b",
+      partyId: "party-test-1",
+      partyLeadClientId: "client-a",
+      partyMemberOrder: 1,
+      partySize: 2,
+      staffId: "staff-a",
+      bookingDate: "2027-04-01",
+      startTime: "11:00",
+      items: [{ id: "party-item-companion", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const lead = fake.find("bookings", "main", "party-booking-lead");
+  const companion = fake.find("bookings", "main", "party-booking-companion");
+  assert.equal(lead.party_id, "party-test-1");
+  assert.equal(lead.party_lead_client_id, "client-a");
+  assert.equal(lead.party_member_order, 0);
+  assert.equal(lead.party_size, 2);
+  assert.equal(companion.client_id, "client-b");
+  assert.equal(companion.party_lead_client_id, "client-a");
+  assert.equal(companion.party_member_order, 1);
+
+  response = await worker.fetch(request("/api/core/bookings?partyId=party-test-1"), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(
+    body.data.map((row) => row.id).sort(),
+    ["party-booking-companion", "party-booking-lead"]
+  );
+
+  response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      id: "party-booking-invalid",
+      clientId: "client-b",
+      partyId: "party-test-invalid",
+      partyMemberOrder: 1,
+      partySize: 2,
+      staffId: "staff-a",
+      bookingDate: "2027-04-02",
+      startTime: "11:00",
+      items: [{ id: "party-item-invalid", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:party_lead_client_required");
 });
 
 test("public booking rejects a past item date even when its parent date is future", async () => {
