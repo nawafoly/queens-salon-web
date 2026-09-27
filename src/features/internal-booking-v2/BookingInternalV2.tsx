@@ -1060,15 +1060,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }
 
   const getCartScheduleConflict = useCallback((serviceKey: string, staffKey: string, time: string) => {
-    const currentService = cart.find((item) => String(item.id) === serviceKey);
+    const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
 
+    const currentClientKey = bookingLineClientKey(currentService);
     const clientEnd = start + Math.max(1, serviceDuration(currentService) || 30);
     const staffEnd = clientEnd + bufferMin;
 
     for (const other of cart) {
-      const otherKey = String(other.id);
+      const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) continue;
       const selected = scheduleByService[otherKey];
       if (!selected?.time) continue;
@@ -1076,9 +1077,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       if (otherStart < 0) continue;
       const otherClientEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
 
-      // Client-level rule: services in one booking cannot overlap even when
-      // they are assigned to different employees.
-      if (start < otherClientEnd && otherStart < clientEnd) {
+      if (
+        bookingLineClientKey(other) === currentClientKey &&
+        start < otherClientEnd &&
+        otherStart < clientEnd
+      ) {
         return {
           kind: "client" as const,
           service: other,
@@ -1087,7 +1090,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         };
       }
 
-      // Same staff remains stricter because its turnaround buffer must also be free.
       if (selected.staffId === staffKey) {
         const otherStaffEnd = otherClientEnd + bufferMin;
         if (start < otherStaffEnd && otherStart < staffEnd) {
@@ -1109,17 +1111,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const getBusyIntervalsForService = useCallback((serviceKey: string, staffKey: string) => {
     if (!staffKey) return [];
+    const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
+    const currentClientKey = bookingLineClientKey(currentService);
     return cart.flatMap((other) => {
-      const otherKey = String(other.id);
+      const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) return [];
       const selected = scheduleByService[otherKey];
       if (!selected?.time) return [];
+      const sameStaff = selected.staffId === staffKey;
+      const sameClient = bookingLineClientKey(other) === currentClientKey;
+      if (!sameStaff && !sameClient) return [];
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) return [];
       const otherEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
       return [{
-        kind: selected.staffId === staffKey ? "staff" as const : "client" as const,
+        kind: sameStaff ? "staff" as const : "client" as const,
         serviceTitle: serviceTitle(other),
+        clientName: bookingLineClientName(other),
         start: selected.time,
         end: `${String(Math.floor(otherEnd / 60)).padStart(2, "0")}:${String(otherEnd % 60).padStart(2, "0")}`,
       }];
@@ -1129,7 +1137,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const conflictKeys = useMemo(() => {
     const keys = new Set<string>();
     cart.forEach((service) => {
-      const key = String(service.id);
+      const key = bookingLineKey(service);
       const selected = scheduleByService[key];
       if (selected?.time && hasCartScheduleConflict(key, selected.staffId, selected.time)) keys.add(key);
     });
@@ -1152,9 +1160,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     async function loadDatedBookableStaff() {
       try {
         const resolved = await Promise.all(serviceRows.map(async (service) => {
-          const serviceKey = String(service.id);
+          const serviceKey = bookingLineKey(service);
+          const canonicalServiceId = String(service.id || "").trim();
           const rows = await listCoreBookableStaffForDate({
-            serviceId: serviceKey,
+            serviceId: canonicalServiceId,
             date: bookingDate,
             slotStepMin,
             bufferMin,
@@ -1174,7 +1183,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           let changed = false;
           const next = { ...current };
           for (const service of serviceRows) {
-            const key = String(service.id);
+            const key = bookingLineKey(service);
             const selected = next[key];
             if (!selected?.staffId) continue;
             const stillBookable = (nextStaff[key] || []).some((staff) => staffId(staff) === selected.staffId);
@@ -1201,7 +1210,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [cart, bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   const loadTimesForService = useCallback(async (service: CatalogService, staff: StaffRow) => {
-    const serviceKey = String(service.id);
+    const serviceKey = bookingLineKey(service);
     const employeeId = staffId(staff);
     if (!employeeId || !dayHours.enabled) {
       setAvailableTimes((current) => ({ ...current, [serviceKey]: [] }));
@@ -1239,7 +1248,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [bookingDate]);
 
   const allScheduled = cart.length > 0 && cart.every((service) => {
-    const key = String(service.id);
+    const key = bookingLineKey(service);
     const row = scheduleByService[key];
     const staffStillBookable = Boolean(row?.staffId) &&
       (eligibleStaffByService[key] || []).some((staff) => staffId(staff) === row.staffId);
