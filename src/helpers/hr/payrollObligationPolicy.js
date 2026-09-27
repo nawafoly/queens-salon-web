@@ -42,6 +42,12 @@ export function assertDeferrableDeductionKind(kind) {
   return normalized;
 }
 
+export function isDeferrableDeductionKind(kind) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  if (!normalized) return true;
+  return !NON_DEFERRABLE_KINDS.has(normalized);
+}
+
 function requireReason(value) {
   const reason = String(value || "").trim();
   if (!reason) throw new Error("deduction_reason_required");
