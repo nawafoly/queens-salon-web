@@ -167,6 +167,7 @@ const bookingEnglish: Record<string, string> = {
   "ليس لديك صلاحية تعديل سعر الحجز.": "You do not have permission to adjust booking prices.",
   "لا تملك صلاحية تعديل سعر الحجز.": "You do not have permission to adjust booking prices.",
   "الخصم اليدوي يحتاج صلاحية مستقلة.": "Manual discounts require a separate permission.",
+  "في الحجز الجماعي يتم توزيع الخصم اليدوي على حجوزات العميلات مع بقاء الإجمالي المدخل كما هو.": "For a group booking, the manual discount is distributed across the clients' bookings while keeping the entered total discount unchanged.",
   "اختاري سبب تعديل السعر لكل خدمة تم تعديلها.": "Choose a price adjustment reason for every adjusted service.",
   "ليس لديك صلاحية تطبيق خصم يدوي.": "You do not have permission to apply a manual discount.",
   "بانتظار السداد": "Awaiting payment",
