@@ -2285,17 +2285,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 <section className="bk2-payment-step">
                   <div className="bk2-section-title"><div><h2>{t("المراجعة والدفع")}</h2><p>{t("راجعي الحجز ثم اختاري طريقة ونوع التحصيل.")}</p></div><span><FiCreditCard /></span></div>
                   {createdBookingIds.length ? (
-                    <div className="bk2-booking-success"><strong>✓ {t("تم حفظ الحجز بنجاح")}</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t("رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div></div>
+                    <div className="bk2-booking-success">
+                      <strong>✓ {t(createdPartyBookings.length > 1 ? "تم حفظ مجموعة الحجز بنجاح" : "تم حفظ الحجز بنجاح")}</strong>
+                      {createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t(createdPartyBookings.length > 1 ? "مراجع الحجوزات" : "رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}
+                      {createdPartyBookings.length > 1 ? (
+                        <div className="bk2-party-success-bookings">
+                          {createdPartyBookings.map((row) => <div key={row.parentId}><span>{row.clientName}</span><bdi dir="ltr">{row.reference}</bdi></div>)}
+                        </div>
+                      ) : null}
+                      <p>{createdPartyBookings.length > 1 ? t("تم إنشاء حجز مستقل لكل عميلة وربطها كلها بنفس مجموعة الحجز والدفع.") : <>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</>}</p>
+                      {postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}
+                      <div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div>
+                    </div>
                   ) : (
                     <>
                       <div className="bk2-review-list">
-                        {cart.map((service, index) => {
-                          const key = String(service.id);
+                        {cart.map((service) => {
+                          const key = bookingLineKey(service);
                           const schedule = scheduleByService[key];
                           const allocation = discountSnapshot?.allocations?.find(
-                            (row) =>
-                              row.bookingItemId === `item_${index}` ||
-                              row.serviceId === key
+                            (row) => String(row.bookingItemId || "").trim() === key
                           );
                           const catalogPrice = Math.max(0, serviceCatalogPrice(service));
                           const effectiveBasePrice = Math.max(0, servicePrice(service));
@@ -2312,7 +2321,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
                           return (
                             <article
-                              key={service.id}
+                              key={key}
                               className={`bk2-review-item ${adjusted ? "has-price-adjustment" : ""}`}
                             >
                               <span className="bk2-review-index">{index + 1}</span>
@@ -2325,6 +2334,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                   )}
                                 </strong>
                                 <small>
+                                  {bookingClients.length > 1 ? `${bookingLineClientName(service)} · ` : ""}
                                   {schedule?.staffName} · {bookingDate} ·{" "}
                                   {formatTime12(schedule?.time, schedule?.time)}
                                 </small>
@@ -2510,16 +2520,17 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
             <aside className="bk2-summary-card">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
-              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient?.phone || t("اختاري عميلة للمتابعة")}</small></div></div>
+              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
               {cart.length ? <div className="bk2-summary-services">{cart.map((service) => {
-                const schedule = scheduleByService[String(service.id)];
+                const key = bookingLineKey(service);
+                const schedule = scheduleByService[key];
                 const catalogPrice = serviceCatalogPrice(service);
                 const effectiveBasePrice = servicePrice(service);
                 const promoActive = serviceHasActivePromo(service);
                 const bookingPrice = bookingPriceForService(service);
                 const adjusted = Math.abs(bookingPrice - effectiveBasePrice) > 0.005;
-                return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{promoActive || adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}{promoActive ? <small>{t("سعر العرض")}: {money(effectiveBasePrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
+                return <div key={key}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{bookingClients.length > 1 ? <small>{bookingLineClientName(service)}</small> : null}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{promoActive || adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}{promoActive ? <small>{t("سعر العرض")}: {money(effectiveBasePrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
               })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
