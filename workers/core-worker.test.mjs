@@ -1134,6 +1134,20 @@ class FakeD1 {
     }
     if (
       normalized ===
+      "SELECT b.* FROM bookings b WHERE b.salon_id = ? AND b.deleted_at IS NULL AND b.party_id = ? ORDER BY b.booking_date DESC, b.start_time DESC LIMIT 500"
+    ) {
+      const [salonId, partyId] = params;
+      return this.rows("bookings")
+        .filter((row) => row.salon_id === salonId && !row.deleted_at && row.party_id === partyId)
+        .sort((a, b) => {
+          const byDate = String(b.booking_date || "").localeCompare(String(a.booking_date || ""));
+          if (byDate !== 0) return byDate;
+          return String(b.start_time || "").localeCompare(String(a.start_time || ""));
+        })
+        .slice(0, 500);
+    }
+    if (
+      normalized ===
       "SELECT b.* FROM bookings b WHERE b.salon_id = ? AND b.deleted_at IS NULL ORDER BY b.booking_date DESC, b.start_time DESC LIMIT 500"
     ) {
       const [salonId] = params;
