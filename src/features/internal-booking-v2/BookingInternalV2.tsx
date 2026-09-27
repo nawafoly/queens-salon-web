@@ -2365,7 +2365,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   ) : (
                     <>
                       <div className="bk2-review-list">
-                        {cart.map((service) => {
+                        {cart.map((service, index) => {
                           const key = bookingLineKey(service);
                           const schedule = scheduleByService[key];
                           const allocation = discountSnapshot?.allocations?.find(
