@@ -1074,8 +1074,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const discountResult = useMemo(() => {
     const rows = [...discountResultsByClient.values()];
-    const blocking = rows.find((row) => !row.ok && row.reason !== "discount_no_eligible_services");
+    const skippablePartyReasons = new Set([
+      "discount_no_eligible_services",
+      "discount_minimum_not_met",
+    ]);
     const snapshots = rows.filter((row) => row.ok && row.snapshot).map((row) => row.snapshot as DiscountSnapshot);
+    const blocking = rows.find((row) => !row.ok && !skippablePartyReasons.has(row.reason));
+    const noAppliedDiscount = discountMode !== "none" && !snapshots.length;
+    const firstSkipped = rows.find((row) => !row.ok);
     const subtotalHalalas = discountItems.reduce((sum, item) => sum + Math.max(0, Number(item.originalAmountHalalas || 0)), 0);
     const discountHalalas = rows.reduce((sum, row) => sum + (row.ok ? row.discountHalalas : 0), 0);
     const allocations = snapshots.flatMap((snapshot) => snapshot.allocations || []);
@@ -1089,14 +1095,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         } as DiscountSnapshot
       : null;
     return {
-      ok: !blocking,
-      reason: blocking?.reason || "",
+      ok: !blocking && !noAppliedDiscount,
+      reason: blocking?.reason || (noAppliedDiscount ? firstSkipped?.reason || "discount_no_eligible_services" : ""),
       subtotalHalalas,
       discountHalalas,
       totalHalalas: Math.max(0, subtotalHalalas - discountHalalas),
       snapshot,
     };
-  }, [discountResultsByClient, discountItems, bookingClients.length]);
+  }, [discountResultsByClient, discountItems, bookingClients.length, discountMode]);
   const discountSnapshot = discountResult.snapshot;
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
@@ -1340,29 +1346,49 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setCouponMessage(t("الكوبون غير صحيح أو منتهي أو غير نشط."));
         return;
       }
-      const preview = buildDiscountSnapshot(discountItems, {
-        source: "coupon",
+
+      const request = {
+        source: "coupon" as DiscountSnapshotSource,
         sourceId: String((offer as any)?.id || ""),
         code,
         title: String(offer.name || ""),
         offer,
-      });
-      if (!preview.ok || !preview.snapshot) {
-        setCouponMessage(discountReasonText(preview.reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
+      };
+      const previews = bookingClients.length
+        ? bookingClients.map((client) => {
+            const clientKey = partyClientKey(client);
+            const items = discountItems
+              .filter((item: any) => item.partyClientKey === clientKey)
+              .map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
+            return items.length ? buildDiscountSnapshot(items, request) : null;
+          }).filter(Boolean) as Array<ReturnType<typeof buildDiscountSnapshot>>
+        : [buildDiscountSnapshot(
+            discountItems.map(({ partyClientKey: _partyClientKey, ...item }: any) => item),
+            request
+          )];
+
+      const skippable = new Set(["discount_no_eligible_services", "discount_minimum_not_met"]);
+      const blocking = previews.find((preview) => !preview.ok && !skippable.has(preview.reason));
+      const applicable = previews.filter((preview) => preview.ok && preview.snapshot);
+      if (blocking || !applicable.length) {
+        const reason = blocking?.reason || previews.find((preview) => !preview.ok)?.reason || "";
+        setCouponMessage(discountReasonText(reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
         return;
       }
+
+      const expectedDiscount = applicable.reduce((sum, preview) => sum + preview.discountHalalas, 0);
       setCouponOffer(offer);
       setDiscountMode("coupon");
       setCouponMessage(language === "en"
-        ? `Coupon verified. Expected discount ${money(halalasToSar(preview.discountHalalas))}.`
-        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(preview.discountHalalas))}.`);
+        ? `Coupon verified. Expected discount ${money(halalasToSar(expectedDiscount))}.`
+        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(expectedDiscount))}.`);
     } catch (error) {
       console.error("[BookingInternalV2] coupon verify failed", error);
       setCouponMessage(t("تعذر التحقق من الكوبون الآن."));
     } finally {
       setCouponChecking(false);
     }
-  }, [couponInput, discountItems, language]);
+  }, [couponInput, discountItems, bookingClients, language]);
 
   const submitBooking = useCallback(async () => {
     if (submittingRef.current) return;
