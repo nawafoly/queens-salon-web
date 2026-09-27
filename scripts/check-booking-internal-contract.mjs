@@ -94,9 +94,19 @@ requireText(booking, 'type PaymentMethod = "cash" | "card" | "transfer" | "mixed
 requireText(booking, 'type PaymentType = "full" | "partial" | "none";', "Supported payment types changed.");
 requireMatch(booking, /for \(let attempt = 1; attempt <= 3; attempt \+= 1\)/, "Payment retry count changed from three attempts.");
 requireText(booking, "dataSource.recordPayment({", "Post-booking payment recording is missing.");
-requireText(booking, 'idempotencyKey: `booking-v2:${bookingId}:${method}:${amountHalalas}`', "Idempotent payment key contract changed.");
+requireText(booking, 'idempotencyKey: `booking-v2-party:${partyId || bookingId}:${bookingId}:${method}:${amountHalalas}`', "Idempotent party-aware payment key contract changed.");
 requireText(booking, "setPostSaveWarning(", "Post-save financial warning path is missing.");
 requireText(booking, "لا تعيدي إنشاء الحجز", "Critical do-not-recreate warning is missing after financial sync failure.");
+
+// Party / multi-client internal booking keeps each client canonical while sharing one admin checkout.
+requireText(booking, "const [companions, setCompanions]", "Party booking companion state is missing.");
+requireText(booking, "bookingLineClientKey(other) === currentClientKey", "Client overlap is no longer scoped to the same party member.");
+requireText(booking, "if (selected.staffId === staffKey)", "Staff overlap must remain global across party members.");
+requireText(booking, "for (const plan of memberPlans)", "Party checkout no longer creates a canonical booking per member.");
+requireText(booking, "partyLeadClientId: leadCanonicalClientId", "Party lead canonical identity is not attached to member bookings.");
+requireText(booking, "Promise.allSettled(", "Partial party creation compensation is missing.");
+requireText(booking, 'updateBookingStatus(bookingId, "cancelled")', "Partial party creation no longer cancels already-created member bookings.");
+requireText(booking, "splitAmountByWeights(effectivePaidAmount, memberWeights)", "Single checkout payment allocation across party members is missing.");
 
 // Historical-date confirmation and invoice/print handoff.
 requireText(booking, "showPastDateConfirmation", "Past-date confirmation state is missing.");
