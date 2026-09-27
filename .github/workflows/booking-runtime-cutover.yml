@@ -58,6 +58,22 @@ on:
       - "scripts/check-no-legacy-booking-runtime.mjs"
       - "scripts/restore-local-d1-from-production.mjs"
       - ".github/workflows/booking-runtime-cutover.yml"
+  pull_request:
+    paths:
+      - "src/features/internal-booking-v2/**"
+      - "src/helpers/dashboardBookingsLanguage.ts"
+      - "src/services/CoreBookingService.ts"
+      - "src/services/bookingDataSources/**"
+      - "src/services/coreBookingMappers.ts"
+      - "src/services/firestoreBookings.ts"
+      - "src/types/coreApi.ts"
+      - "workers/core/**"
+      - "workers/core-worker.test.mjs"
+      - "workers/internal-booking-party-*.test.mjs"
+      - "scripts/check-booking-internal-contract.mjs"
+      - "migrations/core/**"
+      - "package.json"
+      - ".github/workflows/booking-runtime-cutover.yml"
   workflow_dispatch:
 
 permissions:
