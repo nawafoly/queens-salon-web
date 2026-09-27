@@ -580,6 +580,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const chooseClientForBooking = useCallback((candidate: ClientCandidate, message: string) => {
     const candidateKey = partyClientKey(candidate);
     if (addingCompanion && selectedClient) {
+      if (companions.length >= 19) {
+        setClientMessage(t("وصلت مجموعة الحجز إلى الحد الأقصى المسموح."));
+        return;
+      }
       const primaryKey = partyClientKey(selectedClient);
       if (candidateKey === primaryKey) {
         setClientMessage(t("هذه هي العميلة الأساسية بالفعل."));
@@ -606,6 +610,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       setClientMessage(message);
     }
     setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+    setQuery("");
     markQuickClientUsage(candidate);
     setShowNewClient(false);
     setNewClientName("");
@@ -614,7 +619,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setExistingClientMatch(null);
     setExistingClientLookupError("");
     setNewClientError("");
-  }, [addingCompanion, selectedClient, language]);
+  }, [addingCompanion, selectedClient, companions.length, language]);
 
   useEffect(() => {
     const phone = phone10Digits(newClientPhone);
@@ -2037,7 +2042,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                     <div className="bk2-party-clients">
                       <div className="bk2-party-clients-head">
                         <div><strong>{t("مجموعة الحجز")}</strong><small>{bookingClients.length} {t("عميلات في نفس العملية")}</small></div>
-                        <button type="button" onClick={() => { setAddingCompanion(true); setQuery(""); setClientMessage(t("اختاري المرافقة من القائمة أو أضيفي عميلة جديدة.")); }}><FiPlus /> {t("إضافة مرافقة")}</button>
+                        <button
+                          type="button"
+                          disabled={!addingCompanion && bookingClients.length >= 20}
+                          onClick={() => {
+                            if (addingCompanion) {
+                              setAddingCompanion(false);
+                              setQuery("");
+                              setClientMessage("");
+                              return;
+                            }
+                            setAddingCompanion(true);
+                            setQuery("");
+                            setClientMessage(t("اختاري المرافقة من القائمة أو أضيفي عميلة جديدة."));
+                          }}
+                        >{addingCompanion ? "×" : <FiPlus />} {t(addingCompanion ? "إلغاء إضافة المرافقة" : bookingClients.length >= 20 ? "الحد الأقصى للمجموعة" : "إضافة مرافقة")}</button>
                       </div>
                       <div className="bk2-party-client-chips">
                         {bookingClients.map((client, index) => {
