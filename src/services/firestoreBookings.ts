@@ -110,6 +110,8 @@ export type BookingDoc = {
 
   clientName: string;
   clientPhone: string;
+  /** Client identity email, distinct from staff/actor email fields. */
+  clientEmail?: string | null;
 
   /**
    * ✅ legacy (نتركه للتوافق)

@@ -1254,6 +1254,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           channel: "internal",
           clientName: selectedClient.name,
           clientPhone: selectedClient.phone,
+          clientEmail: String((selectedClient as any).email || "").trim() || null,
           serviceName: serviceTitle(service),
           serviceId: key,
           serviceSnapshot: {

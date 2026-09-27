@@ -434,43 +434,128 @@ export async function getClient(db, salonId, id) {
   return row;
 }
 
+function normalizedClientEmail(value) {
+  return cleanText(value).toLowerCase();
+}
+
+async function resolveClientIdentity(db, salonId, {
+  phone = null,
+  email = null,
+  firebaseUid = null,
+  excludeClientId = null,
+} = {}) {
+  const matches = [];
+
+  const lookupIdentity = async (kind, sql, bindings) => {
+    const rows = await dbAll(db, sql, bindings);
+
+    if (rows.length > 1) {
+      throw new AppError(
+        409,
+        'core_client:identity_ambiguous',
+        `Client ${kind} resolves to multiple client records.`
+      );
+    }
+
+    if (rows.length === 1) {
+      matches.push({ kind, row: rows[0] });
+    }
+  };
+
+  if (firebaseUid) {
+    await lookupIdentity(
+      'firebase_uid',
+      `SELECT * FROM clients
+       WHERE salon_id = ?
+         AND firebase_uid = ?
+         ${excludeClientId ? 'AND id <> ?' : ''}
+       LIMIT 2`,
+      excludeClientId
+        ? [salonId, firebaseUid, excludeClientId]
+        : [salonId, firebaseUid]
+    );
+  }
+
+  if (phone) {
+    await lookupIdentity(
+      'phone',
+      `SELECT * FROM clients
+       WHERE salon_id = ?
+         AND phone_normalized = ?
+         ${excludeClientId ? 'AND id <> ?' : ''}
+       LIMIT 2`,
+      excludeClientId
+        ? [salonId, phone, excludeClientId]
+        : [salonId, phone]
+    );
+  }
+
+  if (email) {
+    await lookupIdentity(
+      'email',
+      `SELECT * FROM clients
+       WHERE salon_id = ?
+         AND LOWER(TRIM(COALESCE(email, ''))) = ?
+         ${excludeClientId ? 'AND id <> ?' : ''}
+       LIMIT 2`,
+      excludeClientId
+        ? [salonId, email, excludeClientId]
+        : [salonId, email]
+    );
+  }
+
+  const clientIds = [...new Set(matches.map(({ row }) => row.id))];
+
+  if (clientIds.length > 1) {
+    throw new AppError(
+      409,
+      'core_client:identity_conflict',
+      'Client identity fields resolve to different client records.'
+    );
+  }
+
+  return {
+    client: matches[0]?.row || null,
+    matches,
+  };
+}
+
 export async function createClient(db, salonId, data) {
   const now = nowIso();
-  const phone = normalizePhone(
-    data.phoneNormalized || data.phone || data.mobile
-  ) || null;
+
+  const phone =
+    normalizePhone(data.phoneNormalized || data.phone || data.mobile) || null;
+
+  const email =
+    normalizedClientEmail(data.email) || null;
+
   const firebaseUid =
     optionalText(data.firebaseUid || data.uid || data.authUid) || null;
 
-  let existing = null;
-  if (firebaseUid) {
-    existing = await dbFirst(
-      db,
-      "SELECT * FROM clients WHERE salon_id = ? AND firebase_uid = ? LIMIT 1",
-      [salonId, firebaseUid]
-    );
+  const identity = await resolveClientIdentity(db, salonId, {
+    phone,
+    email,
+    firebaseUid,
+  });
+
+  if (identity.client) {
+    return identity.client;
   }
-  if (!existing && phone) {
-    existing = await dbFirst(
-      db,
-      "SELECT * FROM clients WHERE salon_id = ? AND phone_normalized = ? LIMIT 1",
-      [salonId, phone]
-    );
-  }
-  if (existing) return existing;
 
   const rowId = requiredId(data.id || generatedId("client"));
+
   const row = {
     id: rowId,
     salon_id: salonId,
     name: requiredText(data.name, "name"),
     phone_normalized: phone,
-    email: optionalText(data.email) || null,
+    email,
     firebase_uid: firebaseUid,
     status: cleanText(data.status || "active"),
     notes: optionalText(data.notes || data.note) || null,
     vip: activeFlag(data.vip, 0),
-    legacy_client_doc_id: optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
+    legacy_client_doc_id:
+      optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
     canonical_client_id: rowId,
     legacy_ids_json: JSON.stringify(
       [data.legacyClientDocId || data.legacy_client_doc_id].filter(Boolean)
@@ -482,8 +567,9 @@ export async function createClient(db, salonId, data) {
   await dbRun(
     db,
     `INSERT INTO clients
-      (id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id,
-       canonical_client_id, legacy_ids_json, created_at, updated_at)
+      (id, salon_id, name, phone_normalized, email, firebase_uid, status,
+       notes, vip, legacy_client_doc_id, canonical_client_id, legacy_ids_json,
+       created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
@@ -502,15 +588,20 @@ export async function createClient(db, salonId, data) {
       row.updated_at,
     ]
   );
+
   return row;
 }
 
 export async function patchClient(db, salonId, id, data) {
   const current = await getClient(db, salonId, id);
+
   const hasPhoneUpdate =
     data.phone !== undefined || data.phoneNormalized !== undefined;
+
   const requestedPhone = data.phoneNormalized ?? data.phone;
-  const phone = hasPhoneUpdate ? normalizePhone(requestedPhone) : undefined;
+
+  const phone =
+    hasPhoneUpdate ? normalizePhone(requestedPhone) : undefined;
 
   if (hasPhoneUpdate && !phone) {
     throw new AppError(
@@ -520,17 +611,61 @@ export async function patchClient(db, salonId, id, data) {
     );
   }
 
+  const hasEmailUpdate = data.email !== undefined;
+  const email = hasEmailUpdate
+    ? normalizedClientEmail(data.email) || null
+    : undefined;
+
+  const hasFirebaseUidUpdate =
+    data.firebaseUid !== undefined ||
+    data.uid !== undefined ||
+    data.authUid !== undefined;
+
+  const firebaseUid = hasFirebaseUidUpdate
+    ? optionalText(data.firebaseUid || data.uid || data.authUid) || null
+    : undefined;
+
   if (phone) {
-    const duplicate = await dbFirst(
-      db,
-      "SELECT id FROM clients WHERE salon_id = ? AND phone_normalized = ? AND id <> ? LIMIT 1",
-      [salonId, phone, current.id]
-    );
-    if (duplicate) {
+    const conflict = await resolveClientIdentity(db, salonId, {
+      phone,
+      excludeClientId: current.id,
+    });
+
+    if (conflict.client) {
       throw new AppError(
         409,
         'core_client:phone_conflict',
         'Another client already uses this mobile number.'
+      );
+    }
+  }
+
+  if (email) {
+    const conflict = await resolveClientIdentity(db, salonId, {
+      email,
+      excludeClientId: current.id,
+    });
+
+    if (conflict.client) {
+      throw new AppError(
+        409,
+        'core_client:email_conflict',
+        'Another client already uses this email address.'
+      );
+    }
+  }
+
+  if (firebaseUid) {
+    const conflict = await resolveClientIdentity(db, salonId, {
+      firebaseUid,
+      excludeClientId: current.id,
+    });
+
+    if (conflict.client) {
+      throw new AppError(
+        409,
+        'core_client:firebase_uid_conflict',
+        'Another client already uses this Firebase identity.'
       );
     }
   }
@@ -540,44 +675,53 @@ export async function patchClient(db, salonId, id, data) {
       data.name === undefined
         ? undefined
         : requiredText(normalizedClientName(data.name), "name"),
+
     phone_normalized:
       hasPhoneUpdate ? phone : undefined,
+
     email:
-      data.email === undefined
-        ? undefined
-        : optionalText(data.email) || null,
+      hasEmailUpdate ? email : undefined,
+
     city:
       data.city === undefined
         ? undefined
         : optionalText(data.city) || null,
+
     birthdate:
       data.birthdate === undefined
         ? undefined
         : normalizedClientBirthdate(data.birthdate),
+
     avatar_url:
       data.avatarUrl === undefined && data.avatar_url === undefined
         ? undefined
         : optionalText(data.avatarUrl || data.avatar_url) || null,
+
     firebase_uid:
-      data.firebaseUid === undefined && data.uid === undefined
-        ? undefined
-        : optionalText(data.firebaseUid || data.uid) || null,
+      hasFirebaseUidUpdate ? firebaseUid : undefined,
+
     status:
       data.status === undefined
         ? undefined
         : cleanText(data.status || "active"),
+
     notes:
       data.notes === undefined && data.note === undefined
         ? undefined
         : optionalText(data.notes || data.note) || null,
+
     vip:
       data.vip === undefined
         ? undefined
         : activeFlag(data.vip),
+
     legacy_client_doc_id:
-      data.legacyClientDocId === undefined && data.legacy_client_doc_id === undefined
+      data.legacyClientDocId === undefined &&
+      data.legacy_client_doc_id === undefined
         ? undefined
-        : optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
+        : optionalText(
+            data.legacyClientDocId || data.legacy_client_doc_id
+          ) || null,
   });
 }
 

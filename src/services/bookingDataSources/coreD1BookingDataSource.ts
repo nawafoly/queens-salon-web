@@ -43,6 +43,10 @@ async function resolveClientId(booking: BookingDoc): Promise<string> {
       ""
   ).trim();
 
+  const email = String(booking.clientEmail || "")
+    .trim()
+    .toLowerCase();
+
   if (explicitClientId) {
     const exact = await CoreClientService.get(explicitClientId);
 
@@ -61,6 +65,7 @@ async function resolveClientId(booking: BookingDoc): Promise<string> {
   const created = await CoreClientService.create({
     name: booking.clientName || "عميلة",
     phone: normalizePhone(booking.clientPhone) || booking.clientPhone,
+    email: email || undefined,
     firebaseUid: firebaseUid || undefined,
   });
   return created.id;
