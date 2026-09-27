@@ -301,7 +301,7 @@ function buildInternalV2InvoiceRows(args: {
   );
   const rowFinalPrices = args.cart.map((service, index) => {
     const lineKey = bookingLineKey(service);
-    const allocation = allocationByItem.get(lineKey) || allocationByItem.get(String(service.id || "").trim());
+    const allocation = allocationByItem.get(lineKey);
     return allocation ? halalasToSar(allocation.finalAmountHalalas) : rowOriginalPrices[index] || 0;
   });
   const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowFinalPrices);
@@ -334,7 +334,7 @@ function buildInternalV2InvoiceRows(args: {
     const memberIndex = memberLines.findIndex((row) => bookingLineKey(row) === lineKey);
     const schedule = (args.scheduleByService[lineKey] || {}) as Partial<ScheduleSelection>;
     const rowId = String(created?.itemIds?.[memberIndex] || created?.parentId || `${lineKey}_${index}`).trim();
-    const allocation = allocationByItem.get(lineKey) || allocationByItem.get(serviceId);
+    const allocation = allocationByItem.get(lineKey);
     const originalTotal = rowOriginalPrices[index] || 0;
     const discountAmount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
     const total = rowFinalPrices[index] || 0;
@@ -1670,7 +1670,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             const itemOriginal = Math.max(0, bookingPriceForService(service));
             const priceDraft = priceAdjustments[lineKey];
             const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
-            const allocation = (allocationByItem.get(lineKey) || allocationByItem.get(canonicalServiceId)) as any;
+            const allocation = allocationByItem.get(lineKey) as any;
             const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
             const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
             const proportionalPaid = itemPaidParts[index] || 0;
