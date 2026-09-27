@@ -524,3 +524,31 @@
 
 .bk2-price-permission-note{margin:8px 0 0;font-size:12px;font-weight:750;color:#667085}
 .bk2-price-adjust-toggle:disabled,.bk2-discount-block .bk2-choice-grid button:disabled{opacity:.5;cursor:not-allowed}
+
+
+/* Active saved offers inside the administrative booking service step */
+.bk2-catalog-offers{display:grid;gap:10px;margin:0 0 14px;padding:12px;border:1px solid #eadfbd;background:#fffdf6;border-radius:16px}
+.bk2-catalog-offers-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bk2-catalog-offers-head>div{display:grid;gap:2px}
+.bk2-catalog-offers-head strong{font-size:14px;color:#111827}
+.bk2-catalog-offers-head small{font-size:11px;color:#667085}
+.bk2-catalog-offers-head>span{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#f8e9ad;color:#5c4700;font-weight:900}
+.bk2-catalog-offers-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bk2-catalog-offers-grid>button{display:grid;grid-template-columns:minmax(0,1fr) auto 34px;align-items:center;gap:10px;width:100%;border:1px solid #e4dcc5;background:#fff;border-radius:13px;padding:11px 12px;text-align:start;font:inherit;cursor:pointer}
+.bk2-catalog-offers-grid>button:hover,.bk2-catalog-offers-grid>button.is-selected{border-color:#e0b526;background:#fff9df}
+.bk2-catalog-offer-copy{display:grid;gap:3px;min-width:0}
+.bk2-catalog-offer-copy strong{color:#111827}
+.bk2-catalog-offer-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#667085;font-size:11px}
+.bk2-catalog-offer-value{display:grid;gap:1px;text-align:end;white-space:nowrap}
+.bk2-catalog-offer-value small{font-size:10px;color:#7b8497}
+.bk2-catalog-offer-value strong{color:#7b001f}
+.bk2-catalog-offer-add{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:#f5f6f8;color:#7b001f;font-weight:900}
+.bk2-catalog-offers-grid>button.is-selected .bk2-catalog-offer-add{background:#7b001f;color:#fff}
+.bk2-catalog-offer-selected{margin:0;padding:8px 10px;border-radius:10px;background:#eff8f3;color:#17643a;font-size:12px}
+.bk2-catalog-offer-selected strong{margin-inline-start:4px}
+.bk2-service-price strong{display:block}
+.bk2-service-price.is-promo{color:#7b001f}
+.bk2-service-price.is-promo small{color:#b27b00}
+.bk2-service-price.is-promo del{display:block;color:#98a2b3;font-size:10px;font-weight:700}
+.bk2-item-price-breakdown .is-promo{background:#fff8dc;border-color:#ead68a}
+@media (max-width:760px){.bk2-catalog-offers-grid{grid-template-columns:1fr}}
