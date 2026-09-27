@@ -32,7 +32,10 @@ test("one administrative checkout creates one canonical Core booking per party m
 test("partial party creation has compensation and payment posting is split across member bookings", () => {
   assert.match(tsx, /Promise\.allSettled/);
   assert.match(tsx, /updateBookingStatus\(bookingId, "cancelled"\)/);
-  assert.match(tsx, /splitAmountByWeights\(effectivePaidAmount, memberWeights\)/);
+  assert.match(tsx, /const cashByMember = splitAmountByWeights/);
+  assert.match(tsx, /const cardByMember = splitAmountByWeights/);
+  assert.match(tsx, /const transferByMember = splitAmountByWeights/);
+  assert.match(tsx, /const paidByMember = memberPlans\.map/);
   assert.match(tsx, /booking-v2-party:/);
 });
 
