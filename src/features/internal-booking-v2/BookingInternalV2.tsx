@@ -1330,16 +1330,60 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setSubmitError("");
     setPostSaveWarning("");
     setCreatedBookingIds([]);
+    setCreatedPartyBookings([]);
     setCreatedBookingReference("");
-    if (!selectedClient) { setSubmitError(t("اختاري العميلة أولًا.")); setStep(1); return; }
-    if (phone10Digits(selectedClient.phone).length !== 10) { setSubmitError(t("هذه العميلة بدون رقم جوال. اختاري الملف المرتبط بالجوال أو أضيفي الرقم قبل إنشاء الحجز حتى لا يتكرر السجل.")); setStep(1); return; }
-    if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
-    if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
-    if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
+
+    if (!selectedClient || !bookingClients.length) {
+      setSubmitError(t("اختاري العميلة أولًا."));
+      setStep(1);
+      return;
+    }
+
+    const invalidClient = bookingClients.find((client) => phone10Digits(client.phone).length !== 10);
+    if (invalidClient) {
+      setSubmitError(
+        language === "en"
+          ? `${invalidClient.name} does not have a valid mobile number. Update or replace the client before creating the party booking.`
+          : `العميلة ${invalidClient.name} بدون رقم جوال صحيح. حدّثي بياناتها أو استبدليها قبل إنشاء الحجز الجماعي.`
+      );
+      setStep(1);
+      return;
+    }
+
+    if (!settingsReady) {
+      setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى."));
+      return;
+    }
+    if (!cart.length) {
+      setSubmitError(t("أضيفي خدمة واحدة على الأقل."));
+      setStep(2);
+      return;
+    }
+
+    const clientWithoutService = bookingClients.find((client) => {
+      const key = partyClientKey(client);
+      return !cart.some((service) => bookingLineClientKey(service) === key);
+    });
+    if (clientWithoutService) {
+      setActivePartyClientKey(partyClientKey(clientWithoutService));
+      setSubmitError(
+        language === "en"
+          ? `Add at least one service for ${clientWithoutService.name}, or remove her from the booking group.`
+          : `أضيفي خدمة واحدة على الأقل لـ ${clientWithoutService.name} أو أزيليها من مجموعة الحجز.`
+      );
+      setStep(2);
+      return;
+    }
+
+    if (!allScheduled) {
+      setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."));
+      setStep(3);
+      return;
+    }
 
     for (const service of cart) {
-      const key = String(service.id || "").trim();
-      const catalogPrice = Math.max(0, servicePrice(service));
+      const key = bookingLineKey(service);
+      const effectiveBasePrice = Math.max(0, servicePrice(service));
       const draft = priceAdjustments[key];
       if (!draft) continue;
       const rawPrice = String(draft.price ?? "").trim();
@@ -1348,7 +1392,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setSubmitError(t("أدخلي سعر حجز صحيح للخدمة المعدلة."));
         return;
       }
-      const changed = Math.abs(parsedPrice - catalogPrice) > 0.005;
+      const changed = Math.abs(parsedPrice - effectiveBasePrice) > 0.005;
       if (changed && !canAdjustBookingPrice) {
         setSubmitError(t("ليس لديك صلاحية تعديل سعر الحجز."));
         return;
@@ -1376,26 +1420,30 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
     if (paymentType === "partial" && (effectivePaidAmount <= 0 || effectivePaidAmount >= finalTotal)) {
-      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز.")); return;
+      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز."));
+      return;
     }
     if (paymentMethod === "mixed" && Math.abs(mixedTotal - effectivePaidAmount) > 0.01) {
       setSubmitError(language === "en"
         ? `Mixed payment total must equal ${money(effectivePaidAmount)}.`
-        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`); return;
+        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`);
+      return;
     }
 
     submittingRef.current = true;
     setSubmitting(true);
+
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
       for (const service of cart) {
-        const serviceKey = String(service.id);
+        const serviceKey = bookingLineKey(service);
+        const canonicalServiceId = String(service.id || "").trim();
         const selection = scheduleByService[serviceKey];
         const staff = (eligibleStaffByService[serviceKey] || []).find((row) => staffId(row) === selection?.staffId);
         if (!selection?.time || !staff) continue;
 
         const freshRows = await listCoreBookableStaffForDate({
-          serviceId: serviceKey,
+          serviceId: canonicalServiceId,
           date: bookingDate,
           slotStepMin,
           bufferMin,
@@ -1433,158 +1481,275 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const authUser = getAuth().currentUser;
       const userId = String(authUser?.uid || "internal_staff");
       const bookingDataSource = resolveCoreBookingDataSource();
-      const selectedClientId = String(selectedClient.id || "").trim();
-      let canonicalClientId = "";
-      if (selectedClientId && !selectedClientId.startsWith("history:")) {
-        try {
-          canonicalClientId = String((await bookingDataSource.getClient(selectedClientId))?.id || "").trim();
-        } catch {
-          canonicalClientId = "";
-        }
-      }
-      if (!canonicalClientId) {
-        const ensuredClient = await bookingDataSource.createClient({
-          name: selectedClient.name,
-          phone: selectedClient.phone,
-        });
-        canonicalClientId = String(ensuredClient?.id || "").trim();
-      }
-      if (!canonicalClientId) {
-        throw new Error(t("تعذر ربط الحجز بحساب العميلة المحدد."));
-      }
-      const status = paymentType === "none" ? "pending" : "confirmed";
-      const total = Math.max(0, finalTotal);
-      const allocationByItem = new Map(
-        (discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
-      );
-      const finalDiscountSnapshot = discountSnapshot
-        ? { ...discountSnapshot, appliedBy: userId, appliedAt: new Date().toISOString() }
-        : null;
 
-      const itemRows = cart.map((service, index) => {
-        const key = String(service.id);
-        const schedule = scheduleByService[key];
-        const catalogPrice = Math.max(0, serviceCatalogPrice(service));
-        const effectiveBasePrice = Math.max(0, servicePrice(service));
-        const itemOriginal = Math.max(0, bookingPriceForService(service));
-        const priceDraft = priceAdjustments[key];
-        const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
-        const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(key);
-        const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
-        const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
-        const proportionalPaid = total > 0
-          ? Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100
-          : 0;
-        const selectedStaff = (eligibleStaffByService[key] || []).find((row) => staffId(row) === schedule.staffId);
+      const canonicalByClientKey = new Map<string, string>();
+      for (const client of bookingClients) {
+        const clientKey = partyClientKey(client);
+        const selectedClientId = String(client.id || "").trim();
+        let canonicalClientId = "";
+
+        if (selectedClientId && !selectedClientId.startsWith("history:")) {
+          try {
+            canonicalClientId = String((await bookingDataSource.getClient(selectedClientId))?.id || "").trim();
+          } catch {
+            canonicalClientId = "";
+          }
+        }
+
+        if (!canonicalClientId) {
+          const ensuredClient = await bookingDataSource.createClient({
+            name: client.name,
+            phone: client.phone,
+            email: String((client as any).email || "").trim() || undefined,
+          });
+          canonicalClientId = String(ensuredClient?.id || "").trim();
+        }
+
+        if (!canonicalClientId) {
+          throw new Error(
+            language === "en"
+              ? `Could not resolve the canonical client record for ${client.name}.`
+              : `تعذر ربط الحجز بحساب العميلة ${client.name}.`
+          );
+        }
+        canonicalByClientKey.set(clientKey, canonicalClientId);
+      }
+
+      const partyEnabled = bookingClients.length > 1;
+      const partyId = partyEnabled
+        ? `party_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+        : "";
+      const leadClientKey = partyClientKey(bookingClients[0]);
+      const leadCanonicalClientId = canonicalByClientKey.get(leadClientKey) || "";
+      const status = paymentType === "none" ? "pending" : "confirmed";
+
+      const memberPlans = bookingClients.map((client, memberOrder) => {
+        const clientKey = partyClientKey(client);
+        const memberCart = cart.filter((service) => bookingLineClientKey(service) === clientKey);
+        const memberDiscountResult = discountResultsByClient.get(clientKey);
+        const memberSubtotal = memberCart.reduce((sum, service) => sum + bookingPriceForService(service), 0);
+        const memberDiscount = memberDiscountResult?.ok ? halalasToSar(memberDiscountResult.discountHalalas) : 0;
+        const memberTotal = memberDiscountResult?.ok
+          ? halalasToSar(memberDiscountResult.totalHalalas)
+          : memberSubtotal;
         return {
-          clientId: canonicalClientId,
-          userId: null,
-          createdBy: "staff",
-          createdByUid: userId,
-          channel: "internal",
-          clientName: selectedClient.name,
-          clientPhone: selectedClient.phone,
-          clientEmail: String((selectedClient as any).email || "").trim() || null,
-          serviceName: serviceTitle(service),
-          serviceId: key,
-          serviceSnapshot: {
-            serviceNameAtBooking: serviceTitle(service),
-            priceAtBooking: itemTotal,
-            priceBeforeDiscountAtBooking: itemOriginal,
-            durationAtBooking: serviceDuration(service) || 30,
-            sectionIdAtBooking: String(service?.sectionId || selectedSectionId || "") || undefined,
-            categoryIdAtBooking: String(service?.categoryId || service?.category || "") || undefined,
-          },
-          employeeId: schedule.staffId,
-          employeeUid: String(selectedStaff?.uid || selectedStaff?.employeeUid || "") || null,
-          employeeName: schedule.staffName,
-          date: bookingDate,
-          time: schedule.time,
-          catalogPrice,
-          bookingPrice: itemOriginal,
-          priceAdjustmentReason: priceAdjusted ? priceDraft?.reason || undefined : undefined,
-          priceAdjustmentNote: priceAdjusted ? priceDraft?.note?.trim() || undefined : undefined,
-          originalAmount: itemOriginal,
-          discountAmount: itemDiscount,
-          discountSnapshot: finalDiscountSnapshot || undefined,
-          total: itemTotal,
-          finalPrice: itemTotal,
-          status,
-          paymentMethod: paymentType === "none" ? undefined : paymentMethod,
-          paymentType,
-          paidAmount: proportionalPaid,
-          remainingAmount: Math.max(0, itemTotal - proportionalPaid),
-          ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
-          note: bookingNote.trim() || undefined,
-          slotStepMinAtBooking: slotStepMin,
-          bufferMinAtBooking: bufferMin,
-          durationMin: serviceDuration(service) || 30,
-          cartItemId: `item_${index}`,
-        } as any;
+          client,
+          clientKey,
+          canonicalClientId: canonicalByClientKey.get(clientKey) || "",
+          memberOrder,
+          memberCart,
+          memberSubtotal,
+          memberDiscount,
+          memberTotal,
+          discountSnapshot: memberDiscountResult?.ok && memberDiscountResult.snapshot
+            ? {
+                ...memberDiscountResult.snapshot,
+                appliedBy: userId,
+                appliedAt: new Date().toISOString(),
+                ...(partyEnabled ? { partyId, partyMemberOrder: memberOrder, partySize: bookingClients.length } : {}),
+              }
+            : null,
+        };
       });
 
-      const firstItem = itemRows[0];
-      const parent = {
-        ...firstItem,
-        serviceName: cart.length === 1 ? firstItem.serviceName : `${cart.length} خدمات`,
-        serviceId: cart.length === 1 ? firstItem.serviceId : undefined,
-        employeeId: undefined,
-        employeeUid: null,
-        employeeName: "عدة موظفات",
-        originalAmount: bookingSubtotal,
-        discountAmount,
-        discountSnapshot: finalDiscountSnapshot || undefined,
-        total,
-        finalPrice: total,
-        paymentMethod: paymentType === "none" ? undefined : paymentMethod,
-        paymentType,
-        paidAmount: effectivePaidAmount,
-        remainingAmount,
-        paymentBreakdown: paymentMethod === "mixed"
-          ? { cash: Number(cashAmount || 0), card: Number(cardAmount || 0), transfer: Number(transferAmount || 0) }
-          : {
-              cash: paymentMethod === "cash" ? effectivePaidAmount : 0,
-              card: paymentMethod === "card" ? effectivePaidAmount : 0,
-              transfer: paymentMethod === "transfer" ? effectivePaidAmount : 0,
-            },
-      } as any;
-
-      const created = await resolveCoreBookingDataSource().createBookingGroup({ parent, items: itemRows });
-      const bookingId = String(created.parentId || "");
-      const savedIds = [bookingId, ...(created.itemIds || [])].filter(Boolean);
-      setCreatedBookingReference(
-        formatBookingReference({
-          id: bookingId,
-          publicId: String(created.parentPublicId || ""),
-          date: bookingDate,
-        })
+      const memberWeights = memberPlans.map((plan) => plan.memberTotal);
+      const paidByMember = splitAmountByWeights(effectivePaidAmount, memberWeights);
+      const cashByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(cashAmount || 0) : paymentMethod === "cash" ? effectivePaidAmount : 0,
+        memberWeights
+      );
+      const cardByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(cardAmount || 0) : paymentMethod === "card" ? effectivePaidAmount : 0,
+        memberWeights
+      );
+      const transferByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(transferAmount || 0) : paymentMethod === "transfer" ? effectivePaidAmount : 0,
+        memberWeights
       );
 
-      setCreatedBookingIds(savedIds);
-      markQuickClientUsage(selectedClient);
+      const createdParty: CreatedPartyBooking[] = [];
+      const createdParentIds: string[] = [];
+      let compensationFailed = false;
 
-      if (effectivePaidAmount > 0 && bookingId) {
-        const dataSource = resolveCoreBookingDataSource();
-        const payments = paymentMethod === "mixed"
-          ? [
-              ["cash", Number(cashAmount || 0)],
-              ["card", Number(cardAmount || 0)],
-              ["transfer", Number(transferAmount || 0)],
-            ] as const
-          : [[paymentMethod, effectivePaidAmount]] as const;
+      try {
+        for (const plan of memberPlans) {
+          const memberPaid = paidByMember[plan.memberOrder] || 0;
+          const memberRemaining = Math.max(0, plan.memberTotal - memberPaid);
+          const allocationByItem = new Map(
+            (plan.discountSnapshot?.allocations || []).map((row: any) => [
+              String(row.bookingItemId || row.serviceId || "").trim(),
+              row,
+            ])
+          );
 
-        const recordPaymentWithRetry = async (method: string, amount: number) => {
+          const itemFinalWeights = plan.memberCart.map((service) => {
+            const lineKey = bookingLineKey(service);
+            const allocation = allocationByItem.get(lineKey) as any;
+            return allocation
+              ? halalasToSar(allocation.finalAmountHalalas)
+              : bookingPriceForService(service);
+          });
+          const itemPaidParts = splitAmountByWeights(memberPaid, itemFinalWeights);
+
+          const itemRows = plan.memberCart.map((service, index) => {
+            const lineKey = bookingLineKey(service);
+            const canonicalServiceId = String(service.id || "").trim();
+            const schedule = scheduleByService[lineKey];
+            const catalogPrice = Math.max(0, serviceCatalogPrice(service));
+            const effectiveBasePrice = Math.max(0, servicePrice(service));
+            const itemOriginal = Math.max(0, bookingPriceForService(service));
+            const priceDraft = priceAdjustments[lineKey];
+            const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
+            const allocation = (allocationByItem.get(lineKey) || allocationByItem.get(canonicalServiceId)) as any;
+            const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
+            const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
+            const proportionalPaid = itemPaidParts[index] || 0;
+            const selectedStaff = (eligibleStaffByService[lineKey] || []).find((row) => staffId(row) === schedule.staffId);
+
+            return {
+              clientId: plan.canonicalClientId,
+              userId: null,
+              createdBy: "staff",
+              createdByUid: userId,
+              channel: "internal",
+              clientName: plan.client.name,
+              clientPhone: plan.client.phone,
+              clientEmail: String((plan.client as any).email || "").trim() || null,
+              serviceName: serviceTitle(service),
+              serviceId: canonicalServiceId,
+              serviceSnapshot: {
+                serviceNameAtBooking: serviceTitle(service),
+                priceAtBooking: itemTotal,
+                priceBeforeDiscountAtBooking: itemOriginal,
+                durationAtBooking: serviceDuration(service) || 30,
+                sectionIdAtBooking: String(service?.sectionId || selectedSectionId || "") || undefined,
+                categoryIdAtBooking: String(service?.categoryId || service?.category || "") || undefined,
+              },
+              employeeId: schedule.staffId,
+              employeeUid: String(selectedStaff?.uid || selectedStaff?.employeeUid || "") || null,
+              employeeName: schedule.staffName,
+              date: bookingDate,
+              time: schedule.time,
+              catalogPrice,
+              bookingPrice: itemOriginal,
+              priceAdjustmentReason: priceAdjusted ? priceDraft?.reason || undefined : undefined,
+              priceAdjustmentNote: priceAdjusted ? priceDraft?.note?.trim() || undefined : undefined,
+              originalAmount: itemOriginal,
+              discountAmount: itemDiscount,
+              discountSnapshot: plan.discountSnapshot || undefined,
+              total: itemTotal,
+              finalPrice: itemTotal,
+              status,
+              paymentMethod: paymentType === "none" ? undefined : paymentMethod,
+              paymentType,
+              paidAmount: proportionalPaid,
+              remainingAmount: Math.max(0, itemTotal - proportionalPaid),
+              ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
+              note: bookingNote.trim() || undefined,
+              slotStepMinAtBooking: slotStepMin,
+              bufferMinAtBooking: bufferMin,
+              durationMin: serviceDuration(service) || 30,
+              cartItemId: lineKey,
+              ...(partyEnabled ? {
+                partyId,
+                partyLeadClientId: leadCanonicalClientId,
+                partyMemberOrder: plan.memberOrder,
+                partySize: bookingClients.length,
+              } : {}),
+            } as any;
+          });
+
+          const firstItem = itemRows[0];
+          const parent = {
+            ...firstItem,
+            serviceName: itemRows.length === 1 ? firstItem.serviceName : `${itemRows.length} خدمات`,
+            serviceId: itemRows.length === 1 ? firstItem.serviceId : undefined,
+            employeeId: undefined,
+            employeeUid: null,
+            employeeName: "عدة موظفات",
+            originalAmount: plan.memberSubtotal,
+            discountAmount: plan.memberDiscount,
+            discountSnapshot: plan.discountSnapshot || undefined,
+            total: plan.memberTotal,
+            finalPrice: plan.memberTotal,
+            paymentMethod: paymentType === "none" ? undefined : paymentMethod,
+            paymentType,
+            paidAmount: memberPaid,
+            remainingAmount: memberRemaining,
+            paymentBreakdown: {
+              cash: cashByMember[plan.memberOrder] || 0,
+              card: cardByMember[plan.memberOrder] || 0,
+              transfer: transferByMember[plan.memberOrder] || 0,
+            },
+            ...(partyEnabled ? {
+              partyId,
+              partyLeadClientId: leadCanonicalClientId,
+              partyMemberOrder: plan.memberOrder,
+              partySize: bookingClients.length,
+            } : {}),
+          } as any;
+
+          const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
+          const bookingId = String(created.parentId || "");
+          if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
+          createdParentIds.push(bookingId);
+
+          const reference = formatBookingReference({
+            id: bookingId,
+            publicId: String(created.parentPublicId || ""),
+            date: bookingDate,
+          });
+
+          createdParty.push({
+            clientKey: plan.clientKey,
+            clientId: plan.canonicalClientId,
+            clientName: plan.client.name,
+            clientPhone: plan.client.phone,
+            parentId: bookingId,
+            publicId: String(created.parentPublicId || bookingId),
+            itemIds: (created.itemIds || []).map(String),
+            reference,
+          });
+        }
+      } catch (creationError) {
+        const compensation = await Promise.allSettled(
+          createdParentIds.map((bookingId) => bookingDataSource.updateBookingStatus(bookingId, "cancelled"))
+        );
+        compensationFailed = compensation.some((result) => result.status === "rejected");
+        if (compensationFailed) {
+          setPostSaveWarning(
+            language === "en"
+              ? "Party creation stopped after a partial failure, and one or more already-created bookings could not be automatically cancelled. Do not repeat the whole booking; review today's bookings first."
+              : "توقفت عملية الحجز الجماعي بعد فشل جزئي، وتعذر إلغاء حجز أو أكثر تم إنشاؤه تلقائيًا. لا تعيدي إنشاء المجموعة كاملة؛ راجعي حجوزات اليوم أولًا."
+          );
+        }
+        throw creationError;
+      }
+
+      setCreatedPartyBookings(createdParty);
+      setCreatedBookingIds(createdParty.map((row) => row.parentId));
+      const references = createdParty.map((row) => row.reference).filter(Boolean);
+      setCreatedBookingReference(
+        references.length <= 1
+          ? references[0] || ""
+          : `${references[0]} +${references.length - 1}`
+      );
+      bookingClients.forEach(markQuickClientUsage);
+
+      if (effectivePaidAmount > 0 && createdParty.length) {
+        const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
           const amountHalalas = Math.round(amount * 100);
+          if (amountHalalas <= 0) return;
           let lastError: unknown = null;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
             try {
-              await dataSource.recordPayment({
+              await bookingDataSource.recordPayment({
                 bookingId,
                 method,
                 amountHalalas,
                 status: "paid",
                 paidAt: new Date().toISOString(),
-                idempotencyKey: `booking-v2:${bookingId}:${method}:${amountHalalas}`,
+                idempotencyKey: `booking-v2-party:${partyId || bookingId}:${bookingId}:${method}:${amountHalalas}`,
               });
               return;
             } catch (error) {
@@ -1596,23 +1761,35 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         };
 
         try {
-          for (const [method, amount] of payments) {
-            if (amount <= 0) continue;
-            await recordPaymentWithRetry(method, amount);
-          }
+          for (let index = 0; index < createdParty.length; index += 1) {
+            const bookingId = createdParty[index].parentId;
+            const plan = memberPlans[index];
+            const memberPaid = paidByMember[index] || 0;
+            const memberRemaining = Math.max(0, plan.memberTotal - memberPaid);
+            const memberPayments = [
+              ["cash", cashByMember[index] || 0],
+              ["card", cardByMember[index] || 0],
+              ["transfer", transferByMember[index] || 0],
+            ] as const;
 
-          await resolveCoreBookingDataSource().updateBooking(bookingId, {
-            paymentType,
-            paidAmount: effectivePaidAmount,
-            remainingAmount,
-            paymentMethod,
-            status,
-          } as any);
-        } catch (financialError: any) {
-          console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
-          setPostSaveWarning(language === "en"
-            ? `Booking ${bookingId} was saved, but payment synchronization could not be completed after automatic retry. Do not recreate the booking; review it on the bookings page and retry collection.`
-            : `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
+            for (const [method, amount] of memberPayments) {
+              await recordPaymentWithRetry(bookingId, method, amount);
+            }
+
+            await bookingDataSource.updateBooking(bookingId, {
+              paymentType,
+              paidAmount: memberPaid,
+              remainingAmount: memberRemaining,
+              paymentMethod,
+              status,
+            } as any);
+          }
+        } catch (financialError) {
+          console.error("[BookingInternalV2] party financial posting failed after booking creation", financialError);
+          setPostSaveWarning(
+            language === "en"
+              ? "The party bookings were saved, but payment synchronization was not completed for every member after automatic retry. Do not recreate the bookings; review them in Bookings and retry collection only where needed."
+              : "تم حفظ حجوزات المجموعة، لكن لم تكتمل مزامنة الدفعات لكل العميلات بعد المحاولة التلقائية. لا تعيدي إنشاء الحجوزات؛ راجعي صفحة الحجوزات وأعيدي التحصيل فقط للحجز الذي يحتاج ذلك."
           );
         }
       }
@@ -1626,6 +1803,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         code.includes("staff_slot_conflict") ||
         message.toUpperCase().includes("SLOT_TAKEN") ||
         message.toLowerCase().includes("الموعد محجوز");
+
       if (isSlotConflict) {
         setScheduleByService((current) => Object.fromEntries(
           Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
@@ -1651,7 +1829,39 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, bookingSubtotal, priceAdjustments, bookingPriceForService, canAdjustBookingPrice, canApplyManualDiscount, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, eligibleStaffByService, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+  }, [
+    selectedClient,
+    bookingClients,
+    settingsReady,
+    cart,
+    allScheduled,
+    discountMode,
+    discountResult.ok,
+    discountMessage,
+    couponOffer,
+    discountResultsByClient,
+    priceAdjustments,
+    bookingPriceForService,
+    canAdjustBookingPrice,
+    canApplyManualDiscount,
+    paymentType,
+    paymentMethod,
+    effectivePaidAmount,
+    finalTotal,
+    mixedTotal,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    scheduleByService,
+    eligibleStaffByService,
+    bookingDate,
+    bookingNote,
+    slotStepMin,
+    bufferMin,
+    selectedSectionId,
+    loadTimesForService,
+    language,
+  ]);
 
   const requestSubmitBooking = useCallback(() => {
     if (submittingRef.current) return;
