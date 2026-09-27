@@ -48,6 +48,9 @@ on:
       - "migrations/core/0081_cashback_expiry_lot_state.sql"
       - "migrations/core/0082_client_connect_security_rate_limit.sql"
       - "migrations/core/0083_internal_booking_price_adjustments.sql"
+      - "migrations/core/0088_internal_booking_parties.sql"
+      - "workers/internal-booking-party-core.test.mjs"
+      - "workers/internal-booking-party-ui.test.mjs"
       - "workers/core-worker.test.mjs"
       - "workers/hr-core-worker.test.mjs"
       - "workers/frontend-core-migration.test.mjs"
@@ -90,6 +93,9 @@ jobs:
 
       - name: Internal booking behavior contract
         run: npm run check:booking-internal-contract
+
+      - name: Internal party booking tests
+        run: npm run test:booking:party
 
       - name: Client platform foundation tests
         run: npm run test:client-platform
