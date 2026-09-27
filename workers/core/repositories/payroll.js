@@ -166,7 +166,7 @@ function payrollRoundMoney(value) {
 function payrollAbsenceUnit(type) {
   const normalized = cleanText(type).toLowerCase();
   if (normalized === 'half_day') return 0.5;
-  if (normalized === 'full_day') return 1;
+  if (normalized === 'full_day' || normalized === 'automatic_check_in_lock') return 1;
   return 0;
 }
 
@@ -530,7 +530,17 @@ async function buildCanonicalAttendanceSummary(
           .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
         const cover = Math.min(scheduledMinutes, permission.paid + partialPaidMinutes);
         totalPermissionCoveredMinutes += cover;
-        totalMissingMinutes += Math.max(0, scheduledMinutes - cover);
+        const uncoveredMinutes = Math.max(0, scheduledMinutes - cover);
+        totalMissingMinutes += uncoveredMinutes;
+
+        // A completed scheduled day with no punches is a payroll absence.
+        // Keep covered portions proportional and prevent the same hours
+        // from also becoming an attendance-hours deduction.
+        if (absenceUnit <= 0 && uncoveredMinutes > 0) {
+          const automaticAbsenceUnit = Math.min(1, uncoveredMinutes / scheduledMinutes);
+          approvedAbsenceDays += automaticAbsenceUnit;
+          absenceDeductionOverlapHours += scheduledHours * automaticAbsenceUnit;
+        }
         continue;
       }
       if (!firstIn || !lastOut) {
@@ -1699,7 +1709,27 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
       Number(summary.totalMissingHours || 0) - Number(summary.absenceDeductionOverlapHours || 0)
     )
   );
-  const missingHoursDeductionHalalas = payrollRoundMoney(missingHours * hourlyRateHalalas);
+  const rawMissingHoursDeductionHalalas =
+    payrollRoundMoney(missingHours * hourlyRateHalalas);
+
+  // Attendance already deferred through the canonical obligation path belongs
+  // to the target payroll, so it must not also become a source-period carryover.
+  const attendanceDeductionDeferral =
+    await getCanonicalAttendanceDeductionDeferral(
+      db,
+      salonId,
+      {
+        employeeId: sourceEntry.employee_id,
+        originalPayrollMonth: sourceEntry.payroll_month,
+        canonicalAmountHalalas:
+          rawMissingHoursDeductionHalalas,
+      }
+    );
+
+  const missingHoursDeductionHalalas =
+    attendanceDeductionDeferral
+      ? 0
+      : rawMissingHoursDeductionHalalas;
   // Approved/paid payroll is an immutable overtime financial snapshot.
   // Raw attendance extra time is never allowed to create or recalculate money
   // during carryover reconciliation. Any overtime correction requires an

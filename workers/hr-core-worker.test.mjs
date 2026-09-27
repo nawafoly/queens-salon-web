@@ -7343,6 +7343,91 @@ test('Stage 11 attendance deduction deferral preserves origin and collects once 
     '2026-09'
   );
 
+  // Regression: an attendance deduction already deferred from the source
+  // payroll must not also become a payroll carryover for the same money.
+  await db.prepare(`
+    UPDATE payroll_entries
+       SET status = 'approved',
+           approved_at = '2026-08-31T12:00:00.000Z',
+           net_salary_halalas =
+             gross_salary_halalas - absence_deduction_halalas
+     WHERE salon_id = 'main'
+       AND employee_id = 'emp-att-deferral'
+       AND payroll_month = '2026-08'
+  `).run();
+
+  const augustDeferredEntry = await db.prepare(`
+    SELECT *
+      FROM payroll_entries
+     WHERE salon_id = 'main'
+       AND employee_id = 'emp-att-deferral'
+       AND payroll_month = '2026-08'
+     LIMIT 1
+  `).first();
+
+  await db.prepare(`
+    INSERT INTO payroll_approval_snapshots (
+      id, salon_id, payroll_entry_id, employee_id, payroll_month,
+      approval_version, approved_at, approved_by_uid,
+      approved_net_halalas, base_salary_halalas,
+      total_additions_halalas, total_deductions_halalas,
+      attendance_summary_json, entry_snapshot_json, created_at
+    ) VALUES (
+      ?, 'main', ?, 'emp-att-deferral', '2026-08',
+      1, '2026-08-31T12:00:00.000Z', 'uid-admin',
+      ?, ?, 0, 0, ?, '{}', '2026-08-31T12:00:00.000Z'
+    )
+  `).bind(
+    'snapshot-attendance-deferral-no-double-carryover',
+    augustDeferredEntry.id,
+    Number(augustDeferredEntry.net_salary_halalas || 0),
+    Number(augustDeferredEntry.base_salary_halalas || 0),
+    augustDeferredEntry.attendance_summary_json || '{}'
+  ).run();
+
+  const deferredReconciliation =
+    await reconcilePayrollCarryoversBatch(
+      db,
+      'main',
+      {
+        items: [{
+          sourcePayrollEntryId: augustDeferredEntry.id,
+          targetPayrollMonth: '2026-09',
+          sourceDate: '2026-08-31',
+          reason:
+            'Regression: deferred attendance must not become a second carryover',
+        }],
+      },
+      actor
+    );
+
+  assert.equal(deferredReconciliation.results.length, 1);
+
+  assert.equal(
+    deferredReconciliation.results[0].residualSignedHalalas,
+    0
+  );
+
+  // Restore the fixture state expected by the remainder of this Stage 11 test.
+  await db.prepare(`
+    UPDATE payroll_entries
+       SET status = 'draft',
+           approved_at = NULL
+     WHERE id = ?
+  `).bind(augustDeferredEntry.id).run();
+
+  const duplicateAttendanceCarryovers =
+    await listPayrollCarryoverAdjustments(
+      db,
+      'main',
+      {
+        employeeId: 'emp-att-deferral',
+        sourcePayrollMonth: '2026-08',
+        status: 'active',
+      }
+    );
+
+  assert.equal(duplicateAttendanceCarryovers.length, 0);
   const septemberPayroll = await upsertPayrollEntry(
     db,
     'main',
