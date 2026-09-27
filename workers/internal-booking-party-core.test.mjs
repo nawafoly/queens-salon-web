@@ -13,12 +13,17 @@ test("party metadata groups canonical bookings without moving client ownership t
   assert.match(migration, /party_lead_client_id/);
   assert.match(migration, /party_member_order/);
   assert.match(migration, /party_size/);
+  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_core_bookings_party_member_order_unique/);
+  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_core_bookings_party_client_unique/);
   assert.doesNotMatch(migration, /ALTER TABLE booking_items ADD COLUMN client_id/);
 });
 
 test("Core booking creation persists party metadata and validates the lead client", () => {
   assert.match(repo, /core_booking:party_lead_client_required/);
   assert.match(repo, /party_member_order_invalid/);
+  assert.match(repo, /core_booking:party_member_order_conflict/);
+  assert.match(repo, /core_booking:party_client_duplicate/);
+  assert.match(repo, /core_booking:party_lead_mismatch/);
   assert.match(repo, /party_id, party_lead_client_id, party_member_order, party_size/);
   assert.match(repo, /query\.partyId \|\| query\.party_id/);
 });
