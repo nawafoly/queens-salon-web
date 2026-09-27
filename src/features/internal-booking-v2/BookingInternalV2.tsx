@@ -174,6 +174,36 @@ function serviceTitle(service: any) {
   return catalogLabel(service, "خدمة");
 }
 
+function partyClientKey(client: ClientCandidate | null | undefined) {
+  if (!client) return "";
+  return candidateIdentity(client) || `id:${String(client.id || "").trim()}`;
+}
+
+function bookingLineKey(service: any) {
+  return String(service?.__bookingLineId || service?.id || "").trim();
+}
+
+function bookingLineClientKey(service: any) {
+  return String(service?.__partyClientKey || "").trim();
+}
+
+function bookingLineClientName(service: any) {
+  return String(service?.__partyClientName || "").trim();
+}
+
+function attachServiceToClient(service: CatalogService, client: ClientCandidate): CatalogService {
+  const clientKey = partyClientKey(client);
+  const serviceId = String(service?.id || "").trim();
+  return {
+    ...service,
+    __bookingLineId: `${clientKey}::${serviceId}`,
+    __partyClientKey: clientKey,
+    __partyClientId: String(client.id || "").trim(),
+    __partyClientName: client.name,
+    __partyClientPhone: client.phone,
+  };
+}
+
 function serviceDuration(service: any) {
   const raw =
     service?.["المدة"] ??
@@ -428,6 +458,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
+  const [companions, setCompanions] = useState<ClientCandidate[]>([]);
+  const [addingCompanion, setAddingCompanion] = useState(false);
+  const [activePartyClientKey, setActivePartyClientKey] = useState("");
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
   const [clientSearching, setClientSearching] = useState(false);
   const [clientMessage, setClientMessage] = useState("");
@@ -500,6 +533,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     sessions: Math.max(0, Number(raw?.sessions || raw?.remainingSessions || 0)) || undefined,
   }), []);
 
+  const bookingClients = useMemo(
+    () => selectedClient ? [selectedClient, ...companions] : [],
+    [selectedClient, companions]
+  );
+  const activeBookingClient = useMemo(() => {
+    if (!bookingClients.length) return null;
+    return bookingClients.find((client) => partyClientKey(client) === activePartyClientKey) || bookingClients[0];
+  }, [bookingClients, activePartyClientKey]);
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setActivePartyClientKey("");
+      return;
+    }
+    const keys = new Set(bookingClients.map(partyClientKey));
+    if (!activePartyClientKey || !keys.has(activePartyClientKey)) {
+      setActivePartyClientKey(partyClientKey(selectedClient));
+    }
+  }, [selectedClient, bookingClients, activePartyClientKey]);
+
   const findExistingClientByPhone = useCallback(async (rawPhone: string) => {
     const phone = phone10Digits(rawPhone);
     if (phone.length !== 10) return null;
@@ -511,7 +564,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [candidateFromCoreRow]);
 
   const chooseClientForBooking = useCallback((candidate: ClientCandidate, message: string) => {
-    setSelectedClient(candidate);
+    const candidateKey = partyClientKey(candidate);
+    if (addingCompanion && selectedClient) {
+      const primaryKey = partyClientKey(selectedClient);
+      if (candidateKey === primaryKey) {
+        setClientMessage(t("هذه هي العميلة الأساسية بالفعل."));
+      } else {
+        setCompanions((current) => current.some((row) => partyClientKey(row) === candidateKey)
+          ? current
+          : [...current, candidate]);
+        setActivePartyClientKey(candidateKey);
+        setClientMessage(t("تمت إضافة المرافقة إلى نفس مجموعة الحجز."));
+      }
+      setAddingCompanion(false);
+    } else {
+      const currentPrimaryKey = partyClientKey(selectedClient);
+      setSelectedClient(candidate);
+      setCompanions([]);
+      setActivePartyClientKey(candidateKey);
+      setAddingCompanion(false);
+      if (currentPrimaryKey && currentPrimaryKey !== candidateKey) {
+        setCart([]);
+        setPriceAdjustments({});
+        setScheduleByService({});
+        setAvailableTimes({});
+      }
+      setClientMessage(message);
+    }
     setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
     markQuickClientUsage(candidate);
     setShowNewClient(false);
@@ -521,8 +600,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setExistingClientMatch(null);
     setExistingClientLookupError("");
     setNewClientError("");
-    setClientMessage(message);
-  }, []);
+  }, [addingCompanion, selectedClient, language]);
 
   useEffect(() => {
     const phone = phone10Digits(newClientPhone);
@@ -801,7 +879,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   );
   const bookingPriceForService = useCallback(
     (service: CatalogService) => {
-      const key = String(service.id || "").trim();
+      const key = bookingLineKey(service);
       const catalogPrice = Math.max(0, servicePrice(service));
       const raw = priceAdjustments[key]?.price;
       if (raw == null || String(raw).trim() === "") return catalogPrice;
@@ -855,18 +933,27 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       .filter((service): service is CatalogService => Boolean(service));
     if (!linkedServices.length) return;
 
+    if (!activeBookingClient) return;
+    const clientKey = partyClientKey(activeBookingClient);
     setCart((current) => {
-      const existing = new Set(current.map((service) => String(service.id || "").trim()));
-      const missing = linkedServices.filter((service) => !existing.has(String(service.id || "").trim()));
+      const existing = new Set(
+        current
+          .filter((service) => bookingLineClientKey(service) === clientKey)
+          .map((service) => String(service.id || "").trim())
+      );
+      const missing = linkedServices
+        .filter((service) => !existing.has(String(service.id || "").trim()))
+        .map((service) => attachServiceToClient(service, activeBookingClient));
       return missing.length ? [...current, ...missing] : current;
     });
-  }, [allServices, services, selectedOfferId]);
+  }, [allServices, services, selectedOfferId, activeBookingClient]);
 
-  const discountItems = useMemo(() => cart.map((service, index) => ({
-    bookingItemId: `item_${index}`,
+  const discountItems = useMemo(() => cart.map((service) => ({
+    bookingItemId: bookingLineKey(service),
     serviceId: String(service.id || "").trim(),
     categoryId: String(service?.categoryId || service?.category || "").trim() || undefined,
     originalAmountHalalas: toHalalas(bookingPriceForService(service)),
+    partyClientKey: bookingLineClientKey(service),
   })), [cart, bookingPriceForService]);
   useEffect(() => {
     if (
@@ -919,7 +1006,44 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     }
     return { source: "none" as DiscountSnapshotSource };
   }, [discountMode, manualFixedDiscount, manualMaxDiscount, manualPercentDiscount, selectedOffer, couponOffer, couponInput]);
-  const discountResult = useMemo(() => buildDiscountSnapshot(discountItems, discountRequest), [discountItems, discountRequest]);
+  const discountResultsByClient = useMemo(() => {
+    const results = new Map<string, ReturnType<typeof buildDiscountSnapshot>>();
+    for (const client of bookingClients) {
+      const key = partyClientKey(client);
+      const items = discountItems
+        .filter((item: any) => item.partyClientKey === key)
+        .map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
+      if (!items.length) continue;
+      results.set(key, buildDiscountSnapshot(items, discountRequest));
+    }
+    return results;
+  }, [bookingClients, discountItems, discountRequest]);
+
+  const discountResult = useMemo(() => {
+    const rows = [...discountResultsByClient.values()];
+    const blocking = rows.find((row) => !row.ok && row.reason !== "discount_no_eligible_services");
+    const snapshots = rows.filter((row) => row.ok && row.snapshot).map((row) => row.snapshot as DiscountSnapshot);
+    const subtotalHalalas = discountItems.reduce((sum, item) => sum + Math.max(0, Number(item.originalAmountHalalas || 0)), 0);
+    const discountHalalas = rows.reduce((sum, row) => sum + (row.ok ? row.discountHalalas : 0), 0);
+    const allocations = snapshots.flatMap((snapshot) => snapshot.allocations || []);
+    const snapshot = snapshots.length
+      ? {
+          ...snapshots[0],
+          amountHalalas: discountHalalas,
+          eligibleSubtotalHalalas: snapshots.reduce((sum, row) => sum + Number(row.eligibleSubtotalHalalas || 0), 0),
+          allocations,
+          ...(bookingClients.length > 1 ? { partyBooking: true, partyClientCount: bookingClients.length } : {}),
+        } as DiscountSnapshot
+      : null;
+    return {
+      ok: !blocking,
+      reason: blocking?.reason || "",
+      subtotalHalalas,
+      discountHalalas,
+      totalHalalas: Math.max(0, subtotalHalalas - discountHalalas),
+      snapshot,
+    };
+  }, [discountResultsByClient, discountItems, bookingClients.length]);
   const discountSnapshot = discountResult.snapshot;
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
