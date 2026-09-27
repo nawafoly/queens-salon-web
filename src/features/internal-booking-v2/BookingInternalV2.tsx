@@ -367,6 +367,33 @@ function offerValueLabel(offer: CoreDiscount, language: DashboardLanguage = "ar"
   return `${value.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
+function serviceCatalogPrice(service: any) {
+  const direct = Number(service?.catalogPrice);
+  if (Number.isFinite(direct) && direct >= 0) return direct;
+  const halalas = Number(service?.catalogPriceHalalas ?? service?.catalog_price_halalas);
+  if (Number.isFinite(halalas) && halalas >= 0) return halalas / 100;
+  return servicePrice(service);
+}
+
+function serviceHasActivePromo(service: any) {
+  return service?.promoActive === true || Number(service?.promo_active) === 1;
+}
+
+function offerLinkedServiceIds(offer: CoreDiscount) {
+  const orderedSteps = Array.isArray(offer.sequenceSteps)
+    ? [...offer.sequenceSteps].sort(
+        (left: any, right: any) =>
+          Number(left?.orderIndex ?? left?.order_index ?? 0) -
+          Number(right?.orderIndex ?? right?.order_index ?? 0)
+      )
+    : [];
+  const ids = [
+    ...orderedSteps.map((step: any) => String(step?.serviceId ?? step?.service_id ?? "").trim()),
+    ...(Array.isArray(offer.serviceIds) ? offer.serviceIds.map((id) => String(id || "").trim()) : []),
+  ].filter(Boolean);
+  return Array.from(new Set(ids));
+}
+
 function discountReasonText(reason: string, language: DashboardLanguage = "ar") {
   const map: Record<string, string> = {
     discount_inactive: "الخصم غير نشط.",
@@ -419,6 +446,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [sections, setSections] = useState<CatalogSection[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [services, setServices] = useState<CatalogService[]>([]);
+  const [allServices, setAllServices] = useState<CatalogService[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [serviceQuery, setServiceQuery] = useState("");
@@ -681,6 +709,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   useEffect(() => {
     let cancelled = false;
+    async function loadAllServicesForOffers() {
+      try {
+        const rows = await resolveCoreBookingDataSource().getServices();
+        if (!cancelled) {
+          setAllServices(Array.isArray(rows) ? (rows as CatalogService[]) : []);
+        }
+      } catch (error) {
+        console.error("[BookingInternalV2] all services load for offers failed", error);
+        if (!cancelled) setAllServices([]);
+      }
+    }
+    void loadAllServicesForOffers();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadSections() {
       setCatalogLoading(true);
       setCatalogMessage("");
@@ -751,7 +796,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [services, selectedCategoryId, serviceQuery, language]);
 
   const catalogTotal = useMemo(
-    () => cart.reduce((sum, service) => sum + servicePrice(service), 0),
+    () => cart.reduce((sum, service) => sum + serviceCatalogPrice(service), 0),
     [cart]
   );
   const bookingPriceForService = useCallback(
@@ -780,6 +825,43 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     if (!id) return null;
     return offers.find((offer) => String((offer as any)?.id || "").trim() === id) || null;
   }, [offers, selectedOfferId]);
+
+  const selectCatalogOffer = useCallback((offer: CoreDiscount) => {
+    const offerId = String(offer?.id || "").trim();
+    if (!offerId) return;
+
+    if (selectedOfferId === offerId) {
+      setSelectedOfferId("");
+      setDiscountMode("none");
+      return;
+    }
+
+    setSelectedOfferId(offerId);
+    setDiscountMode("offer");
+    setCouponOffer(null);
+    setCouponInput("");
+    setCouponMessage("");
+
+    const linkedIds = offerLinkedServiceIds(offer);
+    if (!linkedIds.length) return;
+
+    const serviceMap = new Map<string, CatalogService>();
+    for (const service of [...allServices, ...services]) {
+      const key = String(service?.id || "").trim();
+      if (key && !serviceMap.has(key)) serviceMap.set(key, service);
+    }
+    const linkedServices = linkedIds
+      .map((id) => serviceMap.get(id))
+      .filter((service): service is CatalogService => Boolean(service));
+    if (!linkedServices.length) return;
+
+    setCart((current) => {
+      const existing = new Set(current.map((service) => String(service.id || "").trim()));
+      const missing = linkedServices.filter((service) => !existing.has(String(service.id || "").trim()));
+      return missing.length ? [...current, ...missing] : current;
+    });
+  }, [allServices, services, selectedOfferId]);
+
   const discountItems = useMemo(() => cart.map((service, index) => ({
     bookingItemId: `item_${index}`,
     serviceId: String(service.id || "").trim(),
@@ -1235,10 +1317,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const itemRows = cart.map((service, index) => {
         const key = String(service.id);
         const schedule = scheduleByService[key];
-        const catalogPrice = Math.max(0, servicePrice(service));
+        const catalogPrice = Math.max(0, serviceCatalogPrice(service));
+        const effectiveBasePrice = Math.max(0, servicePrice(service));
         const itemOriginal = Math.max(0, bookingPriceForService(service));
         const priceDraft = priceAdjustments[key];
-        const priceAdjusted = Math.abs(itemOriginal - catalogPrice) > 0.005;
+        const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
         const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(key);
         const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
         const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
@@ -1621,6 +1704,47 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               ) : step === 2 ? (
                 <section className="bk2-services-step">
                   <div className="bk2-section-title"><div><h2>{t("اختيار الخدمات")}</h2><p>{t("القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.")}</p></div><span><FiShoppingBag /></span></div>
+                  <div className="bk2-catalog-offers">
+                    <div className="bk2-catalog-offers-head">
+                      <div>
+                        <strong>{t("العروض المحفوظة")}</strong>
+                        <small>{t("اختاري عرضًا محفوظًا لإضافته للحجز وتطبيقه مباشرة.")}</small>
+                      </div>
+                      {!offersLoading ? <span>{offers.length}</span> : null}
+                    </div>
+                    {offersLoading ? <p className="bk2-status-line is-loading">{t("جاري تحميل العروض...")}</p> : offers.length ? (
+                      <div className="bk2-catalog-offers-grid">
+                        {offers.map((offer) => {
+                          const offerId = String(offer.id || "");
+                          const linkedCount = offerLinkedServiceIds(offer).length;
+                          const selected = selectedOfferId === offerId;
+                          return (
+                            <button
+                              type="button"
+                              key={offerId}
+                              className={selected ? "is-selected" : ""}
+                              onClick={() => selectCatalogOffer(offer)}
+                            >
+                              <span className="bk2-catalog-offer-copy">
+                                <strong>{offer.name}</strong>
+                                <small>
+                                  {offer.description || (linkedCount
+                                    ? `${linkedCount} ${t("خدمات مرتبطة")}`
+                                    : t("اختاري خدمات العرض من القائمة."))}
+                                </small>
+                              </span>
+                              <span className="bk2-catalog-offer-value">
+                                <small>{t("خصم")}</small>
+                                <strong>{offerValueLabel(offer, language)}</strong>
+                              </span>
+                              <span className="bk2-catalog-offer-add">{selected ? "✓" : "+"}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : <p className="bk2-status-line">{offersMessage || t("لا توجد عروض نشطة حالياً.")}</p>}
+                    {selectedOffer ? <p className="bk2-catalog-offer-selected">✓ {t("تم اختيار العرض وتطبيقه على الخدمات المؤهلة.")} <strong>{selectedOffer.name}</strong></p> : null}
+                  </div>
                   <label className="bk2-search-box"><FiSearch /><input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder={t("ابحثي عن خدمة...")} /></label>
                   <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => { setSelectedCategoryId(""); setSelectedSectionId(String(section.id)); }}>{translateBookingCatalogLabel(language, catalogLabel(section, "قسم"), "section")}</button>)}</div>
                   {categories.length ? <div className="bk2-category-tabs"><button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>{t("الكل")}</button>{categories.map((category) => <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>{translateBookingCatalogLabel(language, catalogLabel(category, "تصنيف"), "category")}</button>)}</div> : null}
@@ -1628,6 +1752,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const inCart = cart.some((item) => String(item.id) === String(service.id));
+                      const promoActive = serviceHasActivePromo(service);
+                      const catalogPrice = serviceCatalogPrice(service);
+                      const effectivePrice = servicePrice(service);
                       return <button
                         key={service.id}
                         className={inCart ? "is-selected" : ""}
@@ -1649,9 +1776,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                           <strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong>
                           <small>{serviceDuration(service) ? `${serviceDuration(service)} ${t("دقيقة")}` : t("المدة حسب الخدمة")}</small>
                         </span>
-                        <span className="bk2-service-price">
-                          <small>{t("سعر الكتالوج")}</small>
-                          {money(servicePrice(service))}
+                        <span className={`bk2-service-price ${promoActive ? "is-promo" : ""}`}>
+                          <small>{promoActive ? t("سعر العرض") : t("سعر الكتالوج")}</small>
+                          <strong>{money(effectivePrice)}</strong>
+                          {promoActive ? <del>{money(catalogPrice)}</del> : null}
                         </span>
                         <span className="bk2-service-add">{inCart ? "✓" : "+"}</span>
                       </button>;
@@ -1741,10 +1869,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                               row.bookingItemId === `item_${index}` ||
                               row.serviceId === key
                           );
-                          const catalogPrice = Math.max(0, servicePrice(service));
+                          const catalogPrice = Math.max(0, serviceCatalogPrice(service));
+                          const effectiveBasePrice = Math.max(0, servicePrice(service));
+                          const promoActive = serviceHasActivePromo(service);
                           const bookingPrice = Math.max(0, bookingPriceForService(service));
                           const draft = priceAdjustments[key];
-                          const adjusted = Math.abs(bookingPrice - catalogPrice) > 0.005;
+                          const adjusted = Math.abs(bookingPrice - effectiveBasePrice) > 0.005;
                           const rowDiscount = allocation
                             ? halalasToSar(allocation.discountAmountHalalas)
                             : 0;
@@ -1776,6 +1906,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                     {t("سعر الكتالوج")}
                                     <strong>{money(catalogPrice)}</strong>
                                   </span>
+                                  {promoActive ? (
+                                    <span className="is-promo">
+                                      {t("سعر العرض")}
+                                      <strong>{money(effectiveBasePrice)}</strong>
+                                    </span>
+                                  ) : null}
                                   <span className={adjusted ? "is-adjusted" : ""}>
                                     {adjusted
                                       ? t("سعر الحجز المعدل")
@@ -1808,7 +1944,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                           setPriceAdjustments((current) => ({
                                             ...current,
                                             [key]: {
-                                              price: String(catalogPrice),
+                                              price: String(effectiveBasePrice),
                                               reason: "",
                                               note: "",
                                             },
@@ -1950,10 +2086,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
               {cart.length ? <div className="bk2-summary-services">{cart.map((service) => {
                 const schedule = scheduleByService[String(service.id)];
-                const catalogPrice = servicePrice(service);
+                const catalogPrice = serviceCatalogPrice(service);
+                const effectiveBasePrice = servicePrice(service);
+                const promoActive = serviceHasActivePromo(service);
                 const bookingPrice = bookingPriceForService(service);
-                const adjusted = Math.abs(bookingPrice - catalogPrice) > 0.005;
-                return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
+                const adjusted = Math.abs(bookingPrice - effectiveBasePrice) > 0.005;
+                return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{promoActive || adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}{promoActive ? <small>{t("سعر العرض")}: {money(effectiveBasePrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
               })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
