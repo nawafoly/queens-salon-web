@@ -596,3 +596,5 @@
   .bk2-party-service-owner button{min-width:135px}
   .bk2-party-success-bookings{width:100%}
 }
+
+.bk2-party-clients-head>button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
