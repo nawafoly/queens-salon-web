@@ -1623,7 +1623,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       });
 
       const memberWeights = memberPlans.map((plan) => plan.memberTotal);
-      const paidByMember = splitAmountByWeights(effectivePaidAmount, memberWeights);
       const cashByMember = splitAmountByWeights(
         paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(cashAmount || 0) : paymentMethod === "cash" ? effectivePaidAmount : 0,
         memberWeights
@@ -1636,6 +1635,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(transferAmount || 0) : paymentMethod === "transfer" ? effectivePaidAmount : 0,
         memberWeights
       );
+      // Derive each member's paid total from the exact method allocations that
+      // will be posted to Core. This prevents independent rounding from making
+      // a mixed-payment member total differ by one halala from its payments.
+      const paidByMember = memberPlans.map((_, index) => roundMoney(
+        (cashByMember[index] || 0) +
+        (cardByMember[index] || 0) +
+        (transferByMember[index] || 0)
+      ));
 
       const createdParty: CreatedPartyBooking[] = [];
       const createdParentIds: string[] = [];
