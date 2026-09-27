@@ -135,6 +135,10 @@ export type CoreBooking = {
   clientId: string;
   clientName?: string | null;
   clientPhone?: string | null;
+  partyId?: string | null;
+  partyLeadClientId?: string | null;
+  partyMemberOrder?: number | null;
+  partySize?: number | null;
   staffId?: string | null;
   staffName?: string | null;
   bookingDate: string;
@@ -290,6 +294,10 @@ export type CoreExpenseEntry = {
 export type CoreCreateBookingInput = {
   id?: string;
   clientId: string;
+  partyId?: string;
+  partyLeadClientId?: string;
+  partyMemberOrder?: number;
+  partySize?: number;
   staffId?: string;
   bookingDate: string;
   startTime: string;
