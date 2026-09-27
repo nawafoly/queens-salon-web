@@ -45,6 +45,16 @@ type CatalogCategory = { id: string; title?: string; name?: string; label?: stri
 type CatalogService = Record<string, any> & { id: string };
 type StaffRow = Record<string, any> & { id: string };
 type ScheduleSelection = { staffId: string; staffName: string; time: string };
+type CreatedPartyBooking = {
+  clientKey: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  parentId: string;
+  publicId: string;
+  itemIds: string[];
+  reference: string;
+};
 type PaymentMethod = "cash" | "card" | "transfer" | "mixed";
 type PaymentType = "full" | "partial" | "none";
 type DiscountMode = "none" | "fixed" | "percent" | "offer" | "coupon";
@@ -261,8 +271,7 @@ function createInternalV2InvoicePrintRequestId(source: string) {
 }
 
 function buildInternalV2InvoiceRows(args: {
-  createdBookingIds: string[];
-  selectedClient: ClientCandidate | null;
+  createdPartyBookings: CreatedPartyBooking[];
   cart: CatalogService[];
   scheduleByService: Record<string, ScheduleSelection>;
   bookingDate: string;
@@ -277,14 +286,11 @@ function buildInternalV2InvoiceRows(args: {
   bookingPriceByService: Record<string, number>;
   discountSnapshot?: DiscountSnapshot | null;
 }) {
-  const bookingIds = Array.isArray(args.createdBookingIds) ? args.createdBookingIds : [];
-  const parentId = String(bookingIds[0] || "").trim();
-  if (!parentId || !args.selectedClient || !args.cart.length) return [];
+  if (!args.createdPartyBookings.length || !args.cart.length) return [];
 
-  // Client-facing invoice uses the agreed booking price before discount.
-  // Catalog price and adjustment metadata are internal/audit-only.
+  const createdByClient = new Map(args.createdPartyBookings.map((row) => [row.clientKey, row]));
   const rowOriginalPrices = args.cart.map((service) => {
-    const key = String(service.id || "").trim();
+    const key = bookingLineKey(service);
     const agreed = Number(args.bookingPriceByService[key]);
     return Number.isFinite(agreed)
       ? Math.max(0, agreed)
@@ -294,8 +300,8 @@ function buildInternalV2InvoiceRows(args: {
     (args.discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
   );
   const rowFinalPrices = args.cart.map((service, index) => {
-    const key = `item_${index}`;
-    const allocation = allocationByItem.get(key) || allocationByItem.get(String(service.id || "").trim());
+    const lineKey = bookingLineKey(service);
+    const allocation = allocationByItem.get(lineKey) || allocationByItem.get(String(service.id || "").trim());
     return allocation ? halalasToSar(allocation.finalAmountHalalas) : rowOriginalPrices[index] || 0;
   });
   const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowFinalPrices);
@@ -320,10 +326,15 @@ function buildInternalV2InvoiceRows(args: {
   const createdAt = Date.now();
 
   return args.cart.map((service, index) => {
-    const serviceKey = String(service.id || "");
-    const schedule = (args.scheduleByService[serviceKey] || {}) as Partial<ScheduleSelection>;
-    const rowId = String(bookingIds[index + 1] || parentId || `${serviceKey}_${index}`).trim();
-    const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(serviceKey);
+    const lineKey = bookingLineKey(service);
+    const serviceId = String(service.id || "").trim();
+    const clientKey = bookingLineClientKey(service);
+    const created = createdByClient.get(clientKey);
+    const memberLines = args.cart.filter((row) => bookingLineClientKey(row) === clientKey);
+    const memberIndex = memberLines.findIndex((row) => bookingLineKey(row) === lineKey);
+    const schedule = (args.scheduleByService[lineKey] || {}) as Partial<ScheduleSelection>;
+    const rowId = String(created?.itemIds?.[memberIndex] || created?.parentId || `${lineKey}_${index}`).trim();
+    const allocation = allocationByItem.get(lineKey) || allocationByItem.get(serviceId);
     const originalTotal = rowOriginalPrices[index] || 0;
     const discountAmount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
     const total = rowFinalPrices[index] || 0;
@@ -332,10 +343,12 @@ function buildInternalV2InvoiceRows(args: {
     const categoryTitle = String(service?.categoryTitle || service?.categoryName || service?.categoryLabel || service?.categoryId || "").trim();
     return {
       id: rowId,
-      publicId: parentId,
-      clientName: args.selectedClient?.name || "",
-      clientPhone: args.selectedClient?.phone || "",
-      serviceId: serviceKey,
+      publicId: created?.publicId || created?.parentId || "",
+      parentId: created?.parentId || "",
+      clientId: created?.clientId || "",
+      clientName: created?.clientName || bookingLineClientName(service),
+      clientPhone: created?.clientPhone || String(service?.__partyClientPhone || ""),
+      serviceId,
       serviceName,
       serviceSectionId: String(service?.sectionId || args.selectedSectionId || "").trim() || undefined,
       serviceSectionTitle: sectionTitle || undefined,
@@ -509,6 +522,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const submittingRef = useRef(false);
   const [showPastDateConfirmation, setShowPastDateConfirmation] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
+  const [createdPartyBookings, setCreatedPartyBookings] = useState<CreatedPartyBooking[]>([]);
   const [createdBookingReference, setCreatedBookingReference] = useState("");
   const [discountMode, setDiscountMode] = useState<DiscountMode>("none");
   const [manualFixedDiscount, setManualFixedDiscount] = useState("");
@@ -1655,8 +1669,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({
-      createdBookingIds,
-      selectedClient,
+      createdPartyBookings,
       cart,
       scheduleByService,
       bookingDate,
@@ -1670,7 +1683,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       selectedSectionId,
       bookingPriceByService: Object.fromEntries(
         cart.map((service) => [
-          String(service.id || "").trim(),
+          bookingLineKey(service),
           bookingPriceForService(service),
         ])
       ),
@@ -1695,7 +1708,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
     popup.focus();
-  }, [createdBookingIds, selectedClient, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot, bookingPriceForService]);
+  }, [createdPartyBookings, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot, bookingPriceForService]);
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setPriceAdjustments({}); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
@@ -1703,7 +1716,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setBookingDate(todayISO()); setShowPastDateConfirmation(false);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
-    setCreatedBookingIds([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
+    setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
