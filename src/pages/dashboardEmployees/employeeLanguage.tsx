@@ -1156,6 +1156,7 @@ const employeeEnglish: Record<string, string> = {
   "القالب": "Template",
   "التأخير": "Lateness",
   "مطبق": "Applied",
+  "تحديث النطاقات": "Refresh zones",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
