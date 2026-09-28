@@ -986,6 +986,7 @@ const employeeEnglish: Record<string, string> = {
   "عدّل أو ألغِ": "Edit or cancel",
   "عند الإلغاء يعود النظام إلى المصدر التالي: جدول الأسبوع ثم التعيين الاحتياطي.": "After cancellation, the system falls back to the next source: weekly schedule, then fallback assignment.",
   "الراحة الأسبوعية الثابتة لا تظهر هنا؛ تُدار من الأسبوع التشغيلي. والإجازات الفعلية تُدار من نظام الإجازات.": "Recurring weekly rest is managed in the operational week and does not appear here. Actual leave is managed in the leave system.",
+  "تمت العملية بنجاح": "Operation completed successfully",
 };
 
 export function employeeText(language: DashboardLanguage, arabic: string): string {
