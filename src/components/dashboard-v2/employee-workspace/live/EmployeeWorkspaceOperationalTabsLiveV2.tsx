@@ -811,7 +811,7 @@ export function EmployeeScheduleTabLiveV2({
             <>
               <WorkspaceHelpButtonV2 label="شرح نطاق الحضور" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.attendanceZone)} />
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={attendanceZonesLoading} onClick={onReloadAttendanceZones}>
-                تحديث النطاقات
+                {t("تحديث النطاقات")}
               </button>
             </>
           }
