@@ -99,6 +99,15 @@
   box-shadow: none;
 }
 
+.dashboard-v2 .dsv2-customers-search-field .dsv2-input:hover,
+.dashboard-v2 .dsv2-customers-search-field .dsv2-input:focus,
+.dashboard-v2 .dsv2-customers-search-field .dsv2-input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
 .dashboard-v2 .dsv2-customers-search-clear {
   width: var(--dsv2-control-height-sm);
   height: var(--dsv2-control-height-sm);
