@@ -357,12 +357,43 @@ function crossesMidnight(startTime: string, endTime: string) {
   return start !== null && end !== null && end < start;
 }
 
-function shiftPreviewDescription(preview: CoreShiftChangePreview) {
+function shiftPreviewDescription(
+  preview: CoreShiftChangePreview,
+  language: "ar" | "en" = "ar"
+) {
   const affectedDays = readNumber(preview.affectedDays ?? preview.affected_days);
   const overlappingAssignments = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
   const overlappingExceptions = readNumber(preview.overlappingExceptionsCount ?? preview.overlapping_exceptions_count);
   const lockedPeriods = readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count);
   const changeType = cleanText(preview.changeType ?? preview.change_type);
+
+  if (language === "en") {
+    const affectedText = affectedDays === 1
+      ? "Only one attendance day will be affected."
+      : affectedDays > 1
+        ? `${affectedDays} attendance days will be affected.`
+        : "No existing attendance days will change based on this check.";
+
+    const assignmentText = changeType === "exception"
+      ? overlappingAssignments
+        ? `${overlappingAssignments} shift assignment(s) overlap this period; they remain stored, but the exception takes priority while active.`
+        : "No shift assignment overlaps this period."
+      : overlappingAssignments
+        ? `${overlappingAssignments} shift assignment(s) overlap this period; Core will resolve the overlap when the new assignment is saved.`
+        : "No overlapping shift assignments were found.";
+
+    const exceptionText = overlappingExceptions
+      ? changeType === "exception"
+        ? `${overlappingExceptions} active exception(s) overlap this period; cancel the overlap or change the dates before saving.`
+        : `${overlappingExceptions} active exception(s) overlap this period and will remain higher priority than the fallback assignment.`
+      : "No overlapping active exceptions were found.";
+
+    const lockedText = lockedPeriods
+      ? `Warning: ${lockedPeriods} locked payroll period(s) are affected. Enable post-lock adjustment recording before saving.`
+      : "No locked payroll periods are affected by this change.";
+
+    return `${affectedText} ${assignmentText} ${exceptionText} ${lockedText}`;
+  }
 
   const affectedText = affectedDays === 1
     ? "سيتم تعديل يوم واحد فقط."
@@ -391,11 +422,14 @@ function shiftPreviewDescription(preview: CoreShiftChangePreview) {
   return `${affectedText} ${assignmentText} ${exceptionText} ${lockedText}`;
 }
 
-function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException | CoreResolvedShift> | null) {
+function formatWindow(
+  row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException | CoreResolvedShift> | null,
+  language: "ar" | "en" = "ar"
+) {
   const record = row as Record<string, unknown> | null | undefined;
   const start = cleanText(record?.templateStartTime || record?.template_start_time || record?.startTime || record?.start_time);
   const end = cleanText(record?.templateEndTime || record?.template_end_time || record?.endTime || record?.end_time);
-  if (!start && !end) return "بدون وقت";
+  if (!start && !end) return language === "en" ? "No time" : "بدون وقت";
   const to12Hour = (value: string) => {
     const match = /^(\\d{1,2}):(\\d{2})/.exec(value);
     if (!match) return value || "--:--";
@@ -405,7 +439,8 @@ function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | Co
       return value || "--:--";
     }
     const hour12 = hour24 % 12 || 12;
-    return `${hour12}:${String(minute).padStart(2, "0")} ${hour24 >= 12 ? "م" : "ص"}`;
+    const suffix = language === "en" ? (hour24 >= 12 ? "PM" : "AM") : (hour24 >= 12 ? "م" : "ص");
+    return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
   };
   return `${to12Hour(start)} - ${to12Hour(end)}`;
 }
@@ -539,7 +574,7 @@ export default function ShiftControlSection({
     const source = templates.filter((template) => boolish(template.active) || selectedIds.has(template.id));
     return source.map((template) => ({
       value: template.id,
-      label: `${template.name || template.id} - ${formatWindow(template)}${boolish(template.active) ? "" : language === "en" ? " (inactive)" : " (متوقف)"}`,
+      label: `${template.name || template.id} - ${formatWindow(template, language)}${boolish(template.active) ? "" : language === "en" ? " (inactive)" : " (متوقف)"}`,
     }));
   }, [assignmentForm.shiftTemplateId, exceptionForm.shiftTemplateId, templates]);
 
@@ -1194,7 +1229,7 @@ export default function ShiftControlSection({
   const resolvedExceptionType = cleanText(resolvedShift?.exceptionType || resolvedShift?.exception_type);
   const resolvedShiftName = cleanText(resolvedShift?.shiftName || resolvedShift?.shift_name);
   const openAssignmentName = assignmentShiftName(openAssignment, templates);
-  const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : t("لا يوجد");
+  const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates), language) : t("لا يوجد");
   const resolvedLabel = source === "exception"
     ? "استثناء يومي"
     : source === "weekly_rest_work_assignment"
@@ -1220,7 +1255,7 @@ export default function ShiftControlSection({
     const isCancelled = label === "ملغي";
     return [
       <strong key="name">{assignmentShiftName(assignment, templates) || assignment.shiftTemplateId || t("الشفت")}</strong>,
-      formatWindow(assignmentShiftRecord(assignment, templates)),
+      formatWindow(assignmentShiftRecord(assignment, templates), language),
       `${assignment.effectiveFrom} - ${assignment.effectiveTo || t("مفتوح")}`,
       <WorkspaceStatusBadgeV2 key="status" tone={assignmentTone(assignment)}>{t(label)}</WorkspaceStatusBadgeV2>,
       <div key="actions" className="dsv2-cluster">
@@ -1289,7 +1324,7 @@ export default function ShiftControlSection({
             note={source === "assignment" && openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || t("مفتوح")}` : t(resolvedStatus)}
             tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"}
           />
-          <WorkspaceMetricV2 label={t("الوقت")} value={resolvedStatus === "مغلق اليوم" ? t("راحة") : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note={resolvedStatus === "مغلق اليوم" ? tr("لا يوجد دوام مطلوب", "No work required") : tr("وقت الدوام الفعلي", "Effective working time")} tone="dark" />
+          <WorkspaceMetricV2 label={t("الوقت")} value={resolvedStatus === "مغلق اليوم" ? t("راحة") : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift, language)} note={resolvedStatus === "مغلق اليوم" ? tr("لا يوجد دوام مطلوب", "No work required") : tr("وقت الدوام الفعلي", "Effective working time")} tone="dark" />
           <WorkspaceMetricV2 label={t("المصدر")} value={t(resolvedLabel)} note={source === "exception" ? t(exceptionTypeLabel(resolvedExceptionType)) : tr("الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي", "Exception, then weekly schedule, then fallback shift")} tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
           <WorkspaceMetricV2
             label={t("مرونة الحضور")}
@@ -1371,7 +1406,7 @@ export default function ShiftControlSection({
           {preview && previewKind === "assignment" ? (
             <WorkspaceNoticeV2
               title={t("تأثير الحفظ المتوقع")}
-              description={shiftPreviewDescription(preview)}
+              description={shiftPreviewDescription(preview, language)}
               tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
             />
           ) : null}
@@ -1520,7 +1555,7 @@ export default function ShiftControlSection({
             {preview && previewKind === "exception" ? (
               <WorkspaceNoticeV2
                 title={t("تأثير الاستثناء المتوقع")}
-                description={shiftPreviewDescription(preview)}
+                description={shiftPreviewDescription(preview, language)}
                 tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
               />
             ) : null}
@@ -1541,7 +1576,7 @@ export default function ShiftControlSection({
               headers={["القالب", "الوقت", "مرونة الحضور", "إغلاق البصمة", "الحالة", "الإجراء"]}
               rows={templates.map((template) => [
                 <strong key="name">{template.name}</strong>,
-                formatWindow(template),
+                formatWindow(template, language),
                 tr(`${readNumber(template.lateGraceMinutes)} دقيقة`, `${readNumber(template.lateGraceMinutes)} min`),
                 boolish(template.attendanceLockEnabled) ? tr(`بعد ${readNumber(template.attendanceLockAfterMinutes)} دقيقة`, `After ${readNumber(template.attendanceLockAfterMinutes)} min`) : t("غير مفعّل"),
                 <WorkspaceStatusBadgeV2 key="status" tone={boolish(template.active) ? "success" : "danger"}>{boolish(template.active) ? t("نشط") : tr("متوقف", "Inactive")}</WorkspaceStatusBadgeV2>,
@@ -1582,7 +1617,7 @@ export default function ShiftControlSection({
                 return [
                   <strong key="type" className={mutedClass}>{t(exceptionTypeLabel(exception.exceptionType))}</strong>,
                   <span key="range" className={mutedClass}>{exception.dateFrom} - {exception.dateTo}</span>,
-                  <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? t("راحة") : formatWindow(exception)}</span>,
+                  <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? t("راحة") : formatWindow(exception, language)}</span>,
                   <WorkspaceStatusBadgeV2 key="status" tone={isCancelled ? "danger" : "success"}>{t(statusLabel(exception.status))}</WorkspaceStatusBadgeV2>,
                   action.kind === "restore"
                     ? <button key="restore" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void restoreException(exception)} disabled={!canManage || saving}>{t(action.label)}</button>
