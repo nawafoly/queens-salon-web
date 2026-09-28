@@ -351,6 +351,7 @@ const bookingEnglish: Record<string, string> = {
   "وضع إضافة مرافقة مفعّل: اختيار أي عميلة بالأسفل سيضيفها للمجموعة بدل استبدال العميلة الأساسية.": "Companion mode is active: selecting a client below will add her to the group instead of replacing the primary client.",
   "اختاري المرافقة من القائمة أو أضيفي عميلة جديدة.": "Choose the companion from the list or add a new client.",
   "هذه هي العميلة الأساسية بالفعل.": "This is already the primary client.",
+  "هذه العميلة موجودة بالفعل في مجموعة الحجز.": "This client is already in the booking group.",
   "تمت إضافة المرافقة إلى نفس مجموعة الحجز.": "The companion was added to the same booking group.",
   "إضافة مرافقة جديدة": "Add new companion",
   "إضافة الخدمات لمن؟": "Who are these services for?",
