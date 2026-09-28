@@ -47,9 +47,11 @@ requireText(
   '<PackageSessionsManager language={language} />',
   "PackageSessionsManager is no longer mounted from internal booking with dashboard language."
 );
-requireMatch(booking, /if \(step === 1 && canContinue\) setStep\(2\)/, "Step 1 → 2 gating changed.");
-requireMatch(booking, /else if \(step === 2 && cart\.length\) setStep\(3\)/, "Step 2 → 3 gating changed.");
-requireMatch(booking, /else if \(step === 3 && allScheduled\) setStep\(4\)/, "Step 3 → 4 gating changed.");
+requireText(booking, "const sidebarCanAdvance =", "Contextual step-advance gate is missing.");
+requireMatch(booking, /step === 1[\s\S]*?canContinue && !addingCompanion && !clientPickerOpen && !showNewClient/, "Step 1 → 2 contextual gating changed.");
+requireMatch(booking, /step === 2[\s\S]*?allPartyClientsHaveServices/, "Step 2 → 3 must wait until every party client has a service.");
+requireMatch(booking, /step === 3[\s\S]*?allScheduled/, "Step 3 → 4 must wait until all services are scheduled.");
+requireMatch(booking, /\{sidebarCanAdvance \? \([\s\S]*?if \(step === 1\) setStep\(2\);[\s\S]*?else if \(step === 2\) setStep\(3\);[\s\S]*?else if \(step === 3\) setStep\(4\);/, "Contextual continue action no longer advances through steps 1–3.");
 requireText(
   booking,
   "const isStepComplete = (target: Step) =>",
