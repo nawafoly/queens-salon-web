@@ -74,6 +74,26 @@ function downloadXLSX(filename: string, rows: unknown[][], sheetName: string) {
 
 type DashboardClientsProps = { currentRole?: UiRole; language?: DashboardLanguage };
 
+function coreClientToCustomerRow(client: CoreClient): CustomerRow {
+  const bookingsCount = Number(client.bookingsCount || 0);
+  return {
+    key: `id:${client.id}`,
+    clientId: client.id,
+    legacyClientDocId: client.legacyClientDocId || undefined,
+    name: normalizeCustomerName(client.name),
+    phone: formatCustomerPhone(client.phoneNormalized),
+    bookingsCount,
+    lastVisitDate: String(client.lastVisitDate || ""),
+    lastVisitTime: String(client.lastVisitTime || ""),
+    vip: Boolean(client.vip),
+    status: String(client.status || "active"),
+    importedNote: String(client.notes || "").trim() || undefined,
+    source: bookingsCount > 0 ? "combined" : "client-record",
+    createdAt: client.createdAt || undefined,
+    activePackagesCount: Number(client.activePackagesCount || 0),
+  };
+}
+
 export default function DashboardClients({ currentRole = "guest", language = "ar" }: DashboardClientsProps) {
   const navigate = useNavigate();
   const t = (text: string) => clientsText(language, text);
@@ -84,6 +104,9 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
+  const [searchClients, setSearchClients] = useState<CoreClient[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [segment, setSegment] = useState<CustomerSegment>("all");
   const [sort, setSort] = useState<CustomerSort>("latest");
   const [source, setSource] = useState<"all" | CustomerSource>("all");
@@ -92,6 +115,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   const [importOpen, setImportOpen] = useState(false);
   const [copyToast, setCopyToast] = useState("");
   const copyTimer = useRef<number | null>(null);
+  const searchGenerationRef = useRef(0);
 
   const allowStaffViewClients = settings.policies?.allowStaffViewClients === true;
   const canViewClients = currentRole === "owner" || currentRole === "admin" || currentRole === "hr" || currentRole === "accountant" || currentRole === "reception" || (currentRole === "staff" && allowStaffViewClients);
@@ -137,27 +161,57 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     void loadData();
   }, [loadData]);
 
-  const customers = useMemo<CustomerRow[]>(() => {
-    return coreClients.map((client) => {
-      const bookingsCount = Number(client.bookingsCount || 0);
-      return {
-        key: `id:${client.id}`,
-        clientId: client.id,
-        legacyClientDocId: client.legacyClientDocId || undefined,
-        name: normalizeCustomerName(client.name),
-        phone: formatCustomerPhone(client.phoneNormalized),
-        bookingsCount,
-        lastVisitDate: String(client.lastVisitDate || ""),
-        lastVisitTime: String(client.lastVisitTime || ""),
-        vip: Boolean(client.vip),
-        status: String(client.status || "active"),
-        importedNote: String(client.notes || "").trim() || undefined,
-        source: bookingsCount > 0 ? "combined" : "client-record",
-        createdAt: client.createdAt || undefined,
-        activePackagesCount: Number(client.activePackagesCount || 0),
-      } satisfies CustomerRow;
-    });
-  }, [coreClients]);
+  useEffect(() => {
+    const search = String(deferredQuery || "").trim();
+    const generation = ++searchGenerationRef.current;
+
+    if (!search || !canViewClients) {
+      setSearchClients([]);
+      setSearching(false);
+      setSearchError("");
+      return;
+    }
+
+    setSearching(true);
+    setSearchError("");
+
+    const timer = window.setTimeout(() => {
+      void CoreClientService.list(search, {
+        includeMetrics: true,
+        limit: 100,
+      })
+        .then((clients) => {
+          if (generation !== searchGenerationRef.current) return;
+          setSearchClients(Array.isArray(clients) ? clients : []);
+        })
+        .catch((cause) => {
+          if (generation !== searchGenerationRef.current) return;
+          setSearchClients([]);
+          setSearchError(
+            cause instanceof Error
+              ? cause.message
+              : t("تعذر البحث في ملفات العملاء")
+          );
+        })
+        .finally(() => {
+          if (generation === searchGenerationRef.current) {
+            setSearching(false);
+          }
+        });
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [deferredQuery, canViewClients, language]);
+
+  const customers = useMemo<CustomerRow[]>(
+    () => coreClients.map(coreClientToCustomerRow),
+    [coreClients]
+  );
+
+  const searchedCustomers = useMemo<CustomerRow[]>(
+    () => searchClients.map(coreClientToCustomerRow),
+    [searchClients]
+  );
 
   const stats = useMemo<CustomerStats>(() => {
     const now = new Date();
@@ -193,7 +247,9 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     const searchDigits = customerPhoneDigits(deferredQuery);
     const rawSearchDigits = String(deferredQuery || "").replace(/\D/g, "");
     const now = Date.now();
-    const rows = customers.filter((customer) => {
+    const searchActive = Boolean(String(deferredQuery || "").trim());
+    const sourceRows = searchActive ? searchedCustomers : customers;
+    const rows = sourceRows.filter((customer) => {
       const customerDigits = customerPhoneDigits(customer.phone);
       const customerDisplayDigits = String(customer.phone || "").replace(/\D/g, "");
       const matchesPhone = Boolean(rawSearchDigits) && (customerDisplayDigits.includes(rawSearchDigits) || customerDigits.includes(searchDigits));
@@ -212,7 +268,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
       if (sort === "newest") return Date.parse(second.createdAt || "") - Date.parse(first.createdAt || "") || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
       return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
     });
-  }, [customers, deferredQuery, language, lastVisit, segment, sort, source]);
+  }, [customers, searchedCustomers, deferredQuery, language, lastVisit, segment, sort, source]);
 
   const hasActiveFilters = Boolean(query.trim()) || segment !== "all" || sort !== "latest" || source !== "all" || lastVisit !== "all";
   const clearFilters = () => {
@@ -305,12 +361,16 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
 
   const fatalError = Boolean(error) && !loading && customers.length === 0;
   const noData = !loading && !error && customers.length === 0;
-  const noResults = !loading && customers.length > 0 && visibleCustomers.length === 0;
+  const noResults = !loading && !searching && customers.length > 0 && visibleCustomers.length === 0;
 
   return (
     <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
-      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} language={language} />
-      <CustomersSearchToolbar language={language} query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
+      <CustomersPageHeader
+        visibleCount={visibleCustomers.length}
+        totalCount={query.trim() ? searchedCustomers.length : customers.length}
+        language={language}
+      />
+      <CustomersSearchToolbar language={language} query={query} loading={loading || searching} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
       <CustomersFilters language={language} segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
       <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} language={language} />
 
@@ -318,6 +378,11 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
         <div className="dsv2-customers-alert dsv2-customers-alert--error" role="alert">
           <span>{error}</span>
           <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData()}>{t("إعادة المحاولة")}</button>
+        </div>
+      ) : null}
+      {searchError ? (
+        <div className="dsv2-customers-alert dsv2-customers-alert--error" role="alert">
+          <span>{searchError}</span>
         </div>
       ) : null}
       {fatalError ? <CustomersEmptyState language={language} kind="error" message={error} onPrimary={() => void loadData()} /> : null}
