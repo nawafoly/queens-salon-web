@@ -517,6 +517,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [companions, setCompanions] = useState<ClientCandidate[]>([]);
   const [addingCompanion, setAddingCompanion] = useState(false);
+  const [clientPickerOpen, setClientPickerOpen] = useState(true);
   const [activePartyClientKey, setActivePartyClientKey] = useState("");
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
   const [clientSearching, setClientSearching] = useState(false);
@@ -532,6 +533,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [existingClientChecking, setExistingClientChecking] = useState(false);
   const [existingClientLookupError, setExistingClientLookupError] = useState("");
   const newClientLookupSeq = useRef(0);
+  const clientSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [sections, setSections] = useState<CatalogSection[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
@@ -616,6 +618,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   );
 
   useEffect(() => {
+    if (clientPickerOpen || addingCompanion) {
+      window.setTimeout(() => clientSearchInputRef.current?.focus(), 0);
+    }
+  }, [clientPickerOpen, addingCompanion]);
+
+  useEffect(() => {
     if (!selectedClient) {
       setActivePartyClientKey("");
       return;
@@ -658,12 +666,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setClientMessage(t("تمت إضافة المرافقة إلى نفس مجموعة الحجز."));
       }
       setAddingCompanion(false);
+      setClientPickerOpen(false);
     } else {
       const currentPrimaryKey = partyClientKey(selectedClient);
       setSelectedClient(candidate);
       setCompanions([]);
       setActivePartyClientKey(candidateKey);
       setAddingCompanion(false);
+      setClientPickerOpen(false);
       if (currentPrimaryKey && currentPrimaryKey !== candidateKey) {
         setCart([]);
         setPriceAdjustments({});
@@ -1212,6 +1222,18 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
   const canContinue = Boolean(selectedClient);
+  const allPartyClientsHaveServices = bookingClients.length > 0 && bookingClients.every((client) => {
+    const clientKey = partyClientKey(client);
+    return cart.some((service) => bookingLineClientKey(service) === clientKey);
+  });
+  const sidebarCanAdvance =
+    step === 1
+      ? Boolean(canContinue && !addingCompanion && !clientPickerOpen && !showNewClient)
+      : step === 2
+        ? allPartyClientsHaveServices
+        : step === 3
+          ? allScheduled
+          : false;
   const isPastBookingDate = Boolean(bookingDate && bookingDate < todayISO());
   const bookingConfig = mergeBookingConfig(appSettings?.booking);
   const dayHours = bookingConfig.businessHours?.[weekdayKey(bookingDate)] || { enabled: true, start: "12:00", end: "22:00" };
@@ -2099,7 +2121,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setPriceAdjustments({}); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
-    setCompanions([]); setAddingCompanion(false); setActivePartyClientKey("");
+    setCompanions([]); setAddingCompanion(false); setClientPickerOpen(true); setActivePartyClientKey("");
     setBookingDate(todayISO()); setShowPastDateConfirmation(false);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
@@ -2144,26 +2166,53 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             <main className="bk2-main-card">
               {step === 1 ? (
                 <section className="bk2-client-step">
-                  <div className="bk2-section-title"><div><h2>{t(addingCompanion ? "اختيار المرافقة" : "البحث عن العميلة")}</h2><p>{t(addingCompanion ? "اختاري عميلة موجودة أو أضيفي مرافقة جديدة إلى نفس الحجز." : "ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.")}</p></div><span><FiUser /></span></div>
+                  <div className="bk2-section-title"><div><h2>{t(addingCompanion ? "إضافة مرافقة للحجز" : selectedClient && !clientPickerOpen ? "العميلات في هذا الحجز" : "اختيار العميلة الأساسية")}</h2><p>{t(addingCompanion ? "الآن اختاري المرافقة من العملاء الموجودين أو أضيفي عميلة جديدة." : selectedClient && !clientPickerOpen ? "تم اختيار العميلة. يمكنك المتابعة أو إضافة مرافقة قبل اختيار الخدمات." : "ابدئي بالبحث عن العميلة الأساسية بالاسم أو الجوال أو رقم العضوية.")}</p></div><span><FiUser /></span></div>
+                  {(!selectedClient || clientPickerOpen || addingCompanion) ? (
+                    <div className={`bk2-client-action-banner ${addingCompanion ? "is-companion" : "is-primary"}`}>
+                      <span className="bk2-client-action-icon">{addingCompanion ? <FiUsers /> : <FiUser />}</span>
+                      <div>
+                        <small>{t(addingCompanion ? "وضع إضافة مرافقة" : "الخطوة الحالية")}</small>
+                        <strong>{t(addingCompanion ? "اختاري المرافقة الآن" : "اختاري العميلة الأساسية")}</strong>
+                        <p>{t(addingCompanion ? "أي عميلة تختارينها الآن ستُضاف كمرافقة ولن تستبدل العميلة الأساسية." : "اختيار العميلة هنا يحدد صاحبة الحجز الأساسية. بعد الاختيار ستختفي قائمة البحث ويمكنك المتابعة مباشرة.")}</p>
+                      </div>
+                    </div>
+                  ) : null}
                   {selectedClient ? (
                     <div className="bk2-party-clients">
                       <div className="bk2-party-clients-head">
                         <div><strong>{t("مجموعة الحجز")}</strong><small>{bookingClients.length} {t("عميلات في نفس العملية")}</small></div>
-                        <button
-                          type="button"
-                          disabled={!addingCompanion && bookingClients.length >= 20}
-                          onClick={() => {
-                            if (addingCompanion) {
+                        <div className="bk2-party-client-actions">
+                          {!addingCompanion ? <button
+                            type="button"
+                            className="is-secondary"
+                            onClick={() => {
+                              setClientPickerOpen(true);
                               setAddingCompanion(false);
                               setQuery("");
-                              setClientMessage("");
-                              return;
-                            }
-                            setAddingCompanion(true);
-                            setQuery("");
-                            setClientMessage(t("اختاري المرافقة من القائمة أو أضيفي عميلة جديدة."));
-                          }}
-                        >{addingCompanion ? "×" : <FiPlus />} {t(addingCompanion ? "إلغاء إضافة المرافقة" : bookingClients.length >= 20 ? "الحد الأقصى للمجموعة" : "إضافة مرافقة")}</button>
+                              setClientMessage(t("اختاري عميلة أخرى لاستبدال العميلة الأساسية."));
+                            }}
+                          >{t("تغيير العميلة الأساسية")}</button> : null}
+                          <button
+                            type="button"
+                            className={addingCompanion ? "is-cancel" : "is-primary"}
+                            disabled={!addingCompanion && bookingClients.length >= 20}
+                            onClick={() => {
+                              if (addingCompanion) {
+                                setAddingCompanion(false);
+                                setClientPickerOpen(false);
+                                setQuery("");
+                                setClientMessage("");
+                                setShowNewClient(false);
+                                return;
+                              }
+                              setAddingCompanion(true);
+                              setClientPickerOpen(true);
+                              setShowNewClient(false);
+                              setQuery("");
+                              setClientMessage(t("اختاري المرافقة من القائمة أو أضيفي عميلة جديدة."));
+                            }}
+                          >{addingCompanion ? "×" : <FiPlus />} {t(addingCompanion ? "إلغاء إضافة المرافقة" : bookingClients.length >= 20 ? "الحد الأقصى للمجموعة" : "إضافة مرافقة")}</button>
+                        </div>
                       </div>
                       <div className="bk2-party-client-chips">
                         {bookingClients.map((client, index) => {
@@ -2202,26 +2251,32 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                           );
                         })}
                       </div>
-                      {addingCompanion ? <p className="bk2-party-mode-note">{t("وضع إضافة مرافقة مفعّل: اختيار أي عميلة بالأسفل سيضيفها للمجموعة بدل استبدال العميلة الأساسية.")}</p> : null}
                     </div>
                   ) : null}
-                  <label className="bk2-search-box"><FiSearch /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)")} /></label>
-                  {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? t("جاري البحث في بيانات السيرفر...") : clientMessage}</p> : null}
-                  <div className="bk2-recent-header"><h3>{addingCompanion ? t("اختيار المرافقة") : query ? t("نتائج البحث") : t("العميلات الأخيرات")}</h3><span>{visibleClients.length} {t("عميلات")}</span></div>
-                  <div className="bk2-client-grid">
-                    {visibleClients.map((client) => (
-                      <button
-                        key={client.id}
-                        className={bookingClients.some((row) => partyClientKey(row) === partyClientKey(client)) ? "is-selected" : ""}
-                        onClick={() => chooseClientForBooking(client, t("تم اختيار العميلة للحجز بنجاح."))}
-                      >
-                        <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone || t("بدون جوال")}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="bk2-divider"><span>{t("أو")}</span></div>
-                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
+                  {selectedClient && !clientPickerOpen && clientMessage ? <p className="bk2-client-selection-success">✓ {clientMessage}</p> : null}
+                  {(!selectedClient || clientPickerOpen || addingCompanion) ? (
+                    <div className={`bk2-client-picker-shell ${addingCompanion ? "is-companion" : ""}`}>
+                      <label className="bk2-search-box"><FiSearch /><input ref={clientSearchInputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t(addingCompanion ? "ابحثي عن المرافقة بالاسم أو رقم الجوال أو العضوية" : "ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)")} /></label>
+                      {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? t("جاري البحث في بيانات السيرفر...") : clientMessage}</p> : null}
+                      <div className="bk2-recent-header"><h3>{addingCompanion ? t("اختاري المرافقة") : query ? t("نتائج البحث") : t("العميلات الأخيرات")}</h3><span>{visibleClients.length} {t("عميلات")}</span></div>
+                      <div className="bk2-client-grid">
+                        {visibleClients.map((client) => {
+                          const alreadyInParty = bookingClients.some((row) => samePartyClient(row, client));
+                          return (
+                            <button
+                              key={client.id}
+                              className={alreadyInParty ? "is-selected" : ""}
+                              onClick={() => chooseClientForBooking(client, t("تم اختيار العميلة للحجز بنجاح."))}
+                            >
+                              <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
+                              <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone || t("بدون جوال")}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
+                              <span className="bk2-client-card-action">{alreadyInParty ? t("مضافة بالفعل") : t(addingCompanion ? "إضافة كمرافقة" : "اختيار")}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="bk2-divider"><span>{t("أو")}</span></div>
+                      <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
                       <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
@@ -2297,7 +2352,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                       </div>
                     </div>
                   ) : null}
-                  <div className="bk2-tip"><span>i</span><div><strong>{t("نصيحة")}</strong><p>{t("استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.")}</p></div></div>
+                    </div>
+                  ) : null}
+                  {!selectedClient ? <div className="bk2-tip"><span>i</span><div><strong>{t("نصيحة")}</strong><p>{t("استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.")}</p></div></div> : null}
                 </section>
               ) : step === 2 ? (
                 <section className="bk2-services-step">
@@ -2872,8 +2929,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 <div className="is-discount"><span>{t("الخصم")}</span><strong>{money(discountAmount)}</strong></div>
                 <div className="is-total"><span>{t("الإجمالي")}</span><strong>{money(finalTotal)}</strong></div>
               </div>
-              <button className="bk2-continue" disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4} onClick={() => { if (step === 1 && canContinue) setStep(2); else if (step === 2 && cart.length) setStep(3); else if (step === 3 && allScheduled) setStep(4); }}>{step === 1 ? t("المتابعة للخدمات") : step === 2 ? t("المتابعة للموظفة والموعد") : step === 3 ? t("المتابعة للمراجعة والدفع") : t("راجعي وأكدي الحجز أعلاه")}<FiChevronLeft /></button>
-              <p className="bk2-safe-note">{t("هذه نسخة V2 تجريبية منفصلة، ولم تستبدل نظام الحجز الحالي.")}</p>
+              {sidebarCanAdvance ? (
+                <button
+                  key={`continue-${step}`}
+                  className="bk2-continue is-revealed"
+                  onClick={() => {
+                    if (step === 1) setStep(2);
+                    else if (step === 2) setStep(3);
+                    else if (step === 3) setStep(4);
+                  }}
+                >
+                  {step === 1 ? t("المتابعة للخدمات") : step === 2 ? t("المتابعة للموظفة والموعد") : t("المتابعة للمراجعة والدفع")}
+                  <FiChevronLeft />
+                </button>
+              ) : step < 4 ? (
+                <div className="bk2-next-hint" aria-live="polite">
+                  <span>•</span>
+                  <p>{t(step === 1
+                    ? addingCompanion
+                      ? "أكملي اختيار المرافقة أو ألغِ الإضافة للمتابعة."
+                      : clientPickerOpen
+                        ? "اختاري العميلة أولًا وسيظهر زر المتابعة تلقائيًا."
+                        : "اختاري العميلة للمتابعة."
+                    : step === 2
+                      ? "أضيفي خدمة واحدة على الأقل لكل عميلة وسيظهر زر المتابعة."
+                      : "أكملي الموظفة والوقت لكل خدمة وسيظهر زر المتابعة.")}</p>
+                </div>
+              ) : null}
             </aside>
           </div>
         </>
