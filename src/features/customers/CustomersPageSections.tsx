@@ -84,7 +84,7 @@ export function CustomersSearchToolbar(props: ToolbarProps) {
       <label className="dsv2-customers-search-field">
         <FiSearch aria-hidden="true" />
         <input
-          className="dsv2-input"
+          className="dsv2-customers-search-input"
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
           placeholder={t("ابحثي بالاسم أو رقم الجوال")}
