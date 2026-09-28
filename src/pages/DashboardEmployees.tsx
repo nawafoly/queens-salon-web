@@ -9925,15 +9925,15 @@ const canonicalSchedules =
       <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label={t("إدارة الموظفات")}>
               <div className="employees-v2-page-heading">
                 <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
-                  الموارد البشرية
+                  {t("الموارد البشرية")}
                 </span>
-                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
+                <h1 className="dsv2-page-title">{t("إدارة الموظفات")}</h1>
                 <p className="dsv2-page-subtitle">
-                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
+                  {t("إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.")}
                 </p>
               </div>
 
@@ -9941,7 +9941,7 @@ const canonicalSchedules =
                 {canCreateEmployees ? (
                   <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
-                    إضافة موظفة
+                    {t("إضافة موظفة")}
                   </button>
                 ) : null}
                 <button
@@ -9951,31 +9951,31 @@ const canonicalSchedules =
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  تحديث البيانات
+                  {t("تحديث البيانات")}
                 </button>
               </div>
             </header>
 
-            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label={t("إحصاءات الموظفات")}>
               <article className="dsv2-metric-card dsv2-metric-card--dark">
-                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
+                <p className="dsv2-metric-card__label">{t("إجمالي الملفات")}</p>
                 <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
+                <p className="dsv2-metric-card__meta">{t("كل الملفات المتاحة حسب الصلاحية")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--success">
-                <p className="dsv2-metric-card__label">على رأس العمل</p>
+                <p className="dsv2-metric-card__label">{t("على رأس العمل")}</p>
                 <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
+                <p className="dsv2-metric-card__meta">{t("نشطات ولسن في إجازة")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--gold">
-                <p className="dsv2-metric-card__label">في إجازة</p>
+                <p className="dsv2-metric-card__label">{t("في إجازة")}</p>
                 <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
+                <p className="dsv2-metric-card__meta">{t("إجازة حالية من سجل الموظفة")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--danger">
-                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
+                <p className="dsv2-metric-card__label">{t("تحتاج متابعة")}</p>
                 <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
+                <p className="dsv2-metric-card__meta">{t("غير نشطة أو بدون خدمات أو ملف غير مكتمل")}</p>
               </article>
             </section>
           </>
@@ -10006,8 +10006,8 @@ const canonicalSchedules =
             <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
               <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
-                <strong>جاري فتح ملف الموظفة...</strong>
-                <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
+                <strong>{t("جاري فتح ملف الموظفة...")}</strong>
+                <p>{t("يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.")}</p>
               </div>
             </section>
           ) : null}
@@ -10400,8 +10400,8 @@ const canonicalSchedules =
                 employmentStartDate={employmentStartDate}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
-                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
-                    : "لا توجد إجازة أسبوعية ثابتة."
+                    ? modalExceptionalLeaveWeekdays.map((day) => t(WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day)).join(language === "en" ? ", " : "، ")
+                    : t("لا توجد إجازة أسبوعية ثابتة.")
                 }
                 onNameChange={setName}
                 onActiveChange={setActive}
@@ -10557,9 +10557,9 @@ const canonicalSchedules =
         title={confirmDialog?.title || ""}
         description={confirmDialog?.description}
         tone={confirmDialog?.tone || "danger"}
-        confirmLabel={confirmDialog?.confirmLabel || "نعم، متابعة"}
-        cancelLabel="تراجع"
-        pendingLabel="جارٍ التنفيذ..."
+        confirmLabel={confirmDialog?.confirmLabel || t("نعم، متابعة")}
+        cancelLabel={t("تراجع")}
+        pendingLabel={t("جارٍ التنفيذ...")}
         closeOnBackdrop={!busy}
       />
 
@@ -10568,10 +10568,16 @@ const canonicalSchedules =
   );
 }
 
-export default function DashboardEmployees() {
+export default function DashboardEmployees({
+  language = "ar",
+}: {
+  language?: DashboardLanguage;
+}) {
   return (
-    <DashboardToastProviderV2 position="top-center">
-      <DashboardEmployeesContent />
-    </DashboardToastProviderV2>
+    <EmployeeLanguageProvider language={language}>
+      <DashboardToastProviderV2 position="top-center">
+        <DashboardEmployeesContent />
+      </DashboardToastProviderV2>
+    </EmployeeLanguageProvider>
   );
 }
