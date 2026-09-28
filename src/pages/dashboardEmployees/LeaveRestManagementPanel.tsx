@@ -549,15 +549,22 @@ export default function LeaveRestManagementPanel({
       .slice(0, 3);
   const nearbyApprovedAnnualLeavesDescription =
     nearbyApprovedAnnualLeaves.length
-      ? `الإجازات السنوية المعتمدة الحالية/القريبة: ${nearbyApprovedAnnualLeaves
-          .map(
-            (leave) =>
-              `${fmtIsoDate(leave.startDate)} إلى ${fmtIsoDate(
-                leave.endDate
-              )}`
-          )
-          .join("، ")}.`
-      : "لا توجد إجازات سنوية معتمدة كاملة لهذا الموظف في القائمة الحالية.";
+      ? language === "en"
+        ? `Current/nearby approved annual leave: ${nearbyApprovedAnnualLeaves
+            .map(
+              (leave) =>
+                `${fmtIsoDate(leave.startDate)} to ${fmtIsoDate(leave.endDate)}`
+            )
+            .join(", ")}.`
+        : `الإجازات السنوية المعتمدة الحالية/القريبة: ${nearbyApprovedAnnualLeaves
+            .map(
+              (leave) =>
+                `${fmtIsoDate(leave.startDate)} إلى ${fmtIsoDate(leave.endDate)}`
+            )
+            .join("، ")}.`
+      : language === "en"
+        ? "There is no complete approved annual leave for this staff member in the current list."
+        : "لا توجد إجازات سنوية معتمدة كاملة لهذا الموظف في القائمة الحالية.";
 
   const saveServiceStartDate =
     async () => {
@@ -1118,14 +1125,14 @@ export default function LeaveRestManagementPanel({
           title={
             !persistedServiceStartDate &&
             gosiEffectiveDate
-              ? "اقتراح أولي من التأمينات"
-              : "مرجع احتساب الإجازة"
+              ? t("اقتراح أولي من التأمينات")
+              : t("مرجع احتساب الإجازة")
           }
           description={
             !persistedServiceStartDate &&
             gosiEffectiveDate
-              ? "تم اقتراح تاريخ سريان التصنيف لأن تاريخ بداية الخدمة غير محفوظ. احفظ التاريخ لتثبيته كمرجع الإجازة السنوية."
-              : "الحساب يعتمد على تاريخ بداية الخدمة المحفوظ في Core. تعديل هذا التاريخ لا يغيّر تاريخ سريان التصنيف في التأمينات."
+              ? t("تم اقتراح تاريخ سريان التصنيف لأن تاريخ بداية الخدمة غير محفوظ. احفظ التاريخ لتثبيته كمرجع الإجازة السنوية.")
+              : t("الحساب يعتمد على تاريخ بداية الخدمة المحفوظ في Core. تعديل هذا التاريخ لا يغيّر تاريخ سريان التصنيف في التأمينات.")
           }
           tone={
             !persistedServiceStartDate &&
@@ -1149,7 +1156,7 @@ export default function LeaveRestManagementPanel({
             void saveServiceStartDate()
           }
         >
-          حفظ تاريخ بداية الخدمة
+          {t("حفظ تاريخ بداية الخدمة")}
         </button>
 
         <div className="dsv2-ew-metrics">
@@ -1291,10 +1298,10 @@ export default function LeaveRestManagementPanel({
                 }
               >
                 <option value="add">
-                  إضافة إلى الرصيد
+                  {t("إضافة إلى الرصيد")}
                 </option>
                 <option value="deduct">
-                  خصم من الرصيد
+                  {t("خصم من الرصيد")}
                 </option>
               </select>
             </DashboardFieldV2>
@@ -1458,7 +1465,7 @@ export default function LeaveRestManagementPanel({
             label={t("المكتسب حتى تاريخ بدء النظام")}
             value={
               openingAccruedToEffectiveDate === null
-                ? "غير متوفر"
+                ? t("غير متوفر")
                 : annualDurationLabel(
                     openingAccruedToEffectiveDate,
                     language
@@ -1481,7 +1488,7 @@ export default function LeaveRestManagementPanel({
             label={t("الرصيد المتبقي المعتمد")}
             value={
               openingCalculatedRemainingDays === null
-                ? "غير متوفر"
+                ? t("غير متوفر")
                 : annualDurationLabel(
                     openingCalculatedRemainingDays,
                     language
@@ -1494,17 +1501,17 @@ export default function LeaveRestManagementPanel({
         <WorkspaceNoticeV2
           title={
             hasOpeningBalance
-              ? "تسوية بدء النظام مثبتة"
+              ? t("تسوية بدء النظام مثبتة")
               : openingBalanceDays === ""
-                ? "لا توجد تسوية مطلوبة"
-                : "معاينة قبل الاعتماد"
+                ? t("لا توجد تسوية مطلوبة")
+                : t("معاينة قبل الاعتماد")
           }
           description={
             hasOpeningBalance
-              ? "تم تثبيت نقطة البداية في السجل الموحد، وتستمر الاستحقاقات والحركات التالية تلقائيًا من خلال Core."
+              ? t("تم تثبيت نقطة البداية في السجل الموحد، وتستمر الاستحقاقات والحركات التالية تلقائيًا من خلال Core.")
               : openingBalanceDays === ""
-                ? "اترك الحقل فارغًا إذا لم تستخدم الموظفة أي أيام قبل تشغيل النظام. الرصيد الحالي يُحتسب تلقائيًا ولا يحتاج رصيدًا افتتاحيًا إجباريًا."
-                : "سيحفظ النظام الرصيد المتبقي الناتج من الاستحقاق المكتسب ناقص الأيام المستخدمة سابقًا."
+                ? t("اترك الحقل فارغًا إذا لم تستخدم الموظفة أي أيام قبل تشغيل النظام. الرصيد الحالي يُحتسب تلقائيًا ولا يحتاج رصيدًا افتتاحيًا إجباريًا.")
+                : t("سيحفظ النظام الرصيد المتبقي الناتج من الاستحقاق المكتسب ناقص الأيام المستخدمة سابقًا.")
           }
           tone={hasOpeningBalance ? "success" : "neutral"}
         />
@@ -1524,7 +1531,7 @@ export default function LeaveRestManagementPanel({
             void submitOpeningBalance()
           }
         >
-          اعتماد الاستخدام السابق
+          {t("اعتماد الاستخدام السابق")}
         </button>
       </WorkspaceCardV2>
 
@@ -1566,28 +1573,22 @@ export default function LeaveRestManagementPanel({
         {hasHistoricalWeeklyRestOpening ? (
           <WorkspaceNoticeV2
             title={t("الرصيد التاريخي مثبت")}
-            description={
+            description={tr(
               "الرصيد المسجل: " +
-              numberLabel(
-                historicalWeeklyRestOpening
-                  ?.days,
-                " يوم",
-                language
-              ) +
-              "، تاريخ السريان: " +
-              (
-                historicalWeeklyRestOpening
-                  ?.effectiveDate
-                  ? fmtIsoDate(
-                      String(
-                        historicalWeeklyRestOpening
-                          .effectiveDate
-                      )
-                    )
-                  : t("غير محدد")
-              ) +
-              "."
-            }
+                numberLabel(historicalWeeklyRestOpening?.days, " يوم", language) +
+                "، تاريخ السريان: " +
+                (historicalWeeklyRestOpening?.effectiveDate
+                  ? fmtIsoDate(String(historicalWeeklyRestOpening.effectiveDate))
+                  : t("غير محدد")) +
+                ".",
+              "Recorded balance: " +
+                numberLabel(historicalWeeklyRestOpening?.days, " يوم", language) +
+                ", effective date: " +
+                (historicalWeeklyRestOpening?.effectiveDate
+                  ? fmtIsoDate(String(historicalWeeklyRestOpening.effectiveDate))
+                  : t("غير محدد")) +
+                "."
+            )}
             tone="success"
           />
         ) : (
@@ -1681,7 +1682,7 @@ export default function LeaveRestManagementPanel({
                 void submitHistoricalWeeklyRestOpening()
               }
             >
-              {"اعتماد الرصيد التاريخي"}
+              {t("اعتماد الرصيد التاريخي")}
             </button>
           </>
         )}
@@ -1735,10 +1736,10 @@ export default function LeaveRestManagementPanel({
               }
             >
               <option value="credit">
-                إضافة إلى الرصيد
+                {t("إضافة إلى الرصيد")}
               </option>
               <option value="debit">
-                خصم من الرصيد
+                {t("خصم من الرصيد")}
               </option>
             </select>
           </DashboardFieldV2>
@@ -1876,8 +1877,8 @@ export default function LeaveRestManagementPanel({
           <WorkspaceNoticeV2
             title={
               recallLeave
-                ? "الإجازة السنوية المطابقة"
-                : "لا توجد إجازة مطابقة"
+                ? t("الإجازة السنوية المطابقة")
+                : t("لا توجد إجازة مطابقة")
             }
             description={
               recallLeave
@@ -1907,7 +1908,7 @@ export default function LeaveRestManagementPanel({
             }
             onClick={() => void submitRecall()}
           >
-            تسجيل الاستدعاء
+            {t("تسجيل الاستدعاء")}
           </button>
         </WorkspaceCardV2>
 
@@ -1987,7 +1988,7 @@ export default function LeaveRestManagementPanel({
               void submitWeeklyRestWork()
             }
           >
-            تسجيل تكليف يوم الراحة
+            {t("تسجيل تكليف يوم الراحة")}
           </button>
         </WorkspaceCardV2>
       </div>
@@ -2029,7 +2030,7 @@ export default function LeaveRestManagementPanel({
                     )
                   }
                 >
-                  إلغاء
+                  {t("إلغاء")}
                 </button>,
               ]
             )}
@@ -2087,7 +2088,7 @@ export default function LeaveRestManagementPanel({
                       )
                     }
                   >
-                    إلغاء
+                    {t("إلغاء")}
                   </button>
                 ) : (
                   "—"
