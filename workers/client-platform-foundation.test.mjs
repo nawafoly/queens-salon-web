@@ -197,6 +197,26 @@ test('client dashboard uses the server-side Client 360 read model', () => {
 });
 
 
+test('client record management follows effective permissions instead of hard-coded roles', () => {
+  const modal = readFileSync('src/features/customers/CustomerRecordModal.tsx', 'utf8');
+  const dashboard = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const core = readFileSync('workers/core/index.js', 'utf8');
+
+  assert.match(modal, /usePermissions/);
+  assert.match(modal, /hasPermission\("clients\.manage"\)/);
+  assert.match(modal, /hasPermission\("clients\.packages\.manage"\)/);
+  assert.match(modal, /hasPermission\("clients\.loyalty\.manage"\)/);
+  assert.doesNotMatch(modal, /currentRole\s*===\s*"owner"/);
+  assert.match(modal, /canManage=\{canManagePackages\}/);
+  assert.match(modal, /disabled=\{noteSaving \|\| !customer\.clientId \|\| !canManageClient\}/);
+  assert.doesNotMatch(dashboard, /CustomerRecordModal[^>]*currentRole=/);
+
+  assert.doesNotMatch(core, /clients\.update/);
+  assert.match(core, /case "client:admin-preferences"[\s\S]*?requirePermission\(ctx, "clients\.manage"\)/);
+  assert.match(core, /case "client:loyalty-adjustment"[\s\S]*?requirePermission\(ctx, "clients\.loyalty\.manage"\)/);
+  assert.match(core, /case "clients":[\s\S]*?method === "PATCH"[\s\S]*?requirePermission\(ctx, "clients\.manage"\)/);
+});
+
 test('client management uses complete Core pagination and server-side Core search', () => {
   const service = readFileSync('src/services/CoreClientService.ts', 'utf8');
   const repository = readFileSync('workers/core/repositories/clients.js', 'utf8');

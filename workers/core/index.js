@@ -1271,11 +1271,11 @@ async function dispatch(ctx, route, method, body, query, env) {
     }
 
     case "client:admin-preferences": {
-      requireRole(ctx.role, OPERATIONS_ROLES);
       if (method === "GET") {
+        requirePermission(ctx, "clients.view");
         return getClientPreferences(db, ctx.salonId, route.id);
       }
-      requirePermission(ctx, "clients.update");
+      requirePermission(ctx, "clients.manage");
       const updated = await updateClientPreferences(
         db,
         ctx.salonId,
@@ -1484,17 +1484,17 @@ async function dispatch(ctx, route, method, body, query, env) {
     }
 
     case "client:loyalty-summary":
-      requireRole(ctx.role, OPERATIONS_ROLES);
+      requirePermission(ctx, "clients.loyalty.manage");
       if (method === "GET") return getClientLoyaltySummary(db, ctx.salonId);
       break;
 
     case "client:admin-overview":
-      requireRole(ctx.role, OPERATIONS_ROLES);
+      requirePermission(ctx, "clients.view");
       if (method === "GET") return getAdminClientOverview(db, ctx.salonId, route.id);
       break;
 
     case "client:loyalty-adjustment": {
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "clients.loyalty.manage");
       const loyalty = await adjustClientLoyalty(
         db,
         ctx.salonId,
@@ -1518,9 +1518,11 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "clients":
       if (method === "GET" && route.id) {
+        requirePermission(ctx, "clients.view");
         return getClient(db, ctx.salonId, route.id);
       }
       if (method === "GET") {
+        requirePermission(ctx, "clients.view");
         return listClients(db, ctx.salonId, query);
       }
       if (method === "POST") {
@@ -1533,13 +1535,11 @@ async function dispatch(ctx, route, method, body, query, env) {
           const { firebaseUid, uid, authUid, ...safeBody } = body || {};
           return createClient(db, ctx.salonId, safeBody);
         }
+        requirePermission(ctx, "clients.manage");
         return createClient(db, ctx.salonId, body);
       }
       if (method === "PATCH" && route.id) {
-        const updatesIdentity = ["name", "phone", "phoneNormalized"].some(
-          (field) => Object.prototype.hasOwnProperty.call(body || {}, field)
-        );
-        if (updatesIdentity) requireRole(ctx.role, ADMIN_ROLES);
+        requirePermission(ctx, "clients.manage");
         const before = await getClient(db, ctx.salonId, route.id);
         const updated = await patchClient(db, ctx.salonId, route.id, body);
         await recordAudit(db, ctx.salonId, {

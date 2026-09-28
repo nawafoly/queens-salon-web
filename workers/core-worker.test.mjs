@@ -129,6 +129,10 @@ class FakeD1 {
       "bookings.price.adjust",
       "bookings.discount.apply",
       "bookings.delete",
+      "clients.view",
+      "clients.manage",
+      "clients.packages.manage",
+      "clients.loyalty.manage",
       "income.view",
       "income.manage",
       "finance.view",
@@ -152,7 +156,7 @@ class FakeD1 {
     grantRole("admin", permissionKeys.filter((key) => !["accounts.delete", "permissions.manage", "roles.manage"].includes(key)));
     grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
     grantRole("accountant", ["finance.view", "finance.manage", "income.view", "income.manage", "reports.view", "audit.read"]);
-    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage", "bookings.price.adjust", "bookings.discount.apply"]);
+    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage", "bookings.price.adjust", "bookings.discount.apply", "clients.view", "clients.manage"]);
     grantRole("staff", ["bookings.view", "targets.view_own"]);
 
     const accounts = [
@@ -3433,6 +3437,15 @@ test("client profile update validates identity and keeps existing bookings linke
   response = await worker.fetch(request("/api/core/clients/client-a", {
     method: "PATCH",
     token: "test:reception1:reception",
+    body: { name: "تعديل مصرح للاستقبال" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.name, "تعديل مصرح للاستقبال");
+
+  response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    token: "test:staff1:staff",
     body: { name: "غير مسموح" },
   }), env(fake));
   body = await json(response);

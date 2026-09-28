@@ -7,6 +7,7 @@ import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
 import { CoreClientService, type CoreClientOverview } from "../../services/CoreClientService";
 import { CoreStaffService } from "../../services/CoreStaffService";
+import { usePermissions } from "../../security/PermissionContext";
 import type { CoreBooking, CoreClient, CoreStaff } from "../../types/coreApi";
 import {
   formatCustomerLastVisit,
@@ -19,7 +20,6 @@ import {
 } from "./customerFormatters";
 import type { CustomerRow } from "./customerTypes";
 
-type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "guest";
 type Feedback = { type: "success" | "error"; text: string } | null;
 
 function bookingStatusLabel(status: string): string {
@@ -110,7 +110,6 @@ function editErrorMessage(cause: unknown, language: DashboardLanguage): string {
 type Props = {
   language: DashboardLanguage;
   customer: CustomerRow;
-  currentRole: UiRole;
   onCustomerUpdated: (client: CoreClient) => void;
   onClose: () => void;
 };
@@ -118,12 +117,14 @@ type Props = {
 export default function CustomerRecordModal({
   language,
   customer,
-  currentRole,
   onCustomerUpdated,
   onClose,
 }: Props) {
   const t = (text: string) => clientsText(language, text);
-  const canManage = currentRole === "owner" || currentRole === "admin";
+  const { hasPermission } = usePermissions();
+  const canManageClient = hasPermission("clients.manage");
+  const canManagePackages = hasPermission("clients.packages.manage");
+  const canManageLoyalty = hasPermission("clients.loyalty.manage");
   const [overview, setOverview] = useState<CoreClientOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
@@ -187,7 +188,7 @@ export default function CustomerRecordModal({
   }, [loadOverview]);
 
   useEffect(() => {
-    if (!canManage) {
+    if (!canManageClient) {
       setStaffOptions([]);
       return;
     }
@@ -202,7 +203,7 @@ export default function CustomerRecordModal({
     return () => {
       active = false;
     };
-  }, [canManage]);
+  }, [canManageClient]);
 
   useEffect(() => {
     if (editing) return;
@@ -442,7 +443,7 @@ export default function CustomerRecordModal({
               <p className="dsv2-customers-eyebrow">{t("البيانات الأساسية")}</p>
               <h3 id="customer-data-title" className="dsv2-section-title">{t("بيانات العميلة")}</h3>
             </div>
-            {!editing && canManage && customer.clientId ? (
+            {!editing && canManageClient && customer.clientId ? (
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm dsv2-customers-section-edit" onClick={beginEditing}>
                 <FiEdit3 /> {t("تعديل البيانات")}
               </button>
@@ -490,7 +491,7 @@ export default function CustomerRecordModal({
           )}
 
           {editFeedback ? <p className={`dsv2-customers-form-feedback is-${editFeedback.type}`} role="status">{editFeedback.text}</p> : null}
-          {!canManage ? <p className="dsv2-section-caption">{t("التعديل متاح للمديرة أو المشرفة فقط.")}</p> : null}
+          {!canManageClient ? <p className="dsv2-section-caption">{t("تعديل بيانات العميلة يتطلب صلاحية إدارة العملاء.")}</p> : null}
         </section>
 
         <section className="dsv2-customers-record-summary">
@@ -540,7 +541,7 @@ export default function CustomerRecordModal({
                           <b>{overview.relationship.preferences.connectEnabled ? t("مفعّل") : t("موقوف")}</b>
                         </span>
                       </div>
-                      {canManage ? (
+                      {canManageClient ? (
                         <div className="dsv2-customers-client-edit-form">
                           <label className="dsv2-field">
                             <span className="dsv2-field__label">{t("إدارة تفضيلات التواصل")}</span>
@@ -578,7 +579,7 @@ export default function CustomerRecordModal({
                           </label>
                         </div>
                       ) : null}
-                      {canManage ? (
+                      {canManageClient ? (
                         <label className="dsv2-field">
                           <span className="dsv2-field__label">{t("تغيير المختصة المفضلة")}</span>
                           <select
@@ -658,7 +659,7 @@ export default function CustomerRecordModal({
                         ))}
                         {!overview.loyalty.transactions.length ? <p>{t("لا توجد حركات نقاط.")}</p> : null}
                       </div>
-                      {canManage ? (
+                      {canManageLoyalty ? (
                         <div className="dsv2-customers-loyalty-adjust">
                           <DashboardNumberInputV2 className="dsv2-input" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder={language === "en" ? "20 or -20" : "20 أو -20"} aria-label={t("عدد النقاط")} />
                           <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder={t("سبب التعديل")} aria-label={t("سبب تعديل النقاط")} />
@@ -689,15 +690,15 @@ export default function CustomerRecordModal({
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card">
           <h3 className="dsv2-section-title">{t("ملاحظات إدارية داخلية")}</h3>
-          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder={t("مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة...")} disabled={noteSaving || !customer.clientId} />
+          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder={t("مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة...")} disabled={noteSaving || !customer.clientId || !canManageClient} />
           <div className="dsv2-customers-note-actions">
-            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving || !customer.clientId}>{noteSaving ? t("جارٍ حفظ الملاحظة...") : t("حفظ الملاحظة")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving || !customer.clientId || !canManageClient}>{noteSaving ? t("جارٍ حفظ الملاحظة...") : t("حفظ الملاحظة")}</button>
             {noteFeedback ? <span className={`dsv2-customers-form-feedback is-${noteFeedback.type}`} role="status">{noteFeedback.text}</span> : null}
           </div>
         </section>
 
         <section className="dsv2-card dsv2-card--padded dsv2-customers-packages">
-          <ClientPackagesPanel clientId={customer.clientId || customer.legacyClientDocId} canManage={canManage} language={language} />
+          <ClientPackagesPanel clientId={customer.clientId || customer.legacyClientDocId} canManage={canManagePackages} language={language} />
         </section>
 
         <section className="dsv2-table-card dsv2-customers-bookings-history">

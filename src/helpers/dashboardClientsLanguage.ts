@@ -139,7 +139,7 @@ const clientsEnglish: Record<string, string> = {
   "جارٍ حفظ التعديلات...": "Saving changes...",
   "حفظ التعديلات": "Save changes",
   "غير مسجل": "Not recorded",
-  "التعديل متاح للمديرة أو المشرفة فقط.": "Editing is available to managers only.",
+  "تعديل بيانات العميلة يتطلب صلاحية إدارة العملاء.": "Editing client data requires the Manage clients permission.",
   "إجمالي الصرف": "Total spend",
   "السجل المالي والولاء": "Financial record and loyalty",
   "السجل الموحد للعميلة": "Unified client record",
