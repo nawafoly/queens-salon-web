@@ -69,6 +69,7 @@ type ToolbarProps = {
   language: DashboardLanguage;
   query: string;
   loading: boolean;
+  searching: boolean;
   canImport: boolean;
   canExport: boolean;
   onQueryChange: (value: string) => void;
@@ -81,14 +82,17 @@ export function CustomersSearchToolbar(props: ToolbarProps) {
   const t = (text: string) => clientsText(props.language, text);
   return (
     <section className="dsv2-card dsv2-card--padded dsv2-customers-toolbar" aria-label={t("بحث وأدوات العملاء")}>
-      <label className="dsv2-customers-search-field">
-        <FiSearch aria-hidden="true" />
+      <label className="dsv2-customers-search-field" aria-busy={props.searching}>
+        <FiSearch aria-hidden="true" className={props.searching ? "dsv2-customers-searching" : ""} />
         <input
-          className="dsv2-input"
+          className="dsv2-customers-search-input"
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
           placeholder={t("ابحثي بالاسم أو رقم الجوال")}
           aria-label={t("البحث باسم العميلة أو رقم الجوال")}
+          inputMode="search"
+          autoComplete="off"
+          dir={/[\u0600-\u06FF]/u.test(props.query) ? "rtl" : "ltr"}
         />
         {props.query ? (
           <button
