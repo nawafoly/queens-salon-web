@@ -10,6 +10,7 @@ import {
   calculateCashbackEarnHalalas,
   DEFAULT_CASHBACK_POLICY,
 } from './core/repositories/cashback.js';
+import { listClients } from './core/repositories/clients.js';
 
 test('MALIKAT Connect normalizes Arabic and Persian digits', () => {
   assert.equal(normalizeConnectText('٠٥٤ ۶۵۳ ٥٤٠٤'), '054 653 5404');
@@ -196,19 +197,69 @@ test('client dashboard uses the server-side Client 360 read model', () => {
 });
 
 
-test('client management search queries Core D1 beyond the initial 500-row dashboard page', () => {
+test('client management loads the complete Core directory without a 500-client ceiling', () => {
+  const service = readFileSync('src/services/CoreClientService.ts', 'utf8');
+  const repository = readFileSync('workers/core/repositories/clients.js', 'utf8');
   const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const importModal = readFileSync('src/features/customers/CustomersImportModal.tsx', 'utf8');
+  const sections = readFileSync('src/features/customers/CustomersPageSections.tsx', 'utf8');
   const styles = readFileSync('src/styles/dashboard-v2/pages/clients.css', 'utf8');
 
-  assert.match(page, /const \[searchClients, setSearchClients\]/);
-  assert.match(page, /CoreClientService\.list\(search,/);
-  assert.match(page, /includeMetrics:\s*true/);
-  assert.match(page, /limit:\s*100/);
-  assert.match(page, /const sourceRows = searchActive \? searchedCustomers : customers/);
-  assert.match(page, /generation !== searchGenerationRef\.current/);
+  assert.match(service, /async listAll\\(/);
+  assert.match(service, /for \\(let offset = 0; ; offset \\+= batchSize\\)/);
+  assert.match(page, /CoreClientService\\.listAll\\("", \\{[\\s\\S]*includeMetrics:\\s*true/);
+  assert.doesNotMatch(page, /limit:\\s*500/);
+  assert.match(importModal, /CoreClientService\\.listAll\\("", \\{ includeMetrics: true \\}\\)/);
+  assert.doesNotMatch(repository, /Math\\.min\\(50_000/);
+  assert.match(repository, /ORDER BY c\\.updated_at DESC, c\\.id DESC/);
+  assert.match(repository, /ORDER BY updated_at DESC, id DESC/);
 
+  assert.match(sections, /className="dsv2-customers-search-input"/);
+  assert.doesNotMatch(sections, /className="dsv2-input"/);
   assert.match(
     styles,
-    /\.dsv2-customers-search-field \.dsv2-input:focus[\s\S]*?border:\s*0[\s\S]*?box-shadow:\s*none/
+    /\\.dsv2-customers-search-input:focus[\\s\\S]*?border:\\s*0[\\s\\S]*?box-shadow:\\s*none/
   );
+});
+
+test('client Core search resolves common Saudi mobile formats to the same canonical phone', async () => {
+  const canonicalClient = {
+    id: 'client-phone-regression',
+    salon_id: 'main',
+    name: 'Phone Regression',
+    phone_normalized: '0570142717',
+    updated_at: '2026-09-28T00:00:00.000Z',
+  };
+
+  for (const search of ['0570142717', '966570142717', '+966570142717']) {
+    const db = {
+      __fakeD1: true,
+      async all(sql, params) {
+        const normalized = sql.replace(/\\s+/g, ' ').trim();
+        assert.match(normalized, /FROM clients/);
+        return params.includes(canonicalClient.phone_normalized) ? [canonicalClient] : [];
+      },
+    };
+
+    const rows = await listClients(db, 'main', { search, limit: 500, offset: 0 });
+    assert.equal(rows.length, 1, search);
+    assert.equal(rows[0].id, canonicalClient.id, search);
+  }
+});
+
+test('client Core pagination accepts offsets beyond 50,000 without clamping', async () => {
+  let observedOffset = -1;
+  let observedSql = '';
+  const db = {
+    __fakeD1: true,
+    async all(sql, params) {
+      observedSql = sql.replace(/\\s+/g, ' ').trim();
+      observedOffset = Number(params.at(-1));
+      return [];
+    },
+  };
+
+  await listClients(db, 'main', { limit: 500, offset: 50_500 });
+  assert.equal(observedOffset, 50_500);
+  assert.match(observedSql, /ORDER BY updated_at DESC, id DESC LIMIT \\? OFFSET \\?/);
 });
