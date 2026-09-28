@@ -91,6 +91,9 @@
 }
 
 .dashboard-v2 .dsv2-customers-search-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   min-height: auto;
   height: calc(var(--dsv2-control-height-lg) - var(--dsv2-space-1));
   padding: 0;
