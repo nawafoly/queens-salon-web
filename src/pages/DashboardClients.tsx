@@ -242,12 +242,14 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   const visibleCustomers = useMemo(() => {
     const searchText = normalizeCustomerSearchText(deferredQuery);
     const searchDigits = customerPhoneDigits(deferredQuery);
-    const rawSearchDigits = String(deferredQuery || "").replace(/\D/g, "");
     const now = Date.now();
     const rows = searchPool.filter((customer) => {
       const customerDigits = customerPhoneDigits(customer.phone);
       const customerDisplayDigits = String(customer.phone || "").replace(/\D/g, "");
-      const matchesPhone = Boolean(rawSearchDigits) && (customerDisplayDigits.includes(rawSearchDigits) || customerDigits.includes(searchDigits));
+      const matchesPhone = Boolean(searchDigits) && (
+        customerDisplayDigits.includes(searchDigits) ||
+        customerDigits.includes(searchDigits)
+      );
       const matchesQuery =
         !searchText ||
         unnamedCustomerSearchHaystack(customer.name).includes(searchText) ||
