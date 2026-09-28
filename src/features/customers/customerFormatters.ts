@@ -156,7 +156,10 @@ export function unnamedCustomerSearchHaystack(value: unknown): string {
 }
 
 export function customerPhoneDigits(value: unknown): string {
-  let digits = cleanText(value).replace(/\D/g, "");
+  let digits = cleanText(value)
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
+    .replace(/\D/g, "");
   if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
   if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
   if (/^05\d{8}$/.test(digits)) return `966${digits.slice(1)}`;
