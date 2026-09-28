@@ -205,20 +205,20 @@ test('client management loads the complete Core directory without a 500-client c
   const sections = readFileSync('src/features/customers/CustomersPageSections.tsx', 'utf8');
   const styles = readFileSync('src/styles/dashboard-v2/pages/clients.css', 'utf8');
 
-  assert.match(service, /async listAll\\(/);
-  assert.match(service, /for \\(let offset = 0; ; offset \\+= batchSize\\)/);
-  assert.match(page, /CoreClientService\\.listAll\\("", \\{[\\s\\S]*includeMetrics:\\s*true/);
-  assert.doesNotMatch(page, /limit:\\s*500/);
-  assert.match(importModal, /CoreClientService\\.listAll\\("", \\{ includeMetrics: true \\}\\)/);
-  assert.doesNotMatch(repository, /Math\\.min\\(50_000/);
-  assert.match(repository, /ORDER BY c\\.updated_at DESC, c\\.id DESC/);
+  assert.match(service, /async listAll\(/);
+  assert.match(service, /for \(let offset = 0; ; offset \+= batchSize\)/);
+  assert.match(page, /CoreClientService\.listAll\("", \{[\s\S]*includeMetrics:\s*true/);
+  assert.doesNotMatch(page, /limit:\s*500/);
+  assert.match(importModal, /CoreClientService\.listAll\("", \{ includeMetrics: true \}\)/);
+  assert.doesNotMatch(repository, /Math\.min\(50_000/);
+  assert.match(repository, /ORDER BY c\.updated_at DESC, c\.id DESC/);
   assert.match(repository, /ORDER BY updated_at DESC, id DESC/);
 
   assert.match(sections, /className="dsv2-customers-search-input"/);
   assert.doesNotMatch(sections, /className="dsv2-input"/);
   assert.match(
     styles,
-    /\\.dsv2-customers-search-input:focus[\\s\\S]*?border:\\s*0[\\s\\S]*?box-shadow:\\s*none/
+    /\.dsv2-customers-search-input:focus[\s\S]*?border:\s*0[\s\S]*?box-shadow:\s*none/
   );
 });
 
@@ -235,7 +235,7 @@ test('client Core search resolves common Saudi mobile formats to the same canoni
     const db = {
       __fakeD1: true,
       async all(sql, params) {
-        const normalized = sql.replace(/\\s+/g, ' ').trim();
+        const normalized = sql.replace(/\s+/g, ' ').trim();
         assert.match(normalized, /FROM clients/);
         return params.includes(canonicalClient.phone_normalized) ? [canonicalClient] : [];
       },
@@ -253,7 +253,7 @@ test('client Core pagination accepts offsets beyond 50,000 without clamping', as
   const db = {
     __fakeD1: true,
     async all(sql, params) {
-      observedSql = sql.replace(/\\s+/g, ' ').trim();
+      observedSql = sql.replace(/\s+/g, ' ').trim();
       observedOffset = Number(params.at(-1));
       return [];
     },
@@ -261,5 +261,5 @@ test('client Core pagination accepts offsets beyond 50,000 without clamping', as
 
   await listClients(db, 'main', { limit: 500, offset: 50_500 });
   assert.equal(observedOffset, 50_500);
-  assert.match(observedSql, /ORDER BY updated_at DESC, id DESC LIMIT \\? OFFSET \\?/);
+  assert.match(observedSql, /ORDER BY updated_at DESC, id DESC LIMIT \? OFFSET \?/);
 });
