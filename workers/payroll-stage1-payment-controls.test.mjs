@@ -27,7 +27,7 @@ test("payment reversal is Core-authoritative and reverses payroll side effects",
 
   assert.match(obligations, /export async function payrollObligationPaymentReversalStatements/);
   assert.match(obligations, /applied_payroll_entry_id = NULL/);
-  assert.match(obligations, /remaining_amount_halalas =\s*MIN\(original_amount_halalas, remaining_amount_halalas \+ \?\)/);
+  assert.match(obligations, /remaining_amount_halalas =\s*MIN\(\s*original_amount_halalas,\s*remaining_amount_halalas \+ \?\s*\)/);
 
   assert.match(worker, /payroll-entry:unpay/);
   assert.match(worker, /requirePermission\(ctx, "payroll\.manage"\)/);
@@ -68,9 +68,9 @@ test("current Riyadh workday is never finalized as missing before shift end", ()
 
   assert.match(payroll, /const completedThrough = payrollCompletedThrough\(bounds\)/);
   assert.match(payroll, /const completedPeriodEnd =/);
-  assert.match(payroll, /dateKey > completedPeriodEnd/);
+  assert.match(payroll, /dateKey > effectiveCompletedEnd/);
   assert.match(
     payroll,
-    /payrollDateKeys\(bounds\.monthStart, completedThrough\)/
+    /payrollDateKeys\(servicePeriod\.periodStart, effectiveCompletedEnd\)/
   );
 });

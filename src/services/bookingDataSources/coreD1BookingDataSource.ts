@@ -344,6 +344,14 @@ export const coreD1BookingDataSource: BookingDataSource = {
     const coreInput = {
       ...legacyBookingToCoreInput(firstItem, clientId),
       id: bookingId,
+      partyId: String(group.parent.partyId || "").trim() || undefined,
+      partyLeadClientId: String(group.parent.partyLeadClientId || "").trim() || undefined,
+      partyMemberOrder: Number.isFinite(Number(group.parent.partyMemberOrder))
+        ? Number(group.parent.partyMemberOrder)
+        : undefined,
+      partySize: Number.isFinite(Number(group.parent.partySize))
+        ? Number(group.parent.partySize)
+        : undefined,
       staffId:
         String(
           group.parent.employeeId ||

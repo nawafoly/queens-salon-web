@@ -49,7 +49,7 @@ test("active UI uses salary-advance terminology and legacy reference gaps remain
  const portal=read("src/pages/EmployeePortal.tsx");
  const permissions=read("src/helpers/permissions.ts");
  const migration=read("migrations/core/0025_employee_request_reference_integrity.sql");
- assert.match(portal,/label:\s*"طلب سلفة"/);
+ assert.match(portal,/label:\s*tr\("طلب سلفة",\s*"Salary advance"\)/);
  assert.doesNotMatch(portal,/صرف معجل للراتب/);
  assert.match(permissions,/label:\s*"اعتماد السلفة"/);
  assert.doesNotMatch(permissions,/اعتماد الصرف المعجل/);

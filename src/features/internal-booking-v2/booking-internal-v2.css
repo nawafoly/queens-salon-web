@@ -552,3 +552,49 @@
 .bk2-service-price.is-promo del{display:block;color:#98a2b3;font-size:10px;font-weight:700}
 .bk2-item-price-breakdown .is-promo{background:#fff8dc;border-color:#ead68a}
 @media (max-width:760px){.bk2-catalog-offers-grid{grid-template-columns:1fr}}
+
+
+/* Administrative party / multi-client booking */
+.bk2-party-clients{display:grid;gap:12px;margin:0 0 14px;padding:14px;border:1px solid #e7d9b1;border-radius:16px;background:linear-gradient(180deg,#fffdf7,#fff)}
+.bk2-party-clients-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bk2-party-clients-head>div{display:grid;gap:3px;min-width:0}
+.bk2-party-clients-head strong{font-size:14px;color:#172033}
+.bk2-party-clients-head small{font-size:11px;color:#7a8395}
+.bk2-party-clients-head>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:0 12px;border:1px solid #d8b84a;border-radius:11px;background:#fff9df;color:#5e4800;font:inherit;font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap}
+.bk2-party-client-chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.bk2-party-client-chip{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;min-width:180px;border:1px solid #e0e4ea;border-radius:13px;background:#fff;overflow:hidden;transition:.15s ease}
+.bk2-party-client-chip.is-active{border-color:#d2a817;background:#fffaf0;box-shadow:0 0 0 2px rgba(210,168,23,.09)}
+.bk2-party-client-chip>button:first-child{display:flex;align-items:center;gap:9px;min-width:0;padding:9px 10px;border:0;background:transparent;text-align:start;font:inherit;cursor:pointer}
+.bk2-party-client-chip .bk2-avatar{width:34px;height:34px;flex:0 0 34px;font-size:13px}
+.bk2-party-client-chip>button:first-child>span:last-child{display:grid;gap:1px;min-width:0}
+.bk2-party-client-chip strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.bk2-party-client-chip small{color:#858da0;font-size:10px;font-weight:800}
+.bk2-party-client-remove{width:34px;border:0;border-inline-start:1px solid #edf0f4;background:#fff;color:#9b2441;font-size:20px;font-weight:500;cursor:pointer}
+.bk2-party-client-remove:hover{background:#fff1f4}
+.bk2-party-mode-note{margin:0;padding:9px 10px;border-radius:10px;background:#f4f0ff;color:#5f3a91;font-size:11px;font-weight:800;line-height:1.55}
+
+.bk2-party-service-owner{display:grid;gap:10px;margin:0 0 14px;padding:13px;border:1px solid #dfe4ec;border-radius:15px;background:#fbfcfe}
+.bk2-party-service-owner>div:first-child{display:grid;gap:3px}
+.bk2-party-service-owner>div:first-child strong{font-size:14px;color:#182132}
+.bk2-party-service-owner>div:first-child small{font-size:11px;color:#778195;line-height:1.5}
+.bk2-party-service-owner>div:last-child{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.bk2-party-service-owner button{display:grid;gap:2px;min-width:145px;padding:10px 12px;border:1px solid #dde2e9;border-radius:11px;background:#fff;color:#354052;text-align:start;font:inherit;cursor:pointer}
+.bk2-party-service-owner button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:900}
+.bk2-party-service-owner button>small{font-size:10px;color:#8a93a4;font-weight:800}
+.bk2-party-service-owner button.is-active{border-color:#b58d00;background:#fff8dc;color:#5f4800;box-shadow:0 0 0 2px rgba(181,141,0,.08)}
+.bk2-party-service-owner button.is-active>small{color:#896d0c}
+
+.bk2-party-success-bookings{display:grid;gap:6px;width:min(100%,520px);margin:2px auto 4px}
+.bk2-party-success-bookings>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 11px;border:1px solid #d9e9df;border-radius:10px;background:#fbfffc}
+.bk2-party-success-bookings span{font-size:12px;font-weight:850;color:#31433a}
+.bk2-party-success-bookings bdi{font-size:12px;font-weight:950;color:#0b6b3d;font-variant-numeric:tabular-nums}
+
+@media(max-width:720px){
+  .bk2-party-clients-head{align-items:stretch;flex-direction:column}
+  .bk2-party-clients-head>button{width:100%}
+  .bk2-party-client-chip{min-width:165px}
+  .bk2-party-service-owner button{min-width:135px}
+  .bk2-party-success-bookings{width:100%}
+}
+
+.bk2-party-clients-head>button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}

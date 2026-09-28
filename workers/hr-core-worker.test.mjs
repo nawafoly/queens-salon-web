@@ -170,6 +170,8 @@ async function setup() {
     '0078_staff_services_specialties_backfill.sql',
     '0079_client_cashback_wallet.sql',
     '0083_internal_booking_price_adjustments.sql',
+    '0084_service_promo_prices.sql',
+    '0088_internal_booking_parties.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -1807,7 +1809,9 @@ test('employment start date gates attendance absence shift and payroll obligatio
   assert.equal(Number(preview.monthly_hours), 192);
   assert.equal(Number(preview.missing_hours), 0);
   assert.equal(Number(preview.missing_hours_deduction_halalas), 0);
-  assert.equal(Number(preview.absence_deduction_halalas), 0);
+  // Completed scheduled no-punch days after employment start are canonical
+  // payroll absences; pre-start dates remain excluded from the service period.
+  assert.equal(Number(preview.absence_deduction_halalas), 480000);
 });
 
 test('annual leave manual adjustment writes canonical audited corrections', async (t) => {
@@ -2165,15 +2169,19 @@ test('historical annual leave correction routes locked payroll impact through ca
     skipTargetBonus: true,
   }, actor);
   assert.equal(Number(augustDraft.missing_hours), 16);
-  assert.ok(Number(augustDraft.missing_hours_deduction_halalas) > 0);
+  // Completed scheduled no-punch days are now classified as payroll absences,
+  // not a duplicate missing-hours financial deduction.
+  assert.equal(Number(augustDraft.missing_hours_deduction_halalas), 0);
+  assert.ok(Number(augustDraft.absence_deduction_halalas) > 0);
 
   const augustApproved = await approvePayrollEntry(db, 'main', augustDraft.id, actor);
   const augustPaid = await markPayrollEntryPaid(db, 'main', augustApproved.id, actor);
   const correctionAmount = Number(augustPaid.hourly_rate_halalas) * 8;
   assert.equal(augustPaid.status, 'paid');
   assert.ok(correctionAmount > 0);
+  assert.equal(Number(augustPaid.missing_hours_deduction_halalas), 0);
   assert.equal(
-    Number(augustPaid.missing_hours_deduction_halalas),
+    Number(augustPaid.absence_deduction_halalas),
     correctionAmount * 2
   );
 

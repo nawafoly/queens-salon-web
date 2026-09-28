@@ -97,6 +97,15 @@ export type BookingDoc = {
   /** Firebase Auth UID for the client account, never the staff creator UID. */
   clientFirebaseUid?: string | null;
 
+  /**
+   * Administrative party booking metadata. Every booking still owns one
+   * canonical client; these fields only group bookings created in one checkout.
+   */
+  partyId?: string | null;
+  partyLeadClientId?: string | null;
+  partyMemberOrder?: number | null;
+  partySize?: number | null;
+
   userId?: string | null;
 
   slotStepMinAtBooking?: number;

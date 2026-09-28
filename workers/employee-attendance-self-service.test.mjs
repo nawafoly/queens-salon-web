@@ -196,7 +196,7 @@ test("late, leave and exception calendar colors are distinct", async () => {
     "#7c3aed"
   );
 });
-test("employee calendar keeps attendance result primary and shift exception secondary", async () => {
+test("employee calendar keeps one short primary label and promotes off-day exceptions to exception", async () => {
   const view = await source(
     "src/components/AttendanceMonthView.tsx"
   );
@@ -208,7 +208,12 @@ test("employee calendar keeps attendance result primary and shift exception seco
 
   assert.match(
     view,
-    /cell\.isException && cell\.status !== "off_day"/
+    /cell\.status === "off_day" && cell\.isException/
+  );
+
+  assert.doesNotMatch(
+    view,
+    /attendance-month__exception-label/
   );
 });
 

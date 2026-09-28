@@ -305,7 +305,7 @@ test(
 
     assert.ok(
       shift.includes(
-        "targetShiftEmployeeId"
+        "canonicalShiftEmployeeId"
       )
     );
 

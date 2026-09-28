@@ -45,6 +45,16 @@ type CatalogCategory = { id: string; title?: string; name?: string; label?: stri
 type CatalogService = Record<string, any> & { id: string };
 type StaffRow = Record<string, any> & { id: string };
 type ScheduleSelection = { staffId: string; staffName: string; time: string };
+type CreatedPartyBooking = {
+  clientKey: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  parentId: string;
+  publicId: string;
+  itemIds: string[];
+  reference: string;
+};
 type PaymentMethod = "cash" | "card" | "transfer" | "mixed";
 type PaymentType = "full" | "partial" | "none";
 type DiscountMode = "none" | "fixed" | "percent" | "offer" | "coupon";
@@ -174,6 +184,36 @@ function serviceTitle(service: any) {
   return catalogLabel(service, "خدمة");
 }
 
+function partyClientKey(client: ClientCandidate | null | undefined) {
+  if (!client) return "";
+  return candidateIdentity(client) || `id:${String(client.id || "").trim()}`;
+}
+
+function bookingLineKey(service: any) {
+  return String(service?.__bookingLineId || service?.id || "").trim();
+}
+
+function bookingLineClientKey(service: any) {
+  return String(service?.__partyClientKey || "").trim();
+}
+
+function bookingLineClientName(service: any) {
+  return String(service?.__partyClientName || "").trim();
+}
+
+function attachServiceToClient(service: CatalogService, client: ClientCandidate): CatalogService {
+  const clientKey = partyClientKey(client);
+  const serviceId = String(service?.id || "").trim();
+  return {
+    ...service,
+    __bookingLineId: `${clientKey}::${serviceId}`,
+    __partyClientKey: clientKey,
+    __partyClientId: String(client.id || "").trim(),
+    __partyClientName: client.name,
+    __partyClientPhone: client.phone,
+  };
+}
+
 function serviceDuration(service: any) {
   const raw =
     service?.["المدة"] ??
@@ -231,8 +271,7 @@ function createInternalV2InvoicePrintRequestId(source: string) {
 }
 
 function buildInternalV2InvoiceRows(args: {
-  createdBookingIds: string[];
-  selectedClient: ClientCandidate | null;
+  createdPartyBookings: CreatedPartyBooking[];
   cart: CatalogService[];
   scheduleByService: Record<string, ScheduleSelection>;
   bookingDate: string;
@@ -247,14 +286,11 @@ function buildInternalV2InvoiceRows(args: {
   bookingPriceByService: Record<string, number>;
   discountSnapshot?: DiscountSnapshot | null;
 }) {
-  const bookingIds = Array.isArray(args.createdBookingIds) ? args.createdBookingIds : [];
-  const parentId = String(bookingIds[0] || "").trim();
-  if (!parentId || !args.selectedClient || !args.cart.length) return [];
+  if (!args.createdPartyBookings.length || !args.cart.length) return [];
 
-  // Client-facing invoice uses the agreed booking price before discount.
-  // Catalog price and adjustment metadata are internal/audit-only.
+  const createdByClient = new Map(args.createdPartyBookings.map((row) => [row.clientKey, row]));
   const rowOriginalPrices = args.cart.map((service) => {
-    const key = String(service.id || "").trim();
+    const key = bookingLineKey(service);
     const agreed = Number(args.bookingPriceByService[key]);
     return Number.isFinite(agreed)
       ? Math.max(0, agreed)
@@ -264,8 +300,8 @@ function buildInternalV2InvoiceRows(args: {
     (args.discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
   );
   const rowFinalPrices = args.cart.map((service, index) => {
-    const key = `item_${index}`;
-    const allocation = allocationByItem.get(key) || allocationByItem.get(String(service.id || "").trim());
+    const lineKey = bookingLineKey(service);
+    const allocation = allocationByItem.get(lineKey);
     return allocation ? halalasToSar(allocation.finalAmountHalalas) : rowOriginalPrices[index] || 0;
   });
   const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowFinalPrices);
@@ -290,10 +326,15 @@ function buildInternalV2InvoiceRows(args: {
   const createdAt = Date.now();
 
   return args.cart.map((service, index) => {
-    const serviceKey = String(service.id || "");
-    const schedule = (args.scheduleByService[serviceKey] || {}) as Partial<ScheduleSelection>;
-    const rowId = String(bookingIds[index + 1] || parentId || `${serviceKey}_${index}`).trim();
-    const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(serviceKey);
+    const lineKey = bookingLineKey(service);
+    const serviceId = String(service.id || "").trim();
+    const clientKey = bookingLineClientKey(service);
+    const created = createdByClient.get(clientKey);
+    const memberLines = args.cart.filter((row) => bookingLineClientKey(row) === clientKey);
+    const memberIndex = memberLines.findIndex((row) => bookingLineKey(row) === lineKey);
+    const schedule = (args.scheduleByService[lineKey] || {}) as Partial<ScheduleSelection>;
+    const rowId = String(created?.itemIds?.[memberIndex] || created?.parentId || `${lineKey}_${index}`).trim();
+    const allocation = allocationByItem.get(lineKey);
     const originalTotal = rowOriginalPrices[index] || 0;
     const discountAmount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
     const total = rowFinalPrices[index] || 0;
@@ -302,10 +343,12 @@ function buildInternalV2InvoiceRows(args: {
     const categoryTitle = String(service?.categoryTitle || service?.categoryName || service?.categoryLabel || service?.categoryId || "").trim();
     return {
       id: rowId,
-      publicId: parentId,
-      clientName: args.selectedClient?.name || "",
-      clientPhone: args.selectedClient?.phone || "",
-      serviceId: serviceKey,
+      publicId: created?.publicId || created?.parentId || "",
+      parentId: created?.parentId || "",
+      clientId: created?.clientId || "",
+      clientName: created?.clientName || bookingLineClientName(service),
+      clientPhone: created?.clientPhone || String(service?.__partyClientPhone || ""),
+      serviceId,
       serviceName,
       serviceSectionId: String(service?.sectionId || args.selectedSectionId || "").trim() || undefined,
       serviceSectionTitle: sectionTitle || undefined,
@@ -428,6 +471,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
+  const [companions, setCompanions] = useState<ClientCandidate[]>([]);
+  const [addingCompanion, setAddingCompanion] = useState(false);
+  const [activePartyClientKey, setActivePartyClientKey] = useState("");
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
   const [clientSearching, setClientSearching] = useState(false);
   const [clientMessage, setClientMessage] = useState("");
@@ -476,6 +522,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const submittingRef = useRef(false);
   const [showPastDateConfirmation, setShowPastDateConfirmation] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
+  const [createdPartyBookings, setCreatedPartyBookings] = useState<CreatedPartyBooking[]>([]);
   const [createdBookingReference, setCreatedBookingReference] = useState("");
   const [discountMode, setDiscountMode] = useState<DiscountMode>("none");
   const [manualFixedDiscount, setManualFixedDiscount] = useState("");
@@ -500,6 +547,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     sessions: Math.max(0, Number(raw?.sessions || raw?.remainingSessions || 0)) || undefined,
   }), []);
 
+  const bookingClients = useMemo(
+    () => selectedClient ? [selectedClient, ...companions] : [],
+    [selectedClient, companions]
+  );
+  const activeBookingClient = useMemo(() => {
+    if (!bookingClients.length) return null;
+    return bookingClients.find((client) => partyClientKey(client) === activePartyClientKey) || bookingClients[0];
+  }, [bookingClients, activePartyClientKey]);
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setActivePartyClientKey("");
+      return;
+    }
+    const keys = new Set(bookingClients.map(partyClientKey));
+    if (!activePartyClientKey || !keys.has(activePartyClientKey)) {
+      setActivePartyClientKey(partyClientKey(selectedClient));
+    }
+  }, [selectedClient, bookingClients, activePartyClientKey]);
+
   const findExistingClientByPhone = useCallback(async (rawPhone: string) => {
     const phone = phone10Digits(rawPhone);
     if (phone.length !== 10) return null;
@@ -511,8 +578,39 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [candidateFromCoreRow]);
 
   const chooseClientForBooking = useCallback((candidate: ClientCandidate, message: string) => {
-    setSelectedClient(candidate);
+    const candidateKey = partyClientKey(candidate);
+    if (addingCompanion && selectedClient) {
+      if (companions.length >= 19) {
+        setClientMessage(t("وصلت مجموعة الحجز إلى الحد الأقصى المسموح."));
+        return;
+      }
+      const primaryKey = partyClientKey(selectedClient);
+      if (candidateKey === primaryKey) {
+        setClientMessage(t("هذه هي العميلة الأساسية بالفعل."));
+      } else {
+        setCompanions((current) => current.some((row) => partyClientKey(row) === candidateKey)
+          ? current
+          : [...current, candidate]);
+        setActivePartyClientKey(candidateKey);
+        setClientMessage(t("تمت إضافة المرافقة إلى نفس مجموعة الحجز."));
+      }
+      setAddingCompanion(false);
+    } else {
+      const currentPrimaryKey = partyClientKey(selectedClient);
+      setSelectedClient(candidate);
+      setCompanions([]);
+      setActivePartyClientKey(candidateKey);
+      setAddingCompanion(false);
+      if (currentPrimaryKey && currentPrimaryKey !== candidateKey) {
+        setCart([]);
+        setPriceAdjustments({});
+        setScheduleByService({});
+        setAvailableTimes({});
+      }
+      setClientMessage(message);
+    }
     setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+    setQuery("");
     markQuickClientUsage(candidate);
     setShowNewClient(false);
     setNewClientName("");
@@ -521,8 +619,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setExistingClientMatch(null);
     setExistingClientLookupError("");
     setNewClientError("");
-    setClientMessage(message);
-  }, []);
+  }, [addingCompanion, selectedClient, companions.length, language]);
 
   useEffect(() => {
     const phone = phone10Digits(newClientPhone);
@@ -801,7 +898,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   );
   const bookingPriceForService = useCallback(
     (service: CatalogService) => {
-      const key = String(service.id || "").trim();
+      const key = bookingLineKey(service);
       const catalogPrice = Math.max(0, servicePrice(service));
       const raw = priceAdjustments[key]?.price;
       if (raw == null || String(raw).trim() === "") return catalogPrice;
@@ -855,18 +952,27 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       .filter((service): service is CatalogService => Boolean(service));
     if (!linkedServices.length) return;
 
+    if (!activeBookingClient) return;
+    const clientKey = partyClientKey(activeBookingClient);
     setCart((current) => {
-      const existing = new Set(current.map((service) => String(service.id || "").trim()));
-      const missing = linkedServices.filter((service) => !existing.has(String(service.id || "").trim()));
+      const existing = new Set(
+        current
+          .filter((service) => bookingLineClientKey(service) === clientKey)
+          .map((service) => String(service.id || "").trim())
+      );
+      const missing = linkedServices
+        .filter((service) => !existing.has(String(service.id || "").trim()))
+        .map((service) => attachServiceToClient(service, activeBookingClient));
       return missing.length ? [...current, ...missing] : current;
     });
-  }, [allServices, services, selectedOfferId]);
+  }, [allServices, services, selectedOfferId, activeBookingClient]);
 
-  const discountItems = useMemo(() => cart.map((service, index) => ({
-    bookingItemId: `item_${index}`,
+  const discountItems = useMemo(() => cart.map((service) => ({
+    bookingItemId: bookingLineKey(service),
     serviceId: String(service.id || "").trim(),
     categoryId: String(service?.categoryId || service?.category || "").trim() || undefined,
     originalAmountHalalas: toHalalas(bookingPriceForService(service)),
+    partyClientKey: bookingLineClientKey(service),
   })), [cart, bookingPriceForService]);
   useEffect(() => {
     if (
@@ -919,7 +1025,89 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     }
     return { source: "none" as DiscountSnapshotSource };
   }, [discountMode, manualFixedDiscount, manualMaxDiscount, manualPercentDiscount, selectedOffer, couponOffer, couponInput]);
-  const discountResult = useMemo(() => buildDiscountSnapshot(discountItems, discountRequest), [discountItems, discountRequest]);
+  const discountResultsByClient = useMemo(() => {
+    const results = new Map<string, ReturnType<typeof buildDiscountSnapshot>>();
+    const isPartyManualDiscount =
+      bookingClients.length > 1 &&
+      (discountMode === "fixed" || discountMode === "percent");
+
+    let globalManualResult: ReturnType<typeof buildDiscountSnapshot> | null = null;
+    if (isPartyManualDiscount) {
+      const globalItems = discountItems.map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
+      globalManualResult = buildDiscountSnapshot(globalItems, discountRequest);
+    }
+
+    for (const client of bookingClients) {
+      const key = partyClientKey(client);
+      const items = discountItems
+        .filter((item: any) => item.partyClientKey === key)
+        .map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
+      if (!items.length) continue;
+
+      if (globalManualResult) {
+        if (!globalManualResult.ok || !globalManualResult.snapshot) {
+          results.set(key, globalManualResult);
+          continue;
+        }
+
+        const lineKeys = new Set(items.map((item: any) => String(item.bookingItemId || "").trim()));
+        const memberDiscountHalalas = globalManualResult.snapshot.allocations
+          .filter((row) => lineKeys.has(String(row.bookingItemId || "").trim()))
+          .reduce((sum, row) => sum + Math.max(0, Number(row.discountAmountHalalas || 0)), 0);
+
+        if (memberDiscountHalalas <= 0) {
+          results.set(key, buildDiscountSnapshot(items, { source: "none" }));
+          continue;
+        }
+
+        // A fixed amount is sent to each underlying client booking so the sum
+        // of the independent Core bookings equals the single checkout discount.
+        // This also preserves one global cap for percentage discounts.
+        results.set(key, buildDiscountSnapshot(items, {
+          source: "manual",
+          type: "fixed",
+          title: discountRequest.title,
+          value: halalasToSar(memberDiscountHalalas),
+        }));
+        continue;
+      }
+
+      results.set(key, buildDiscountSnapshot(items, discountRequest));
+    }
+    return results;
+  }, [bookingClients, discountItems, discountRequest, discountMode]);
+
+  const discountResult = useMemo(() => {
+    const rows = [...discountResultsByClient.values()];
+    const skippablePartyReasons = new Set([
+      "discount_no_eligible_services",
+      "discount_minimum_not_met",
+    ]);
+    const snapshots = rows.filter((row) => row.ok && row.snapshot).map((row) => row.snapshot as DiscountSnapshot);
+    const blocking = rows.find((row) => !row.ok && !skippablePartyReasons.has(row.reason));
+    const noAppliedDiscount = discountMode !== "none" && !snapshots.length;
+    const firstSkipped = rows.find((row) => !row.ok);
+    const subtotalHalalas = discountItems.reduce((sum, item) => sum + Math.max(0, Number(item.originalAmountHalalas || 0)), 0);
+    const discountHalalas = rows.reduce((sum, row) => sum + (row.ok ? row.discountHalalas : 0), 0);
+    const allocations = snapshots.flatMap((snapshot) => snapshot.allocations || []);
+    const snapshot = snapshots.length
+      ? {
+          ...snapshots[0],
+          amountHalalas: discountHalalas,
+          eligibleSubtotalHalalas: snapshots.reduce((sum, row) => sum + Number(row.eligibleSubtotalHalalas || 0), 0),
+          allocations,
+          ...(bookingClients.length > 1 ? { partyBooking: true, partyClientCount: bookingClients.length } : {}),
+        } as DiscountSnapshot
+      : null;
+    return {
+      ok: !blocking && !noAppliedDiscount,
+      reason: blocking?.reason || (noAppliedDiscount ? firstSkipped?.reason || "discount_no_eligible_services" : ""),
+      subtotalHalalas,
+      discountHalalas,
+      totalHalalas: Math.max(0, subtotalHalalas - discountHalalas),
+      snapshot,
+    };
+  }, [discountResultsByClient, discountItems, bookingClients.length, discountMode]);
   const discountSnapshot = discountResult.snapshot;
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
@@ -936,15 +1124,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }
 
   const getCartScheduleConflict = useCallback((serviceKey: string, staffKey: string, time: string) => {
-    const currentService = cart.find((item) => String(item.id) === serviceKey);
+    const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
 
+    const currentClientKey = bookingLineClientKey(currentService);
     const clientEnd = start + Math.max(1, serviceDuration(currentService) || 30);
     const staffEnd = clientEnd + bufferMin;
 
     for (const other of cart) {
-      const otherKey = String(other.id);
+      const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) continue;
       const selected = scheduleByService[otherKey];
       if (!selected?.time) continue;
@@ -952,9 +1141,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       if (otherStart < 0) continue;
       const otherClientEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
 
-      // Client-level rule: services in one booking cannot overlap even when
-      // they are assigned to different employees.
-      if (start < otherClientEnd && otherStart < clientEnd) {
+      if (
+        bookingLineClientKey(other) === currentClientKey &&
+        start < otherClientEnd &&
+        otherStart < clientEnd
+      ) {
         return {
           kind: "client" as const,
           service: other,
@@ -963,7 +1154,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         };
       }
 
-      // Same staff remains stricter because its turnaround buffer must also be free.
       if (selected.staffId === staffKey) {
         const otherStaffEnd = otherClientEnd + bufferMin;
         if (start < otherStaffEnd && otherStart < staffEnd) {
@@ -985,17 +1175,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const getBusyIntervalsForService = useCallback((serviceKey: string, staffKey: string) => {
     if (!staffKey) return [];
+    const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
+    const currentClientKey = bookingLineClientKey(currentService);
     return cart.flatMap((other) => {
-      const otherKey = String(other.id);
+      const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) return [];
       const selected = scheduleByService[otherKey];
       if (!selected?.time) return [];
+      const sameStaff = selected.staffId === staffKey;
+      const sameClient = bookingLineClientKey(other) === currentClientKey;
+      if (!sameStaff && !sameClient) return [];
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) return [];
       const otherEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
       return [{
-        kind: selected.staffId === staffKey ? "staff" as const : "client" as const,
+        kind: sameStaff ? "staff" as const : "client" as const,
         serviceTitle: serviceTitle(other),
+        clientName: bookingLineClientName(other),
         start: selected.time,
         end: `${String(Math.floor(otherEnd / 60)).padStart(2, "0")}:${String(otherEnd % 60).padStart(2, "0")}`,
       }];
@@ -1005,7 +1201,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const conflictKeys = useMemo(() => {
     const keys = new Set<string>();
     cart.forEach((service) => {
-      const key = String(service.id);
+      const key = bookingLineKey(service);
       const selected = scheduleByService[key];
       if (selected?.time && hasCartScheduleConflict(key, selected.staffId, selected.time)) keys.add(key);
     });
@@ -1028,9 +1224,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     async function loadDatedBookableStaff() {
       try {
         const resolved = await Promise.all(serviceRows.map(async (service) => {
-          const serviceKey = String(service.id);
+          const serviceKey = bookingLineKey(service);
+          const canonicalServiceId = String(service.id || "").trim();
           const rows = await listCoreBookableStaffForDate({
-            serviceId: serviceKey,
+            serviceId: canonicalServiceId,
             date: bookingDate,
             slotStepMin,
             bufferMin,
@@ -1050,7 +1247,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           let changed = false;
           const next = { ...current };
           for (const service of serviceRows) {
-            const key = String(service.id);
+            const key = bookingLineKey(service);
             const selected = next[key];
             if (!selected?.staffId) continue;
             const stillBookable = (nextStaff[key] || []).some((staff) => staffId(staff) === selected.staffId);
@@ -1077,7 +1274,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [cart, bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   const loadTimesForService = useCallback(async (service: CatalogService, staff: StaffRow) => {
-    const serviceKey = String(service.id);
+    const serviceKey = bookingLineKey(service);
     const employeeId = staffId(staff);
     if (!employeeId || !dayHours.enabled) {
       setAvailableTimes((current) => ({ ...current, [serviceKey]: [] }));
@@ -1115,7 +1312,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [bookingDate]);
 
   const allScheduled = cart.length > 0 && cart.every((service) => {
-    const key = String(service.id);
+    const key = bookingLineKey(service);
     const row = scheduleByService[key];
     const staffStillBookable = Boolean(row?.staffId) &&
       (eligibleStaffByService[key] || []).some((staff) => staffId(staff) === row.staffId);
@@ -1154,45 +1351,109 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setCouponMessage(t("الكوبون غير صحيح أو منتهي أو غير نشط."));
         return;
       }
-      const preview = buildDiscountSnapshot(discountItems, {
-        source: "coupon",
+
+      const request = {
+        source: "coupon" as DiscountSnapshotSource,
         sourceId: String((offer as any)?.id || ""),
         code,
         title: String(offer.name || ""),
         offer,
-      });
-      if (!preview.ok || !preview.snapshot) {
-        setCouponMessage(discountReasonText(preview.reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
+      };
+      const previews = bookingClients.length
+        ? bookingClients.map((client) => {
+            const clientKey = partyClientKey(client);
+            const items = discountItems
+              .filter((item: any) => item.partyClientKey === clientKey)
+              .map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
+            return items.length ? buildDiscountSnapshot(items, request) : null;
+          }).filter(Boolean) as Array<ReturnType<typeof buildDiscountSnapshot>>
+        : [buildDiscountSnapshot(
+            discountItems.map(({ partyClientKey: _partyClientKey, ...item }: any) => item),
+            request
+          )];
+
+      const skippable = new Set(["discount_no_eligible_services", "discount_minimum_not_met"]);
+      const blocking = previews.find((preview) => !preview.ok && !skippable.has(preview.reason));
+      const applicable = previews.filter((preview) => preview.ok && preview.snapshot);
+      if (blocking || !applicable.length) {
+        const reason = blocking?.reason || previews.find((preview) => !preview.ok)?.reason || "";
+        setCouponMessage(discountReasonText(reason, language) || t("الكوبون لا ينطبق على الخدمات المختارة."));
         return;
       }
+
+      const expectedDiscount = applicable.reduce((sum, preview) => sum + preview.discountHalalas, 0);
       setCouponOffer(offer);
       setDiscountMode("coupon");
       setCouponMessage(language === "en"
-        ? `Coupon verified. Expected discount ${money(halalasToSar(preview.discountHalalas))}.`
-        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(preview.discountHalalas))}.`);
+        ? `Coupon verified. Expected discount ${money(halalasToSar(expectedDiscount))}.`
+        : `تم التحقق من الكوبون. الخصم المتوقع ${money(halalasToSar(expectedDiscount))}.`);
     } catch (error) {
       console.error("[BookingInternalV2] coupon verify failed", error);
       setCouponMessage(t("تعذر التحقق من الكوبون الآن."));
     } finally {
       setCouponChecking(false);
     }
-  }, [couponInput, discountItems, language]);
+  }, [couponInput, discountItems, bookingClients, language]);
 
   const submitBooking = useCallback(async () => {
     if (submittingRef.current) return;
     setSubmitError("");
     setPostSaveWarning("");
     setCreatedBookingIds([]);
+    setCreatedPartyBookings([]);
     setCreatedBookingReference("");
-    if (!selectedClient) { setSubmitError(t("اختاري العميلة أولًا.")); setStep(1); return; }
-    if (phone10Digits(selectedClient.phone).length !== 10) { setSubmitError(t("هذه العميلة بدون رقم جوال. اختاري الملف المرتبط بالجوال أو أضيفي الرقم قبل إنشاء الحجز حتى لا يتكرر السجل.")); setStep(1); return; }
-    if (!settingsReady) { setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى.")); return; }
-    if (!cart.length) { setSubmitError(t("أضيفي خدمة واحدة على الأقل.")); setStep(2); return; }
-    if (!allScheduled) { setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض.")); setStep(3); return; }
+
+    if (!selectedClient || !bookingClients.length) {
+      setSubmitError(t("اختاري العميلة أولًا."));
+      setStep(1);
+      return;
+    }
+
+    const invalidClient = bookingClients.find((client) => phone10Digits(client.phone).length !== 10);
+    if (invalidClient) {
+      setSubmitError(
+        language === "en"
+          ? `${invalidClient.name} does not have a valid mobile number. Update or replace the client before creating the party booking.`
+          : `العميلة ${invalidClient.name} بدون رقم جوال صحيح. حدّثي بياناتها أو استبدليها قبل إنشاء الحجز الجماعي.`
+      );
+      setStep(1);
+      return;
+    }
+
+    if (!settingsReady) {
+      setSubmitError(t("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى."));
+      return;
+    }
+    if (!cart.length) {
+      setSubmitError(t("أضيفي خدمة واحدة على الأقل."));
+      setStep(2);
+      return;
+    }
+
+    const clientWithoutService = bookingClients.find((client) => {
+      const key = partyClientKey(client);
+      return !cart.some((service) => bookingLineClientKey(service) === key);
+    });
+    if (clientWithoutService) {
+      setActivePartyClientKey(partyClientKey(clientWithoutService));
+      setSubmitError(
+        language === "en"
+          ? `Add at least one service for ${clientWithoutService.name}, or remove her from the booking group.`
+          : `أضيفي خدمة واحدة على الأقل لـ ${clientWithoutService.name} أو أزيليها من مجموعة الحجز.`
+      );
+      setStep(2);
+      return;
+    }
+
+    if (!allScheduled) {
+      setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."));
+      setStep(3);
+      return;
+    }
 
     for (const service of cart) {
-      const key = String(service.id || "").trim();
-      const catalogPrice = Math.max(0, servicePrice(service));
+      const key = bookingLineKey(service);
+      const effectiveBasePrice = Math.max(0, servicePrice(service));
       const draft = priceAdjustments[key];
       if (!draft) continue;
       const rawPrice = String(draft.price ?? "").trim();
@@ -1201,7 +1462,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setSubmitError(t("أدخلي سعر حجز صحيح للخدمة المعدلة."));
         return;
       }
-      const changed = Math.abs(parsedPrice - catalogPrice) > 0.005;
+      const changed = Math.abs(parsedPrice - effectiveBasePrice) > 0.005;
       if (changed && !canAdjustBookingPrice) {
         setSubmitError(t("ليس لديك صلاحية تعديل سعر الحجز."));
         return;
@@ -1229,26 +1490,30 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
     if (paymentType === "partial" && (effectivePaidAmount <= 0 || effectivePaidAmount >= finalTotal)) {
-      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز.")); return;
+      setSubmitError(t("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز."));
+      return;
     }
     if (paymentMethod === "mixed" && Math.abs(mixedTotal - effectivePaidAmount) > 0.01) {
       setSubmitError(language === "en"
         ? `Mixed payment total must equal ${money(effectivePaidAmount)}.`
-        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`); return;
+        : `مجموع الدفع المختلط يجب أن يساوي ${money(effectivePaidAmount)}.`);
+      return;
     }
 
     submittingRef.current = true;
     setSubmitting(true);
+
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
       for (const service of cart) {
-        const serviceKey = String(service.id);
+        const serviceKey = bookingLineKey(service);
+        const canonicalServiceId = String(service.id || "").trim();
         const selection = scheduleByService[serviceKey];
         const staff = (eligibleStaffByService[serviceKey] || []).find((row) => staffId(row) === selection?.staffId);
         if (!selection?.time || !staff) continue;
 
         const freshRows = await listCoreBookableStaffForDate({
-          serviceId: serviceKey,
+          serviceId: canonicalServiceId,
           date: bookingDate,
           slotStepMin,
           bufferMin,
@@ -1286,158 +1551,282 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const authUser = getAuth().currentUser;
       const userId = String(authUser?.uid || "internal_staff");
       const bookingDataSource = resolveCoreBookingDataSource();
-      const selectedClientId = String(selectedClient.id || "").trim();
-      let canonicalClientId = "";
-      if (selectedClientId && !selectedClientId.startsWith("history:")) {
-        try {
-          canonicalClientId = String((await bookingDataSource.getClient(selectedClientId))?.id || "").trim();
-        } catch {
-          canonicalClientId = "";
-        }
-      }
-      if (!canonicalClientId) {
-        const ensuredClient = await bookingDataSource.createClient({
-          name: selectedClient.name,
-          phone: selectedClient.phone,
-        });
-        canonicalClientId = String(ensuredClient?.id || "").trim();
-      }
-      if (!canonicalClientId) {
-        throw new Error(t("تعذر ربط الحجز بحساب العميلة المحدد."));
-      }
-      const status = paymentType === "none" ? "pending" : "confirmed";
-      const total = Math.max(0, finalTotal);
-      const allocationByItem = new Map(
-        (discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
-      );
-      const finalDiscountSnapshot = discountSnapshot
-        ? { ...discountSnapshot, appliedBy: userId, appliedAt: new Date().toISOString() }
-        : null;
 
-      const itemRows = cart.map((service, index) => {
-        const key = String(service.id);
-        const schedule = scheduleByService[key];
-        const catalogPrice = Math.max(0, serviceCatalogPrice(service));
-        const effectiveBasePrice = Math.max(0, servicePrice(service));
-        const itemOriginal = Math.max(0, bookingPriceForService(service));
-        const priceDraft = priceAdjustments[key];
-        const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
-        const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(key);
-        const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
-        const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
-        const proportionalPaid = total > 0
-          ? Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100
-          : 0;
-        const selectedStaff = (eligibleStaffByService[key] || []).find((row) => staffId(row) === schedule.staffId);
+      const canonicalByClientKey = new Map<string, string>();
+      for (const client of bookingClients) {
+        const clientKey = partyClientKey(client);
+        const selectedClientId = String(client.id || "").trim();
+        let canonicalClientId = "";
+
+        if (selectedClientId && !selectedClientId.startsWith("history:")) {
+          try {
+            canonicalClientId = String((await bookingDataSource.getClient(selectedClientId))?.id || "").trim();
+          } catch {
+            canonicalClientId = "";
+          }
+        }
+
+        if (!canonicalClientId) {
+          const ensuredClient = await bookingDataSource.createClient({
+            name: client.name,
+            phone: client.phone,
+            email: String((client as any).email || "").trim() || undefined,
+          });
+          canonicalClientId = String(ensuredClient?.id || "").trim();
+        }
+
+        if (!canonicalClientId) {
+          throw new Error(
+            language === "en"
+              ? `Could not resolve the canonical client record for ${client.name}.`
+              : `تعذر ربط الحجز بحساب العميلة ${client.name}.`
+          );
+        }
+        canonicalByClientKey.set(clientKey, canonicalClientId);
+      }
+
+      const partyEnabled = bookingClients.length > 1;
+      const partyId = partyEnabled
+        ? `party_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+        : "";
+      const leadClientKey = partyClientKey(bookingClients[0]);
+      const leadCanonicalClientId = canonicalByClientKey.get(leadClientKey) || "";
+      const status = paymentType === "none" ? "pending" : "confirmed";
+
+      const memberPlans = bookingClients.map((client, memberOrder) => {
+        const clientKey = partyClientKey(client);
+        const memberCart = cart.filter((service) => bookingLineClientKey(service) === clientKey);
+        const memberDiscountResult = discountResultsByClient.get(clientKey);
+        const memberSubtotal = memberCart.reduce((sum, service) => sum + bookingPriceForService(service), 0);
+        const memberDiscount = memberDiscountResult?.ok ? halalasToSar(memberDiscountResult.discountHalalas) : 0;
+        const memberTotal = memberDiscountResult?.ok
+          ? halalasToSar(memberDiscountResult.totalHalalas)
+          : memberSubtotal;
         return {
-          clientId: canonicalClientId,
-          userId: null,
-          createdBy: "staff",
-          createdByUid: userId,
-          channel: "internal",
-          clientName: selectedClient.name,
-          clientPhone: selectedClient.phone,
-          clientEmail: String((selectedClient as any).email || "").trim() || null,
-          serviceName: serviceTitle(service),
-          serviceId: key,
-          serviceSnapshot: {
-            serviceNameAtBooking: serviceTitle(service),
-            priceAtBooking: itemTotal,
-            priceBeforeDiscountAtBooking: itemOriginal,
-            durationAtBooking: serviceDuration(service) || 30,
-            sectionIdAtBooking: String(service?.sectionId || selectedSectionId || "") || undefined,
-            categoryIdAtBooking: String(service?.categoryId || service?.category || "") || undefined,
-          },
-          employeeId: schedule.staffId,
-          employeeUid: String(selectedStaff?.uid || selectedStaff?.employeeUid || "") || null,
-          employeeName: schedule.staffName,
-          date: bookingDate,
-          time: schedule.time,
-          catalogPrice,
-          bookingPrice: itemOriginal,
-          priceAdjustmentReason: priceAdjusted ? priceDraft?.reason || undefined : undefined,
-          priceAdjustmentNote: priceAdjusted ? priceDraft?.note?.trim() || undefined : undefined,
-          originalAmount: itemOriginal,
-          discountAmount: itemDiscount,
-          discountSnapshot: finalDiscountSnapshot || undefined,
-          total: itemTotal,
-          finalPrice: itemTotal,
-          status,
-          paymentMethod: paymentType === "none" ? undefined : paymentMethod,
-          paymentType,
-          paidAmount: proportionalPaid,
-          remainingAmount: Math.max(0, itemTotal - proportionalPaid),
-          ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
-          note: bookingNote.trim() || undefined,
-          slotStepMinAtBooking: slotStepMin,
-          bufferMinAtBooking: bufferMin,
-          durationMin: serviceDuration(service) || 30,
-          cartItemId: `item_${index}`,
-        } as any;
+          client,
+          clientKey,
+          canonicalClientId: canonicalByClientKey.get(clientKey) || "",
+          memberOrder,
+          memberCart,
+          memberSubtotal,
+          memberDiscount,
+          memberTotal,
+          discountSnapshot: memberDiscountResult?.ok && memberDiscountResult.snapshot
+            ? {
+                ...memberDiscountResult.snapshot,
+                appliedBy: userId,
+                appliedAt: new Date().toISOString(),
+                ...(partyEnabled ? { partyId, partyMemberOrder: memberOrder, partySize: bookingClients.length } : {}),
+              }
+            : null,
+        };
       });
 
-      const firstItem = itemRows[0];
-      const parent = {
-        ...firstItem,
-        serviceName: cart.length === 1 ? firstItem.serviceName : `${cart.length} خدمات`,
-        serviceId: cart.length === 1 ? firstItem.serviceId : undefined,
-        employeeId: undefined,
-        employeeUid: null,
-        employeeName: "عدة موظفات",
-        originalAmount: bookingSubtotal,
-        discountAmount,
-        discountSnapshot: finalDiscountSnapshot || undefined,
-        total,
-        finalPrice: total,
-        paymentMethod: paymentType === "none" ? undefined : paymentMethod,
-        paymentType,
-        paidAmount: effectivePaidAmount,
-        remainingAmount,
-        paymentBreakdown: paymentMethod === "mixed"
-          ? { cash: Number(cashAmount || 0), card: Number(cardAmount || 0), transfer: Number(transferAmount || 0) }
-          : {
-              cash: paymentMethod === "cash" ? effectivePaidAmount : 0,
-              card: paymentMethod === "card" ? effectivePaidAmount : 0,
-              transfer: paymentMethod === "transfer" ? effectivePaidAmount : 0,
-            },
-      } as any;
-
-      const created = await resolveCoreBookingDataSource().createBookingGroup({ parent, items: itemRows });
-      const bookingId = String(created.parentId || "");
-      const savedIds = [bookingId, ...(created.itemIds || [])].filter(Boolean);
-      setCreatedBookingReference(
-        formatBookingReference({
-          id: bookingId,
-          publicId: String(created.parentPublicId || ""),
-          date: bookingDate,
-        })
+      const memberWeights = memberPlans.map((plan) => plan.memberTotal);
+      const cashByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(cashAmount || 0) : paymentMethod === "cash" ? effectivePaidAmount : 0,
+        memberWeights
       );
+      const cardByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(cardAmount || 0) : paymentMethod === "card" ? effectivePaidAmount : 0,
+        memberWeights
+      );
+      const transferByMember = splitAmountByWeights(
+        paymentType === "none" ? 0 : paymentMethod === "mixed" ? Number(transferAmount || 0) : paymentMethod === "transfer" ? effectivePaidAmount : 0,
+        memberWeights
+      );
+      // Derive each member's paid total from the exact method allocations that
+      // will be posted to Core. This prevents independent rounding from making
+      // a mixed-payment member total differ by one halala from its payments.
+      const paidByMember = memberPlans.map((_, index) => roundMoney(
+        (cashByMember[index] || 0) +
+        (cardByMember[index] || 0) +
+        (transferByMember[index] || 0)
+      ));
 
-      setCreatedBookingIds(savedIds);
-      markQuickClientUsage(selectedClient);
+      const createdParty: CreatedPartyBooking[] = [];
+      const createdParentIds: string[] = [];
+      let compensationFailed = false;
 
-      if (effectivePaidAmount > 0 && bookingId) {
-        const dataSource = resolveCoreBookingDataSource();
-        const payments = paymentMethod === "mixed"
-          ? [
-              ["cash", Number(cashAmount || 0)],
-              ["card", Number(cardAmount || 0)],
-              ["transfer", Number(transferAmount || 0)],
-            ] as const
-          : [[paymentMethod, effectivePaidAmount]] as const;
+      try {
+        for (const plan of memberPlans) {
+          const memberPaid = paidByMember[plan.memberOrder] || 0;
+          const memberRemaining = Math.max(0, plan.memberTotal - memberPaid);
+          const allocationByItem = new Map(
+            (plan.discountSnapshot?.allocations || []).map((row: any) => [
+              String(row.bookingItemId || row.serviceId || "").trim(),
+              row,
+            ])
+          );
 
-        const recordPaymentWithRetry = async (method: string, amount: number) => {
+          const itemFinalWeights = plan.memberCart.map((service) => {
+            const lineKey = bookingLineKey(service);
+            const allocation = allocationByItem.get(lineKey) as any;
+            return allocation
+              ? halalasToSar(allocation.finalAmountHalalas)
+              : bookingPriceForService(service);
+          });
+          const itemPaidParts = splitAmountByWeights(memberPaid, itemFinalWeights);
+
+          const itemRows = plan.memberCart.map((service, index) => {
+            const lineKey = bookingLineKey(service);
+            const canonicalServiceId = String(service.id || "").trim();
+            const schedule = scheduleByService[lineKey];
+            const catalogPrice = Math.max(0, serviceCatalogPrice(service));
+            const effectiveBasePrice = Math.max(0, servicePrice(service));
+            const itemOriginal = Math.max(0, bookingPriceForService(service));
+            const priceDraft = priceAdjustments[lineKey];
+            const priceAdjusted = Math.abs(itemOriginal - effectiveBasePrice) > 0.005;
+            const allocation = allocationByItem.get(lineKey) as any;
+            const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
+            const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
+            const proportionalPaid = itemPaidParts[index] || 0;
+            const selectedStaff = (eligibleStaffByService[lineKey] || []).find((row) => staffId(row) === schedule.staffId);
+
+            return {
+              clientId: plan.canonicalClientId,
+              userId: null,
+              createdBy: "staff",
+              createdByUid: userId,
+              channel: "internal",
+              clientName: plan.client.name,
+              clientPhone: plan.client.phone,
+              clientEmail: String((plan.client as any).email || "").trim() || null,
+              serviceName: serviceTitle(service),
+              serviceId: canonicalServiceId,
+              serviceSnapshot: {
+                serviceNameAtBooking: serviceTitle(service),
+                priceAtBooking: itemTotal,
+                priceBeforeDiscountAtBooking: itemOriginal,
+                durationAtBooking: serviceDuration(service) || 30,
+                sectionIdAtBooking: String(service?.sectionId || selectedSectionId || "") || undefined,
+                categoryIdAtBooking: String(service?.categoryId || service?.category || "") || undefined,
+              },
+              employeeId: schedule.staffId,
+              employeeUid: String(selectedStaff?.uid || selectedStaff?.employeeUid || "") || null,
+              employeeName: schedule.staffName,
+              date: bookingDate,
+              time: schedule.time,
+              catalogPrice,
+              bookingPrice: itemOriginal,
+              priceAdjustmentReason: priceAdjusted ? priceDraft?.reason || undefined : undefined,
+              priceAdjustmentNote: priceAdjusted ? priceDraft?.note?.trim() || undefined : undefined,
+              originalAmount: itemOriginal,
+              discountAmount: itemDiscount,
+              discountSnapshot: plan.discountSnapshot || undefined,
+              total: itemTotal,
+              finalPrice: itemTotal,
+              status,
+              paymentMethod: paymentType === "none" ? undefined : paymentMethod,
+              paymentType,
+              paidAmount: proportionalPaid,
+              remainingAmount: Math.max(0, itemTotal - proportionalPaid),
+              ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
+              note: bookingNote.trim() || undefined,
+              slotStepMinAtBooking: slotStepMin,
+              bufferMinAtBooking: bufferMin,
+              durationMin: serviceDuration(service) || 30,
+              cartItemId: lineKey,
+              ...(partyEnabled ? {
+                partyId,
+                partyLeadClientId: leadCanonicalClientId,
+                partyMemberOrder: plan.memberOrder,
+                partySize: bookingClients.length,
+              } : {}),
+            } as any;
+          });
+
+          const firstItem = itemRows[0];
+          const parent = {
+            ...firstItem,
+            serviceName: itemRows.length === 1 ? firstItem.serviceName : `${itemRows.length} خدمات`,
+            serviceId: itemRows.length === 1 ? firstItem.serviceId : undefined,
+            employeeId: undefined,
+            employeeUid: null,
+            employeeName: "عدة موظفات",
+            originalAmount: plan.memberSubtotal,
+            discountAmount: plan.memberDiscount,
+            discountSnapshot: plan.discountSnapshot || undefined,
+            total: plan.memberTotal,
+            finalPrice: plan.memberTotal,
+            paymentMethod: paymentType === "none" ? undefined : paymentMethod,
+            paymentType,
+            paidAmount: memberPaid,
+            remainingAmount: memberRemaining,
+            paymentBreakdown: {
+              cash: cashByMember[plan.memberOrder] || 0,
+              card: cardByMember[plan.memberOrder] || 0,
+              transfer: transferByMember[plan.memberOrder] || 0,
+            },
+            ...(partyEnabled ? {
+              partyId,
+              partyLeadClientId: leadCanonicalClientId,
+              partyMemberOrder: plan.memberOrder,
+              partySize: bookingClients.length,
+            } : {}),
+          } as any;
+
+          const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
+          const bookingId = String(created.parentId || "");
+          if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
+          createdParentIds.push(bookingId);
+
+          const reference = formatBookingReference({
+            id: bookingId,
+            publicId: String(created.parentPublicId || ""),
+            date: bookingDate,
+          });
+
+          createdParty.push({
+            clientKey: plan.clientKey,
+            clientId: plan.canonicalClientId,
+            clientName: plan.client.name,
+            clientPhone: plan.client.phone,
+            parentId: bookingId,
+            publicId: String(created.parentPublicId || bookingId),
+            itemIds: (created.itemIds || []).map(String),
+            reference,
+          });
+        }
+      } catch (creationError) {
+        const compensation = await Promise.allSettled(
+          createdParentIds.map((bookingId) => bookingDataSource.updateBookingStatus(bookingId, "cancelled"))
+        );
+        compensationFailed = compensation.some((result) => result.status === "rejected");
+        if (compensationFailed) {
+          setPostSaveWarning(
+            language === "en"
+              ? "Party creation stopped after a partial failure, and one or more already-created bookings could not be automatically cancelled. Do not repeat the whole booking; review today's bookings first."
+              : "توقفت عملية الحجز الجماعي بعد فشل جزئي، وتعذر إلغاء حجز أو أكثر تم إنشاؤه تلقائيًا. لا تعيدي إنشاء المجموعة كاملة؛ راجعي حجوزات اليوم أولًا."
+          );
+        }
+        throw creationError;
+      }
+
+      setCreatedPartyBookings(createdParty);
+      setCreatedBookingIds(createdParty.map((row) => row.parentId));
+      const references = createdParty.map((row) => row.reference).filter(Boolean);
+      setCreatedBookingReference(
+        references.length <= 1
+          ? references[0] || ""
+          : `${references[0]} +${references.length - 1}`
+      );
+      bookingClients.forEach(markQuickClientUsage);
+
+      if (effectivePaidAmount > 0 && createdParty.length) {
+        const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
           const amountHalalas = Math.round(amount * 100);
+          if (amountHalalas <= 0) return;
           let lastError: unknown = null;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
             try {
-              await dataSource.recordPayment({
+              await bookingDataSource.recordPayment({
                 bookingId,
                 method,
                 amountHalalas,
                 status: "paid",
                 paidAt: new Date().toISOString(),
-                idempotencyKey: `booking-v2:${bookingId}:${method}:${amountHalalas}`,
+                idempotencyKey: `booking-v2-party:${partyId || bookingId}:${bookingId}:${method}:${amountHalalas}`,
               });
               return;
             } catch (error) {
@@ -1449,23 +1838,35 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         };
 
         try {
-          for (const [method, amount] of payments) {
-            if (amount <= 0) continue;
-            await recordPaymentWithRetry(method, amount);
-          }
+          for (let index = 0; index < createdParty.length; index += 1) {
+            const bookingId = createdParty[index].parentId;
+            const plan = memberPlans[index];
+            const memberPaid = paidByMember[index] || 0;
+            const memberRemaining = Math.max(0, plan.memberTotal - memberPaid);
+            const memberPayments = [
+              ["cash", cashByMember[index] || 0],
+              ["card", cardByMember[index] || 0],
+              ["transfer", transferByMember[index] || 0],
+            ] as const;
 
-          await resolveCoreBookingDataSource().updateBooking(bookingId, {
-            paymentType,
-            paidAmount: effectivePaidAmount,
-            remainingAmount,
-            paymentMethod,
-            status,
-          } as any);
-        } catch (financialError: any) {
-          console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
-          setPostSaveWarning(language === "en"
-            ? `Booking ${bookingId} was saved, but payment synchronization could not be completed after automatic retry. Do not recreate the booking; review it on the bookings page and retry collection.`
-            : `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
+            for (const [method, amount] of memberPayments) {
+              await recordPaymentWithRetry(bookingId, method, amount);
+            }
+
+            await bookingDataSource.updateBooking(bookingId, {
+              paymentType,
+              paidAmount: memberPaid,
+              remainingAmount: memberRemaining,
+              paymentMethod,
+              status,
+            } as any);
+          }
+        } catch (financialError) {
+          console.error("[BookingInternalV2] party financial posting failed after booking creation", financialError);
+          setPostSaveWarning(
+            language === "en"
+              ? "The party bookings were saved, but payment synchronization was not completed for every member after automatic retry. Do not recreate the bookings; review them in Bookings and retry collection only where needed."
+              : "تم حفظ حجوزات المجموعة، لكن لم تكتمل مزامنة الدفعات لكل العميلات بعد المحاولة التلقائية. لا تعيدي إنشاء الحجوزات؛ راجعي صفحة الحجوزات وأعيدي التحصيل فقط للحجز الذي يحتاج ذلك."
           );
         }
       }
@@ -1479,6 +1880,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         code.includes("staff_slot_conflict") ||
         message.toUpperCase().includes("SLOT_TAKEN") ||
         message.toLowerCase().includes("الموعد محجوز");
+
       if (isSlotConflict) {
         setScheduleByService((current) => Object.fromEntries(
           Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
@@ -1504,7 +1906,39 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, bookingSubtotal, priceAdjustments, bookingPriceForService, canAdjustBookingPrice, canApplyManualDiscount, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, eligibleStaffByService, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+  }, [
+    selectedClient,
+    bookingClients,
+    settingsReady,
+    cart,
+    allScheduled,
+    discountMode,
+    discountResult.ok,
+    discountMessage,
+    couponOffer,
+    discountResultsByClient,
+    priceAdjustments,
+    bookingPriceForService,
+    canAdjustBookingPrice,
+    canApplyManualDiscount,
+    paymentType,
+    paymentMethod,
+    effectivePaidAmount,
+    finalTotal,
+    mixedTotal,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    scheduleByService,
+    eligibleStaffByService,
+    bookingDate,
+    bookingNote,
+    slotStepMin,
+    bufferMin,
+    selectedSectionId,
+    loadTimesForService,
+    language,
+  ]);
 
   const requestSubmitBooking = useCallback(() => {
     if (submittingRef.current) return;
@@ -1522,8 +1956,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({
-      createdBookingIds,
-      selectedClient,
+      createdPartyBookings,
       cart,
       scheduleByService,
       bookingDate,
@@ -1537,7 +1970,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       selectedSectionId,
       bookingPriceByService: Object.fromEntries(
         cart.map((service) => [
-          String(service.id || "").trim(),
+          bookingLineKey(service),
           bookingPriceForService(service),
         ])
       ),
@@ -1562,14 +1995,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
     popup.focus();
-  }, [createdBookingIds, selectedClient, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot, bookingPriceForService]);
+  }, [createdPartyBookings, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot, bookingPriceForService]);
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setPriceAdjustments({}); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
+    setCompanions([]); setAddingCompanion(false); setActivePartyClientKey("");
     setBookingDate(todayISO()); setShowPastDateConfirmation(false);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
-    setCreatedBookingIds([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
+    setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
@@ -1610,23 +2044,79 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             <main className="bk2-main-card">
               {step === 1 ? (
                 <section className="bk2-client-step">
-                  <div className="bk2-section-title"><div><h2>{t("البحث عن العميلة")}</h2><p>{t("ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.")}</p></div><span><FiUser /></span></div>
+                  <div className="bk2-section-title"><div><h2>{t(addingCompanion ? "اختيار المرافقة" : "البحث عن العميلة")}</h2><p>{t(addingCompanion ? "اختاري عميلة موجودة أو أضيفي مرافقة جديدة إلى نفس الحجز." : "ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.")}</p></div><span><FiUser /></span></div>
+                  {selectedClient ? (
+                    <div className="bk2-party-clients">
+                      <div className="bk2-party-clients-head">
+                        <div><strong>{t("مجموعة الحجز")}</strong><small>{bookingClients.length} {t("عميلات في نفس العملية")}</small></div>
+                        <button
+                          type="button"
+                          disabled={!addingCompanion && bookingClients.length >= 20}
+                          onClick={() => {
+                            if (addingCompanion) {
+                              setAddingCompanion(false);
+                              setQuery("");
+                              setClientMessage("");
+                              return;
+                            }
+                            setAddingCompanion(true);
+                            setQuery("");
+                            setClientMessage(t("اختاري المرافقة من القائمة أو أضيفي عميلة جديدة."));
+                          }}
+                        >{addingCompanion ? "×" : <FiPlus />} {t(addingCompanion ? "إلغاء إضافة المرافقة" : bookingClients.length >= 20 ? "الحد الأقصى للمجموعة" : "إضافة مرافقة")}</button>
+                      </div>
+                      <div className="bk2-party-client-chips">
+                        {bookingClients.map((client, index) => {
+                          const key = partyClientKey(client);
+                          return (
+                            <div key={key} className={`bk2-party-client-chip ${activePartyClientKey === key ? "is-active" : ""}`}>
+                              <button type="button" onClick={() => setActivePartyClientKey(key)}>
+                                <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
+                                <span><strong>{client.name}</strong><small>{index === 0 ? t("العميلة الأساسية") : t("مرافقة")}</small></span>
+                              </button>
+                              {index > 0 ? <button
+                                type="button"
+                                className="bk2-party-client-remove"
+                                aria-label={t("إزالة المرافقة")}
+                                onClick={() => {
+                                  const lineKeys = cart.filter((item) => bookingLineClientKey(item) === key).map(bookingLineKey);
+                                  const removeKeys = new Set(lineKeys);
+                                  setCompanions((current) => current.filter((row) => partyClientKey(row) !== key));
+                                  setCart((current) => current.filter((item) => bookingLineClientKey(item) !== key));
+                                  setPriceAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                  setScheduleByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                  setAvailableTimes((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                  setEligibleStaffByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                  if (activePartyClientKey === key) setActivePartyClientKey(partyClientKey(selectedClient));
+                                }}
+                              >×</button> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {addingCompanion ? <p className="bk2-party-mode-note">{t("وضع إضافة مرافقة مفعّل: اختيار أي عميلة بالأسفل سيضيفها للمجموعة بدل استبدال العميلة الأساسية.")}</p> : null}
+                    </div>
+                  ) : null}
                   <label className="bk2-search-box"><FiSearch /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)")} /></label>
                   {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? t("جاري البحث في بيانات السيرفر...") : clientMessage}</p> : null}
-                  <div className="bk2-recent-header"><h3>{query ? t("نتائج البحث") : t("العميلات الأخيرات")}</h3><span>{visibleClients.length} {t("عميلات")}</span></div>
+                  <div className="bk2-recent-header"><h3>{addingCompanion ? t("اختيار المرافقة") : query ? t("نتائج البحث") : t("العميلات الأخيرات")}</h3><span>{visibleClients.length} {t("عميلات")}</span></div>
                   <div className="bk2-client-grid">
                     {visibleClients.map((client) => (
-                      <button key={client.id} className={selectedClient?.id === client.id ? "is-selected" : ""} onClick={() => { setSelectedClient(client); markQuickClientUsage(client); }}>
+                      <button
+                        key={client.id}
+                        className={bookingClients.some((row) => partyClientKey(row) === partyClientKey(client)) ? "is-selected" : ""}
+                        onClick={() => chooseClientForBooking(client, t("تم اختيار العميلة للحجز بنجاح."))}
+                      >
                         <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
                         <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone || t("بدون جوال")}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} ${t("استخدامات")}` : client.publicId ? client.publicId : client.source || t("عميلة")}</em>{client.sessions ? <em className="is-green">{client.sessions} {t("جلسات متبقية")}</em> : null}</span></span>
                       </button>
                     ))}
                   </div>
                   <div className="bk2-divider"><span>{t("أو")}</span></div>
-                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t("إضافة عميلة جديدة")}</button>
+                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>{t("إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
                         <label><span>{t("اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
                         <label><span>{t("رقم الجوال")} *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
@@ -1704,6 +2194,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               ) : step === 2 ? (
                 <section className="bk2-services-step">
                   <div className="bk2-section-title"><div><h2>{t("اختيار الخدمات")}</h2><p>{t("القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.")}</p></div><span><FiShoppingBag /></span></div>
+                  <div className="bk2-party-service-owner">
+                    <div><strong>{t("إضافة الخدمات لمن؟")}</strong><small>{t("اختاري العميلة ثم أضيفي خدماتها. يمكنك التنقل بين أفراد المجموعة بدون إعادة الحجز.")}</small></div>
+                    <div>
+                      {bookingClients.map((client, index) => {
+                        const key = partyClientKey(client);
+                        const count = cart.filter((service) => bookingLineClientKey(service) === key).length;
+                        return <button type="button" key={key} className={activePartyClientKey === key ? "is-active" : ""} onClick={() => setActivePartyClientKey(key)}><span>{client.name}</span><small>{index === 0 ? t("الأساسية") : t("مرافقة")} · {count} {t("خدمات")}</small></button>;
+                      })}
+                    </div>
+                  </div>
                   <div className="bk2-catalog-offers">
                     <div className="bk2-catalog-offers-head">
                       <div>
@@ -1751,24 +2251,43 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   {(catalogLoading || catalogMessage) ? <p className={`bk2-status-line ${catalogLoading ? "is-loading" : ""}`}>{catalogLoading ? t("جاري تحميل الخدمات...") : catalogMessage}</p> : null}
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
-                      const inCart = cart.some((item) => String(item.id) === String(service.id));
+                      const owner = activeBookingClient || selectedClient;
+                      const ownerKey = partyClientKey(owner);
+                      const inCart = Boolean(owner) && cart.some((item) => bookingLineClientKey(item) === ownerKey && String(item.id) === String(service.id));
+                      const lineKey = owner ? bookingLineKey(attachServiceToClient(service, owner)) : "";
                       const promoActive = serviceHasActivePromo(service);
                       const catalogPrice = serviceCatalogPrice(service);
                       const effectivePrice = servicePrice(service);
                       return <button
                         key={service.id}
                         className={inCart ? "is-selected" : ""}
+                        disabled={!owner}
                         onClick={() => {
+                          if (!owner) return;
                           if (inCart) {
-                            const key = String(service.id);
-                            setCart((current) => current.filter((item) => String(item.id) !== key));
+                            setCart((current) => current.filter((item) => bookingLineKey(item) !== lineKey));
                             setPriceAdjustments((current) => {
                               const next = { ...current };
-                              delete next[key];
+                              delete next[lineKey];
+                              return next;
+                            });
+                            setScheduleByService((current) => {
+                              const next = { ...current };
+                              delete next[lineKey];
+                              return next;
+                            });
+                            setAvailableTimes((current) => {
+                              const next = { ...current };
+                              delete next[lineKey];
+                              return next;
+                            });
+                            setEligibleStaffByService((current) => {
+                              const next = { ...current };
+                              delete next[lineKey];
                               return next;
                             });
                           } else {
-                            setCart((current) => [...current, service]);
+                            setCart((current) => [...current, attachServiceToClient(service, owner)]);
                           }
                         }}
                       >
@@ -1806,13 +2325,13 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   {scheduleMessage ? <p className="bk2-status-line">{scheduleMessage}</p> : null}
                   <div className="bk2-schedule-list">
                     {cart.map((service, index) => {
-                      const key = String(service.id);
+                      const key = bookingLineKey(service);
                       const selection = scheduleByService[key];
                       const staffRows = eligibleStaffByService[key] || [];
                       const times = availableTimes[key] || [];
                       return (
                         <article key={key} className={`bk2-schedule-item ${selection?.time ? "is-complete" : ""}`}>
-                          <header><span>{index + 1}</span><div><strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong><small>{serviceDuration(service) || 30} {t("دقيقة")}</small></div>{selection?.time ? <em>✓ {t("مكتمل")}</em> : null}</header>
+                          <header><span>{index + 1}</span><div><strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong><small>{bookingClients.length > 1 ? `${bookingLineClientName(service)} · ` : ""}{serviceDuration(service) || 30} {t("دقيقة")}</small></div>{selection?.time ? <em>✓ {t("مكتمل")}</em> : null}</header>
                           <div className="bk2-schedule-controls">
                             <div className="bk2-staff-field">
                               <span>{t("الموظفة")}</span>
@@ -1831,7 +2350,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             </div>
                             <div className="bk2-time-picker">
                               <span>{t("الأوقات المتاحة")}</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>{t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.serviceTitle}</span></p>)}</div> : null}
+                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.kind}-${busy.serviceTitle}-${busy.start}`}>{busy.kind === "staff" ? t("الموظفة مشغولة من") : t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.clientName ? `${busy.clientName} · ` : ""}{busy.serviceTitle}</span></p>)}</div> : null}
                               {!selection?.staffId ? <p>{t("اختاري الموظفة أولًا.")}</p> : timesLoading[key] ? <p>{t("جاري فحص المواعيد...")}</p> : times.length ? (
                                 <div>{times.map((time) => {
                                   const conflict = getCartScheduleConflict(key, selection.staffId, time);
@@ -1857,17 +2376,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 <section className="bk2-payment-step">
                   <div className="bk2-section-title"><div><h2>{t("المراجعة والدفع")}</h2><p>{t("راجعي الحجز ثم اختاري طريقة ونوع التحصيل.")}</p></div><span><FiCreditCard /></span></div>
                   {createdBookingIds.length ? (
-                    <div className="bk2-booking-success"><strong>✓ {t("تم حفظ الحجز بنجاح")}</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t("رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div></div>
+                    <div className="bk2-booking-success">
+                      <strong>✓ {t(createdPartyBookings.length > 1 ? "تم حفظ مجموعة الحجز بنجاح" : "تم حفظ الحجز بنجاح")}</strong>
+                      {createdBookingReference ? <div className="bk2-booking-success-reference"><span>{t(createdPartyBookings.length > 1 ? "مراجع الحجوزات" : "رقم الحجز")}</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}
+                      {createdPartyBookings.length > 1 ? (
+                        <div className="bk2-party-success-bookings">
+                          {createdPartyBookings.map((row) => <div key={row.parentId}><span>{row.clientName}</span><bdi dir="ltr">{row.reference}</bdi></div>)}
+                        </div>
+                      ) : null}
+                      <p>{createdPartyBookings.length > 1 ? t("تم إنشاء حجز مستقل لكل عميلة وربطها كلها بنفس مجموعة الحجز والدفع.") : <>{t("تم ربط")} {cart.length} {cart.length === 1 ? t("خدمة") : t("خدمات")} {t("بالعميلة والموظفات المختارات.")}</>}</p>
+                      {postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}
+                      <div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>{t("طباعة الفاتورة")}</button><button type="button" onClick={resetCompletedBooking}>{t("إنشاء حجز جديد")}</button></div>
+                    </div>
                   ) : (
                     <>
                       <div className="bk2-review-list">
                         {cart.map((service, index) => {
-                          const key = String(service.id);
+                          const key = bookingLineKey(service);
                           const schedule = scheduleByService[key];
                           const allocation = discountSnapshot?.allocations?.find(
-                            (row) =>
-                              row.bookingItemId === `item_${index}` ||
-                              row.serviceId === key
+                            (row) => String(row.bookingItemId || "").trim() === key
                           );
                           const catalogPrice = Math.max(0, serviceCatalogPrice(service));
                           const effectiveBasePrice = Math.max(0, servicePrice(service));
@@ -1884,7 +2412,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
                           return (
                             <article
-                              key={service.id}
+                              key={key}
                               className={`bk2-review-item ${adjusted ? "has-price-adjustment" : ""}`}
                             >
                               <span className="bk2-review-index">{index + 1}</span>
@@ -1897,6 +2425,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                   )}
                                 </strong>
                                 <small>
+                                  {bookingClients.length > 1 ? `${bookingLineClientName(service)} · ` : ""}
                                   {schedule?.staffName} · {bookingDate} ·{" "}
                                   {formatTime12(schedule?.time, schedule?.time)}
                                 </small>
@@ -2060,7 +2589,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                           );
                         })}
                       </div>
-                      <div className="bk2-payment-block bk2-discount-block"><h3>{t("إضافة خصم أو كوبون")}</h3><><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("بدون خصم")}</button><button type="button" disabled={!canApplyManualDiscount} title={canApplyManualDiscount ? undefined : t("الخصم اليدوي يحتاج صلاحية مستقلة.")} className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { if (!canApplyManualDiscount) return; setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("مبلغ ثابت")}</button><button type="button" disabled={!canApplyManualDiscount} title={canApplyManualDiscount ? undefined : t("الخصم اليدوي يحتاج صلاحية مستقلة.")} className={discountMode === "percent" ? "is-active" : ""} onClick={() => { if (!canApplyManualDiscount) return; setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("نسبة")}</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>{t("عرض محفوظ")}</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>{t("كوبون")}</button></div>{!canApplyManualDiscount ? <p className="bk2-price-permission-note">{t("الخصم اليدوي يحتاج صلاحية مستقلة.")}</p> : null}{discountMode === "fixed" ? <label className="bk2-payment-input"><span>{t("قيمة الخصم")}</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>{t("النسبة")}</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>{t("حد أقصى اختياري")}</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t("بدون حد")} /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>{t("جاري تحميل العروض...")}</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer, language)} · {preview.ok ? `${t("خصم متوقع")} ${money(halalasToSar(preview.discountHalalas))}` : discountReasonText(preview.reason, language)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>{t("خدمات محددة")}: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>{t("تصنيفات محددة")}: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>{t("كود الكوبون")}</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? t("جاري التحقق...") : t("تحقق")}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>{t("الإجمالي المؤهل")}: {money(halalasToSar(discountSnapshot.eligibleSubtotalHalalas))}</span><strong>{t("الخصم")}: {money(discountAmount)}</strong></div> : null}</></div>
+                      <div className="bk2-payment-block bk2-discount-block"><h3>{t("إضافة خصم أو كوبون")}</h3><><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("بدون خصم")}</button><button type="button" disabled={!canApplyManualDiscount} title={canApplyManualDiscount ? undefined : t("الخصم اليدوي يحتاج صلاحية مستقلة.")} className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { if (!canApplyManualDiscount) return; setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("مبلغ ثابت")}</button><button type="button" disabled={!canApplyManualDiscount} title={canApplyManualDiscount ? undefined : t("الخصم اليدوي يحتاج صلاحية مستقلة.")} className={discountMode === "percent" ? "is-active" : ""} onClick={() => { if (!canApplyManualDiscount) return; setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>{t("نسبة")}</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>{t("عرض محفوظ")}</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>{t("كوبون")}</button></div>{!canApplyManualDiscount ? <p className="bk2-price-permission-note">{t("الخصم اليدوي يحتاج صلاحية مستقلة.")}</p> : null}{bookingClients.length > 1 && (discountMode === "fixed" || discountMode === "percent") ? <p className="bk2-price-permission-note">{t("في الحجز الجماعي يتم توزيع الخصم اليدوي على حجوزات العميلات مع بقاء الإجمالي المدخل كما هو.")}</p> : null}{discountMode === "fixed" ? <label className="bk2-payment-input"><span>{t("قيمة الخصم")}</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>{t("النسبة")}</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>{t("حد أقصى اختياري")}</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t("بدون حد")} /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>{t("جاري تحميل العروض...")}</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer, language)} · {preview.ok ? `${t("خصم متوقع")} ${money(halalasToSar(preview.discountHalalas))}` : discountReasonText(preview.reason, language)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>{t("خدمات محددة")}: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>{t("تصنيفات محددة")}: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>{t("كود الكوبون")}</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? t("جاري التحقق...") : t("تحقق")}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>{t("الإجمالي المؤهل")}: {money(halalasToSar(discountSnapshot.eligibleSubtotalHalalas))}</span><strong>{t("الخصم")}: {money(discountAmount)}</strong></div> : null}</></div>
                       <div className="bk2-payment-block"><h3>{t("نوع التحصيل")}</h3><div className="bk2-choice-grid"><button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>{t("دفع كامل")}</button><button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>{t("عربون")}</button><button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>{t("بدون دفع الآن")}</button></div>{paymentType === "partial" ? <label className="bk2-payment-input"><span>{t("قيمة العربون")}</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>{currency}</em></label> : null}</div>
                       {paymentType !== "none" ? <div className="bk2-payment-block"><h3>{t("طريقة الدفع")}</h3><div className="bk2-choice-grid four"><button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>{t("كاش")}</button><button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>{t("شبكة")}</button><button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>{t("تحويل")}</button><button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>{t("مختلط")}</button></div>{paymentMethod === "mixed" ? <div className="bk2-mixed-grid"><label><span>{t("كاش")}</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("شبكة")}</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>{t("تحويل")}</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><p>{t("المجموع")}: {money(mixedTotal)} {t("من")} {money(effectivePaidAmount)}</p></div> : null}</div> : null}
                       <label className="bk2-note-field"><span>{t("ملاحظة الحجز (اختياري)")}</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder={t("أي تفاصيل مهمة للموظفة أو الاستقبال...")} /></label>
@@ -2082,16 +2611,17 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
             <aside className="bk2-summary-card">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
-              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient?.phone || t("اختاري عميلة للمتابعة")}</small></div></div>
+              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
               {cart.length ? <div className="bk2-summary-services">{cart.map((service) => {
-                const schedule = scheduleByService[String(service.id)];
+                const key = bookingLineKey(service);
+                const schedule = scheduleByService[key];
                 const catalogPrice = serviceCatalogPrice(service);
                 const effectiveBasePrice = servicePrice(service);
                 const promoActive = serviceHasActivePromo(service);
                 const bookingPrice = bookingPriceForService(service);
                 const adjusted = Math.abs(bookingPrice - effectiveBasePrice) > 0.005;
-                return <div key={service.id}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{promoActive || adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}{promoActive ? <small>{t("سعر العرض")}: {money(effectiveBasePrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
+                return <div key={key}><span>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}{bookingClients.length > 1 ? <small>{bookingLineClientName(service)}</small> : null}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}{promoActive || adjusted ? <small>{t("سعر الكتالوج")}: {money(catalogPrice)}</small> : null}{promoActive ? <small>{t("سعر العرض")}: {money(effectiveBasePrice)}</small> : null}</span><strong>{money(bookingPrice)}</strong></div>;
               })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}

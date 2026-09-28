@@ -6,6 +6,7 @@ export type CoreBookingSearch = {
   date?: string;
   search?: string;
   clientId?: string;
+  partyId?: string;
   staffId?: string;
   status?: string;
 };

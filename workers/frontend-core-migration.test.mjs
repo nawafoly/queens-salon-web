@@ -409,7 +409,11 @@ test("internal booking disables cross-service overlapping time choices before su
 
   assert.match(
     v2,
-    /start < otherClientEnd && otherStart < clientEnd/
+    /bookingLineClientKey\(other\) === currentClientKey/
+  );
+  assert.match(
+    v2,
+    /start < otherClientEnd &&\s*otherStart < clientEnd/
   );
   assert.match(
     v2,
@@ -492,7 +496,7 @@ test("Core booking responses carry invoice paid totals and V2 retries idempotent
   assert.match(paymentsRepo, /payment_breakdown_json/);
   assert.match(paymentsRepo, /'booking'/);
   assert.match(v2, /recordPaymentWithRetry/);
-  assert.match(v2, /لا تعيدي إنشاء الحجز/);
+  assert.match(v2, /لا تعيدي إنشاء (?:الحجوزات|المجموعة كاملة)/);
 });
 
 
@@ -500,13 +504,14 @@ test("internal booking V2 is direct Core-only and cannot read Firestore operatio
   const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
   const availabilityHelper = readFileSync("src/helpers/coreBookingAvailability.ts", "utf8");
   const envWeb = readFileSync(".env.web", "utf8");
-  assert.match(v2, /resolveCoreBookingDataSource\(\)\.createBookingGroup\(\{ parent, items: itemRows \}\)/);
+  assert.match(v2, /const bookingDataSource = resolveCoreBookingDataSource\(\)/);
+  assert.match(v2, /bookingDataSource\.createBookingGroup\(\{ parent, items: itemRows \}\)/);
   assert.match(v2, /listCoreBookableStaffForDate/);
   assert.match(v2, /getCoreStaffBookableStartSlots/);
   assert.match(v2, /CoreOfferService\.list\(\{ active: true/);
   assert.match(v2, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);
   assert.match(v2, /forceFresh:\s*true/);
-  assert.match(v2, /resolveCoreBookingDataSource\(\)\.updateBooking/);
+  assert.match(v2, /bookingDataSource\.updateBooking/);
   assert.match(availabilityHelper, /start \+ service duration \+ buffer/i);
   assert.doesNotMatch(v2, /filterStaffSlotsByWorkingHours|isStaffAvailableForDate|isStaffWorkingAtTime|resolveStaffWorkingWindowsForDate/);
   assert.doesNotMatch(v2, /getDataSourceFlags|bookingDataSourceCompat|AppSettingsService|firestoreOffers/);
@@ -772,7 +777,7 @@ test("administrative bookings attach to the selected canonical client and repair
   const portalRepo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
 
   assert.match(internalBooking, /let canonicalClientId = ""/);
-  assert.match(internalBooking, /clientId:\s*canonicalClientId/);
+  assert.match(internalBooking, /clientId:\s*plan\.canonicalClientId/);
   assert.match(internalBooking, /userId:\s*null/);
   assert.match(internalBooking, /createdByUid:\s*userId/);
   assert.match(bookingSource, /const explicitClientId = String\(booking\.clientId/);
@@ -1119,7 +1124,7 @@ test("client personal profile exposes relationship-first home insights", () => {
   assert.match(profile, /آخر زيارة/);
   assert.match(profile, /مختصتك الأكثر زيارة/);
   assert.match(profile, /cashbackData\?\.enabled/);
-  assert.match(profile, /لا يمكن سحبه نقدًا أو تحويله خارج ملكات/);
+  assert.match(profile, /لا سحب نقدي ولا تحويل/);
   assert.match(portal, /ClientPortalCashback/);
   assert.match(portal, /redeemScope: "salon_only"/);
 });
