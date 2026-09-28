@@ -1118,6 +1118,20 @@ const employeeEnglish: Record<string, string> = {
   "تم حفظ الاستثناء.": "Exception saved.",
   "تم إلغاء الاستثناء.": "Exception cancelled.",
   "تمت استعادة الاستثناء كسجل Core نشط جديد.": "Exception restored as a new active Core record.",
+  "حذف سجل البصمة؟": "Delete attendance record?",
+  "نعم، احذف السجل": "Yes, delete record",
+  "إلغاء الاستئذان المعتمد؟": "Cancel approved permission?",
+  "نعم، ألغِ الاستئذان": "Yes, cancel permission",
+  "إلغاء الإجازة المعتمدة؟": "Cancel approved leave?",
+  "نعم، ألغِ الإجازة": "Yes, cancel leave",
+  "إنهاء الإجازة الحالية؟": "End current leave?",
+  "سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي.": "The current leave will be ended and its future effect will be cancelled.",
+  "نعم، أنهِ الإجازة": "Yes, end leave",
+  "الموظفة مخفية من الحجز": "Staff member is hidden from booking",
+  "الموظفة لديها خدمات لكنها مخفية من الحجز. هل تريد الحفظ بهذا الشكل؟": "This staff member has assigned services but is hidden from booking. Save this configuration?",
+  "نعم، احفظ بهذا الشكل": "Yes, save this way",
+  "حذف سجل الإجازة؟": "Delete leave record?",
+  "تم تحديث حالة الموظفة": "Staff status updated",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
@@ -1143,6 +1157,10 @@ function employeeDynamicEnglishText(arabic: string): string | null {
     [/^نقص ساعات (\d+(?:[.,]\d+)?) دقيقة$/, (m) => `Missing hours ${m[1]} min`],
     [/^في إجازة حتى (.+)$/, (m) => `On leave until ${m[1]}`],
     [/^دوام في (.+)$/, (m) => `Worked during ${employeeEnglish[m[1]] || m[1]}`],
+    [/^سيتم مسح سجل البصمة ليوم (.+)\.$/, (m) => `The attendance record for ${m[1]} will be deleted.`],
+    [/^سيتم إلغاء الاستئذان المعتمد ليوم (.+)\.$/, (m) => `The approved permission for ${m[1]} will be cancelled.`],
+    [/^سيتم إلغاء الإجازة المعتمدة ليوم (.+)\.$/, (m) => `The approved leave for ${m[1]} will be cancelled.`],
+    [/^اختاري شفتًا لأيام العمل التالية: (.+)$/, (m) => `Choose a shift for the following working days: ${m[1]}`],
   ];
 
   for (const [pattern, translate] of patterns) {
