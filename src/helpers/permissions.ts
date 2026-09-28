@@ -71,6 +71,15 @@ export type AppPermission =
   | "employees.files.view"
   | "employees.files.manage"
   | "employees.schedule.manage"
+  | "employees.tabs.basic.view"
+  | "employees.tabs.profile.view"
+  | "employees.tabs.services.view"
+  | "employees.tabs.schedule.view"
+  | "employees.tabs.attendance.view"
+  | "employees.tabs.payroll.view"
+  | "employees.tabs.requests.view"
+  | "employees.tabs.leave.view"
+  | "employees.tabs.messages.view"
   | "attendance.own.view"
   | "attendance.view"
   | "attendance.records.create"
@@ -218,6 +227,19 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "employees.files.view", label: "عرض ملفات الموظفات", hint: "عرض المستندات والملفات الوظيفية.", group: "workforce", action: "view", sensitive: true },
   { key: "employees.files.manage", label: "إدارة ملفات الموظفات", hint: "رفع وتعديل وحذف الملفات الوظيفية.", group: "workforce", action: "manage", sensitive: true },
   { key: "employees.schedule.manage", label: "إدارة جداول الدوام", hint: "تعديل جداول العمل والأيام والإجازات الأسبوعية.", group: "workforce", action: "manage" },
+
+  // Staff Management profile-tab visibility. Hidden from the generic permission
+  // packs because Account Management exposes these as a dedicated tab-access control.
+  { key: "employees.tabs.basic.view", label: "تبويب البيانات الأساسية", hint: "إظهار تبويب البيانات الأساسية داخل ملف الموظفة.", group: "workforce", action: "view", visible: false },
+  { key: "employees.tabs.profile.view", label: "تبويب الملفات والصور", hint: "إظهار تبويب الملفات والصور داخل ملف الموظفة.", group: "workforce", action: "view", visible: false },
+  { key: "employees.tabs.services.view", label: "تبويب الخدمات", hint: "إظهار تبويب الخدمات داخل ملف الموظفة.", group: "workforce", action: "view", visible: false },
+  { key: "employees.tabs.schedule.view", label: "تبويب الدوام والشفتات", hint: "إظهار تبويب الدوام والشفتات داخل ملف الموظفة.", group: "workforce", action: "view", visible: false },
+  { key: "employees.tabs.attendance.view", label: "تبويب الحضور", hint: "إظهار تبويب الحضور داخل ملف الموظفة.", group: "workforce", action: "view", visible: false, sensitive: true },
+  { key: "employees.tabs.payroll.view", label: "تبويب سجل الرواتب", hint: "إظهار تبويب سجل الرواتب داخل ملف الموظفة.", group: "workforce", action: "view", visible: false, sensitive: true },
+  { key: "employees.tabs.requests.view", label: "تبويب الطلبات", hint: "إظهار تبويب الطلبات داخل ملف الموظفة.", group: "workforce", action: "view", visible: false, sensitive: true },
+  { key: "employees.tabs.leave.view", label: "تبويب رصيد الإجازات", hint: "إظهار تبويب رصيد الإجازات داخل ملف الموظفة.", group: "workforce", action: "view", visible: false, sensitive: true },
+  { key: "employees.tabs.messages.view", label: "تبويب الرسائل", hint: "إظهار تبويب الرسائل داخل ملف الموظفة.", group: "workforce", action: "view", visible: false, sensitive: true },
+
   { key: "attendance.own.view", label: "عرض الحضور الشخصي", hint: "عرض سجل حضور الحساب نفسه.", group: "workforce", action: "view" },
   { key: "attendance.view", label: "عرض حضور الفريق", hint: "عرض حضور وانصراف جميع الموظفات.", group: "workforce", action: "view", sensitive: true },
   { key: "attendance.records.create", label: "إضافة بصمة إدارية", hint: "إنشاء سجل حضور أو انصراف من الإدارة.", group: "workforce", action: "create", sensitive: true },
