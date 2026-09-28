@@ -459,8 +459,8 @@ export default function LeaveRestManagementPanel({
   const annualReviewDescription =
     annualReviewRequired
       ? tr(
-          `الرصيد يحتاج مراجعة — ${t(annualReviewReasonLabel(annualLeave.reviewReason))}`,
-          `Balance needs review — ${t(t(annualReviewReasonLabel(annualLeave.reviewReason)))}`
+          `الرصيد يحتاج مراجعة — ${annualReviewReasonLabel(annualLeave.reviewReason)}`,
+          `Balance needs review — ${t(annualReviewReasonLabel(annualLeave.reviewReason))}`
         )
       : "";
   const annualAvailable =
@@ -1163,10 +1163,10 @@ export default function LeaveRestManagementPanel({
           />
 
           <WorkspaceMetricV2
-            label={annualAccruedLabel}
+            label={t(annualAccruedLabel)}
             value={
               loading
-                ? "\u062c\u0627\u0631\u064a \u0627\u0644\u062a\u062d\u0645\u064a\u0644..."
+                ? t("جاري التحميل...")
                 : annualBalanceValue(
                     annualLeave.earnedCurrentServiceYearDays ??
                       annualLeave.accruedDays,
