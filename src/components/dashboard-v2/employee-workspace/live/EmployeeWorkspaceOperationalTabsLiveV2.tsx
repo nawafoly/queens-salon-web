@@ -1009,6 +1009,7 @@ export function EmployeeAttendanceTabLiveV2({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: EmployeeAttendanceTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [detailDrawerDate, setDetailDrawerDate] = useState("");
   const normalizedMonth = clampMonthKeyToEmployment(monthKey, employmentStartDate, employmentEndDate);
   const todayKey = getLocalDateKey();
@@ -1106,7 +1107,14 @@ export function EmployeeAttendanceTabLiveV2({
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
-  const monthOptions = buildMonthOptions(normalizedMonth).filter((option) => option.value === clampMonthKeyToEmployment(option.value, employmentStartDate, employmentEndDate));
+  const monthOptions = buildMonthOptions(normalizedMonth)
+    .filter((option) => option.value === clampMonthKeyToEmployment(option.value, employmentStartDate, employmentEndDate))
+    .map((option) => ({
+      ...option,
+      label: language === "en"
+        ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${option.value}-01T00:00:00.000Z`))
+        : option.label,
+    }));
   const serviceStartDate = safeDateKey(employmentStartDate);
   const serviceEndDate = safeDateKey(employmentEndDate);
   const serviceBoundaryLoadedCount = serviceStartDate || serviceEndDate ? 1 : 0;
@@ -1193,7 +1201,7 @@ export function EmployeeAttendanceTabLiveV2({
       <WorkspaceTabHeaderV2
         title="الحضور"
         description="عرض وتعديل سجل الحضور من مكوّن V2 مستقل."
-        badge={<WorkspaceStatusBadgeV2 tone={badgeTone}>{badgeLabel}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={badgeTone}>{t(badgeLabel)}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
@@ -1206,18 +1214,24 @@ export function EmployeeAttendanceTabLiveV2({
       {cleanText(error) && loadedDataCount ? (
         <WorkspaceNoticeV2
           title="تعذر تحديث سجل الحضور"
-          description={error}
+          description={t(error)}
           tone="danger"
-          action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
+          action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("إعادة المحاولة")}</button>}
         />
       ) : null}
 
       {serviceStartDate ? (
         <WorkspaceNoticeV2
-          title={`فترة الخدمة المعروضة تبدأ من ${formatAttendanceDate(serviceStartDate)}`}
+          title={tr(
+            `فترة الخدمة المعروضة تبدأ من ${formatAttendanceDate(serviceStartDate)}`,
+            `Displayed service period starts on ${formatAttendanceDate(serviceStartDate)}`
+          )}
           description={serviceEndDate
-            ? `الأيام السابقة لتاريخ المباشرة والأيام بعد ${formatAttendanceDate(serviceEndDate)} خارج نطاق الحضور والغياب.`
-            : "الأيام السابقة لتاريخ المباشرة لا تدخل في الحضور أو الغياب."}
+            ? tr(
+                `الأيام السابقة لتاريخ المباشرة والأيام بعد ${formatAttendanceDate(serviceEndDate)} خارج نطاق الحضور والغياب.`,
+                `Days before the employment start date and after ${formatAttendanceDate(serviceEndDate)} are outside attendance and absence calculations.`
+              )
+            : t("الأيام السابقة لتاريخ المباشرة لا تدخل في الحضور أو الغياب.")}
           tone="neutral"
         />
       ) : null}
@@ -1227,7 +1241,7 @@ export function EmployeeAttendanceTabLiveV2({
         description="اختر الشهر، ثم اضغط على أي يوم من التقويم لعرض تفاصيله."
       >
         <div className="dsv2-ew-form-grid">
-          <DashboardFieldV2 id="employee-live-v2-attendance-month" label="الشهر">
+          <DashboardFieldV2 id="employee-live-v2-attendance-month" label={t("الشهر")}>
             <DashboardSelectV2
               id="employee-live-v2-attendance-month"
               value={normalizedMonth}
@@ -1244,15 +1258,15 @@ export function EmployeeAttendanceTabLiveV2({
         description="المصدر الفعلي حسب أولوية: إجازة، استثناء، شفت محدد، جدول الموظفة، ثم دوام الصالون."
       >
         <div className="dsv2-ew-metrics">
-          <WorkspaceMetricV2 label="المصدر" value={effectiveShiftInfo?.sourceLabel || "غير محدد"} note={effectiveShiftInfo?.sourceDetail || "يتم تحديده تلقائياً من البيانات"} tone={effectiveShiftTone} />
+          <WorkspaceMetricV2 label="المصدر" value={effectiveShiftInfo?.sourceLabel ? t(effectiveShiftInfo.sourceLabel) : t("غير محدد")} note={effectiveShiftInfo?.sourceDetail ? t(effectiveShiftInfo.sourceDetail) : t("يتم تحديده تلقائياً من البيانات")} tone={effectiveShiftTone} />
           <WorkspaceMetricV2 label="الوقت الفعلي" value={effectiveShiftInfo?.timeLabel || "-"} tone="dark" />
-          <WorkspaceMetricV2 label="الحالة" value={effectiveShiftInfo?.statusLabel || "غير محدد"} tone={effectiveShiftTone} />
+          <WorkspaceMetricV2 label="الحالة" value={effectiveShiftInfo?.statusLabel ? t(effectiveShiftInfo.statusLabel) : t("غير محدد")} tone={effectiveShiftTone} />
         </div>
       </WorkspaceCardV2>
 
       {viewState === "loading" ? (
         <WorkspaceCardV2 title="جاري تحميل الحضور" description="يتم تحميل سجلات الحضور الفعلية لهذا الشهر.">
-          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل سجل حضور الموظفة">
+          <article className="dsv2-ew-skeleton" aria-label={t("جاري تحميل سجل حضور الموظفة")}>
             <DashboardSkeletonV2 variant="title" width="46%" />
             <DashboardSkeletonV2 lines={3} />
             <DashboardSkeletonV2 variant="block" height={140} />
@@ -1261,25 +1275,25 @@ export function EmployeeAttendanceTabLiveV2({
       ) : viewState === "error" ? (
         <WorkspaceNoticeV2
           title="تعذر تحميل سجل الحضور"
-          description={error || "تعذر تحميل سجل حضور الموظفة. أعد المحاولة بعد التحقق من الاتصال."}
+          description={error ? t(error) : t("تعذر تحميل سجل حضور الموظفة. أعد المحاولة بعد التحقق من الاتصال.")}
           tone="danger"
-          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("إعادة المحاولة")}</button>}
         />
       ) : viewState === "empty" ? (
         <WorkspaceCardV2
-          title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
+          title={tr(`تقويم ${formatMonthLabel(normalizedMonth)}`, `Calendar — ${monthOptions.find((option) => option.value === normalizedMonth)?.label || normalizedMonth}`)}
           description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد."
           actions={
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{t("اليوم")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
             </div>
           }
           className="dsv2-ew-attendance-calendar-card"
         >
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
-            <strong>لا توجد سجلات لهذا الشهر</strong>
-            <span>ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.</span>
+            <strong>{t("لا توجد سجلات لهذا الشهر")}</strong>
+            <span>{t("ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.")}</span>
           </div>
         </WorkspaceCardV2>
       ) : null}
@@ -1288,30 +1302,30 @@ export function EmployeeAttendanceTabLiveV2({
         <>
           <div className="dsv2-ew-attendance-board">
             <WorkspaceCardV2
-              title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
+              title={tr(`تقويم ${formatMonthLabel(normalizedMonth)}`, `Calendar — ${monthOptions.find((option) => option.value === normalizedMonth)?.label || normalizedMonth}`)}
               description="اضغطي على أي يوم مسجل لفتح تفاصيله."
               actions={
                 <div className="dsv2-cluster">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{t("اليوم")}</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
                 </div>
               }
               className="dsv2-ew-attendance-calendar-card"
             >
-              <div className="dsv2-ew-calendar-legend" aria-label={"\u062f\u0644\u064a\u0644 \u0623\u0644\u0648\u0627\u0646 \u0627\u0644\u062a\u0642\u0648\u064a\u0645"}>
-                <span data-status="حضور"><i />حضور</span>
-                <span data-status="تأخير"><i />تأخير</span>
-                <span data-status="نقص ساعات"><i />نقص ساعات</span>
-                <span data-status="غير مكتمل"><i />غير مكتمل</span>
-                <span data-status="غياب"><i />غياب</span>
-                <span data-status="دوام في راحة أسبوعية"><i />دوام في راحة</span>
-                <span data-leave-type="weekly_rest"><i />{"\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629"}</span>
-                <span data-leave-type="compensatory"><i />{"\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629"}</span>
-                <span data-leave-type="annual"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629"}</span>
-                <span data-leave-type="exceptional"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629"}</span>
+              <div className="dsv2-ew-calendar-legend" aria-label={t("دليل ألوان التقويم")}>
+                <span data-status="حضور"><i />{t("الحضور")}</span>
+                <span data-status="تأخير"><i />{t("تأخير")}</span>
+                <span data-status="نقص ساعات"><i />{t("نقص ساعات")}</span>
+                <span data-status="غير مكتمل"><i />{t("غير مكتمل")}</span>
+                <span data-status="غياب"><i />{t("غياب")}</span>
+                <span data-status="دوام في راحة أسبوعية"><i />{t("دوام في راحة")}</span>
+                <span data-leave-type="weekly_rest"><i />{t("راحة أسبوعية")}</span>
+                <span data-leave-type="compensatory"><i />{t("إجازة تعويضية")}</span>
+                <span data-leave-type="annual"><i />{t("إجازة سنوية")}</span>
+                <span data-leave-type="exceptional"><i />{t("إجازة استثنائية")}</span>
               </div>
               <div className="dsv2-ew-calendar-head" aria-hidden="true">
-                {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
+                {(language === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : AR_WEEKDAY_SHORT).map((day) => <span key={day}>{day}</span>)}
               </div>
               <div className="dsv2-ew-calendar dsv2-ew-attendance-month-grid">
                 {calendarDays.map((day) => (
@@ -1331,13 +1345,13 @@ export function EmployeeAttendanceTabLiveV2({
                     onDoubleClick={() => day.interactive && openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
-                    <span>{attendanceCalendarDisplayStatus(day) || "-"}</span>
+                    <span>{attendanceCalendarDisplayStatus(day) ? t(attendanceCalendarDisplayStatus(day)) : "-"}</span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
-                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "فترة الاستئذان"}
+                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || t("فترة الاستئذان")}
                       </em>
                     ) : day.specialDay && day.specialDay.label !== day.status ? (
-                      <em className="dsv2-ew-calendar__special">{day.specialDay.label}</em>
+                      <em className="dsv2-ew-calendar__special">{t(day.specialDay.label)}</em>
                     ) : null}
                     <small>{day.timeLabel}</small>
                   </button>
@@ -1352,73 +1366,73 @@ export function EmployeeAttendanceTabLiveV2({
             >
               <div className="dsv2-ew-day-detail">
                 <div className="dsv2-ew-day-detail__status">
-                  <span>{attendanceReviewText(selectedStatus, selectedRow)}</span>
+                  <span>{t(attendanceReviewText(selectedStatus, selectedRow))}</span>
                   <WorkspaceStatusBadgeV2 tone={attendanceStatusTone(selectedStatus)}>
-                    {selectedStatus}
+                    {t(selectedStatus)}
                   </WorkspaceStatusBadgeV2>
                   {selectedSpecialDay && selectedSpecialDay.label !== selectedStatus ? (
                     <WorkspaceStatusBadgeV2 tone="gold">
-                      {selectedSpecialDay.label}
+                      {t(selectedSpecialDay.label)}
                     </WorkspaceStatusBadgeV2>
                   ) : null}
                 </div>
 
                 <dl className="dsv2-ew-day-fields">
                   <div>
-                    <dt>وقت الدخول</dt>
+                    <dt>{t("وقت الدخول")}</dt>
                     <dd>{formatAttendanceTime(selectedRow?.checkInAtClient) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>وقت الخروج</dt>
+                    <dt>{t("وقت الخروج")}</dt>
                     <dd>{formatAttendanceTime(selectedRow?.checkOutAtClient) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>الشفت الفعلي</dt>
+                    <dt>{t("الشفت الفعلي")}</dt>
                     <dd>
                       {selectedShiftWindow || "-"}
                       {selectedRow?.shiftName ? ` · ${selectedRow.shiftName}` : ""}
                     </dd>
                   </div>
                   <div>
-                    <dt>مصدر الشفت</dt>
+                    <dt>{t("مصدر الشفت")}</dt>
                     <dd>{selectedShiftSource || "-"}</dd>
                   </div>
                   <div>
-                    <dt>حالة الشفت</dt>
+                    <dt>{t("حالة الشفت")}</dt>
                     <dd>{selectedShiftStatus || "-"}</dd>
                   </div>
                   <div>
-                    <dt>سماحية التأخير</dt>
+                    <dt>{t("سماحية التأخير")}</dt>
                     <dd>{Number(selectedRow?.lateGraceMinutes || 0) ? `${formatNumber(selectedRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                   </div>
                   <div>
-                    <dt>الموقع</dt>
+                    <dt>{t("الموقع")}</dt>
                     <dd>{cleanText(selectedRow?.workZoneName) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>السجلات</dt>
+                    <dt>{t("السجلات")}</dt>
                     <dd>{selectedRow?.recordCount ? `${formatNumber(selectedRow.recordCount)} بصمة` : "-"}</dd>
                   </div>
                   <div>
-                    <dt>الملاحظات</dt>
+                    <dt>{t("الملاحظات")}</dt>
                     <dd>{cleanText(selectedRow?.notes) || "-"}</dd>
                   </div>
                 </dl>
 
                 <div className="dsv2-ew-action-grid">
                   <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !activeSelectedDate} onClick={() => activeSelectedDate && onEditPunch(activeSelectedDate)}>
-                    تعديل البصمة
+                    {t("تعديل البصمة")}
                   </button>
                   <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={readOnly || !canDelete || !selectedRow?.date} onClick={() => selectedRow?.date && onDeletePunch(selectedRow.date)}>
-                    حذف البصمة
+                    {t("حذف البصمة")}
                   </button>
                   {selectedHasApprovedLeave ? (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !activeSelectedDate} onClick={() => activeSelectedDate && onCancelLeave?.(activeSelectedDate)}>
-                      {selectedSpecialDay?.kind === "partial_leave" ? "إلغاء الاستئذان" : "إلغاء الإجازة"}
+                      {selectedSpecialDay?.kind === "partial_leave" ? t("إلغاء الاستئذان") : t("إلغاء الإجازة")}
                     </button>
                   ) : (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
-                      تسجيل إجازة أو استئذان
+                      {t("تسجيل إجازة أو استئذان")}
                     </button>
                   )}
                 </div>
@@ -1429,8 +1443,8 @@ export function EmployeeAttendanceTabLiveV2({
           <DashboardDrawerV2
             open={Boolean(detailDrawerDate)}
             onClose={closeDetailDrawer}
-            title="تفاصيل يوم الحضور"
-            description="عرض البصمات والشفت والموقع والمراجعات."
+            title={t("تفاصيل يوم الحضور")}
+            description={t("عرض البصمات والشفت والموقع والمراجعات.")}
             eyebrow={formatAttendanceDate(drawerDate)}
             size="md"
             side="end"
@@ -1438,10 +1452,10 @@ export function EmployeeAttendanceTabLiveV2({
             footer={
               <>
                 <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !drawerDate} onClick={() => drawerDate && onEditPunch(drawerDate)}>
-                  تعديل البصمة
+                  {t("تعديل البصمة")}
                 </button>
                 <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeDetailDrawer}>
-                  إغلاق
+                  {t("إغلاق")}
                 </button>
               </>
             }
@@ -1455,52 +1469,52 @@ export function EmployeeAttendanceTabLiveV2({
               <WorkspaceTableV2
                 headers={["الحدث", "الوقت", "المصدر", "الحالة"]}
                 rows={[
-                  ["دخول", formatAttendanceTime(drawerRow?.checkInAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="in-status" tone={attendanceStatusTone(drawerStatus)}>{drawerStatus}</WorkspaceStatusBadgeV2>],
-                  ["خروج", formatAttendanceTime(drawerRow?.checkOutAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="out-status" tone={drawerRow?.checkOutAtClient ? "success" : "default"}>{drawerRow?.checkOutAtClient ? "مكتمل" : "غير مسجل"}</WorkspaceStatusBadgeV2>],
+                  [t("دخول"), formatAttendanceTime(drawerRow?.checkInAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="in-status" tone={attendanceStatusTone(drawerStatus)}>{t(drawerStatus)}</WorkspaceStatusBadgeV2>],
+                  [t("خروج"), formatAttendanceTime(drawerRow?.checkOutAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="out-status" tone={drawerRow?.checkOutAtClient ? "success" : "default"}>{drawerRow?.checkOutAtClient ? t("مكتمل") : t("غير مسجل")}</WorkspaceStatusBadgeV2>],
                 ]}
               />
 
               <dl className="dsv2-ew-day-fields">
                 <div>
-                  <dt>الشفت الفعلي</dt>
+                  <dt>{t("الشفت الفعلي")}</dt>
                   <dd>
                     {drawerShiftWindow || "-"}
                     {drawerRow?.shiftName ? ` · ${drawerRow.shiftName}` : ""}
                   </dd>
                 </div>
                 <div>
-                  <dt>مصدر الشفت</dt>
+                  <dt>{t("مصدر الشفت")}</dt>
                   <dd>{drawerShiftSource || "-"}</dd>
                 </div>
                 <div>
-                  <dt>حالة الشفت</dt>
+                  <dt>{t("حالة الشفت")}</dt>
                   <dd>{drawerShiftStatus || "-"}</dd>
                 </div>
                 <div>
-                  <dt>سماحية التأخير</dt>
+                  <dt>{t("سماحية التأخير")}</dt>
                   <dd>{Number(drawerRow?.lateGraceMinutes || 0) ? `${formatNumber(drawerRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                 </div>
                 <div>
-                  <dt>الخروج المبكر</dt>
-                  <dd>يُحسب من أول دقيقة</dd>
+                  <dt>{t("الخروج المبكر")}</dt>
+                  <dd>{t("يُحسب من أول دقيقة")}</dd>
                 </div>
                 <div>
-                  <dt>الموقع</dt>
+                  <dt>{t("الموقع")}</dt>
                   <dd>{cleanText(drawerRow?.workZoneName) || "-"}</dd>
                 </div>
                 <div>
-                  <dt>السجلات</dt>
+                  <dt>{t("السجلات")}</dt>
                   <dd>{drawerRow?.recordCount ? `${formatNumber(drawerRow.recordCount)} بصمة` : "-"}</dd>
                 </div>
                 <div>
-                  <dt>الملاحظات</dt>
+                  <dt>{t("الملاحظات")}</dt>
                   <dd>{cleanText(drawerRow?.notes) || "-"}</dd>
                 </div>
               </dl>
 
               <WorkspaceNoticeV2
                 title="ملاحظة المراجعة"
-                description={attendanceReviewText(drawerStatus, drawerRow)}
+                description={t(attendanceReviewText(drawerStatus, drawerRow))}
                 tone={attendanceSurfaceTone(drawerStatus)}
               />
             </div>
@@ -1513,14 +1527,14 @@ export function EmployeeAttendanceTabLiveV2({
                 const date = cleanText(row.date);
                 return [
                   date || "-",
-                  attendanceRowStatus(row) || "-",
+                  attendanceRowStatus(row) ? t(attendanceRowStatus(row)) : "-",
                   formatAttendanceTime(row.checkInAtClient) || "-",
                   formatAttendanceTime(row.checkOutAtClient) || "-",
                   [cleanText(row.shiftSourceLabel), cleanText(row.scheduledStartTime || row.scheduledEndTime ? `${row.scheduledStartTime || "-"} - ${row.scheduledEndTime || "-"}` : "")].filter(Boolean).join(" · ") || "-",
                   Number(row.lateMinutes || 0) ? `${formatNumber(row.lateMinutes)} د` : "-",
                   <div className="dsv2-cluster" key={`${date}-actions`}>
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>تعديل</button>
-                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>حذف</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>{t("تعديل")}</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>{t("حذف")}</button>
                   </div>,
                 ];
               })}
