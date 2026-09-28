@@ -39,6 +39,7 @@ import {
 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import type { AppPermission } from "../helpers/permissions";
+import { dashboardText, type DashboardLanguage } from "../helpers/dashboardLanguage";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
@@ -1157,11 +1158,14 @@ function HrOverview({
 
 type AdminHrDashboardProps = {
   embedded?: boolean;
+  language?: DashboardLanguage;
 };
 
 export default function AdminHrDashboard({
   embedded = false,
+  language = "ar",
 }: AdminHrDashboardProps) {
+  const t = (text: string) => dashboardText(language, text);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const session = useEmployeeSession();
   const navigate = useNavigate();
@@ -1782,12 +1786,12 @@ export default function AdminHrDashboard({
                     fallback={
                       <div className="hr-workspace-loading" role="status" aria-live="polite">
                         <span className="hr-workspace-loading__spinner" />
-                        <strong>جاري فتح إدارة الموظفات...</strong>
-                        <small>يتم تحميل مساحة الموظفات فقط دون إعادة تحميل ملخص الموارد البشرية.</small>
+                        <strong>{t("جاري فتح إدارة الموظفات...")}</strong>
+                        <small>{t("يتم تحميل مساحة الموظفات فقط دون إعادة تحميل ملخص الموارد البشرية.")}</small>
                       </div>
                     }
                   >
-                    <DashboardEmployees />
+                    <DashboardEmployees language={language} />
                   </Suspense>
                 </PermissionRoute>
               }
