@@ -1164,6 +1164,8 @@ const employeeEnglish: Record<string, string> = {
   "نهاية الدوام": "Work end",
   "طريقة التطبيق": "Application method",
   "ملاحظة داخلية": "Internal note",
+  "نوع التعديل المؤقت": "Temporary change type",
+  "اليوم المؤقت": "Temporary day",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
