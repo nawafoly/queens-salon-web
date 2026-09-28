@@ -10223,8 +10223,8 @@ const canonicalSchedules =
               <DashboardModalV2
                 open={Boolean(offboardingEmployee)}
                 onClose={closeOffboardingModal}
-                title="إنهاء خدمة الموظفة"
-                description={offboardingEmployee ? `إنهاء خدمة ${offboardingEmployee.name || offboardingEmployee.id}` : ""}
+                title={t("إنهاء خدمة الموظفة")}
+                description={offboardingEmployee ? tr(`إنهاء خدمة ${offboardingEmployee.name || offboardingEmployee.id}`, `End employment for ${offboardingEmployee.name || offboardingEmployee.id}`) : ""}
                 eyebrow="Employee Offboarding"
                 size="md"
                 tone="danger"
@@ -10233,21 +10233,21 @@ const canonicalSchedules =
                 footer={
                   <>
                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-workflow-reference" onClick={closeOffboardingModal} disabled={saving}>
-                      إلغاء
+                      {t("إلغاء")}
                     </button>
                     <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => void submitOffboarding()} disabled={saving}>
-                      {saving ? "جارٍ إنهاء الخدمة..." : "تأكيد إنهاء الخدمة"}
+                      {saving ? t("جارٍ إنهاء الخدمة...") : t("تأكيد إنهاء الخدمة")}
                     </button>
                   </>
                 }
               >
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2">
-                  <DashboardFieldV2 id="employee-offboarding-end-date" label="آخر يوم عمل" required>
+                  <DashboardFieldV2 id="employee-offboarding-end-date" label={t("آخر يوم عمل")} required>
                     <DashboardDatePickerV2
                       id="employee-offboarding-end-date"
                       value={offboardingEndDate}
                       max={todayIso()}
-                      placeholder="اختر آخر يوم عمل"
+                      placeholder={t("اختر آخر يوم عمل")}
                       clearable={false}
                       disabled={saving}
                       onChange={setOffboardingEndDate}
@@ -10255,10 +10255,10 @@ const canonicalSchedules =
                   </DashboardFieldV2>
                   <DashboardFieldV2
                     id="employee-offboarding-reason"
-                    label="سبب إنهاء الخدمة"
+                    label={t("سبب إنهاء الخدمة")}
                     required
                     className="dsv2-ew-form-wide"
-                    hint="لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا."
+                    hint={t("لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا.")}
                   >
                     <textarea
                       id="employee-offboarding-reason"
@@ -10274,11 +10274,17 @@ const canonicalSchedules =
                     <div className="dsv2-ew-form-wide dsv2-alert dsv2-alert--danger">
                       <strong>
                         {offboardingBookingBlocker.kind === "future"
-                          ? `توجد ${offboardingBookingBlocker.count} حجوزات تشغيلية قادمة تحتاج إعادة تعيين.`
-                          : `توجد ${offboardingBookingBlocker.count} حجوزات/أنشطة بعد تاريخ النهاية وتحتاج مراجعة يدوية.`}
+                          ? tr(
+                              `توجد ${offboardingBookingBlocker.count} حجوزات تشغيلية قادمة تحتاج إعادة تعيين.`,
+                              `There are ${offboardingBookingBlocker.count} upcoming operational bookings that must be reassigned.`
+                            )
+                          : tr(
+                              `توجد ${offboardingBookingBlocker.count} حجوزات/أنشطة بعد تاريخ النهاية وتحتاج مراجعة يدوية.`,
+                              `There are ${offboardingBookingBlocker.count} bookings or activities after the end date that require manual review.`
+                            )}
                       </strong>
                       {offboardingBookingBlocker.bookingIds.length ? (
-                        <p>المراجع: {offboardingBookingBlocker.bookingIds.join("، ")}</p>
+                        <p>{t("المراجع:")} {offboardingBookingBlocker.bookingIds.join(language === "en" ? ", " : "، ")}</p>
                       ) : null}
                     </div>
                   ) : null}
@@ -10291,13 +10297,13 @@ const canonicalSchedules =
                   (canCreateAttendance || canUpdateAttendance || canDeleteAttendance)
                 }
                 onClose={closeAttendancePunchEditor}
-                title="تعديل البصمة"
+                title={t("تعديل البصمة")}
                 description={
                   attendanceEditDate
-                    ? `تعديل سجل الحضور ليوم ${attendanceEditDate}`
-                    : "تعديل سجل الحضور والانصراف"
+                    ? tr(`تعديل سجل الحضور ليوم ${attendanceEditDate}`, `Edit attendance record for ${attendanceEditDate}`)
+                    : t("تعديل سجل الحضور والانصراف")
                 }
-                eyebrow="الحضور والانصراف"
+                eyebrow={t("الحضور والانصراف")}
                 size="md"
                 className="attendance-punch-editor-modal-v2"
                 closeOnBackdrop={!saving}
@@ -10306,8 +10312,8 @@ const canonicalSchedules =
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-in"
-                    label="وقت الحضور"
-                    hint="اختاري ساعة ودقيقة الحضور فقط."
+                    label={t("وقت الحضور")}
+                    hint={t("اختاري ساعة ودقيقة الحضور فقط.")}
                   >
                     <div className="emp-attendance-edit-time-control-v2">
                       <DashboardTimeInputV2 id="employee-attendance-edit-check-in" className="dsv2-input" step={300} clock="12h" value={ attendanceEditCheckIn ? attendanceEditCheckIn.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckIn( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
@@ -10319,7 +10325,7 @@ const canonicalSchedules =
                           onClick={() => setAttendanceEditCheckIn("")}
                           disabled={saving}
                         >
-                          مسح الوقت
+                          {t("مسح الوقت")}
                         </button>
                       ) : null}
                     </div>
@@ -10327,13 +10333,13 @@ const canonicalSchedules =
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-out"
-                    label="وقت الانصراف"
+                    label={t("وقت الانصراف")}
                     hint={
                       attendanceEditCheckIn &&
                       attendanceEditCheckOut &&
                       attendanceEditCheckOut.slice(11, 16) <= attendanceEditCheckIn.slice(11, 16)
-                        ? "سيُحسب الانصراف على اليوم التالي لنفس شفت العمل. إذا كان بعد منتصف الليل اختاري (ص)."
-                        : "يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                        ? tr("سيُحسب الانصراف على اليوم التالي لنفس شفت العمل. إذا كان بعد منتصف الليل اختاري (ص).", "Check-out will be counted on the next calendar day for the same shift. For after-midnight times, choose AM.")
+                        : t("يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا.")
                     }
                   >
                     <div className="emp-attendance-edit-time-control-v2">
@@ -10346,7 +10352,7 @@ const canonicalSchedules =
                           onClick={() => setAttendanceEditCheckOut("")}
                           disabled={saving}
                         >
-                          مسح الوقت
+                          {t("مسح الوقت")}
                         </button>
                       ) : null}
                     </div>
@@ -10354,8 +10360,8 @@ const canonicalSchedules =
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-note"
-                    label="ملاحظة الإدارة"
-                    hint="يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة."
+                    label={t("ملاحظة الإدارة")}
+                    hint={t("يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة.")}
                     className="dsv2-ew-form-wide"
                   >
                     <textarea
@@ -10366,7 +10372,7 @@ const canonicalSchedules =
                         setAttendanceEditNote(event.target.value)
                       }
                       disabled={saving}
-                      placeholder="مثال: تصحيح بصمة من الإدارة"
+                      placeholder={t("مثال: تصحيح بصمة من الإدارة")}
                       rows={4}
                     />
                   </DashboardFieldV2>
@@ -10378,7 +10384,7 @@ const canonicalSchedules =
                                       onClick={closeAttendancePunchEditor}
                                       disabled={saving}
                                     >
-                                      إلغاء
+                                      {t("إلغاء")}
                                     </button>
                                     <button
                                       type="button"
@@ -10386,7 +10392,7 @@ const canonicalSchedules =
                                       onClick={() => void saveAttendancePunchEditor()}
                                       disabled={saving}
                                     >
-                                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                                      {saving ? t("جارٍ الحفظ...") : t("حفظ تعديل البصمة")}
                                     </button>
                                   </div>
               </DashboardModalV2>
