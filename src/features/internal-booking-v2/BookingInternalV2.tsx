@@ -186,7 +186,31 @@ function serviceTitle(service: any) {
 
 function partyClientKey(client: ClientCandidate | null | undefined) {
   if (!client) return "";
-  return candidateIdentity(client) || `id:${String(client.id || "").trim()}`;
+  const rawId = String(client.id || "").trim();
+
+  // Canonical Core client ID is the booking ownership key. Phone/name are only
+  // fallbacks for quick-history rows that have not been resolved to Core yet.
+  if (rawId && !rawId.startsWith("history:")) return `id:${rawId}`;
+
+  const fallbackIdentity = candidateIdentity(client);
+  if (fallbackIdentity) return fallbackIdentity;
+  return rawId ? `id:${rawId}` : "";
+}
+
+function samePartyClient(left: ClientCandidate | null | undefined, right: ClientCandidate | null | undefined) {
+  if (!left || !right) return false;
+
+  const leftId = String(left.id || "").trim();
+  const rightId = String(right.id || "").trim();
+  const leftCanonical = leftId && !leftId.startsWith("history:");
+  const rightCanonical = rightId && !rightId.startsWith("history:");
+  if (leftCanonical && rightCanonical && leftId === rightId) return true;
+
+  const leftPhone = phone10Digits(left.phone || "");
+  const rightPhone = phone10Digits(right.phone || "");
+  if (leftPhone && rightPhone && leftPhone === rightPhone) return true;
+
+  return partyClientKey(left) === partyClientKey(right);
 }
 
 function bookingLineKey(service: any) {
@@ -212,6 +236,26 @@ function attachServiceToClient(service: CatalogService, client: ClientCandidate)
     __partyClientName: client.name,
     __partyClientPhone: client.phone,
   };
+}
+
+function clientHasService(cart: CatalogService[], client: ClientCandidate, service: CatalogService) {
+  const clientKey = partyClientKey(client);
+  const serviceId = String(service?.id || "").trim();
+  return cart.some(
+    (item) =>
+      bookingLineClientKey(item) === clientKey &&
+      String(item?.id || "").trim() === serviceId
+  );
+}
+
+function addServiceForClient(cart: CatalogService[], service: CatalogService, client: ClientCandidate) {
+  if (clientHasService(cart, client, service)) return cart;
+  return [...cart, attachServiceToClient(service, client)];
+}
+
+function removeServiceForClient(cart: CatalogService[], service: CatalogService, client: ClientCandidate) {
+  const lineKey = bookingLineKey(attachServiceToClient(service, client));
+  return cart.filter((item) => bookingLineKey(item) !== lineKey);
 }
 
 function serviceDuration(service: any) {
@@ -556,6 +600,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return bookingClients.find((client) => partyClientKey(client) === activePartyClientKey) || bookingClients[0];
   }, [bookingClients, activePartyClientKey]);
 
+  const scheduleGroups = useMemo(
+    () => bookingClients
+      .map((client, clientIndex) => {
+        const clientKey = partyClientKey(client);
+        return {
+          client,
+          clientKey,
+          clientIndex,
+          services: cart.filter((service) => bookingLineClientKey(service) === clientKey),
+        };
+      })
+      .filter((group) => group.services.length > 0),
+    [bookingClients, cart]
+  );
+
   useEffect(() => {
     if (!selectedClient) {
       setActivePartyClientKey("");
@@ -584,13 +643,17 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setClientMessage(t("وصلت مجموعة الحجز إلى الحد الأقصى المسموح."));
         return;
       }
-      const primaryKey = partyClientKey(selectedClient);
-      if (candidateKey === primaryKey) {
-        setClientMessage(t("هذه هي العميلة الأساسية بالفعل."));
+
+      const existingPartyClient = bookingClients.find((row) => samePartyClient(row, candidate));
+      if (existingPartyClient) {
+        setActivePartyClientKey(partyClientKey(existingPartyClient));
+        setClientMessage(
+          samePartyClient(selectedClient, candidate)
+            ? t("هذه هي العميلة الأساسية بالفعل.")
+            : t("هذه العميلة موجودة بالفعل في مجموعة الحجز.")
+        );
       } else {
-        setCompanions((current) => current.some((row) => partyClientKey(row) === candidateKey)
-          ? current
-          : [...current, candidate]);
+        setCompanions((current) => [...current, candidate]);
         setActivePartyClientKey(candidateKey);
         setClientMessage(t("تمت إضافة المرافقة إلى نفس مجموعة الحجز."));
       }
@@ -619,7 +682,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setExistingClientMatch(null);
     setExistingClientLookupError("");
     setNewClientError("");
-  }, [addingCompanion, selectedClient, companions.length, language]);
+  }, [addingCompanion, selectedClient, companions.length, bookingClients, language]);
 
   useEffect(() => {
     const phone = phone10Digits(newClientPhone);
@@ -2252,8 +2315,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const owner = activeBookingClient || selectedClient;
-                      const ownerKey = partyClientKey(owner);
-                      const inCart = Boolean(owner) && cart.some((item) => bookingLineClientKey(item) === ownerKey && String(item.id) === String(service.id));
+                      const inCart = Boolean(owner) && clientHasService(cart, owner, service);
                       const lineKey = owner ? bookingLineKey(attachServiceToClient(service, owner)) : "";
                       const promoActive = serviceHasActivePromo(service);
                       const catalogPrice = serviceCatalogPrice(service);
@@ -2265,7 +2327,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                         onClick={() => {
                           if (!owner) return;
                           if (inCart) {
-                            setCart((current) => current.filter((item) => bookingLineKey(item) !== lineKey));
+                            setCart((current) => removeServiceForClient(current, service, owner));
                             setPriceAdjustments((current) => {
                               const next = { ...current };
                               delete next[lineKey];
@@ -2287,7 +2349,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                               return next;
                             });
                           } else {
-                            setCart((current) => [...current, attachServiceToClient(service, owner)]);
+                            setCart((current) => addServiceForClient(current, service, owner));
                           }
                         }}
                       >
