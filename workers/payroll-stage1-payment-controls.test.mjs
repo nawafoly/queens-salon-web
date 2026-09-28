@@ -71,6 +71,6 @@ test("current Riyadh workday is never finalized as missing before shift end", ()
   assert.match(payroll, /dateKey > effectiveCompletedEnd/);
   assert.match(
     payroll,
-    /payrollDateKeys\(bounds\.monthStart, completedThrough\)/
+    /payrollDateKeys\(servicePeriod\.periodStart, effectiveCompletedEnd\)/
   );
 });
