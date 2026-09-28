@@ -1353,6 +1353,166 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               </DashboardFieldV2>
             </div>
 
+            <section className="dsv2-card dsv2-card--padded" style={{ display: "grid", gap: 12 }}>
+              <div className="dsv2-section-head">
+                <div>
+                  <h3 className="dsv2-section-title">
+                    {language === "en"
+                      ? "Allowed Staff Management tabs"
+                      : "التبويبات المسموح بها في ملف الموظفة"}
+                  </h3>
+                  <p className="dsv2-section-caption">
+                    {language === "en"
+                      ? "Choose exactly which Staff Management tabs this account can open. Direct links to hidden tabs are blocked too."
+                      : "حددي التبويبات التي يستطيع هذا الحساب فتحها داخل ملف الموظفة. حتى الرابط المباشر للتبويب المخفي يكون ممنوعًا."}
+                  </p>
+                </div>
+
+                <div className="dsv2-cluster">
+                  <span className="dsv2-badge">
+                    {language === "en" ? "Allowed" : "المسموح"}{" "}
+                    {
+                      EMPLOYEE_PROFILE_TAB_ACCESS.filter((item) =>
+                        editDraft.permissions.includes(item.permission)
+                      ).length
+                    }
+                    /{EMPLOYEE_PROFILE_TAB_ACCESS.length}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                    disabled={!canManagePermissions}
+                    onClick={() => {
+                      setEditDraft((draft) =>
+                        draft
+                          ? {
+                              ...draft,
+                              permissions: Array.from(
+                                new Set([
+                                  ...draft.permissions,
+                                  ...EMPLOYEE_PROFILE_TAB_PERMISSION_KEYS,
+                                ])
+                              ),
+                            }
+                          : draft
+                      );
+                    }}
+                  >
+                    {language === "en" ? "Allow all" : "السماح بالكل"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--accent dsv2-btn--sm"
+                    disabled={!canManagePermissions}
+                    onClick={() => {
+                      const servicesPermission =
+                        EMPLOYEE_PROFILE_TAB_ACCESS.find(
+                          (item) => item.key === "services"
+                        )?.permission;
+                      if (!servicesPermission) return;
+
+                      setEditDraft((draft) => {
+                        if (!draft) return draft;
+                        const withoutTabs = draft.permissions.filter(
+                          (permission) =>
+                            !EMPLOYEE_PROFILE_TAB_PERMISSION_KEYS.includes(
+                              permission
+                            )
+                        );
+                        return {
+                          ...draft,
+                          permissions: [...withoutTabs, servicesPermission],
+                        };
+                      });
+                    }}
+                  >
+                    {language === "en" ? "Services only" : "الخدمات فقط"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {EMPLOYEE_PROFILE_TAB_ACCESS.map((item, index) => {
+                  const enabled = editDraft.permissions.includes(item.permission);
+                  const enabledCount = EMPLOYEE_PROFILE_TAB_ACCESS.filter((tab) =>
+                    editDraft.permissions.includes(tab.permission)
+                  ).length;
+                  const isLastEnabled = enabled && enabledCount <= 1;
+
+                  return (
+                    <div
+                      key={item.permission}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        background: enabled
+                          ? "rgba(5,150,105,0.06)"
+                          : "rgba(15,23,42,0.03)",
+                      }}
+                    >
+                      <div>
+                        <strong>
+                          {index + 1}. {language === "en" ? item.labelEn : item.labelAr}
+                        </strong>
+                        <p className="dsv2-section-caption">
+                          {language === "en" ? item.hintEn : item.hintAr}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={
+                          enabled
+                            ? "dsv2-btn dsv2-btn--success dsv2-btn--sm"
+                            : "dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                        }
+                        disabled={!canManagePermissions || isLastEnabled}
+                        title={
+                          isLastEnabled
+                            ? language === "en"
+                              ? "At least one Staff Management tab must remain allowed."
+                              : "يجب إبقاء تبويب واحد على الأقل مسموحًا."
+                            : undefined
+                        }
+                        onClick={() => {
+                          setEditDraft((draft) => {
+                            if (!draft) return draft;
+                            const currentlyEnabled = draft.permissions.includes(
+                              item.permission
+                            );
+                            const currentCount = EMPLOYEE_PROFILE_TAB_ACCESS.filter(
+                              (tab) =>
+                                draft.permissions.includes(tab.permission)
+                            ).length;
+
+                            if (currentlyEnabled && currentCount <= 1) {
+                              return draft;
+                            }
+
+                            return {
+                              ...draft,
+                              permissions: toggleSinglePermission(
+                                draft.permissions,
+                                item.permission
+                              ),
+                            };
+                          });
+                        }}
+                      >
+                        {enabled ? t("مفعل") : t("غير مفعل")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
             <section>
               <div className="dsv2-section-head">
                 <div>
