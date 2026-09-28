@@ -164,3 +164,16 @@ test("Staff Management has centralized static and dynamic English translation co
   assert.match(language, /Missing hours/);
 });
 
+test("Staff Management translation dictionary stays unique and direct actions stay localized", () => {
+  const language = read("src/pages/dashboardEmployees/employeeLanguage.tsx");
+  const operational = read(
+    "src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx"
+  );
+
+  const keys = [...language.matchAll(/^\s*"((?:[^"\\]|\\.)+)":/gm)].map((match) => match[1]);
+  assert.equal(new Set(keys).size, keys.length, "employeeEnglish contains duplicate translation keys");
+
+  assert.doesNotMatch(operational, />\s*تحديث النطاقات\s*</);
+  assert.match(operational, /\{t\("تحديث النطاقات"\)\}/);
+});
+
