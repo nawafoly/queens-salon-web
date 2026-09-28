@@ -1032,6 +1032,11 @@ const employeeEnglish: Record<string, string> = {
   "إنهاء الخدمة الفوري لا يقبل تاريخًا مستقبليًا. استخدم تاريخ اليوم أو تاريخًا سابقًا مثبتًا.": "Immediate employment termination cannot use a future date. Use today or a verified earlier date.",
   "الحساب المرتبط يملك صلاحيات إدارية/مميزة ويحتاج مراجعة وصول مستقلة قبل إنهاء الخدمة.": "The linked account has administrative or privileged permissions and requires a separate access review before employment can be ended.",
   "هوية الحساب مرتبطة حاليًا بموظف آخر؛ تم إيقاف العملية لحماية الحساب من التعطيل الخاطئ.": "The account identity is currently linked to another staff member. The action was stopped to prevent disabling the wrong account.",
+  "اختيار شهر الحضور": "Choose attendance month",
+  "اختيار الشهر": "Choose month",
+  "السنة السابقة": "Previous year",
+  "السنة التالية": "Next year",
+  "هذا الشهر": "This month",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
