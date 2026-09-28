@@ -31,6 +31,44 @@ export type WorkspaceHelpTopicV2 = {
   important?: string;
 };
 
+function containsArabicWorkspaceTextV2(value: string): boolean {
+  return /[\u0600-\u06FF]/.test(value);
+}
+
+function buildEnglishWorkspaceHelpTopicV2(
+  topic: WorkspaceHelpTopicV2,
+  translate: (value: string) => string
+): WorkspaceHelpTopicV2 {
+  const rawBaseTitle = topic.title.replace(/^شرح\s+/, "").trim();
+  const translatedBaseTitle = translate(rawBaseTitle);
+  const sectionName = translatedBaseTitle && !containsArabicWorkspaceTextV2(translatedBaseTitle)
+    ? translatedBaseTitle
+    : "this Staff Management section";
+  const sectionPhrase = sectionName === "this Staff Management section"
+    ? sectionName
+    : `the ${sectionName} section`;
+
+  return {
+    title: sectionName === "this Staff Management section" ? "Staff Management help" : `Help: ${sectionName}`,
+    description: `Guidance for ${sectionPhrase}.`,
+    purpose: `Use ${sectionPhrase} to review and manage the related staff information and operational settings.`,
+    useWhen: `Use it when the selected staff member's ${sectionName === "this Staff Management section" ? "information" : sectionName.toLowerCase()} needs to be reviewed or updated.`,
+    notFor: "Use the dedicated Staff Management section for changes that belong to another operational area.",
+    example: {
+      title: `Example: ${sectionName === "this Staff Management section" ? "staff record review" : sectionName}`,
+      situation: "A staff record requires review or an operational setting needs to be updated.",
+      action: "Review the current values, make the required change, save it, then verify the resulting staff record.",
+      result: "The staff record is updated while its existing operational and audit history remains intact.",
+    },
+    steps: [
+      { title: "Review", description: "Check the current staff data and confirm that you are editing the correct record." },
+      { title: "Update", description: "Change only the fields or settings required for this operation." },
+      { title: "Save and verify", description: "Save the change and confirm that the resulting staff state is correct." },
+    ],
+    important: "Verify the selected staff member and the operational impact before saving any change.",
+  };
+}
+
 function containsWorkspaceHelpButtonV2(node: ReactNode): boolean {
   return Children.toArray(node).some((child) => {
     if (!isValidElement<{ children?: ReactNode }>(child)) return false;
@@ -212,15 +250,16 @@ export function WorkspaceHelpDrawerV2({
   onClose: () => void;
   topic: WorkspaceHelpTopicV2 | null;
 }) {
-  const { t } = useEmployeeLanguage();
+  const { language, t } = useEmployeeLanguage();
   if (!topic) return null;
+  const displayTopic = language === "en" ? buildEnglishWorkspaceHelpTopicV2(topic, t) : topic;
 
   return (
     <DashboardDrawerV2
       open={open}
       onClose={onClose}
-      title={t(topic.title)}
-      description={t(topic.description)}
+      title={t(displayTopic.title)}
+      description={t(displayTopic.description)}
       eyebrow={t("دليل الاستخدام")}
       size="sm"
       side="end"
@@ -233,39 +272,39 @@ export function WorkspaceHelpDrawerV2({
       <div className="dsv2-stack">
         <WorkspaceNoticeV2
           title={t("ما الغرض من هذا القسم؟")}
-          description={t(topic.purpose)}
+          description={t(displayTopic.purpose)}
           tone="neutral"
         />
 
-        {topic.useWhen || topic.notFor ? (
+        {displayTopic.useWhen || displayTopic.notFor ? (
           <WorkspaceCardV2 title={t("متى أستخدم هذا القسم؟")} description={t("حدد الحالة الصحيحة قبل إجراء أي تعديل.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              {topic.useWhen ? (
-                <WorkspaceNoticeV2 title={t("استخدمه عندما")} description={t(topic.useWhen)} tone="success" />
+              {displayTopic.useWhen ? (
+                <WorkspaceNoticeV2 title={t("استخدمه عندما")} description={t(displayTopic.useWhen)} tone="success" />
               ) : null}
-              {topic.notFor ? (
-                <WorkspaceNoticeV2 title={t("لا تستخدمه من أجل")} description={t(topic.notFor)} tone="gold" />
+              {displayTopic.notFor ? (
+                <WorkspaceNoticeV2 title={t("لا تستخدمه من أجل")} description={t(displayTopic.notFor)} tone="gold" />
               ) : null}
             </div>
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.example ? (
+        {displayTopic.example ? (
           <WorkspaceCardV2 title={t("مثال عملي")} description={t("مثال مبسط يوضح المدخلات والنتيجة داخل النظام.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              <WorkspaceNoticeV2 title={t(topic.example.title)} description={t(topic.example.situation)} tone="neutral" />
-              <WorkspaceNoticeV2 title={t("ما الذي تفعله؟")} description={t(topic.example.action)} tone="gold" />
-              <WorkspaceNoticeV2 title={t("النتيجة")} description={t(topic.example.result)} tone="success" />
+              <WorkspaceNoticeV2 title={t(displayTopic.example.title)} description={t(displayTopic.example.situation)} tone="neutral" />
+              <WorkspaceNoticeV2 title={t("ما الذي تفعله؟")} description={t(displayTopic.example.action)} tone="gold" />
+              <WorkspaceNoticeV2 title={t("النتيجة")} description={t(displayTopic.example.result)} tone="success" />
             </div>
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.steps?.length ? (
+        {displayTopic.steps?.length ? (
           <WorkspaceCardV2 title={t("طريقة الاستخدام")} description={t("اتبع الخطوات بالترتيب لتجنب تضارب الإعدادات.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              {topic.steps.map((step, index) => (
+              {displayTopic.steps.map((step, index) => (
                 <WorkspaceNoticeV2
-                  key={`${topic.title}-${index}`}
+                  key={`${displayTopic.title}-${index}`}
                   title={`${index + 1}. ${t(step.title)}`}
                   description={t(step.description)}
                   tone="neutral"
@@ -275,8 +314,8 @@ export function WorkspaceHelpDrawerV2({
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.important ? (
-          <WorkspaceNoticeV2 title={t("مهم")} description={t(topic.important)} tone="gold" />
+        {displayTopic.important ? (
+          <WorkspaceNoticeV2 title={t("مهم")} description={t(displayTopic.important)} tone="gold" />
         ) : null}
       </div>
     </DashboardDrawerV2>
