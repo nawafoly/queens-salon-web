@@ -575,7 +575,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [offers, setOffers] = useState<CoreDiscount[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersMessage, setOffersMessage] = useState("");
-  const [selectedOfferId, setSelectedOfferId] = useState("");
+  const [selectedOfferByClientKey, setSelectedOfferByClientKey] = useState<Record<string, string>>({});
   const [couponInput, setCouponInput] = useState("");
   const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
@@ -669,6 +669,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setPriceAdjustments({});
         setScheduleByService({});
         setAvailableTimes({});
+        setSelectedOfferByClientKey({});
+        setDiscountMode("none");
       }
       setClientMessage(message);
     }
@@ -980,23 +982,39 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     ),
     [cart, bookingPriceForService]
   );
+  const selectedOfferId = String(selectedOfferByClientKey[activePartyClientKey] || "").trim();
   const selectedOffer = useMemo(() => {
-    const id = String(selectedOfferId || "").trim();
-    if (!id) return null;
-    return offers.find((offer) => String((offer as any)?.id || "").trim() === id) || null;
+    if (!selectedOfferId) return null;
+    return offers.find((offer) => String((offer as any)?.id || "").trim() === selectedOfferId) || null;
   }, [offers, selectedOfferId]);
+
+  const setOfferForClient = useCallback((clientKey: string, offerId: string) => {
+    if (!clientKey) return;
+    const normalizedOfferId = String(offerId || "").trim();
+    setSelectedOfferByClientKey((current) => {
+      const next = { ...current };
+      if (normalizedOfferId) next[clientKey] = normalizedOfferId;
+      else delete next[clientKey];
+      return next;
+    });
+  }, []);
 
   const selectCatalogOffer = useCallback((offer: CoreDiscount) => {
     const offerId = String(offer?.id || "").trim();
     if (!offerId) return;
 
+    if (!activeBookingClient) return;
+    const clientKey = partyClientKey(activeBookingClient);
+
     if (selectedOfferId === offerId) {
-      setSelectedOfferId("");
-      setDiscountMode("none");
+      setOfferForClient(clientKey, "");
+      const hasOtherOffers = Object.entries(selectedOfferByClientKey)
+        .some(([key, value]) => key !== clientKey && Boolean(String(value || "").trim()));
+      if (!hasOtherOffers) setDiscountMode("none");
       return;
     }
 
-    setSelectedOfferId(offerId);
+    setOfferForClient(clientKey, offerId);
     setDiscountMode("offer");
     setCouponOffer(null);
     setCouponInput("");
@@ -1015,8 +1033,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       .filter((service): service is CatalogService => Boolean(service));
     if (!linkedServices.length) return;
 
-    if (!activeBookingClient) return;
-    const clientKey = partyClientKey(activeBookingClient);
     setCart((current) => {
       const existing = new Set(
         current
@@ -1028,7 +1044,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         .map((service) => attachServiceToClient(service, activeBookingClient));
       return missing.length ? [...current, ...missing] : current;
     });
-  }, [allServices, services, selectedOfferId, activeBookingClient]);
+  }, [allServices, services, selectedOfferId, selectedOfferByClientKey, activeBookingClient, setOfferForClient]);
 
   const discountItems = useMemo(() => cart.map((service) => ({
     bookingItemId: bookingLineKey(service),
@@ -1107,6 +1123,27 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         .map(({ partyClientKey: _partyClientKey, ...item }: any) => item);
       if (!items.length) continue;
 
+      if (discountMode === "offer") {
+        const memberOfferId = String(selectedOfferByClientKey[key] || "").trim();
+        const memberOffer = memberOfferId
+          ? offers.find((offer) => String((offer as any)?.id || "").trim() === memberOfferId) || null
+          : null;
+
+        results.set(
+          key,
+          memberOffer
+            ? buildDiscountSnapshot(items, {
+                source: "offer",
+                sourceId: memberOfferId,
+                code: String((memberOffer as any)?.code || ""),
+                title: String(memberOffer.name || ""),
+                offer: memberOffer,
+              })
+            : buildDiscountSnapshot(items, { source: "none" })
+        );
+        continue;
+      }
+
       if (globalManualResult) {
         if (!globalManualResult.ok || !globalManualResult.snapshot) {
           results.set(key, globalManualResult);
@@ -1138,7 +1175,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       results.set(key, buildDiscountSnapshot(items, discountRequest));
     }
     return results;
-  }, [bookingClients, discountItems, discountRequest, discountMode]);
+  }, [bookingClients, discountItems, discountRequest, discountMode, selectedOfferByClientKey, offers]);
 
   const discountResult = useMemo(() => {
     const rows = [...discountResultsByClient.values()];
@@ -2068,7 +2105,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
     setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
-    setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
+    setSelectedOfferByClientKey({}); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
 
   return (
