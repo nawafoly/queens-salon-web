@@ -375,12 +375,16 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
 
   const permissionRows = useMemo(() => {
     const visibleKeys = new Set(VISIBLE_APP_PERMISSION_CATALOG.map((item) => item.key));
+    const staffTabKeys = new Set(EMPLOYEE_PROFILE_TAB_PERMISSION_KEYS);
     const extraKeys = [
       ...effectivePermissions,
       ...allowedPermissions,
       ...deniedPermissions,
       ...rolePermissions,
-    ].filter((permission) => !visibleKeys.has(permission));
+    ].filter(
+      (permission) =>
+        !visibleKeys.has(permission) && !staffTabKeys.has(permission)
+    );
     const uniqueExtra = Array.from(new Set(extraKeys));
     return [
       ...VISIBLE_APP_PERMISSION_CATALOG.map((item) => item.key),
