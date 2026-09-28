@@ -1025,8 +1025,14 @@ export default function ShiftControlSection({
       console.warn("save shift assignment failed", err);
       const detail = cleanText((err as Error)?.message);
       setError(detail.includes("securetoken") || detail.includes("auth/")
-        ? "تعذر حفظ تعيين الشفت لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
-        : "تعذر حفظ تعيين الشفت. راجع التداخلات أو الصلاحيات.");
+        ? tr(
+            "تعذر حفظ تعيين الشفت لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key.",
+            "Could not save the shift assignment because the Firebase session cannot refresh its token. Sign out and back in, or fix the Firebase API key restrictions."
+          )
+        : tr(
+            "تعذر حفظ تعيين الشفت. راجع التداخلات أو الصلاحيات.",
+            "Could not save the shift assignment. Review overlaps and permissions."
+          ));
     } finally {
       setSaving(false);
     }
@@ -1034,7 +1040,7 @@ export default function ShiftControlSection({
 
   const cancelAssignment = async (assignment: CoreShiftAssignment) => {
     if (!canManage) return;
-    if (!window.confirm(`إلغاء تعيين الشفت ${assignment.shiftName || "الحالي"}؟`)) return;
+    if (!window.confirm(tr(`إلغاء تعيين الشفت ${assignment.shiftName || "الحالي"}؟`, `Cancel shift assignment ${assignment.shiftName || "current"}?`))) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -1048,8 +1054,11 @@ export default function ShiftControlSection({
       console.warn("cancel assignment failed", err);
       const detail = cleanText((err as Error)?.message);
       setError(detail.includes("securetoken") || detail.includes("auth/")
-        ? "تعذر إلغاء التعيين لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
-        : "تعذر إلغاء تعيين الشفت.");
+        ? tr(
+            "تعذر إلغاء التعيين لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key.",
+            "Could not cancel the assignment because the Firebase session cannot refresh its token. Sign out and back in, or fix the Firebase API key restrictions."
+          )
+        : tr("تعذر إلغاء تعيين الشفت.", "Could not cancel the shift assignment."));
     } finally {
       setSaving(false);
     }
@@ -1063,7 +1072,7 @@ export default function ShiftControlSection({
       setError("هذا التعيين لم يبدأ بعد. استخدم الإلغاء بدل إنهائه.");
       return;
     }
-    if (!window.confirm(`إنهاء تعيين الشفت بنهاية اليوم ${today}؟`)) return;
+    if (!window.confirm(tr(`إنهاء تعيين الشفت بنهاية اليوم ${today}؟`, `End the shift assignment at the end of ${today}?`))) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -1145,7 +1154,7 @@ export default function ShiftControlSection({
 
   const cancelException = async (exception: CoreScheduleException) => {
     if (!canManage) return;
-    if (!window.confirm(`إلغاء استثناء ${exception.dateFrom}؟`)) return;
+    if (!window.confirm(tr(`إلغاء استثناء ${exception.dateFrom}؟`, `Cancel exception ${exception.dateFrom}?`))) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -1179,7 +1188,9 @@ export default function ShiftControlSection({
       return;
     }
     const payload = buildScheduleExceptionRestorePayload(exception);
-    const confirmation = getScheduleExceptionRestoreConfirmationMessage(exception, todayKey());
+    const confirmation = language === "en"
+      ? `Restore the cancelled exception starting ${exception.dateFrom || "on the selected date"} as a new active Core record?`
+      : getScheduleExceptionRestoreConfirmationMessage(exception, todayKey());
     if (!window.confirm(confirmation)) return;
     setSaving(true);
     setError("");
@@ -1204,10 +1215,19 @@ export default function ShiftControlSection({
       const code = cleanText((err as { code?: string })?.code);
       const detail = cleanText((err as Error)?.message);
       setError(code.includes("schedule_exception_conflict")
-        ? "يوجد استثناء نشط آخر يتداخل مع هذا الاستثناء. راجعه أولًا قبل الاستعادة."
+        ? tr(
+            "يوجد استثناء نشط آخر يتداخل مع هذا الاستثناء. راجعه أولًا قبل الاستعادة.",
+            "Another active exception overlaps this one. Review the overlapping exception before restoring."
+          )
         : detail.includes("securetoken") || detail.includes("auth/")
-          ? "تعذر استعادة الاستثناء لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
-          : "تعذر استعادة الاستثناء من Core. راجع التداخلات أو الصلاحيات.");
+          ? tr(
+              "تعذر استعادة الاستثناء لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key.",
+              "Could not restore the exception because the Firebase session cannot refresh its token. Sign out and back in, or fix the Firebase API key restrictions."
+            )
+          : tr(
+              "تعذر استعادة الاستثناء من Core. راجع التداخلات أو الصلاحيات.",
+              "Could not restore the exception from Core. Review overlaps and permissions."
+            ));
     } finally {
       setSaving(false);
     }
