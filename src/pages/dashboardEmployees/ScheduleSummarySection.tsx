@@ -6,6 +6,7 @@ import {
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 type ScheduleSummarySectionProps = {
   isVisible: boolean;
@@ -42,6 +43,7 @@ export default function ScheduleSummarySection({
   nowTick,
   summary,
 }: ScheduleSummarySectionProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   if (!summary || !isVisible) return null;
 
   const savedOverrideRows = Array.isArray(summary.savedOverrideRows)
@@ -56,6 +58,7 @@ export default function ScheduleSummarySection({
   const overrideTimelineFallback = cleanText(summary.overrideTimelineFallback);
   const upcomingReturn = summary?.upcomingReturn || null;
   const status = getStatus(summary);
+  const localizedStatusLabel = t(status.label);
   const finalWindowLabel = formatWindowLabel(summary.finalWindowLabel || "مغلق اليوم");
   const firstOverrideTitle =
     cleanText(savedOverrideRows[0]?.title) || cleanText(savedOverrideRows[0]?.badge) || "لا توجد استثناءات";
@@ -67,7 +70,7 @@ export default function ScheduleSummarySection({
         description="ملخص مباشر بعد تطبيق الجدول الأسبوعي والاستثناءات المحفوظة."
         badge={
           <WorkspaceStatusBadgeV2 tone={status.isClosed ? "danger" : "success"}>
-            {status.label}
+            {localizedStatusLabel}
           </WorkspaceStatusBadgeV2>
         }
       />
@@ -75,7 +78,7 @@ export default function ScheduleSummarySection({
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2
           label="حالة اليوم"
-          value={status.label}
+          value={localizedStatusLabel}
           tone={status.isClosed ? "danger" : "success"}
           note={summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? String(summary.weeklyOffTodayLabel) : "حسب الجدول الفعلي"}
         />
@@ -110,10 +113,10 @@ export default function ScheduleSummarySection({
           <div className="dsv2-ew-metrics dsv2-ew-metrics--compact">
             <WorkspaceMetricV2
               label="نافذة العودة"
-              value={upcomingReturn?.windowLabel ? formatWindowLabel(String(upcomingReturn.windowLabel)) : "سيُحدد لاحقًا"}
+              value={upcomingReturn?.windowLabel ? formatWindowLabel(String(upcomingReturn.windowLabel)) : t("سيُحدد لاحقًا")}
               tone="success"
             />
-            <WorkspaceMetricV2 label="الميلادي" value={upcomingReturn.gregorianDate || "غير محدد"} />
+            <WorkspaceMetricV2 label="الميلادي" value={upcomingReturn.gregorianDate || t("غير محدد")} />
             <WorkspaceMetricV2 label="الهجري" value={upcomingReturn.hijriDate || "-"} />
             <WorkspaceMetricV2 label="المصدر" value={upcomingReturn.sourceLabel || "-"} />
             <WorkspaceMetricV2 label="حالة الدوام" value={upcomingReturn.availabilityLabel || "-"} />
@@ -135,8 +138,8 @@ export default function ScheduleSummarySection({
         <WorkspaceTableV2
           headers={["الحالة", "العنوان", "الوقت", "الميلادي", "الهجري", "تفاصيل"]}
           rows={savedOverrideRows.map((row: any) => [
-            cleanText(row?.badge) || "محفوظ",
-            cleanText(row?.title) || "استثناء محفوظ",
+            cleanText(row?.badge) ? t(cleanText(row?.badge)) : t("محفوظ"),
+            cleanText(row?.title) ? t(cleanText(row?.title)) : t("استثناء محفوظ"),
             formatWindowLabel(cleanText(row?.hoursLabel) || "-"),
             cleanText(row?.gregorianRange) || "-",
             cleanText(row?.hijriRange) || "-",
@@ -159,7 +162,7 @@ export default function ScheduleSummarySection({
                 ? row.details.map(cleanText).filter(Boolean)
                 : [];
               return [
-                cleanText(row?.label) || `تفصيل ${index + 1}`,
+                cleanText(row?.label) ? t(cleanText(row?.label)) : tr(`تفصيل ${index + 1}`, `Detail ${index + 1}`),
                 formatWindowLabel(cleanText(row?.value) || "-"),
                 cleanText(row?.note) || "-",
                 extraLines.join(" · ") || "-",
