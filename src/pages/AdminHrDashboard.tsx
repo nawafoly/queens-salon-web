@@ -1166,6 +1166,7 @@ export default function AdminHrDashboard({
   language = "ar",
 }: AdminHrDashboardProps) {
   const t = (text: string) => dashboardText(language, text);
+  const tr = (arabic: string, english: string) => language === "en" ? english : arabic;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const session = useEmployeeSession();
   const navigate = useNavigate();
@@ -1338,27 +1339,31 @@ export default function AdminHrDashboard({
   }, [location.pathname]);
   const isOverviewRoute = adminSection === "hr";
   const isEmployeesRoute = adminSection === "employees";
+  const workspaceDirection = isEmployeesRoute && language === "en" ? "ltr" : "rtl";
   const isFilesRoute = adminSection === "files";
   const isRequestsRoute = adminSection === "requests";
   const isPermissionsRoute = adminSection === "permissions";
   const isCompactWorkspaceRoute =
     isEmployeesRoute || isFilesRoute || isPermissionsRoute || isRequestsRoute;
   const compactWorkspaceTitle = isEmployeesRoute
-    ? "إدارة الموظفات"
+    ? tr("إدارة الموظفات", "Staff management")
     : isFilesRoute
       ? "ملفات الموظفات"
       : isRequestsRoute
         ? "طلبات الموظفات"
         : "إدارة الاستئذانات";
   const compactWorkspaceLoadingText = isEmployeesRoute
-    ? "جاري فتح إدارة الموظفات..."
+    ? tr("جاري فتح إدارة الموظفات...", "Opening Staff management...")
     : isFilesRoute
       ? "جاري فتح ملفات الموظفات..."
       : isRequestsRoute
         ? "جاري فتح مركز الطلبات..."
         : "جاري فتح إدارة الاستئذانات...";
   const compactWorkspaceLoadingHint = isEmployeesRoute
-    ? "يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات."
+    ? tr(
+        "يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات.",
+        "Preparing permissions and session context for Staff management."
+      )
     : isFilesRoute
       ? "يتم تجهيز ملفات الموظفات والمرفقات دون توسيع مساحة الصفحة."
       : isRequestsRoute
@@ -1590,7 +1595,7 @@ export default function AdminHrDashboard({
 
   if (session.loading && embedded) {
     return (
-      <div className="hr-embedded-loading" dir="rtl">
+      <div className="hr-embedded-loading" dir={workspaceDirection}>
         <span className="hr-workspace-loading__spinner" />
         <strong>جاري تحميل الموارد البشرية...</strong>
       </div>
@@ -1599,7 +1604,7 @@ export default function AdminHrDashboard({
 
   if (session.loading) {
     return (
-      <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
+      <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir={workspaceDirection}>
         <MalikatPortalSidebarV2
           variant="admin"
           logoSrc={logo1}
@@ -1642,7 +1647,7 @@ export default function AdminHrDashboard({
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}${embedded ? " hr-shell--embedded" : ""}`} dir="rtl">
+    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}${embedded ? " hr-shell--embedded" : ""}`} dir={workspaceDirection}>
       <DashboardSidebarTooltipV2 enabled={!embedded && isSidebarCollapsed} />
       <MalikatPortalSidebarV2
         variant="admin"
