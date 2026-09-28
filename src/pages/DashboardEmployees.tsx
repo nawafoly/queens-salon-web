@@ -9772,10 +9772,10 @@ const canonicalSchedules =
 
   if (!authUser) {
     return (
-      <div className="dsv2-page dsv2-employees-page">
+      <div className="dsv2-page dsv2-employees-page" dir={direction}>
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">غير مصرح</h2>
-          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
+          <h2 className="dsv2-section-title">{t("غير مصرح")}</h2>
+          <p className="dsv2-section-caption">{t("سجّل دخول ثم جرّب مرة أخرى.")}</p>
         </section>
       </div>
 
@@ -9784,10 +9784,10 @@ const canonicalSchedules =
 
   if (!canAccessEmployeesDashboard) {
     return (
-      <div className="dsv2-page dsv2-employees-page">
+      <div className="dsv2-page dsv2-employees-page" dir={direction}>
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
-          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
+          <h2 className="dsv2-section-title">{t("صلاحيات غير كافية")}</h2>
+          <p className="dsv2-section-caption">{t("هذه الصفحة مخصصة للإدارة.")}</p>
         </section>
       </div>
     );
@@ -9795,7 +9795,7 @@ const canonicalSchedules =
 
   const openCreateEmployee = () => {
     if (!canCreateEmployees) {
-      setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
+      setErrorMsg(t("ليست لديك صلاحية لإضافة موظفات."));
       return;
     }
     setSaveMessage("");
@@ -9915,6 +9915,7 @@ const canonicalSchedules =
 
   return (
     <div
+      dir={direction}
       className={`dsv2-page dsv2-employees-page ${
         isEmployeeProfileRoute
           ? "dsv2-employees-page--profile"
