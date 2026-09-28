@@ -74,11 +74,36 @@ function downloadXLSX(filename: string, rows: unknown[][], sheetName: string) {
 
 type DashboardClientsProps = { currentRole?: UiRole; language?: DashboardLanguage };
 
+function coreClientsToCustomerRows(clients: CoreClient[]): CustomerRow[] {
+  return clients.map((client) => {
+    const bookingsCount = Number(client.bookingsCount || 0);
+    return {
+      key: `id:${client.id}`,
+      clientId: client.id,
+      legacyClientDocId: client.legacyClientDocId || undefined,
+      name: normalizeCustomerName(client.name),
+      phone: formatCustomerPhone(client.phoneNormalized),
+      bookingsCount,
+      lastVisitDate: String(client.lastVisitDate || ""),
+      lastVisitTime: String(client.lastVisitTime || ""),
+      vip: Boolean(client.vip),
+      status: String(client.status || "active"),
+      importedNote: String(client.notes || "").trim() || undefined,
+      source: bookingsCount > 0 ? "combined" : "client-record",
+      createdAt: client.createdAt || undefined,
+      activePackagesCount: Number(client.activePackagesCount || 0),
+    } satisfies CustomerRow;
+  });
+}
+
 export default function DashboardClients({ currentRole = "guest", language = "ar" }: DashboardClientsProps) {
   const navigate = useNavigate();
   const t = (text: string) => clientsText(language, text);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [coreClients, setCoreClients] = useState<CoreClient[]>([]);
+  const [remoteSearchClients, setRemoteSearchClients] = useState<CoreClient[] | null>(null);
+  const [remoteSearchLoading, setRemoteSearchLoading] = useState(false);
+  const remoteSearchSeq = useRef(0);
   const packagesFilterAvailable = true;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -137,27 +162,53 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     void loadData();
   }, [loadData]);
 
-  const customers = useMemo<CustomerRow[]>(() => {
-    return coreClients.map((client) => {
-      const bookingsCount = Number(client.bookingsCount || 0);
-      return {
-        key: `id:${client.id}`,
-        clientId: client.id,
-        legacyClientDocId: client.legacyClientDocId || undefined,
-        name: normalizeCustomerName(client.name),
-        phone: formatCustomerPhone(client.phoneNormalized),
-        bookingsCount,
-        lastVisitDate: String(client.lastVisitDate || ""),
-        lastVisitTime: String(client.lastVisitTime || ""),
-        vip: Boolean(client.vip),
-        status: String(client.status || "active"),
-        importedNote: String(client.notes || "").trim() || undefined,
-        source: bookingsCount > 0 ? "combined" : "client-record",
-        createdAt: client.createdAt || undefined,
-        activePackagesCount: Number(client.activePackagesCount || 0),
-      } satisfies CustomerRow;
-    });
-  }, [coreClients]);
+  useEffect(() => {
+    const raw = String(deferredQuery || "").trim();
+    const requestSeq = ++remoteSearchSeq.current;
+
+    if (!raw || !canViewClients) {
+      setRemoteSearchClients(null);
+      setRemoteSearchLoading(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const phoneDigits = customerPhoneDigits(raw);
+      const serverSearch = phoneDigits.length >= 4 ? phoneDigits : raw;
+      setRemoteSearchLoading(true);
+
+      void CoreClientService.list(serverSearch, {
+        includeMetrics: true,
+        limit: 100,
+      })
+        .then((clients) => {
+          if (remoteSearchSeq.current !== requestSeq) return;
+          setRemoteSearchClients(Array.isArray(clients) ? clients : []);
+        })
+        .catch((cause) => {
+          if (remoteSearchSeq.current !== requestSeq) return;
+          console.error("[DashboardClients] server-side client search failed", cause);
+          setRemoteSearchClients(null);
+        })
+        .finally(() => {
+          if (remoteSearchSeq.current === requestSeq) setRemoteSearchLoading(false);
+        });
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [canViewClients, deferredQuery]);
+
+  const customers = useMemo<CustomerRow[]>(
+    () => coreClientsToCustomerRows(coreClients),
+    [coreClients]
+  );
+  const remoteSearchCustomers = useMemo<CustomerRow[]>(
+    () => coreClientsToCustomerRows(remoteSearchClients || []),
+    [remoteSearchClients]
+  );
+  const searchPool = query.trim() && remoteSearchClients !== null
+    ? remoteSearchCustomers
+    : customers;
 
   const stats = useMemo<CustomerStats>(() => {
     const now = new Date();
@@ -193,7 +244,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     const searchDigits = customerPhoneDigits(deferredQuery);
     const rawSearchDigits = String(deferredQuery || "").replace(/\D/g, "");
     const now = Date.now();
-    const rows = customers.filter((customer) => {
+    const rows = searchPool.filter((customer) => {
       const customerDigits = customerPhoneDigits(customer.phone);
       const customerDisplayDigits = String(customer.phone || "").replace(/\D/g, "");
       const matchesPhone = Boolean(rawSearchDigits) && (customerDisplayDigits.includes(rawSearchDigits) || customerDigits.includes(searchDigits));
@@ -212,7 +263,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
       if (sort === "newest") return Date.parse(second.createdAt || "") - Date.parse(first.createdAt || "") || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
       return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, language === "en" ? "en" : "ar");
     });
-  }, [customers, deferredQuery, language, lastVisit, segment, sort, source]);
+  }, [searchPool, deferredQuery, language, lastVisit, segment, sort, source]);
 
   const hasActiveFilters = Boolean(query.trim()) || segment !== "all" || sort !== "latest" || source !== "all" || lastVisit !== "all";
   const clearFilters = () => {
@@ -305,12 +356,15 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
 
   const fatalError = Boolean(error) && !loading && customers.length === 0;
   const noData = !loading && !error && customers.length === 0;
-  const noResults = !loading && customers.length > 0 && visibleCustomers.length === 0;
+  const noResults = !loading && !remoteSearchLoading && customers.length > 0 && visibleCustomers.length === 0;
+  const headerTotalCount = query.trim() && remoteSearchClients !== null
+    ? remoteSearchCustomers.length
+    : customers.length;
 
   return (
     <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
-      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} language={language} />
-      <CustomersSearchToolbar language={language} query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
+      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={headerTotalCount} language={language} />
+      <CustomersSearchToolbar language={language} query={query} loading={loading} searching={remoteSearchLoading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
       <CustomersFilters language={language} segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
       <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} language={language} />
 
@@ -325,8 +379,8 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
       {noResults ? <CustomersEmptyState language={language} kind="no-results" onPrimary={clearFilters} /> : null}
       {!fatalError && !noData && !noResults ? (
         <>
-          <CustomersTable language={language} customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
-          <CustomersMobileList language={language} customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+          <CustomersTable language={language} customers={visibleCustomers} loading={loading || remoteSearchLoading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+          <CustomersMobileList language={language} customers={visibleCustomers} loading={loading || remoteSearchLoading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
         </>
       ) : null}
 
