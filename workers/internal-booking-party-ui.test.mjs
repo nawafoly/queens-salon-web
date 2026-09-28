@@ -36,6 +36,23 @@ test("schedule step groups services under a prominent client header", () => {
   assert.match(css, /font-size:20px/);
 });
 
+test("saved offers belong to one party client and do not leak to companions", () => {
+  assert.match(tsx, /const \[selectedOfferByClientKey, setSelectedOfferByClientKey\]/);
+  assert.match(tsx, /const selectedOfferId = String\(selectedOfferByClientKey\[activePartyClientKey\]/);
+  assert.match(tsx, /setOfferForClient\(clientKey, offerId\)/);
+  assert.match(tsx, /const memberOfferId = String\(selectedOfferByClientKey\[key\]/);
+  assert.match(tsx, /results\.set\([\s\S]*?memberOffer[\s\S]*?buildDiscountSnapshot/);
+});
+
+test("booking summary visibly separates services by party client", () => {
+  assert.match(tsx, /className="bk2-summary-party-groups"/);
+  assert.match(tsx, /className="bk2-summary-party-group"/);
+  assert.match(tsx, /group\.client\.name/);
+  assert.match(tsx, /className="bk2-summary-party-offer"/);
+  assert.match(css, /\.bk2-summary-party-group>header/);
+  assert.match(css, /\.bk2-summary-party-offer/);
+});
+
 test("same client cannot overlap but different party members may overlap while staff remains globally protected", () => {
   assert.match(tsx, /bookingLineClientKey\(other\) === currentClientKey/);
   assert.match(tsx, /if \(selected\.staffId === staffKey\)/);

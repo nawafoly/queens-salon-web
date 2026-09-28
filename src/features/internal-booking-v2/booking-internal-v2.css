@@ -743,3 +743,37 @@
   .bk2-party-schedule-progress strong{font-size:14px}
   .bk2-party-schedule-services{padding:10px}
 }
+
+
+/* Party offers + grouped booking summary */
+.bk2-offer-client-scope{display:grid;gap:12px}
+.bk2-discount-client-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.bk2-discount-client-picker>button{display:grid;gap:2px;min-width:150px;padding:10px 12px;border:1px solid #dde2e9;border-radius:11px;background:#fff;text-align:start;font:inherit;cursor:pointer}
+.bk2-discount-client-picker>button strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#243044}
+.bk2-discount-client-picker>button small{font-size:10px;color:#8a93a4;font-weight:800}
+.bk2-discount-client-picker>button.is-active{border-color:#b58d00;background:#fff8dc;box-shadow:0 0 0 2px rgba(181,141,0,.08)}
+.bk2-discount-client-picker>button.is-active strong{color:#5f4800}
+.bk2-discount-client-picker>button.is-active small{color:#896d0c}
+
+.bk2-summary-party-groups{display:grid;gap:14px;margin:14px 0}
+.bk2-summary-party-group{overflow:hidden;border:1px solid #dfe4ec;border-radius:15px;background:#fff}
+.bk2-summary-party-group>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;background:linear-gradient(135deg,#fff9e7,#fff);border-bottom:1px solid #edf0f4}
+.bk2-summary-party-group>header>div{display:grid;gap:1px;min-width:0}
+.bk2-summary-party-group>header small{font-size:10px;font-weight:900;color:#8a6e10}
+.bk2-summary-party-group>header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#172033}
+.bk2-summary-party-group>header>span{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#f4f5f7;color:#667085;font-size:10px;font-weight:850}
+.bk2-summary-party-group .bk2-summary-services{padding:8px 12px;border:0}
+.bk2-summary-party-group .bk2-summary-services>div{padding:8px 0;border-bottom:1px solid #f0f2f5}
+.bk2-summary-party-group .bk2-summary-services>div:last-child{border-bottom:0}
+.bk2-summary-party-offer{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;background:#fffaf0;border-bottom:1px solid #f0e2b5}
+.bk2-summary-party-offer span{font-size:10px;font-weight:850;color:#8a6e10}
+.bk2-summary-party-offer strong{font-size:11px;color:#5c4600;text-align:end}
+.bk2-summary-party-group>footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-top:1px solid #edf0f4;background:#fafbfc}
+.bk2-summary-party-group>footer span{font-size:11px;font-weight:850;color:#667085}
+.bk2-summary-party-group>footer strong{font-size:13px;color:#111827}
+
+@media(max-width:720px){
+  .bk2-discount-client-picker>button{min-width:135px}
+  .bk2-summary-party-groups{gap:12px}
+  .bk2-summary-party-group>header{padding:11px}
+}
