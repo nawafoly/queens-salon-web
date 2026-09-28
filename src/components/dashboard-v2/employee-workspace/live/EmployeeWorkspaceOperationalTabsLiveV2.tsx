@@ -753,7 +753,7 @@ export function EmployeeScheduleTabLiveV2({
       />
 
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="أيام العمل" value={openDays} tone="success" />
+        <WorkspaceMetricV2 label={t("أيام العمل")} value={openDays} tone="success" />
         <WorkspaceMetricV2 label="أيام الراحة الأسبوعية" value={closedDays} tone={closedDays ? "gold" : "neutral"} />
         <WorkspaceMetricV2 label="قوالب الشفتات" value={shiftTemplates.length} tone={shiftTemplates.length ? "success" : "danger"} />
         <WorkspaceMetricV2 label="نطاق الحضور" value={selectedAttendanceZoneId ? "محدد" : "غير محدد"} tone={selectedAttendanceZoneId ? "success" : "danger"} />
@@ -1638,6 +1638,7 @@ export function EmployeePayrollTabLiveV2({
   onAttendancePayrollExemptionReasonChange,
   onSaveSettings,
 }: EmployeePayrollTabLiveV2Props) {
+  const { language, t } = useEmployeeLanguage();
   const contractedMonthlySalary =
     positivePayrollAmount(monthlySalary) +
     positivePayrollAmount(housingAllowance) +
@@ -1656,7 +1657,7 @@ export function EmployeePayrollTabLiveV2({
       <WorkspaceTabHeaderV2
         title="سجل الرواتب"
         description="هيكل الراتب، إعدادات الدوام، وتصنيف التأمينات التي يستخدمها مسير الرواتب."
-        badge={<WorkspaceStatusBadgeV2 tone={overtimeEnabled ? "success" : "gold"}>{overtimeEnabled ? "الإضافي مفعّل" : "الإضافي متوقف"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={overtimeEnabled ? "success" : "gold"}>{overtimeEnabled ? t("الإضافي مفعّل") : t("الإضافي متوقف")}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-cluster">
@@ -1666,7 +1667,7 @@ export function EmployeePayrollTabLiveV2({
           disabled={readOnly || savingSettings}
           onClick={onSaveSettings}
         >
-          {savingSettings ? "جاري الحفظ..." : "حفظ إعدادات الراتب والتأمينات"}
+          {savingSettings ? t("جاري الحفظ...") : t("حفظ إعدادات الراتب والتأمينات")}
         </button>
       </div>
 
@@ -1675,33 +1676,33 @@ export function EmployeePayrollTabLiveV2({
         description="الراتب الأساسي والبدلات محفوظة كعناصر مستقلة؛ إجمالي الراتب التعاقدي يُحسب تلقائيًا من مجموعها."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الأساسي">
+          <DashboardFieldV2 id="employee-live-v2-salary" label={t("الراتب الأساسي")}>
             <DashboardNumberInputV2 id="employee-live-v2-salary" className="dsv2-input" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-housing-allowance" label="بدل السكن">
+          <DashboardFieldV2 id="employee-live-v2-housing-allowance" label={t("بدل السكن")}>
             <DashboardNumberInputV2 id="employee-live-v2-housing-allowance" className="dsv2-input" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label="بدل النقل">
+          <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label={t("بدل النقل")}>
             <DashboardNumberInputV2 id="employee-live-v2-transportation-allowance" className="dsv2-input" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-other-allowances" label="بدلات أخرى">
+          <DashboardFieldV2 id="employee-live-v2-other-allowances" label={t("بدلات أخرى")}>
             <DashboardNumberInputV2 id="employee-live-v2-other-allowances" className="dsv2-input" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-work-days" label="أيام العمل">
+          <DashboardFieldV2 id="employee-live-v2-work-days" label={t("أيام العمل")}>
             <DashboardNumberInputV2 id="employee-live-v2-work-days" className="dsv2-input" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-daily-hours" label="ساعات اليوم">
+          <DashboardFieldV2 id="employee-live-v2-daily-hours" label={t("ساعات اليوم")}>
             <DashboardNumberInputV2 id="employee-live-v2-daily-hours" className="dsv2-input" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-monthly-hours" label="ساعات الشهر">
+          <DashboardFieldV2 id="employee-live-v2-monthly-hours" label={t("ساعات الشهر")}>
             <DashboardNumberInputV2 id="employee-live-v2-monthly-hours" className="dsv2-input" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label="معامل الإضافي">
+          <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label={t("معامل الإضافي")}>
             <DashboardNumberInputV2 id="employee-live-v2-overtime-multiplier" className="dsv2-input" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2
             id="employee-live-v2-attendance-payroll-mode"
-            label="سياسة الحضور للراتب"
+            label={t("سياسة الحضور للراتب")}
           >
             <DashboardSelectV2
               id="employee-live-v2-attendance-payroll-mode"
@@ -1710,11 +1711,11 @@ export function EmployeePayrollTabLiveV2({
               options={[
                 {
                   value: "required",
-                  label: "يعتمد على البصمة",
+                  label: t("يعتمد على البصمة"),
                 },
                 {
                   value: "exempt",
-                  label: "معفى من البصمة — راتب حسب الجدول",
+                  label: t("معفى من البصمة — راتب حسب الجدول"),
                 },
               ]}
               onChange={(value) =>
@@ -1730,14 +1731,14 @@ export function EmployeePayrollTabLiveV2({
           {attendancePayrollMode === "exempt" ? (
             <DashboardFieldV2
               id="employee-live-v2-attendance-exemption-reason"
-              label="سبب الإعفاء"
+              label={t("سبب الإعفاء")}
             >
               <input
                 id="employee-live-v2-attendance-exemption-reason"
                 className="dsv2-input"
                 value={attendancePayrollExemptionReason}
                 disabled={readOnly}
-                placeholder="مثال: موظف إداري / إدارة"
+                placeholder={t("مثال: موظف إداري / إدارة")}
                 onChange={(event) =>
                   onAttendancePayrollExemptionReasonChange(
                     event.target.value
@@ -1757,15 +1758,15 @@ export function EmployeePayrollTabLiveV2({
             </div>
           ) : null}
 
-          <DashboardFieldV2 id="employee-live-v2-deduction" label="طريقة الخصم">
+          <DashboardFieldV2 id="employee-live-v2-deduction" label={t("طريقة الخصم")}>
             <DashboardSelectV2
               id="employee-live-v2-deduction"
               value={deductionMethod}
               disabled={readOnly}
               options={[
-                { value: "daily", label: "حسب اليوم" },
-                { value: "hourly", label: "حسب الساعة" },
-                { value: "none", label: "بدون خصم تلقائي" },
+                { value: "daily", label: t("حسب اليوم") },
+                { value: "hourly", label: t("حسب الساعة") },
+                { value: "none", label: t("بدون خصم تلقائي") },
               ]}
               onChange={onDeductionMethodChange}
             />
@@ -1775,12 +1776,12 @@ export function EmployeePayrollTabLiveV2({
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
             label="إجمالي الراتب التعاقدي"
-            value={formatPayrollMoney(contractedMonthlySalary)}
+            value={`${contractedMonthlySalary.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`}
             tone={contractedMonthlySalary > 0 ? "success" : "neutral"}
           />
           <WorkspaceMetricV2
             label="مكونات الراتب"
-            value="أساسي + سكن + نقل + بدلات أخرى"
+            value={t("أساسي + سكن + نقل + بدلات أخرى")}
           />
         </div>
 
@@ -1799,23 +1800,23 @@ export function EmployeePayrollTabLiveV2({
         description="التصنيف والسياسة محفوظان مع تاريخ السريان؛ الحساب المالي نفسه ينفذه محرك GOSI المركزي عند إنشاء المسير."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-category" label="تصنيف التأمينات">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-category" label={t("تصنيف التأمينات")}>
             <DashboardSelectV2
               id="employee-live-v2-social-insurance-category"
               value={socialInsuranceCategory}
               disabled={readOnly}
               options={[
-                { value: "", label: "غير محدد" },
-                { value: "saudi_existing", label: "سعودي — مشترك بالنظام القائم" },
-                { value: "saudi_new", label: "سعودي — النظام الجديد" },
-                { value: "gcc", label: "خليجي — مد الحماية" },
-                { value: "non_saudi", label: "غير سعودي" },
+                { value: "", label: t("غير محدد") },
+                { value: "saudi_existing", label: t("سعودي — مشترك بالنظام القائم") },
+                { value: "saudi_new", label: t("سعودي — النظام الجديد") },
+                { value: "gcc", label: t("خليجي — مد الحماية") },
+                { value: "non_saudi", label: t("غير سعودي") },
               ]}
               onChange={onSocialInsuranceCategoryChange}
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-effective-from" label="تاريخ سريان التصنيف">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-effective-from" label={t("تاريخ سريان التصنيف")}>
             <DashboardDatePickerV2
               id="employee-live-v2-social-insurance-effective-from"
               value={socialInsuranceEffectiveFrom}
@@ -1825,25 +1826,25 @@ export function EmployeePayrollTabLiveV2({
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-note" label="سبب / ملاحظة التصنيف">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-note" label={t("سبب / ملاحظة التصنيف")}>
             <input
               id="employee-live-v2-social-insurance-note"
               className="dsv2-input"
               value={socialInsuranceClassificationNote}
               disabled={readOnly}
-              placeholder="مثال: حسب سجل الاشتراك أو مستند الموظفة"
+              placeholder={t("مثال: حسب سجل الاشتراك أو مستند الموظفة")}
               onChange={(event) => onSocialInsuranceClassificationNoteChange(event.target.value)}
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-gosi-wage-mode" label="طريقة أجر الاشتراك">
+          <DashboardFieldV2 id="employee-live-v2-gosi-wage-mode" label={t("طريقة أجر الاشتراك")}>
             <DashboardSelectV2
               id="employee-live-v2-gosi-wage-mode"
               value={gosiWageMode}
               disabled={readOnly}
               options={[
-                { value: "derived", label: "تلقائي من العناصر النظامية" },
-                { value: "override", label: "أجر اشتراك معتمد يدويًا" },
+                { value: "derived", label: t("تلقائي من العناصر النظامية") },
+                { value: "override", label: t("أجر اشتراك معتمد يدويًا") },
               ]}
               onChange={onGosiWageModeChange}
             />
@@ -1851,7 +1852,7 @@ export function EmployeePayrollTabLiveV2({
 
           {gosiWageMode === "override" ? (
             <>
-              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label="أجر الاشتراك المعتمد">
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label={t("أجر الاشتراك المعتمد")}>
                 <DashboardNumberInputV2
                   id="employee-live-v2-gosi-wage-override"
                   className="dsv2-input"
@@ -1861,13 +1862,13 @@ export function EmployeePayrollTabLiveV2({
                   onChange={(event) => onGosiContributoryWageOverrideChange(event.target.value)}
                 />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override-reason" label="سبب الأجر المعتمد">
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override-reason" label={t("سبب الأجر المعتمد")}>
                 <input
                   id="employee-live-v2-gosi-wage-override-reason"
                   className="dsv2-input"
                   value={gosiContributoryWageOverrideReason}
                   disabled={readOnly}
-                  placeholder="لماذا يختلف عن الاحتساب التلقائي؟"
+                  placeholder={t("لماذا يختلف عن الاحتساب التلقائي؟")}
                   onChange={(event) => onGosiContributoryWageOverrideReasonChange(event.target.value)}
                 />
               </DashboardFieldV2>
@@ -1875,13 +1876,13 @@ export function EmployeePayrollTabLiveV2({
           ) : null}
 
           {socialInsuranceCategory === "gcc" ? (
-            <DashboardFieldV2 id="employee-live-v2-gcc-country" label="دولة الموظفة الخليجية">
+            <DashboardFieldV2 id="employee-live-v2-gcc-country" label={t("دولة الموظفة الخليجية")}>
               <input
                 id="employee-live-v2-gcc-country"
                 className="dsv2-input"
                 value={gccHomeCountryCode}
                 disabled={readOnly}
-                placeholder="مثال: KW / AE / BH / OM / QA"
+                placeholder={t("مثال: KW / AE / BH / OM / QA")}
                 onChange={(event) => onGccHomeCountryCodeChange(event.target.value)}
               />
             </DashboardFieldV2>
@@ -1945,25 +1946,26 @@ export function EmployeeLinkedModuleTabLiveV2({
   actionHref,
   notes = [],
 }: EmployeeLinkedModuleTabLiveV2Props) {
+  const { t } = useEmployeeLanguage();
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
-        title={title}
-        description={description}
-        badge={<WorkspaceStatusBadgeV2 tone="gold">{moduleLabel}</WorkspaceStatusBadgeV2>}
+        title={t(title)}
+        description={t(description)}
+        badge={<WorkspaceStatusBadgeV2 tone="gold">{t(moduleLabel)}</WorkspaceStatusBadgeV2>}
       />
 
       <WorkspaceCardV2
-        title={moduleLabel}
-        description="يرتبط هذا التبويب بوحدة تشغيل مستقلة داخل النظام."
-        actions={<a className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" href={actionHref}>{actionLabel}</a>}
+        title={t(moduleLabel)}
+        description={t("يرتبط هذا التبويب بوحدة تشغيل مستقلة داخل النظام.")}
+        actions={<a className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" href={actionHref}>{t(actionLabel)}</a>}
       >
         {notes.length ? (
           <div className="dsv2-ew-note-list">
-            {notes.map((note) => <span key={note}>{note}</span>)}
+            {notes.map((note) => <span key={note}>{t(note)}</span>)}
           </div>
         ) : (
-          <WorkspaceNoticeV2 title="لا توجد ملاحظات إضافية" description="سيتم عرض البيانات عند ربط الوحدة المباشرة بهذا التبويب." tone="neutral" />
+          <WorkspaceNoticeV2 title={t("لا توجد ملاحظات إضافية")} description={t("سيتم عرض البيانات عند ربط الوحدة المباشرة بهذا التبويب.")} tone="neutral" />
         )}
       </WorkspaceCardV2>
     </div>
