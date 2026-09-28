@@ -165,6 +165,24 @@ test('client and staff MALIKAT Connect UI uses canonical Core routes', () => {
 });
 
 
+test('client management search escapes the initial 500-row snapshot and keeps one visual input', () => {
+  const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const sections = readFileSync('src/features/customers/CustomersPageSections.tsx', 'utf8');
+  const css = readFileSync('src/styles/dashboard-v2/pages/clients.css', 'utf8');
+  const formatters = readFileSync('src/features/customers/customerFormatters.ts', 'utf8');
+
+  assert.match(page, /CoreClientService\.list\(serverSearch,[\s\S]*?includeMetrics:\s*true,[\s\S]*?limit:\s*100/);
+  assert.match(page, /remoteSearchClients !== null[\s\S]*?remoteSearchCustomers[\s\S]*?: customers/);
+  assert.match(page, /const phoneDigits = customerPhoneDigits\(raw\)/);
+  assert.match(formatters, /replace\(\/\[٠-٩\]\//);
+  assert.match(formatters, /replace\(\/\[۰-۹\]\//);
+
+  assert.match(sections, /className="dsv2-customers-search-input"/);
+  assert.doesNotMatch(sections, /dsv2-customers-search-field[\s\S]{0,500}className="dsv2-input"/);
+  assert.match(css, /\.dsv2-customers-search-input:focus/);
+  assert.match(css, /box-shadow:\s*none/);
+});
+
 test('client dashboard uses the server-side Client 360 read model', () => {
   const clientsRepo = readFileSync('workers/core/repositories/clients.js', 'utf8');
   const bookingsRepo = readFileSync('workers/core/repositories/bookings.js', 'utf8');
