@@ -299,7 +299,7 @@ const requiredChecks = [
       /listCoreBookableStaffForDate/,
       /getCoreStaffBookableStartSlots/,
       /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/,
-      /resolveCoreBookingDataSource\(\)\.createBookingGroup/,
+      /(?:resolveCoreBookingDataSource\(\)|bookingDataSource)\.createBookingGroup/,
       /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/,
       /CoreOfferService\.list/,
       /firebase\/auth/,
