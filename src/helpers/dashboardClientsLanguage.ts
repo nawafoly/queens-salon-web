@@ -91,6 +91,7 @@ const clientsEnglish: Record<string, string> = {
   "حجزًا": "bookings",
   "قائمة العملاء للجوال": "Mobile client list",
   "تعذر تحميل بيانات العملاء": "Could not load client data",
+  "تعذر البحث في ملفات العملاء": "Could not search client records",
   "لم يتم العثور على عميلات مطابقات": "No matching clients found",
   "لا توجد بيانات عملاء حتى الآن": "No client data yet",
   "جرّبي عبارة بحث أخرى أو امسحي الفلاتر الحالية.": "Try another search or clear the current filters.",
