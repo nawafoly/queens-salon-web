@@ -9,6 +9,13 @@ export type CoreClientLoyaltySummary = {
   totalPoints: number;
 };
 
+export type CoreClientListOptions = {
+  includeLoyalty?: boolean;
+  includeMetrics?: boolean;
+  limit?: number;
+  offset?: number;
+};
+
 const LOYALTY_SUMMARY_TTL_MS = 60_000;
 let loyaltySummaryCache: { value: CoreClientLoyaltySummary; expiresAt: number } | null = null;
 let loyaltySummaryRequest: Promise<CoreClientLoyaltySummary> | null = null;
@@ -336,12 +343,7 @@ function mapOverview(row: Record<string, unknown>): CoreClientOverview {
 export const CoreClientService = {
   async list(
     search = "",
-    options: {
-      includeLoyalty?: boolean;
-      includeMetrics?: boolean;
-      limit?: number;
-      offset?: number;
-    } = {}
+    options: CoreClientListOptions = {}
   ): Promise<CoreClient[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/clients",
@@ -356,6 +358,43 @@ export const CoreClientService = {
       }
     );
     return rows.map(mapClient);
+  },
+
+  async listAll(
+    search = "",
+    options: Omit<CoreClientListOptions, "limit" | "offset"> & {
+      batchSize?: number;
+    } = {}
+  ): Promise<CoreClient[]> {
+    const requestedBatchSize = Number(options.batchSize ?? 500);
+    const batchSize = Number.isFinite(requestedBatchSize)
+      ? Math.max(1, Math.min(500, Math.trunc(requestedBatchSize)))
+      : 500;
+    const clients: CoreClient[] = [];
+    const seenClientIds = new Set<string>();
+
+    for (let offset = 0; ; offset += batchSize) {
+      const uniqueCountBeforePage = clients.length;
+      const page = await CoreClientService.list(search, {
+        includeLoyalty: options.includeLoyalty,
+        includeMetrics: options.includeMetrics,
+        limit: batchSize,
+        offset,
+      });
+
+      for (const client of page) {
+        if (seenClientIds.has(client.id)) continue;
+        seenClientIds.add(client.id);
+        clients.push(client);
+      }
+
+      if (page.length < batchSize) break;
+      if (clients.length === uniqueCountBeforePage) {
+        throw new Error("Core client pagination did not advance.");
+      }
+    }
+
+    return clients;
   },
 
   async loyaltySummary(): Promise<CoreClientLoyaltySummary> {
