@@ -90,7 +90,7 @@
   box-shadow: var(--dsv2-focus-ring);
 }
 
-.dashboard-v2 .dsv2-customers-search-field .dsv2-input {
+.dashboard-v2 .dsv2-customers-search-input {
   min-height: auto;
   height: calc(var(--dsv2-control-height-lg) - var(--dsv2-space-1));
   padding: 0;
@@ -99,9 +99,9 @@
   box-shadow: none;
 }
 
-.dashboard-v2 .dsv2-customers-search-field .dsv2-input:hover,
-.dashboard-v2 .dsv2-customers-search-field .dsv2-input:focus,
-.dashboard-v2 .dsv2-customers-search-field .dsv2-input:focus-visible {
+.dashboard-v2 .dsv2-customers-search-input:hover,
+.dashboard-v2 .dsv2-customers-search-input:focus,
+.dashboard-v2 .dsv2-customers-search-input:focus-visible {
   outline: none;
   border: 0;
   box-shadow: none;
