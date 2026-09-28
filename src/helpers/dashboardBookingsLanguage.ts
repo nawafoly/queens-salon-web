@@ -354,7 +354,6 @@ const bookingEnglish: Record<string, string> = {
   "اختاري المرافقة": "Choose companion",
   "مضافة بالفعل": "Already added",
   "إضافة كمرافقة": "Add as companion",
-  "اختيار": "Select",
 
   "اختاري عميلة موجودة أو أضيفي مرافقة جديدة إلى نفس الحجز.": "Select an existing client or add a new companion to the same booking.",
   "مجموعة الحجز": "Booking group",
