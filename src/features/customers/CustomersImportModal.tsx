@@ -119,7 +119,7 @@ export default function CustomersImportModal({ language, open, existingClients, 
           await CoreClientService.create({ id: crypto.randomUUID(), name: persistedName, phone: row.phone, vip: row.vip, notes: row.note });
         }
       }
-      onImported(await CoreClientService.list());
+      onImported(await CoreClientService.listAll("", { includeMetrics: true }));
       setPreview([]);
       setError("");
       if (fileInputRef.current) fileInputRef.current.value = "";
