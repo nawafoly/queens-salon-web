@@ -219,6 +219,7 @@ test('client management uses complete Core pagination and server-side Core searc
 
   assert.match(sections, /className="dsv2-customers-search-input"/);
   assert.doesNotMatch(sections, /className="dsv2-input"/);
+  assert.match(styles, /\.dsv2-customers-search-input \{[\s\S]*?flex:\s*1 1 auto[\s\S]*?width:\s*100%[\s\S]*?min-width:\s*0/);
   assert.match(
     styles,
     /\.dsv2-customers-search-input:focus[\s\S]*?border:\s*0[\s\S]*?box-shadow:\s*none/
