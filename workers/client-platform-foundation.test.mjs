@@ -194,3 +194,21 @@ test('client dashboard uses the server-side Client 360 read model', () => {
   assert.match(modal, /overview\?\.bookings/);
   assert.match(modal, /overview\.cashback\.balanceHalalas/);
 });
+
+
+test('client management search queries Core D1 beyond the initial 500-row dashboard page', () => {
+  const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const styles = readFileSync('src/styles/dashboard-v2/pages/clients.css', 'utf8');
+
+  assert.match(page, /const \[searchClients, setSearchClients\]/);
+  assert.match(page, /CoreClientService\.list\(search,/);
+  assert.match(page, /includeMetrics:\s*true/);
+  assert.match(page, /limit:\s*100/);
+  assert.match(page, /const sourceRows = searchActive \? searchedCustomers : customers/);
+  assert.match(page, /generation !== searchGenerationRef\.current/);
+
+  assert.match(
+    styles,
+    /\.dsv2-customers-search-field \.dsv2-input:focus[\s\S]*?border:\s*0[\s\S]*?box-shadow:\s*none/
+  );
+});
