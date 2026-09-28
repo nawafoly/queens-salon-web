@@ -8,6 +8,7 @@ import {
 } from "../../components/dashboard-v2";
 import {
   faArrowLeft,
+  faArrowRight,
   faEnvelope,
   faMagnifyingGlass,
   faPhone,
@@ -22,6 +23,7 @@ import {
   type StaffBookingStats,
   type StaffPublicUi,
 } from "./shared";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 type EmployeeListPanelProps = {
   qText: string;
@@ -128,6 +130,7 @@ export default function EmployeeListPanel({
   onCreateEmployee,
   onOpenEmployee,
 }: EmployeeListPanelProps) {
+  const { language, direction, t, tr } = useEmployeeLanguage();
   const hasActiveFilters =
     qText.trim().length > 0 ||
     onlyActive !== "all" ||
@@ -146,36 +149,36 @@ export default function EmployeeListPanel({
   };
 
   return (
-    <section className="dsv2-card employees-v2-directory" aria-label="قائمة الموظفات">
+    <section className="dsv2-card employees-v2-directory" dir={direction} aria-label={t("قائمة الموظفات")}>
       <header className="employees-v2-directory__head">
         <div>
-          <h2 className="dsv2-section-title">دليل الموظفات</h2>
-          <p className="dsv2-section-caption">بحث سريع وفتح ملف الموظفة من قائمة موحدة.</p>
+          <h2 className="dsv2-section-title">{t("دليل الموظفات")}</h2>
+          <p className="dsv2-section-caption">{t("بحث سريع وفتح ملف الموظفة من قائمة موحدة.")}</p>
         </div>
-        <span className="dsv2-badge">{filtered.length} ملف</span>
+        <span className="dsv2-badge">{tr(`${filtered.length} ملف`, `${filtered.length} profiles`)}</span>
       </header>
 
       <div className="employees-v2-filters">
         <label className="dsv2-field employees-v2-search">
-          <span className="dsv2-field__label">البحث</span>
+          <span className="dsv2-field__label">{t("البحث")}</span>
           <span className="employees-v2-search__control">
             <FontAwesomeIcon icon={faMagnifyingGlass} />
             <input
               className="dsv2-input"
               value={qText}
               onChange={(event) => onQTextChange(event.target.value)}
-              placeholder="الاسم، الجوال، البريد أو الرقم الوظيفي"
-              aria-label="بحث في الموظفات"
+              placeholder={t("الاسم، الجوال، البريد أو الرقم الوظيفي")}
+              aria-label={t("بحث في الموظفات")}
             />
           </span>
         </label>        <label className="dsv2-field">
-          <span className="dsv2-field__label">الظهور</span>
+          <span className="dsv2-field__label">{t("الظهور")}</span>
           <DashboardSelectV2
             value={directoryVisibility}
             options={[
-              { value: "visible", label: "الظاهرات في الدليل" },
-              { value: "hidden", label: "المخفيات من الدليل" },
-              { value: "all", label: "كل الموظفات" },
+              { value: "visible", label: t("الظاهرات في الدليل") },
+              { value: "hidden", label: t("المخفيات من الدليل") },
+              { value: "all", label: t("كل الموظفات") },
             ]}
             onChange={(value) =>
               onDirectoryVisibilityChange(
@@ -187,25 +190,25 @@ export default function EmployeeListPanel({
 
 
         <label className="dsv2-field">
-          <span className="dsv2-field__label">الحالة</span>
+          <span className="dsv2-field__label">{t("الحالة")}</span>
           <DashboardSelectV2
             value={onlyActive}
             options={[
-              { value: "all", label: "كل الحالات" },
-              { value: "active", label: "النشطات فقط" },
-              { value: "inactive", label: "غير النشطات فقط" },
+              { value: "all", label: t("كل الحالات") },
+              { value: "active", label: t("النشطات فقط") },
+              { value: "inactive", label: t("غير النشطات فقط") },
             ]}
             onChange={(value) => onOnlyActiveChange(value as "all" | "active" | "inactive")}
           />
         </label>
 
         <label className="dsv2-field">
-          <span className="dsv2-field__label">الخدمة</span>
+          <span className="dsv2-field__label">{t("الخدمة")}</span>
           <DashboardSelectV2
             value={specialtyFilter}
             options={[
-              { value: "all", label: "كل الخدمات" },
-              { value: "none", label: "بدون خدمات مسندة" },
+              { value: "all", label: t("كل الخدمات") },
+              { value: "none", label: t("بدون خدمات مسندة") },
               ...serviceFilterOptions.map((service) => ({
                 value: service.id,
                 label: service.label || service.id,
@@ -222,12 +225,12 @@ export default function EmployeeListPanel({
           disabled={!hasActiveFilters}
         >
           <FontAwesomeIcon icon={faRotateLeft} />
-          إعادة ضبط
+          {t("إعادة ضبط")}
         </button>
       </div>
 
       {loading ? (
-        <div className="employees-v2-grid" aria-label="جاري تحميل الموظفات">
+        <div className="employees-v2-grid" aria-label={t("جاري تحميل الموظفات")}>
           {Array.from({ length: 6 }, (_, index) => (
             <EmployeeCardSkeleton key={index} index={index} />
           ))}
@@ -237,14 +240,14 @@ export default function EmployeeListPanel({
           {filtered.map((staff) => {
             const specialtyIds = normalizeSpecialties(staff.specialties);
             const status = statusOf(staff);
-            const department = resolveDepartment(staff, serviceOptions, sectionOptions);
+            const department = t(resolveDepartment(staff, serviceOptions, sectionOptions));
             const total = bookingStats[staff.id]?.total ?? 0;
             const confirmed = bookingStats[staff.id]?.byStatus.confirmed ?? 0;
             const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
             const kpiLabel = statsLoading ? "…" : `${kpi}%`;
             const isSelected = selectedEmployeeId === staff.id;
             const needsCompletion = staff.profileIncomplete || staff.source !== "staff_public";
-            const name = employeeDisplayName(staff);
+            const name = t(employeeDisplayName(staff));
             const email = cleanText(staff.email);
             const phone = cleanText(staff.phone);
             const shortEmployeeId = formatShortId(staff.employeeId || staff.id);
@@ -255,7 +258,7 @@ export default function EmployeeListPanel({
                 type="button"
                 className={`employees-v2-card ${isSelected ? "is-selected" : ""}`}
                 onClick={() => onOpenEmployee(staff)}
-                aria-label={`فتح ملف ${name}`}
+                aria-label={tr(`فتح ملف ${name}`, `Open ${name} profile`)}
               >
                 <div className="employees-v2-card__top">
                   <div className="employees-v2-card__identity">
@@ -273,33 +276,33 @@ export default function EmployeeListPanel({
                       </p>
                     </div>
                   </div>
-                  <span className={`dsv2-badge dsv2-badge--${status.tone}`}>{status.label}</span>
+                  <span className={`dsv2-badge dsv2-badge--${status.tone}`}>{t(status.label)}</span>
                 </div>
 
                 <div className="employees-v2-card__contact">
-                  <span title={email || "لا يوجد بريد"}>
+                  <span title={email || t("لا يوجد بريد")}>
                     <FontAwesomeIcon icon={faEnvelope} />
-                    <b>{email || "لا يوجد بريد"}</b>
+                    <b>{email || t("لا يوجد بريد")}</b>
                   </span>
-                  <span title={phone || "لا يوجد جوال"}>
+                  <span title={phone || t("لا يوجد جوال")}>
                     <FontAwesomeIcon icon={faPhone} />
-                    <b>{phone || "لا يوجد جوال"}</b>
+                    <b>{phone || t("لا يوجد جوال")}</b>
                   </span>
                 </div>
 
                 <div className="employees-v2-card__stats">
                   <span>
-                    <small>الخدمات</small>
+                    <small>{t("الخدمات")}</small>
                     <strong>{specialtyIds.length}</strong>
                   </span>
                   <span>
-                    <small>حالة الملف</small>
+                    <small>{t("حالة الملف")}</small>
                     <strong data-tone={needsCompletion ? "warning" : "success"}>
-                      {needsCompletion ? "يحتاج إكمال" : "مكتمل"}
+                      {needsCompletion ? t("يحتاج إكمال") : t("مكتمل")}
                     </strong>
                   </span>
                   <span>
-                    <small>أداء الشهر</small>
+                    <small>{t("أداء الشهر")}</small>
                     <strong>{kpiLabel}</strong>
                     <i aria-hidden="true">
                       <b style={{ "--employees-v2-progress": `${kpi}%` } as CSSProperties} />
@@ -308,8 +311,8 @@ export default function EmployeeListPanel({
                 </div>
 
                 <div className="employees-v2-card__open" aria-hidden="true">
-                  <span>فتح الملف</span>
-                  <FontAwesomeIcon icon={faArrowLeft} />
+                  <span>{t("فتح الملف")}</span>
+                  <FontAwesomeIcon icon={language === "en" ? faArrowRight : faArrowLeft} />
                 </div>
               </button>
             );
@@ -317,17 +320,17 @@ export default function EmployeeListPanel({
         </div>
       ) : (
         <DashboardEmptyStateV2
-          title="لا توجد موظفات مطابقة"
-          description="غيّري البحث أو أعيدي ضبط الفلاتر لعرض الملفات المتاحة."
+          title={t("لا توجد موظفات مطابقة")}
+          description={t("غيّري البحث أو أعيدي ضبط الفلاتر لعرض الملفات المتاحة.")}
           tone="gold"
           action={
             hasActiveFilters ? (
               <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={clearFilters}>
-                إعادة ضبط الفلاتر
+                {t("إعادة ضبط الفلاتر")}
               </button>
             ) : canManage ? (
               <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={onCreateEmployee}>
-                إضافة موظفة
+                {t("إضافة موظفة")}
               </button>
             ) : null
           }
