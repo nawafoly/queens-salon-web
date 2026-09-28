@@ -21,6 +21,7 @@ import {
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
 } from "../EmployeeWorkspacePrimitivesV2";
+import { useEmployeeLanguage } from "../../../../pages/dashboardEmployees/employeeLanguage";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -729,12 +730,13 @@ export function EmployeeScheduleTabLiveV2({
   onScheduleChangeReasonChange,
   onReloadAttendanceZones,
 }: EmployeeScheduleTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const openDays = workingDays.filter((day) => day.enabled).length;
   const closedDays = workingDays.length - openDays;
   const templateOptions = shiftTemplates.map((template) => ({
     value: template.id,
-    label: `${template.name} — ${cleanText(template.startTime) || "--:--"} إلى ${cleanText(template.endTime) || "--:--"}`,
+    label: `${template.name} — ${cleanText(template.startTime) || "--:--"} ${language === "en" ? "to" : "إلى"} ${cleanText(template.endTime) || "--:--"}`,
   }));
 
   return (
@@ -744,7 +746,7 @@ export function EmployeeScheduleTabLiveV2({
         description="اختر لكل يوم قالب شفت أو راحة أسبوعية. أوقات وسياسات الدوام تُسحب تلقائيًا من القالب الموجود في نفس الصفحة."
         badge={
           <div className="dsv2-cluster">
-            <WorkspaceStatusBadgeV2 tone="success">مرتبط بالشفتات</WorkspaceStatusBadgeV2>
+            <WorkspaceStatusBadgeV2 tone="success">{tr("مرتبط بالشفتات", "Linked to shifts")}</WorkspaceStatusBadgeV2>
             <WorkspaceHelpButtonV2 label="شرح الدوام والشفتات" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.overview)} />
           </div>
         }
@@ -819,9 +821,9 @@ export function EmployeeScheduleTabLiveV2({
               id="employee-live-v2-attendance-zone"
               value={selectedAttendanceZoneId || ""}
               disabled={readOnly || attendanceZonesLoading}
-              placeholder={attendanceZonesLoading ? "جاري التحميل" : "اختر النطاق"}
+              placeholder={attendanceZonesLoading ? t("جاري التحميل") : t("اختر النطاق")}
               options={[
-                { value: "", label: "بدون نطاق محدد" },
+                { value: "", label: t("بدون نطاق محدد") },
                 ...attendanceZones.map((zone) => ({
                   value: zone.id,
                   label: cleanText(zone.name || zone.label || zone.id),
@@ -866,23 +868,23 @@ export function EmployeeScheduleTabLiveV2({
               <article key={day.key} className="dsv2-ew-week-card" data-open={day.enabled ? "true" : "false"}>
                 <header>
                   <strong>{day.label}</strong>
-                  <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? "يوم عمل" : "راحة أسبوعية"}</WorkspaceStatusBadgeV2>
+                  <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? t("يوم عمل") : t("راحة أسبوعية")}</WorkspaceStatusBadgeV2>
                 </header>
                 <WorkspaceSwitchV2
                   checked={day.enabled}
                   disabled={readOnly}
-                  label="يوم عمل"
+                  label={t("يوم عمل")}
                   onChange={(checked) => {
                     onUseCustomWorkingHoursChange(true);
                     onWorkingDayChange(day.key, { enabled: checked });
                   }}
                 />
-                <DashboardFieldV2 id={`employee-live-v2-${day.key}-shift`} label="الشفت">
+                <DashboardFieldV2 id={`employee-live-v2-${day.key}-shift`} label={t("الشفت")}>
                   <DashboardSelectV2
                     id={`employee-live-v2-${day.key}-shift`}
                     value={day.shiftTemplateId}
                     options={templateOptions}
-                    placeholder={shiftTemplatesLoading ? "جاري تحميل الشفتات" : "اختر الشفت"}
+                    placeholder={shiftTemplatesLoading ? t("جاري تحميل الشفتات") : t("اختر الشفت")}
                     disabled={readOnly || !day.enabled || shiftTemplatesLoading || !shiftTemplates.length}
                     onChange={(shiftTemplateId) => {
                       const template = shiftTemplates.find((item) => item.id === shiftTemplateId);
@@ -898,14 +900,14 @@ export function EmployeeScheduleTabLiveV2({
                 </DashboardFieldV2>
                 {day.enabled && selectedTemplate ? (
                   <WorkspaceNoticeV2
-                    title={`${cleanText(selectedTemplate.startTime) || "--:--"} إلى ${cleanText(selectedTemplate.endTime) || "--:--"}`}
-                    description={`مرونة الحضور ${Number(selectedTemplate.lateGraceMinutes || 0)} دقيقة. ${selectedTemplate.attendanceLockEnabled ? `تُغلق بصمة الحضور بعد ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} دقيقة.` : "إغلاق البصمة غير مفعّل."}`}
+                    title={`${cleanText(selectedTemplate.startTime) || "--:--"} ${language === "en" ? "to" : "إلى"} ${cleanText(selectedTemplate.endTime) || "--:--"}`}
+                    description={tr(`مرونة الحضور ${Number(selectedTemplate.lateGraceMinutes || 0)} دقيقة. ${selectedTemplate.attendanceLockEnabled ? `تُغلق بصمة الحضور بعد ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} دقيقة.` : "إغلاق البصمة غير مفعّل."}`, `Late grace ${Number(selectedTemplate.lateGraceMinutes || 0)} min. ${selectedTemplate.attendanceLockEnabled ? `Attendance locks after ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} min.` : "Attendance lock is disabled."}`)}
                     tone="neutral"
                   />
                 ) : null}
                 {day.enabled ? (
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !day.shiftTemplateId} onClick={() => onCopyWorkingDayToAll(day.key)}>
-                    نسخ الشفت لكل أيام العمل
+                    {tr("نسخ الشفت لكل أيام العمل", "Copy shift to all working days")}
                   </button>
                 ) : null}
               </article>
