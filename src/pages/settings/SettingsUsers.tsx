@@ -20,6 +20,11 @@ import {
 } from "../../helpers/permissions";
 import { ACCOUNT_JOB_PACKS, isJobPackEnabled, toggleJobPackPermissions, toggleSinglePermission } from "../../helpers/accountJobPacks";
 import {
+  EMPLOYEE_PROFILE_TAB_ACCESS,
+  EMPLOYEE_PROFILE_TAB_PERMISSION_KEYS,
+  hasEmployeeProfileTabPolicy,
+} from "../../helpers/employeeProfileTabAccess";
+import {
   CoreAccountService,
   type CoreAccount,
   type CorePermission,
@@ -423,6 +428,18 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
   function openEdit(account: CoreAccount) {
     setError("");
     setMessage("");
+
+    const effective = normalizeAppPermissions(
+      account.effectivePermissions || account.permissions || []
+    );
+    const permissions =
+      effective.includes("employees.view") &&
+      !hasEmployeeProfileTabPolicy(effective)
+        ? Array.from(
+            new Set([...effective, ...EMPLOYEE_PROFILE_TAB_PERMISSION_KEYS])
+          )
+        : effective;
+
     setEditDraft({
       id: account.id,
       firebaseUid: account.firebaseUid || account.uid || "",
@@ -431,7 +448,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
       phone: account.phone || "",
       role: normalizeRole(account.role || account.primaryRole),
       status: account.status,
-      permissions: normalizeAppPermissions(account.effectivePermissions || account.permissions || []),
+      permissions,
       employeeId: account.employeeLink?.employeeId || "",
     });
   }
