@@ -154,7 +154,7 @@ export default function PayrollObligationsPanel({
   readOnly,
 }: Props) {
   const { language, t, tr } = useEmployeeLanguage();
-  const formatMoney = (value: unknown) => formatMoney(value, language);
+  const formatMoney = (value: unknown) => money(value, language);
   const month = validMonth(currentPayrollMonth, new Date().toISOString().slice(0, 7));
   const [recurringRows, setRecurringRows] = useState<CorePayrollRecurringDeduction[]>([]);
   const [obligations, setObligations] = useState<CorePayrollObligation[]>([]);
