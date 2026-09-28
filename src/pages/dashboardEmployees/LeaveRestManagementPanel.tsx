@@ -56,7 +56,7 @@ function previousIsoDate(value: unknown) {
 
 function numberLabel(value: unknown, suffix = "", language: "ar" | "en" = "ar") {
   const number = Number(value);
-  if (!Number.isFinite(number)) return language === "en" ? "Unavailable" : t("غير متوفر");
+  if (!Number.isFinite(number)) return language === "en" ? "Unavailable" : "غير متوفر";
   const localized = number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn");
   if (language === "en" && suffix.trim() === "يوم") return `${localized} day(s)`;
   return `${localized}${suffix}`;
