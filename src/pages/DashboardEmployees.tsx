@@ -92,6 +92,8 @@ import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection"
 import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
+import type { DashboardLanguage } from "../helpers/dashboardLanguage";
+import { EmployeeLanguageProvider, useEmployeeLanguage } from "./dashboardEmployees/employeeLanguage";
 import {
   DashboardConfirmV2,
   DashboardDatePickerV2,
@@ -1742,6 +1744,7 @@ function verifyEmployeeSaveSnapshot(
 }
 
 function DashboardEmployeesContent() {
+  const { language, direction, t, tr } = useEmployeeLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const employeeRouteMatch = /^\/dashboard\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
@@ -1800,11 +1803,11 @@ function DashboardEmployeesContent() {
         setConfirmDialog({
           title: options.title,
           description: options.description,
-          confirmLabel: options.confirmLabel || "نعم، متابعة",
+          confirmLabel: options.confirmLabel || t("نعم، متابعة"),
           tone: options.tone || "danger",
         });
       }),
-    [],
+    [t],
   );
 
   const resolveConfirmation = useCallback((confirmed: boolean) => {
@@ -1819,7 +1822,7 @@ function DashboardEmployeesContent() {
     if (!errorMsg) return;
 
     pushToast({
-      title: "تعذر إكمال العملية",
+      title: t("تعذر إكمال العملية"),
       description: errorMsg,
       tone: "danger",
     });
@@ -6895,11 +6898,14 @@ const canonicalSchedules =
     !!(selectedEmployee as any)?.onLeave && !selectedEmployeeLeaveExpired;
   const selectedEmployeeStatusLabel = selectedEmployeeOnLeave
     ? selectedEmployeeLeaveUntil
-      ? `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
-      : "في إجازة"
+      ? tr(
+          `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`,
+          `On leave until ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
+        )
+      : t("في إجازة")
     : selectedEmployee?.active
-      ? "نشطة"
-      : "غير نشطة";
+      ? t("نشطة")
+      : t("غير نشطة");
   const selectedEmployeeStatusClass = selectedEmployeeOnLeave
     ? "warn"
     : selectedEmployee?.active
@@ -8809,37 +8815,37 @@ const canonicalSchedules =
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
-        { key: "stats", label: "الإحصائيات والإجازات" },
+        { key: "basic", label: t("البيانات الأساسية") },
+        { key: "booking", label: t("الحجز والدوام") },
+        { key: "services", label: t("الخدمات") },
+        { key: "profile", label: t("الملف") },
+        { key: "stats", label: t("الإحصائيات والإجازات") },
       ]
     : [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
+        { key: "basic", label: t("البيانات الأساسية") },
+        { key: "booking", label: t("الحجز والدوام") },
+        { key: "services", label: t("الخدمات") },
+        { key: "profile", label: t("الملف") },
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
-    { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
-    { key: "profile", label: "الملفات والصور", hint: "الصورة والمستندات والمرفقات والسجل", icon: faFileLines },
-    { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
-    { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
+    { key: "basic", label: t("البيانات الأساسية"), hint: t("الاسم والحالة والظهور"), icon: faUserTie },
+    { key: "profile", label: t("الملفات والصور"), hint: t("الصورة والمستندات والمرفقات والسجل"), icon: faFileLines },
+    { key: "services", label: t("الخدمات"), hint: t("الخدمات المسندة للموظفة"), icon: faInbox },
+    { key: "booking", label: t("الدوام والشفتات"), hint: t("الجدول والقوالب والسياسات"), icon: faClock },
     ...(canViewAttendance
-      ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
+      ? [{ key: "attendance" as EmployeeSplitTab, label: t("الحضور"), hint: t("السجل اليومي"), icon: faCalendarCheck }]
       : []),
     ...(canViewPayroll
-      ? [{ key: "payroll" as EmployeeSplitTab, label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave }]
+      ? [{ key: "payroll" as EmployeeSplitTab, label: t("سجل الرواتب"), hint: t("القفل والحساب"), icon: faMoneyBillWave }]
       : []),
     ...(canManageLeaveBalance
       ? [
-          { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
-          { key: "leave" as EmployeeSplitTab, label: "رصيد الإجازات", hint: "الحالة والرصيد والسجل", icon: faCalendarCheck },
+          { key: "requests" as EmployeeSplitTab, label: t("الطلبات"), hint: t("طلبات الموظفة"), icon: faInbox },
+          { key: "leave" as EmployeeSplitTab, label: t("رصيد الإجازات"), hint: t("الحالة والرصيد والسجل"), icon: faCalendarCheck },
         ]
       : []),
     ...(canViewEmployeeMessages
-      ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
+      ? [{ key: "messages" as EmployeeSplitTab, label: t("الرسائل"), hint: t("التواصل الداخلي"), icon: faEnvelope }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
