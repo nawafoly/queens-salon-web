@@ -338,7 +338,7 @@ export default function PayrollObligationsPanel({
         }
       >
         <div className="dsv2-ew-metrics">
-          <WorkspaceMetricV2 label={`المستحق للتحصيل — ${month}`} value={formatMoney(currentMonthTotalHalalas)} tone={currentMonthTotalHalalas > 0 ? "gold" : "success"} />
+          <WorkspaceMetricV2 label={tr(`المستحق للتحصيل — ${month}`, `Due for collection — ${month}`)} value={formatMoney(currentMonthTotalHalalas)} tone={currentMonthTotalHalalas > 0 ? "gold" : "success"} />
           <WorkspaceMetricV2 label="مؤجل من أشهر سابقة" value={formatMoney(deferredFromPriorMonthsHalalas)} tone={deferredFromPriorMonthsHalalas > 0 ? "gold" : "neutral"} />
           <WorkspaceMetricV2 label="الأقساط القادمة" value={formatMoney(upcomingInstallmentsHalalas)} />
           <WorkspaceMetricV2 label="إجمالي الالتزامات المفتوحة" value={formatMoney(openObligationsHalalas)} tone={openObligationsHalalas > 0 ? "gold" : "success"} />
