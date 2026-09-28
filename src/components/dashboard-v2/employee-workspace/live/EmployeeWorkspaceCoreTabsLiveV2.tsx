@@ -14,6 +14,7 @@ import {
   WorkspaceSwitchV2,
   WorkspaceTabHeaderV2,
 } from "../EmployeeWorkspacePrimitivesV2";
+import { useEmployeeLanguage } from "../../../../pages/dashboardEmployees/employeeLanguage";
 
 export type EmployeeBasicTabLiveV2Props = {
   readOnly: boolean;
@@ -50,6 +51,7 @@ export function EmployeeBasicTabLiveV2({
   onIncludeInEmployeeManagementChange,
   onEmploymentStartDateChange,
 }: EmployeeBasicTabLiveV2Props) {
+  const { t, tr } = useEmployeeLanguage();
   const completeness = [name.trim(), weeklyOffLabel.trim()].filter(Boolean).length === 2 ? 100 : 75;
 
   return (
@@ -57,12 +59,12 @@ export function EmployeeBasicTabLiveV2({
       <WorkspaceTabHeaderV2
         title="البيانات الأساسية"
         description="إدارة اسم الموظفة وحالة الحساب وظهورها في الموقع والحجز من مكوّن V2 مستقل."
-        badge={<WorkspaceStatusBadgeV2 tone={completeness === 100 ? "success" : "gold"}>اكتمال {completeness}٪</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={completeness === 100 ? "success" : "gold"}>{tr(`اكتمال ${completeness}٪`, `${completeness}% complete`)}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2 title="هوية الموظفة" description="الاسم المعتمد داخل الإدارة وواجهات العميلات.">
-          <DashboardFieldV2 id="employee-live-v2-name" label="اسم الموظفة" required>
+          <DashboardFieldV2 id="employee-live-v2-name" label={t("اسم الموظفة")} required>
             <input
               id="employee-live-v2-name"
               className="dsv2-input"
@@ -73,7 +75,7 @@ export function EmployeeBasicTabLiveV2({
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-service-start-date" label="بداية سنة الخدمة">
+          <DashboardFieldV2 id="employee-live-v2-service-start-date" label={t("بداية سنة الخدمة")}>
             <DashboardDatePickerV2
               id="employee-live-v2-service-start-date"
               value={employmentStartDate}
@@ -84,14 +86,14 @@ export function EmployeeBasicTabLiveV2({
           </DashboardFieldV2>
 
           <div className="dsv2-ew-field-group">
-            <span>حالة الحساب</span>
+            <span>{t("الحالة")}</span>
             <DashboardSelectV2
               id="employee-live-v2-status"
               value={active ? "active" : "inactive"}
               disabled={readOnly}
               options={[
-                { value: "active", label: "نشطة" },
-                { value: "inactive", label: "غير نشطة" },
+                { value: "active", label: t("نشطة") },
+                { value: "inactive", label: t("غير نشطة") },
               ]}
               onChange={(value) => onActiveChange(value === "active")}
             />
@@ -121,7 +123,7 @@ export function EmployeeBasicTabLiveV2({
               onChange={(value) => {
                 const status = String(accountStatus || "").toLowerCase();
                 if (value && ["inactive","disabled","offboarded","archived","suspended"].includes(status)) {
-                  window.alert("الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز.");
+                  window.alert(t("الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز."));
                   return;
                 }
                 onShowOnBookingChange(value);
@@ -140,15 +142,15 @@ export function EmployeeBasicTabLiveV2({
       </div>
 
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="الحساب" value={active ? "نشطة" : "غير نشطة"} tone={active ? "success" : "danger"} />
+        <WorkspaceMetricV2 label="الحساب" value={active ? t("نشطة") : t("غير نشطة")} tone={active ? "success" : "danger"} />
         <WorkspaceMetricV2
           label="دليل الموظفات"
-          value={includeInEmployeeManagement ? "ظاهرة" : "مخفية"}
+          value={includeInEmployeeManagement ? t("ظاهرة") : t("مخفية")}
           tone={includeInEmployeeManagement ? "success" : "gold"}
         />
-        <WorkspaceMetricV2 label="من نحن" value={showOnAbout ? "ظاهرة" : "مخفية"} tone={showOnAbout ? "success" : "gold"} />
-        <WorkspaceMetricV2 label="الحجز" value={showOnBooking ? "متاحة" : "متوقفة"} tone={showOnBooking ? "success" : "danger"} />
-        <WorkspaceMetricV2 label="الإجازة الأسبوعية" value={weeklyOffLabel || "غير محددة"} note="تُعدل من جدول الدوام" />
+        <WorkspaceMetricV2 label="من نحن" value={showOnAbout ? t("ظاهرة") : t("مخفية")} tone={showOnAbout ? "success" : "gold"} />
+        <WorkspaceMetricV2 label="الحجز" value={showOnBooking ? t("متاحة") : t("متوقفة")} tone={showOnBooking ? "success" : "danger"} />
+        <WorkspaceMetricV2 label="الإجازة الأسبوعية" value={weeklyOffLabel || t("غير محددة")} note="تُعدل من جدول الدوام" />
       </div>
 
       {readOnly ? (
@@ -211,6 +213,7 @@ export function EmployeeProfileTabLiveV2({
   onRatingChange,
   onReviewsCountChange,
 }: EmployeeProfileTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const resolvedAvatar =
     resolveAvatarFromAssets(String(avatarUrl || "").trim());
 
@@ -222,11 +225,11 @@ export function EmployeeProfileTabLiveV2({
   const photoStatusLabel = (status: string) => {
     const value = String(status || "").toLowerCase();
 
-    if (value === "replaced") return "مستبدلة";
-    if (value === "archived") return "مؤرشفة";
-    if (value === "active") return "الحالية";
+    if (value === "replaced") return t("مستبدلة");
+    if (value === "archived") return t("مؤرشفة");
+    if (value === "active") return t("الحالية");
 
-    return value || "غير معروف";
+    return value || t("غير معروف");
   };
 
   return (
@@ -238,7 +241,7 @@ export function EmployeeProfileTabLiveV2({
           <WorkspaceStatusBadgeV2
             tone={resolvedAvatar ? "success" : "gold"}
           >
-            {resolvedAvatar ? "الصورة جاهزة" : "بدون صورة"}
+            {resolvedAvatar ? t("الصورة جاهزة") : t("بدون صورة")}
           </WorkspaceStatusBadgeV2>
         }
       />
@@ -256,19 +259,19 @@ export function EmployeeProfileTabLiveV2({
               <EmployeeAvatar
                 className="dsv2-ew-photo"
                 src={resolvedAvatar}
-                name={employeeName || "موظفة"}
+                name={employeeName || t("موظفة")}
                 alt={
                   employeeName
-                    ? `صورة ${employeeName}`
-                    : "صورة الموظفة"
+                    ? tr(`صورة ${employeeName}`, `${employeeName} photo`)
+                    : t("صورة الموظفة")
                 }
                 loading="eager"
               />
             ) : (
               <div className="dsv2-ew-photo-placeholder">
-                <strong>لا توجد صورة</strong>
+                <strong>{t("لا توجد صورة")}</strong>
                 <span>
-                  ارفعي صورة شخصية من الجهاز.
+                  {t("ارفعي صورة شخصية من الجهاز.")}
                 </span>
               </div>
             )}
@@ -283,10 +286,10 @@ export function EmployeeProfileTabLiveV2({
                 }
               >
                 {profilePhotoBusy
-                  ? "جاري رفع الصورة..."
+                  ? t("جاري رفع الصورة...")
                   : resolvedAvatar
-                    ? "تغيير الصورة"
-                    : "رفع صورة"}
+                    ? t("تغيير الصورة")
+                    : t("رفع صورة")}
 
                 <input
                   type="file"
@@ -312,7 +315,7 @@ export function EmployeeProfileTabLiveV2({
                   disabled={readOnly || profilePhotoBusy}
                   onClick={() => void onProfilePhotoRemove()}
                 >
-                  حذف الصورة
+                  {t("حذف الصورة")}
                 </button>
               ) : null}
             </div>
@@ -326,12 +329,12 @@ export function EmployeeProfileTabLiveV2({
 
           <div className="dsv2-ew-rating-summary">
             <div>
-              <span>التقييم</span>
+              <span>{t("التقييم")}</span>
               <strong>
                 {rating || "—"}
                 {rating ? " / 5" : ""}
               </strong>
-              <small>{reviewsCount || "0"} تقييم</small>
+              <small>{tr(`${reviewsCount || "0"} تقييم`, `${reviewsCount || "0"} reviews`)}</small>
             </div>
           </div>
         </WorkspaceCardV2>
@@ -343,7 +346,7 @@ export function EmployeeProfileTabLiveV2({
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             <DashboardFieldV2
               id="employee-live-v2-cv-url"
-              label="رابط السيرة الذاتية"
+              label={t("رابط السيرة الذاتية")}
             >
               <input
                 id="employee-live-v2-cv-url"
@@ -359,7 +362,7 @@ export function EmployeeProfileTabLiveV2({
 
             <DashboardFieldV2
               id="employee-live-v2-rating"
-              label="تقييم العرض"
+              label={t("تقييم العرض")}
             >
               <DashboardNumberInputV2
                 id="employee-live-v2-rating"
@@ -377,7 +380,7 @@ export function EmployeeProfileTabLiveV2({
 
             <DashboardFieldV2
               id="employee-live-v2-reviews"
-              label="عدد التقييمات"
+              label={t("عدد التقييمات")}
             >
               <DashboardNumberInputV2
                 id="employee-live-v2-reviews"
@@ -401,8 +404,8 @@ export function EmployeeProfileTabLiveV2({
       >
         <DashboardFieldV2
           id="employee-live-v2-bio"
-          label="النبذة"
-          hint={`${bio.length} حرف`}
+          label={t("النبذة")}
+          hint={tr(`${bio.length} حرف`, `${bio.length} characters`)}
         >
           <textarea
             id="employee-live-v2-bio"
@@ -429,7 +432,7 @@ export function EmployeeProfileTabLiveV2({
                 className="dsv2-ew-gallery__item"
               >
                 <strong>
-                  {photo.fileName || "صورة شخصية"}
+                  {photo.fileName || t("صورة شخصية")}
                 </strong>
 
                 <small>
@@ -438,8 +441,8 @@ export function EmployeeProfileTabLiveV2({
 
                 <small>
                   {photo.createdAt
-                    ? new Date(photo.createdAt).toLocaleString("ar-SA")
-                    : "بدون تاريخ"}
+                    ? new Date(photo.createdAt).toLocaleString(language === "en" ? "en-GB" : "ar-SA")
+                    : t("بدون تاريخ")}
                 </small>
               </div>
             ))}
@@ -498,6 +501,7 @@ export function EmployeeServicesTabLiveV2({
   onToggleSpecialty,
   onSpecialtiesChange,
 }: EmployeeServicesTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [scope, setScope] = useState("all");
   const [selectedSearch, setSelectedSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(24);
@@ -527,7 +531,7 @@ export function EmployeeServicesTabLiveV2({
       <WorkspaceTabHeaderV2
         title="الخدمات"
         description="إسناد الخدمات والبحث والتصفية من مكوّن V2 مستقل مرتبط بالقائمة الفعلية."
-        badge={<WorkspaceStatusBadgeV2 tone="success">{specialties.length} خدمات محددة</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone="success">{tr(`${specialties.length} خدمات محددة`, `${specialties.length} selected services`)}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
@@ -539,34 +543,34 @@ export function EmployeeServicesTabLiveV2({
 
       <WorkspaceCardV2 title="البحث والتصفية" description="قوائم V2 فقط، بدون select أصلي أو EmployeeSelect القديم.">
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-service-search" label="البحث">
+          <DashboardFieldV2 id="employee-live-v2-service-search" label={t("البحث")}>
             <input
               id="employee-live-v2-service-search"
               className="dsv2-input"
               value={search}
-              placeholder="اسم الخدمة أو القسم"
+              placeholder={t("اسم الخدمة أو القسم")}
               onChange={(event) => onSearchChange(event.target.value)}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-service-section" label="القسم">
+          <DashboardFieldV2 id="employee-live-v2-service-section" label={t("القسم")}>
             <DashboardSelectV2
               id="employee-live-v2-service-section"
               value={section}
               options={[
-                { value: "all", label: "كل الأقسام" },
+                { value: "all", label: t("كل الأقسام") },
                 ...sectionOptions.map((item) => ({ value: item.id, label: item.label })),
               ]}
               onChange={onSectionChange}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-service-scope" label="نطاق العرض">
+          <DashboardFieldV2 id="employee-live-v2-service-scope" label={t("نطاق العرض")}>
             <DashboardSelectV2
               id="employee-live-v2-service-scope"
               value={scope}
               options={[
-                { value: "all", label: "الكل" },
-                { value: "selected", label: "المختارة" },
-                { value: "unselected", label: "غير المختارة" },
+                { value: "all", label: t("الكل") },
+                { value: "selected", label: t("المختارة") },
+                { value: "unselected", label: t("غير المختارة") },
               ]}
               onChange={setScope}
             />
@@ -574,13 +578,13 @@ export function EmployeeServicesTabLiveV2({
         </div>
 
         <div className="dsv2-cluster">
-          <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" disabled={readOnly || !scopedServices.length} onClick={selectVisible}>تحديد الظاهر</button>
-          <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !specialties.length} onClick={() => onSpecialtiesChange([])}>مسح الكل</button>
+          <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" disabled={readOnly || !scopedServices.length} onClick={selectVisible}>{t("تحديد الظاهر")}</button>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !specialties.length} onClick={() => onSpecialtiesChange([])}>{t("مسح الكل")}</button>
         </div>
       </WorkspaceCardV2>
 
       <div className="dsv2-ew-services-layout">
-        <WorkspaceCardV2 title="الخدمات المتاحة" description={`${scopedServices.length} نتيجة`} className="dsv2-ew-services-catalog">
+        <WorkspaceCardV2 title="الخدمات المتاحة" description={tr(`${scopedServices.length} نتيجة`, `${scopedServices.length} results`)} className="dsv2-ew-services-catalog">
           {scopedServices.length ? (
             <div className="dsv2-ew-service-cards">
               {scopedServices.slice(0, visibleCount).map((service) => {
@@ -591,8 +595,8 @@ export function EmployeeServicesTabLiveV2({
                       <span className="dsv2-ew-service-card__category">{serviceSectionLabel(service, sectionOptions)}</span>
                       <strong>{service.label}</strong>
                       <small>
-                        {Number(service.durationMin || 0) > 0 ? `${Number(service.durationMin).toLocaleString("ar-SA-u-nu-latn")} دقيقة` : "مدة غير محددة"}
-                        {Number(service.price || 0) > 0 ? ` · ${Number(service.price).toLocaleString("ar-SA-u-nu-latn")} ر.س` : ""}
+                        {Number(service.durationMin || 0) > 0 ? `${Number(service.durationMin).toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${t("دقيقة")}` : t("مدة غير محددة")}
+                        {Number(service.price || 0) > 0 ? ` · ${Number(service.price).toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} SAR` : ""}
                       </small>
                     </div>
                     <button
@@ -601,23 +605,23 @@ export function EmployeeServicesTabLiveV2({
                       disabled={readOnly}
                       onClick={() => onToggleSpecialty(service.id)}
                     >
-                      {selected ? "محددة" : "تحديد"}
+                      {selected ? t("محددة") : t("تحديد")}
                     </button>
                   </article>
                 );
               })}
             </div>
           ) : (
-            <div className="dsv2-ew-inline-empty"><strong>لا توجد نتائج</strong><span>غيّر البحث أو القسم أو نطاق العرض.</span></div>
+            <div className="dsv2-ew-inline-empty"><strong>{t("لا توجد نتائج")}</strong><span>{t("غيّر البحث أو القسم أو نطاق العرض.")}</span></div>
           )}
 
           {visibleCount < scopedServices.length ? (
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-ew-load-more" onClick={() => setVisibleCount((current) => current + 24)}>عرض المزيد</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-ew-load-more" onClick={() => setVisibleCount((current) => current + 24)}>{t("عرض المزيد")}</button>
           ) : null}
         </WorkspaceCardV2>
 
         <WorkspaceCardV2 title="الخدمات المختارة" description="قائمة مستقلة مضغوطة." className="dsv2-ew-services-selected">
-          <DashboardFieldV2 id="employee-live-v2-selected-search" label="البحث داخل المختارة">
+          <DashboardFieldV2 id="employee-live-v2-selected-search" label={t("البحث داخل المختارة")}>
             <input
               id="employee-live-v2-selected-search"
               className="dsv2-input"
@@ -634,12 +638,12 @@ export function EmployeeServicesTabLiveV2({
                     <strong>{service.label}</strong>
                     <small>{serviceSectionLabel(service, sectionOptions)}</small>
                   </div>
-                  <button type="button" className="dsv2-ew-icon-btn" disabled={readOnly} aria-label={`إزالة ${service.label}`} onClick={() => onToggleSpecialty(service.id)}>×</button>
+                  <button type="button" className="dsv2-ew-icon-btn" disabled={readOnly} aria-label={tr(`إزالة ${service.label}`, `Remove ${service.label}`)} onClick={() => onToggleSpecialty(service.id)}>×</button>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="dsv2-ew-inline-empty"><strong>{specialties.length ? "لا توجد نتيجة مطابقة" : "لم تُحدد خدمات"}</strong><span>{specialties.length ? "امسح عبارة البحث لعرض القائمة." : "اختاري الخدمات من القائمة المجاورة."}</span></div>
+            <div className="dsv2-ew-inline-empty"><strong>{specialties.length ? t("لا توجد نتيجة مطابقة") : t("لم تُحدد خدمات")}</strong><span>{specialties.length ? t("امسح عبارة البحث لعرض القائمة.") : t("اختاري الخدمات من القائمة المجاورة.")}</span></div>
           )}
         </WorkspaceCardV2>
       </div>

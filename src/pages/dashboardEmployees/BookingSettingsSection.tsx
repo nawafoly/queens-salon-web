@@ -8,6 +8,7 @@ import { WEEKDAY_OPTIONS, normalizeTimeHHMM, type StaffWorkingDay, type WeekdayK
 import type { WorkZone } from "../../services/attendanceSettingsService";
 import { CoreHrService } from "../../services/CoreHrService";
 import type { CoreShiftTemplate } from "../../types/hrCoreApi";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 type BookingSettingsSectionProps = {
   isVisible: boolean;
@@ -63,8 +64,9 @@ function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkin
 function findOperationalWeekBody(root: HTMLElement | null) {
   if (!root) return null;
   const cards = Array.from(root.querySelectorAll<HTMLElement>("article.dsv2-ew-card"));
+  const operationalTitles = new Set(["الأسبوع التشغيلي", "Operational week"]);
   const operationalCard = cards.find((card) =>
-    card.querySelector<HTMLElement>(".dsv2-ew-card__title")?.textContent?.trim() === "الأسبوع التشغيلي"
+    operationalTitles.has(card.querySelector<HTMLElement>(".dsv2-ew-card__title")?.textContent?.trim() || "")
   );
   return operationalCard?.querySelector<HTMLElement>(".dsv2-ew-card__body") || null;
 }
@@ -94,6 +96,7 @@ export default function BookingSettingsSection({
   onUpdateModalWorkingDay,
   onCopyModalWorkingDayToAll,
 }: BookingSettingsSectionProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [shiftTemplates, setShiftTemplates] = useState<CoreShiftTemplate[]>([]);
   const [shiftTemplatesLoading, setShiftTemplatesLoading] = useState(false);
   const [shiftTemplatesError, setShiftTemplatesError] = useState("");
@@ -121,7 +124,10 @@ export default function BookingSettingsSection({
       // Keep the last known-good rows. A network/API failure is not the same
       // thing as a canonical empty result.
       setShiftTemplatesError(
-        "تعذر تحميل قوالب الشفتات من Malikat Core. سيتم إعادة المحاولة عند عودة الاتصال."
+        tr(
+          "تعذر تحميل قوالب الشفتات من Malikat Core. سيتم إعادة المحاولة عند عودة الاتصال.",
+          "Could not load shift templates from Malikat Core. The system will retry when the connection returns."
+        )
       );
     } finally {
       if (requestId === shiftTemplatesRequestRef.current) {
@@ -250,12 +256,12 @@ export default function BookingSettingsSection({
         shiftTemplatesError={shiftTemplatesError}
         attendanceZones={attendanceZones.map((zone) => ({
           id: zone.id,
-          name: `${zone.name || zone.id}${zone.active ? "" : " - غير نشط"}${zone.radiusMeters ? ` - ${zone.radiusMeters} م` : ""}`,
+          name: `${zone.name || zone.id}${zone.active ? "" : ` - ${t("غير نشطة")}`}${zone.radiusMeters ? ` - ${zone.radiusMeters} ${language === "en" ? "m" : "م"}` : ""}`,
         }))}
         attendanceZonesLoading={attendanceZonesLoading}
         selectedAttendanceZoneId={selectedAttendanceZoneId}
         scheduleEffectiveFrom={scheduleEffectiveFrom}
-        scheduleChangeReason={scheduleChangeReason || (scheduleVersionCount > 0 ? "" : "أول نسخة")}
+        scheduleChangeReason={scheduleChangeReason || (scheduleVersionCount > 0 ? "" : tr("أول نسخة", "Initial version"))}
         onEmploymentEndDateChange={onEmploymentEndDateChange}
         onUseCustomWorkingHoursChange={onModalUseCustomWorkingHoursChange}
         onSelectedAttendanceZoneIdChange={onSelectedAttendanceZoneIdChange}

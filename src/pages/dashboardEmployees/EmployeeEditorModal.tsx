@@ -8,6 +8,7 @@ import {
   DashboardSelectV2,
 } from "../../components/dashboard-v2";
 import { usePermissions } from "../../security/PermissionContext";
+import { useEmployeeLanguage } from "./employeeLanguage";
 import {
   clearEmployeeOnboardingQueue,
   makeEmployeeTempPassword,
@@ -80,6 +81,7 @@ export default function EmployeeEditorModal({
   onDetailTabChange,
   children,
 }: EmployeeEditorModalProps) {
+  const { t } = useEmployeeLanguage();
   const { hasAnyPermission } = usePermissions();
   const isCreateMode = !editId;
   const employeeName = String(editingStaff?.name || name || "").trim();
@@ -137,15 +139,15 @@ export default function EmployeeEditorModal({
 
     if (createLogin) {
       if (!canProvisionAccount) {
-        setAccountError("ليست لديك صلاحية إنشاء حسابات دخول. يمكنك إنشاء الملف الوظيفي فقط.");
+        setAccountError(t("ليست لديك صلاحية إنشاء حسابات دخول. يمكنك إنشاء الملف الوظيفي فقط."));
         return;
       }
       if (!email || !email.includes("@")) {
-        setAccountError("أدخل بريدًا إلكترونيًا صحيحًا لإنشاء حساب الدخول.");
+        setAccountError(t("أدخل بريدًا إلكترونيًا صحيحًا لإنشاء حساب الدخول."));
         return;
       }
       if (password.length < 6) {
-        setAccountError("كلمة المرور المؤقتة يجب أن تكون 6 أحرف على الأقل.");
+        setAccountError(t("كلمة المرور المؤقتة يجب أن تكون 6 أحرف على الأقل."));
         return;
       }
     }
@@ -172,18 +174,18 @@ export default function EmployeeEditorModal({
         {!isCreateMode && canManage && canDelete && onDelete ? (
           <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={onDelete} disabled={busy}>
             <FontAwesomeIcon icon={faUserSlash} />
-            إنهاء الخدمة
+            {t("إنهاء الخدمة")}
           </button>
         ) : null}
       </div>
       <div className="employees-v2-editor__footer-actions">
         {!isCreateMode && canManage && onCancelEdit ? (
           <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={onCancelEdit} disabled={busy}>
-            إلغاء التعديلات
+            {t("إلغاء التعديلات")}
           </button>
         ) : (
           <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={onClose} disabled={saving}>
-            إلغاء
+            {t("إلغاء")}
           </button>
         )}
         {canManage ? (
@@ -194,15 +196,15 @@ export default function EmployeeEditorModal({
             disabled={busy}
           >
             {saving
-              ? "جاري الحفظ..."
+              ? t("جاري الحفظ...")
               : isCreateMode
                 ? createLogin
-                  ? "إنشاء الموظفة وحساب الدخول"
-                  : "إنشاء الموظفة"
-                : "حفظ التغييرات"}
+                  ? t("إنشاء الموظفة وحساب الدخول")
+                  : t("إنشاء الموظفة")
+                : t("حفظ التغييرات")}
           </button>
         ) : (
-          <span className="dsv2-badge">عرض فقط</span>
+          <span className="dsv2-badge">{t("عرض فقط")}</span>
         )}
       </div>
     </div>
@@ -212,12 +214,12 @@ export default function EmployeeEditorModal({
     <DashboardModalV2
       open={isOpen}
       onClose={onClose}
-      title={isCreateMode ? "إضافة موظفة" : employeeName || "ملف الموظفة"}
-      eyebrow={isCreateMode ? "إدارة الموظفات" : "الملف الحالي"}
+      title={isCreateMode ? t("إضافة موظفة") : employeeName || t("ملف الموظفة")}
+      eyebrow={isCreateMode ? t("إدارة الموظفات") : t("الملف الحالي")}
       description={
         isCreateMode
-          ? "أكملي بيانات الموظفة، ثم أنشئي ملفها وحساب الدخول من نفس العملية."
-          : "تعديل بيانات الموظفة من نافذة موحدة."
+          ? t("أكملي بيانات الموظفة، ثم أنشئي ملفها وحساب الدخول من نفس العملية.")
+          : t("تعديل بيانات الموظفة من نافذة موحدة.")
       }
       size="xl"
       tone="gold"
@@ -229,19 +231,19 @@ export default function EmployeeEditorModal({
       {!isCreateMode ? (
         <div className="employees-v2-editor__meta">
           {selectedEmployeeStatusLabel ? <span className="dsv2-badge dsv2-badge--success">{selectedEmployeeStatusLabel}</span> : null}
-          <span className="dsv2-badge">{specialtiesCount > 0 ? `${specialtiesCount} خدمة` : "بدون خدمات"}</span>
+          <span className="dsv2-badge">{specialtiesCount > 0 ? `${specialtiesCount} ${t("الخدمات")}` : t("بدون خدمات")}</span>
         </div>
       ) : (
-        <section className="employees-v2-editor__create-intro" aria-label="عملية إضافة الموظفة">
-          <span className="dsv2-badge dsv2-badge--gold">عملية موحدة</span>
+        <section className="employees-v2-editor__create-intro" aria-label={t("عملية إضافة الموظفة")}>
+          <span className="dsv2-badge dsv2-badge--gold">{t("عملية موحدة")}</span>
           <div>
-            <strong>ملف الموظفة وحساب الدخول في مكان واحد</strong>
-            <p>أكملي الأقسام بالترتيب المناسب لك. النظام ينشئ ويربط حساب الدخول تلقائيًا بدون أي معرّفات أو خطوات تقنية يدوية.</p>
+            <strong>{t("ملف الموظفة وحساب الدخول في مكان واحد")}</strong>
+            <p>{t("أكملي الأقسام بالترتيب المناسب لك. النظام ينشئ ويربط حساب الدخول تلقائيًا بدون أي معرّفات أو خطوات تقنية يدوية.")}</p>
           </div>
         </section>
       )}
 
-      <nav className="employees-v2-editor__tabs" role="tablist" aria-label="أقسام ملف الموظفة">
+      <nav className="employees-v2-editor__tabs" role="tablist" aria-label={t("أقسام ملف الموظفة")}>
         {tabs.map((tab, index) => (
           <button
             key={String(tab.key)}
@@ -262,12 +264,12 @@ export default function EmployeeEditorModal({
         <div className="employees-v2-editor__content">{children}</div>
 
         {isCreateMode && modalTab === "basic" ? (
-          <section className="employee-onboarding-account" aria-label="حساب الدخول">
+          <section className="employee-onboarding-account" aria-label={t("حساب الدخول")}>
             <div className="employee-onboarding-account__head">
               <div>
-                <span className="dsv2-badge dsv2-badge--gold">حساب الدخول</span>
-                <h3>تسجيل دخول الموظفة</h3>
-                <p>اختياري. عند تفعيله سيتم إنشاء الحساب وربطه بالملف الوظيفي تلقائيًا ضمن نفس عملية الحفظ.</p>
+                <span className="dsv2-badge dsv2-badge--gold">{t("حساب الدخول")}</span>
+                <h3>{t("تسجيل دخول الموظفة")}</h3>
+                <p>{t("اختياري. عند تفعيله سيتم إنشاء الحساب وربطه بالملف الوظيفي تلقائيًا ضمن نفس عملية الحفظ.")}</p>
               </div>
               <label className="employee-onboarding-account__toggle">
                 <input
@@ -279,22 +281,22 @@ export default function EmployeeEditorModal({
                     setAccountError("");
                   }}
                 />
-                <span>إنشاء وتفعيل حساب دخول</span>
+                <span>{t("إنشاء وتفعيل حساب دخول")}</span>
               </label>
             </div>
 
             {!canProvisionAccount ? (
               <p className="employee-onboarding-account__notice">
-                لا تملك صلاحية إنشاء حسابات دخول؛ سيتم إنشاء الملف الوظيفي فقط.
+                {t("لا تملك صلاحية إنشاء حسابات دخول؛ سيتم إنشاء الملف الوظيفي فقط.")}
               </p>
             ) : null}
 
             <div className="employee-onboarding-account__grid">
               <DashboardFieldV2
                 id="employee-onboarding-email"
-                label="البريد الإلكتروني"
+                label={t("البريد الإلكتروني")}
                 required={createLogin}
-                hint={createLogin ? "سيستخدم لتسجيل الدخول واستعادة كلمة المرور." : "اختياري إذا لم يتم إنشاء حساب دخول."}
+                hint={createLogin ? t("سيستخدم لتسجيل الدخول واستعادة كلمة المرور.") : t("اختياري إذا لم يتم إنشاء حساب دخول.")}
               >
                 <input
                   id="employee-onboarding-email"
@@ -311,7 +313,7 @@ export default function EmployeeEditorModal({
                 />
               </DashboardFieldV2>
 
-              <DashboardFieldV2 id="employee-onboarding-phone" label="رقم الجوال">
+              <DashboardFieldV2 id="employee-onboarding-phone" label={t("رقم الجوال")}>
                 <input
                   id="employee-onboarding-phone"
                   className="dsv2-input"
@@ -324,10 +326,10 @@ export default function EmployeeEditorModal({
                 />
               </DashboardFieldV2>
 
-              <DashboardFieldV2 id="employee-onboarding-role" label="الدور" required={createLogin}>
+              <DashboardFieldV2 id="employee-onboarding-role" label={t("الدور")} required={createLogin}>
                 <DashboardSelectV2
                   value={accountRole}
-                  options={ACCOUNT_ROLE_OPTIONS}
+                  options={ACCOUNT_ROLE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                   onChange={(value) => setAccountRole(value as EmployeeOnboardingRole)}
                   disabled={!createLogin || busy}
                 />
@@ -335,9 +337,9 @@ export default function EmployeeEditorModal({
 
               <DashboardFieldV2
                 id="employee-onboarding-password"
-                label="كلمة المرور المؤقتة"
+                label={t("كلمة المرور المؤقتة")}
                 required={createLogin}
-                hint="يمكن للموظفة تغييرها لاحقًا."
+                hint={t("يمكن للموظفة تغييرها لاحقًا.")}
               >
                 <div className="employee-onboarding-account__password">
                   <input
@@ -359,7 +361,7 @@ export default function EmployeeEditorModal({
                     onClick={() => setTemporaryPassword(makeEmployeeTempPassword())}
                   >
                     <FontAwesomeIcon icon={faArrowsRotate} />
-                    توليد
+                    {t("توليد")}
                   </button>
                 </div>
               </DashboardFieldV2>

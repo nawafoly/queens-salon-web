@@ -6,6 +6,7 @@ import {
   DashboardSkeletonV2,
 } from "../index";
 import { resolveEmployeeWorkspaceHelpTopicV2 } from "./EmployeeWorkspaceHelpTopicsV2";
+import { useEmployeeLanguage } from "../../../pages/dashboardEmployees/employeeLanguage";
 
 export type WorkspaceHelpStepV2 = {
   title: string;
@@ -29,6 +30,44 @@ export type WorkspaceHelpTopicV2 = {
   steps?: readonly WorkspaceHelpStepV2[];
   important?: string;
 };
+
+function containsArabicWorkspaceTextV2(value: string): boolean {
+  return /[\u0600-\u06FF]/.test(value);
+}
+
+function buildEnglishWorkspaceHelpTopicV2(
+  topic: WorkspaceHelpTopicV2,
+  translate: (value: string) => string
+): WorkspaceHelpTopicV2 {
+  const rawBaseTitle = topic.title.replace(/^شرح\s+/, "").trim();
+  const translatedBaseTitle = translate(rawBaseTitle);
+  const sectionName = translatedBaseTitle && !containsArabicWorkspaceTextV2(translatedBaseTitle)
+    ? translatedBaseTitle
+    : "this Staff Management section";
+  const sectionPhrase = sectionName === "this Staff Management section"
+    ? sectionName
+    : `the ${sectionName} section`;
+
+  return {
+    title: sectionName === "this Staff Management section" ? "Staff Management help" : `Help: ${sectionName}`,
+    description: `Guidance for ${sectionPhrase}.`,
+    purpose: `Use ${sectionPhrase} to review and manage the related staff information and operational settings.`,
+    useWhen: `Use it when the selected staff member's ${sectionName === "this Staff Management section" ? "information" : sectionName.toLowerCase()} needs to be reviewed or updated.`,
+    notFor: "Use the dedicated Staff Management section for changes that belong to another operational area.",
+    example: {
+      title: `Example: ${sectionName === "this Staff Management section" ? "staff record review" : sectionName}`,
+      situation: "A staff record requires review or an operational setting needs to be updated.",
+      action: "Review the current values, make the required change, save it, then verify the resulting staff record.",
+      result: "The staff record is updated while its existing operational and audit history remains intact.",
+    },
+    steps: [
+      { title: "Review", description: "Check the current staff data and confirm that you are editing the correct record." },
+      { title: "Update", description: "Change only the fields or settings required for this operation." },
+      { title: "Save and verify", description: "Save the change and confirm that the resulting staff state is correct." },
+    ],
+    important: "Verify the selected staff member and the operational impact before saving any change.",
+  };
+}
 
 function containsWorkspaceHelpButtonV2(node: ReactNode): boolean {
   return Children.toArray(node).some((child) => {
@@ -55,6 +94,9 @@ export function WorkspaceCardV2({
   helpTopic?: WorkspaceHelpTopicV2 | null;
   hideHelp?: boolean;
 }) {
+  const { t, tr } = useEmployeeLanguage();
+  const displayTitle = typeof title === "string" ? t(title) : title;
+  const displayDescription = typeof description === "string" ? t(description) : description;
   const [helpOpen, setHelpOpen] = useState(false);
   const hasManualHelp = containsWorkspaceHelpButtonV2(actions);
   const resolvedHelpTopic = hideHelp || hasManualHelp
@@ -68,7 +110,7 @@ export function WorkspaceCardV2({
           {actions}
           {resolvedHelpTopic ? (
             <WorkspaceHelpButtonV2
-              label={`شرح ${typeof title === "string" ? title : "القسم"}`}
+              label={typeof title === "string" ? tr(`شرح ${title}`, `Explain ${t(title)}`) : tr("شرح القسم", "Explain section")}
               onClick={() => setHelpOpen(true)}
             />
           ) : null}
@@ -81,8 +123,8 @@ export function WorkspaceCardV2({
       <article className={["dsv2-card", "dsv2-card--padded", "dsv2-ew-card", className].filter(Boolean).join(" ")}>
         <header className="dsv2-section-head dsv2-ew-card__head">
           <div>
-            <h3 className="dsv2-section-title dsv2-ew-card__title">{title}</h3>
-            {description ? <p className="dsv2-section-caption">{description}</p> : null}
+            <h3 className="dsv2-section-title dsv2-ew-card__title">{displayTitle}</h3>
+            {displayDescription ? <p className="dsv2-section-caption">{displayDescription}</p> : null}
           </div>
           {headerActions}
         </header>
@@ -110,11 +152,12 @@ export function WorkspaceSwitchV2({
   description?: string;
   disabled?: boolean;
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <label className="dsv2-ew-switch" data-disabled={disabled ? "true" : "false"}>
       <span className="dsv2-ew-switch__copy">
-        <strong>{label}</strong>
-        {description ? <small>{description}</small> : null}
+        <strong>{t(label)}</strong>
+        {description ? <small>{t(description)}</small> : null}
       </span>
       <input
         type="checkbox"
@@ -140,11 +183,12 @@ export function WorkspaceMetricV2({
   note?: string;
   tone?: "neutral" | "gold" | "warning" | "success" | "danger" | "dark";
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <article className="dsv2-ew-metric" data-tone={tone}>
-      <span>{label}</span>
+      <span>{t(label)}</span>
       <strong>{value}</strong>
-      {note ? <small>{note}</small> : null}
+      {note ? <small>{t(note)}</small> : null}
     </article>
   );
 }
@@ -156,8 +200,10 @@ export function WorkspaceStatusBadgeV2({
   children: ReactNode;
   tone?: "default" | "gold" | "warning" | "success" | "danger";
 }) {
+  const { t } = useEmployeeLanguage();
   const modifier = tone === "default" ? "" : ` dsv2-badge--${tone}`;
-  return <span className={`dsv2-badge${modifier}`}>{children}</span>;
+  const content = typeof children === "string" ? t(children) : children;
+  return <span className={`dsv2-badge${modifier}`}>{content}</span>;
 }
 
 
@@ -182,12 +228,14 @@ export function WorkspaceHelpButtonV2({
   label: string;
   onClick: () => void;
 }) {
+  const { t } = useEmployeeLanguage();
+  const translatedLabel = t(label);
   return (
     <button
       type="button"
       className="dsv2-ew-icon-btn"
-      aria-label={label}
-      title={label}
+      aria-label={translatedLabel}
+      title={translatedLabel}
       onClick={onClick}
     >
       <WorkspaceHelpDocumentIconV2 />
@@ -204,61 +252,63 @@ export function WorkspaceHelpDrawerV2({
   onClose: () => void;
   topic: WorkspaceHelpTopicV2 | null;
 }) {
+  const { language, t } = useEmployeeLanguage();
   if (!topic) return null;
+  const displayTopic = language === "en" ? buildEnglishWorkspaceHelpTopicV2(topic, t) : topic;
 
   return (
     <DashboardDrawerV2
       open={open}
       onClose={onClose}
-      title={topic.title}
-      description={topic.description}
-      eyebrow="دليل الاستخدام"
+      title={t(displayTopic.title)}
+      description={t(displayTopic.description)}
+      eyebrow={t("دليل الاستخدام")}
       size="sm"
       side="end"
       footer={
         <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={onClose}>
-          فهمت
+          {t("فهمت")}
         </button>
       }
     >
       <div className="dsv2-stack">
         <WorkspaceNoticeV2
-          title="ما الغرض من هذا القسم؟"
-          description={topic.purpose}
+          title={t("ما الغرض من هذا القسم؟")}
+          description={t(displayTopic.purpose)}
           tone="neutral"
         />
 
-        {topic.useWhen || topic.notFor ? (
-          <WorkspaceCardV2 title="متى أستخدم هذا القسم؟" description="حدد الحالة الصحيحة قبل إجراء أي تعديل.">
+        {displayTopic.useWhen || displayTopic.notFor ? (
+          <WorkspaceCardV2 title={t("متى أستخدم هذا القسم؟")} description={t("حدد الحالة الصحيحة قبل إجراء أي تعديل.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              {topic.useWhen ? (
-                <WorkspaceNoticeV2 title="استخدمه عندما" description={topic.useWhen} tone="success" />
+              {displayTopic.useWhen ? (
+                <WorkspaceNoticeV2 title={t("استخدمه عندما")} description={t(displayTopic.useWhen)} tone="success" />
               ) : null}
-              {topic.notFor ? (
-                <WorkspaceNoticeV2 title="لا تستخدمه من أجل" description={topic.notFor} tone="gold" />
+              {displayTopic.notFor ? (
+                <WorkspaceNoticeV2 title={t("لا تستخدمه من أجل")} description={t(displayTopic.notFor)} tone="gold" />
               ) : null}
             </div>
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.example ? (
-          <WorkspaceCardV2 title="مثال عملي" description="مثال مبسط يوضح المدخلات والنتيجة داخل النظام.">
+        {displayTopic.example ? (
+          <WorkspaceCardV2 title={t("مثال عملي")} description={t("مثال مبسط يوضح المدخلات والنتيجة داخل النظام.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              <WorkspaceNoticeV2 title={topic.example.title} description={topic.example.situation} tone="neutral" />
-              <WorkspaceNoticeV2 title="ما الذي تفعله؟" description={topic.example.action} tone="gold" />
-              <WorkspaceNoticeV2 title="النتيجة" description={topic.example.result} tone="success" />
+              <WorkspaceNoticeV2 title={t(displayTopic.example.title)} description={t(displayTopic.example.situation)} tone="neutral" />
+              <WorkspaceNoticeV2 title={t("ما الذي تفعله؟")} description={t(displayTopic.example.action)} tone="gold" />
+              <WorkspaceNoticeV2 title={t("النتيجة")} description={t(displayTopic.example.result)} tone="success" />
             </div>
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.steps?.length ? (
-          <WorkspaceCardV2 title="طريقة الاستخدام" description="اتبع الخطوات بالترتيب لتجنب تضارب الإعدادات.">
+        {displayTopic.steps?.length ? (
+          <WorkspaceCardV2 title={t("طريقة الاستخدام")} description={t("اتبع الخطوات بالترتيب لتجنب تضارب الإعدادات.")}>
             <div className="dsv2-stack dsv2-stack--sm">
-              {topic.steps.map((step, index) => (
+              {displayTopic.steps.map((step, index) => (
                 <WorkspaceNoticeV2
-                  key={`${topic.title}-${index}`}
-                  title={`${index + 1}. ${step.title}`}
-                  description={step.description}
+                  key={`${displayTopic.title}-${index}`}
+                  title={`${index + 1}. ${t(step.title)}`}
+                  description={t(step.description)}
                   tone="neutral"
                 />
               ))}
@@ -266,8 +316,8 @@ export function WorkspaceHelpDrawerV2({
           </WorkspaceCardV2>
         ) : null}
 
-        {topic.important ? (
-          <WorkspaceNoticeV2 title="مهم" description={topic.important} tone="gold" />
+        {displayTopic.important ? (
+          <WorkspaceNoticeV2 title={t("مهم")} description={t(displayTopic.important)} tone="gold" />
         ) : null}
       </div>
     </DashboardDrawerV2>
@@ -283,11 +333,12 @@ export function WorkspaceTableV2({
   rows: readonly (readonly ReactNode[])[];
   emptyText?: string;
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <div className="dsv2-table-scroll dsv2-ew-table-wrap">
       <table className="dsv2-table dsv2-ew-table">
         <thead>
-          <tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr>
+          <tr>{headers.map((header) => <th key={header}>{t(header)}</th>)}</tr>
         </thead>
         <tbody>
           {rows.length ? rows.map((row, rowIndex) => (
@@ -296,7 +347,7 @@ export function WorkspaceTableV2({
             </tr>
           )) : (
             <tr>
-              <td colSpan={headers.length} className="dsv2-ew-table__empty">{emptyText}</td>
+              <td colSpan={headers.length} className="dsv2-ew-table__empty">{t(emptyText)}</td>
             </tr>
           )}
         </tbody>
@@ -316,11 +367,12 @@ export function WorkspaceNoticeV2({
   tone?: "gold" | "warning" | "success" | "danger" | "neutral";
   action?: ReactNode;
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <aside className="dsv2-ew-notice" data-tone={tone}>
       <div>
-        <strong>{title}</strong>
-        <p>{description}</p>
+        <strong>{t(title)}</strong>
+        <p>{t(description)}</p>
       </div>
       {action ? <div className="dsv2-ew-notice__action">{action}</div> : null}
     </aside>
@@ -332,23 +384,24 @@ export function WorkspaceStateShowcaseV2({
 }: {
   compact?: boolean;
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <div className="dsv2-ew-state-grid" data-compact={compact ? "true" : "false"}>
-      <article className="dsv2-ew-skeleton" aria-label="نموذج التحميل">
+      <article className="dsv2-ew-skeleton" aria-label={t("نموذج التحميل")}>
         <DashboardSkeletonV2 variant="title" width="54%" />
         <DashboardSkeletonV2 lines={compact ? 2 : 3} />
         <DashboardSkeletonV2 variant="block" height={compact ? 54 : 82} />
-        <span className="dsv2-sr-only">جارٍ تحميل بيانات التبويب</span>
+        <span className="dsv2-sr-only">{t("جارٍ تحميل بيانات التبويب")}</span>
       </article>
       <DashboardEmptyStateV2
-        title="لا توجد بيانات بعد"
-        description="تظهر هنا البيانات عند إضافتها أو توفرها للموظفة."
+        title={t("لا توجد بيانات بعد")}
+        description={t("تظهر هنا البيانات عند إضافتها أو توفرها للموظفة.")}
         tone="gold"
       />
       <DashboardErrorStateV2
-        title="تعذر تحميل القسم"
-        description="احتفظنا بالبيانات الحالية. أعد المحاولة بعد التحقق من الاتصال."
-        details="تعذر جلب البيانات التجريبية"
+        title={t("تعذر تحميل القسم")}
+        description={t("احتفظنا بالبيانات الحالية. أعد المحاولة بعد التحقق من الاتصال.")}
+        details={t("تعذر جلب البيانات التجريبية")}
       />
     </div>
   );
@@ -367,6 +420,7 @@ export function WorkspaceTabHeaderV2({
   helpTopic?: WorkspaceHelpTopicV2 | null;
   hideHelp?: boolean;
 }) {
+  const { t, tr } = useEmployeeLanguage();
   const [helpOpen, setHelpOpen] = useState(false);
   const hasManualHelp = containsWorkspaceHelpButtonV2(badge);
   const resolvedHelpTopic = hideHelp || hasManualHelp
@@ -379,9 +433,9 @@ export function WorkspaceTabHeaderV2({
     <>
       <header className="dsv2-ew-tab-head">
         <div>
-          <span className="dsv2-ew-tab-head__eyebrow">ملف الموظفة الداخلي</span>
-          <h2>{title}</h2>
-          <p>{description}</p>
+          <span className="dsv2-ew-tab-head__eyebrow">{t("ملف الموظفة الداخلي")}</span>
+          <h2>{t(title)}</h2>
+          <p>{t(description)}</p>
         </div>
         {badge || resolvedHelpTopic ? (
           <div className="dsv2-ew-tab-head__badge">
@@ -389,7 +443,7 @@ export function WorkspaceTabHeaderV2({
               {badge}
               {resolvedHelpTopic ? (
                 <WorkspaceHelpButtonV2
-                  label={`شرح ${title}`}
+                  label={tr(`شرح ${title}`, `Explain ${t(title)}`)}
                   onClick={() => setHelpOpen(true)}
                 />
               ) : null}
@@ -417,6 +471,7 @@ export function WorkspaceChoicePillsV2({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useEmployeeLanguage();
   return (
     <div className="dsv2-ew-pills" role="group">
       {options.map((option) => (
@@ -428,7 +483,7 @@ export function WorkspaceChoicePillsV2({
           disabled={disabled}
           onClick={() => onChange(option.value)}
         >
-          {option.label}
+          {t(option.label)}
         </button>
       ))}
     </div>

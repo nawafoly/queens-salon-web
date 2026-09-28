@@ -18,6 +18,7 @@ import {
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 type EmployeeRequestsSectionProps = {
   isVisible: boolean;
@@ -56,11 +57,11 @@ function toMillis(value: unknown) {
   return 0;
 }
 
-function formatDate(value: unknown) {
+function formatDate(value: unknown, language: "ar" | "en" = "ar") {
   const raw = cleanText(value);
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     const [year, month, day] = raw.split("-");
-    return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+    return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
       year: "numeric",
       month: "long",
       day: "2-digit",
@@ -68,17 +69,17 @@ function formatDate(value: unknown) {
   }
   const ms = toMillis(value);
   if (!ms) return raw || "-";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     year: "numeric",
     month: "long",
     day: "2-digit",
   }).format(new Date(ms));
 }
 
-function formatDateTime(value: unknown) {
+function formatDateTime(value: unknown, language: "ar" | "en" = "ar") {
   const ms = toMillis(value);
   if (!ms) return "لم يسجل بعد";
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", {
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "ar-SA-u-nu-latn", {
     month: "long",
     day: "2-digit",
     hour: "2-digit",
@@ -120,11 +121,11 @@ function scopeForStatus(status: EmployeeLeaveRequest["status"]): RequestScope {
   return "pending";
 }
 
-function formatRange(request: EmployeeLeaveRequest) {
+function formatRange(request: EmployeeLeaveRequest, language: "ar" | "en" = "ar") {
   const from = cleanText(request.fromDate) || "-";
   const to = cleanText(request.toDate) || from;
-  const fromLabel = formatDate(from);
-  const toLabel = formatDate(to);
+  const fromLabel = formatDate(from, language);
+  const toLabel = formatDate(to, language);
   return from === to ? fromLabel : `${fromLabel} — ${toLabel}`;
 }
 
@@ -153,6 +154,7 @@ export default function EmployeeRequestsSection({
   reviewerName,
   canManage,
 }: EmployeeRequestsSectionProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [rows, setRows] = useState<EmployeeLeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState("");
@@ -194,8 +196,8 @@ export default function EmployeeRequestsSection({
       return;
     }
 
-    const actionLabel = nextStatus === "approved" ? "قبول" : nextStatus === "rejected" ? "رفض" : "إلغاء";
-    const ok = confirm(`تأكيد ${actionLabel} الطلب؟${adminNote ? `\nملاحظة الإدارة: ${adminNote}` : ""}`);
+    const actionLabel = nextStatus === "approved" ? t("قبول") : nextStatus === "rejected" ? t("رفض") : t("إلغاء");
+    const ok = confirm(tr(`تأكيد ${actionLabel} الطلب؟${adminNote ? `\nملاحظة الإدارة: ${adminNote}` : ""}`, `Confirm ${actionLabel} request?${adminNote ? `\nManagement note: ${adminNote}` : ""}`));
     if (!ok) return;
 
     setSavingId(request.id);
@@ -208,11 +210,11 @@ export default function EmployeeRequestsSection({
         {
           reviewerUid: uid,
           reviewerName:
-            reviewerName || "الإدارة",
+            reviewerName || t("الإدارة"),
           hrNote: adminNote,
         }
       );
-      setMessage(nextStatus === "approved" ? "تم قبول الطلب." : nextStatus === "rejected" ? "تم رفض الطلب." : "تم إلغاء الطلب.");
+      setMessage(nextStatus === "approved" ? t("تم قبول الطلب.") : nextStatus === "rejected" ? t("تم رفض الطلب.") : t("تم إلغاء الطلب."));
       await load();
     } catch (err) {
       console.warn("employee request decision failed", err);
@@ -237,24 +239,24 @@ export default function EmployeeRequestsSection({
       <WorkspaceTabHeaderV2
         title="الطلبات"
         description="مراجعة الطلبات والمرفقات والملاحظات الإدارية وسجل الإجراءات."
-        badge={<WorkspaceStatusBadgeV2 tone={state === "error" ? "danger" : pendingCount ? "gold" : "success"}>{state === "loading" ? "جاري التحميل" : state === "error" ? "تعذر التحميل" : pendingCount ? `${pendingCount} طلبات معلقة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={state === "error" ? "danger" : pendingCount ? "gold" : "success"}>{state === "loading" ? t("جاري التحميل") : state === "error" ? t("تعذر التحميل") : pendingCount ? tr(`${pendingCount} طلبات معلقة`, `${pendingCount} pending requests`) : t("جاهزة")}</WorkspaceStatusBadgeV2>}
       />
 
-      {error && rows.length ? <WorkspaceNoticeV2 title="تعذر تحديث الطلبات" description="احتفظنا بالطلبات الحالية. أعد المحاولة بعد التحقق من الاتصال." tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
-      {message ? <WorkspaceNoticeV2 title="تم تحديث الطلب" description={message} tone="success" /> : null}
+      {error && rows.length ? <WorkspaceNoticeV2 title="تعذر تحديث الطلبات" description={t("احتفظنا بالطلبات الحالية. أعد المحاولة بعد التحقق من الاتصال.")} tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>{t("إعادة المحاولة")}</button>} /> : null}
+      {message ? <WorkspaceNoticeV2 title="تم تحديث الطلب" description={t(message)} tone="success" /> : null}
 
       <WorkspaceCardV2 title="تصفية الطلبات" description="اختيار حالة الطلب للعرض فقط، أما حالة البيانات فتظهر تلقائيًا.">
         <div className="dsv2-ew-form-grid">
-          <DashboardFieldV2 id="dsv2-ew-request-scope-live" label="حالة الطلب">
+          <DashboardFieldV2 id="dsv2-ew-request-scope-live" label={t("حالة الطلب")}>
             <DashboardSelectV2
               id="dsv2-ew-request-scope-live"
               value={scope}
               options={[
-                { value: "pending", label: "المعلقة" },
-                { value: "accepted", label: "المقبولة" },
-                { value: "rejected", label: "المرفوضة" },
-                { value: "cancelled", label: "الملغية" },
-                { value: "all", label: "كل الطلبات" },
+                { value: "pending", label: t("المعلقة") },
+                { value: "accepted", label: t("المقبولة") },
+                { value: "rejected", label: t("المرفوضة") },
+                { value: "cancelled", label: t("الملغية") },
+                { value: "all", label: t("كل الطلبات") },
               ]}
               onChange={(value) => setScope(value as RequestScope)}
             />
@@ -264,7 +266,7 @@ export default function EmployeeRequestsSection({
 
       {state === "loading" ? (
         <WorkspaceCardV2 title="جاري تحميل الطلبات" description="يتم جلب طلبات الموظفة الفعلية.">
-          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل طلبات الموظفة">
+          <article className="dsv2-ew-skeleton" aria-label={t("جاري تحميل طلبات الموظفة")}>
             <DashboardSkeletonV2 variant="title" width="46%" />
             <DashboardSkeletonV2 lines={3} />
             <DashboardSkeletonV2 variant="block" height={84} />
@@ -273,38 +275,38 @@ export default function EmployeeRequestsSection({
       ) : state === "error" ? (
         <WorkspaceNoticeV2
           title="تعذر تحميل الطلبات"
-          description="احتفظنا بالطلبات الحالية إن وجدت. أعد المحاولة بعد التحقق من الاتصال."
+          description={t("احتفظنا بالطلبات الحالية إن وجدت. أعد المحاولة بعد التحقق من الاتصال.")}
           tone="danger"
-          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>{t("إعادة المحاولة")}</button>}
         />
       ) : state === "empty" ? (
-        <WorkspaceCardV2 title={scopeTitle(scope)} description="لا توجد طلبات مطابقة للبيانات الحالية.">
+        <WorkspaceCardV2 title={t(scopeTitle(scope))} description={t("لا توجد طلبات مطابقة للبيانات الحالية.")}>
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
-            <strong>لا توجد طلبات</strong>
-            <span>ستظهر طلبات الموظفة هنا تلقائياً عند وصولها أو عند تغيير فلتر الحالة.</span>
+            <strong>{tr("لا توجد طلبات", "No requests")}</strong>
+            <span>{tr("ستظهر طلبات الموظفة هنا تلقائياً عند وصولها أو عند تغيير فلتر الحالة.", "Staff requests will appear here automatically when received or when the status filter changes.")}</span>
           </div>
         </WorkspaceCardV2>
       ) : (
-        <WorkspaceCardV2 title={scopeTitle(scope)} description={`${filteredRows.length} طلبات في الحالة المحددة.`}>
+        <WorkspaceCardV2 title={t(scopeTitle(scope))} description={tr(`${filteredRows.length} طلبات في الحالة المحددة.`, `${filteredRows.length} requests in the selected status.`)}>
           <WorkspaceTableV2
             headers={["الرقم", "النوع", "تاريخ التقديم", "الفترة المطلوبة", "السبب", "المرفقات", "الإجراءات"]}
             emptyText="لا توجد طلبات في هذه الحالة."
             rows={filteredRows.map((request, index) => [
               <strong>{requestNumber(request, index)}</strong>,
-              typeLabel(request.type),
-              formatDate(request.createdAt || request.fromDate),
-              formatRange(request),
+              t(typeLabel(request.type)),
+              formatDate(request.createdAt || request.fromDate, language),
+              formatRange(request, language),
               request.note || "-",
-              "بدون مرفقات",
+              t("بدون مرفقات"),
               <div className="dsv2-cluster">
-                <WorkspaceStatusBadgeV2 tone={statusTone(request.status)}>{statusLabel(request.status)}</WorkspaceStatusBadgeV2>
+                <WorkspaceStatusBadgeV2 tone={statusTone(request.status)}>{t(statusLabel(request.status))}</WorkspaceStatusBadgeV2>
                 {request.status === "pending" || !request.status ? (
                   <>
-                    <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "approved")}>قبول</button>
-                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "rejected")}>رفض</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "approved")}>{t("قبول")}</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "rejected")}>{t("رفض")}</button>
                   </>
                 ) : request.status === "approved" ? (
-                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "cancelled")}>إلغاء</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "cancelled")}>{t("إلغاء")}</button>
                 ) : null}
               </div>,
             ])}
@@ -314,11 +316,11 @@ export default function EmployeeRequestsSection({
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2 title="ملاحظات الإدارة" description="ملاحظة مرتبطة بآخر إجراء على الطلب.">
-          <DashboardFieldV2 id="dsv2-ew-request-note-live" label="الملاحظة">
+          <DashboardFieldV2 id="dsv2-ew-request-note-live" label={t("الملاحظة")}>
             <textarea
               id="dsv2-ew-request-note-live"
               className="dsv2-textarea"
-              placeholder="اكتب سبب القبول أو الرفض أو أي توجيه للموظفة..."
+              placeholder={t("اكتب سبب القبول أو الرفض أو أي توجيه للموظفة...")}
               value={adminNote}
               disabled={!canManage}
               onChange={(event) => setAdminNote(event.target.value)}
@@ -327,9 +329,9 @@ export default function EmployeeRequestsSection({
         </WorkspaceCardV2>
         <WorkspaceCardV2 title="سجل الإجراءات" description="تسلسل زمني لا يمكن تعديله.">
           <ol className="dsv2-ew-timeline">
-            <li><span>{formatDateTime(rows[0]?.createdAt)}</span><strong>تم تقديم آخر طلب</strong><small>{employeeName || "بواسطة الموظفة"}</small></li>
-            <li><span>{formatDateTime(rows[0]?.updatedAt)}</span><strong>تم تحديث السجل</strong><small>بواسطة الموارد البشرية</small></li>
-            <li><span>{pendingCount ? "بانتظار الإجراء" : "مكتمل"}</span><strong>قرار الإدارة</strong><small>{pendingCount ? "لم يُسجل بعد" : "لا توجد طلبات معلقة"}</small></li>
+            <li><span>{formatDateTime(rows[0]?.createdAt, language)}</span><strong>{tr("تم تقديم آخر طلب", "Latest request submitted")}</strong><small>{employeeName || t("بواسطة الموظفة")}</small></li>
+            <li><span>{formatDateTime(rows[0]?.updatedAt, language)}</span><strong>{tr("تم تحديث السجل", "Record updated")}</strong><small>{tr("بواسطة الموارد البشرية", "By Human Resources")}</small></li>
+            <li><span>{pendingCount ? t("بانتظار الإجراء") : t("مكتمل")}</span><strong>{tr("قرار الإدارة", "Management decision")}</strong><small>{pendingCount ? t("لم يُسجل بعد") : t("لا توجد طلبات معلقة")}</small></li>
           </ol>
         </WorkspaceCardV2>
       </div>

@@ -92,6 +92,8 @@ import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection"
 import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
+import type { DashboardLanguage } from "../helpers/dashboardLanguage";
+import { EmployeeLanguageProvider, useEmployeeLanguage } from "./dashboardEmployees/employeeLanguage";
 import {
   DashboardConfirmV2,
   DashboardDatePickerV2,
@@ -1742,6 +1744,7 @@ function verifyEmployeeSaveSnapshot(
 }
 
 function DashboardEmployeesContent() {
+  const { language, direction, t, tr } = useEmployeeLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const employeeRouteMatch = /^\/dashboard\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
@@ -1800,11 +1803,11 @@ function DashboardEmployeesContent() {
         setConfirmDialog({
           title: options.title,
           description: options.description,
-          confirmLabel: options.confirmLabel || "نعم، متابعة",
+          confirmLabel: options.confirmLabel || t("نعم، متابعة"),
           tone: options.tone || "danger",
         });
       }),
-    [],
+    [t],
   );
 
   const resolveConfirmation = useCallback((confirmed: boolean) => {
@@ -1819,25 +1822,25 @@ function DashboardEmployeesContent() {
     if (!errorMsg) return;
 
     pushToast({
-      title: "تعذر إكمال العملية",
-      description: errorMsg,
+      title: t("تعذر إكمال العملية"),
+      description: t(errorMsg),
       tone: "danger",
     });
 
     setErrorMsg("");
-  }, [errorMsg, pushToast]);
+  }, [errorMsg, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
 
     pushToast({
-      title: "تمت العملية بنجاح",
-      description: saveMessage,
+      title: t("تمت العملية بنجاح"),
+      description: t(saveMessage),
       tone: "success",
     });
 
     setSaveMessage("");
-  }, [saveMessage, pushToast]);
+  }, [saveMessage, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
@@ -6895,11 +6898,14 @@ const canonicalSchedules =
     !!(selectedEmployee as any)?.onLeave && !selectedEmployeeLeaveExpired;
   const selectedEmployeeStatusLabel = selectedEmployeeOnLeave
     ? selectedEmployeeLeaveUntil
-      ? `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
-      : "في إجازة"
+      ? tr(
+          `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`,
+          `On leave until ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
+        )
+      : t("في إجازة")
     : selectedEmployee?.active
-      ? "نشطة"
-      : "غير نشطة";
+      ? t("نشطة")
+      : t("غير نشطة");
   const selectedEmployeeStatusClass = selectedEmployeeOnLeave
     ? "warn"
     : selectedEmployee?.active
@@ -8809,37 +8815,37 @@ const canonicalSchedules =
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
-        { key: "stats", label: "الإحصائيات والإجازات" },
+        { key: "basic", label: t("البيانات الأساسية") },
+        { key: "booking", label: t("الحجز والدوام") },
+        { key: "services", label: t("الخدمات") },
+        { key: "profile", label: t("الملف") },
+        { key: "stats", label: t("الإحصائيات والإجازات") },
       ]
     : [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
+        { key: "basic", label: t("البيانات الأساسية") },
+        { key: "booking", label: t("الحجز والدوام") },
+        { key: "services", label: t("الخدمات") },
+        { key: "profile", label: t("الملف") },
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
-    { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
-    { key: "profile", label: "الملفات والصور", hint: "الصورة والمستندات والمرفقات والسجل", icon: faFileLines },
-    { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
-    { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
+    { key: "basic", label: t("البيانات الأساسية"), hint: t("الاسم والحالة والظهور"), icon: faUserTie },
+    { key: "profile", label: t("الملفات والصور"), hint: t("الصورة والمستندات والمرفقات والسجل"), icon: faFileLines },
+    { key: "services", label: t("الخدمات"), hint: t("الخدمات المسندة للموظفة"), icon: faInbox },
+    { key: "booking", label: t("الدوام والشفتات"), hint: t("الجدول والقوالب والسياسات"), icon: faClock },
     ...(canViewAttendance
-      ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
+      ? [{ key: "attendance" as EmployeeSplitTab, label: t("الحضور"), hint: t("السجل اليومي"), icon: faCalendarCheck }]
       : []),
     ...(canViewPayroll
-      ? [{ key: "payroll" as EmployeeSplitTab, label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave }]
+      ? [{ key: "payroll" as EmployeeSplitTab, label: t("سجل الرواتب"), hint: t("القفل والحساب"), icon: faMoneyBillWave }]
       : []),
     ...(canManageLeaveBalance
       ? [
-          { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
-          { key: "leave" as EmployeeSplitTab, label: "رصيد الإجازات", hint: "الحالة والرصيد والسجل", icon: faCalendarCheck },
+          { key: "requests" as EmployeeSplitTab, label: t("الطلبات"), hint: t("طلبات الموظفة"), icon: faInbox },
+          { key: "leave" as EmployeeSplitTab, label: t("رصيد الإجازات"), hint: t("الحالة والرصيد والسجل"), icon: faCalendarCheck },
         ]
       : []),
     ...(canViewEmployeeMessages
-      ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
+      ? [{ key: "messages" as EmployeeSplitTab, label: t("الرسائل"), hint: t("التواصل الداخلي"), icon: faEnvelope }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
@@ -9766,10 +9772,10 @@ const canonicalSchedules =
 
   if (!authUser) {
     return (
-      <div className="dsv2-page dsv2-employees-page">
+      <div className="dsv2-page dsv2-employees-page" dir={direction}>
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">غير مصرح</h2>
-          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
+          <h2 className="dsv2-section-title">{t("غير مصرح")}</h2>
+          <p className="dsv2-section-caption">{t("سجّل دخول ثم جرّب مرة أخرى.")}</p>
         </section>
       </div>
 
@@ -9778,10 +9784,10 @@ const canonicalSchedules =
 
   if (!canAccessEmployeesDashboard) {
     return (
-      <div className="dsv2-page dsv2-employees-page">
+      <div className="dsv2-page dsv2-employees-page" dir={direction}>
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
-          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
+          <h2 className="dsv2-section-title">{t("صلاحيات غير كافية")}</h2>
+          <p className="dsv2-section-caption">{t("هذه الصفحة مخصصة للإدارة.")}</p>
         </section>
       </div>
     );
@@ -9789,7 +9795,7 @@ const canonicalSchedules =
 
   const openCreateEmployee = () => {
     if (!canCreateEmployees) {
-      setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
+      setErrorMsg(t("ليست لديك صلاحية لإضافة موظفات."));
       return;
     }
     setSaveMessage("");
@@ -9909,6 +9915,7 @@ const canonicalSchedules =
 
   return (
     <div
+      dir={direction}
       className={`dsv2-page dsv2-employees-page ${
         isEmployeeProfileRoute
           ? "dsv2-employees-page--profile"
@@ -9918,15 +9925,15 @@ const canonicalSchedules =
       <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label={t("إدارة الموظفات")}>
               <div className="employees-v2-page-heading">
                 <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
-                  الموارد البشرية
+                  {t("الموارد البشرية")}
                 </span>
-                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
+                <h1 className="dsv2-page-title">{t("إدارة الموظفات")}</h1>
                 <p className="dsv2-page-subtitle">
-                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
+                  {t("إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.")}
                 </p>
               </div>
 
@@ -9934,7 +9941,7 @@ const canonicalSchedules =
                 {canCreateEmployees ? (
                   <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
-                    إضافة موظفة
+                    {t("إضافة موظفة")}
                   </button>
                 ) : null}
                 <button
@@ -9944,31 +9951,31 @@ const canonicalSchedules =
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  تحديث البيانات
+                  {t("تحديث البيانات")}
                 </button>
               </div>
             </header>
 
-            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label={t("إحصاءات الموظفات")}>
               <article className="dsv2-metric-card dsv2-metric-card--dark">
-                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
+                <p className="dsv2-metric-card__label">{t("إجمالي الملفات")}</p>
                 <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
+                <p className="dsv2-metric-card__meta">{t("كل الملفات المتاحة حسب الصلاحية")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--success">
-                <p className="dsv2-metric-card__label">على رأس العمل</p>
+                <p className="dsv2-metric-card__label">{t("على رأس العمل")}</p>
                 <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
+                <p className="dsv2-metric-card__meta">{t("نشطات ولسن في إجازة")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--gold">
-                <p className="dsv2-metric-card__label">في إجازة</p>
+                <p className="dsv2-metric-card__label">{t("في إجازة")}</p>
                 <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
+                <p className="dsv2-metric-card__meta">{t("إجازة حالية من سجل الموظفة")}</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--danger">
-                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
+                <p className="dsv2-metric-card__label">{t("تحتاج متابعة")}</p>
                 <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
+                <p className="dsv2-metric-card__meta">{t("غير نشطة أو بدون خدمات أو ملف غير مكتمل")}</p>
               </article>
             </section>
           </>
@@ -9999,8 +10006,8 @@ const canonicalSchedules =
             <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
               <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
-                <strong>جاري فتح ملف الموظفة...</strong>
-                <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
+                <strong>{t("جاري فتح ملف الموظفة...")}</strong>
+                <p>{t("يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.")}</p>
               </div>
             </section>
           ) : null}
@@ -10216,8 +10223,8 @@ const canonicalSchedules =
               <DashboardModalV2
                 open={Boolean(offboardingEmployee)}
                 onClose={closeOffboardingModal}
-                title="إنهاء خدمة الموظفة"
-                description={offboardingEmployee ? `إنهاء خدمة ${offboardingEmployee.name || offboardingEmployee.id}` : ""}
+                title={t("إنهاء خدمة الموظفة")}
+                description={offboardingEmployee ? tr(`إنهاء خدمة ${offboardingEmployee.name || offboardingEmployee.id}`, `End employment for ${offboardingEmployee.name || offboardingEmployee.id}`) : ""}
                 eyebrow="Employee Offboarding"
                 size="md"
                 tone="danger"
@@ -10226,21 +10233,21 @@ const canonicalSchedules =
                 footer={
                   <>
                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-workflow-reference" onClick={closeOffboardingModal} disabled={saving}>
-                      إلغاء
+                      {t("إلغاء")}
                     </button>
                     <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => void submitOffboarding()} disabled={saving}>
-                      {saving ? "جارٍ إنهاء الخدمة..." : "تأكيد إنهاء الخدمة"}
+                      {saving ? t("جارٍ إنهاء الخدمة...") : t("تأكيد إنهاء الخدمة")}
                     </button>
                   </>
                 }
               >
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2">
-                  <DashboardFieldV2 id="employee-offboarding-end-date" label="آخر يوم عمل" required>
+                  <DashboardFieldV2 id="employee-offboarding-end-date" label={t("آخر يوم عمل")} required>
                     <DashboardDatePickerV2
                       id="employee-offboarding-end-date"
                       value={offboardingEndDate}
                       max={todayIso()}
-                      placeholder="اختر آخر يوم عمل"
+                      placeholder={t("اختر آخر يوم عمل")}
                       clearable={false}
                       disabled={saving}
                       onChange={setOffboardingEndDate}
@@ -10248,10 +10255,10 @@ const canonicalSchedules =
                   </DashboardFieldV2>
                   <DashboardFieldV2
                     id="employee-offboarding-reason"
-                    label="سبب إنهاء الخدمة"
+                    label={t("سبب إنهاء الخدمة")}
                     required
                     className="dsv2-ew-form-wide"
-                    hint="لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا."
+                    hint={t("لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا.")}
                   >
                     <textarea
                       id="employee-offboarding-reason"
@@ -10262,16 +10269,22 @@ const canonicalSchedules =
                       rows={4}
                     />
                   </DashboardFieldV2>
-                  {offboardingError ? <p className="dsv2-ew-form-wide dsv2-field__error">{offboardingError}</p> : null}
+                  {offboardingError ? <p className="dsv2-ew-form-wide dsv2-field__error">{t(offboardingError)}</p> : null}
                   {offboardingBookingBlocker ? (
                     <div className="dsv2-ew-form-wide dsv2-alert dsv2-alert--danger">
                       <strong>
                         {offboardingBookingBlocker.kind === "future"
-                          ? `توجد ${offboardingBookingBlocker.count} حجوزات تشغيلية قادمة تحتاج إعادة تعيين.`
-                          : `توجد ${offboardingBookingBlocker.count} حجوزات/أنشطة بعد تاريخ النهاية وتحتاج مراجعة يدوية.`}
+                          ? tr(
+                              `توجد ${offboardingBookingBlocker.count} حجوزات تشغيلية قادمة تحتاج إعادة تعيين.`,
+                              `There are ${offboardingBookingBlocker.count} upcoming operational bookings that must be reassigned.`
+                            )
+                          : tr(
+                              `توجد ${offboardingBookingBlocker.count} حجوزات/أنشطة بعد تاريخ النهاية وتحتاج مراجعة يدوية.`,
+                              `There are ${offboardingBookingBlocker.count} bookings or activities after the end date that require manual review.`
+                            )}
                       </strong>
                       {offboardingBookingBlocker.bookingIds.length ? (
-                        <p>المراجع: {offboardingBookingBlocker.bookingIds.join("، ")}</p>
+                        <p>{t("المراجع:")} {offboardingBookingBlocker.bookingIds.join(language === "en" ? ", " : "، ")}</p>
                       ) : null}
                     </div>
                   ) : null}
@@ -10284,13 +10297,13 @@ const canonicalSchedules =
                   (canCreateAttendance || canUpdateAttendance || canDeleteAttendance)
                 }
                 onClose={closeAttendancePunchEditor}
-                title="تعديل البصمة"
+                title={t("تعديل البصمة")}
                 description={
                   attendanceEditDate
-                    ? `تعديل سجل الحضور ليوم ${attendanceEditDate}`
-                    : "تعديل سجل الحضور والانصراف"
+                    ? tr(`تعديل سجل الحضور ليوم ${attendanceEditDate}`, `Edit attendance record for ${attendanceEditDate}`)
+                    : t("تعديل سجل الحضور والانصراف")
                 }
-                eyebrow="الحضور والانصراف"
+                eyebrow={t("الحضور والانصراف")}
                 size="md"
                 className="attendance-punch-editor-modal-v2"
                 closeOnBackdrop={!saving}
@@ -10299,8 +10312,8 @@ const canonicalSchedules =
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-in"
-                    label="وقت الحضور"
-                    hint="اختاري ساعة ودقيقة الحضور فقط."
+                    label={t("وقت الحضور")}
+                    hint={t("اختاري ساعة ودقيقة الحضور فقط.")}
                   >
                     <div className="emp-attendance-edit-time-control-v2">
                       <DashboardTimeInputV2 id="employee-attendance-edit-check-in" className="dsv2-input" step={300} clock="12h" value={ attendanceEditCheckIn ? attendanceEditCheckIn.slice(11, 16) : "" } onChange={(event) => setAttendanceEditCheckIn( event.target.value ? `${attendanceEditDate}T${event.target.value}` : "" ) } disabled={saving} />
@@ -10312,7 +10325,7 @@ const canonicalSchedules =
                           onClick={() => setAttendanceEditCheckIn("")}
                           disabled={saving}
                         >
-                          مسح الوقت
+                          {t("مسح الوقت")}
                         </button>
                       ) : null}
                     </div>
@@ -10320,13 +10333,13 @@ const canonicalSchedules =
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-out"
-                    label="وقت الانصراف"
+                    label={t("وقت الانصراف")}
                     hint={
                       attendanceEditCheckIn &&
                       attendanceEditCheckOut &&
                       attendanceEditCheckOut.slice(11, 16) <= attendanceEditCheckIn.slice(11, 16)
-                        ? "سيُحسب الانصراف على اليوم التالي لنفس شفت العمل. إذا كان بعد منتصف الليل اختاري (ص)."
-                        : "يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                        ? tr("سيُحسب الانصراف على اليوم التالي لنفس شفت العمل. إذا كان بعد منتصف الليل اختاري (ص).", "Check-out will be counted on the next calendar day for the same shift. For after-midnight times, choose AM.")
+                        : t("يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا.")
                     }
                   >
                     <div className="emp-attendance-edit-time-control-v2">
@@ -10339,7 +10352,7 @@ const canonicalSchedules =
                           onClick={() => setAttendanceEditCheckOut("")}
                           disabled={saving}
                         >
-                          مسح الوقت
+                          {t("مسح الوقت")}
                         </button>
                       ) : null}
                     </div>
@@ -10347,8 +10360,8 @@ const canonicalSchedules =
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-note"
-                    label="ملاحظة الإدارة"
-                    hint="يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة."
+                    label={t("ملاحظة الإدارة")}
+                    hint={t("يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة.")}
                     className="dsv2-ew-form-wide"
                   >
                     <textarea
@@ -10359,7 +10372,7 @@ const canonicalSchedules =
                         setAttendanceEditNote(event.target.value)
                       }
                       disabled={saving}
-                      placeholder="مثال: تصحيح بصمة من الإدارة"
+                      placeholder={t("مثال: تصحيح بصمة من الإدارة")}
                       rows={4}
                     />
                   </DashboardFieldV2>
@@ -10371,7 +10384,7 @@ const canonicalSchedules =
                                       onClick={closeAttendancePunchEditor}
                                       disabled={saving}
                                     >
-                                      إلغاء
+                                      {t("إلغاء")}
                                     </button>
                                     <button
                                       type="button"
@@ -10379,7 +10392,7 @@ const canonicalSchedules =
                                       onClick={() => void saveAttendancePunchEditor()}
                                       disabled={saving}
                                     >
-                                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                                      {saving ? t("جارٍ الحفظ...") : t("حفظ تعديل البصمة")}
                                     </button>
                                   </div>
               </DashboardModalV2>
@@ -10393,8 +10406,8 @@ const canonicalSchedules =
                 employmentStartDate={employmentStartDate}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
-                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
-                    : "لا توجد إجازة أسبوعية ثابتة."
+                    ? modalExceptionalLeaveWeekdays.map((day) => t(WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day)).join(language === "en" ? ", " : "، ")
+                    : t("لا توجد إجازة أسبوعية ثابتة.")
                 }
                 onNameChange={setName}
                 onActiveChange={setActive}
@@ -10547,12 +10560,12 @@ const canonicalSchedules =
         open={Boolean(confirmDialog)}
         onClose={() => resolveConfirmation(false)}
         onConfirm={() => resolveConfirmation(true)}
-        title={confirmDialog?.title || ""}
-        description={confirmDialog?.description}
+        title={t(confirmDialog?.title || "")}
+        description={confirmDialog?.description ? t(confirmDialog.description) : undefined}
         tone={confirmDialog?.tone || "danger"}
-        confirmLabel={confirmDialog?.confirmLabel || "نعم، متابعة"}
-        cancelLabel="تراجع"
-        pendingLabel="جارٍ التنفيذ..."
+        confirmLabel={t(confirmDialog?.confirmLabel || "نعم، متابعة")}
+        cancelLabel={t("تراجع")}
+        pendingLabel={t("جارٍ التنفيذ...")}
         closeOnBackdrop={!busy}
       />
 
@@ -10561,10 +10574,16 @@ const canonicalSchedules =
   );
 }
 
-export default function DashboardEmployees() {
+export default function DashboardEmployees({
+  language = "ar",
+}: {
+  language?: DashboardLanguage;
+}) {
   return (
-    <DashboardToastProviderV2 position="top-center">
-      <DashboardEmployeesContent />
-    </DashboardToastProviderV2>
+    <EmployeeLanguageProvider language={language}>
+      <DashboardToastProviderV2 position="top-center">
+        <DashboardEmployeesContent />
+      </DashboardToastProviderV2>
+    </EmployeeLanguageProvider>
   );
 }

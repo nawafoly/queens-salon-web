@@ -104,3 +104,78 @@ test("post-save editor fingerprint baseline clears false dirty state", () => {
     /postSaveBaselineMatchesEmployee[\s\S]*employeeProfilePostSaveBaseline\.fingerprint !==[\s\S]*employeeProfileEditorFingerprint/
   );
 });
+
+test("Staff Management carries dashboard language through HR and employee workspace", () => {
+  const dashboard = read("src/pages/Dashboard.tsx");
+  const hr = read("src/pages/AdminHrDashboard.tsx");
+  const employees = read("src/pages/DashboardEmployees.tsx");
+  const directory = read("src/pages/dashboardEmployees/EmployeeListPanel.tsx");
+  const profile = read("src/pages/dashboardEmployees/EmployeeProfilePageLayout.tsx");
+  const monthPicker = read(
+    "src/components/dashboard-v2/employee-workspace/live/EmployeeAttendanceCalendarAlignedLiveV2.tsx"
+  );
+  const primitives = read(
+    "src/components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2.tsx"
+  );
+
+  assert.match(
+    dashboard,
+    /<AdminHrDashboard\s+embedded\s+language=\{dashboardLanguage\}\s*\/>/
+  );
+  assert.match(
+    hr,
+    /<DashboardEmployees\s+language=\{language\}\s*\/>/
+  );
+  assert.match(
+    hr,
+    /const workspaceDirection = isEmployeesRoute && language === "en" \? "ltr" : "rtl"/
+  );
+  assert.match(
+    employees,
+    /<EmployeeLanguageProvider\s+language=\{language\}>/
+  );
+  assert.match(employees, /dir=\{direction\}/);
+  assert.match(directory, /dir=\{direction\}/);
+  assert.match(profile, /dir=\{direction\}/);
+  assert.match(monthPicker, /useEmployeeLanguage\(\)/);
+  assert.match(monthPicker, /aria-label=\{t\("اختيار شهر الحضور"\)\}/);
+  assert.match(primitives, /buildEnglishWorkspaceHelpTopicV2/);
+  assert.match(
+    primitives,
+    /language === "en" \? buildEnglishWorkspaceHelpTopicV2\(topic, t\) : topic/
+  );
+});
+
+test("Staff Management has centralized static and dynamic English translation coverage", () => {
+  const language = read("src/pages/dashboardEmployees/employeeLanguage.tsx");
+  const dashboardLanguage = read("src/helpers/dashboardLanguage.ts");
+
+  assert.match(language, /const employeeEnglish: Record<string, string>/);
+  assert.match(language, /function employeeDynamicEnglishText/);
+  assert.match(language, /dashboardText\(language, arabic\)/);
+  assert.match(dashboardLanguage, /"إدارة الموظفات":\s*"Staff management"/);
+  assert.match(language, /"البيانات الأساسية":\s*"Basic information"/);
+  assert.match(language, /"الدوام والشفتات":\s*"Schedule & shifts"/);
+  assert.match(language, /"الحضور":\s*"Attendance"/);
+  assert.match(language, /"سجل الرواتب":\s*"Payroll record"/);
+  assert.match(language, /"الطلبات":\s*"Requests"/);
+  assert.match(language, /"الرسائل":\s*"Messages"/);
+  assert.match(language, /"ملفات الموظفات"|"المستندات والسجل"/);
+  assert.match(language, /On leave until/);
+  assert.match(language, /pending requests/);
+  assert.match(language, /Missing hours/);
+});
+
+test("Staff Management translation dictionary stays unique and direct actions stay localized", () => {
+  const language = read("src/pages/dashboardEmployees/employeeLanguage.tsx");
+  const operational = read(
+    "src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx"
+  );
+
+  const keys = [...language.matchAll(/^\s*"((?:[^"\\]|\\.)+)":/gm)].map((match) => match[1]);
+  assert.equal(new Set(keys).size, keys.length, "employeeEnglish contains duplicate translation keys");
+
+  assert.doesNotMatch(operational, />\s*تحديث النطاقات\s*</);
+  assert.match(operational, /\{t\("تحديث النطاقات"\)\}/);
+});
+

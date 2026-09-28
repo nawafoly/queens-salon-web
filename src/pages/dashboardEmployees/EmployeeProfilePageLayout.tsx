@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRight, faUserSlash } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faArrowRight, faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import { createPortal } from "react-dom";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
@@ -9,16 +9,18 @@ import {
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
+  const { language, direction, t, tr } = useEmployeeLanguage();
   if (!props.isOpen || !props.editId || !props.editingStaff) return null;
 
   const employeeName = String(props.editingStaff.name || props.name || "").trim();
   const serviceCount = normalizeSpecialties(props.editingStaff.specialties).length;
   const tabs = props.detailTabs || [];
   const activeTab = tabs.find((tab) => tab.key === props.activeTab);
-  const activeLabel = activeTab?.label || "البيانات الأساسية";
-  const activeHint = activeTab?.hint || "إدارة بيانات الموظفة";
+  const activeLabel = activeTab?.label || t("البيانات الأساسية");
+  const activeHint = activeTab?.hint || t("إدارة بيانات الموظفة");
   const hasUnsavedChanges = props.canManage && !!props.hasUnsavedChanges;
   const showSavebar = props.canManage && (hasUnsavedChanges || props.saving);
 
@@ -47,11 +49,11 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         <div className="dsv2-ew-savebar__status">
           <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
           <div>
-            <strong>{props.saving ? "جاري حفظ التغييرات" : "توجد تعديلات غير محفوظة"}</strong>
+            <strong>{props.saving ? t("جاري حفظ التغييرات") : t("توجد تعديلات غير محفوظة")}</strong>
             <small>
               {props.saving
-                ? "يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي."
-                : "اضغط حفظ التغييرات لتثبيت القيم الحالية."}
+                ? t("يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي.")
+                : t("اضغط حفظ التغييرات لتثبيت القيم الحالية.")}
             </small>
           </div>
         </div>
@@ -64,7 +66,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
             disabled={props.saving || !showSavebar}
             data-dsv2-ignore-dirty="true"
           >
-            إلغاء التعديلات
+            {t("إلغاء التعديلات")}
           </button>
 
           {showSavebar ? (
@@ -75,7 +77,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
               disabled={props.saving}
               data-dsv2-ignore-dirty="true"
             >
-              {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+              {props.saving ? t("جاري الحفظ...") : t("حفظ التغييرات")}
             </button>
           ) : null}
         </div>
@@ -90,13 +92,13 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
   return (
     <section
       className="dsv2-employee-workspace employees-v2-profile employees-v2-profile--workspace"
-      dir="rtl"
-      aria-label={`ملف الموظفة ${employeeName || "موظفة"}`}
+      dir={direction}
+      aria-label={tr(`ملف الموظفة ${employeeName || "موظفة"}`, `Staff profile ${employeeName || "Staff member"}`)}
     >
-      <nav className="employees-v2-breadcrumb" aria-label="مسار التنقل">
-        <button type="button" onClick={props.onClose}>الموظفات</button>
+      <nav className="employees-v2-breadcrumb" aria-label={t("مسار التنقل")}>
+        <button type="button" onClick={props.onClose}>{t("الموظفات")}</button>
         <span>/</span>
-        <b>{employeeName || "موظفة"}</b>
+        <b>{employeeName || t("موظفة")}</b>
         <span>/</span>
         <strong>{activeLabel}</strong>
       </nav>
@@ -106,53 +108,53 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
           <EmployeeAvatar
             className="dsv2-ew-avatar employees-v2-profile__avatar"
             src={props.editingStaff.avatarUrl}
-            name={employeeName || "موظفة"}
-            alt={employeeName ? `صورة ${employeeName}` : "صورة الموظفة"}
+            name={employeeName || t("موظفة")}
+            alt={employeeName ? tr(`صورة ${employeeName}`, `${employeeName} photo`) : t("صورة الموظفة")}
             loading="eager"
           />
 
           <div>
             <div className="dsv2-ew-profile-head__name-row">
-              <h2>{employeeName || "موظفة"}</h2>
+              <h2>{employeeName || t("موظفة")}</h2>
               {props.selectedEmployeeStatusLabel ? (
                 <WorkspaceStatusBadgeV2 tone="success">
                   {props.selectedEmployeeStatusLabel}
                 </WorkspaceStatusBadgeV2>
               ) : null}
-              {!props.canManage ? <WorkspaceStatusBadgeV2>عرض فقط</WorkspaceStatusBadgeV2> : null}
+              {!props.canManage ? <WorkspaceStatusBadgeV2>{t("عرض فقط")}</WorkspaceStatusBadgeV2> : null}
             </div>
 
             <div className="dsv2-ew-profile-head__meta">
-              <span>ملف موظفة فعلي</span>
-              <span>{serviceCount > 0 ? `${serviceCount} خدمة مرتبطة` : "بدون خدمات مرتبطة"}</span>
+              <span>{t("ملف موظفة فعلي")}</span>
+              <span>{serviceCount > 0 ? tr(`${serviceCount} خدمة مرتبطة`, `${serviceCount} linked services`) : t("بدون خدمات مرتبطة")}</span>
               <span>{activeLabel}</span>
             </div>
           </div>
         </div>
 
-        <div className="dsv2-ew-profile-head__summary" aria-label="ملخص الموظفة">
+        <div className="dsv2-ew-profile-head__summary" aria-label={t("ملخص الموظفة")}>
           <WorkspaceMetricV2
-            label="الحالة"
-            value={props.selectedEmployeeStatusLabel || "غير محددة"}
+            label={t("الحالة")}
+            value={props.selectedEmployeeStatusLabel || t("غير محددة")}
             tone="success"
           />
           <WorkspaceMetricV2
-            label="الخدمات"
+            label={t("الخدمات")}
             value={serviceCount}
-            note="خدمة مرتبطة"
+            note={t("خدمة مرتبطة")}
             tone="gold"
           />
           <WorkspaceMetricV2
-            label="القسم الحالي"
+            label={t("القسم الحالي")}
             value={activeLabel}
-            note="بيانات فعلية"
+            note={t("بيانات فعلية")}
           />
         </div>
       </header>
 
       <div className="dsv2-ew-intro employees-v2-profile__workspace-intro">
         <div>
-          <span className="dsv2-ew-intro__eyebrow">مساحة الموظفة</span>
+          <span className="dsv2-ew-intro__eyebrow">{t("مساحة الموظفة")}</span>
           <h1>{activeLabel}</h1>
           <p>{activeHint}</p>
         </div>
@@ -167,18 +169,18 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
               data-dsv2-ignore-dirty="true"
             >
               <FontAwesomeIcon icon={faUserSlash} />
-              إنهاء الخدمة
+              {t("إنهاء الخدمة")}
             </button>
           ) : null}
 
           <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={props.onClose}>
-            <FontAwesomeIcon icon={faArrowRight} />
-            العودة إلى الموظفات
+            <FontAwesomeIcon icon={language === "en" ? faArrowLeft : faArrowRight} />
+            {t("العودة إلى الموظفات")}
           </button>
         </div>
       </div>
 
-      <nav className="dsv2-ew-tabs" role="tablist" aria-label="أقسام ملف الموظفة">
+      <nav className="dsv2-ew-tabs" role="tablist" aria-label={t("أقسام ملف الموظفة")}>
         {tabs.map((tab, index) => {
           const isActive = props.activeTab === tab.key;
           return (

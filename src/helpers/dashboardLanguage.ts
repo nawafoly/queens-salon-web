@@ -90,6 +90,8 @@ export const dashboardEnglish: Record<string, string> = {
   "البروفايل": "Profile",
   "فتح الملف الشخصي": "Open profile",
   "جاري تحميل بيانات القسم...": "Loading section data...",
+  "جاري فتح إدارة الموظفات...": "Opening Staff Management...",
+  "يتم تحميل مساحة الموظفات فقط دون إعادة تحميل ملخص الموارد البشرية.": "Loading the staff workspace without reloading the HR overview.",
   "جاري تحميل تنقل لوحة التحكم": "Loading dashboard navigation",
   "مستخدم": "User",
   "لوحة التشغيل اليومية": "Daily operations",

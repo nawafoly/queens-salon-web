@@ -2861,7 +2861,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             ) : null}
             <div className="dashboard-inner">
               {isHrWorkspacePage ? (
-                <AdminHrDashboard embedded />
+                <AdminHrDashboard embedded language={dashboardLanguage} />
               ) : (
               <Routes>
                 <Route index element={<Navigate to="/dashboard/overview" replace />} />

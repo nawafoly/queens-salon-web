@@ -21,6 +21,7 @@ import {
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
 } from "../EmployeeWorkspacePrimitivesV2";
+import { useEmployeeLanguage } from "../../../../pages/dashboardEmployees/employeeLanguage";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -729,12 +730,13 @@ export function EmployeeScheduleTabLiveV2({
   onScheduleChangeReasonChange,
   onReloadAttendanceZones,
 }: EmployeeScheduleTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const openDays = workingDays.filter((day) => day.enabled).length;
   const closedDays = workingDays.length - openDays;
   const templateOptions = shiftTemplates.map((template) => ({
     value: template.id,
-    label: `${template.name} — ${cleanText(template.startTime) || "--:--"} إلى ${cleanText(template.endTime) || "--:--"}`,
+    label: `${template.name} — ${cleanText(template.startTime) || "--:--"} ${language === "en" ? "to" : "إلى"} ${cleanText(template.endTime) || "--:--"}`,
   }));
 
   return (
@@ -744,14 +746,14 @@ export function EmployeeScheduleTabLiveV2({
         description="اختر لكل يوم قالب شفت أو راحة أسبوعية. أوقات وسياسات الدوام تُسحب تلقائيًا من القالب الموجود في نفس الصفحة."
         badge={
           <div className="dsv2-cluster">
-            <WorkspaceStatusBadgeV2 tone="success">مرتبط بالشفتات</WorkspaceStatusBadgeV2>
+            <WorkspaceStatusBadgeV2 tone="success">{tr("مرتبط بالشفتات", "Linked to shifts")}</WorkspaceStatusBadgeV2>
             <WorkspaceHelpButtonV2 label="شرح الدوام والشفتات" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.overview)} />
           </div>
         }
       />
 
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="أيام العمل" value={openDays} tone="success" />
+        <WorkspaceMetricV2 label={t("أيام العمل")} value={openDays} tone="success" />
         <WorkspaceMetricV2 label="أيام الراحة الأسبوعية" value={closedDays} tone={closedDays ? "gold" : "neutral"} />
         <WorkspaceMetricV2 label="قوالب الشفتات" value={shiftTemplates.length} tone={shiftTemplates.length ? "success" : "danger"} />
         <WorkspaceMetricV2 label="نطاق الحضور" value={selectedAttendanceZoneId ? "محدد" : "غير محدد"} tone={selectedAttendanceZoneId ? "success" : "danger"} />
@@ -809,7 +811,7 @@ export function EmployeeScheduleTabLiveV2({
             <>
               <WorkspaceHelpButtonV2 label="شرح نطاق الحضور" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.attendanceZone)} />
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={attendanceZonesLoading} onClick={onReloadAttendanceZones}>
-                تحديث النطاقات
+                {t("تحديث النطاقات")}
               </button>
             </>
           }
@@ -819,9 +821,9 @@ export function EmployeeScheduleTabLiveV2({
               id="employee-live-v2-attendance-zone"
               value={selectedAttendanceZoneId || ""}
               disabled={readOnly || attendanceZonesLoading}
-              placeholder={attendanceZonesLoading ? "جاري التحميل" : "اختر النطاق"}
+              placeholder={attendanceZonesLoading ? t("جاري التحميل") : t("اختر النطاق")}
               options={[
-                { value: "", label: "بدون نطاق محدد" },
+                { value: "", label: t("بدون نطاق محدد") },
                 ...attendanceZones.map((zone) => ({
                   value: zone.id,
                   label: cleanText(zone.name || zone.label || zone.id),
@@ -866,23 +868,23 @@ export function EmployeeScheduleTabLiveV2({
               <article key={day.key} className="dsv2-ew-week-card" data-open={day.enabled ? "true" : "false"}>
                 <header>
                   <strong>{day.label}</strong>
-                  <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? "يوم عمل" : "راحة أسبوعية"}</WorkspaceStatusBadgeV2>
+                  <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? t("يوم عمل") : t("راحة أسبوعية")}</WorkspaceStatusBadgeV2>
                 </header>
                 <WorkspaceSwitchV2
                   checked={day.enabled}
                   disabled={readOnly}
-                  label="يوم عمل"
+                  label={t("يوم عمل")}
                   onChange={(checked) => {
                     onUseCustomWorkingHoursChange(true);
                     onWorkingDayChange(day.key, { enabled: checked });
                   }}
                 />
-                <DashboardFieldV2 id={`employee-live-v2-${day.key}-shift`} label="الشفت">
+                <DashboardFieldV2 id={`employee-live-v2-${day.key}-shift`} label={t("الشفت")}>
                   <DashboardSelectV2
                     id={`employee-live-v2-${day.key}-shift`}
                     value={day.shiftTemplateId}
                     options={templateOptions}
-                    placeholder={shiftTemplatesLoading ? "جاري تحميل الشفتات" : "اختر الشفت"}
+                    placeholder={shiftTemplatesLoading ? t("جاري تحميل الشفتات") : t("اختر الشفت")}
                     disabled={readOnly || !day.enabled || shiftTemplatesLoading || !shiftTemplates.length}
                     onChange={(shiftTemplateId) => {
                       const template = shiftTemplates.find((item) => item.id === shiftTemplateId);
@@ -898,14 +900,14 @@ export function EmployeeScheduleTabLiveV2({
                 </DashboardFieldV2>
                 {day.enabled && selectedTemplate ? (
                   <WorkspaceNoticeV2
-                    title={`${cleanText(selectedTemplate.startTime) || "--:--"} إلى ${cleanText(selectedTemplate.endTime) || "--:--"}`}
-                    description={`مرونة الحضور ${Number(selectedTemplate.lateGraceMinutes || 0)} دقيقة. ${selectedTemplate.attendanceLockEnabled ? `تُغلق بصمة الحضور بعد ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} دقيقة.` : "إغلاق البصمة غير مفعّل."}`}
+                    title={`${cleanText(selectedTemplate.startTime) || "--:--"} ${language === "en" ? "to" : "إلى"} ${cleanText(selectedTemplate.endTime) || "--:--"}`}
+                    description={tr(`مرونة الحضور ${Number(selectedTemplate.lateGraceMinutes || 0)} دقيقة. ${selectedTemplate.attendanceLockEnabled ? `تُغلق بصمة الحضور بعد ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} دقيقة.` : "إغلاق البصمة غير مفعّل."}`, `Late grace ${Number(selectedTemplate.lateGraceMinutes || 0)} min. ${selectedTemplate.attendanceLockEnabled ? `Attendance locks after ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} min.` : "Attendance lock is disabled."}`)}
                     tone="neutral"
                   />
                 ) : null}
                 {day.enabled ? (
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !day.shiftTemplateId} onClick={() => onCopyWorkingDayToAll(day.key)}>
-                    نسخ الشفت لكل أيام العمل
+                    {tr("نسخ الشفت لكل أيام العمل", "Copy shift to all working days")}
                   </button>
                 ) : null}
               </article>
@@ -1007,6 +1009,7 @@ export function EmployeeAttendanceTabLiveV2({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: EmployeeAttendanceTabLiveV2Props) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [detailDrawerDate, setDetailDrawerDate] = useState("");
   const normalizedMonth = clampMonthKeyToEmployment(monthKey, employmentStartDate, employmentEndDate);
   const todayKey = getLocalDateKey();
@@ -1104,7 +1107,14 @@ export function EmployeeAttendanceTabLiveV2({
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
-  const monthOptions = buildMonthOptions(normalizedMonth).filter((option) => option.value === clampMonthKeyToEmployment(option.value, employmentStartDate, employmentEndDate));
+  const monthOptions = buildMonthOptions(normalizedMonth)
+    .filter((option) => option.value === clampMonthKeyToEmployment(option.value, employmentStartDate, employmentEndDate))
+    .map((option) => ({
+      ...option,
+      label: language === "en"
+        ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${option.value}-01T00:00:00.000Z`))
+        : option.label,
+    }));
   const serviceStartDate = safeDateKey(employmentStartDate);
   const serviceEndDate = safeDateKey(employmentEndDate);
   const serviceBoundaryLoadedCount = serviceStartDate || serviceEndDate ? 1 : 0;
@@ -1191,7 +1201,7 @@ export function EmployeeAttendanceTabLiveV2({
       <WorkspaceTabHeaderV2
         title="الحضور"
         description="عرض وتعديل سجل الحضور من مكوّن V2 مستقل."
-        badge={<WorkspaceStatusBadgeV2 tone={badgeTone}>{badgeLabel}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={badgeTone}>{t(badgeLabel)}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
@@ -1204,18 +1214,24 @@ export function EmployeeAttendanceTabLiveV2({
       {cleanText(error) && loadedDataCount ? (
         <WorkspaceNoticeV2
           title="تعذر تحديث سجل الحضور"
-          description={error}
+          description={t(error)}
           tone="danger"
-          action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
+          action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("إعادة المحاولة")}</button>}
         />
       ) : null}
 
       {serviceStartDate ? (
         <WorkspaceNoticeV2
-          title={`فترة الخدمة المعروضة تبدأ من ${formatAttendanceDate(serviceStartDate)}`}
+          title={tr(
+            `فترة الخدمة المعروضة تبدأ من ${formatAttendanceDate(serviceStartDate)}`,
+            `Displayed service period starts on ${formatAttendanceDate(serviceStartDate)}`
+          )}
           description={serviceEndDate
-            ? `الأيام السابقة لتاريخ المباشرة والأيام بعد ${formatAttendanceDate(serviceEndDate)} خارج نطاق الحضور والغياب.`
-            : "الأيام السابقة لتاريخ المباشرة لا تدخل في الحضور أو الغياب."}
+            ? tr(
+                `الأيام السابقة لتاريخ المباشرة والأيام بعد ${formatAttendanceDate(serviceEndDate)} خارج نطاق الحضور والغياب.`,
+                `Days before the employment start date and after ${formatAttendanceDate(serviceEndDate)} are outside attendance and absence calculations.`
+              )
+            : t("الأيام السابقة لتاريخ المباشرة لا تدخل في الحضور أو الغياب.")}
           tone="neutral"
         />
       ) : null}
@@ -1225,7 +1241,7 @@ export function EmployeeAttendanceTabLiveV2({
         description="اختر الشهر، ثم اضغط على أي يوم من التقويم لعرض تفاصيله."
       >
         <div className="dsv2-ew-form-grid">
-          <DashboardFieldV2 id="employee-live-v2-attendance-month" label="الشهر">
+          <DashboardFieldV2 id="employee-live-v2-attendance-month" label={t("الشهر")}>
             <DashboardSelectV2
               id="employee-live-v2-attendance-month"
               value={normalizedMonth}
@@ -1242,15 +1258,15 @@ export function EmployeeAttendanceTabLiveV2({
         description="المصدر الفعلي حسب أولوية: إجازة، استثناء، شفت محدد، جدول الموظفة، ثم دوام الصالون."
       >
         <div className="dsv2-ew-metrics">
-          <WorkspaceMetricV2 label="المصدر" value={effectiveShiftInfo?.sourceLabel || "غير محدد"} note={effectiveShiftInfo?.sourceDetail || "يتم تحديده تلقائياً من البيانات"} tone={effectiveShiftTone} />
+          <WorkspaceMetricV2 label="المصدر" value={effectiveShiftInfo?.sourceLabel ? t(effectiveShiftInfo.sourceLabel) : t("غير محدد")} note={effectiveShiftInfo?.sourceDetail ? t(effectiveShiftInfo.sourceDetail) : t("يتم تحديده تلقائياً من البيانات")} tone={effectiveShiftTone} />
           <WorkspaceMetricV2 label="الوقت الفعلي" value={effectiveShiftInfo?.timeLabel || "-"} tone="dark" />
-          <WorkspaceMetricV2 label="الحالة" value={effectiveShiftInfo?.statusLabel || "غير محدد"} tone={effectiveShiftTone} />
+          <WorkspaceMetricV2 label="الحالة" value={effectiveShiftInfo?.statusLabel ? t(effectiveShiftInfo.statusLabel) : t("غير محدد")} tone={effectiveShiftTone} />
         </div>
       </WorkspaceCardV2>
 
       {viewState === "loading" ? (
         <WorkspaceCardV2 title="جاري تحميل الحضور" description="يتم تحميل سجلات الحضور الفعلية لهذا الشهر.">
-          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل سجل حضور الموظفة">
+          <article className="dsv2-ew-skeleton" aria-label={t("جاري تحميل سجل حضور الموظفة")}>
             <DashboardSkeletonV2 variant="title" width="46%" />
             <DashboardSkeletonV2 lines={3} />
             <DashboardSkeletonV2 variant="block" height={140} />
@@ -1259,25 +1275,25 @@ export function EmployeeAttendanceTabLiveV2({
       ) : viewState === "error" ? (
         <WorkspaceNoticeV2
           title="تعذر تحميل سجل الحضور"
-          description={error || "تعذر تحميل سجل حضور الموظفة. أعد المحاولة بعد التحقق من الاتصال."}
+          description={error ? t(error) : t("تعذر تحميل سجل حضور الموظفة. أعد المحاولة بعد التحقق من الاتصال.")}
           tone="danger"
-          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("إعادة المحاولة")}</button>}
         />
       ) : viewState === "empty" ? (
         <WorkspaceCardV2
-          title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
+          title={tr(`تقويم ${formatMonthLabel(normalizedMonth)}`, `Calendar — ${monthOptions.find((option) => option.value === normalizedMonth)?.label || normalizedMonth}`)}
           description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد."
           actions={
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{tr("اليوم", "Today")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
             </div>
           }
           className="dsv2-ew-attendance-calendar-card"
         >
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
-            <strong>لا توجد سجلات لهذا الشهر</strong>
-            <span>ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.</span>
+            <strong>{t("لا توجد سجلات لهذا الشهر")}</strong>
+            <span>{t("ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.")}</span>
           </div>
         </WorkspaceCardV2>
       ) : null}
@@ -1286,30 +1302,30 @@ export function EmployeeAttendanceTabLiveV2({
         <>
           <div className="dsv2-ew-attendance-board">
             <WorkspaceCardV2
-              title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
+              title={tr(`تقويم ${formatMonthLabel(normalizedMonth)}`, `Calendar — ${monthOptions.find((option) => option.value === normalizedMonth)?.label || normalizedMonth}`)}
               description="اضغطي على أي يوم مسجل لفتح تفاصيله."
               actions={
                 <div className="dsv2-cluster">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{tr("اليوم", "Today")}</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
                 </div>
               }
               className="dsv2-ew-attendance-calendar-card"
             >
-              <div className="dsv2-ew-calendar-legend" aria-label={"\u062f\u0644\u064a\u0644 \u0623\u0644\u0648\u0627\u0646 \u0627\u0644\u062a\u0642\u0648\u064a\u0645"}>
-                <span data-status="حضور"><i />حضور</span>
-                <span data-status="تأخير"><i />تأخير</span>
-                <span data-status="نقص ساعات"><i />نقص ساعات</span>
-                <span data-status="غير مكتمل"><i />غير مكتمل</span>
-                <span data-status="غياب"><i />غياب</span>
-                <span data-status="دوام في راحة أسبوعية"><i />دوام في راحة</span>
-                <span data-leave-type="weekly_rest"><i />{"\u0631\u0627\u062d\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629"}</span>
-                <span data-leave-type="compensatory"><i />{"\u0625\u062c\u0627\u0632\u0629 \u062a\u0639\u0648\u064a\u0636\u064a\u0629"}</span>
-                <span data-leave-type="annual"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0633\u0646\u0648\u064a\u0629"}</span>
-                <span data-leave-type="exceptional"><i />{"\u0625\u062c\u0627\u0632\u0629 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a\u0629"}</span>
+              <div className="dsv2-ew-calendar-legend" aria-label={t("دليل ألوان التقويم")}>
+                <span data-status="حضور"><i />{t("الحضور")}</span>
+                <span data-status="تأخير"><i />{t("تأخير")}</span>
+                <span data-status="نقص ساعات"><i />{t("نقص ساعات")}</span>
+                <span data-status="غير مكتمل"><i />{t("غير مكتمل")}</span>
+                <span data-status="غياب"><i />{t("غياب")}</span>
+                <span data-status="دوام في راحة أسبوعية"><i />{t("دوام في راحة")}</span>
+                <span data-leave-type="weekly_rest"><i />{t("راحة أسبوعية")}</span>
+                <span data-leave-type="compensatory"><i />{t("إجازة تعويضية")}</span>
+                <span data-leave-type="annual"><i />{t("إجازة سنوية")}</span>
+                <span data-leave-type="exceptional"><i />{t("إجازة استثنائية")}</span>
               </div>
               <div className="dsv2-ew-calendar-head" aria-hidden="true">
-                {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
+                {(language === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : AR_WEEKDAY_SHORT).map((day) => <span key={day}>{day}</span>)}
               </div>
               <div className="dsv2-ew-calendar dsv2-ew-attendance-month-grid">
                 {calendarDays.map((day) => (
@@ -1329,13 +1345,13 @@ export function EmployeeAttendanceTabLiveV2({
                     onDoubleClick={() => day.interactive && openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
-                    <span>{attendanceCalendarDisplayStatus(day) || "-"}</span>
+                    <span>{attendanceCalendarDisplayStatus(day) ? t(attendanceCalendarDisplayStatus(day)) : "-"}</span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
-                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "فترة الاستئذان"}
+                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || t("فترة الاستئذان")}
                       </em>
                     ) : day.specialDay && day.specialDay.label !== day.status ? (
-                      <em className="dsv2-ew-calendar__special">{day.specialDay.label}</em>
+                      <em className="dsv2-ew-calendar__special">{t(day.specialDay.label)}</em>
                     ) : null}
                     <small>{day.timeLabel}</small>
                   </button>
@@ -1350,73 +1366,73 @@ export function EmployeeAttendanceTabLiveV2({
             >
               <div className="dsv2-ew-day-detail">
                 <div className="dsv2-ew-day-detail__status">
-                  <span>{attendanceReviewText(selectedStatus, selectedRow)}</span>
+                  <span>{t(attendanceReviewText(selectedStatus, selectedRow))}</span>
                   <WorkspaceStatusBadgeV2 tone={attendanceStatusTone(selectedStatus)}>
-                    {selectedStatus}
+                    {t(selectedStatus)}
                   </WorkspaceStatusBadgeV2>
                   {selectedSpecialDay && selectedSpecialDay.label !== selectedStatus ? (
                     <WorkspaceStatusBadgeV2 tone="gold">
-                      {selectedSpecialDay.label}
+                      {t(selectedSpecialDay.label)}
                     </WorkspaceStatusBadgeV2>
                   ) : null}
                 </div>
 
                 <dl className="dsv2-ew-day-fields">
                   <div>
-                    <dt>وقت الدخول</dt>
+                    <dt>{t("وقت الدخول")}</dt>
                     <dd>{formatAttendanceTime(selectedRow?.checkInAtClient) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>وقت الخروج</dt>
+                    <dt>{t("وقت الخروج")}</dt>
                     <dd>{formatAttendanceTime(selectedRow?.checkOutAtClient) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>الشفت الفعلي</dt>
+                    <dt>{t("الشفت الفعلي")}</dt>
                     <dd>
                       {selectedShiftWindow || "-"}
                       {selectedRow?.shiftName ? ` · ${selectedRow.shiftName}` : ""}
                     </dd>
                   </div>
                   <div>
-                    <dt>مصدر الشفت</dt>
+                    <dt>{t("مصدر الشفت")}</dt>
                     <dd>{selectedShiftSource || "-"}</dd>
                   </div>
                   <div>
-                    <dt>حالة الشفت</dt>
+                    <dt>{t("حالة الشفت")}</dt>
                     <dd>{selectedShiftStatus || "-"}</dd>
                   </div>
                   <div>
-                    <dt>سماحية التأخير</dt>
+                    <dt>{t("سماحية التأخير")}</dt>
                     <dd>{Number(selectedRow?.lateGraceMinutes || 0) ? `${formatNumber(selectedRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                   </div>
                   <div>
-                    <dt>الموقع</dt>
+                    <dt>{t("الموقع")}</dt>
                     <dd>{cleanText(selectedRow?.workZoneName) || "-"}</dd>
                   </div>
                   <div>
-                    <dt>السجلات</dt>
+                    <dt>{t("السجلات")}</dt>
                     <dd>{selectedRow?.recordCount ? `${formatNumber(selectedRow.recordCount)} بصمة` : "-"}</dd>
                   </div>
                   <div>
-                    <dt>الملاحظات</dt>
+                    <dt>{t("الملاحظات")}</dt>
                     <dd>{cleanText(selectedRow?.notes) || "-"}</dd>
                   </div>
                 </dl>
 
                 <div className="dsv2-ew-action-grid">
                   <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !activeSelectedDate} onClick={() => activeSelectedDate && onEditPunch(activeSelectedDate)}>
-                    تعديل البصمة
+                    {t("تعديل البصمة")}
                   </button>
                   <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={readOnly || !canDelete || !selectedRow?.date} onClick={() => selectedRow?.date && onDeletePunch(selectedRow.date)}>
-                    حذف البصمة
+                    {t("حذف البصمة")}
                   </button>
                   {selectedHasApprovedLeave ? (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !activeSelectedDate} onClick={() => activeSelectedDate && onCancelLeave?.(activeSelectedDate)}>
-                      {selectedSpecialDay?.kind === "partial_leave" ? "إلغاء الاستئذان" : "إلغاء الإجازة"}
+                      {selectedSpecialDay?.kind === "partial_leave" ? t("إلغاء الاستئذان") : t("إلغاء الإجازة")}
                     </button>
                   ) : (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
-                      تسجيل إجازة أو استئذان
+                      {t("تسجيل إجازة أو استئذان")}
                     </button>
                   )}
                 </div>
@@ -1427,8 +1443,8 @@ export function EmployeeAttendanceTabLiveV2({
           <DashboardDrawerV2
             open={Boolean(detailDrawerDate)}
             onClose={closeDetailDrawer}
-            title="تفاصيل يوم الحضور"
-            description="عرض البصمات والشفت والموقع والمراجعات."
+            title={t("تفاصيل يوم الحضور")}
+            description={t("عرض البصمات والشفت والموقع والمراجعات.")}
             eyebrow={formatAttendanceDate(drawerDate)}
             size="md"
             side="end"
@@ -1436,10 +1452,10 @@ export function EmployeeAttendanceTabLiveV2({
             footer={
               <>
                 <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !drawerDate} onClick={() => drawerDate && onEditPunch(drawerDate)}>
-                  تعديل البصمة
+                  {t("تعديل البصمة")}
                 </button>
                 <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeDetailDrawer}>
-                  إغلاق
+                  {t("إغلاق")}
                 </button>
               </>
             }
@@ -1453,52 +1469,52 @@ export function EmployeeAttendanceTabLiveV2({
               <WorkspaceTableV2
                 headers={["الحدث", "الوقت", "المصدر", "الحالة"]}
                 rows={[
-                  ["دخول", formatAttendanceTime(drawerRow?.checkInAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="in-status" tone={attendanceStatusTone(drawerStatus)}>{drawerStatus}</WorkspaceStatusBadgeV2>],
-                  ["خروج", formatAttendanceTime(drawerRow?.checkOutAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="out-status" tone={drawerRow?.checkOutAtClient ? "success" : "default"}>{drawerRow?.checkOutAtClient ? "مكتمل" : "غير مسجل"}</WorkspaceStatusBadgeV2>],
+                  [t("دخول"), formatAttendanceTime(drawerRow?.checkInAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="in-status" tone={attendanceStatusTone(drawerStatus)}>{t(drawerStatus)}</WorkspaceStatusBadgeV2>],
+                  [t("خروج"), formatAttendanceTime(drawerRow?.checkOutAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="out-status" tone={drawerRow?.checkOutAtClient ? "success" : "default"}>{drawerRow?.checkOutAtClient ? t("مكتمل") : t("غير مسجل")}</WorkspaceStatusBadgeV2>],
                 ]}
               />
 
               <dl className="dsv2-ew-day-fields">
                 <div>
-                  <dt>الشفت الفعلي</dt>
+                  <dt>{t("الشفت الفعلي")}</dt>
                   <dd>
                     {drawerShiftWindow || "-"}
                     {drawerRow?.shiftName ? ` · ${drawerRow.shiftName}` : ""}
                   </dd>
                 </div>
                 <div>
-                  <dt>مصدر الشفت</dt>
+                  <dt>{t("مصدر الشفت")}</dt>
                   <dd>{drawerShiftSource || "-"}</dd>
                 </div>
                 <div>
-                  <dt>حالة الشفت</dt>
+                  <dt>{t("حالة الشفت")}</dt>
                   <dd>{drawerShiftStatus || "-"}</dd>
                 </div>
                 <div>
-                  <dt>سماحية التأخير</dt>
+                  <dt>{t("سماحية التأخير")}</dt>
                   <dd>{Number(drawerRow?.lateGraceMinutes || 0) ? `${formatNumber(drawerRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                 </div>
                 <div>
-                  <dt>الخروج المبكر</dt>
-                  <dd>يُحسب من أول دقيقة</dd>
+                  <dt>{t("الخروج المبكر")}</dt>
+                  <dd>{t("يُحسب من أول دقيقة")}</dd>
                 </div>
                 <div>
-                  <dt>الموقع</dt>
+                  <dt>{t("الموقع")}</dt>
                   <dd>{cleanText(drawerRow?.workZoneName) || "-"}</dd>
                 </div>
                 <div>
-                  <dt>السجلات</dt>
+                  <dt>{t("السجلات")}</dt>
                   <dd>{drawerRow?.recordCount ? `${formatNumber(drawerRow.recordCount)} بصمة` : "-"}</dd>
                 </div>
                 <div>
-                  <dt>الملاحظات</dt>
+                  <dt>{t("الملاحظات")}</dt>
                   <dd>{cleanText(drawerRow?.notes) || "-"}</dd>
                 </div>
               </dl>
 
               <WorkspaceNoticeV2
                 title="ملاحظة المراجعة"
-                description={attendanceReviewText(drawerStatus, drawerRow)}
+                description={t(attendanceReviewText(drawerStatus, drawerRow))}
                 tone={attendanceSurfaceTone(drawerStatus)}
               />
             </div>
@@ -1511,14 +1527,14 @@ export function EmployeeAttendanceTabLiveV2({
                 const date = cleanText(row.date);
                 return [
                   date || "-",
-                  attendanceRowStatus(row) || "-",
+                  attendanceRowStatus(row) ? t(attendanceRowStatus(row)) : "-",
                   formatAttendanceTime(row.checkInAtClient) || "-",
                   formatAttendanceTime(row.checkOutAtClient) || "-",
                   [cleanText(row.shiftSourceLabel), cleanText(row.scheduledStartTime || row.scheduledEndTime ? `${row.scheduledStartTime || "-"} - ${row.scheduledEndTime || "-"}` : "")].filter(Boolean).join(" · ") || "-",
                   Number(row.lateMinutes || 0) ? `${formatNumber(row.lateMinutes)} د` : "-",
                   <div className="dsv2-cluster" key={`${date}-actions`}>
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>تعديل</button>
-                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>حذف</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>{t("تعديل")}</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>{t("حذف")}</button>
                   </div>,
                 ];
               })}
@@ -1622,6 +1638,7 @@ export function EmployeePayrollTabLiveV2({
   onAttendancePayrollExemptionReasonChange,
   onSaveSettings,
 }: EmployeePayrollTabLiveV2Props) {
+  const { language, t } = useEmployeeLanguage();
   const contractedMonthlySalary =
     positivePayrollAmount(monthlySalary) +
     positivePayrollAmount(housingAllowance) +
@@ -1640,7 +1657,7 @@ export function EmployeePayrollTabLiveV2({
       <WorkspaceTabHeaderV2
         title="سجل الرواتب"
         description="هيكل الراتب، إعدادات الدوام، وتصنيف التأمينات التي يستخدمها مسير الرواتب."
-        badge={<WorkspaceStatusBadgeV2 tone={overtimeEnabled ? "success" : "gold"}>{overtimeEnabled ? "الإضافي مفعّل" : "الإضافي متوقف"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={overtimeEnabled ? "success" : "gold"}>{overtimeEnabled ? t("الإضافي مفعّل") : t("الإضافي متوقف")}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-cluster">
@@ -1650,7 +1667,7 @@ export function EmployeePayrollTabLiveV2({
           disabled={readOnly || savingSettings}
           onClick={onSaveSettings}
         >
-          {savingSettings ? "جاري الحفظ..." : "حفظ إعدادات الراتب والتأمينات"}
+          {savingSettings ? t("جاري الحفظ...") : t("حفظ إعدادات الراتب والتأمينات")}
         </button>
       </div>
 
@@ -1659,33 +1676,33 @@ export function EmployeePayrollTabLiveV2({
         description="الراتب الأساسي والبدلات محفوظة كعناصر مستقلة؛ إجمالي الراتب التعاقدي يُحسب تلقائيًا من مجموعها."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الأساسي">
+          <DashboardFieldV2 id="employee-live-v2-salary" label={t("الراتب الأساسي")}>
             <DashboardNumberInputV2 id="employee-live-v2-salary" className="dsv2-input" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-housing-allowance" label="بدل السكن">
+          <DashboardFieldV2 id="employee-live-v2-housing-allowance" label={t("بدل السكن")}>
             <DashboardNumberInputV2 id="employee-live-v2-housing-allowance" className="dsv2-input" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label="بدل النقل">
+          <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label={t("بدل النقل")}>
             <DashboardNumberInputV2 id="employee-live-v2-transportation-allowance" className="dsv2-input" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-other-allowances" label="بدلات أخرى">
+          <DashboardFieldV2 id="employee-live-v2-other-allowances" label={t("بدلات أخرى")}>
             <DashboardNumberInputV2 id="employee-live-v2-other-allowances" className="dsv2-input" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-work-days" label="أيام العمل">
+          <DashboardFieldV2 id="employee-live-v2-work-days" label={t("أيام العمل")}>
             <DashboardNumberInputV2 id="employee-live-v2-work-days" className="dsv2-input" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-daily-hours" label="ساعات اليوم">
+          <DashboardFieldV2 id="employee-live-v2-daily-hours" label={t("ساعات اليوم")}>
             <DashboardNumberInputV2 id="employee-live-v2-daily-hours" className="dsv2-input" min="0" value={dailyHours} disabled={readOnly} onChange={(event) => onDailyHoursChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-monthly-hours" label="ساعات الشهر">
+          <DashboardFieldV2 id="employee-live-v2-monthly-hours" label={t("ساعات الشهر")}>
             <DashboardNumberInputV2 id="employee-live-v2-monthly-hours" className="dsv2-input" min="0" value={monthlyHours} disabled={readOnly} onChange={(event) => onMonthlyHoursChange(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label="معامل الإضافي">
+          <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label={t("معامل الإضافي")}>
             <DashboardNumberInputV2 id="employee-live-v2-overtime-multiplier" className="dsv2-input" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2
             id="employee-live-v2-attendance-payroll-mode"
-            label="سياسة الحضور للراتب"
+            label={t("سياسة الحضور للراتب")}
           >
             <DashboardSelectV2
               id="employee-live-v2-attendance-payroll-mode"
@@ -1694,11 +1711,11 @@ export function EmployeePayrollTabLiveV2({
               options={[
                 {
                   value: "required",
-                  label: "يعتمد على البصمة",
+                  label: t("يعتمد على البصمة"),
                 },
                 {
                   value: "exempt",
-                  label: "معفى من البصمة — راتب حسب الجدول",
+                  label: t("معفى من البصمة — راتب حسب الجدول"),
                 },
               ]}
               onChange={(value) =>
@@ -1714,14 +1731,14 @@ export function EmployeePayrollTabLiveV2({
           {attendancePayrollMode === "exempt" ? (
             <DashboardFieldV2
               id="employee-live-v2-attendance-exemption-reason"
-              label="سبب الإعفاء"
+              label={t("سبب الإعفاء")}
             >
               <input
                 id="employee-live-v2-attendance-exemption-reason"
                 className="dsv2-input"
                 value={attendancePayrollExemptionReason}
                 disabled={readOnly}
-                placeholder="مثال: موظف إداري / إدارة"
+                placeholder={t("مثال: موظف إداري / إدارة")}
                 onChange={(event) =>
                   onAttendancePayrollExemptionReasonChange(
                     event.target.value
@@ -1741,15 +1758,15 @@ export function EmployeePayrollTabLiveV2({
             </div>
           ) : null}
 
-          <DashboardFieldV2 id="employee-live-v2-deduction" label="طريقة الخصم">
+          <DashboardFieldV2 id="employee-live-v2-deduction" label={t("طريقة الخصم")}>
             <DashboardSelectV2
               id="employee-live-v2-deduction"
               value={deductionMethod}
               disabled={readOnly}
               options={[
-                { value: "daily", label: "حسب اليوم" },
-                { value: "hourly", label: "حسب الساعة" },
-                { value: "none", label: "بدون خصم تلقائي" },
+                { value: "daily", label: t("حسب اليوم") },
+                { value: "hourly", label: t("حسب الساعة") },
+                { value: "none", label: t("بدون خصم تلقائي") },
               ]}
               onChange={onDeductionMethodChange}
             />
@@ -1759,12 +1776,12 @@ export function EmployeePayrollTabLiveV2({
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
             label="إجمالي الراتب التعاقدي"
-            value={formatPayrollMoney(contractedMonthlySalary)}
+            value={`${contractedMonthlySalary.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`}
             tone={contractedMonthlySalary > 0 ? "success" : "neutral"}
           />
           <WorkspaceMetricV2
             label="مكونات الراتب"
-            value="أساسي + سكن + نقل + بدلات أخرى"
+            value={t("أساسي + سكن + نقل + بدلات أخرى")}
           />
         </div>
 
@@ -1783,23 +1800,23 @@ export function EmployeePayrollTabLiveV2({
         description="التصنيف والسياسة محفوظان مع تاريخ السريان؛ الحساب المالي نفسه ينفذه محرك GOSI المركزي عند إنشاء المسير."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-category" label="تصنيف التأمينات">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-category" label={t("تصنيف التأمينات")}>
             <DashboardSelectV2
               id="employee-live-v2-social-insurance-category"
               value={socialInsuranceCategory}
               disabled={readOnly}
               options={[
-                { value: "", label: "غير محدد" },
-                { value: "saudi_existing", label: "سعودي — مشترك بالنظام القائم" },
-                { value: "saudi_new", label: "سعودي — النظام الجديد" },
-                { value: "gcc", label: "خليجي — مد الحماية" },
-                { value: "non_saudi", label: "غير سعودي" },
+                { value: "", label: t("غير محدد") },
+                { value: "saudi_existing", label: t("سعودي — مشترك بالنظام القائم") },
+                { value: "saudi_new", label: t("سعودي — النظام الجديد") },
+                { value: "gcc", label: t("خليجي — مد الحماية") },
+                { value: "non_saudi", label: t("غير سعودي") },
               ]}
               onChange={onSocialInsuranceCategoryChange}
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-effective-from" label="تاريخ سريان التصنيف">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-effective-from" label={t("تاريخ سريان التصنيف")}>
             <DashboardDatePickerV2
               id="employee-live-v2-social-insurance-effective-from"
               value={socialInsuranceEffectiveFrom}
@@ -1809,25 +1826,25 @@ export function EmployeePayrollTabLiveV2({
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-social-insurance-note" label="سبب / ملاحظة التصنيف">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-note" label={t("سبب / ملاحظة التصنيف")}>
             <input
               id="employee-live-v2-social-insurance-note"
               className="dsv2-input"
               value={socialInsuranceClassificationNote}
               disabled={readOnly}
-              placeholder="مثال: حسب سجل الاشتراك أو مستند الموظفة"
+              placeholder={t("مثال: حسب سجل الاشتراك أو مستند الموظفة")}
               onChange={(event) => onSocialInsuranceClassificationNoteChange(event.target.value)}
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="employee-live-v2-gosi-wage-mode" label="طريقة أجر الاشتراك">
+          <DashboardFieldV2 id="employee-live-v2-gosi-wage-mode" label={t("طريقة أجر الاشتراك")}>
             <DashboardSelectV2
               id="employee-live-v2-gosi-wage-mode"
               value={gosiWageMode}
               disabled={readOnly}
               options={[
-                { value: "derived", label: "تلقائي من العناصر النظامية" },
-                { value: "override", label: "أجر اشتراك معتمد يدويًا" },
+                { value: "derived", label: t("تلقائي من العناصر النظامية") },
+                { value: "override", label: t("أجر اشتراك معتمد يدويًا") },
               ]}
               onChange={onGosiWageModeChange}
             />
@@ -1835,7 +1852,7 @@ export function EmployeePayrollTabLiveV2({
 
           {gosiWageMode === "override" ? (
             <>
-              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label="أجر الاشتراك المعتمد">
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label={t("أجر الاشتراك المعتمد")}>
                 <DashboardNumberInputV2
                   id="employee-live-v2-gosi-wage-override"
                   className="dsv2-input"
@@ -1845,13 +1862,13 @@ export function EmployeePayrollTabLiveV2({
                   onChange={(event) => onGosiContributoryWageOverrideChange(event.target.value)}
                 />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override-reason" label="سبب الأجر المعتمد">
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override-reason" label={t("سبب الأجر المعتمد")}>
                 <input
                   id="employee-live-v2-gosi-wage-override-reason"
                   className="dsv2-input"
                   value={gosiContributoryWageOverrideReason}
                   disabled={readOnly}
-                  placeholder="لماذا يختلف عن الاحتساب التلقائي؟"
+                  placeholder={t("لماذا يختلف عن الاحتساب التلقائي؟")}
                   onChange={(event) => onGosiContributoryWageOverrideReasonChange(event.target.value)}
                 />
               </DashboardFieldV2>
@@ -1859,13 +1876,13 @@ export function EmployeePayrollTabLiveV2({
           ) : null}
 
           {socialInsuranceCategory === "gcc" ? (
-            <DashboardFieldV2 id="employee-live-v2-gcc-country" label="دولة الموظفة الخليجية">
+            <DashboardFieldV2 id="employee-live-v2-gcc-country" label={t("دولة الموظفة الخليجية")}>
               <input
                 id="employee-live-v2-gcc-country"
                 className="dsv2-input"
                 value={gccHomeCountryCode}
                 disabled={readOnly}
-                placeholder="مثال: KW / AE / BH / OM / QA"
+                placeholder={t("مثال: KW / AE / BH / OM / QA")}
                 onChange={(event) => onGccHomeCountryCodeChange(event.target.value)}
               />
             </DashboardFieldV2>
@@ -1929,25 +1946,26 @@ export function EmployeeLinkedModuleTabLiveV2({
   actionHref,
   notes = [],
 }: EmployeeLinkedModuleTabLiveV2Props) {
+  const { t } = useEmployeeLanguage();
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
-        title={title}
-        description={description}
-        badge={<WorkspaceStatusBadgeV2 tone="gold">{moduleLabel}</WorkspaceStatusBadgeV2>}
+        title={t(title)}
+        description={t(description)}
+        badge={<WorkspaceStatusBadgeV2 tone="gold">{t(moduleLabel)}</WorkspaceStatusBadgeV2>}
       />
 
       <WorkspaceCardV2
-        title={moduleLabel}
-        description="يرتبط هذا التبويب بوحدة تشغيل مستقلة داخل النظام."
-        actions={<a className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" href={actionHref}>{actionLabel}</a>}
+        title={t(moduleLabel)}
+        description={t("يرتبط هذا التبويب بوحدة تشغيل مستقلة داخل النظام.")}
+        actions={<a className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" href={actionHref}>{t(actionLabel)}</a>}
       >
         {notes.length ? (
           <div className="dsv2-ew-note-list">
-            {notes.map((note) => <span key={note}>{note}</span>)}
+            {notes.map((note) => <span key={note}>{t(note)}</span>)}
           </div>
         ) : (
-          <WorkspaceNoticeV2 title="لا توجد ملاحظات إضافية" description="سيتم عرض البيانات عند ربط الوحدة المباشرة بهذا التبويب." tone="neutral" />
+          <WorkspaceNoticeV2 title={t("لا توجد ملاحظات إضافية")} description={t("سيتم عرض البيانات عند ربط الوحدة المباشرة بهذا التبويب.")} tone="neutral" />
         )}
       </WorkspaceCardV2>
     </div>
