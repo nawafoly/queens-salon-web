@@ -1151,6 +1151,11 @@ const employeeEnglish: Record<string, string> = {
   "تعذر حفظ حركة الإجازة في Core.": "Could not save the leave transaction in Core.",
   "تعذر عكس حركة الإجازة في Core.": "Could not reverse the leave transaction in Core.",
   "تعذر حفظ تاريخ الاستحقاق في Core.": "Could not save the entitlement date in Core.",
+  "الفترة": "Period",
+  "الإجراء": "Action",
+  "القالب": "Template",
+  "التأخير": "Lateness",
+  "مطبق": "Applied",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
