@@ -148,10 +148,12 @@ test("Staff Management carries dashboard language through HR and employee worksp
 
 test("Staff Management has centralized static and dynamic English translation coverage", () => {
   const language = read("src/pages/dashboardEmployees/employeeLanguage.tsx");
+  const dashboardLanguage = read("src/helpers/dashboardLanguage.ts");
 
   assert.match(language, /const employeeEnglish: Record<string, string>/);
   assert.match(language, /function employeeDynamicEnglishText/);
-  assert.match(language, /"إدارة الموظفات":\s*"Staff management"/);
+  assert.match(language, /dashboardText\(language, arabic\)/);
+  assert.match(dashboardLanguage, /"إدارة الموظفات":\s*"Staff management"/);
   assert.match(language, /"البيانات الأساسية":\s*"Basic information"/);
   assert.match(language, /"الدوام والشفتات":\s*"Schedule & shifts"/);
   assert.match(language, /"الحضور":\s*"Attendance"/);
