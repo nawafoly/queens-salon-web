@@ -44,6 +44,17 @@ test("saved offers belong to one party client and do not leak to companions", ()
   assert.match(tsx, /results\.set\([\s\S]*?memberOffer[\s\S]*?buildDiscountSnapshot/);
 });
 
+test("deselecting a saved offer removes only services that the offer auto-added", () => {
+  assert.match(tsx, /function offerAutoAddedId\(service: any\)/);
+  assert.match(tsx, /function attachOfferServiceToClient/);
+  assert.match(tsx, /__autoAddedByOfferId/);
+  assert.match(tsx, /const togglingOff = previousOfferId === offerId/);
+  assert.match(tsx, /const removedLineKeys = cart/);
+  assert.match(tsx, /if \(!nextOfferId \|\| !nextLinkedIdSet\.has\(serviceId\)\) return \[\]/);
+  assert.match(tsx, /setScheduleByService\(\(current\) =>[\s\S]*?removedKeySet/);
+  assert.match(tsx, /attachOfferServiceToClient\(service, activeBookingClient, nextOfferId\)/);
+});
+
 test("booking summary visibly separates services by party client", () => {
   assert.match(tsx, /className="bk2-summary-party-groups"/);
   assert.match(tsx, /className="bk2-summary-party-group"/);
