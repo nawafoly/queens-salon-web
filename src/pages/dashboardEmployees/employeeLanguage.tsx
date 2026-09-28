@@ -1,0 +1,218 @@
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  dashboardText,
+  type DashboardLanguage,
+} from "../../helpers/dashboardLanguage";
+
+const employeeEnglish: Record<string, string> = {
+  "غير مصرح": "Unauthorized",
+  "سجّل دخول ثم جرّب مرة أخرى.": "Sign in, then try again.",
+  "صلاحيات غير كافية": "Insufficient permissions",
+  "هذه الصفحة مخصصة للإدارة.": "This page is restricted to authorized management accounts.",
+  "ليست لديك صلاحية لإضافة موظفات.": "You do not have permission to add staff.",
+  "تعذر إكمال العملية": "Unable to complete the action",
+  "نعم، متابعة": "Yes, continue",
+  "تراجع": "Cancel",
+  "جارٍ التنفيذ...": "Processing...",
+  "إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.": "Manage staff profiles, attendance, services and payroll from one workspace.",
+  "إضافة موظفة": "Add staff member",
+  "تحديث البيانات": "Refresh data",
+  "إحصاءات الموظفات": "Staff statistics",
+  "إجمالي الملفات": "Total profiles",
+  "كل الملفات المتاحة حسب الصلاحية": "All profiles available to your account",
+  "على رأس العمل": "Active staff",
+  "نشطات ولسن في إجازة": "Active and not on leave",
+  "في إجازة": "On leave",
+  "إجازة حالية من سجل الموظفة": "Current leave from the staff record",
+  "تحتاج متابعة": "Needs attention",
+  "غير نشطة أو بدون خدمات أو ملف غير مكتمل": "Inactive, no assigned services, or incomplete profile",
+  "جاري فتح ملف الموظفة...": "Opening staff profile...",
+  "يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.": "Loading the current employment record without changing account links.",
+  "البيانات الأساسية": "Basic information",
+  "الحجز والدوام": "Booking & schedule",
+  "الخدمات": "Services",
+  "الملف": "Profile",
+  "الإحصائيات والإجازات": "Statistics & leave",
+  "الاسم والحالة والظهور": "Name, status and visibility",
+  "الملفات والصور": "Files & photos",
+  "الصورة والمستندات والمرفقات والسجل": "Photo, documents, attachments and history",
+  "الخدمات المسندة للموظفة": "Services assigned to this staff member",
+  "الدوام والشفتات": "Schedule & shifts",
+  "الجدول والقوالب والسياسات": "Schedule, templates and policies",
+  "الحضور": "Attendance",
+  "السجل اليومي": "Daily record",
+  "سجل الرواتب": "Payroll record",
+  "القفل والحساب": "Locking and calculation",
+  "الطلبات": "Requests",
+  "طلبات الموظفة": "Staff requests",
+  "رصيد الإجازات": "Leave balance",
+  "الحالة والرصيد والسجل": "Status, balance and ledger",
+  "الرسائل": "Messages",
+  "التواصل الداخلي": "Internal communication",
+  "قائمة الموظفات": "Staff directory",
+  "دليل الموظفات": "Staff directory",
+  "بحث سريع وفتح ملف الموظفة من قائمة موحدة.": "Search and open staff profiles from one directory.",
+  "ملف": "profiles",
+  "البحث": "Search",
+  "الاسم، الجوال، البريد أو الرقم الوظيفي": "Name, mobile, email or employee ID",
+  "بحث في الموظفات": "Search staff",
+  "الظهور": "Visibility",
+  "الظاهرات في الدليل": "Visible in directory",
+  "المخفيات من الدليل": "Hidden from directory",
+  "كل الموظفات": "All staff",
+  "الحالة": "Status",
+  "كل الحالات": "All statuses",
+  "النشطات فقط": "Active only",
+  "غير النشطات فقط": "Inactive only",
+  "الخدمة": "Service",
+  "كل الخدمات": "All services",
+  "بدون خدمات مسندة": "No assigned services",
+  "إعادة ضبط": "Reset",
+  "جاري تحميل الموظفات": "Loading staff",
+  "حساب يحتاج مراجعة": "Account needs review",
+  "موظفة بدون اسم": "Unnamed staff member",
+  "إداري": "Administrative",
+  "قسم غير محدد": "Unassigned department",
+  "نشطة": "Active",
+  "غير نشطة": "Inactive",
+  "لا يوجد بريد": "No email",
+  "لا يوجد جوال": "No mobile",
+  "حالة الملف": "Profile status",
+  "يحتاج إكمال": "Needs completion",
+  "مكتمل": "Complete",
+  "أداء الشهر": "Monthly performance",
+  "فتح الملف": "Open profile",
+  "لا توجد موظفات مطابقة": "No matching staff",
+  "غيّري البحث أو أعيدي ضبط الفلاتر لعرض الملفات المتاحة.": "Change the search or reset filters to show available profiles.",
+  "إعادة ضبط الفلاتر": "Reset filters",
+  "إدارة بيانات الموظفة": "Manage staff information",
+  "جاري حفظ التغييرات": "Saving changes",
+  "توجد تعديلات غير محفوظة": "There are unsaved changes",
+  "يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي.": "Saving staff data to the canonical source.",
+  "اضغط حفظ التغييرات لتثبيت القيم الحالية.": "Select Save changes to persist the current values.",
+  "إلغاء التعديلات": "Discard changes",
+  "جاري الحفظ...": "Saving...",
+  "حفظ التغييرات": "Save changes",
+  "موظفة": "Staff member",
+  "ملف الموظفة": "Staff profile",
+  "مسار التنقل": "Breadcrumb",
+  "الموظفات": "Staff",
+  "صورة الموظفة": "Staff photo",
+  "عرض فقط": "Read only",
+  "ملف موظفة فعلي": "Canonical staff profile",
+  "خدمة مرتبطة": "linked service",
+  "بدون خدمات مرتبطة": "No linked services",
+  "ملخص الموظفة": "Staff summary",
+  "غير محددة": "Not specified",
+  "القسم الحالي": "Current section",
+  "بيانات فعلية": "Canonical data",
+  "مساحة الموظفة": "Staff workspace",
+  "إنهاء الخدمة": "End employment",
+  "العودة إلى الموظفات": "Back to staff",
+  "أقسام ملف الموظفة": "Staff profile sections",
+  "ليست لديك صلاحية إنشاء حسابات دخول. يمكنك إنشاء الملف الوظيفي فقط.": "You do not have permission to create login accounts. You can create the employment profile only.",
+  "أدخل بريدًا إلكترونيًا صحيحًا لإنشاء حساب الدخول.": "Enter a valid email address to create the login account.",
+  "كلمة المرور المؤقتة يجب أن تكون 6 أحرف على الأقل.": "The temporary password must be at least 6 characters.",
+  "إلغاء": "Cancel",
+  "إنشاء الموظفة وحساب الدخول": "Create staff member & login",
+  "إنشاء الموظفة": "Create staff member",
+  "الملف الحالي": "Current profile",
+  "أكملي بيانات الموظفة، ثم أنشئي ملفها وحساب الدخول من نفس العملية.": "Complete the staff details, then create the profile and login in the same flow.",
+  "تعديل بيانات الموظفة من نافذة موحدة.": "Edit staff information in one workspace.",
+  "بدون خدمات": "No services",
+  "عملية إضافة الموظفة": "Add staff member flow",
+  "عملية موحدة": "Unified flow",
+  "ملف الموظفة وحساب الدخول في مكان واحد": "Staff profile and login in one place",
+  "أكملي الأقسام بالترتيب المناسب لك. النظام ينشئ ويربط حساب الدخول تلقائيًا بدون أي معرّفات أو خطوات تقنية يدوية.": "Complete the sections in any order. The system creates and links the login automatically without manual IDs or technical steps.",
+  "حساب الدخول": "Login account",
+  "تسجيل دخول الموظفة": "Staff login",
+  "اختياري. عند تفعيله سيتم إنشاء الحساب وربطه بالملف الوظيفي تلقائيًا ضمن نفس عملية الحفظ.": "Optional. When enabled, the account is created and linked to the employment profile in the same save flow.",
+  "إنشاء وتفعيل حساب دخول": "Create and activate login",
+  "لا تملك صلاحية إنشاء حسابات دخول؛ سيتم إنشاء الملف الوظيفي فقط.": "You do not have permission to create login accounts; only the employment profile will be created.",
+  "البريد الإلكتروني": "Email",
+  "سيستخدم لتسجيل الدخول واستعادة كلمة المرور.": "Used for sign-in and password recovery.",
+  "اختياري إذا لم يتم إنشاء حساب دخول.": "Optional when no login account is created.",
+  "رقم الجوال": "Mobile number",
+  "الدور": "Role",
+  "الاستقبال": "Reception",
+  "المحاسبة": "Accounting",
+  "الإدارة": "Management",
+  "كلمة المرور المؤقتة": "Temporary password",
+  "يمكن للموظفة تغييرها لاحقًا.": "The staff member can change it later.",
+  "توليد": "Generate",
+  "إنهاء خدمة الموظفة": "End staff employment",
+  "آخر يوم عمل": "Last working day",
+  "اختر آخر يوم عمل": "Select last working day",
+  "سبب إنهاء الخدمة": "Reason for ending employment",
+  "لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا.": "The system will not generate a date or reason automatically and will not reassign bookings automatically.",
+  "جارٍ إنهاء الخدمة...": "Ending employment...",
+  "تأكيد إنهاء الخدمة": "Confirm end of employment",
+  "المراجع:": "References:",
+  "تعديل البصمة": "Edit attendance record",
+  "تعديل سجل الحضور والانصراف": "Edit attendance record",
+  "الحضور والانصراف": "Attendance",
+  "وقت الحضور": "Check-in time",
+  "اختاري ساعة ودقيقة الحضور فقط.": "Select the check-in hour and minute.",
+  "مسح الوقت": "Clear time",
+  "وقت الانصراف": "Check-out time",
+  "يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا.": "Leave blank if the staff member has not checked out.",
+  "ملاحظة الإدارة": "Management note",
+  "يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة.": "Add the reason for the attendance edit for audit purposes.",
+  "مثال: تصحيح بصمة من الإدارة": "Example: attendance correction by management",
+  "حفظ تعديل البصمة": "Save attendance edit",
+  "لا توجد إجازة أسبوعية ثابتة.": "No fixed weekly day off.",
+  "السبت": "Saturday",
+  "الأحد": "Sunday",
+  "الاثنين": "Monday",
+  "الثلاثاء": "Tuesday",
+  "الأربعاء": "Wednesday",
+  "الخميس": "Thursday",
+  "الجمعة": "Friday",
+};
+
+export function employeeText(language: DashboardLanguage, arabic: string): string {
+  if (language !== "en") return arabic;
+  return employeeEnglish[arabic] || dashboardText(language, arabic);
+}
+
+type EmployeeLanguageContextValue = {
+  language: DashboardLanguage;
+  direction: "rtl" | "ltr";
+  t: (arabic: string) => string;
+  tr: (arabic: string, english: string) => string;
+};
+
+const EmployeeLanguageContext = createContext<EmployeeLanguageContextValue>({
+  language: "ar",
+  direction: "rtl",
+  t: (arabic) => arabic,
+  tr: (arabic) => arabic,
+});
+
+export function EmployeeLanguageProvider({
+  language,
+  children,
+}: {
+  language: DashboardLanguage;
+  children: ReactNode;
+}) {
+  const value = useMemo<EmployeeLanguageContextValue>(
+    () => ({
+      language,
+      direction: language === "en" ? "ltr" : "rtl",
+      t: (arabic) => employeeText(language, arabic),
+      tr: (arabic, english) => (language === "en" ? english : arabic),
+    }),
+    [language]
+  );
+
+  return (
+    <EmployeeLanguageContext.Provider value={value}>
+      {children}
+    </EmployeeLanguageContext.Provider>
+  );
+}
+
+export function useEmployeeLanguage() {
+  return useContext(EmployeeLanguageContext);
+}
