@@ -313,11 +313,11 @@ export default function EmployeeFilesSection({
     try {
       await updateCoreEmployeeFileStatus(file.id, "archived");
       setArchiveTarget(null);
-      setMessage("\u062a\u0645 \u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0633\u062c\u0644\u0647 \u0641\u064a Core.");
+      setMessage(tr("تم أرشفة المستند مع الاحتفاظ بسجله في Core.", "Document archived while retaining its Core history."));
       await load();
     } catch (err) {
       console.warn("employee core file archive failed", err);
-      setError("\u062a\u0639\u0630\u0631 \u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f.");
+      setError(tr("تعذر أرشفة المستند.", "Could not archive the document."));
     } finally {
       setSaving(false);
     }
@@ -327,7 +327,7 @@ export default function EmployeeFilesSection({
     if (!canManage || saving) return;
     if (cleanText(file.status).toLowerCase() !== "archived") return;
     if (file.sizeBytes === null || file.sizeBytes === undefined) {
-      setError("\u0644\u0627 \u064a\u0645\u0643\u0646 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0647\u0630\u0627 \u0627\u0644\u0633\u062c\u0644 \u0644\u0623\u0646 \u0645\u062d\u062a\u0648\u0649 \u0627\u0644\u0645\u0644\u0641 \u0644\u0645 \u064a\u0643\u062a\u0645\u0644 \u0631\u0641\u0639\u0647.");
+      setError(tr("لا يمكن استعادة هذا السجل لأن محتوى الملف لم يكتمل رفعه.", "This record cannot be restored because the file content was not fully uploaded."));
       return;
     }
 
@@ -336,11 +336,11 @@ export default function EmployeeFilesSection({
 
     try {
       await updateCoreEmployeeFileStatus(file.id, "active");
-      setMessage("\u062a\u0645 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0646\u0634\u0637\u0629.");
+      setMessage(tr("تم استعادة المستند إلى القائمة النشطة.", "Document restored to the active list."));
       await load();
     } catch (err) {
       console.warn("employee core file restore failed", err);
-      setError("\u062a\u0639\u0630\u0631 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f.");
+      setError(tr("تعذر استعادة المستند.", "Could not restore the document."));
     } finally {
       setSaving(false);
     }
@@ -527,8 +527,8 @@ export default function EmployeeFilesSection({
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
-        title={"\u0627\u0644\u0633\u062c\u0644"}
-        description={"\u0627\u0644\u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0627\u0644\u0645\u0624\u0631\u0634\u0641\u0629 \u0648\u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0645\u0633\u062a\u0628\u062f\u0644\u0629 \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0627\u0644\u0633\u062c\u0644 \u0641\u064a Core."}
+        title={tr("السجل", "History")}
+        description={tr("المستندات المؤرشفة والنسخ المستبدلة مع الاحتفاظ بالسجل في Core.", "Archived documents and replaced versions retained in the Core history.")}
       >
         {historyRows.length ? (
           <WorkspaceTableV2
@@ -546,16 +546,16 @@ export default function EmployeeFilesSection({
 
               return [
                 <strong>{file.title || file.fileName || file.id}</strong>,
-                categoryLabel(categoryOf(file)),
-                formatDate(file.createdAt),
-                <WorkspaceStatusBadgeV2 tone={meta.tone}>{meta.label}</WorkspaceStatusBadgeV2>,
+                t(categoryLabel(categoryOf(file))),
+                formatDate(file.createdAt, language),
+                <WorkspaceStatusBadgeV2 tone={meta.tone}>{t(meta.label)}</WorkspaceStatusBadgeV2>,
                 <div className="dsv2-ew-file-actions">
                   <button
                     type="button"
                     className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                     onClick={() => void openCoreEmployeeFile(file.id, file.fileName || file.title)}
                   >
-                    {"\u0645\u0639\u0627\u064a\u0646\u0629"}
+                    {tr("معاينة", "Preview")}
                   </button>
 
                   <button
@@ -563,7 +563,7 @@ export default function EmployeeFilesSection({
                     className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                     onClick={() => void downloadCoreEmployeeFile(file.id, file.fileName || file.title)}
                   >
-                    {"\u062a\u0646\u0632\u064a\u0644"}
+                    {tr("تنزيل", "Download")}
                   </button>
 
                   {status === "archived" && file.sizeBytes !== null && file.sizeBytes !== undefined ? (
@@ -573,7 +573,7 @@ export default function EmployeeFilesSection({
                       disabled={!canManage || saving}
                       onClick={() => void restoreFile(file)}
                     >
-                      {"\u0627\u0633\u062a\u0639\u0627\u062f\u0629"}
+                      {tr("استعادة", "Restore")}
                     </button>
                   ) : null}
                 </div>,
@@ -582,8 +582,8 @@ export default function EmployeeFilesSection({
           />
         ) : (
           <div className="dsv2-ew-inline-empty">
-            <strong>{"\u0627\u0644\u0633\u062c\u0644 \u0641\u0627\u0631\u063a"}</strong>
-            <span>{"\u0644\u0627 \u062a\u0648\u062c\u062f \u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0645\u0624\u0631\u0634\u0641\u0629 \u0623\u0648 \u0645\u0633\u062a\u0628\u062f\u0644\u0629."}</span>
+            <strong>{tr("السجل فارغ", "History is empty")}</strong>
+            <span>{tr("لا توجد مستندات مؤرشفة أو مستبدلة.", "There are no archived or replaced documents.")}</span>
           </div>
         )}
       </WorkspaceCardV2>
@@ -596,12 +596,12 @@ export default function EmployeeFilesSection({
             await archiveFile(archiveTarget);
           }
         }}
-        title={"\u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0633\u062a\u0646\u062f\u061f"}
-        description={"\u0633\u064a\u062e\u062a\u0641\u064a \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0646\u0634\u0637\u0629\u060c \u0644\u0643\u0646 \u0644\u0646 \u064a\u062d\u0630\u0641 \u0645\u0646 Core \u0623\u0648 R2 \u0648\u064a\u0645\u0643\u0646 \u0627\u0633\u062a\u0639\u0627\u062f\u062a\u0647."}
+        title={tr("أرشفة المستند؟", "Archive document?")}
+        description={tr("سيختفي من القائمة النشطة، لكن لن يحذف من Core أو R2 ويمكن استعادته.", "It will disappear from the active list but will not be deleted from Core or R2 and can be restored.")}
         tone="danger"
-        confirmLabel={"\u0623\u0631\u0634\u0641\u0629"}
-        cancelLabel={"\u062a\u0631\u0627\u062c\u0639"}
-        pendingLabel={"\u062c\u0627\u0631\u064a \u0627\u0644\u0623\u0631\u0634\u0641\u0629..."}
+        confirmLabel={tr("أرشفة", "Archive")}
+        cancelLabel={t("تراجع")}
+        pendingLabel={tr("جاري الأرشفة...", "Archiving...")}
       >
         {archiveTarget ? (
           <strong>{archiveTarget.title || archiveTarget.fileName || archiveTarget.id}</strong>
