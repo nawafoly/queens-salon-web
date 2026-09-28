@@ -258,6 +258,17 @@ function removeServiceForClient(cart: CatalogService[], service: CatalogService,
   return cart.filter((item) => bookingLineKey(item) !== lineKey);
 }
 
+function offerAutoAddedId(service: any) {
+  return String(service?.__autoAddedByOfferId || "").trim();
+}
+
+function attachOfferServiceToClient(service: CatalogService, client: ClientCandidate, offerId: string): CatalogService {
+  return {
+    ...attachServiceToClient(service, client),
+    __autoAddedByOfferId: String(offerId || "").trim(),
+  };
+}
+
 function serviceDuration(service: any) {
   const raw =
     service?.["المدة"] ??
@@ -1011,50 +1022,92 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   const selectCatalogOffer = useCallback((offer: CoreDiscount) => {
     const offerId = String(offer?.id || "").trim();
-    if (!offerId) return;
+    if (!offerId || !activeBookingClient) return;
 
-    if (!activeBookingClient) return;
     const clientKey = partyClientKey(activeBookingClient);
-
-    if (selectedOfferId === offerId) {
-      setOfferForClient(clientKey, "");
-      const hasOtherOffers = Object.entries(selectedOfferByClientKey)
-        .some(([key, value]) => key !== clientKey && Boolean(String(value || "").trim()));
-      if (!hasOtherOffers) setDiscountMode("none");
-      return;
-    }
-
-    setOfferForClient(clientKey, offerId);
-    setDiscountMode("offer");
-    setCouponOffer(null);
-    setCouponInput("");
-    setCouponMessage("");
-
-    const linkedIds = offerLinkedServiceIds(offer);
-    if (!linkedIds.length) return;
+    const previousOfferId = selectedOfferId;
+    const togglingOff = previousOfferId === offerId;
+    const nextOfferId = togglingOff ? "" : offerId;
+    const nextLinkedIds = togglingOff ? [] : offerLinkedServiceIds(offer);
+    const nextLinkedIdSet = new Set(nextLinkedIds);
 
     const serviceMap = new Map<string, CatalogService>();
     for (const service of [...allServices, ...services]) {
       const key = String(service?.id || "").trim();
       if (key && !serviceMap.has(key)) serviceMap.set(key, service);
     }
-    const linkedServices = linkedIds
+    const nextLinkedServices = nextLinkedIds
       .map((id) => serviceMap.get(id))
       .filter((service): service is CatalogService => Boolean(service));
-    if (!linkedServices.length) return;
+
+    const removedLineKeys = cart
+      .filter((service) =>
+        bookingLineClientKey(service) === clientKey &&
+        Boolean(offerAutoAddedId(service)) &&
+        (!nextOfferId || !nextLinkedIdSet.has(String(service?.id || "").trim()))
+      )
+      .map(bookingLineKey);
+    const removedKeySet = new Set(removedLineKeys);
+
+    if (removedKeySet.size) {
+      setPriceAdjustments((current) =>
+        Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removedKeySet.has(lineKey)))
+      );
+      setScheduleByService((current) =>
+        Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removedKeySet.has(lineKey)))
+      );
+      setAvailableTimes((current) =>
+        Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removedKeySet.has(lineKey)))
+      );
+      setEligibleStaffByService((current) =>
+        Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removedKeySet.has(lineKey)))
+      );
+    }
 
     setCart((current) => {
-      const existing = new Set(
-        current
-          .filter((service) => bookingLineClientKey(service) === clientKey)
-          .map((service) => String(service.id || "").trim())
-      );
-      const missing = linkedServices
-        .filter((service) => !existing.has(String(service.id || "").trim()))
-        .map((service) => attachServiceToClient(service, activeBookingClient));
-      return missing.length ? [...current, ...missing] : current;
+      let next = current.flatMap((service) => {
+        if (bookingLineClientKey(service) !== clientKey) return [service];
+
+        const autoOfferId = offerAutoAddedId(service);
+        if (!autoOfferId) return [service];
+
+        const serviceId = String(service?.id || "").trim();
+        if (!nextOfferId || !nextLinkedIdSet.has(serviceId)) return [];
+
+        // This service belongs to both the previous and next offer. Keep its
+        // booking line/schedule, but transfer ownership to the newly selected offer.
+        return [{ ...service, __autoAddedByOfferId: nextOfferId }];
+      });
+
+      if (nextOfferId && nextLinkedServices.length) {
+        const existing = new Set(
+          next
+            .filter((service) => bookingLineClientKey(service) === clientKey)
+            .map((service) => String(service.id || "").trim())
+        );
+        const missing = nextLinkedServices
+          .filter((service) => !existing.has(String(service.id || "").trim()))
+          .map((service) => attachOfferServiceToClient(service, activeBookingClient, nextOfferId));
+        if (missing.length) next = [...next, ...missing];
+      }
+
+      return next;
     });
-  }, [allServices, services, selectedOfferId, selectedOfferByClientKey, activeBookingClient, setOfferForClient]);
+
+    setOfferForClient(clientKey, nextOfferId);
+
+    if (!nextOfferId) {
+      const hasOtherOffers = Object.entries(selectedOfferByClientKey)
+        .some(([key, value]) => key !== clientKey && Boolean(String(value || "").trim()));
+      if (!hasOtherOffers) setDiscountMode("none");
+      return;
+    }
+
+    setDiscountMode("offer");
+    setCouponOffer(null);
+    setCouponInput("");
+    setCouponMessage("");
+  }, [allServices, services, cart, selectedOfferId, selectedOfferByClientKey, activeBookingClient, setOfferForClient]);
 
   const discountItems = useMemo(() => cart.map((service) => ({
     bookingItemId: bookingLineKey(service),
