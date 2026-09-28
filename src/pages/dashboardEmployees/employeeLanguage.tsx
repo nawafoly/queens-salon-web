@@ -1157,6 +1157,13 @@ const employeeEnglish: Record<string, string> = {
   "التأخير": "Lateness",
   "مطبق": "Applied",
   "تحديث النطاقات": "Refresh zones",
+  "نوع التاريخ": "Date type",
+  "من تاريخ هجري": "Hijri start date",
+  "إلى تاريخ هجري": "Hijri end date",
+  "بداية الدوام": "Work start",
+  "نهاية الدوام": "Work end",
+  "طريقة التطبيق": "Application method",
+  "ملاحظة داخلية": "Internal note",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
