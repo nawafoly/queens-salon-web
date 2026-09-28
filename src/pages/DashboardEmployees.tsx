@@ -93,6 +93,11 @@ import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
 import type { DashboardLanguage } from "../helpers/dashboardLanguage";
+import { translateBookingCatalogLabel } from "../helpers/dashboardBookingsLanguage";
+import {
+  isEmployeeProfileTabAllowed,
+  type EmployeeProfileTabAccessKey,
+} from "../helpers/employeeProfileTabAccess";
 import { EmployeeLanguageProvider, useEmployeeLanguage } from "./dashboardEmployees/employeeLanguage";
 import {
   DashboardConfirmV2,
@@ -1752,7 +1757,7 @@ function DashboardEmployeesContent() {
   const routeSection = (employeeRouteMatch?.[2] || "basic") as EmployeeSplitTab;
   const isEmployeeProfileRoute = Boolean(routeEmployeeId);
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const { permissions, hasPermission, hasAnyPermission } = usePermissions();
 
   const canAccessEmployeesDashboard = hasPermission("employees.view");
   const canCreateEmployees = hasPermission("employees.create");
@@ -1775,6 +1780,53 @@ function DashboardEmployeesContent() {
   const canViewEmployeeFiles = hasPermission("employees.files.view");
   const canManageEmployeeFiles = hasPermission("employees.files.manage");
   const canFixBookings = hasPermission("bookings.update");
+
+  const canDisplayEmployeeTab = useCallback(
+    (tab: EmployeeSplitTab) => {
+      const normalized =
+        tab === "shifts" ? "booking" : tab === "files" ? "profile" : tab;
+
+      if (
+        !isEmployeeProfileTabAllowed(
+          permissions,
+          normalized as EmployeeProfileTabAccessKey
+        )
+      ) {
+        return false;
+      }
+
+      if (normalized === "attendance") return canViewAttendance;
+      if (normalized === "payroll") return canViewPayroll;
+      if (normalized === "requests" || normalized === "leave") {
+        return canManageLeaveBalance;
+      }
+      if (normalized === "messages") return canViewEmployeeMessages;
+
+      return true;
+    },
+    [
+      canManageLeaveBalance,
+      canViewAttendance,
+      canViewEmployeeMessages,
+      canViewPayroll,
+      permissions,
+    ]
+  );
+
+  const firstAllowedEmployeeTab = useMemo<EmployeeSplitTab | null>(() => {
+    const order: EmployeeSplitTab[] = [
+      "basic",
+      "profile",
+      "services",
+      "booking",
+      "attendance",
+      "payroll",
+      "requests",
+      "leave",
+      "messages",
+    ];
+    return order.find((tab) => canDisplayEmployeeTab(tab)) || null;
+  }, [canDisplayEmployeeTab]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
