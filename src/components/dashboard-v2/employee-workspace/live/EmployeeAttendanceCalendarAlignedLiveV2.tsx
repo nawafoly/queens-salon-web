@@ -7,6 +7,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { EmployeeAttendanceTabLiveV2 as EmployeeAttendanceTabBaseLiveV2 } from "./EmployeeWorkspaceOperationalTabsLiveV2";
+import { useEmployeeLanguage } from "../../../../pages/dashboardEmployees/employeeLanguage";
 
 const MONTH_NAMES = [
   "يناير",
@@ -111,6 +112,7 @@ function ChevronIcon({ direction }: { direction: "prev" | "next" }) {
 type EmployeeAttendanceTabBaseProps = ComponentProps<typeof EmployeeAttendanceTabBaseLiveV2>;
 
 export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanceTabBaseProps) {
+  const { t } = useEmployeeLanguage();
   const weekdayOffset = monthStartWeekday(props.monthKey);
   const rootRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -193,9 +195,9 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
           <button
             type="button"
             className="dsv2-ew-icon-btn dsv2-ew-attendance-month-trigger"
-            aria-label="اختيار شهر الحضور"
+            aria-label={t("اختيار شهر الحضور")}
             aria-expanded={pickerOpen}
-            title="اختيار الشهر"
+            title={t("اختيار الشهر")}
             disabled={props.readOnly || props.loading}
             onClick={() => setPickerOpen((current) => !current)}
           >
@@ -203,12 +205,12 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
           </button>
 
           {pickerOpen ? (
-            <div className="dsv2-ew-attendance-month-popover" role="dialog" aria-label="اختيار شهر الحضور">
+            <div className="dsv2-ew-attendance-month-popover" role="dialog" aria-label={t("اختيار شهر الحضور")}>
               <div className="dsv2-ew-attendance-month-popover__head">
                 <button
                   type="button"
                   className="dsv2-ew-attendance-month-nav"
-                  aria-label="السنة السابقة"
+                  aria-label={t("السنة السابقة")}
                   disabled={viewYear <= minYear}
                   onClick={() => setViewYear((year) => year - 1)}
                 >
@@ -218,7 +220,7 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
                 <button
                   type="button"
                   className="dsv2-ew-attendance-month-nav"
-                  aria-label="السنة التالية"
+                  aria-label={t("السنة التالية")}
                   disabled={viewYear >= maxYear}
                   onClick={() => setViewYear((year) => year + 1)}
                 >
@@ -242,7 +244,7 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
                       aria-current={active ? "date" : undefined}
                       onClick={() => selectMonth(index)}
                     >
-                      {monthName}
+                      {t(monthName)}
                     </button>
                   );
                 })}
@@ -264,7 +266,7 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
                   setPickerOpen(false);
                 }}
               >
-                هذا الشهر
+                {t("هذا الشهر")}
               </button>
             </div>
           ) : null}
