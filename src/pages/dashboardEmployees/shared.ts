@@ -436,6 +436,7 @@ export function toArabicSectionLabel(sectionId: string, fallbackLabel?: string):
   if (key.includes("skin")) return "البشرة";
   if (key.includes("massage")) return "المساج";
   if (key.includes("make")) return "المكياج";
+  if (key === "services" || key.includes("service")) return "الخدمات";
   return raw;
 }
 
