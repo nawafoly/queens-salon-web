@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEmployeeLanguage } from "./employeeLanguage";
 import {
   DashboardDatePickerV2,
   DashboardFieldV2,
@@ -53,10 +54,12 @@ function previousIsoDate(value: unknown) {
   return date.toISOString().slice(0, 10);
 }
 
-function numberLabel(value: unknown, suffix = "") {
+function numberLabel(value: unknown, suffix = "", language: "ar" | "en" = "ar") {
   const number = Number(value);
-  if (!Number.isFinite(number)) return "غير متوفر";
-  return `${number.toLocaleString("ar-SA-u-nu-latn")}${suffix}`;
+  if (!Number.isFinite(number)) return language === "en" ? "Unavailable" : t("غير متوفر");
+  const localized = number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn");
+  if (language === "en" && suffix.trim() === "يوم") return `${localized} day(s)`;
+  return `${localized}${suffix}`;
 }
 
 function annualReviewReasonLabel(value: unknown) {
@@ -78,16 +81,19 @@ function annualReviewReasonLabel(value: unknown) {
 
 const annualAccruedLabel = "\u0627\u0644\u0645\u0643\u062a\u0633\u0628 \u062d\u062a\u0649 \u0627\u0644\u0622\u0646";
 
-function annualDurationLabel(value: unknown) {
+function annualDurationLabel(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    return "\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631";
+    return language === "en" ? "Unavailable" : "\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631";
   }
 
   const sign = number < 0 ? "-" : "";
   const totalHours = Math.floor(Math.abs(number) * 24);
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
+  if (language === "en") {
+    return `${sign}${days} day(s) and ${hours} hour(s)`;
+  }
   const dayUnit =
     days === 1
       ? "\u064a\u0648\u0645"
@@ -98,12 +104,13 @@ function annualDurationLabel(value: unknown) {
 
 function annualBalanceValue(
   value: unknown,
-  reviewRequired = false
+  reviewRequired = false,
+  language: "ar" | "en" = "ar"
 ) {
   if (reviewRequired) {
-    return "\u064a\u062d\u062a\u0627\u062c \u0645\u0631\u0627\u062c\u0639\u0629";
+    return language === "en" ? "Needs review" : "\u064a\u062d\u062a\u0627\u062c \u0645\u0631\u0627\u062c\u0639\u0629";
   }
-  return annualDurationLabel(value);
+  return annualDurationLabel(value, language);
 }
 
 function statusLabel(value: unknown) {
@@ -115,7 +122,7 @@ function statusLabel(value: unknown) {
   return clean(value) || "غير محدد";
 }
 
-function formatTime12Hour(value: unknown) {
+function formatTime12Hour(value: unknown, language: "ar" | "en" = "ar") {
   const raw = clean(value);
   const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
   if (!match) return raw || "—";
@@ -134,7 +141,7 @@ function formatTime12Hour(value: unknown) {
   }
 
   const hour12 = hour24 % 12 || 12;
-  const period = hour24 >= 12 ? "م" : "ص";
+  const period = language === "en" ? (hour24 >= 12 ? "PM" : "AM") : (hour24 >= 12 ? "م" : "ص");
   return `${hour12}:${match[2]} ${period}`;
 }
 
@@ -195,6 +202,7 @@ export default function LeaveRestManagementPanel({
   readOnly,
   weeklyRestWeekdays,
 }: LeaveRestManagementPanelProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   const today = useMemo(riyadhToday, []);
   const [overview, setOverview] =
     useState<CoreLeaveRestOverview | null>(null);
@@ -435,12 +443,14 @@ export default function LeaveRestManagementPanel({
       ? weeklyRestWeekdays
           .map(
             (key) =>
-              WEEKDAY_OPTIONS.find(
-                (day) => day.key === key
-              )?.label || key
+              t(
+                WEEKDAY_OPTIONS.find(
+                  (day) => day.key === key
+                )?.label || key
+              )
           )
-          .join("، ")
-      : "غير محددة";
+          .join(language === "en" ? ", " : "، ")
+      : t("غير محددة");
 
   const annualLeave =
     overview?.annualLeave || {};
@@ -448,9 +458,10 @@ export default function LeaveRestManagementPanel({
     Boolean(annualLeave.reviewRequired);
   const annualReviewDescription =
     annualReviewRequired
-      ? `الرصيد يحتاج مراجعة — ${annualReviewReasonLabel(
-          annualLeave.reviewReason
-        )}`
+      ? tr(
+          `الرصيد يحتاج مراجعة — ${t(annualReviewReasonLabel(annualLeave.reviewReason))}`,
+          `Balance needs review — ${t(t(annualReviewReasonLabel(annualLeave.reviewReason)))}`
+        )
       : "";
   const annualAvailable =
     annualLeave.availableDays;
@@ -515,7 +526,7 @@ export default function LeaveRestManagementPanel({
           : "من ملف الموظفة"
       : gosiEffectiveDate
         ? "مقترح من تاريخ سريان التصنيف — غير محفوظ"
-        : "غير محدد";
+        : t("غير محدد");
 
   const nearbyApprovedAnnualLeaves =
     approvedAnnualLeaves
@@ -965,9 +976,7 @@ export default function LeaveRestManagementPanel({
   const cancelRecall = async (
     recall: CoreAnnualLeaveRecall
   ) => {
-    const reason = window.prompt(
-      "سبب إلغاء الاستدعاء"
-    );
+    const reason = window.prompt(tr("سبب إلغاء الاستدعاء", "Reason for cancelling the recall"));
     if (!reason?.trim()) return;
 
     setSaving(true);
@@ -1028,9 +1037,7 @@ export default function LeaveRestManagementPanel({
   const cancelAssignment = async (
     assignment: CoreWeeklyRestWorkAssignment
   ) => {
-    const reason = window.prompt(
-      "سبب إلغاء تكليف يوم الراحة"
-    );
+    const reason = window.prompt(tr("سبب إلغاء تكليف يوم الراحة", "Reason for cancelling the day-off work assignment"));
     if (!reason?.trim()) return;
 
     setSaving(true);
@@ -1056,10 +1063,10 @@ export default function LeaveRestManagementPanel({
         <WorkspaceNoticeV2
           title={
             message.startsWith("تم")
-              ? "تمت العملية"
-              : "تنبيه"
+              ? t("تمت العملية")
+              : t("تنبيه")
           }
-          description={message}
+          description={t(message)}
           tone={
             message.startsWith("تم")
               ? "success"
@@ -1070,20 +1077,20 @@ export default function LeaveRestManagementPanel({
 
       {annualReviewRequired ? (
         <WorkspaceNoticeV2
-          title="الرصيد يحتاج مراجعة"
+          title={t("الرصيد يحتاج مراجعة")}
           description={annualReviewDescription}
           tone="gold"
         />
       ) : null}
 
       <WorkspaceCardV2
-        title="الإجازة السنوية"
-        description="مرجع الخدمة والاستحقاق المكتسب والرصيد المتاح في مكان واحد. الاستحقاق السنوي هو معدل سنوي وليس الرصيد الحالي."
+        title={t("الإجازة السنوية")}
+        description={t("مرجع الخدمة والاستحقاق المكتسب والرصيد المتاح في مكان واحد. الاستحقاق السنوي هو معدل سنوي وليس الرصيد الحالي.")}
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
             id="employee-live-v2-service-start-date"
-            label="تاريخ بداية الخدمة"
+            label={t("تاريخ بداية الخدمة")}
           >
             <DashboardDatePickerV2
               id="employee-live-v2-service-start-date"
@@ -1096,12 +1103,12 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-service-start-source"
-            label="حالة المرجع"
+            label={t("حالة المرجع")}
           >
             <input
               id="employee-live-v2-service-start-source"
               className="dsv2-input"
-              value={serviceStartSourceLabel}
+              value={t(serviceStartSourceLabel)}
               readOnly
             />
           </DashboardFieldV2>
@@ -1147,11 +1154,11 @@ export default function LeaveRestManagementPanel({
 
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
-            label="الاستحقاق السنوي"
+            label={t("الاستحقاق السنوي")}
             value={
               loading
-                ? "جاري التحميل..."
-                : numberLabel(annualLeave.annualEntitlementDays, " يوم")
+                ? t("جاري التحميل...")
+                : numberLabel(annualLeave.annualEntitlementDays, " يوم", language)
             }
           />
 
@@ -1163,78 +1170,80 @@ export default function LeaveRestManagementPanel({
                 : annualBalanceValue(
                     annualLeave.earnedCurrentServiceYearDays ??
                       annualLeave.accruedDays,
-                    annualReviewRequired
+                    annualReviewRequired,
+                    language
                   )
             }
             note={
               annualReviewRequired
-                ? annualReviewReasonLabel(annualLeave.reviewReason)
+                ? t(annualReviewReasonLabel(annualLeave.reviewReason))
                 : undefined
             }
             tone={annualReviewRequired ? "gold" : "success"}
           />
 
           <WorkspaceMetricV2
-            label="المستخدم"
+            label={t("المستخدم")}
             value={
               loading
-                ? "جاري التحميل..."
-                : numberLabel(annualLeave.usedDays ?? 0, " يوم")
+                ? t("جاري التحميل...")
+                : numberLabel(annualLeave.usedDays ?? 0, " يوم", language)
             }
           />
           <WorkspaceMetricV2
-            label="المعاد/المسترجع"
+            label={t("المعاد/المسترجع")}
             value={
               loading
-                ? "جاري التحميل..."
-                : numberLabel(annualLeave.reversedDays ?? 0, " يوم")
+                ? t("جاري التحميل...")
+                : numberLabel(annualLeave.reversedDays ?? 0, " يوم", language)
             }
           />
           <WorkspaceMetricV2
-            label="الرصيد المتاح"
+            label={t("الرصيد المتاح")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : annualBalanceValue(
                     annualLeave.availableDays,
-                    annualReviewRequired
+                    annualReviewRequired,
+                    language
                   )
             }
             note={
               annualReviewRequired
-                ? annualReviewReasonLabel(annualLeave.reviewReason)
+                ? t(annualReviewReasonLabel(annualLeave.reviewReason))
                 : undefined
             }
             tone={annualReviewRequired ? "gold" : "success"}
           />
           <WorkspaceMetricV2
-            label="تاريخ مباشرة العمل"
+            label={t("تاريخ مباشرة العمل")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : annualLeave.startDate
                   ? fmtIsoDate(String(annualLeave.startDate))
-                  : "غير محدد"
+                  : t("غير محدد")
             }
           />
           <WorkspaceMetricV2
-            label="سنة الخدمة الحالية"
+            label={t("سنة الخدمة الحالية")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : annualLeave.serviceYearStart && annualLeave.serviceYearEnd
                   ? `${fmtIsoDate(String(annualLeave.serviceYearStart))} — ${fmtIsoDate(previousIsoDate(annualLeave.serviceYearEnd))}`
-                  : "غير محددة"
+                  : t("غير محددة")
             }
           />
           <WorkspaceMetricV2
-            label="تاريخ إكمال سنة خدمة"
+            label={t("تاريخ إكمال سنة خدمة")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : annualLeave.serviceYearEnd
                   ? fmtIsoDate(String(annualLeave.serviceYearEnd))
-                  : "غير محدد"
+                  : t("غير محدد")
             }
           />
         </div>
@@ -1243,21 +1252,22 @@ export default function LeaveRestManagementPanel({
 
       {!annualReviewRequired ? (
         <WorkspaceCardV2
-          title="تسوية رصيد الإجازة السنوية"
-          description="استخدم هذه العملية لتصحيح رصيد مؤكد بعد اعتماد الرصيد السنوي. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الحركات السابقة."
+          title={t("تسوية رصيد الإجازة السنوية")}
+          description={t("استخدم هذه العملية لتصحيح رصيد مؤكد بعد اعتماد الرصيد السنوي. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الحركات السابقة.")}
         >
           <div className="dsv2-ew-metrics">
             <WorkspaceMetricV2
-              label="الرصيد الحالي"
+              label={t("الرصيد الحالي")}
               value={
                 loading
-                  ? "جاري التحميل..."
+                  ? t("جاري التحميل...")
                   : annualBalanceValue(
                       annualLeave.availableDays,
-                      false
+                      false,
+                      language
                     )
               }
-              note="الرصيد السنوي المتاح"
+              note={t("الرصيد السنوي المتاح")}
               tone="success"
             />
           </div>
@@ -1265,7 +1275,7 @@ export default function LeaveRestManagementPanel({
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             <DashboardFieldV2
               id="employee-live-v2-annual-adjustment-action"
-              label="نوع التسوية"
+              label={t("نوع التسوية")}
             >
               <select
                 id="employee-live-v2-annual-adjustment-action"
@@ -1291,7 +1301,7 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-annual-adjustment-days"
-              label="عدد الأيام"
+              label={t("عدد الأيام")}
             >
               <input
                 id="employee-live-v2-annual-adjustment-days"
@@ -1299,7 +1309,7 @@ export default function LeaveRestManagementPanel({
                 inputMode="decimal"
                 value={annualAdjustmentDays}
                 disabled={readOnly || saving}
-                placeholder="مثال: 0.5 أو 1 أو 1.5"
+                placeholder={t("مثال: 0.5 أو 1 أو 1.5")}
                 onChange={(event) =>
                   setAnnualAdjustmentDays(
                     event.target.value
@@ -1310,7 +1320,7 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-annual-adjustment-effective-date"
-              label="تاريخ سريان التسوية"
+              label={t("تاريخ سريان التسوية")}
             >
               <DashboardDatePickerV2
                 id="employee-live-v2-annual-adjustment-effective-date"
@@ -1325,14 +1335,14 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-annual-adjustment-reason"
-              label="سبب التسوية"
+              label={t("سبب التسوية")}
             >
               <input
                 id="employee-live-v2-annual-adjustment-reason"
                 className="dsv2-input"
                 value={annualAdjustmentReason}
                 disabled={readOnly || saving}
-                placeholder="مثال: تصحيح رصيد مؤكد بعد مراجعة السجل"
+                placeholder={t("مثال: تصحيح رصيد مؤكد بعد مراجعة السجل")}
                 onChange={(event) =>
                   setAnnualAdjustmentReason(
                     event.target.value
@@ -1343,8 +1353,8 @@ export default function LeaveRestManagementPanel({
           </div>
 
           <WorkspaceNoticeV2
-            title="حركة مدققة وليست تعديلًا مباشرًا"
-            description="الإضافة أو الخصم يسجلان كتصحيح يدوي في السجل الموحد للإجازة السنوية. لا يتم حذف الحركات السابقة أو تعديلها."
+            title={t("حركة مدققة وليست تعديلًا مباشرًا")}
+            description={t("الإضافة أو الخصم يسجلان كتصحيح يدوي في السجل الموحد للإجازة السنوية. لا يتم حذف الحركات السابقة أو تعديلها.")}
             tone="neutral"
           />
 
@@ -1367,20 +1377,20 @@ export default function LeaveRestManagementPanel({
             }
           >
             {annualAdjustmentAction === "add"
-              ? "إضافة التسوية"
-              : "خصم التسوية"}
+              ? tr("إضافة التسوية", "Add adjustment")
+              : tr("خصم التسوية", "Deduct adjustment")}
           </button>
         </WorkspaceCardV2>
       ) : null}
 
       <WorkspaceCardV2
-        title="تسوية بدء النظام (اختيارية)"
-        description="إذا كانت الموظفة استخدمت إجازات قبل تشغيل النظام، أدخل فقط الأيام المستخدمة سابقًا. النظام يحسب الرصيد المتبقي تلقائيًا. إذا لم يوجد استخدام سابق فلا يلزم تسجيل أي تسوية."
+        title={t("تسوية بدء النظام (اختيارية)")}
+        description={t("إذا كانت الموظفة استخدمت إجازات قبل تشغيل النظام، أدخل فقط الأيام المستخدمة سابقًا. النظام يحسب الرصيد المتبقي تلقائيًا. إذا لم يوجد استخدام سابق فلا يلزم تسجيل أي تسوية.")}
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-days"
-            label="الأيام المستخدمة قبل بدء النظام"
+            label={t("الأيام المستخدمة قبل بدء النظام")}
           >
             <input
               id="employee-live-v2-opening-balance-days"
@@ -1392,7 +1402,7 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 hasOpeningBalance
               }
-              placeholder="مثال: 2 أو 3.5 — اتركه فارغًا إذا لم يوجد استخدام سابق"
+              placeholder={t("مثال: 2 أو 3.5 — اتركه فارغًا إذا لم يوجد استخدام سابق")}
               onChange={(event) =>
                 setOpeningBalanceDays(
                   event.target.value
@@ -1403,7 +1413,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-effective-date"
-            label="تاريخ بدء اعتماد النظام"
+            label={t("تاريخ بدء اعتماد النظام")}
           >
             <DashboardDatePickerV2
               id="employee-live-v2-opening-balance-effective-date"
@@ -1422,7 +1432,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-reason"
-            label="ملاحظة التسوية (اختيارية)"
+            label={t("ملاحظة التسوية (اختيارية)")}
           >
             <input
               id="employee-live-v2-opening-balance-reason"
@@ -1433,7 +1443,7 @@ export default function LeaveRestManagementPanel({
                 saving ||
                 hasOpeningBalance
               }
-              placeholder="مثال: استخدام سابق مثبت من سجل الموارد البشرية"
+              placeholder={t("مثال: استخدام سابق مثبت من سجل الموارد البشرية")}
               onChange={(event) =>
                 setOpeningBalanceReason(
                   event.target.value
@@ -1445,33 +1455,36 @@ export default function LeaveRestManagementPanel({
 
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
-            label="المكتسب حتى تاريخ بدء النظام"
+            label={t("المكتسب حتى تاريخ بدء النظام")}
             value={
               openingAccruedToEffectiveDate === null
                 ? "غير متوفر"
                 : annualDurationLabel(
-                    openingAccruedToEffectiveDate
+                    openingAccruedToEffectiveDate,
+                    language
                   )
             }
           />
           <WorkspaceMetricV2
-            label="المستخدم سابقًا"
+            label={t("المستخدم سابقًا")}
             value={
               Number.isFinite(openingHistoricalUsedDays)
                 ? numberLabel(
                     openingHistoricalUsedDays,
-                    " يوم"
+                    " يوم",
+                    language
                   )
-                : "غير صالح"
+                : tr("غير صالح", "Invalid")
             }
           />
           <WorkspaceMetricV2
-            label="الرصيد المتبقي المعتمد"
+            label={t("الرصيد المتبقي المعتمد")}
             value={
               openingCalculatedRemainingDays === null
                 ? "غير متوفر"
                 : annualDurationLabel(
-                    openingCalculatedRemainingDays
+                    openingCalculatedRemainingDays,
+                    language
                   )
             }
             tone="success"
@@ -1516,26 +1529,27 @@ export default function LeaveRestManagementPanel({
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
-        title="الراحة الأسبوعية والتعويضية"
-        description="هذا القسم مستقل عن الإجازة السنوية: يوم الراحة من جدول الدوام، والرصيد التعويضي ينتج فقط عن العمل المعتمد في يوم الراحة."
+        title={t("الراحة الأسبوعية والتعويضية")}
+        description={t("هذا القسم مستقل عن الإجازة السنوية: يوم الراحة من جدول الدوام، والرصيد التعويضي ينتج فقط عن العمل المعتمد في يوم الراحة.")}
       >
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
-            label="يوم الراحة الأسبوعية"
+            label={t("يوم الراحة الأسبوعية")}
             value={weeklyRestLabel}
-            note="من جدول الدوام"
+            note={t("من جدول الدوام")}
           />
           <WorkspaceMetricV2
-            label="الرصيد التعويضي الحالي"
+            label={t("الرصيد التعويضي الحالي")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : numberLabel(
                     overview?.weeklyRest.dueDays,
-                    " يوم"
+                    " يوم",
+                    language
                   )
             }
-            note="مستحق بسبب العمل في يوم الراحة"
+            note={t("مستحق بسبب العمل في يوم الراحة")}
             tone={
               Number(overview?.weeklyRest.dueDays || 0) > 0
                 ? "gold"
@@ -1546,18 +1560,19 @@ export default function LeaveRestManagementPanel({
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
-        title="الرصيد التاريخي للراحة التعويضية"
-        description="تسوية مرة واحدة لنقل الرصيد المؤكد المستحق قبل بدء الاعتماد الكامل على Core. لا تدخل رصيدا تقديريا."
+        title={t("الرصيد التاريخي للراحة التعويضية")}
+        description={t("تسوية مرة واحدة لنقل الرصيد المؤكد المستحق قبل بدء الاعتماد الكامل على Core. لا تدخل رصيدا تقديريا.")}
       >
         {hasHistoricalWeeklyRestOpening ? (
           <WorkspaceNoticeV2
-            title="الرصيد التاريخي مثبت"
+            title={t("الرصيد التاريخي مثبت")}
             description={
               "الرصيد المسجل: " +
               numberLabel(
                 historicalWeeklyRestOpening
                   ?.days,
-                " يوم"
+                " يوم",
+                language
               ) +
               "، تاريخ السريان: " +
               (
@@ -1569,7 +1584,7 @@ export default function LeaveRestManagementPanel({
                           .effectiveDate
                       )
                     )
-                  : "غير محدد"
+                  : t("غير محدد")
               ) +
               "."
             }
@@ -1580,7 +1595,7 @@ export default function LeaveRestManagementPanel({
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
               <DashboardFieldV2
                 id="employee-live-v2-weekly-rest-opening-days"
-                label="عدد الأيام المستحقة"
+                label={t("عدد الأيام المستحقة")}
               >
                 <input
                   id="employee-live-v2-weekly-rest-opening-days"
@@ -1604,7 +1619,7 @@ export default function LeaveRestManagementPanel({
 
               <DashboardFieldV2
                 id="employee-live-v2-weekly-rest-opening-effective-date"
-                label="تاريخ سريان الرصيد"
+                label={t("تاريخ سريان الرصيد")}
               >
                 <DashboardDatePickerV2
                   id="employee-live-v2-weekly-rest-opening-effective-date"
@@ -1623,7 +1638,7 @@ export default function LeaveRestManagementPanel({
 
               <DashboardFieldV2
                 id="employee-live-v2-weekly-rest-opening-reason"
-                label="سبب التسوية"
+                label={t("سبب التسوية")}
               >
                 <input
                   id="employee-live-v2-weekly-rest-opening-reason"
@@ -1635,7 +1650,7 @@ export default function LeaveRestManagementPanel({
                   disabled={
                     readOnly || saving
                   }
-                  placeholder="رصيد تاريخي مؤكد من الموارد البشرية"
+                  placeholder={t("رصيد تاريخي مؤكد من الموارد البشرية")}
                   onChange={(event) =>
                     setWeeklyRestOpeningReason(
                       event.target.value
@@ -1646,8 +1661,8 @@ export default function LeaveRestManagementPanel({
             </div>
 
             <WorkspaceNoticeV2
-              title="تسوية انتقالية"
-              description="بعد اعتماد هذا الرصيد لا يتم استبداله أو حذفه. أي تصحيح لاحق يجب أن يكون حركة مستقلة ومدققة."
+              title={t("تسوية انتقالية")}
+              description={t("بعد اعتماد هذا الرصيد لا يتم استبداله أو حذفه. أي تصحيح لاحق يجب أن يكون حركة مستقلة ومدققة.")}
               tone="neutral"
             />
 
@@ -1673,21 +1688,22 @@ export default function LeaveRestManagementPanel({
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
-        title="تسوية رصيد الراحة التعويضية"
-        description="استخدم هذه العملية لتصحيح رصيد مؤكد بعد بدء النظام. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الرصيد التاريخي."
+        title={t("تسوية رصيد الراحة التعويضية")}
+        description={t("استخدم هذه العملية لتصحيح رصيد مؤكد بعد بدء النظام. كل تسوية تسجل كحركة مستقلة ومدققة ولا تعدل الرصيد التاريخي.")}
       >
         <div className="dsv2-ew-metrics">
           <WorkspaceMetricV2
-            label="الرصيد الحالي"
+            label={t("الرصيد الحالي")}
             value={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : numberLabel(
                     overview?.weeklyRest.dueDays,
-                    " يوم"
+                    " يوم",
+                    language
                   )
             }
-            note="رصيد الراحة التعويضية"
+            note={t("رصيد الراحة التعويضية")}
             tone={
               Number(
                 overview?.weeklyRest.dueDays || 0
@@ -1701,7 +1717,7 @@ export default function LeaveRestManagementPanel({
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2
             id="employee-live-v2-weekly-rest-adjustment-action"
-            label="نوع التسوية"
+            label={t("نوع التسوية")}
           >
             <select
               id="employee-live-v2-weekly-rest-adjustment-action"
@@ -1729,7 +1745,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-weekly-rest-adjustment-days"
-            label="عدد الأيام"
+            label={t("عدد الأيام")}
           >
             <input
               id="employee-live-v2-weekly-rest-adjustment-days"
@@ -1751,7 +1767,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-weekly-rest-adjustment-effective-date"
-            label="تاريخ سريان التسوية"
+            label={t("تاريخ سريان التسوية")}
           >
             <DashboardDatePickerV2
               id="employee-live-v2-weekly-rest-adjustment-effective-date"
@@ -1768,7 +1784,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-weekly-rest-adjustment-reason"
-            label="سبب التسوية"
+            label={t("سبب التسوية")}
           >
             <input
               id="employee-live-v2-weekly-rest-adjustment-reason"
@@ -1778,7 +1794,7 @@ export default function LeaveRestManagementPanel({
               }
               maxLength={1500}
               disabled={readOnly || saving}
-              placeholder="مثال: تصحيح استحقاق مؤكد من الموارد البشرية"
+              placeholder={t("مثال: تصحيح استحقاق مؤكد من الموارد البشرية")}
               onChange={(event) =>
                 setWeeklyRestAdjustmentReason(
                   event.target.value
@@ -1789,8 +1805,8 @@ export default function LeaveRestManagementPanel({
         </div>
 
         <WorkspaceNoticeV2
-          title="حركة مدققة وليست تعديلًا مباشرًا"
-          description="الإضافة أو الخصم يسجلان في السجل الموحد للراحة التعويضية. لا يتم حذف الرصيد التاريخي أو تعديل الحركات السابقة."
+          title={t("حركة مدققة وليست تعديلًا مباشرًا")}
+          description={t("الإضافة أو الخصم يسجلان في السجل الموحد للراحة التعويضية. لا يتم حذف الرصيد التاريخي أو تعديل الحركات السابقة.")}
           tone="neutral"
         />
 
@@ -1815,19 +1831,19 @@ export default function LeaveRestManagementPanel({
         >
           {weeklyRestAdjustmentAction ===
           "credit"
-            ? "إضافة التسوية"
-            : "خصم التسوية"}
+            ? tr("إضافة التسوية", "Add adjustment")
+            : tr("خصم التسوية", "Deduct adjustment")}
         </button>
       </WorkspaceCardV2>
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2
-          title="استدعاء من الإجازة السنوية"
-          description="هذه العملية ليست لإضافة رصيد إجازة. تستخدم فقط عند استدعاء موظفة أثناء إجازة سنوية معتمدة قائمة."
+          title={t("استدعاء من الإجازة السنوية")}
+          description={t("هذه العملية ليست لإضافة رصيد إجازة. تستخدم فقط عند استدعاء موظفة أثناء إجازة سنوية معتمدة قائمة.")}
         >
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             <DashboardFieldV2
               id="employee-live-v2-leave-recall-date"
-              label="تاريخ الاستدعاء"
+              label={t("تاريخ الاستدعاء")}
             >
               <DashboardDatePickerV2
                 id="employee-live-v2-leave-recall-date"
@@ -1840,14 +1856,14 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-leave-recall-reason"
-              label="سبب الاستدعاء"
+              label={t("سبب الاستدعاء")}
             >
               <input
                 id="employee-live-v2-leave-recall-reason"
                 className="dsv2-input"
                 value={recallReason}
                 disabled={readOnly || saving}
-                placeholder="مثال: احتياج تشغيلي طارئ"
+                placeholder={t("مثال: احتياج تشغيلي طارئ")}
                 onChange={(event) =>
                   setRecallReason(
                     event.target.value
@@ -1865,12 +1881,14 @@ export default function LeaveRestManagementPanel({
             }
             description={
               recallLeave
-                ? `من ${fmtIsoDate(
-                    recallLeave.startDate
-                  )} إلى ${fmtIsoDate(
-                    recallLeave.endDate
-                  )}. سيتم استرجاع يوم واحد فقط.`
-                : `اختر تاريخًا داخل إجازة سنوية معتمدة. ${nearbyApprovedAnnualLeavesDescription}`
+                ? tr(
+                    `من ${fmtIsoDate(recallLeave.startDate)} إلى ${fmtIsoDate(recallLeave.endDate)}. سيتم استرجاع يوم واحد فقط.`,
+                    `From ${fmtIsoDate(recallLeave.startDate)} to ${fmtIsoDate(recallLeave.endDate)}. Only one day will be restored.`
+                  )
+                : tr(
+                    `اختر تاريخًا داخل إجازة سنوية معتمدة. ${nearbyApprovedAnnualLeavesDescription}`,
+                    `Choose a date inside an approved annual leave. ${nearbyApprovedAnnualLeavesDescription}`
+                  )
             }
             tone={
               recallLeave
@@ -1894,13 +1912,13 @@ export default function LeaveRestManagementPanel({
         </WorkspaceCardV2>
 
         <WorkspaceCardV2
-          title="تكليف بالعمل في يوم الراحة"
-          description="يفتح البصمة والحجز لهذا اليوم فقط ولا يحول يوم الراحة الأصلي إلى يوم دوام دائم."
+          title={t("تكليف بالعمل في يوم الراحة")}
+          description={t("يفتح البصمة والحجز لهذا اليوم فقط ولا يحول يوم الراحة الأصلي إلى يوم دوام دائم.")}
         >
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             <DashboardFieldV2
               id="employee-live-v2-weekly-rest-work-date"
-              label="يوم الراحة"
+              label={t("يوم الراحة")}
             >
               <DashboardDatePickerV2
                 id="employee-live-v2-weekly-rest-work-date"
@@ -1912,14 +1930,14 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-weekly-rest-work-reason"
-              label="سبب التكليف"
+              label={t("سبب التكليف")}
             >
               <input
                 id="employee-live-v2-weekly-rest-work-reason"
                 className="dsv2-input"
                 value={restReason}
                 disabled={readOnly || saving}
-                placeholder="مثال: ضغط حجوزات طارئ"
+                placeholder={t("مثال: ضغط حجوزات طارئ")}
                 onChange={(event) =>
                   setRestReason(
                     event.target.value
@@ -1930,7 +1948,7 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-weekly-rest-work-start"
-              label="بداية العمل"
+              label={t("بداية العمل")}
             >
               <DashboardTimePickerV2
                 id="employee-live-v2-weekly-rest-work-start"
@@ -1943,7 +1961,7 @@ export default function LeaveRestManagementPanel({
 
             <DashboardFieldV2
               id="employee-live-v2-weekly-rest-work-end"
-              label="نهاية العمل"
+              label={t("نهاية العمل")}
             >
               <DashboardTimePickerV2
                 id="employee-live-v2-weekly-rest-work-end"
@@ -1956,8 +1974,8 @@ export default function LeaveRestManagementPanel({
           </div>
 
           <WorkspaceNoticeV2
-            title="الراحة الأسبوعية الأصلية محفوظة"
-            description="بعد اكتمال الحضور الفعلي يُسجل استحقاق الراحة التعويضية في رصيد مستقل، ولا يضاف إلى رصيد الإجازة السنوية."
+            title={t("الراحة الأسبوعية الأصلية محفوظة")}
+            description={t("بعد اكتمال الحضور الفعلي يُسجل استحقاق الراحة التعويضية في رصيد مستقل، ولا يضاف إلى رصيد الإجازة السنوية.")}
             tone="neutral"
           />
 
@@ -1976,8 +1994,8 @@ export default function LeaveRestManagementPanel({
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2
-          title="استدعاءات الإجازة السنوية"
-          description="الاستدعاءات الفعالة المسجلة على الأيام السنوية."
+          title={t("استدعاءات الإجازة السنوية")}
+          description={t("الاستدعاءات الفعالة المسجلة على الأيام السنوية.")}
         >
           <WorkspaceTableV2
             headers={[
@@ -1996,9 +2014,9 @@ export default function LeaveRestManagementPanel({
                   key={`${recall.id}-status`}
                   tone="success"
                 >
-                  {statusLabel(
+                  {t(statusLabel(
                     recall.status
-                  )}
+                  ))}
                 </WorkspaceStatusBadgeV2>,
                 <button
                   key={`${recall.id}-cancel`}
@@ -2017,15 +2035,15 @@ export default function LeaveRestManagementPanel({
             )}
             emptyText={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : "لا توجد استدعاءات فعالة."
             }
           />
         </WorkspaceCardV2>
 
         <WorkspaceCardV2
-          title="تكليفات أيام الراحة"
-          description="آخر تكليفات العمل المسجلة على أيام الراحة الأسبوعية."
+          title={t("تكليفات أيام الراحة")}
+          description={t("آخر تكليفات العمل المسجلة على أيام الراحة الأسبوعية.")}
         >
           <WorkspaceTableV2
             headers={[
@@ -2039,7 +2057,7 @@ export default function LeaveRestManagementPanel({
                 fmtIsoDate(
                   assignment.restDate
                 ),
-                `${formatTime12Hour(assignment.startTime)} – ${formatTime12Hour(assignment.endTime)}`,
+                `${formatTime12Hour(assignment.startTime, language)} – ${formatTime12Hour(assignment.endTime, language)}`,
                 <WorkspaceStatusBadgeV2
                   key={`${assignment.id}-status`}
                   tone={
@@ -2052,9 +2070,9 @@ export default function LeaveRestManagementPanel({
                       : "gold"
                   }
                 >
-                  {statusLabel(
+                  {t(statusLabel(
                     assignment.status
-                  )}
+                  ))}
                 </WorkspaceStatusBadgeV2>,
                 assignment.status ===
                 "assigned" ? (
@@ -2078,7 +2096,7 @@ export default function LeaveRestManagementPanel({
             )}
             emptyText={
               loading
-                ? "جاري التحميل..."
+                ? t("جاري التحميل...")
                 : "لا توجد تكليفات مسجلة."
             }
           />
