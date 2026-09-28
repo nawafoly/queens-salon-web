@@ -179,3 +179,77 @@ test("Staff Management translation dictionary stays unique and direct actions st
   assert.match(operational, /\{t\("تحديث النطاقات"\)\}/);
 });
 
+test("Staff Management service cards translate canonical catalog labels in English", () => {
+  const services = read(
+    "src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceCoreTabsLiveV2.tsx"
+  );
+  const employees = read("src/pages/DashboardEmployees.tsx");
+
+  assert.match(
+    services,
+    /translateBookingCatalogLabel\(language, service\.label, "service"\)/
+  );
+  assert.match(
+    services,
+    /translateBookingCatalogLabel\([\s\S]*serviceSectionLabel\(service, sectionOptions\)[\s\S]*"section"/
+  );
+  assert.match(
+    employees,
+    /translateBookingCatalogLabel\(\s*"en",\s*String\(s\.label \|\| ""\),\s*"service"\s*\)/
+  );
+});
+
+test("Staff Management tab visibility is account-controlled and route-enforced", () => {
+  const permissions = read("src/helpers/permissions.ts");
+  const access = read("src/helpers/employeeProfileTabAccess.ts");
+  const employees = read("src/pages/DashboardEmployees.tsx");
+  const accounts = read("src/pages/settings/SettingsUsers.tsx");
+  const migration = read(
+    "migrations/core/0089_employee_profile_tab_permissions.sql"
+  );
+
+  for (const key of [
+    "employees.tabs.basic.view",
+    "employees.tabs.profile.view",
+    "employees.tabs.services.view",
+    "employees.tabs.schedule.view",
+    "employees.tabs.attendance.view",
+    "employees.tabs.payroll.view",
+    "employees.tabs.requests.view",
+    "employees.tabs.leave.view",
+    "employees.tabs.messages.view",
+  ]) {
+    assert.match(permissions, new RegExp(key.replaceAll(".", "\\.")));
+    assert.match(access, new RegExp(key.replaceAll(".", "\\.")));
+    assert.match(migration, new RegExp(key.replaceAll(".", "\\.")));
+  }
+
+  assert.match(
+    employees,
+    /\.filter\(\(tab\) => canDisplayEmployeeTab\(tab\.key\)\)/
+  );
+  assert.match(
+    employees,
+    /allowedRouteSection = canDisplayEmployeeTab\(resolvedRouteSection\)/
+  );
+  assert.match(
+    employees,
+    /allowedRouteSection !== resolvedRouteSection/
+  );
+
+  assert.match(accounts, /Allowed Staff Management tabs/);
+  assert.match(accounts, /التبويبات المسموح بها في ملف الموظفة/);
+  assert.match(accounts, /Services only/);
+  assert.match(accounts, /الخدمات فقط/);
+  assert.match(accounts, /currentCount <= 1/);
+
+  assert.match(
+    migration,
+    /\('main', 'reception', 'employees\.tabs\.services\.view'/
+  );
+  assert.doesNotMatch(
+    migration,
+    /\('main', 'reception', 'employees\.tabs\.(?:basic|profile|schedule|attendance|payroll|requests|leave|messages)\.view'/
+  );
+});
+
