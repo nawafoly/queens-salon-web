@@ -1034,9 +1034,44 @@ const employeeEnglish: Record<string, string> = {
   "هوية الحساب مرتبطة حاليًا بموظف آخر؛ تم إيقاف العملية لحماية الحساب من التعطيل الخاطئ.": "The account identity is currently linked to another staff member. The action was stopped to prevent disabling the wrong account.",
 };
 
+function employeeDynamicEnglishText(arabic: string): string | null {
+  const patterns: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
+    [/^(\d+(?:[.,]\d+)?) ملف$/, (m) => `${m[1]} profiles`],
+    [/^فتح ملف (.+)$/, (m) => `Open ${m[1]} profile`],
+    [/^صورة (.+)$/, (m) => `${m[1]} photo`],
+    [/^(\d+) خدمة مرتبطة$/, (m) => `${m[1]} linked services`],
+    [/^تفصيل (\d+)$/, (m) => `Detail ${m[1]}`],
+    [/^(\d+) طلبات معلقة$/, (m) => `${m[1]} pending requests`],
+    [/^(\d+) طلبات في الحالة المحددة\.$/, (m) => `${m[1]} requests in the selected status.`],
+    [/^(\d+) غير مقروءة$/, (m) => `${m[1]} unread`],
+    [/^آخر رسالة (.+)$/, (m) => `Last message ${m[1]}`],
+    [/^يحتاج تجديد خلال (\d+) يومًا$/, (m) => `Needs renewal in ${m[1]} days`],
+    [/^(\d+) حرف$/, (m) => `${m[1]} characters`],
+    [/^(\d+) خدمات محددة$/, (m) => `${m[1]} selected services`],
+    [/^(\d+) نتيجة$/, (m) => `${m[1]} results`],
+    [/^إزالة (.+)$/, (m) => `Remove ${m[1]}`],
+    [/^(\d+(?:[.,]\d+)?) يوم$/, (m) => `${m[1]} day(s)`],
+    [/^بعد (\d+(?:[.,]\d+)?) دقيقة$/, (m) => `After ${m[1]} min`],
+    [/^تأخير (\d+(?:[.,]\d+)?) دقيقة$/, (m) => `Late ${m[1]} min`],
+    [/^خروج مبكر (\d+(?:[.,]\d+)?) دقيقة$/, (m) => `Early leave ${m[1]} min`],
+    [/^نقص ساعات (\d+(?:[.,]\d+)?) دقيقة$/, (m) => `Missing hours ${m[1]} min`],
+    [/^في إجازة حتى (.+)$/, (m) => `On leave until ${m[1]}`],
+  ];
+
+  for (const [pattern, translate] of patterns) {
+    const match = arabic.match(pattern);
+    if (match) return translate(match);
+  }
+  return null;
+}
+
 export function employeeText(language: DashboardLanguage, arabic: string): string {
   if (language !== "en") return arabic;
-  return employeeEnglish[arabic] || dashboardText(language, arabic);
+  const direct = employeeEnglish[arabic];
+  if (direct) return direct;
+  const dashboard = dashboardText(language, arabic);
+  if (dashboard !== arabic) return dashboard;
+  return employeeDynamicEnglishText(arabic) || arabic;
 }
 
 type EmployeeLanguageContextValue = {
