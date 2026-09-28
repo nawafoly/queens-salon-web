@@ -539,7 +539,7 @@ export default function ShiftControlSection({
     const source = templates.filter((template) => boolish(template.active) || selectedIds.has(template.id));
     return source.map((template) => ({
       value: template.id,
-      label: `${template.name || template.id} - ${formatWindow(template)}${boolish(template.active) ? "" : " (متوقف)"}`,
+      label: `${template.name || template.id} - ${formatWindow(template)}${boolish(template.active) ? "" : language === "en" ? " (inactive)" : " (متوقف)"}`,
     }));
   }, [assignmentForm.shiftTemplateId, exceptionForm.shiftTemplateId, templates]);
 
@@ -1194,7 +1194,7 @@ export default function ShiftControlSection({
   const resolvedExceptionType = cleanText(resolvedShift?.exceptionType || resolvedShift?.exception_type);
   const resolvedShiftName = cleanText(resolvedShift?.shiftName || resolvedShift?.shift_name);
   const openAssignmentName = assignmentShiftName(openAssignment, templates);
-  const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : "لا يوجد";
+  const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : t("لا يوجد");
   const resolvedLabel = source === "exception"
     ? "استثناء يومي"
     : source === "weekly_rest_work_assignment"
@@ -1219,10 +1219,10 @@ export default function ShiftControlSection({
     const label = assignmentStatus(assignment);
     const isCancelled = label === "ملغي";
     return [
-      <strong key="name">{assignmentShiftName(assignment, templates) || assignment.shiftTemplateId || "شفت"}</strong>,
+      <strong key="name">{assignmentShiftName(assignment, templates) || assignment.shiftTemplateId || t("الشفت")}</strong>,
       formatWindow(assignmentShiftRecord(assignment, templates)),
-      `${assignment.effectiveFrom} - ${assignment.effectiveTo || "مفتوح"}`,
-      <WorkspaceStatusBadgeV2 key="status" tone={assignmentTone(assignment)}>{label}</WorkspaceStatusBadgeV2>,
+      `${assignment.effectiveFrom} - ${assignment.effectiveTo || t("مفتوح")}`,
+      <WorkspaceStatusBadgeV2 key="status" tone={assignmentTone(assignment)}>{t(label)}</WorkspaceStatusBadgeV2>,
       <div key="actions" className="dsv2-cluster">
         <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editAssignment(assignment)} disabled={!canManage || saving || isCancelled}>{t("تعديل هذا التعيين")}</button>
         <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || label !== "نشط"}>{t("إنهاء اليوم")}</button>
@@ -1294,7 +1294,7 @@ export default function ShiftControlSection({
           <WorkspaceMetricV2
             label={t("مرونة الحضور")}
             value={tr(`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} دقيقة`, `${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} min`)}
-            note="تسمح بالحضور المتأخر، لكن الدقائق غير المعوضة تُحسب"
+            note={t("تسمح بالحضور المتأخر، لكن الدقائق غير المعوضة تُحسب")}
             tone="gold"
           />
           <WorkspaceMetricV2
@@ -1302,7 +1302,7 @@ export default function ShiftControlSection({
             value={boolish(resolvedShift?.attendanceLockEnabled ?? resolvedShift?.attendance_lock_enabled)
               ? tr(`بعد ${readNumber(resolvedShift?.attendanceLockAfterMinutes ?? resolvedShift?.attendance_lock_after_minutes)} دقيقة`, `After ${readNumber(resolvedShift?.attendanceLockAfterMinutes ?? resolvedShift?.attendance_lock_after_minutes)} min`)
               : t("غير مفعّل")}
-            note="إغلاق بصمة الحضور فقط؛ الانصراف يبقى متاحًا"
+            note={t("إغلاق بصمة الحضور فقط؛ الانصراف يبقى متاحًا")}
             tone={boolish(resolvedShift?.attendanceLockEnabled ?? resolvedShift?.attendance_lock_enabled) ? "danger" : "neutral"}
           />
         </div>
@@ -1317,8 +1317,8 @@ export default function ShiftControlSection({
         />
         <div ref={assignmentEditorRef}>
         <WorkspaceCardV2
-          title={assignmentForm.id ? "تعديل تعيين احتياطي" : "تعيين شفت احتياطي"}
-          description={assignmentForm.id ? "تعديل تعيين قديم موجود." : "لا يُستخدم عند وجود جدول دوام أسبوعي للموظفة."}
+          title={assignmentForm.id ? tr("تعديل تعيين احتياطي", "Edit fallback assignment") : tr("تعيين شفت احتياطي", "Fallback shift assignment")}
+          description={assignmentForm.id ? tr("تعديل تعيين قديم موجود.", "Edit an existing legacy assignment.") : tr("لا يُستخدم عند وجود جدول دوام أسبوعي للموظفة.", "Do not use this when the staff member has a weekly work schedule.")}
           actions={<WorkspaceHelpButtonV2 label={t("شرح تعيين الشفت الاحتياطي")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.fallbackAssignment)} />}
         >
           {assignmentForm.id ? (
@@ -1395,7 +1395,7 @@ export default function ShiftControlSection({
         />
         {archivedAssignments.length ? (
           <details className="dsv2-details-block">
-            <summary>عرض السجل التاريخي والمنتهي ({archivedAssignments.length})</summary>
+            <summary>{tr(`عرض السجل التاريخي والمنتهي (${archivedAssignments.length})`, `Show historical and ended assignments (${archivedAssignments.length})`)}</summary>
             <WorkspaceTableV2
               headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
               rows={archivedAssignments.map(renderAssignmentRow)}
@@ -1405,7 +1405,7 @@ export default function ShiftControlSection({
         ) : null}
         {cancelledAssignments.length ? (
           <details className="dsv2-details-block">
-            <summary>عرض التعيينات الملغية ({cancelledAssignments.length})</summary>
+            <summary>{tr(`عرض التعيينات الملغية (${cancelledAssignments.length})`, `Show cancelled assignments (${cancelledAssignments.length})`)}</summary>
             <WorkspaceTableV2
               headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
               rows={cancelledAssignments.map(renderAssignmentRow)}
@@ -1420,7 +1420,7 @@ export default function ShiftControlSection({
         <summary>{t("إدارة قوالب الشفتات والاستثناءات")}</summary>
         <div className="dsv2-grid dsv2-grid--two">
           <WorkspaceCardV2
-            title={templateForm.id ? "تعديل قالب شفت" : "إنشاء قالب شفت"}
+            title={templateForm.id ? tr("تعديل قالب شفت", "Edit shift template") : tr("إنشاء قالب شفت", "Create shift template")}
             description={t("القالب عام ويؤثر على أي موظفة تستخدمه. لا تعدله إلا إذا تريد تغيير القالب نفسه للجميع.")}
             actions={<WorkspaceHelpButtonV2 label={t("شرح إنشاء قالب الشفت")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.shiftTemplate)} />}
           >
@@ -1542,8 +1542,8 @@ export default function ShiftControlSection({
               rows={templates.map((template) => [
                 <strong key="name">{template.name}</strong>,
                 formatWindow(template),
-                `${readNumber(template.lateGraceMinutes)} دقيقة`,
-                boolish(template.attendanceLockEnabled) ? `بعد ${readNumber(template.attendanceLockAfterMinutes)} دقيقة` : "غير مفعّل",
+                tr(`${readNumber(template.lateGraceMinutes)} دقيقة`, `${readNumber(template.lateGraceMinutes)} min`),
+                boolish(template.attendanceLockEnabled) ? tr(`بعد ${readNumber(template.attendanceLockAfterMinutes)} دقيقة`, `After ${readNumber(template.attendanceLockAfterMinutes)} min`) : t("غير مفعّل"),
                 <WorkspaceStatusBadgeV2 key="status" tone={boolish(template.active) ? "success" : "danger"}>{boolish(template.active) ? t("نشط") : tr("متوقف", "Inactive")}</WorkspaceStatusBadgeV2>,
                 <button key="edit" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editTemplate(template)} disabled={!canManage || saving}>{t("تعديل القالب")}</button>,
               ])}
@@ -1580,13 +1580,13 @@ export default function ShiftControlSection({
                 const isCancelled = isCancelledScheduleException(exception);
                 const mutedClass = isCancelled && exceptionFilter === "all" ? "dsv2-ew-muted-row" : undefined;
                 return [
-                  <strong key="type" className={mutedClass}>{exceptionTypeLabel(exception.exceptionType)}</strong>,
+                  <strong key="type" className={mutedClass}>{t(exceptionTypeLabel(exception.exceptionType))}</strong>,
                   <span key="range" className={mutedClass}>{exception.dateFrom} - {exception.dateTo}</span>,
                   <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? t("راحة") : formatWindow(exception)}</span>,
-                  <WorkspaceStatusBadgeV2 key="status" tone={isCancelled ? "danger" : "success"}>{statusLabel(exception.status)}</WorkspaceStatusBadgeV2>,
+                  <WorkspaceStatusBadgeV2 key="status" tone={isCancelled ? "danger" : "success"}>{t(statusLabel(exception.status))}</WorkspaceStatusBadgeV2>,
                   action.kind === "restore"
-                    ? <button key="restore" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void restoreException(exception)} disabled={!canManage || saving}>{action.label}</button>
-                    : <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving}>{action.label}</button>,
+                    ? <button key="restore" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void restoreException(exception)} disabled={!canManage || saving}>{t(action.label)}</button>
+                    : <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving}>{t(action.label)}</button>,
                 ];
               })}
               emptyText={t("لا توجد استثناءات شفت لهذه الموظفة.")}
