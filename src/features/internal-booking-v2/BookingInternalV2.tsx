@@ -186,7 +186,31 @@ function serviceTitle(service: any) {
 
 function partyClientKey(client: ClientCandidate | null | undefined) {
   if (!client) return "";
-  return candidateIdentity(client) || `id:${String(client.id || "").trim()}`;
+  const rawId = String(client.id || "").trim();
+
+  // Canonical Core client ID is the booking ownership key. Phone/name are only
+  // fallbacks for quick-history rows that have not been resolved to Core yet.
+  if (rawId && !rawId.startsWith("history:")) return `id:${rawId}`;
+
+  const fallbackIdentity = candidateIdentity(client);
+  if (fallbackIdentity) return fallbackIdentity;
+  return rawId ? `id:${rawId}` : "";
+}
+
+function samePartyClient(left: ClientCandidate | null | undefined, right: ClientCandidate | null | undefined) {
+  if (!left || !right) return false;
+
+  const leftId = String(left.id || "").trim();
+  const rightId = String(right.id || "").trim();
+  const leftCanonical = leftId && !leftId.startsWith("history:");
+  const rightCanonical = rightId && !rightId.startsWith("history:");
+  if (leftCanonical && rightCanonical && leftId === rightId) return true;
+
+  const leftPhone = phone10Digits(left.phone || "");
+  const rightPhone = phone10Digits(right.phone || "");
+  if (leftPhone && rightPhone && leftPhone === rightPhone) return true;
+
+  return partyClientKey(left) === partyClientKey(right);
 }
 
 function bookingLineKey(service: any) {
@@ -212,6 +236,26 @@ function attachServiceToClient(service: CatalogService, client: ClientCandidate)
     __partyClientName: client.name,
     __partyClientPhone: client.phone,
   };
+}
+
+function clientHasService(cart: CatalogService[], client: ClientCandidate, service: CatalogService) {
+  const clientKey = partyClientKey(client);
+  const serviceId = String(service?.id || "").trim();
+  return cart.some(
+    (item) =>
+      bookingLineClientKey(item) === clientKey &&
+      String(item?.id || "").trim() === serviceId
+  );
+}
+
+function addServiceForClient(cart: CatalogService[], service: CatalogService, client: ClientCandidate) {
+  if (clientHasService(cart, client, service)) return cart;
+  return [...cart, attachServiceToClient(service, client)];
+}
+
+function removeServiceForClient(cart: CatalogService[], service: CatalogService, client: ClientCandidate) {
+  const lineKey = bookingLineKey(attachServiceToClient(service, client));
+  return cart.filter((item) => bookingLineKey(item) !== lineKey);
 }
 
 function serviceDuration(service: any) {
@@ -556,6 +600,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return bookingClients.find((client) => partyClientKey(client) === activePartyClientKey) || bookingClients[0];
   }, [bookingClients, activePartyClientKey]);
 
+  const scheduleGroups = useMemo(
+    () => bookingClients
+      .map((client, clientIndex) => {
+        const clientKey = partyClientKey(client);
+        return {
+          client,
+          clientKey,
+          clientIndex,
+          services: cart.filter((service) => bookingLineClientKey(service) === clientKey),
+        };
+      })
+      .filter((group) => group.services.length > 0),
+    [bookingClients, cart]
+  );
+
   useEffect(() => {
     if (!selectedClient) {
       setActivePartyClientKey("");
@@ -584,13 +643,17 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         setClientMessage(t("وصلت مجموعة الحجز إلى الحد الأقصى المسموح."));
         return;
       }
-      const primaryKey = partyClientKey(selectedClient);
-      if (candidateKey === primaryKey) {
-        setClientMessage(t("هذه هي العميلة الأساسية بالفعل."));
+
+      const existingPartyClient = bookingClients.find((row) => samePartyClient(row, candidate));
+      if (existingPartyClient) {
+        setActivePartyClientKey(partyClientKey(existingPartyClient));
+        setClientMessage(
+          samePartyClient(selectedClient, candidate)
+            ? t("هذه هي العميلة الأساسية بالفعل.")
+            : t("هذه العميلة موجودة بالفعل في مجموعة الحجز.")
+        );
       } else {
-        setCompanions((current) => current.some((row) => partyClientKey(row) === candidateKey)
-          ? current
-          : [...current, candidate]);
+        setCompanions((current) => [...current, candidate]);
         setActivePartyClientKey(candidateKey);
         setClientMessage(t("تمت إضافة المرافقة إلى نفس مجموعة الحجز."));
       }
@@ -619,7 +682,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setExistingClientMatch(null);
     setExistingClientLookupError("");
     setNewClientError("");
-  }, [addingCompanion, selectedClient, companions.length, language]);
+  }, [addingCompanion, selectedClient, companions.length, bookingClients, language]);
 
   useEffect(() => {
     const phone = phone10Digits(newClientPhone);
@@ -2252,8 +2315,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const owner = activeBookingClient || selectedClient;
-                      const ownerKey = partyClientKey(owner);
-                      const inCart = Boolean(owner) && cart.some((item) => bookingLineClientKey(item) === ownerKey && String(item.id) === String(service.id));
+                      const inCart = owner ? clientHasService(cart, owner, service) : false;
                       const lineKey = owner ? bookingLineKey(attachServiceToClient(service, owner)) : "";
                       const promoActive = serviceHasActivePromo(service);
                       const catalogPrice = serviceCatalogPrice(service);
@@ -2265,7 +2327,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                         onClick={() => {
                           if (!owner) return;
                           if (inCart) {
-                            setCart((current) => current.filter((item) => bookingLineKey(item) !== lineKey));
+                            setCart((current) => removeServiceForClient(current, service, owner));
                             setPriceAdjustments((current) => {
                               const next = { ...current };
                               delete next[lineKey];
@@ -2287,7 +2349,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                               return next;
                             });
                           } else {
-                            setCart((current) => [...current, attachServiceToClient(service, owner)]);
+                            setCart((current) => addServiceForClient(current, service, owner));
                           }
                         }}
                       >
@@ -2323,51 +2385,94 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   {!dayHours.enabled ? <p className="bk2-status-line">{t("الصالون مغلق في هذا اليوم حسب إعدادات الدوام.")}</p> : null}
                   {staffLoading ? <p className="bk2-status-line is-loading">{t("جاري تحميل الموظفات...")}</p> : null}
                   {scheduleMessage ? <p className="bk2-status-line">{scheduleMessage}</p> : null}
-                  <div className="bk2-schedule-list">
-                    {cart.map((service, index) => {
-                      const key = bookingLineKey(service);
-                      const selection = scheduleByService[key];
-                      const staffRows = eligibleStaffByService[key] || [];
-                      const times = availableTimes[key] || [];
+                  <div className="bk2-party-schedule-groups">
+                    {scheduleGroups.map((group) => {
+                      const completedCount = group.services.filter((service) => {
+                        const lineKey = bookingLineKey(service);
+                        return Boolean(scheduleByService[lineKey]?.time);
+                      }).length;
+                      const groupComplete = completedCount === group.services.length;
+
                       return (
-                        <article key={key} className={`bk2-schedule-item ${selection?.time ? "is-complete" : ""}`}>
-                          <header><span>{index + 1}</span><div><strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong><small>{bookingClients.length > 1 ? `${bookingLineClientName(service)} · ` : ""}{serviceDuration(service) || 30} {t("دقيقة")}</small></div>{selection?.time ? <em>✓ {t("مكتمل")}</em> : null}</header>
-                          <div className="bk2-schedule-controls">
-                            <div className="bk2-staff-field">
-                              <span>{t("الموظفة")}</span>
-                              <DashboardSelectV2
-                                value={selection?.staffId || ""}
-                                placeholder={t("اختاري الموظفة")}
-                                className="bk2-staff-select-v2"
-                                options={staffRows.map((row) => ({ value: staffId(row), label: staffName(row) }))}
-                                onChange={(value) => {
-                                  const chosen = staffRows.find((row) => staffId(row) === value);
-                                  setScheduleByService((current) => ({ ...current, [key]: { staffId: value, staffName: chosen ? staffName(chosen) : "", time: "" } }));
-                                  setAvailableTimes((current) => ({ ...current, [key]: [] }));
-                                  if (chosen) void loadTimesForService(service, chosen);
-                                }}
-                              />
+                        <section
+                          key={group.clientKey}
+                          className={`bk2-party-schedule-group ${groupComplete ? "is-complete" : ""}`}
+                        >
+                          <header className="bk2-party-schedule-group-head">
+                            <div className="bk2-party-schedule-client">
+                              <span className="bk2-party-schedule-avatar">
+                                {group.client.name.slice(0, 1)}
+                              </span>
+                              <div>
+                                <small>{t(group.clientIndex === 0 ? "العميلة الأساسية" : "مرافقة")}</small>
+                                <strong>{group.client.name}</strong>
+                                {group.client.phone ? <bdi dir="ltr">{group.client.phone}</bdi> : null}
+                              </div>
                             </div>
-                            <div className="bk2-time-picker">
-                              <span>{t("الأوقات المتاحة")}</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.kind}-${busy.serviceTitle}-${busy.start}`}>{busy.kind === "staff" ? t("الموظفة مشغولة من") : t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.clientName ? `${busy.clientName} · ` : ""}{busy.serviceTitle}</span></p>)}</div> : null}
-                              {!selection?.staffId ? <p>{t("اختاري الموظفة أولًا.")}</p> : timesLoading[key] ? <p>{t("جاري فحص المواعيد...")}</p> : times.length ? (
-                                <div>{times.map((time) => {
-                                  const conflict = getCartScheduleConflict(key, selection.staffId, time);
-                                  const conflicting = Boolean(conflict);
-                                  const conflictTitle = conflict
-                                    ? (language === "en"
-                                      ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
-                                      : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
-                                    : "";
-                                  return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
-                                })}</div>
-                              ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
+                            <div className="bk2-party-schedule-progress">
+                              <strong>{completedCount}/{group.services.length}</strong>
+                              <span>{t(group.services.length === 1 ? "خدمة" : "خدمات")}</span>
+                              {groupComplete ? <em>✓ {t("مكتمل")}</em> : null}
                             </div>
+                          </header>
+
+                          <div className="bk2-party-schedule-services">
+                            {group.services.map((service, serviceIndex) => {
+                              const key = bookingLineKey(service);
+                              const selection = scheduleByService[key];
+                              const staffRows = eligibleStaffByService[key] || [];
+                              const times = availableTimes[key] || [];
+
+                              return (
+                                <article key={key} className={`bk2-schedule-item ${selection?.time ? "is-complete" : ""}`}>
+                                  <header>
+                                    <span>{serviceIndex + 1}</span>
+                                    <div>
+                                      <strong>{translateBookingCatalogLabel(language, serviceTitle(service), "service")}</strong>
+                                      <small>{serviceDuration(service) || 30} {t("دقيقة")}</small>
+                                    </div>
+                                    {selection?.time ? <em>✓ {t("مكتمل")}</em> : null}
+                                  </header>
+                                  <div className="bk2-schedule-controls">
+                                    <div className="bk2-staff-field">
+                                      <span>{t("الموظفة")}</span>
+                                      <DashboardSelectV2
+                                        value={selection?.staffId || ""}
+                                        placeholder={t("اختاري الموظفة")}
+                                        className="bk2-staff-select-v2"
+                                        options={staffRows.map((row) => ({ value: staffId(row), label: staffName(row) }))}
+                                        onChange={(value) => {
+                                          const chosen = staffRows.find((row) => staffId(row) === value);
+                                          setScheduleByService((current) => ({ ...current, [key]: { staffId: value, staffName: chosen ? staffName(chosen) : "", time: "" } }));
+                                          setAvailableTimes((current) => ({ ...current, [key]: [] }));
+                                          if (chosen) void loadTimesForService(service, chosen);
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="bk2-time-picker">
+                                      <span>{t("الأوقات المتاحة")}</span>
+                                      {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.kind}-${busy.serviceTitle}-${busy.start}`}>{busy.kind === "staff" ? t("الموظفة مشغولة من") : t("العميلة لديها خدمة من")} <strong>{formatTime12(busy.start, busy.start)}</strong> {t("إلى")} <strong>{formatTime12(busy.end, busy.end)}</strong><span>{t("بسبب")}: {busy.clientName ? `${busy.clientName} · ` : ""}{busy.serviceTitle}</span></p>)}</div> : null}
+                                      {!selection?.staffId ? <p>{t("اختاري الموظفة أولًا.")}</p> : timesLoading[key] ? <p>{t("جاري فحص المواعيد...")}</p> : times.length ? (
+                                        <div>{times.map((time) => {
+                                          const conflict = getCartScheduleConflict(key, selection.staffId, time);
+                                          const conflicting = Boolean(conflict);
+                                          const conflictTitle = conflict
+                                            ? (language === "en"
+                                              ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
+                                              : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
+                                            : "";
+                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
+                                        })}</div>
+                                      ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
+                                    </div>
+                                  </div>
+                                  {conflictKeys.has(key) ? <p className="bk2-inline-warning">{t("هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة. اختاري وقتًا مختلفًا.")}</p> : null}
+                                  {!staffRows.length && !staffLoading ? <p className="bk2-inline-warning">{t("لا توجد موظفة مؤهلة ومتاحة لهذه الخدمة في هذا اليوم.")}</p> : null}
+                                </article>
+                              );
+                            })}
                           </div>
-                          {conflictKeys.has(key) ? <p className="bk2-inline-warning">{t("هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة. اختاري وقتًا مختلفًا.")}</p> : null}
-                          {!staffRows.length && !staffLoading ? <p className="bk2-inline-warning">{t("لا توجد موظفة مؤهلة ومتاحة لهذه الخدمة في هذا اليوم.")}</p> : null}
-                        </article>
+                        </section>
                       );
                     })}
                   </div>
