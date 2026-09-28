@@ -39,7 +39,7 @@ test("schedule step groups services under a prominent client header", () => {
 test("saved offers belong to one party client and do not leak to companions", () => {
   assert.match(tsx, /const \[selectedOfferByClientKey, setSelectedOfferByClientKey\]/);
   assert.match(tsx, /const selectedOfferId = String\(selectedOfferByClientKey\[activePartyClientKey\]/);
-  assert.match(tsx, /setOfferForClient\(clientKey, offerId\)/);
+  assert.match(tsx, /setOfferForClient\(clientKey, nextOfferId\)/);
   assert.match(tsx, /const memberOfferId = String\(selectedOfferByClientKey\[key\]/);
   assert.match(tsx, /results\.set\([\s\S]*?memberOffer[\s\S]*?buildDiscountSnapshot/);
 });
