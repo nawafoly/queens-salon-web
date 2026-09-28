@@ -53,6 +53,27 @@ test("booking summary visibly separates services by party client", () => {
   assert.match(css, /\.bk2-summary-party-offer/);
 });
 
+test("client step has explicit primary/companion modes instead of leaving the full picker visually static", () => {
+  assert.match(tsx, /const \[clientPickerOpen, setClientPickerOpen\]/);
+  assert.match(tsx, /className=\{\`bk2-client-action-banner/);
+  assert.match(tsx, /اختاري المرافقة الآن/);
+  assert.match(tsx, /تغيير العميلة الأساسية/);
+  assert.match(tsx, /className="bk2-client-card-action"/);
+  assert.match(tsx, /setClientPickerOpen\(false\)/);
+  assert.match(css, /\.bk2-client-action-banner\.is-companion/);
+  assert.match(css, /\.bk2-client-picker-shell\.is-companion/);
+});
+
+test("step continue action is rendered only after the current step becomes complete", () => {
+  assert.match(tsx, /const sidebarCanAdvance =/);
+  assert.match(tsx, /step === 2\s*\? allPartyClientsHaveServices/);
+  assert.match(tsx, /\{sidebarCanAdvance \? \(/);
+  assert.match(tsx, /className="bk2-continue is-revealed"/);
+  assert.doesNotMatch(tsx, /className="bk2-continue" disabled=/);
+  assert.match(css, /@keyframes bk2-cta-reveal/);
+  assert.match(css, /\.bk2-stepper button\.is-complete \.bk2-step-number/);
+});
+
 test("same client cannot overlap but different party members may overlap while staff remains globally protected", () => {
   assert.match(tsx, /bookingLineClientKey\(other\) === currentClientKey/);
   assert.match(tsx, /if \(selected\.staffId === staffKey\)/);
