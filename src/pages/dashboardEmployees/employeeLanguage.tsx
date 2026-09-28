@@ -185,7 +185,6 @@ const employeeEnglish: Record<string, string> = {
   "الحجز المباشر متوقف": "Direct booking disabled",
   "الحجوزات السابقة محفوظة، لكن الموظفة لن تظهر في الحجوزات الجديدة.": "Existing bookings are preserved, but this staff member will not appear in new bookings.",
   "الحساب": "Account",
-  "دليل الموظفات": "Staff directory",
   "ظاهرة": "Visible",
   "مخفية": "Hidden",
   "من نحن": "About us",
@@ -260,18 +259,6 @@ const employeeEnglish: Record<string, string> = {
   "لم تُحدد خدمات": "No services selected",
   "امسح عبارة البحث لعرض القائمة.": "Clear the search text to show the list.",
   "اختاري الخدمات من القائمة المجاورة.": "Select services from the adjacent list.",
-};
-
-export function employeeText(language: DashboardLanguage, arabic: string): string {
-  if (language !== "en") return arabic;
-  return employeeEnglish[arabic] || dashboardText(language, arabic);
-}
-
-type EmployeeLanguageContextValue = {
-  language: DashboardLanguage;
-  direction: "rtl" | "ltr";
-  t: (arabic: string) => string;
-  tr: (arabic: string, english: string) => string;
   "مغلق اليوم": "Closed today",
   "متاح اليوم": "Available today",
   "لا توجد استثناءات": "No exceptions",
@@ -366,7 +353,6 @@ type EmployeeLanguageContextValue = {
   "طريقة الاستخدام": "How to use",
   "اتبع الخطوات بالترتيب لتجنب تضارب الإعدادات.": "Follow the steps in order to avoid conflicting settings.",
   "مهم": "Important",
-
   "اختر لكل يوم قالب شفت أو راحة أسبوعية. أوقات وسياسات الدوام تُسحب تلقائيًا من القالب الموجود في نفس الصفحة.": "Choose a shift template or weekly day off for each day. Working times and attendance policies are inherited from the selected template.",
   "شرح الدوام والشفتات": "Explain schedule & shifts",
   "أيام العمل": "Working days",
@@ -444,7 +430,6 @@ type EmployeeLanguageContextValue = {
   "الحدث": "Event",
   "دخول": "Check-in",
   "خروج": "Check-out",
-  "مكتمل": "Complete",
   "غير مسجل": "Not recorded",
   "ملاحظة المراجعة": "Review note",
   "سجل الشهر": "Monthly record",
@@ -512,7 +497,6 @@ type EmployeeLanguageContextValue = {
   "يرتبط هذا التبويب بوحدة تشغيل مستقلة داخل النظام.": "This tab is linked to an independent operational module.",
   "لا توجد ملاحظات إضافية": "No additional notes",
   "سيتم عرض البيانات عند ربط الوحدة المباشرة بهذا التبويب.": "Data will appear when the corresponding live module is connected to this tab.",
-
   "يناير": "January",
   "فبراير": "February",
   "مارس": "March",
@@ -525,7 +509,6 @@ type EmployeeLanguageContextValue = {
   "أكتوبر": "October",
   "نوفمبر": "November",
   "ديسمبر": "December",
-  "اليوم": "Today",
   "لا توجد سجلات لهذا الشهر": "No records for this month",
   "ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.": "Attendance and approved leave will appear automatically when available.",
   "دليل ألوان التقويم": "Calendar legend",
@@ -542,7 +525,6 @@ type EmployeeLanguageContextValue = {
   "الموقع": "Location",
   "السجلات": "Records",
   "الملاحظات": "Notes",
-  "تعديل البصمة": "Edit attendance",
   "حذف البصمة": "Delete attendance",
   "تسجيل إجازة أو استئذان": "Record leave or permission",
   "إغلاق": "Close",
@@ -557,7 +539,6 @@ type EmployeeLanguageContextValue = {
   "الإجازة المعتمدة من Core": "Approved leave from Core",
   "جاري فحص الشفت المعتمد…": "Checking the effective shift...",
   "جاري التحقق": "Verifying",
-
   "لم يسجل بعد": "Not recorded yet",
   "إجازة مرضية": "Sick leave",
   "استئذان / اضطراري": "Permission / emergency",
@@ -681,7 +662,6 @@ type EmployeeLanguageContextValue = {
   "المستندات والسجل": "Documents & history",
   "إدارة المستندات النشطة والنسخ المستبدلة والمؤرشفة من Core D1 وR2 ضمن مركز موحد.": "Manage active documents, replaced versions, and archived records from Core D1 and R2 in one workspace.",
   "ملف قريب الانتهاء": "Document expiring soon",
-  "إجمالي الملفات": "Total files",
   "السارية": "Valid",
   "المنتهية": "Expired",
   "تعذر تنفيذ العملية": "Could not complete the action",
@@ -729,7 +709,6 @@ type EmployeeLanguageContextValue = {
   "إجازة أخرى": "Other leave",
   "على إجازة": "On leave",
   "إجازة قادمة": "Upcoming leave",
-  "على رأس العمل": "Active at work",
   "حالة الإعداد": "Setup status",
   "راتب اليوم": "Daily salary",
   "راتب الساعة": "Hourly salary",
@@ -768,7 +747,6 @@ type EmployeeLanguageContextValue = {
   "الإجازات السنوية والمرضية والطارئة تظهر في الحضور ولا تخصم من الراتب، بينما الإجازة بدون راتب تظهر كإجازة معتمدة ويُخصم مقابل أيامها من الراتب.": "Annual, sick, and emergency leave appears in attendance without salary deduction; unpaid leave is approved leave whose days are deducted from payroll.",
   "انتهى تاريخ الإجازة": "Leave period ended",
   "يمكن إنهاء الحالة الحالية أو تسجيل إجازة جديدة بمدى زمني صحيح.": "You can end the current state or record a new leave with a valid date range.",
-  "رصيد الإجازات": "Leave balance",
   "تاريخ الاستحقاق وتعديل الرصيد.": "Entitlement date and balance adjustments.",
   "تاريخ الاستحقاق": "Entitlement date",
   "تاريخ الحركة": "Transaction date",
@@ -782,7 +760,6 @@ type EmployeeLanguageContextValue = {
   "بعد": "After",
   "جاري تحميل السجل...": "Loading history...",
   "لا توجد حركات إجازات محفوظة.": "No saved leave transactions.",
-
   "الملغاة": "Cancelled",
   "تعديل هذا التعيين": "Edit this assignment",
   "إنهاء اليوم": "End today",
@@ -868,14 +845,10 @@ type EmployeeLanguageContextValue = {
   "لا توجد استثناءات شفت لهذه الموظفة.": "There are no shift exceptions for this staff member.",
   "قابل للتعديل": "Editable",
   "مفعّل": "Enabled",
-  "الوقت": "Time",
-  "المصدر": "Source",
-  "لا يوجد": "None",
   "لا يوجد دوام مطلوب": "No work required",
   "وقت الدوام الفعلي": "Effective working time",
   "إغلاق بصمة الحضور فقط؛ الانصراف يبقى متاحًا": "Only check-in is locked; check-out remains available",
   "تسمح بالحضور المتأخر، لكن الدقائق غير المعوضة تُحسب": "Late check-in is allowed within the grace window, but uncompensated minutes are still counted",
-
   "إنشاء مصدر وقت الدوام وسياساته، ثم معالجة الحالات المؤقتة دون كسر الجدول الأساسي.": "Create a canonical source for working hours and attendance policies, then handle temporary cases without changing the base schedule.",
   "قالب الشفت هو التعريف المركزي ليوم العمل: اسمه، وقت بدايته ونهايته، فترة سماح التأخير، وإمكانية إغلاق بصمة الحضور بعد مدة محددة. بعد إنشاء القالب يتم توزيعه على الموظفات وأيام الأسبوع. أما الاستثناء فيتقدم على الجدول لفترة قصيرة فقط، ثم يعود النظام تلقائيًا إلى الجدول الأساسي.": "A shift template is the central definition of a workday: name, start and end times, late grace, and optional check-in locking after a configured period. Templates are assigned to staff and weekdays. Exceptions temporarily override the schedule, after which the base schedule resumes automatically.",
   "تريد إنشاء شفت صباحي أو مسائي يُستخدم أكثر من مرة، تعديل سياسة حضور مشتركة، أو تسجيل تغيير مؤقت مثل رمضان أو تدريب.": "Use this when creating reusable morning/evening shifts, changing a shared attendance policy, or recording a temporary change such as Ramadan hours or training.",
@@ -943,7 +916,6 @@ type EmployeeLanguageContextValue = {
   "عدّل أو أنهِ": "Edit or end",
   "غيّر التعيين نفسه ولا تعدّل القالب العام إذا كانت المشكلة تخص موظفة واحدة.": "Change the assignment itself; do not edit the shared template when the issue applies to one staff member.",
   "وجود تعيين هنا لا يلغي أولوية الاستثناء أو جدول الأسبوع، لذلك راجع «الشفت المطبق الآن» لمعرفة النتيجة النهائية.": "An assignment here does not override exceptions or the weekly schedule. Review Effective shift now to see the final result.",
-
   "إنشاء قالب شفت": "Create shift template",
   "تعريف وقت يوم العمل وسياسة الحضور مرة واحدة لإعادة استخدامها.": "Define workday hours and attendance policy once so they can be reused.",
   "القالب يجمع كل القواعد المشتركة ليوم العمل في سجل واحد: الاسم، رمز الشفت، وقت البداية والنهاية، مدة الاستراحة، فترة سماح التأخير، وإغلاق بصمة الحضور. عندما تختاره في أي يوم لا يعيد المستخدم كتابة هذه الإعدادات، ويضمن النظام أن الحضور والراتب يستخدمان نفس السياسة.": "A shift template stores the shared workday rules in one record: name, code, start/end times, break duration, late grace, and check-in locking. Selecting the template reuses these settings and keeps attendance and payroll on the same policy.",
@@ -1014,7 +986,18 @@ type EmployeeLanguageContextValue = {
   "عدّل أو ألغِ": "Edit or cancel",
   "عند الإلغاء يعود النظام إلى المصدر التالي: جدول الأسبوع ثم التعيين الاحتياطي.": "After cancellation, the system falls back to the next source: weekly schedule, then fallback assignment.",
   "الراحة الأسبوعية الثابتة لا تظهر هنا؛ تُدار من الأسبوع التشغيلي. والإجازات الفعلية تُدار من نظام الإجازات.": "Recurring weekly rest is managed in the operational week and does not appear here. Actual leave is managed in the leave system.",
+};
 
+export function employeeText(language: DashboardLanguage, arabic: string): string {
+  if (language !== "en") return arabic;
+  return employeeEnglish[arabic] || dashboardText(language, arabic);
+}
+
+type EmployeeLanguageContextValue = {
+  language: DashboardLanguage;
+  direction: "rtl" | "ltr";
+  t: (arabic: string) => string;
+  tr: (arabic: string, english: string) => string;
 };
 
 const EmployeeLanguageContext = createContext<EmployeeLanguageContextValue>({
