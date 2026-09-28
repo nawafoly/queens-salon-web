@@ -68,7 +68,7 @@ test("current Riyadh workday is never finalized as missing before shift end", ()
 
   assert.match(payroll, /const completedThrough = payrollCompletedThrough\(bounds\)/);
   assert.match(payroll, /const completedPeriodEnd =/);
-  assert.match(payroll, /dateKey > completedPeriodEnd/);
+  assert.match(payroll, /dateKey > effectiveCompletedEnd/);
   assert.match(
     payroll,
     /payrollDateKeys\(bounds\.monthStart, completedThrough\)/
