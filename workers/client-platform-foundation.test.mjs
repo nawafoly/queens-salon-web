@@ -197,7 +197,7 @@ test('client dashboard uses the server-side Client 360 read model', () => {
 });
 
 
-test('client management loads the complete Core directory without a 500-client ceiling', () => {
+test('client management uses complete Core pagination and server-side Core search', () => {
   const service = readFileSync('src/services/CoreClientService.ts', 'utf8');
   const repository = readFileSync('workers/core/repositories/clients.js', 'utf8');
   const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
@@ -208,7 +208,10 @@ test('client management loads the complete Core directory without a 500-client c
   assert.match(service, /async listAll\(/);
   assert.match(service, /for \(let offset = 0; ; offset \+= batchSize\)/);
   assert.match(page, /CoreClientService\.listAll\("", \{[\s\S]*includeMetrics:\s*true/);
-  assert.doesNotMatch(page, /limit:\s*500/);
+  assert.match(page, /CoreClientService\.listAll\(search, \{[\s\S]*includeMetrics:\s*true/);
+  assert.doesNotMatch(page, /limit:\s*(?:100|500)/);
+  assert.match(page, /generation !== searchGenerationRef\.current/);
+  assert.match(page, /const sourceRows = searchActive \? searchedCustomers : customers/);
   assert.match(importModal, /CoreClientService\.listAll\("", \{ includeMetrics: true \}\)/);
   assert.doesNotMatch(repository, /Math\.min\(50_000/);
   assert.match(repository, /ORDER BY c\.updated_at DESC, c\.id DESC/);
