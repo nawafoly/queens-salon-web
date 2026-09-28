@@ -1285,7 +1285,7 @@ export function EmployeeAttendanceTabLiveV2({
           description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد."
           actions={
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{t("اليوم")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{tr("اليوم", "Today")}</button>
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
             </div>
           }
@@ -1306,7 +1306,7 @@ export function EmployeeAttendanceTabLiveV2({
               description="اضغطي على أي يوم مسجل لفتح تفاصيله."
               actions={
                 <div className="dsv2-cluster">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{t("اليوم")}</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>{tr("اليوم", "Today")}</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>{t("تحديث")}</button>
                 </div>
               }
