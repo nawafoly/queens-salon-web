@@ -1,5 +1,6 @@
 import { DashboardTimeInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useState, type RefObject } from "react";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 import {
   DashboardDatePickerV2,
@@ -193,29 +194,36 @@ export type WorkHourOverridesEditorProps = {
   modalHourOverrideHijriPickerRef: RefObject<HTMLDivElement | null>;
 };
 
-function formatNumber(value: unknown) {
+function formatNumber(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("ar-SA-u-nu-latn") : "0";
+  return Number.isFinite(number)
+    ? number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")
+    : "0";
 }
 
-function formatSignedHours(value: unknown) {
+function formatSignedHours(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value || 0);
-  if (!Number.isFinite(number) || number === 0) return "0 ساعة";
+  if (!Number.isFinite(number) || number === 0) return language === "en" ? "0 hours" : "0 ساعة";
   const sign = number > 0 ? "+" : "";
-  return `${sign}${number.toLocaleString("ar-SA-u-nu-latn")} ساعة`;
+  return `${sign}${number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "hours" : "ساعة"}`;
 }
 
 function formatWindowForPreview(start: string, end: string): string {
   return formatWindow(start, end).replace(/\s-\s/g, " → ");
 }
 
-function formatDayCountLabel(count: number): string {
+function formatDayCountLabel(count: number, language: "ar" | "en" = "ar"): string {
+  if (language === "en") return count === 1 ? "1 day" : `${count.toLocaleString("en-US")} days`;
   return count > 1 ? `${formatArabicInteger(count)} أيام` : "يوم واحد";
 }
 
-function buildPreviewText(editor: WorkHourOverridesEditorProps["editor"], isEditing: boolean): string {
+function buildPreviewText(
+  editor: WorkHourOverridesEditorProps["editor"],
+  isEditing: boolean,
+  language: "ar" | "en" = "ar"
+): string {
   const from = normalizeLeaveUntil(editor.modalHourOverrideFromDate);
-  if (!from) return "حددي الفترة وساعات العمل لعرض النتيجة النهائية لهذا الاستثناء.";
+  if (!from) return language === "en" ? "Select the period and working hours to preview the final exception result." : "حددي الفترة وساعات العمل لعرض النتيجة النهائية لهذا الاستثناء.";
 
   const to = normalizeLeaveUntil(editor.modalHourOverrideToDate) || from;
   const rangeLabel = formatIsoDateRange(from, to);
@@ -230,26 +238,38 @@ function buildPreviewText(editor: WorkHourOverridesEditorProps["editor"], isEdit
 
   if (isEditing) {
     return editor.modalHourOverrideEnabled
-      ? `سيتم تحديث هذا الاستثناء لتعمل الموظفة من ${timeLabel} خلال الفترة ${rangeLabel}.`
-      : `سيتم تحديث هذا الاستثناء إلى إغلاق كامل خلال الفترة ${rangeLabel}.`;
+      ? language === "en"
+        ? `This exception will be updated so the staff member works ${timeLabel} during ${rangeLabel}.`
+        : `سيتم تحديث هذا الاستثناء لتعمل الموظفة من ${timeLabel} خلال الفترة ${rangeLabel}.`
+      : language === "en"
+        ? `This exception will be updated to a full closure during ${rangeLabel}.`
+        : `سيتم تحديث هذا الاستثناء إلى إغلاق كامل خلال الفترة ${rangeLabel}.`;
   }
 
   if (dayCount <= 0) {
     return editor.modalHourOverrideUpdateExistingOnly
-      ? "لا توجد استثناءات محفوظة مطابقة لهذه الفترة لتحديثها."
-      : "لا يوجد أيام مطابقة للفترة المختارة.";
+      ? language === "en" ? "There are no saved exceptions matching this period to update." : "لا توجد استثناءات محفوظة مطابقة لهذه الفترة لتحديثها."
+      : language === "en" ? "There are no matching days in the selected period." : "لا يوجد أيام مطابقة للفترة المختارة.";
   }
 
-  const dayCountLabel = formatDayCountLabel(dayCount);
+  const dayCountLabel = formatDayCountLabel(dayCount, language);
   if (!editor.modalHourOverrideEnabled) {
     return editor.modalHourOverrideMode === "specific" && editor.modalHourOverrideApplyWeekdays.length
-      ? `ستكون الموظفة مغلقة في الأيام المطابقة داخل الفترة ${rangeLabel} (${dayCountLabel}).`
-      : `ستكون الموظفة مغلقة يوميًا خلال الفترة ${rangeLabel} (${dayCountLabel}).`;
+      ? language === "en"
+        ? `The staff member will be off on matching weekdays within ${rangeLabel} (${dayCountLabel}).`
+        : `ستكون الموظفة مغلقة في الأيام المطابقة داخل الفترة ${rangeLabel} (${dayCountLabel}).`
+      : language === "en"
+        ? `The staff member will be off every day during ${rangeLabel} (${dayCountLabel}).`
+        : `ستكون الموظفة مغلقة يوميًا خلال الفترة ${rangeLabel} (${dayCountLabel}).`;
   }
 
   return editor.modalHourOverrideMode === "specific" && editor.modalHourOverrideApplyWeekdays.length
-    ? `ستعمل الموظفة من ${timeLabel} في الأيام المطابقة داخل الفترة ${rangeLabel} (${dayCountLabel}).`
-    : `ستعمل الموظفة يوميًا من ${timeLabel} خلال الفترة ${rangeLabel} (${dayCountLabel}).`;
+    ? language === "en"
+      ? `The staff member will work ${timeLabel} on matching weekdays within ${rangeLabel} (${dayCountLabel}).`
+      : `ستعمل الموظفة من ${timeLabel} في الأيام المطابقة داخل الفترة ${rangeLabel} (${dayCountLabel}).`
+    : language === "en"
+      ? `The staff member will work ${timeLabel} every day during ${rangeLabel} (${dayCountLabel}).`
+      : `ستعمل الموظفة يوميًا من ${timeLabel} خلال الفترة ${rangeLabel} (${dayCountLabel}).`;
 }
 
 function getOverrideGroupRange(group: any) {
@@ -282,9 +302,10 @@ export default function WorkHourOverridesEditor({
   editor,
   modalHourOverrideHijriPickerRef,
 }: WorkHourOverridesEditorProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const isEditing = !!editor.modalHourOverrideEditingDate || !!editor.modalHourOverrideEditingGroupId;
-  const previewText = buildPreviewText(editor, isEditing);
+  const previewText = buildPreviewText(editor, isEditing, language);
   const selectedWeekdays = new Set(editor.modalHourOverrideApplyWeekdays || []);
   const fromDate = normalizeLeaveUntil(editor.modalHourOverrideFromDate);
   const toDate = normalizeLeaveUntil(editor.modalHourOverrideToDate) || fromDate;
@@ -299,7 +320,7 @@ export default function WorkHourOverridesEditor({
         description="تعديل ساعات أو إغلاق أيام محددة بدون كسر الجدول الأسبوعي الأساسي."
         badge={
           <div className="dsv2-cluster">
-            <span>{isEditing ? "وضع التعديل" : "استثناء جديد"}</span>
+            <span>{isEditing ? tr("وضع التعديل", "Edit mode") : tr("استثناء جديد", "New exception")}</span>
             <WorkspaceHelpButtonV2
               label="شرح استثناءات الدوام"
               onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.overview)}
@@ -309,10 +330,10 @@ export default function WorkHourOverridesEditor({
       />
 
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="نطاق الفترة" value={rangeDays ? formatNumber(rangeDays) : "-"} />
-        <WorkspaceMetricV2 label="الأيام المتأثرة" value={formatNumber(affectedDays)} tone={affectedDays ? "success" : "gold"} />
-        <WorkspaceMetricV2 label="إجمالي الساعات" value={`${formatNumber(editor.modalHourOverridePreview?.totalHours)} ساعة`} />
-        <WorkspaceMetricV2 label="فرق الساعات" value={formatSignedHours(editor.modalHourOverridePreview?.diffHours)} tone="gold" />
+        <WorkspaceMetricV2 label="نطاق الفترة" value={rangeDays ? formatNumber(rangeDays, language) : "-"} />
+        <WorkspaceMetricV2 label="الأيام المتأثرة" value={formatNumber(affectedDays, language)} tone={affectedDays ? "success" : "gold"} />
+        <WorkspaceMetricV2 label="إجمالي الساعات" value={tr(`${formatNumber(editor.modalHourOverridePreview?.totalHours, language)} ساعة`, `${formatNumber(editor.modalHourOverridePreview?.totalHours, language)} hours`)} />
+        <WorkspaceMetricV2 label="فرق الساعات" value={formatSignedHours(editor.modalHourOverridePreview?.diffHours, language)} tone="gold" />
       </div>
 
       <WorkspaceNoticeV2
@@ -345,14 +366,14 @@ export default function WorkHourOverridesEditor({
             </div>
           }
         >
-          <DashboardFieldV2 id="employee-live-v2-override-calendar" label="نوع التاريخ">
+          <DashboardFieldV2 id="employee-live-v2-override-calendar" label={t("نوع التاريخ")}>
             <DashboardSelectV2
               id="employee-live-v2-override-calendar"
               value={editor.modalHourOverrideCalendar}
               disabled={busy}
               options={[
-                { value: "gregory", label: "ميلادي" },
-                { value: "hijri", label: "هجري" },
+                { value: "gregory", label: tr("ميلادي", "Gregorian") },
+                { value: "hijri", label: tr("هجري", "Hijri") },
               ]}
               onChange={(value) => {
                 editor.setModalHourOverrideCalendar(value);
@@ -368,7 +389,7 @@ export default function WorkHourOverridesEditor({
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
             {editor.modalHourOverrideCalendar === "hijri" ? (
               <>
-                <DashboardFieldV2 id="employee-live-v2-override-from-hijri" label="من تاريخ هجري">
+                <DashboardFieldV2 id="employee-live-v2-override-from-hijri" label={t("من تاريخ هجري")}>
                   <input
                     id="employee-live-v2-override-from-hijri"
                     className="dsv2-input"
@@ -388,10 +409,10 @@ export default function WorkHourOverridesEditor({
                   >
                     اختيار من التقويم
                   </button>
-                  <small className="dsv2-field__hint">الميلادي: {fmtIsoDate(editor.modalHourOverrideFromDate)}</small>
+                  <small className="dsv2-field__hint">{tr("الميلادي", "Gregorian")}: {fmtIsoDate(editor.modalHourOverrideFromDate)}</small>
                 </DashboardFieldV2>
 
-                <DashboardFieldV2 id="employee-live-v2-override-to-hijri" label="إلى تاريخ هجري">
+                <DashboardFieldV2 id="employee-live-v2-override-to-hijri" label={t("إلى تاريخ هجري")}>
                   <input
                     id="employee-live-v2-override-to-hijri"
                     className="dsv2-input"
@@ -411,12 +432,12 @@ export default function WorkHourOverridesEditor({
                   >
                     اختيار من التقويم
                   </button>
-                  <small className="dsv2-field__hint">الميلادي: {fmtIsoDate(toDate || "")}</small>
+                  <small className="dsv2-field__hint">{tr("الميلادي", "Gregorian")}: {fmtIsoDate(toDate || "")}</small>
                 </DashboardFieldV2>
               </>
             ) : (
               <>
-                <DashboardFieldV2 id="employee-live-v2-override-from" label="من تاريخ">
+                <DashboardFieldV2 id="employee-live-v2-override-from" label={t("من تاريخ")}>
                   <DashboardDatePickerV2
                     id="employee-live-v2-override-from"
                     value={editor.modalHourOverrideFromDate}
@@ -425,7 +446,7 @@ export default function WorkHourOverridesEditor({
                   />
                 </DashboardFieldV2>
 
-                <DashboardFieldV2 id="employee-live-v2-override-to" label="إلى تاريخ">
+                <DashboardFieldV2 id="employee-live-v2-override-to" label={t("إلى تاريخ")}>
                   <DashboardDatePickerV2
                     id="employee-live-v2-override-to"
                     value={editor.modalHourOverrideToDate}
@@ -459,7 +480,7 @@ export default function WorkHourOverridesEditor({
               </header>
 
               <div className="dsv2-ew-hijri-weekdays" aria-hidden="true">
-                {HIJRI_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
+                {(language === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : HIJRI_WEEKDAY_SHORT).map((day) => <span key={day}>{day}</span>)}
               </div>
               <div className="dsv2-ew-hijri-days" style={{ paddingInlineStart: `${Math.max(0, editor.modalHourOverrideHijriWeekOffset) * 14.2857}%` }}>
                 {editor.modalHourOverrideHijriMonthDays.map((day) => (
@@ -497,36 +518,36 @@ export default function WorkHourOverridesEditor({
             checked={editor.modalHourOverrideEnabled}
             disabled={busy}
             label="الموظفة تعمل في هذه الفترة"
-            description={editor.modalHourOverrideEnabled ? "سيتم استخدام ساعات البداية والنهاية أدناه." : "سيتم اعتبار الفترة إغلاقًا كاملًا."}
+            description={editor.modalHourOverrideEnabled ? tr("سيتم استخدام ساعات البداية والنهاية أدناه.", "The start and end times below will be used.") : tr("سيتم اعتبار الفترة إغلاقًا كاملًا.", "The period will be treated as a full closure.")}
             onChange={editor.setModalHourOverrideEnabled}
           />
 
           {editor.modalHourOverrideEnabled ? (
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-              <DashboardFieldV2 id="employee-live-v2-override-start" label="بداية الدوام">
+              <DashboardFieldV2 id="employee-live-v2-override-start" label={t("بداية الدوام")}>
                 <DashboardTimeInputV2 id="employee-live-v2-override-start" className="dsv2-input" value={normalizeTimeHHMM(editor.modalHourOverrideStart) || "10:00"} disabled={busy} onChange={(event) => editor.setModalHourOverrideStart(event.target.value)} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="employee-live-v2-override-end" label="نهاية الدوام">
+              <DashboardFieldV2 id="employee-live-v2-override-end" label={t("نهاية الدوام")}>
                 <DashboardTimeInputV2 id="employee-live-v2-override-end" className="dsv2-input" value={normalizeTimeHHMM(editor.modalHourOverrideEnd) || "22:00"} disabled={busy} onChange={(event) => editor.setModalHourOverrideEnd(event.target.value)} />
               </DashboardFieldV2>
             </div>
           ) : null}
 
-          <DashboardFieldV2 id="employee-live-v2-override-mode" label="طريقة التطبيق">
+          <DashboardFieldV2 id="employee-live-v2-override-mode" label={t("طريقة التطبيق")}>
             <DashboardSelectV2
               id="employee-live-v2-override-mode"
               value={editor.modalHourOverrideMode}
               disabled={busy || isEditing}
               options={[
-                { value: "range", label: "كل أيام الفترة" },
-                { value: "specific", label: "أيام أسبوع محددة" },
+                { value: "range", label: tr("كل أيام الفترة", "All days in period") },
+                { value: "specific", label: tr("أيام أسبوع محددة", "Specific weekdays") },
               ]}
               onChange={editor.setModalHourOverrideMode}
             />
           </DashboardFieldV2>
 
           {editor.modalHourOverrideMode === "specific" ? (
-            <div className="dsv2-ew-pills" role="group" aria-label="أيام الأسبوع للاستثناء">
+            <div className="dsv2-ew-pills" role="group" aria-label={tr("أيام الأسبوع للاستثناء", "Exception weekdays")}>
               {WEEKDAY_OPTIONS.map((day) => (
                 <button
                   key={day.key}
@@ -536,7 +557,7 @@ export default function WorkHourOverridesEditor({
                   disabled={busy}
                   onClick={() => editor.toggleModalHourOverrideWeekday(day.key)}
                 >
-                  {day.label}
+                  {t(day.label)}
                 </button>
               ))}
             </div>
@@ -571,14 +592,14 @@ export default function WorkHourOverridesEditor({
           />
         </div>
 
-        <DashboardFieldV2 id="employee-live-v2-override-note" label="ملاحظة داخلية">
+        <DashboardFieldV2 id="employee-live-v2-override-note" label={t("ملاحظة داخلية")}>
           <textarea
             id="employee-live-v2-override-note"
             className="dsv2-textarea"
             rows={3}
             value={editor.modalHourOverrideNote}
             disabled={busy}
-            placeholder="مثال: دوام رمضان، تدريب، مناسبة خاصة..."
+            placeholder={tr("مثال: دوام رمضان، تدريب، مناسبة خاصة...", "Example: Ramadan hours, training, special event...")}
             onChange={(event) => editor.setModalHourOverrideNote(event.target.value)}
           />
         </DashboardFieldV2>
@@ -590,7 +611,7 @@ export default function WorkHourOverridesEditor({
             disabled={busy || !canSubmit}
             onClick={editor.addModalWorkingHourOverride}
           >
-            {isEditing ? "حفظ تعديل الاستثناء" : "إضافة الاستثناء"}
+            {isEditing ? tr("حفظ تعديل الاستثناء", "Save exception changes") : tr("إضافة الاستثناء", "Add exception")}
           </button>
           {isEditing ? (
             <button
@@ -634,10 +655,10 @@ export default function WorkHourOverridesEditor({
         <WorkspaceTableV2
           headers={["الفترة", "الوقت", "الأيام", "الحالة", "إجراء"]}
           rows={(editor.modalHourOverrideGroups || []).map((group) => [
-            getOverrideGroupRange(group),
-            getOverrideGroupWindow(group),
-            formatNumber(getOverrideGroupCount(group)),
-            group?.enabled === false ? "إغلاق" : "دوام مخصص",
+            t(getOverrideGroupRange(group)),
+            t(getOverrideGroupWindow(group)),
+            formatNumber(getOverrideGroupCount(group), language),
+            group?.enabled === false ? tr("إغلاق", "Closed") : tr("دوام مخصص", "Custom hours"),
             <div className="dsv2-cluster" key={String(group?.id || group?.date || getOverrideGroupRange(group))}>
               <button
                 type="button"
