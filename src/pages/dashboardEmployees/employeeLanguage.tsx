@@ -1400,6 +1400,7 @@ const employeeEnglish: Record<string, string> = {
   "تكليفات أيام الراحة": "Day-off work assignments",
   "آخر تكليفات العمل المسجلة على أيام الراحة الأسبوعية.": "Latest work assignments recorded on weekly days off.",
   "لا توجد تكليفات مسجلة.": "No recorded assignments.",
+  "جاري التحميل...": "Loading...",
 };
 
 function employeeDynamicEnglishText(arabic: string): string | null {
