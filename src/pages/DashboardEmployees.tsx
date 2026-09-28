@@ -4018,20 +4018,41 @@ function DashboardEmployeesContent() {
         : routeSection === "files"
           ? "profile"
           : routeSection;
-    if (routeSection === "shifts" || routeSection === "files") {
-      const canonicalRouteSection =
-        routeSection === "shifts" ? "booking" : "profile";
 
+    const allowedRouteSection = canDisplayEmployeeTab(resolvedRouteSection)
+      ? resolvedRouteSection
+      : firstAllowedEmployeeTab;
+
+    if (!allowedRouteSection) {
+      navigate("/dashboard/employees", { replace: true });
+      return;
+    }
+
+    if (
+      routeSection === "shifts" ||
+      routeSection === "files" ||
+      allowedRouteSection !== resolvedRouteSection
+    ) {
       navigate(
-        `/dashboard/employees/${encodeURIComponent(matched.id)}/${canonicalRouteSection}`,
+        `/dashboard/employees/${encodeURIComponent(matched.id)}/${allowedRouteSection}`,
         { replace: true },
       );
     }
-    setActiveTab(resolvedRouteSection);
-    if (["basic", "profile", "services", "booking"].includes(resolvedRouteSection)) {
-      setModalTab(resolvedRouteSection as EmployeeModalTab);
+
+    setActiveTab(allowedRouteSection);
+    if (["basic", "profile", "services", "booking"].includes(allowedRouteSection)) {
+      setModalTab(allowedRouteSection as EmployeeModalTab);
     }
-  }, [editId, list, loading, navigate, routeEmployeeId, routeSection]);
+  }, [
+    canDisplayEmployeeTab,
+    editId,
+    firstAllowedEmployeeTab,
+    list,
+    loading,
+    navigate,
+    routeEmployeeId,
+    routeSection,
+  ]);
 
   useEffect(() => {
     if (!selectedEmployeeId || !canManageLeaveBalance) return;
@@ -5092,12 +5113,18 @@ function DashboardEmployeesContent() {
     for (const s of serviceOptions) {
       const sid = String(s.sectionId || "").trim();
       if (!sid) continue;
-      if (!m.has(sid)) m.set(sid, { id: sid, label: toArabicSectionLabel(sid, sid) });
+      if (!m.has(sid)) {
+        const rawLabel = toArabicSectionLabel(sid, sid);
+        m.set(sid, {
+          id: sid,
+          label: translateBookingCatalogLabel(language, rawLabel, "section"),
+        });
+      }
     }
     return Array.from(m.values()).sort((a, b) =>
-      a.label.localeCompare(b.label, "ar")
+      a.label.localeCompare(b.label, language === "en" ? "en" : "ar")
     );
-  }, [serviceOptions]);
+  }, [language, serviceOptions]);
 
   const filteredServicesForPicks = useMemo(() => {
     let rows = [...serviceOptions];
@@ -5107,18 +5134,37 @@ function DashboardEmployeesContent() {
     const q = srvQ.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) => {
-        const sectionLabel = toArabicSectionLabel(String(s.sectionId || ""), String(s.sectionId || ""));
+        const sectionLabel = toArabicSectionLabel(
+          String(s.sectionId || ""),
+          String(s.sectionId || "")
+        );
+        const serviceEnglish = translateBookingCatalogLabel(
+          "en",
+          String(s.label || ""),
+          "service"
+        );
+        const sectionEnglish = translateBookingCatalogLabel(
+          "en",
+          sectionLabel,
+          "section"
+        );
         return (
           String(s.label || "").toLowerCase().includes(q) ||
+          serviceEnglish.toLowerCase().includes(q) ||
           String(s.id || "").toLowerCase().includes(q) ||
           String(sectionLabel || "").toLowerCase().includes(q) ||
+          sectionEnglish.toLowerCase().includes(q) ||
           String(s.categoryId || "").toLowerCase().includes(q)
         );
       });
     }
-    rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
+    rows.sort((a, b) => {
+      const aLabel = translateBookingCatalogLabel(language, String(a.label || ""), "service");
+      const bLabel = translateBookingCatalogLabel(language, String(b.label || ""), "service");
+      return aLabel.localeCompare(bLabel, language === "en" ? "en" : "ar");
+    });
     return rows;
-  }, [serviceOptions, srvSection, srvQ]);
+  }, [language, serviceOptions, srvSection, srvQ]);
 
   const toggleSpecialty = (serviceId: string) => {
     setSpecialties((prev) =>
@@ -8899,7 +8945,7 @@ const canonicalSchedules =
     ...(canViewEmployeeMessages
       ? [{ key: "messages" as EmployeeSplitTab, label: t("الرسائل"), hint: t("التواصل الداخلي"), icon: faEnvelope }]
       : []),
-  ];
+  ].filter((tab) => canDisplayEmployeeTab(tab.key));
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     return !!leaveUntil && leaveUntil < todayIso();
@@ -9858,6 +9904,7 @@ const canonicalSchedules =
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
     const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab === "files" ? "profile" : tab;
+    if (!canDisplayEmployeeTab(resolvedTab)) return;
     if (selectedEmployeeId) {
       navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${resolvedTab}`);
     }
