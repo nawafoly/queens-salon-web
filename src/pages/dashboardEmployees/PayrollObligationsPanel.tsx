@@ -1,6 +1,7 @@
 import DashboardNumberInputV2 from "../../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardMonthInputV2 } from "../../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { useEffect, useMemo, useState } from "react";
+import { useEmployeeLanguage } from "./employeeLanguage";
 import {
   DashboardFieldV2,
   DashboardSelectV2,
@@ -59,8 +60,8 @@ function fromHalalas(value: unknown) {
   return Number.isFinite(number) ? Math.round(number) / 100 : 0;
 }
 
-function money(value: unknown) {
-  return `${fromHalalas(value).toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ر.س`;
+function money(value: unknown, language: "ar" | "en" = "ar") {
+  return `${fromHalalas(value).toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: 2 })} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
 function deductionKindLabel(value: unknown) {
@@ -152,6 +153,8 @@ export default function PayrollObligationsPanel({
   currentPayrollMonth,
   readOnly,
 }: Props) {
+  const { language, t, tr } = useEmployeeLanguage();
+  const formatMoney = (value: unknown) => formatMoney(value, language);
   const month = validMonth(currentPayrollMonth, new Date().toISOString().slice(0, 7));
   const [recurringRows, setRecurringRows] = useState<CorePayrollRecurringDeduction[]>([]);
   const [obligations, setObligations] = useState<CorePayrollObligation[]>([]);
@@ -335,10 +338,10 @@ export default function PayrollObligationsPanel({
         }
       >
         <div className="dsv2-ew-metrics">
-          <WorkspaceMetricV2 label={`المستحق للتحصيل — ${month}`} value={money(currentMonthTotalHalalas)} tone={currentMonthTotalHalalas > 0 ? "gold" : "success"} />
-          <WorkspaceMetricV2 label="مؤجل من أشهر سابقة" value={money(deferredFromPriorMonthsHalalas)} tone={deferredFromPriorMonthsHalalas > 0 ? "gold" : "neutral"} />
-          <WorkspaceMetricV2 label="الأقساط القادمة" value={money(upcomingInstallmentsHalalas)} />
-          <WorkspaceMetricV2 label="إجمالي الالتزامات المفتوحة" value={money(openObligationsHalalas)} tone={openObligationsHalalas > 0 ? "gold" : "success"} />
+          <WorkspaceMetricV2 label={`المستحق للتحصيل — ${month}`} value={formatMoney(currentMonthTotalHalalas)} tone={currentMonthTotalHalalas > 0 ? "gold" : "success"} />
+          <WorkspaceMetricV2 label="مؤجل من أشهر سابقة" value={formatMoney(deferredFromPriorMonthsHalalas)} tone={deferredFromPriorMonthsHalalas > 0 ? "gold" : "neutral"} />
+          <WorkspaceMetricV2 label="الأقساط القادمة" value={formatMoney(upcomingInstallmentsHalalas)} />
+          <WorkspaceMetricV2 label="إجمالي الالتزامات المفتوحة" value={formatMoney(openObligationsHalalas)} tone={openObligationsHalalas > 0 ? "gold" : "success"} />
         </div>
 
         <WorkspaceNoticeV2
@@ -347,8 +350,8 @@ export default function PayrollObligationsPanel({
           tone="neutral"
         />
 
-        {error ? <WorkspaceNoticeV2 title="تعذر تنفيذ العملية" description={error} tone="danger" /> : null}
-        {message ? <WorkspaceNoticeV2 title="تم" description={message} tone="success" /> : null}
+        {error ? <WorkspaceNoticeV2 title={t("تعذر تنفيذ العملية")} description={t(error)} tone="danger" /> : null}
+        {message ? <WorkspaceNoticeV2 title={tr("تم", "Completed")} description={t(message)} tone="success" /> : null}
       </WorkspaceCardV2>
 
       <WorkspaceCardV2
@@ -358,13 +361,13 @@ export default function PayrollObligationsPanel({
         <WorkspaceTableV2
           headers={["البند", "المبلغ", "النوع", "شهر الأصل", "شهر التحصيل", "السبب", "المصدر"]}
           rows={collectibleRows.map((row) => [
-            row.label || row.reason || "خصم",
-            money(row.amountHalalas),
-            deductionKindLabel(row.obligationKind),
+            row.label || row.reason || tr("خصم", "Deduction"),
+            formatMoney(row.amountHalalas),
+            t(deductionKindLabel(row.obligationKind)),
             row.originalPayrollMonth || "-",
             row.targetPayrollMonth || "-",
             row.reason || "-",
-            row.recurringDeductionId ? "خصم ثابت" : row.synthetic ? "متوقع / قبل الحفظ" : "التزام محفوظ",
+            row.recurringDeductionId ? tr("خصم ثابت", "Recurring deduction") : row.synthetic ? tr("متوقع / قبل الحفظ", "Expected / before save") : tr("التزام محفوظ", "Saved obligation"),
           ])}
           emptyText={loading ? "جاري تحميل الخصومات..." : "لا توجد خصومات أو التزامات مستحقة للتحصيل في هذا الشهر."}
         />
@@ -375,25 +378,25 @@ export default function PayrollObligationsPanel({
         description="ينشئ بندًا شهريًا متوقعًا من شهر البداية إلى شهر النهاية إن وجد. لا يتم إنشاء حركة تحصيل فعلية إلا عند بناء/حفظ مسير الشهر."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="payroll-recurring-title" label="اسم الخصم">
-            <input id="payroll-recurring-title" className="dsv2-input" value={recurringTitle} disabled={readOnly} onChange={(event) => setRecurringTitle(event.target.value)} placeholder="مثال: خصم اشتراك شهري" />
+          <DashboardFieldV2 id="payroll-recurring-title" label={t("اسم الخصم")}>
+            <input id="payroll-recurring-title" className="dsv2-input" value={recurringTitle} disabled={readOnly} onChange={(event) => setRecurringTitle(event.target.value)} placeholder={t("مثال: خصم اشتراك شهري")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-kind" label="نوع الخصم">
-            <DashboardSelectV2 id="payroll-recurring-kind" value={recurringKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setRecurringKind} />
+          <DashboardFieldV2 id="payroll-recurring-kind" label={t("نوع الخصم")}>
+            <DashboardSelectV2 id="payroll-recurring-kind" value={recurringKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} onChange={setRecurringKind} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-amount" label="المبلغ الشهري (ر.س)">
+          <DashboardFieldV2 id="payroll-recurring-amount" label={t("المبلغ الشهري (ر.س)")}>
             <DashboardNumberInputV2 id="payroll-recurring-amount" className="dsv2-input" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-start" label="شهر البداية">
+          <DashboardFieldV2 id="payroll-recurring-start" label={t("شهر البداية")}>
             <DashboardMonthInputV2 id="payroll-recurring-start" className="dsv2-input" value={recurringStartMonth} disabled={readOnly} onChange={(event) => setRecurringStartMonth(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-end" label="شهر النهاية — اختياري">
+          <DashboardFieldV2 id="payroll-recurring-end" label={t("شهر النهاية — اختياري")}>
             <DashboardMonthInputV2 id="payroll-recurring-end" className="dsv2-input" value={recurringEndMonth} disabled={readOnly} onChange={(event) => setRecurringEndMonth(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-reason" label="السبب / الأساس">
-            <input id="payroll-recurring-reason" className="dsv2-input" value={recurringReason} disabled={readOnly} onChange={(event) => setRecurringReason(event.target.value)} placeholder="لماذا يوجد هذا الخصم؟" />
+          <DashboardFieldV2 id="payroll-recurring-reason" label={t("السبب / الأساس")}>
+            <input id="payroll-recurring-reason" className="dsv2-input" value={recurringReason} disabled={readOnly} onChange={(event) => setRecurringReason(event.target.value)} placeholder={t("لماذا يوجد هذا الخصم؟")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-note" label="ملاحظة — اختياري">
+          <DashboardFieldV2 id="payroll-recurring-note" label={t("ملاحظة — اختياري")}>
             <input id="payroll-recurring-note" className="dsv2-input" value={recurringNote} disabled={readOnly} onChange={(event) => setRecurringNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
@@ -418,7 +421,7 @@ export default function PayrollObligationsPanel({
                   });
                   resetRecurringForm();
                 },
-                "تم حفظ الخصم الثابت."
+                tr("تم حفظ الخصم الثابت.", "Recurring deduction saved.")
               )
             }
           >
@@ -430,11 +433,11 @@ export default function PayrollObligationsPanel({
           headers={["الاسم", "المبلغ", "النوع", "من", "إلى", "الحالة", "السبب", "إجراء"]}
           rows={recurringRows.map((row) => [
             row.title,
-            money(row.amountHalalas),
-            deductionKindLabel(row.deductionKind),
+            formatMoney(row.amountHalalas),
+            t(deductionKindLabel(row.deductionKind)),
             row.startPayrollMonth,
-            row.endPayrollMonth || "مستمر",
-            <WorkspaceStatusBadgeV2 key={`${row.id}-status`} tone={row.status === "active" ? "success" : "gold"}>{row.status === "active" ? "نشط" : row.status === "paused" ? "موقوف" : row.status}</WorkspaceStatusBadgeV2>,
+            row.endPayrollMonth || tr("مستمر", "Ongoing"),
+            <WorkspaceStatusBadgeV2 key={`${row.id}-status`} tone={row.status === "active" ? "success" : "gold"}>{row.status === "active" ? t("نشط") : row.status === "paused" ? tr("موقوف", "Paused") : row.status}</WorkspaceStatusBadgeV2>,
             row.reason,
             <button
               key={`${row.id}-toggle`}
@@ -447,11 +450,11 @@ export default function PayrollObligationsPanel({
                     ...row,
                     status: row.status === "active" ? "paused" : "active",
                   }),
-                  row.status === "active" ? "تم إيقاف الخصم الثابت." : "تم تفعيل الخصم الثابت."
+                  row.status === "active" ? tr("تم إيقاف الخصم الثابت.", "Recurring deduction paused.") : tr("تم تفعيل الخصم الثابت.", "Recurring deduction activated.")
                 )
               }
             >
-              {row.status === "active" ? "إيقاف" : "تفعيل"}
+              {row.status === "active" ? tr("إيقاف", "Pause") : tr("تفعيل", "Activate")}
             </button>,
           ])}
           emptyText="لا توجد خصومات ثابتة محفوظة."
@@ -463,10 +466,10 @@ export default function PayrollObligationsPanel({
         description="سجّل أصل المبلغ أولًا، ثم اختر تحصيله في شهر الأصل أو تأجيله إلى شهر لاحق أو تقسيمه على عدة أشهر."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="payroll-obligation-kind" label="نوع الالتزام">
-            <DashboardSelectV2 id="payroll-obligation-kind" value={obligationKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS} onChange={setObligationKind} />
+          <DashboardFieldV2 id="payroll-obligation-kind" label={t("نوع الالتزام")}>
+            <DashboardSelectV2 id="payroll-obligation-kind" value={obligationKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} onChange={setObligationKind} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-amount" label="إجمالي المبلغ (ر.س)">
+          <DashboardFieldV2 id="payroll-obligation-amount" label={t("إجمالي المبلغ (ر.س)")}>
             <DashboardNumberInputV2
               id="payroll-obligation-amount"
               className="dsv2-input"
@@ -489,18 +492,18 @@ export default function PayrollObligationsPanel({
               }}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-original-month" label="شهر نشوء الالتزام">
+          <DashboardFieldV2 id="payroll-obligation-original-month" label={t("شهر نشوء الالتزام")}>
             <DashboardMonthInputV2 id="payroll-obligation-original-month" className="dsv2-input" value={obligationOriginalMonth} disabled={readOnly} onChange={(event) => { const nextMonth = event.target.value; setObligationOriginalMonth(nextMonth); if (collectionMode === "installments") { setInstallmentDrafts((rows) => buildEvenInstallments( nextMonth || month, toHalalas(obligationAmount), rows.length || 1 ) ); } }} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-mode" label="طريقة التحصيل">
+          <DashboardFieldV2 id="payroll-obligation-mode" label={t("طريقة التحصيل")}>
             <DashboardSelectV2
               id="payroll-obligation-mode"
               value={collectionMode}
               disabled={readOnly}
               options={[
-                { value: "current", label: "تحصيل في شهر الأصل" },
-                { value: "defer", label: "تأجيل إلى شهر محدد" },
-                { value: "installments", label: "تقسيط على عدة أشهر" },
+                { value: "current", label: tr("تحصيل في شهر الأصل", "Collect in original month") },
+                { value: "defer", label: tr("تأجيل إلى شهر محدد", "Defer to a specific month") },
+                { value: "installments", label: tr("تقسيط على عدة أشهر", "Split into installments") },
               ]}
               onChange={(value) => {
                 const nextMode = value === "defer" ? "defer" : value === "installments" ? "installments" : "current";
@@ -518,17 +521,17 @@ export default function PayrollObligationsPanel({
             />
           </DashboardFieldV2>
           {collectionMode === "defer" ? (
-            <DashboardFieldV2 id="payroll-obligation-target-month" label="شهر التحصيل الجديد">
+            <DashboardFieldV2 id="payroll-obligation-target-month" label={t("شهر التحصيل الجديد")}>
               <DashboardMonthInputV2 id="payroll-obligation-target-month" className="dsv2-input" value={deferredTargetMonth} disabled={readOnly} onChange={(event) => setDeferredTargetMonth(event.target.value)} />
             </DashboardFieldV2>
           ) : null}
           <DashboardFieldV2
             id="payroll-obligation-reason"
-            label={collectionMode === "defer" ? "سبب الخصم / قرار التأجيل" : collectionMode === "installments" ? "سبب الخصم / قرار التقسيط" : "السبب / الأساس"}
+            label={collectionMode === "defer" ? t("سبب الخصم / قرار التأجيل") : collectionMode === "installments" ? t("سبب الخصم / قرار التقسيط") : t("السبب / الأساس")}
           >
-            <input id="payroll-obligation-reason" className="dsv2-input" value={obligationReason} disabled={readOnly} onChange={(event) => setObligationReason(event.target.value)} placeholder="سبب مالي واضح وقابل للمراجعة" />
+            <input id="payroll-obligation-reason" className="dsv2-input" value={obligationReason} disabled={readOnly} onChange={(event) => setObligationReason(event.target.value)} placeholder={t("سبب مالي واضح وقابل للمراجعة")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-note" label="ملاحظة — اختياري">
+          <DashboardFieldV2 id="payroll-obligation-note" label={t("ملاحظة — اختياري")}>
             <input id="payroll-obligation-note" className="dsv2-input" value={obligationNote} disabled={readOnly} onChange={(event) => setObligationNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
@@ -536,7 +539,7 @@ export default function PayrollObligationsPanel({
         {collectionMode === "installments" ? (
           <div className="dsv2-ew-stack">
             <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-              <DashboardFieldV2 id="payroll-installment-count" label="عدد الأقساط">
+              <DashboardFieldV2 id="payroll-installment-count" label={t("عدد الأقساط")}>
                 <DashboardNumberInputV2
                   id="payroll-installment-count"
                   className="dsv2-input"
@@ -555,16 +558,16 @@ export default function PayrollObligationsPanel({
                   }
                 />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="payroll-installment-average" label="متوسط قيمة القسط">
+              <DashboardFieldV2 id="payroll-installment-average" label={t("متوسط قيمة القسط")}>
                 <input
                   id="payroll-installment-average"
                   className="dsv2-input"
                   readOnly
-                  value={money(installmentDrafts.length ? Math.round(obligationTotalHalalas / installmentDrafts.length) : 0)}
+                  value={formatMoney(installmentDrafts.length ? Math.round(obligationTotalHalalas / installmentDrafts.length) : 0)}
                 />
               </DashboardFieldV2>
               <div className="dsv2-field">
-                <span className="dsv2-field__label">توزيع تلقائي</span>
+                <span className="dsv2-field__label">{tr("توزيع تلقائي", "Automatic distribution")}</span>
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
@@ -586,24 +589,24 @@ export default function PayrollObligationsPanel({
 
             <WorkspaceNoticeV2
               title="جدول الأقساط"
-              description={`الإجمالي: ${money(obligationTotalHalalas)} — مجموع الأقساط: ${money(installmentTotalHalalas)}${installmentDifferenceHalalas === 0 ? " — التوزيع متوازن." : ` — الفرق: ${money(Math.abs(installmentDifferenceHalalas))}.`}`}
+              description={tr(`الإجمالي: ${formatMoney(obligationTotalHalalas)} — مجموع الأقساط: ${formatMoney(installmentTotalHalalas)}${installmentDifferenceHalalas === 0 ? " — التوزيع متوازن." : ` — الفرق: ${formatMoney(Math.abs(installmentDifferenceHalalas))}.`}`, `Total: ${formatMoney(obligationTotalHalalas)} — Installments: ${formatMoney(installmentTotalHalalas)}${installmentDifferenceHalalas === 0 ? " — balanced distribution." : ` — difference: ${formatMoney(Math.abs(installmentDifferenceHalalas))}.`}`)}
               tone={obligationTotalHalalas > 0 && installmentDifferenceHalalas === 0 ? "success" : "gold"}
             />
             {installmentDrafts.map((draft, index) => (
               <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3" key={`installment-${index}`}>
-                <DashboardFieldV2 id={`payroll-installment-month-${index}`} label={`شهر القسط ${index + 1}`}>
+                <DashboardFieldV2 id={`payroll-installment-month-${index}`} label={tr(`شهر القسط ${index + 1}`, `Installment month ${index + 1}`)}>
                   <DashboardMonthInputV2 id={`payroll-installment-month-${index}`} className="dsv2-input" value={draft.targetPayrollMonth} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, targetPayrollMonth: event.target.value } : row))} />
                 </DashboardFieldV2>
-                <DashboardFieldV2 id={`payroll-installment-amount-${index}`} label="مبلغ القسط (ر.س)">
+                <DashboardFieldV2 id={`payroll-installment-amount-${index}`} label={t("مبلغ القسط (ر.س)")}>
                   <DashboardNumberInputV2 id={`payroll-installment-amount-${index}`} className="dsv2-input" min="0" step="0.01" value={draft.amount} disabled={readOnly} onChange={(event) => setInstallmentDrafts((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
                 </DashboardFieldV2>
                 <div className="dsv2-field">
-                  <span className="dsv2-field__label">إجراء</span>
-                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || installmentDrafts.length <= 1} onClick={() => setInstallmentDrafts((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>حذف القسط</button>
+                  <span className="dsv2-field__label">{t("إجراء")}</span>
+                  <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || installmentDrafts.length <= 1} onClick={() => setInstallmentDrafts((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>{tr("حذف القسط", "Delete installment")}</button>
                 </div>
               </div>
             ))}
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly} onClick={() => setInstallmentDrafts((rows) => [...rows, { targetPayrollMonth: shiftMonth(obligationOriginalMonth || month, rows.length + 1), amount: "" }])}>إضافة قسط</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly} onClick={() => setInstallmentDrafts((rows) => [...rows, { targetPayrollMonth: shiftMonth(obligationOriginalMonth || month, rows.length + 1), amount: "" }])}>{tr("إضافة قسط", "Add installment")}</button>
           </div>
         ) : null}
 
@@ -635,7 +638,7 @@ export default function PayrollObligationsPanel({
                   await CoreHrService.createPayrollObligation(payload);
                   resetObligationForm();
                 },
-                collectionMode === "current" ? "تم إنشاء الخصم لهذا الشهر." : collectionMode === "defer" ? "تم إنشاء الالتزام وتأجيل تحصيله." : "تم إنشاء الالتزام وجدول الأقساط."
+                collectionMode === "current" ? tr("تم إنشاء الخصم لهذا الشهر.", "Deduction created for this month.") : collectionMode === "defer" ? tr("تم إنشاء الالتزام وتأجيل تحصيله.", "Obligation created and collection deferred.") : tr("تم إنشاء الالتزام وجدول الأقساط.", "Obligation and installment schedule created.")
               )
             }
           >
@@ -649,16 +652,16 @@ export default function PayrollObligationsPanel({
         description="اختر قسطًا لم يُطبق بعد وحدد الشهر الجديد والسبب. يحتفظ النظام بالقسط القديم بحالة «مرحّل» ويربطه بالقسط البديل."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="payroll-defer-installment" label="القسط">
+          <DashboardFieldV2 id="payroll-defer-installment" label={t("القسط")}>
             <DashboardSelectV2
               id="payroll-defer-installment"
               value={selectedInstallmentId}
               disabled={readOnly}
               options={[
-                { value: "", label: "اختر قسطًا" },
+                { value: "", label: tr("اختر قسطًا", "Choose installment") },
                 ...scheduledInstallments.map(({ obligation, installment }) => ({
                   value: installment.id,
-                  label: `${obligation.reason} — ${money(installment.amountHalalas)} — ${installment.targetPayrollMonth}`,
+                  label: `${obligation.reason} — ${formatMoney(installment.amountHalalas)} — ${installment.targetPayrollMonth}`,
                 })),
               ]}
               onChange={(value) => {
@@ -668,13 +671,13 @@ export default function PayrollObligationsPanel({
               }}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-defer-target" label="شهر التحصيل الجديد">
+          <DashboardFieldV2 id="payroll-defer-target" label={t("شهر التحصيل الجديد")}>
             <DashboardMonthInputV2 id="payroll-defer-target" className="dsv2-input" value={deferToMonth} disabled={readOnly} onChange={(event) => setDeferToMonth(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-defer-reason" label="سبب التأجيل">
-            <input id="payroll-defer-reason" className="dsv2-input" value={deferReason} disabled={readOnly} onChange={(event) => setDeferReason(event.target.value)} placeholder="مثال: ظرف الموظفة — بموافقة الإدارة" />
+          <DashboardFieldV2 id="payroll-defer-reason" label={t("سبب التأجيل")}>
+            <input id="payroll-defer-reason" className="dsv2-input" value={deferReason} disabled={readOnly} onChange={(event) => setDeferReason(event.target.value)} placeholder={t("مثال: ظرف الموظفة — بموافقة الإدارة")} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-defer-note" label="ملاحظة — اختياري">
+          <DashboardFieldV2 id="payroll-defer-note" label={t("ملاحظة — اختياري")}>
             <input id="payroll-defer-note" className="dsv2-input" value={deferNote} disabled={readOnly} onChange={(event) => setDeferNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
@@ -694,7 +697,7 @@ export default function PayrollObligationsPanel({
                 setDeferReason("");
                 setDeferNote("");
               },
-              "تم تأجيل القسط مع الاحتفاظ بالحركة الأصلية وسجل القرار."
+              tr("تم تأجيل القسط مع الاحتفاظ بالحركة الأصلية وسجل القرار.", "Installment deferred while preserving the original transaction and decision history.")
             )
           }
         >
@@ -706,22 +709,22 @@ export default function PayrollObligationsPanel({
         title="سجل الالتزامات"
         description="السجل يوضح أصل كل التزام، المتبقي، وحالة كل قسط ومتى كان مقررًا تحصيله."
       >
-        <DashboardFieldV2 id="payroll-cancel-reason" label="سبب الإلغاء — يستخدم عند الضغط على إلغاء">
-          <input id="payroll-cancel-reason" className="dsv2-input" value={cancelReason} disabled={readOnly} onChange={(event) => setCancelReason(event.target.value)} placeholder="سبب الإلغاء مطلوب للتدقيق" />
+        <DashboardFieldV2 id="payroll-cancel-reason" label={t("سبب الإلغاء — يستخدم عند الضغط على إلغاء")}>
+          <input id="payroll-cancel-reason" className="dsv2-input" value={cancelReason} disabled={readOnly} onChange={(event) => setCancelReason(event.target.value)} placeholder={t("سبب الإلغاء مطلوب للتدقيق")} />
         </DashboardFieldV2>
         <WorkspaceTableV2
           headers={["النوع", "المبلغ الأصلي", "الشهر الأصلي", "جدول التحصيل", "المتبقي", "الحالة", "السبب", "المصدر", "إجراء"]}
           rows={obligations.map((obligation) => [
-            deductionKindLabel(obligation.obligationKind),
-            money(obligation.originalAmountHalalas),
+            t(deductionKindLabel(obligation.obligationKind)),
+            formatMoney(obligation.originalAmountHalalas),
             obligation.originalPayrollMonth,
             (obligation.installments || []).length
-              ? (obligation.installments || []).map((installment: CorePayrollObligationInstallment) => `${installment.targetPayrollMonth}: ${money(installment.amountHalalas)} (${installmentStatusLabel(installment.status)})`).join(" • ")
-              : "لا توجد أقساط",
-            money(obligation.remainingAmountHalalas),
-            obligationStatusLabel(obligation.status),
+              ? (obligation.installments || []).map((installment: CorePayrollObligationInstallment) => `${installment.targetPayrollMonth}: ${formatMoney(installment.amountHalalas)} (${t(installmentStatusLabel(installment.status))})`).join(" • ")
+              : tr("لا توجد أقساط", "No installments"),
+            formatMoney(obligation.remainingAmountHalalas),
+            t(obligationStatusLabel(obligation.status)),
             obligation.reason,
-            sourceLabel(obligation.sourceType, obligation.recurringDeductionId),
+            t(sourceLabel(obligation.sourceType, obligation.recurringDeductionId)),
             <button
               key={`${obligation.id}-cancel`}
               type="button"
@@ -730,7 +733,7 @@ export default function PayrollObligationsPanel({
               onClick={() =>
                 void run(
                   () => CoreHrService.cancelPayrollObligation(obligation.id, cancelReason),
-                  "تم إلغاء الرصيد المتبقي من الالتزام مع الاحتفاظ بالسجل."
+                  tr("تم إلغاء الرصيد المتبقي من الالتزام مع الاحتفاظ بالسجل.", "Remaining obligation balance cancelled while preserving the history.")
                 )
               }
             >
