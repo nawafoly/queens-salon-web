@@ -1226,14 +1226,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     const clientKey = partyClientKey(client);
     return cart.some((service) => bookingLineClientKey(service) === clientKey);
   });
-  const sidebarCanAdvance =
-    step === 1
-      ? Boolean(canContinue && !addingCompanion && !clientPickerOpen && !showNewClient)
-      : step === 2
-        ? allPartyClientsHaveServices
-        : step === 3
-          ? allScheduled
-          : false;
   const isPastBookingDate = Boolean(bookingDate && bookingDate < todayISO());
   const bookingConfig = mergeBookingConfig(appSettings?.booking);
   const dayHours = bookingConfig.businessHours?.[weekdayKey(bookingDate)] || { enabled: true, start: "12:00", end: "22:00" };
@@ -1440,6 +1432,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       (eligibleStaffByService[key] || []).some((staff) => staffId(staff) === row.staffId);
     return Boolean(row?.staffId && row?.time && staffStillBookable && !conflictKeys.has(key));
   });
+
+  const sidebarCanAdvance =
+    step === 1
+      ? Boolean(canContinue && !addingCompanion && !clientPickerOpen && !showNewClient)
+      : step === 2
+        ? allPartyClientsHaveServices
+        : step === 3
+          ? allScheduled
+          : false;
 
   const isStepComplete = (target: Step) => {
     if (target === 1) return Boolean(selectedClient);
