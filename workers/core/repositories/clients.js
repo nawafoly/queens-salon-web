@@ -66,7 +66,7 @@ function clientListLimit(value) {
 function clientListOffset(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(50_000, Math.trunc(parsed)));
+  return Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(parsed)));
 }
 
 export async function listClients(db, salonId, query = {}) {
@@ -108,7 +108,7 @@ export async function listClients(db, salonId, query = {}) {
          SELECT c.*
            FROM clients c
           WHERE c.salon_id = ?${searchClause}
-          ORDER BY c.updated_at DESC
+          ORDER BY c.updated_at DESC, c.id DESC
           LIMIT ? OFFSET ?
        ),
        booking_metrics AS (
@@ -183,7 +183,7 @@ export async function listClients(db, salonId, query = {}) {
          ON lc.client_id = sc.id
        LEFT JOIN package_metrics pm
          ON pm.client_id = sc.canonical_client_id
-       ORDER BY sc.updated_at DESC`,
+       ORDER BY sc.updated_at DESC, sc.id DESC`,
       [
         salonId,
         ...searchParams,
@@ -204,8 +204,8 @@ export async function listClients(db, salonId, query = {}) {
          SELECT c.*
            FROM clients c
           WHERE c.salon_id = ?${searchClause}
-          ORDER BY c.updated_at DESC
-          LIMIT 500
+          ORDER BY c.updated_at DESC, c.id DESC
+          LIMIT ? OFFSET ?
        ),
        completed_bookings AS (
          SELECT
@@ -287,8 +287,8 @@ export async function listClients(db, salonId, query = {}) {
          ON bl.client_id = sc.id
        LEFT JOIN manual_loyalty ml
          ON ml.client_id = sc.id
-       ORDER BY sc.updated_at DESC`,
-      [salonId, ...searchParams, salonId, salonId, salonId]
+       ORDER BY sc.updated_at DESC, sc.id DESC`,
+      [salonId, ...searchParams, limit, offset, salonId, salonId, salonId]
     );
   }
 
@@ -308,7 +308,7 @@ export async function listClients(db, salonId, query = {}) {
     `SELECT *
      FROM clients
      WHERE salon_id = ?${plainSearchClause}
-     ORDER BY updated_at DESC
+     ORDER BY updated_at DESC, id DESC
      LIMIT ? OFFSET ?`,
     [salonId, ...searchParams, limit, offset]
   );
