@@ -598,3 +598,148 @@
 }
 
 .bk2-party-clients-head>button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+
+
+/* Party booking: make client ownership unmistakable in the scheduling step. */
+.bk2-party-schedule-groups{
+  display:grid;
+  gap:22px;
+}
+.bk2-party-schedule-group{
+  overflow:hidden;
+  border:1px solid #d8dee8;
+  border-radius:20px;
+  background:#f8fafc;
+  box-shadow:0 10px 28px rgba(24,32,51,.05);
+}
+.bk2-party-schedule-group.is-complete{
+  border-color:#a9d6bd;
+  background:#f8fcf9;
+}
+.bk2-party-schedule-group-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  margin:0;
+  padding:18px 20px;
+  border-bottom:1px solid #e1e6ee;
+  background:linear-gradient(135deg,#fff8dc 0%,#fff 58%,#f7f9fc 100%);
+}
+.bk2-party-schedule-group.is-complete .bk2-party-schedule-group-head{
+  border-bottom-color:#d5e9dd;
+  background:linear-gradient(135deg,#f2fbf5 0%,#fff 62%,#f7f9fc 100%);
+}
+.bk2-party-schedule-client{
+  display:flex;
+  align-items:center;
+  gap:13px;
+  min-width:0;
+}
+.bk2-party-schedule-avatar{
+  width:48px;
+  height:48px;
+  flex:0 0 48px;
+  display:grid;
+  place-items:center;
+  border-radius:15px;
+  background:#7b001f;
+  color:#fff;
+  font-size:20px;
+  font-weight:950;
+  box-shadow:0 6px 16px rgba(123,0,31,.16);
+}
+.bk2-party-schedule-client>div{
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+.bk2-party-schedule-client small{
+  color:#8a6e10;
+  font-size:11px;
+  font-weight:900;
+}
+.bk2-party-schedule-client strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#111827;
+  font-size:20px;
+  line-height:1.25;
+}
+.bk2-party-schedule-client bdi{
+  color:#6f7787;
+  font-size:12px;
+  font-weight:800;
+  direction:ltr;
+}
+.bk2-party-schedule-progress{
+  display:grid;
+  grid-template-columns:auto auto;
+  align-items:baseline;
+  justify-items:end;
+  column-gap:5px;
+  row-gap:3px;
+  flex:0 0 auto;
+  padding:9px 12px;
+  border:1px solid #e3e7ed;
+  border-radius:13px;
+  background:#fff;
+}
+.bk2-party-schedule-progress strong{
+  color:#161d2b;
+  font-size:17px;
+  font-weight:950;
+}
+.bk2-party-schedule-progress span{
+  color:#70798b;
+  font-size:11px;
+  font-weight:850;
+}
+.bk2-party-schedule-progress em{
+  grid-column:1 / -1;
+  color:#17734a;
+  font-style:normal;
+  font-size:11px;
+  font-weight:900;
+}
+.bk2-party-schedule-services{
+  display:grid;
+  gap:12px;
+  padding:16px;
+}
+.bk2-party-schedule-services .bk2-schedule-item{
+  margin:0;
+  border-radius:15px;
+  background:#fff;
+}
+.bk2-party-schedule-services .bk2-schedule-item.is-complete{
+  background:#fbfffc;
+}
+.bk2-party-schedule-services .bk2-schedule-item>header{
+  padding-bottom:12px;
+  border-bottom:1px solid #eef1f5;
+}
+.bk2-party-schedule-services .bk2-schedule-item>header strong{
+  font-size:16px;
+}
+
+@media(max-width:760px){
+  .bk2-party-schedule-groups{gap:16px}
+  .bk2-party-schedule-group{border-radius:16px}
+  .bk2-party-schedule-group-head{
+    align-items:flex-start;
+    padding:14px;
+  }
+  .bk2-party-schedule-avatar{
+    width:42px;
+    height:42px;
+    flex-basis:42px;
+    border-radius:13px;
+    font-size:17px;
+  }
+  .bk2-party-schedule-client strong{font-size:17px}
+  .bk2-party-schedule-progress{padding:7px 9px}
+  .bk2-party-schedule-progress strong{font-size:14px}
+  .bk2-party-schedule-services{padding:10px}
+}
