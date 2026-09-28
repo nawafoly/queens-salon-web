@@ -1823,24 +1823,24 @@ function DashboardEmployeesContent() {
 
     pushToast({
       title: t("تعذر إكمال العملية"),
-      description: errorMsg,
+      description: t(errorMsg),
       tone: "danger",
     });
 
     setErrorMsg("");
-  }, [errorMsg, pushToast]);
+  }, [errorMsg, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
 
     pushToast({
-      title: "تمت العملية بنجاح",
-      description: saveMessage,
+      title: t("تمت العملية بنجاح"),
+      description: t(saveMessage),
       tone: "success",
     });
 
     setSaveMessage("");
-  }, [saveMessage, pushToast]);
+  }, [saveMessage, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
@@ -10269,7 +10269,7 @@ const canonicalSchedules =
                       rows={4}
                     />
                   </DashboardFieldV2>
-                  {offboardingError ? <p className="dsv2-ew-form-wide dsv2-field__error">{offboardingError}</p> : null}
+                  {offboardingError ? <p className="dsv2-ew-form-wide dsv2-field__error">{t(offboardingError)}</p> : null}
                   {offboardingBookingBlocker ? (
                     <div className="dsv2-ew-form-wide dsv2-alert dsv2-alert--danger">
                       <strong>
