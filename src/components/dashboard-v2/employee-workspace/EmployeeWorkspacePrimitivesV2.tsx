@@ -200,8 +200,10 @@ export function WorkspaceStatusBadgeV2({
   children: ReactNode;
   tone?: "default" | "gold" | "warning" | "success" | "danger";
 }) {
+  const { t } = useEmployeeLanguage();
   const modifier = tone === "default" ? "" : ` dsv2-badge--${tone}`;
-  return <span className={`dsv2-badge${modifier}`}>{children}</span>;
+  const content = typeof children === "string" ? t(children) : children;
+  return <span className={`dsv2-badge${modifier}`}>{content}</span>;
 }
 
 
