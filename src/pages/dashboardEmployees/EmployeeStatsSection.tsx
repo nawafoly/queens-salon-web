@@ -30,6 +30,7 @@ import {
   getLeaveEntryCreatedAt,
   isDeletedLeaveEntry,
 } from "../../helpers/hr/leaveBalanceEntry";
+import { useEmployeeLanguage } from "./employeeLanguage";
 type PayrollSummary = {
   totalAmount?: number;
   invoiceRevenue?: number;
@@ -150,38 +151,39 @@ type EmployeeStatsSectionProps = {
   };
 };
 
-function formatNumber(value: unknown) {
+function formatNumber(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("ar-SA-u-nu-latn") : "0";
+  return Number.isFinite(number) ? number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn") : "0";
 }
 
-function formatMoney(value: unknown) {
+function formatMoney(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value || 0);
-  return Number.isFinite(number) && number > 0 ? `${number.toLocaleString("ar-SA-u-nu-latn")} ر.س` : "غير محدد";
+  if (!(Number.isFinite(number) && number > 0)) return language === "en" ? "Not specified" : "غير محدد";
+  return `${number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "SAR" : "ر.س"}`;
 }
 
-function formatMoneyIncludingZero(value: unknown) {
+function formatMoneyIncludingZero(value: unknown, language: "ar" | "en" = "ar") {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0
-    ? `${number.toLocaleString("ar-SA-u-nu-latn")} ر.س`
-    : "غير محدد";
+    ? `${number.toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${language === "en" ? "SAR" : "ر.س"}`
+    : language === "en" ? "Not specified" : "غير محدد";
 }
 
-function formatRateBasisPoints(value: unknown) {
+function formatRateBasisPoints(value: unknown, language: "ar" | "en" = "ar") {
   const bps = Number(value);
-  if (!Number.isFinite(bps) || bps < 0) return "غير محدد";
+  if (!Number.isFinite(bps) || bps < 0) return language === "en" ? "Not specified" : "غير محدد";
   return `${Math.round(bps) / 100}%`;
 }
 
-function formatLeaveChange(entry: LeaveEntry) {
+function formatLeaveChange(entry: LeaveEntry, language: "ar" | "en" = "ar") {
   const changeAmount = getLeaveEntryChangeAmount(entry);
-  if (!changeAmount) return "غير متوفر";
-  return `${changeAmount > 0 ? "+" : ""}${changeAmount} يوم`;
+  if (!changeAmount) return language === "en" ? "Unavailable" : "غير متوفر";
+  return `${changeAmount > 0 ? "+" : ""}${changeAmount} ${language === "en" ? "day(s)" : "يوم"}`;
 }
 
-function formatLeaveBalance(value: number | null) {
-  if (value == null) return "غير متوفر";
-  return `${value} يوم`;
+function formatLeaveBalance(value: number | null, language: "ar" | "en" = "ar") {
+  if (value == null) return language === "en" ? "Unavailable" : "غير متوفر";
+  return `${value} ${language === "en" ? "day(s)" : "يوم"}`;
 }
 
 function leaveActionLabel(entry: LeaveEntry) {
@@ -223,6 +225,7 @@ export default function EmployeeStatsSection({
   payroll,
   leave,
 }: EmployeeStatsSectionProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   if (!isVisible) return null;
 
   const sortedLeaveEntries = leaveEntries
@@ -234,7 +237,7 @@ export default function EmployeeStatsSection({
     .slice(0, 12);
 
   const payrollSetup = payroll.setupPreview;
-  const leaveBalanceLabel = loading ? "جاري التحميل..." : `${formatNumber(leaveBalanceDays)} يوم`;
+  const leaveBalanceLabel = loading ? t("جاري التحميل...") : tr(`${formatNumber(leaveBalanceDays, language)} يوم`, `${formatNumber(leaveBalanceDays, language)} day(s)`);
   // Background reads must never lock write controls. `busy` is loading || saving
   // in DashboardEmployees, so only treat it as a write lock when loading is false.
   const writeBusy = busy && !loading;
@@ -245,7 +248,7 @@ export default function EmployeeStatsSection({
     leave.modalOnLeave &&
     !!leave.modalLeaveFrom &&
     leave.modalLeaveFrom > new Date().toISOString().slice(0, 10);
-  const leaveStatusLabel = activeLeaveNow ? "على إجازة" : upcomingLeave ? "إجازة قادمة" : "على رأس العمل";
+  const leaveStatusLabel = activeLeaveNow ? t("على إجازة") : upcomingLeave ? t("إجازة قادمة") : tr("على رأس العمل", "Active at work");
 
   if (showPayrollSubTab) {
     return (
@@ -304,12 +307,12 @@ export default function EmployeeStatsSection({
 
         <div className="dsv2-ew-metrics dsv2-ew-metrics--payroll">
           <WorkspaceMetricV2 label="الشهر" value={currentMonthKeyLabel} />
-          <WorkspaceMetricV2 label="حالة الإعداد" value={payrollSetup.complete ? "مكتمل" : "غير مكتمل"} tone={payrollSetup.complete ? "success" : "gold"} />
-          <WorkspaceMetricV2 label="راتب اليوم" value={formatMoney(payrollSetup.dailyRateRiyals)} />
-          <WorkspaceMetricV2 label="راتب الساعة" value={formatMoney(payrollSetup.hourlyRateRiyals)} />
-          <WorkspaceMetricV2 label="إجمالي الراتب التعاقدي" value={formatMoney(payrollSetup.contractedMonthlySalaryRiyals)} tone="success" />
-          <WorkspaceMetricV2 label="إجمالي الشهر" value={formatMoney(payroll.summary?.totalAmount)} tone="success" />
-          <WorkspaceMetricV2 label="الإيراد" value={formatMoney(payroll.summary?.invoiceRevenue)} />
+          <WorkspaceMetricV2 label="حالة الإعداد" value={payrollSetup.complete ? t("مكتمل") : t("غير مكتمل")} tone={payrollSetup.complete ? "success" : "gold"} />
+          <WorkspaceMetricV2 label="راتب اليوم" value={formatMoney(payrollSetup.dailyRateRiyals, language)} />
+          <WorkspaceMetricV2 label="راتب الساعة" value={formatMoney(payrollSetup.hourlyRateRiyals, language)} />
+          <WorkspaceMetricV2 label="إجمالي الراتب التعاقدي" value={formatMoney(payrollSetup.contractedMonthlySalaryRiyals, language)} tone="success" />
+          <WorkspaceMetricV2 label="إجمالي الشهر" value={formatMoney(payroll.summary?.totalAmount, language)} tone="success" />
+          <WorkspaceMetricV2 label="الإيراد" value={formatMoney(payroll.summary?.invoiceRevenue, language)} />
         </div>
 
         <div className="dsv2-ew-metrics dsv2-ew-metrics--payroll">
@@ -317,8 +320,8 @@ export default function EmployeeStatsSection({
             label="أجر الاشتراك في GOSI"
             value={
               payrollSetup.socialInsuranceCategory && payrollSetup.gosiContributoryWageRiyals > 0
-                ? formatMoneyIncludingZero(payrollSetup.gosiContributoryWageRiyals)
-                : "غير محسوب"
+                ? formatMoneyIncludingZero(payrollSetup.gosiContributoryWageRiyals, language)
+                : t("غير محسوب")
             }
             tone={payrollSetup.gosiContributoryWageRiyals > 0 ? "success" : "gold"}
           />
@@ -326,41 +329,41 @@ export default function EmployeeStatsSection({
             label="خصم الموظفة GOSI"
             value={
               payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
-                ? formatMoneyIncludingZero(payrollSetup.gosiEmployeeDeductionRiyals)
-                : "غير محسوب"
+                ? formatMoneyIncludingZero(payrollSetup.gosiEmployeeDeductionRiyals, language)
+                : t("غير محسوب")
             }
           />
           <WorkspaceMetricV2
             label="نسبة خصم الموظفة GOSI"
             value={
               payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
-                ? formatRateBasisPoints(payrollSetup.gosiEmployeeRateBps)
-                : "غير محسوبة"
+                ? formatRateBasisPoints(payrollSetup.gosiEmployeeRateBps, language)
+                : t("غير محسوبة")
             }
           />
           <WorkspaceMetricV2
             label="نسبة مساهمة المنشأة GOSI"
             value={
               payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
-                ? formatRateBasisPoints(payrollSetup.gosiEmployerRateBps)
-                : "غير محسوبة"
+                ? formatRateBasisPoints(payrollSetup.gosiEmployerRateBps, language)
+                : t("غير محسوبة")
             }
           />
           <WorkspaceMetricV2
             label="مساهمة المنشأة GOSI"
             value={
               payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
-                ? formatMoneyIncludingZero(payrollSetup.gosiEmployerContributionRiyals)
-                : "غير محسوب"
+                ? formatMoneyIncludingZero(payrollSetup.gosiEmployerContributionRiyals, language)
+                : t("غير محسوب")
             }
           />
           <WorkspaceMetricV2
             label="مصدر أجر الاشتراك"
-            value={payrollSetup.gosiWageSourceLabel || "غير محسوب"}
+            value={payrollSetup.gosiWageSourceLabel ? t(payrollSetup.gosiWageSourceLabel) : t("غير محسوب")}
           />
           <WorkspaceMetricV2
             label="سياسة GOSI"
-            value={payrollSetup.gosiPolicyVersion || "غير محسوبة"}
+            value={payrollSetup.gosiPolicyVersion || t("غير محسوبة")}
           />
         </div>
 
@@ -370,7 +373,7 @@ export default function EmployeeStatsSection({
             description={
               payrollSetup.gosiPreviewError === "gosi_gcc_extension_policy_required"
                 ? "الموظفة مصنفة خليجية. لا يتم تحويلها تلقائيًا إلى غير سعودية؛ يجب استكمال سياسة مد الحماية قبل اعتماد الراتب."
-                : "تعذر إنشاء معاينة GOSI: " + payrollSetup.gosiPreviewError
+                : tr("تعذر إنشاء معاينة GOSI: ", "Could not create GOSI preview: ") + payrollSetup.gosiPreviewError
             }
             tone="gold"
           />
@@ -391,7 +394,7 @@ export default function EmployeeStatsSection({
         {!payrollSetup.complete && payrollSetup.missing.length ? (
           <WorkspaceNoticeV2
             title="إعداد الراتب غير مكتمل"
-            description={`النواقص: ${payrollSetup.missing.join("، ")}`}
+            description={tr(`النواقص: ${payrollSetup.missing.join("، ")}`, `Missing: ${payrollSetup.missing.join(", ")}`)}
             tone="gold"
           />
         ) : null}
@@ -428,9 +431,9 @@ export default function EmployeeStatsSection({
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="الرصيد الحالي" value={leaveBalanceLabel} tone="success" />
         <WorkspaceMetricV2 label="الحالة" value={leaveStatusLabel} tone={leave.modalOnLeave ? "gold" : "success"} />
-        <WorkspaceMetricV2 label="بداية الإجازة" value={leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "غير محددة"} />
-        <WorkspaceMetricV2 label="نهاية الإجازة" value={leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "غير محددة"} />
-        <WorkspaceMetricV2 label="نوع الإجازة" value={leave.modalOnLeave ? leaveTypeLabel(leave.modalLeaveType) : "غير محددة"} />
+        <WorkspaceMetricV2 label="بداية الإجازة" value={leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : t("غير محددة")} />
+        <WorkspaceMetricV2 label="نهاية الإجازة" value={leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : t("غير محددة")} />
+        <WorkspaceMetricV2 label="نوع الإجازة" value={leave.modalOnLeave ? t(leaveTypeLabel(leave.modalLeaveType)) : t("غير محددة")} />
         <WorkspaceMetricV2 label="سجل الحركات" value={sortedLeaveEntries.length} />
       </div>
       </WorkspaceCardV2>
@@ -438,10 +441,10 @@ export default function EmployeeStatsSection({
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2 title="حالة الإجازة الحالية" description="الإجازات هنا معتمدة ومرتبطة بالحضور والراتب.">
           <WorkspaceNoticeV2
-            title={leave.modalOnLeave ? leaveStatusLabel : "لا توجد إجازة فعالة"}
+            title={leave.modalOnLeave ? leaveStatusLabel : t("لا توجد إجازة فعالة")}
             description={
               leave.modalOnLeave
-                ? `${leaveTypeLabel(leave.modalLeaveType)} من ${leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "تاريخ غير محدد"} إلى ${leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "تاريخ غير محدد"}.${leave.modalLeaveNote ? ` ${leave.modalLeaveNote}` : ""}`
+                ? tr(`${leaveTypeLabel(leave.modalLeaveType)} من ${leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "تاريخ غير محدد"} إلى ${leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "تاريخ غير محدد"}.${leave.modalLeaveNote ? ` ${leave.modalLeaveNote}` : ""}`, `${t(leaveTypeLabel(leave.modalLeaveType))} from ${leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "date not specified"} to ${leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "date not specified"}.${leave.modalLeaveNote ? ` ${leave.modalLeaveNote}` : ""}`)
                 : "سجّل إجازة جديدة ليتم اعتمادها وإظهارها في الحضور وربط أثرها بالراتب."
             }
             tone={leave.modalOnLeave ? "gold" : "neutral"}
@@ -454,7 +457,7 @@ export default function EmployeeStatsSection({
               disabled={readOnlyLeave}
               onClick={leave.onCreateApprovedLeave}
             >
-              تسجيل إجازة معتمدة
+              {tr("تسجيل إجازة معتمدة", "Record approved leave")}
             </button>
             {leave.modalOnLeave ? (
               <button
@@ -463,7 +466,7 @@ export default function EmployeeStatsSection({
                 disabled={readOnlyLeave}
                 onClick={leave.onEndCurrentLeave}
               >
-                إنهاء الإجازة الحالية
+                {tr("إنهاء الإجازة الحالية", "End current leave")}
               </button>
             ) : null}
           </div>
@@ -485,7 +488,7 @@ export default function EmployeeStatsSection({
 
         <WorkspaceCardV2 title="رصيد الإجازات" description="تاريخ الاستحقاق وتعديل الرصيد.">
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-            <DashboardFieldV2 id="employee-live-v2-entitlement-date" label="تاريخ الاستحقاق">
+            <DashboardFieldV2 id="employee-live-v2-entitlement-date" label={t("تاريخ الاستحقاق")}>
               <DashboardDatePickerV2
                 id="employee-live-v2-entitlement-date"
                 value={leave.leaveEntitlementDate}
@@ -494,7 +497,7 @@ export default function EmployeeStatsSection({
                 onChange={leave.onLeaveEntitlementDateChange}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-date" label="تاريخ الحركة">
+            <DashboardFieldV2 id="employee-live-v2-adjust-date" label={t("تاريخ الحركة")}>
               <DashboardDatePickerV2
                 id="employee-live-v2-adjust-date"
                 value={leave.leaveAdjustDate}
@@ -503,7 +506,7 @@ export default function EmployeeStatsSection({
                 onChange={leave.onLeaveAdjustDateChange}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-days" label="عدد الأيام">
+            <DashboardFieldV2 id="employee-live-v2-adjust-days" label={t("عدد الأيام")}>
               <DashboardNumberInputV2
                 id="employee-live-v2-adjust-days"
                 className="dsv2-input"
@@ -514,7 +517,7 @@ export default function EmployeeStatsSection({
                 onChange={(event) => leave.onLeaveAdjustDaysChange(event.target.value)}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-note" label="سبب الحركة">
+            <DashboardFieldV2 id="employee-live-v2-adjust-note" label={t("سبب الحركة")}>
               <input
                 id="employee-live-v2-adjust-note"
                 className="dsv2-input"
@@ -526,9 +529,9 @@ export default function EmployeeStatsSection({
           </div>
 
           <div className="dsv2-cluster">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnlyLeave} onClick={leave.onSaveEntitlementDate}>حفظ تاريخ الاستحقاق</button>
-            <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("add")}>إضافة رصيد</button>
-            <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("deduct")}>خصم رصيد</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnlyLeave} onClick={leave.onSaveEntitlementDate}>{tr("حفظ تاريخ الاستحقاق", "Save entitlement date")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("add")}>{tr("إضافة رصيد", "Add balance")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("deduct")}>{tr("خصم رصيد", "Deduct balance")}</button>
           </div>
         </WorkspaceCardV2>
       </div>
@@ -538,10 +541,10 @@ export default function EmployeeStatsSection({
           headers={["التاريخ", "النوع", "التغيير", "قبل", "بعد", "إجراء"]}
           rows={sortedLeaveEntries.map((entry) => [
             fmtIsoDate(entry.date || String(getLeaveEntryCreatedAt(entry) || "")),
-            leaveActionLabel(entry),
-            formatLeaveChange(entry),
-            formatLeaveBalance(getLeaveEntryBalanceBefore(entry)),
-            formatLeaveBalance(getLeaveEntryBalanceAfter(entry)),
+            t(leaveActionLabel(entry)),
+            formatLeaveChange(entry, language),
+            formatLeaveBalance(getLeaveEntryBalanceBefore(entry), language),
+            formatLeaveBalance(getLeaveEntryBalanceAfter(entry), language),
             <button
               key={`${entry.id || entry.date}-delete`}
               type="button"
@@ -549,10 +552,10 @@ export default function EmployeeStatsSection({
               disabled={readOnlyLeave}
               onClick={() => leave.onDeleteLeaveEntry(entry)}
             >
-              حذف
+              {t("حذف")}
             </button>,
           ])}
-          emptyText={loading ? "جاري تحميل السجل..." : "لا توجد حركات إجازات محفوظة."}
+          emptyText={loading ? t("جاري تحميل السجل...") : t("لا توجد حركات إجازات محفوظة.")}
         />
       </WorkspaceCardV2>
     </div>
