@@ -17,6 +17,7 @@ import {
   type EmployeeAttendanceShiftInfoLiveV2,
 } from "../../components/dashboard-v2/employee-workspace/live";
 import { SCHEDULE_EXCEPTION_CHANGED_EVENT } from "./shiftExceptionRestore";
+import { useEmployeeLanguage } from "./employeeLanguage";
 
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
@@ -781,6 +782,7 @@ export default function AttendanceSection({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
+  const { t, tr } = useEmployeeLanguage();
   const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [corePermissionSpecialDays, setCorePermissionSpecialDays] = useState<AttendanceSpecialDay[]>([]);
   const [corePermissionLoading, setCorePermissionLoading] = useState(false);
@@ -897,7 +899,7 @@ export default function AttendanceSection({
         setCoreResolvedShiftsByDate({});
 
         setCoreShiftError(
-          "تعذر تحميل شفتات الحضور من Core. تم إيقاف تعديلات الحضور حتى ينجح التحقق."
+          t("تعذر تحميل شفتات الحضور من Core. تم إيقاف تعديلات الحضور حتى ينجح التحقق.")
         );
       })
       .finally(() => {
@@ -1441,23 +1443,23 @@ export default function AttendanceSection({
       setPunchClearError(
         coreShiftError ||
           corePermissionError ||
-          "جاري التحقق من بيانات Core. لا يمكن تعديل البصمة الآن."
+          t("جاري التحقق من بيانات Core. لا يمكن تعديل البصمة الآن.")
       );
       return;
     }
     const date = cleanText(selectedDate);
     const currentTime = type === "check_in" ? selectedCheckInTime : selectedCheckOutTime;
     if (!canDelete) {
-      setPunchClearError("ليست لديك صلاحية لمسح وقت البصمة.");
+      setPunchClearError(t("ليست لديك صلاحية لمسح وقت البصمة."));
       return;
     }
     if (!date || !selectedRawRow || !currentTime) {
-      setPunchClearError(type === "check_in" ? "لا يوجد وقت حضور لمسحه في هذا اليوم." : "لا يوجد وقت انصراف لمسحه في هذا اليوم.");
+      setPunchClearError(type === "check_in" ? t("لا يوجد وقت حضور لمسحه في هذا اليوم.") : t("لا يوجد وقت انصراف لمسحه في هذا اليوم."));
       return;
     }
 
-    const label = type === "check_in" ? "الحضور" : "الانصراف";
-    if (!window.confirm(`سيتم مسح وقت ${label} فقط ليوم ${date} مع إبقاء البصمة الأخرى كما هي. هل تريد المتابعة؟`)) {
+    const label = type === "check_in" ? t("الحضور") : t("الانصراف");
+    if (!window.confirm(tr(`سيتم مسح وقت ${label} فقط ليوم ${date} مع إبقاء البصمة الأخرى كما هي. هل تريد المتابعة؟`, `Only the ${label} time for ${date} will be cleared. The other attendance time and records will remain unchanged. Continue?`))) {
       return;
     }
 
@@ -1491,12 +1493,12 @@ export default function AttendanceSection({
         date,
         recordIds,
         serverTimes,
-        note: `مسح وقت ${label} فقط من إدارة الموظفات`,
+        note: tr(`مسح وقت ${label} فقط من إدارة الموظفات`, `Clear ${label} time only from Staff Management`),
       });
       if (Number(result.clearedRecords || 0) <= 0) {
-        throw new Error(`لم يتم العثور على سجل ${label} قابل للمسح.`);
+        throw new Error(tr(`لم يتم العثور على سجل ${label} قابل للمسح.`, `No clearable ${label} record was found.`));
       }
-      setPunchClearMessage(`تم مسح وقت ${label} فقط، وبقيت بقية سجلات اليوم كما هي.`);
+      setPunchClearMessage(tr(`تم مسح وقت ${label} فقط، وبقيت بقية سجلات اليوم كما هي.`, `The ${label} time was cleared; the rest of the day records were preserved.`));
       try {
         await onPunchCleared?.({
           date,
@@ -1511,7 +1513,7 @@ export default function AttendanceSection({
       }
       onReload();
     } catch (clearError) {
-      setPunchClearError(cleanText((clearError as Error)?.message) || `تعذر مسح وقت ${label}.`);
+      setPunchClearError(cleanText((clearError as Error)?.message) || tr(`تعذر مسح وقت ${label}.`, `Could not clear the ${label} time.`));
     } finally {
       setClearingPunchType("");
     }
@@ -1559,12 +1561,12 @@ export default function AttendanceSection({
       />
 
       {selectedRawRow && (selectedCheckInTime || selectedCheckOutTime) ? (
-        <section className="dsv2-card dsv2-card--padded" aria-label="إدارة أوقات بصمة اليوم المحدد">
+        <section className="dsv2-card dsv2-card--padded" aria-label={t("إدارة أوقات بصمة اليوم المحدد")}>
           <div className="dsv2-stack dsv2-stack--sm">
             <div>
-              <h3 className="dsv2-section-title">إدارة أوقات البصمة</h3>
+              <h3 className="dsv2-section-title">{tr("إدارة أوقات البصمة", "Manage attendance times")}</h3>
               <p className="dsv2-section-caption">
-                يمكنك مسح وقت الحضور أو الانصراف بشكل مستقل في أي حالة، بدون حذف الوقت الآخر أو بقية سجلات اليوم.
+                {tr("يمكنك مسح وقت الحضور أو الانصراف بشكل مستقل في أي حالة، بدون حذف الوقت الآخر أو بقية سجلات اليوم.", "You can clear check-in or check-out independently without deleting the other time or the rest of the day's records.")}
               </p>
             </div>
 
@@ -1576,7 +1578,7 @@ export default function AttendanceSection({
                   disabled={attendanceCoreBlocked || Boolean(clearingPunchType)}
                   onClick={() => void clearSelectedPunchTime("check_in")}
                 >
-                  {clearingPunchType === "check_in" ? "جاري مسح الحضور..." : "مسح وقت الحضور"}
+                  {clearingPunchType === "check_in" ? t("جاري مسح الحضور...") : t("مسح وقت الحضور")}
                 </button>
               ) : null}
               {selectedCheckOutTime && canDelete ? (
@@ -1586,7 +1588,7 @@ export default function AttendanceSection({
                   disabled={attendanceCoreBlocked || Boolean(clearingPunchType)}
                   onClick={() => void clearSelectedPunchTime("check_out")}
                 >
-                  {clearingPunchType === "check_out" ? "جاري مسح الانصراف..." : "مسح وقت الانصراف"}
+                  {clearingPunchType === "check_out" ? t("جاري مسح الانصراف...") : t("مسح وقت الانصراف")}
                 </button>
               ) : null}
             </div>
