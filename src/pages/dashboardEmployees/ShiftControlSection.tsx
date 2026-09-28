@@ -28,6 +28,7 @@ import {
   isCancelledScheduleException,
   type ScheduleExceptionFilter,
 } from "./shiftExceptionRestore";
+import { useEmployeeLanguage } from "./employeeLanguage";
 import type {
   CoreResolvedShift,
   CoreScheduleException,
@@ -492,6 +493,7 @@ export default function ShiftControlSection({
   employeeName,
   canManage,
 }: ShiftControlSectionProps) {
+  const { language, t, tr } = useEmployeeLanguage();
   const [templates, setTemplates] = useState<CoreShiftTemplate[]>([]);
   const [assignments, setAssignments] = useState<CoreShiftAssignment[]>([]);
   const [exceptions, setExceptions] = useState<CoreScheduleException[]>([]);
@@ -1181,9 +1183,9 @@ export default function ShiftControlSection({
     [employeeExceptions, exceptionFilter]
   );
   const exceptionFilterOptions: Array<{ value: ScheduleExceptionFilter; label: string }> = [
-    { value: "current", label: "الحالية" },
-    { value: "cancelled", label: "الملغاة" },
-    { value: "all", label: "الكل" },
+    { value: "current", label: t("الحالية") },
+    { value: "cancelled", label: t("الملغاة") },
+    { value: "all", label: t("الكل") },
   ];
 
   if (!isVisible) return null;
@@ -1222,9 +1224,9 @@ export default function ShiftControlSection({
       `${assignment.effectiveFrom} - ${assignment.effectiveTo || "مفتوح"}`,
       <WorkspaceStatusBadgeV2 key="status" tone={assignmentTone(assignment)}>{label}</WorkspaceStatusBadgeV2>,
       <div key="actions" className="dsv2-cluster">
-        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editAssignment(assignment)} disabled={!canManage || saving || isCancelled}>تعديل هذا التعيين</button>
-        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || label !== "نشط"}>إنهاء اليوم</button>
-        <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelAssignment(assignment)} disabled={!canManage || saving || isCancelled}>إلغاء</button>
+        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editAssignment(assignment)} disabled={!canManage || saving || isCancelled}>{t("تعديل هذا التعيين")}</button>
+        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || label !== "نشط"}>{t("إنهاء اليوم")}</button>
+        <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelAssignment(assignment)} disabled={!canManage || saving || isCancelled}>{t("إلغاء")}</button>
       </div>,
     ];
   };
@@ -1232,74 +1234,74 @@ export default function ShiftControlSection({
   return (
     <div className="dsv2-ew-tab-panel dsv2-ew-live-shifts">
       <WorkspaceTabHeaderV2
-        title="قوالب الشفتات والاستثناءات"
-        description="أنشئ القوالب وسياسات الحضور هنا، ثم وزّعها على أيام الأسبوع من جدول الدوام الموجود في نفس الصفحة."
+        title={t("قوالب الشفتات والاستثناءات")}
+        description={t("أنشئ القوالب وسياسات الحضور هنا، ثم وزّعها على أيام الأسبوع من جدول الدوام الموجود في نفس الصفحة.")}
         badge={
           <div className="dsv2-cluster">
-            <WorkspaceStatusBadgeV2 tone={canManage ? "success" : "gold"}>{canManage ? "قابل للتعديل" : "عرض فقط"}</WorkspaceStatusBadgeV2>
-            <WorkspaceHelpButtonV2 label="شرح قوالب الشفتات والاستثناءات" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.overview)} />
+            <WorkspaceStatusBadgeV2 tone={canManage ? "success" : "gold"}>{canManage ? tr("قابل للتعديل", "Editable") : t("عرض فقط")}</WorkspaceStatusBadgeV2>
+            <WorkspaceHelpButtonV2 label={t("شرح قوالب الشفتات والاستثناءات")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.overview)} />
           </div>
         }
       />
 
-      {error ? <WorkspaceNoticeV2 title="تعذر تنفيذ العملية" description={error} tone="danger" /> : null}
-      {message ? <WorkspaceNoticeV2 title="تم التحديث" description={message} tone="success" /> : null}
+      {error ? <WorkspaceNoticeV2 title={t("تعذر تنفيذ العملية")} description={t(error)} tone="danger" /> : null}
+      {message ? <WorkspaceNoticeV2 title={t("تم التحديث")} description={t(message)} tone="success" /> : null}
 
       {canManage ? (
         <WorkspaceCardV2
-          title="تغييرات تمس فترة رواتب مقفلة"
-          description="اترك هذا الخيار مغلقًا في الوضع الطبيعي. فعّله فقط عندما تريد السماح لـ Core بحفظ التغيير مع إنشاء تسوية بعد الإقفال بدل تعديل الراتب المقفل بصمت."
+          title={t("تغييرات تمس فترة رواتب مقفلة")}
+          description={t("اترك هذا الخيار مغلقًا في الوضع الطبيعي. فعّله فقط عندما تريد السماح لـ Core بحفظ التغيير مع إنشاء تسوية بعد الإقفال بدل تعديل الراتب المقفل بصمت.")}
         >
           <WorkspaceSwitchV2
             checked={allowLockedPeriodAdjustment}
             onChange={setAllowLockedPeriodAdjustment}
             disabled={saving}
-            label="السماح بتسجيل تسوية بعد إقفال الرواتب"
+            label={t("السماح بتسجيل تسوية بعد إقفال الرواتب")}
             description={allowLockedPeriodAdjustment
-              ? "مفعّل: إذا مسّ التغيير فترة مقفلة فسيُسجّل Core تسوية مستقلة للمراجعة."
-              : "غير مفعّل: أي تغيير يمس فترة مقفلة سيتم رفضه."}
+              ? tr("مفعّل: إذا مسّ التغيير فترة مقفلة فسيُسجّل Core تسوية مستقلة للمراجعة.", "Enabled: if the change affects a locked payroll period, Core will record a separate adjustment for review.")
+              : tr("غير مفعّل: أي تغيير يمس فترة مقفلة سيتم رفضه.", "Disabled: any change affecting a locked payroll period will be rejected.")}
           />
         </WorkspaceCardV2>
       ) : null}
 
       <WorkspaceCardV2
-        title="الشفت المطبق الآن"
-        description="هذه هي المعلومة الأساسية: الشفت الذي سيُستخدم في الحضور والراتب لهذا اليوم."
+        title={t("الشفت المطبق الآن")}
+        description={t("هذه هي المعلومة الأساسية: الشفت الذي سيُستخدم في الحضور والراتب لهذا اليوم.")}
         actions={
           <>
-            <WorkspaceHelpButtonV2 label="شرح الشفت المطبق الآن" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.appliedShift)} />
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void refreshAll()} disabled={loading || saving}>تحديث</button>
+            <WorkspaceHelpButtonV2 label={t("شرح الشفت المطبق الآن")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.appliedShift)} />
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void refreshAll()} disabled={loading || saving}>{t("تحديث")}</button>
           </>
         }
       >
         <div className="dsv2-filter-bar">
-          <DashboardFieldV2 id="shift-resolved-date" label="تاريخ الفحص">
+          <DashboardFieldV2 id="shift-resolved-date" label={t("تاريخ الفحص")}>
             <DashboardDatePickerV2 id="shift-resolved-date" value={resolvedDate} onChange={setResolvedDate} disabled={loading || saving} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="shift-resolved-employee" label="الموظفة">
+          <DashboardFieldV2 id="shift-resolved-employee" label={t("الموظفة")}>
             <input id="shift-resolved-employee" className="dsv2-input" value={employeeName || employeeId} readOnly />
           </DashboardFieldV2>
         </div>
         <div className="dsv2-grid dsv2-grid--metrics">
           <WorkspaceMetricV2
-            label="الشفت"
-            value={resolvedShiftName || (source === "assignment" ? openAssignmentName : "") || (resolvedStatus === "مغلق اليوم" ? "راحة أسبوعية" : "لا يوجد")}
-            note={source === "assignment" && openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || "مفتوح"}` : resolvedStatus}
+            label={t("الشفت")}
+            value={resolvedShiftName || (source === "assignment" ? openAssignmentName : "") || (resolvedStatus === "مغلق اليوم" ? t("راحة أسبوعية") : t("لا يوجد"))}
+            note={source === "assignment" && openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || t("مفتوح")}` : t(resolvedStatus)}
             tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"}
           />
-          <WorkspaceMetricV2 label="الوقت" value={resolvedStatus === "مغلق اليوم" ? "راحة" : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note={resolvedStatus === "مغلق اليوم" ? "لا يوجد دوام مطلوب" : "وقت الدوام الفعلي"} tone="dark" />
-          <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} note={source === "exception" ? exceptionTypeLabel(resolvedExceptionType) : "الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي"} tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
+          <WorkspaceMetricV2 label={t("الوقت")} value={resolvedStatus === "مغلق اليوم" ? t("راحة") : source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note={resolvedStatus === "مغلق اليوم" ? tr("لا يوجد دوام مطلوب", "No work required") : tr("وقت الدوام الفعلي", "Effective working time")} tone="dark" />
+          <WorkspaceMetricV2 label={t("المصدر")} value={t(resolvedLabel)} note={source === "exception" ? t(exceptionTypeLabel(resolvedExceptionType)) : tr("الاستثناء ثم جدول الأسبوع ثم الشفت الافتراضي", "Exception, then weekly schedule, then fallback shift")} tone={source === "exception" ? "gold" : source === "weekly_rest_work_assignment" || source === "weekly_schedule" || source === "assignment" ? "success" : "neutral"} />
           <WorkspaceMetricV2
-            label="مرونة الحضور"
-            value={`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} دقيقة`}
+            label={t("مرونة الحضور")}
+            value={tr(`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} دقيقة`, `${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} min`)}
             note="تسمح بالحضور المتأخر، لكن الدقائق غير المعوضة تُحسب"
             tone="gold"
           />
           <WorkspaceMetricV2
-            label="إغلاق البصمة"
+            label={t("إغلاق البصمة")}
             value={boolish(resolvedShift?.attendanceLockEnabled ?? resolvedShift?.attendance_lock_enabled)
-              ? `بعد ${readNumber(resolvedShift?.attendanceLockAfterMinutes ?? resolvedShift?.attendance_lock_after_minutes)} دقيقة`
-              : "غير مفعّل"}
+              ? tr(`بعد ${readNumber(resolvedShift?.attendanceLockAfterMinutes ?? resolvedShift?.attendance_lock_after_minutes)} دقيقة`, `After ${readNumber(resolvedShift?.attendanceLockAfterMinutes ?? resolvedShift?.attendance_lock_after_minutes)} min`)
+              : t("غير مفعّل")}
             note="إغلاق بصمة الحضور فقط؛ الانصراف يبقى متاحًا"
             tone={boolish(resolvedShift?.attendanceLockEnabled ?? resolvedShift?.attendance_lock_enabled) ? "danger" : "neutral"}
           />
@@ -1307,36 +1309,36 @@ export default function ShiftControlSection({
       </WorkspaceCardV2>
 
       <details className="dsv2-details-block">
-        <summary>التعيينات القديمة والاحتياطية</summary>
+        <summary>{t("التعيينات القديمة والاحتياطية")}</summary>
         <WorkspaceNoticeV2
-          title="للتوافق مع البيانات القديمة فقط"
-          description="المصدر الأساسي الآن هو جدول الدوام الأسبوعي. استخدم التعيين الاحتياطي فقط لموظفة قديمة لا يوجد لها جدول أسبوعي، واستخدم الاستثناء لتغيير يوم أو فترة محددة."
+          title={t("للتوافق مع البيانات القديمة فقط")}
+          description={t("المصدر الأساسي الآن هو جدول الدوام الأسبوعي. استخدم التعيين الاحتياطي فقط لموظفة قديمة لا يوجد لها جدول أسبوعي، واستخدم الاستثناء لتغيير يوم أو فترة محددة.")}
           tone="gold"
         />
         <div ref={assignmentEditorRef}>
         <WorkspaceCardV2
           title={assignmentForm.id ? "تعديل تعيين احتياطي" : "تعيين شفت احتياطي"}
           description={assignmentForm.id ? "تعديل تعيين قديم موجود." : "لا يُستخدم عند وجود جدول دوام أسبوعي للموظفة."}
-          actions={<WorkspaceHelpButtonV2 label="شرح تعيين الشفت الاحتياطي" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.fallbackAssignment)} />}
+          actions={<WorkspaceHelpButtonV2 label={t("شرح تعيين الشفت الاحتياطي")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.fallbackAssignment)} />}
         >
           {assignmentForm.id ? (
             <WorkspaceNoticeV2
-              title="وضع التعديل نشط"
-              description="التعديل الآن على التعيين الذي اخترته من جدول تعيينات الموظفة. اضغط حفظ التعديل أو إلغاء التعديل."
+              title={t("وضع التعديل نشط")}
+              description={t("التعديل الآن على التعيين الذي اخترته من جدول تعيينات الموظفة. اضغط حفظ التعديل أو إلغاء التعديل.")}
               tone="gold"
             />
           ) : null}
           <div className="dsv2-form-grid">
-            <DashboardFieldV2 id="shift-assignment-template" label="الشفت المطلوب" required>
-              <DashboardSelectV2 id="shift-assignment-template" options={templateOptions} value={assignmentForm.shiftTemplateId} onChange={(value) => setAssignmentForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || !templateOptions.length} placeholder="اختر الشفت" />
+            <DashboardFieldV2 id="shift-assignment-template" label={t("الشفت المطلوب")} required>
+              <DashboardSelectV2 id="shift-assignment-template" options={templateOptions} value={assignmentForm.shiftTemplateId} onChange={(value) => setAssignmentForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || !templateOptions.length} placeholder={t("اختر الشفت")} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="shift-assignment-from" label="يبدأ من" required>
+            <DashboardFieldV2 id="shift-assignment-from" label={t("يبدأ من")} required>
               <DashboardDatePickerV2 id="shift-assignment-from" value={assignmentForm.effectiveFrom} onChange={(value) => setAssignmentForm((current) => ({ ...current, effectiveFrom: value }))} disabled={!canManage || saving} />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="shift-assignment-type" label="المدة">
+            <DashboardFieldV2 id="shift-assignment-type" label={t("المدة")}>
               <DashboardSelectV2
                 id="shift-assignment-type"
-                options={[{ value: "permanent", label: "دائم / مفتوح" }, { value: "temporary", label: "مؤقت / له نهاية" }]}
+                options={[{ value: "permanent", label: t("دائم / مفتوح") }, { value: "temporary", label: t("مؤقت / له نهاية") }]}
                 value={assignmentForm.assignmentType}
                 onChange={(value) => setAssignmentForm((current) => ({
                   ...current,
@@ -1346,7 +1348,7 @@ export default function ShiftControlSection({
                 disabled={!canManage || saving}
               />
             </DashboardFieldV2>
-            <DashboardFieldV2 id="shift-assignment-to" label="ينتهي في" required={assignmentForm.assignmentType === "temporary"}>
+            <DashboardFieldV2 id="shift-assignment-to" label={t("ينتهي في")} required={assignmentForm.assignmentType === "temporary"}>
               <DashboardDatePickerV2
                 id="shift-assignment-to"
                 value={assignmentForm.assignmentType === "permanent" ? "" : assignmentForm.effectiveTo}
@@ -1358,38 +1360,38 @@ export default function ShiftControlSection({
           </div>
           {assignmentForm.assignmentType === "permanent" ? (
             <WorkspaceNoticeV2
-              title="تعيين مفتوح"
-              description="عند اختيار دائم يتم تجاهل تاريخ النهاية وحفظ التعيين كمفتوح. إذا تحتاج نهاية محددة اختر مؤقت."
+              title={t("تعيين مفتوح")}
+              description={t("عند اختيار دائم يتم تجاهل تاريخ النهاية وحفظ التعيين كمفتوح. إذا تحتاج نهاية محددة اختر مؤقت.")}
               tone="gold"
             />
           ) : null}
-          <DashboardFieldV2 id="shift-assignment-reason" label="سبب التغيير" required>
+          <DashboardFieldV2 id="shift-assignment-reason" label={t("سبب التغيير")} required>
             <input id="shift-assignment-reason" className="dsv2-input" value={assignmentForm.reason} onChange={(event) => setAssignmentForm((current) => ({ ...current, reason: event.target.value }))} disabled={!canManage || saving} />
           </DashboardFieldV2>
           {preview && previewKind === "assignment" ? (
             <WorkspaceNoticeV2
-              title="تأثير الحفظ المتوقع"
+              title={t("تأثير الحفظ المتوقع")}
               description={shiftPreviewDescription(preview)}
               tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
             />
           ) : null}
           <div className="dsv2-cluster">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment().catch(() => undefined)} disabled={!canManage || saving || previewing || !assignmentForm.shiftTemplateId}>{previewing && previewKind !== "exception" ? "جاري الفحص..." : "فحص قبل الحفظ"}</button>
-            {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={startNewAssignment} disabled={saving}>إلغاء التعديل</button> : null}
-            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? "حفظ تعديل الشفت" : "تعيين الشفت"}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment().catch(() => undefined)} disabled={!canManage || saving || previewing || !assignmentForm.shiftTemplateId}>{previewing && previewKind !== "exception" ? tr("جاري الفحص...", "Checking...") : tr("فحص قبل الحفظ", "Check before saving")}</button>
+            {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={startNewAssignment} disabled={saving}>{t("إلغاء التعديل")}</button> : null}
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? tr("حفظ تعديل الشفت", "Save shift assignment") : tr("تعيين الشفت", "Assign shift")}</button>
           </div>
         </WorkspaceCardV2>
       </div>
 
       <WorkspaceCardV2
-        title="تعيينات الموظفة"
-        description="يعرض الحالي والقادم فقط. السجل القديم موجود أسفل الجدول لتقليل التشويش."
-        actions={<WorkspaceHelpButtonV2 label="شرح تعيينات الموظفة" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.employeeAssignments)} />}
+        title={t("تعيينات الموظفة")}
+        description={t("يعرض الحالي والقادم فقط. السجل القديم موجود أسفل الجدول لتقليل التشويش.")}
+        actions={<WorkspaceHelpButtonV2 label={t("شرح تعيينات الموظفة")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.employeeAssignments)} />}
       >
         <WorkspaceTableV2
           headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
           rows={activeOrUpcomingAssignments.map(renderAssignmentRow)}
-          emptyText="لا يوجد شفت نشط أو قادم لهذه الموظفة."
+          emptyText={t("لا يوجد شفت نشط أو قادم لهذه الموظفة.")}
         />
         {archivedAssignments.length ? (
           <details className="dsv2-details-block">
@@ -1397,7 +1399,7 @@ export default function ShiftControlSection({
             <WorkspaceTableV2
               headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
               rows={archivedAssignments.map(renderAssignmentRow)}
-              emptyText="لا يوجد سجل تاريخي."
+              emptyText={t("لا يوجد سجل تاريخي.")}
             />
           </details>
         ) : null}
@@ -1407,7 +1409,7 @@ export default function ShiftControlSection({
             <WorkspaceTableV2
               headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
               rows={cancelledAssignments.map(renderAssignmentRow)}
-              emptyText="لا توجد تعيينات ملغية."
+              emptyText={t("لا توجد تعيينات ملغية.")}
             />
           </details>
         ) : null}
@@ -1415,73 +1417,73 @@ export default function ShiftControlSection({
       </details>
 
       <details className="dsv2-details-block" open>
-        <summary>إدارة قوالب الشفتات والاستثناءات</summary>
+        <summary>{t("إدارة قوالب الشفتات والاستثناءات")}</summary>
         <div className="dsv2-grid dsv2-grid--two">
           <WorkspaceCardV2
             title={templateForm.id ? "تعديل قالب شفت" : "إنشاء قالب شفت"}
-            description="القالب عام ويؤثر على أي موظفة تستخدمه. لا تعدله إلا إذا تريد تغيير القالب نفسه للجميع."
-            actions={<WorkspaceHelpButtonV2 label="شرح إنشاء قالب الشفت" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.shiftTemplate)} />}
+            description={t("القالب عام ويؤثر على أي موظفة تستخدمه. لا تعدله إلا إذا تريد تغيير القالب نفسه للجميع.")}
+            actions={<WorkspaceHelpButtonV2 label={t("شرح إنشاء قالب الشفت")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.shiftTemplate)} />}
           >
             <WorkspaceNoticeV2
-              title="تنبيه"
-              description="لتغيير شفت يوم أسبوعي استخدم جدول الدوام أعلى هذه الصفحة. لتغيير يوم أو فترة محددة استخدم الاستثناء؛ تعديل القالب يغيّر السياسة العامة لكل من يستخدمه."
+              title={t("تنبيه")}
+              description={t("لتغيير شفت يوم أسبوعي استخدم جدول الدوام أعلى هذه الصفحة. لتغيير يوم أو فترة محددة استخدم الاستثناء؛ تعديل القالب يغيّر السياسة العامة لكل من يستخدمه.")}
               tone="gold"
             />
             <div className="dsv2-form-grid">
-              <DashboardFieldV2 id="shift-template-name" label="اسم الشفت" required>
-                <input id="shift-template-name" className="dsv2-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} disabled={!canManage || saving} placeholder="الشفت الصباحي" />
+              <DashboardFieldV2 id="shift-template-name" label={t("اسم الشفت")} required>
+                <input id="shift-template-name" className="dsv2-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} disabled={!canManage || saving} placeholder={t("الشفت الصباحي")} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-code" label="الكود">
+              <DashboardFieldV2 id="shift-template-code" label={t("الكود")}>
                 <input id="shift-template-code" className="dsv2-input" value={templateForm.code} onChange={(event) => setTemplateForm((current) => ({ ...current, code: event.target.value }))} disabled={!canManage || saving} placeholder="AM" />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-start" label="البداية" required>
+              <DashboardFieldV2 id="shift-template-start" label={t("البداية")} required>
                 <DashboardTimeInputV2 id="shift-template-start" clock="12h" className="dsv2-input" value={templateForm.startTime} onChange={(event) => setTemplateForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-end" label="النهاية" required>
+              <DashboardFieldV2 id="shift-template-end" label={t("النهاية")} required>
                 <DashboardTimeInputV2 id="shift-template-end" clock="12h" className="dsv2-input" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-break" label="مدة الاستراحة (دقيقة)">
+              <DashboardFieldV2 id="shift-template-break" label={t("مدة الاستراحة (دقيقة)")}>
                 <DashboardNumberInputV2 id="shift-template-break" className="dsv2-input" min="0" max="720" value={templateForm.breakMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, breakMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-overtime" label="بدء الإضافي بعد (دقيقة)">
+              <DashboardFieldV2 id="shift-template-overtime" label={t("بدء الإضافي بعد (دقيقة)")}>
                 <DashboardNumberInputV2 id="shift-template-overtime" className="dsv2-input" min="0" max="1440" value={templateForm.overtimeAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, overtimeAfterMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-late" label="فترة سماح التأخير">
+              <DashboardFieldV2 id="shift-template-late" label={t("فترة سماح التأخير")}>
                 <DashboardNumberInputV2 id="shift-template-late" className="dsv2-input" min="0" max="240" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-template-lock-after" label="إغلاق بصمة الحضور بعد">
+              <DashboardFieldV2 id="shift-template-lock-after" label={t("إغلاق بصمة الحضور بعد")}>
                 <DashboardNumberInputV2 id="shift-template-lock-after" className="dsv2-input" min={Number(templateForm.lateGraceMinutes || 0)} max="1440" value={templateForm.attendanceLockAfterMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, attendanceLockAfterMinutes: event.target.value }))} disabled={!canManage || saving || !templateForm.attendanceLockEnabled} />
               </DashboardFieldV2>
             </div>
             <WorkspaceNoticeV2
-              title="لا يوجد سماح خروج مبكر"
-              description="الخروج قبل نهاية الشفت يُحسب من أول دقيقة. سماح التأخير مرونة للحضور فقط، ويجب تعويض التأخير عند الانصراف."
+              title={t("لا يوجد سماح خروج مبكر")}
+              description={t("الخروج قبل نهاية الشفت يُحسب من أول دقيقة. سماح التأخير مرونة للحضور فقط، ويجب تعويض التأخير عند الانصراف.")}
               tone="neutral"
             />
             <WorkspaceSwitchV2
               checked={templateForm.attendanceLockEnabled}
               onChange={(value) => setTemplateForm((current) => ({ ...current, attendanceLockEnabled: value }))}
               disabled={!canManage || saving}
-              label="إغلاق بصمة الحضور المتأخرة"
-              description="عند تجاوز المدة المحددة تُقفل بصمة الحضور وتُسجل الموظفة غائبة تلقائيًا، بينما يبقى تسجيل الانصراف متاحًا لمن بصمت حضورًا."
+              label={t("إغلاق بصمة الحضور المتأخرة")}
+              description={t("عند تجاوز المدة المحددة تُقفل بصمة الحضور وتُسجل الموظفة غائبة تلقائيًا، بينما يبقى تسجيل الانصراف متاحًا لمن بصمت حضورًا.")}
             />
-            <WorkspaceSwitchV2 checked={templateForm.active} onChange={(value) => setTemplateForm((current) => ({ ...current, active: value }))} disabled={!canManage || saving} label="القالب نشط" />
+            <WorkspaceSwitchV2 checked={templateForm.active} onChange={(value) => setTemplateForm((current) => ({ ...current, active: value }))} disabled={!canManage || saving} label={t("القالب نشط")} />
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => { setTemplateForm(emptyTemplateForm()); setError(""); setMessage(""); setPreview(null); }} disabled={saving}>تفريغ</button>
-              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveTemplate()} disabled={!canManage || saving}>حفظ القالب</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => { setTemplateForm(emptyTemplateForm()); setError(""); setMessage(""); setPreview(null); }} disabled={saving}>{t("تفريغ")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveTemplate()} disabled={!canManage || saving}>{t("حفظ القالب")}</button>
             </div>
           </WorkspaceCardV2>
 
           <WorkspaceCardV2
-            title="استثناء شفت"
-            description="استخدمه لراحة يوم، شفت بديل، أو وقت مخصص لفترة محددة."
-            actions={<WorkspaceHelpButtonV2 label="شرح استثناء الشفت" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.shiftException)} />}
+            title={t("استثناء شفت")}
+            description={t("استخدمه لراحة يوم، شفت بديل، أو وقت مخصص لفترة محددة.")}
+            actions={<WorkspaceHelpButtonV2 label={t("شرح استثناء الشفت")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.shiftException)} />}
           >
             <div className="dsv2-form-grid">
-              <DashboardFieldV2 id="shift-exception-type" label="نوع الاستثناء">
+              <DashboardFieldV2 id="shift-exception-type" label={t("نوع الاستثناء")}>
                 <DashboardSelectV2
                   id="shift-exception-type"
-                  options={[{ value: "shift", label: "شفت بديل" }, { value: "custom", label: "وقت مخصص" }, { value: "off", label: "راحة" }]}
+                  options={[{ value: "shift", label: t("شفت بديل") }, { value: "custom", label: t("وقت مخصص") }, { value: "off", label: t("راحة") }]}
                   value={exceptionForm.exceptionType}
                   onChange={(value) => setExceptionForm((current) => {
                     const exceptionType: ExceptionForm["exceptionType"] = value === "custom" ? "custom" : value === "off" ? "off" : "shift";
@@ -1496,44 +1498,44 @@ export default function ShiftControlSection({
                   disabled={!canManage || saving}
                 />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-template" label="الشفت البديل">
-                <DashboardSelectV2 id="shift-exception-template" options={templateOptions} value={exceptionForm.shiftTemplateId} onChange={(value) => setExceptionForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "shift" || !templateOptions.length} placeholder="اختر الشفت" />
+              <DashboardFieldV2 id="shift-exception-template" label={t("الشفت البديل")}>
+                <DashboardSelectV2 id="shift-exception-template" options={templateOptions} value={exceptionForm.shiftTemplateId} onChange={(value) => setExceptionForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "shift" || !templateOptions.length} placeholder={t("اختر الشفت")} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-from" label="من تاريخ" required>
+              <DashboardFieldV2 id="shift-exception-from" label={t("من تاريخ")} required>
                 <DashboardDatePickerV2 id="shift-exception-from" value={exceptionForm.dateFrom} onChange={(value) => setExceptionForm((current) => ({ ...current, dateFrom: value, dateTo: current.dateTo || value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-to" label="إلى تاريخ" required>
+              <DashboardFieldV2 id="shift-exception-to" label={t("إلى تاريخ")} required>
                 <DashboardDatePickerV2 id="shift-exception-to" value={exceptionForm.dateTo} onChange={(value) => setExceptionForm((current) => ({ ...current, dateTo: value }))} disabled={!canManage || saving} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-start" label="بداية مخصصة" required={exceptionForm.exceptionType === "custom"}>
+              <DashboardFieldV2 id="shift-exception-start" label={t("بداية مخصصة")} required={exceptionForm.exceptionType === "custom"}>
                 <DashboardTimeInputV2 id="shift-exception-start" clock="12h" className="dsv2-input" value={exceptionForm.startTime} onChange={(event) => setExceptionForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
-              <DashboardFieldV2 id="shift-exception-end" label="نهاية مخصصة" required={exceptionForm.exceptionType === "custom"}>
+              <DashboardFieldV2 id="shift-exception-end" label={t("نهاية مخصصة")} required={exceptionForm.exceptionType === "custom"}>
                 <DashboardTimeInputV2 id="shift-exception-end" clock="12h" className="dsv2-input" value={exceptionForm.endTime} onChange={(event) => setExceptionForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
               </DashboardFieldV2>
             </div>
-            <DashboardFieldV2 id="shift-exception-note" label="ملاحظة">
+            <DashboardFieldV2 id="shift-exception-note" label={t("ملاحظة")}>
               <input id="shift-exception-note" className="dsv2-input" value={exceptionForm.note} onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))} disabled={!canManage || saving} />
             </DashboardFieldV2>
             {preview && previewKind === "exception" ? (
               <WorkspaceNoticeV2
-                title="تأثير الاستثناء المتوقع"
+                title={t("تأثير الاستثناء المتوقع")}
                 description={shiftPreviewDescription(preview)}
                 tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
               />
             ) : null}
             <div className="dsv2-cluster">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException().catch(() => undefined)} disabled={!canManage || saving || previewing}>{previewing && previewKind !== "assignment" ? "جاري الفحص..." : "فحص الاستثناء"}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void createException()} disabled={!canManage || saving}>حفظ الاستثناء</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException().catch(() => undefined)} disabled={!canManage || saving || previewing}>{previewing && previewKind !== "assignment" ? tr("جاري الفحص...", "Checking...") : tr("فحص الاستثناء", "Check exception")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void createException()} disabled={!canManage || saving}>{t("حفظ الاستثناء")}</button>
             </div>
           </WorkspaceCardV2>
         </div>
 
         <div className="dsv2-grid dsv2-grid--two">
           <WorkspaceCardV2
-            title="قوالب الشفتات"
-            description="القوالب الفعلية المحملة من Core."
-            actions={<WorkspaceHelpButtonV2 label="شرح قائمة قوالب الشفتات" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.templatesList)} />}
+            title={t("قوالب الشفتات")}
+            description={t("القوالب الفعلية المحملة من Core.")}
+            actions={<WorkspaceHelpButtonV2 label={t("شرح قائمة قوالب الشفتات")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.templatesList)} />}
           >
             <WorkspaceTableV2
               headers={["القالب", "الوقت", "مرونة الحضور", "إغلاق البصمة", "الحالة", "الإجراء"]}
@@ -1542,19 +1544,19 @@ export default function ShiftControlSection({
                 formatWindow(template),
                 `${readNumber(template.lateGraceMinutes)} دقيقة`,
                 boolish(template.attendanceLockEnabled) ? `بعد ${readNumber(template.attendanceLockAfterMinutes)} دقيقة` : "غير مفعّل",
-                <WorkspaceStatusBadgeV2 key="status" tone={boolish(template.active) ? "success" : "danger"}>{boolish(template.active) ? "نشط" : "متوقف"}</WorkspaceStatusBadgeV2>,
-                <button key="edit" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editTemplate(template)} disabled={!canManage || saving}>تعديل القالب</button>,
+                <WorkspaceStatusBadgeV2 key="status" tone={boolish(template.active) ? "success" : "danger"}>{boolish(template.active) ? t("نشط") : tr("متوقف", "Inactive")}</WorkspaceStatusBadgeV2>,
+                <button key="edit" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editTemplate(template)} disabled={!canManage || saving}>{t("تعديل القالب")}</button>,
               ])}
-              emptyText="لا توجد قوالب شفتات."
+              emptyText={t("لا توجد قوالب شفتات.")}
             />
           </WorkspaceCardV2>
 
           <WorkspaceCardV2
-            title="استثناءات الموظفة"
-            description="الأولوية للاستثناء قبل الشفت الأساسي."
+            title={t("استثناءات الموظفة")}
+            description={t("الأولوية للاستثناء قبل الشفت الأساسي.")}
             actions={
               <div className="dsv2-cluster">
-                <div className="dsv2-ew-segmented" role="tablist" aria-label="فلتر الاستثناءات">
+                <div className="dsv2-ew-segmented" role="tablist" aria-label={t("فلتر الاستثناءات")}>
                   {exceptionFilterOptions.map((option) => (
                     <button
                       key={option.value}
@@ -1567,7 +1569,7 @@ export default function ShiftControlSection({
                     </button>
                   ))}
                 </div>
-                <WorkspaceHelpButtonV2 label="شرح استثناءات الموظفة" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.exceptionsList)} />
+                <WorkspaceHelpButtonV2 label={t("شرح استثناءات الموظفة")} onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.exceptionsList)} />
               </div>
             }
           >
@@ -1580,14 +1582,14 @@ export default function ShiftControlSection({
                 return [
                   <strong key="type" className={mutedClass}>{exceptionTypeLabel(exception.exceptionType)}</strong>,
                   <span key="range" className={mutedClass}>{exception.dateFrom} - {exception.dateTo}</span>,
-                  <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? "راحة" : formatWindow(exception)}</span>,
+                  <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? t("راحة") : formatWindow(exception)}</span>,
                   <WorkspaceStatusBadgeV2 key="status" tone={isCancelled ? "danger" : "success"}>{statusLabel(exception.status)}</WorkspaceStatusBadgeV2>,
                   action.kind === "restore"
                     ? <button key="restore" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void restoreException(exception)} disabled={!canManage || saving}>{action.label}</button>
                     : <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving}>{action.label}</button>,
                 ];
               })}
-              emptyText="لا توجد استثناءات شفت لهذه الموظفة."
+              emptyText={t("لا توجد استثناءات شفت لهذه الموظفة.")}
             />
           </WorkspaceCardV2>
         </div>
