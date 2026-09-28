@@ -10560,10 +10560,10 @@ const canonicalSchedules =
         open={Boolean(confirmDialog)}
         onClose={() => resolveConfirmation(false)}
         onConfirm={() => resolveConfirmation(true)}
-        title={confirmDialog?.title || ""}
-        description={confirmDialog?.description}
+        title={t(confirmDialog?.title || "")}
+        description={confirmDialog?.description ? t(confirmDialog.description) : undefined}
         tone={confirmDialog?.tone || "danger"}
-        confirmLabel={confirmDialog?.confirmLabel || t("نعم، متابعة")}
+        confirmLabel={t(confirmDialog?.confirmLabel || "نعم، متابعة")}
         cancelLabel={t("تراجع")}
         pendingLabel={t("جارٍ التنفيذ...")}
         closeOnBackdrop={!busy}
