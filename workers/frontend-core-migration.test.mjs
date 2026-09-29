@@ -967,6 +967,9 @@ test("front-end operational identity comes from Core app_users and permissions",
   assert.match(app, /CoreAccountService\.me/);
   assert.match(app, /permissions:\s*me\.permissions/);
   assert.match(app, /getEffectiveAppPermissions\(permissionSource\)/);
+  assert.match(app, /window\.addEventListener\("focus", refreshWhenActive\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange", refreshWhenActive\)/);
+  assert.match(app, /\[App\] failed to refresh live Core account access/);
   assert.doesNotMatch(app, /firebase\/firestore|getDoc\(|onSnapshot\(doc\(db/);
   assert.match(permissionContext, /getEffectiveAppPermissions/);
   assert.doesNotMatch(permissionContext, /normalizeAppPermissions\(permissions\)/);
