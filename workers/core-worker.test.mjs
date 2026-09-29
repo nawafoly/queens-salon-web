@@ -121,6 +121,15 @@ class FakeD1 {
       "audit.read",
       "admin_accounts.view",
       "admin_accounts.manage",
+      "employees.tabs.basic.view",
+      "employees.tabs.profile.view",
+      "employees.tabs.services.view",
+      "employees.tabs.schedule.view",
+      "employees.tabs.attendance.view",
+      "employees.tabs.payroll.view",
+      "employees.tabs.requests.view",
+      "employees.tabs.leave.view",
+      "employees.tabs.messages.view",
       "bookings.view",
       "bookings.create",
       "bookings.update",
@@ -150,9 +159,9 @@ class FakeD1 {
       }
     };
     grantRole("admin", permissionKeys.filter((key) => !["accounts.delete", "permissions.manage", "roles.manage"].includes(key)));
-    grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
+    grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view", "employees.tabs.basic.view", "employees.tabs.profile.view", "employees.tabs.services.view", "employees.tabs.schedule.view", "employees.tabs.attendance.view", "employees.tabs.payroll.view", "employees.tabs.requests.view", "employees.tabs.leave.view", "employees.tabs.messages.view"]);
     grantRole("accountant", ["finance.view", "finance.manage", "income.view", "income.manage", "reports.view", "audit.read"]);
-    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage", "bookings.price.adjust", "bookings.discount.apply"]);
+    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update", "bookings.cancel", "bookings.payment.manage", "bookings.price.adjust", "bookings.discount.apply", "employees.tabs.services.view"]);
     grantRole("staff", ["bookings.view", "targets.view_own"]);
 
     const accounts = [
