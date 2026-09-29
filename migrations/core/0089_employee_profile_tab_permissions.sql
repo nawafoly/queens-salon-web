@@ -17,24 +17,36 @@ VALUES
   ('employees.tabs.messages.view', 'workforce', 'View staff messages tab', 'Show Messages inside Staff Management employee profiles.', 1, '2026-09-28T00:00:00.000Z', '2026-09-28T00:00:00.000Z');
 
 -- Owner/admin/HR preserve the full Staff Management profile surface.
-INSERT OR IGNORE INTO role_permissions (salon_id, role_key, permission_key, created_at)
-SELECT 'main', role_key, permission_key, '2026-09-28T00:00:00.000Z'
-FROM (
-  SELECT 'owner' AS role_key
-  UNION ALL SELECT 'admin'
-  UNION ALL SELECT 'hr'
-) roles
-CROSS JOIN (
-  SELECT 'employees.tabs.basic.view' AS permission_key
-  UNION ALL SELECT 'employees.tabs.profile.view'
-  UNION ALL SELECT 'employees.tabs.services.view'
-  UNION ALL SELECT 'employees.tabs.schedule.view'
-  UNION ALL SELECT 'employees.tabs.attendance.view'
-  UNION ALL SELECT 'employees.tabs.payroll.view'
-  UNION ALL SELECT 'employees.tabs.requests.view'
-  UNION ALL SELECT 'employees.tabs.leave.view'
-  UNION ALL SELECT 'employees.tabs.messages.view'
-) tabs;
+INSERT OR IGNORE INTO role_permissions
+  (salon_id, role_key, permission_key, created_at)
+VALUES
+  ('main', 'owner', 'employees.tabs.basic.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.profile.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.services.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.schedule.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.attendance.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.payroll.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.requests.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.leave.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'owner', 'employees.tabs.messages.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.basic.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.profile.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.services.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.schedule.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.attendance.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.payroll.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.requests.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.leave.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'admin', 'employees.tabs.messages.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.basic.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.profile.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.services.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.schedule.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.attendance.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.payroll.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.requests.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.leave.view', '2026-09-28T00:00:00.000Z'),
+  ('main', 'hr', 'employees.tabs.messages.view', '2026-09-28T00:00:00.000Z');
 
 -- Reception gets only Services by default. Additional tabs can be granted per
 -- account from Account Management without changing the reception role itself.
