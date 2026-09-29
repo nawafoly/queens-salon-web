@@ -7075,6 +7075,15 @@ const canonicalSchedules =
   }, []);
 
   useEffect(() => {
+    // Resolved shifts are schedule data. Do not request them for accounts
+    // whose Staff Management access does not include the schedule tab.
+    if (!canDisplayEmployeeTab("booking")) {
+      setCoreResolvedTodayByEmployeeId({});
+      setCoreResolvedTodayLoading(false);
+      setCoreResolvedTodayError("");
+      return;
+    }
+
     const employeeIds =
       uniqueCleanTexts(
         list.map(
@@ -7174,11 +7183,20 @@ const canonicalSchedules =
       cancelled = true;
     };
   }, [
+    canDisplayEmployeeTab,
     coreResolvedTodayDateKey,
     coreResolvedTodayRefreshVersion,
     list,
   ]);
   useEffect(() => {
+    if (!canDisplayEmployeeTab("booking")) {
+      setCoreResolvedFutureRows([]);
+      setCoreResolvedFutureEmployeeId("");
+      setCoreResolvedFutureLoading(false);
+      setCoreResolvedFutureError("");
+      return;
+    }
+
     const employeeId =
       cleanText(editId);
 
@@ -7305,6 +7323,7 @@ const canonicalSchedules =
       cancelled = true;
     };
   }, [
+    canDisplayEmployeeTab,
     coreResolvedTodayDateKey,
     coreResolvedTodayRefreshVersion,
     editId,
