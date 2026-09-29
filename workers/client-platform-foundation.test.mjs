@@ -242,6 +242,31 @@ test('client directory empty and filtered no-results states are mutually exclusi
   );
 });
 
+test('client plain list shares canonical directory filters and ordering', () => {
+  const repo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+
+  assert.doesNotMatch(repo, /const plainSearchClause/);
+
+  assert.match(
+    repo,
+    /SELECT c\.\*[\s\S]*?WHERE c\.salon_id = \?\$\{searchClause\}[\s\S]*?ORDER BY \$\{selectedOrder\}[\s\S]*?\[salonId, \.\.\.searchParams, limit, offset\]/
+  );
+});
+
+test('client server search preserves unnamed-client aliases', () => {
+  const repo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+
+  assert.match(repo, /const unnamedSearchAliases = \[/);
+  assert.match(repo, /"unnamed client"/);
+  assert.match(repo, /"unnamed"/);
+  assert.match(repo, /const unnamedSearch =/);
+  assert.match(repo, /unnamedSearch \? 1 : 0/);
+  assert.match(
+    repo,
+    /\? = 1 AND \$\{clientDirectoryNormalizedNameSql\("c"\)\} IN \(\?, \?\)/
+  );
+});
+
 test('client Core search resolves common Saudi mobile formats to the same canonical phone', async () => {
   const canonicalClient = {
     id: 'client-phone-regression',
@@ -293,10 +318,7 @@ test('client Core pagination accepts offsets beyond 50,000 without clamping', as
   });
 
   assert.equal(observedOffset, 50_500);
-  assert.match(
-    observedSql,
-    /ORDER BY updated_at DESC, id DESC LIMIT \? OFFSET \?/
-  );
+  assert.match(observedSql, /LIMIT \? OFFSET \?$/);
 });
 
 

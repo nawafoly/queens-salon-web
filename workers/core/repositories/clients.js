@@ -179,6 +179,17 @@ function clientDirectoryFilters(query = {}) {
   const source = cleanText(query.source).toLowerCase();
   const filterNow = nowIso();
 
+  const unnamedSearchAliases = [
+    "\u0639\u0645\u064A\u0644\u0629 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "\u0639\u0645\u064A\u0644 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "unnamed client",
+    "unnamed",
+  ].map(normalizeClientDirectorySearchText);
+
+  const unnamedSearch =
+    Boolean(search) && unnamedSearchAliases.includes(search);
+
   const searchClause = search
     ? ` AND (
          INSTR(LOWER(COALESCE(c.id, '')), ?) > 0
@@ -187,11 +198,27 @@ function clientDirectoryFilters(query = {}) {
          OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
          OR (? <> '' AND c.phone_normalized = ?)
+         OR (? = 1 AND ${clientDirectoryNormalizedNameSql("c")} IN (?, ?))
        )`
     : '';
 
   const searchParams = search
-    ? [search, search, search, search, search, phone || '', phone || '']
+    ? [
+        search,
+        search,
+        search,
+        search,
+        search,
+        phone || '',
+        phone || '',
+        unnamedSearch ? 1 : 0,
+        normalizeClientDirectorySearchText(
+          "\u0639\u0645\u064A\u0644\u0629 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"
+        ),
+        normalizeClientDirectorySearchText(
+          "\u0639\u0645\u064A\u0644 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"
+        ),
+      ]
     : [];
 
   const segmentClause =
@@ -454,25 +481,14 @@ export async function listClients(db, salonId, query = {}) {
     );
   }
 
-  const plainSearchClause = filters.search
-    ? ` AND (
-         INSTR(LOWER(COALESCE(id, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(name, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(email, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(firebase_uid, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(phone_normalized, '')), ?) > 0
-         OR (? <> '' AND phone_normalized = ?)
-       )`
-    : '';
-
   return dbAll(
     db,
-    `SELECT *
-     FROM clients
-     WHERE salon_id = ?${plainSearchClause}
-     ORDER BY updated_at DESC, id DESC
+    `SELECT c.*
+     FROM clients c
+     WHERE c.salon_id = ?${searchClause}
+     ORDER BY ${selectedOrder}
      LIMIT ? OFFSET ?`,
-    [salonId, ...filters.searchParams, limit, offset]
+    [salonId, ...searchParams, limit, offset]
   );
 }
 
