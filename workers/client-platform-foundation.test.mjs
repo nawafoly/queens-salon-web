@@ -191,6 +191,12 @@ test('client dashboard uses the server-side Client 360 read model', () => {
   assert.doesNotMatch(page, /listCoreBookings/);
   assert.doesNotMatch(page, /PackageOperationsService/);
   assert.doesNotMatch(modal, /services\/firestoreBookings/);
+  assert.match(modal, /usePermissions/);
+  assert.match(modal, /hasPermission\("clients\.manage"\)/);
+  assert.match(modal, /hasPermission\("clients\.packages\.manage"\)/);
+  assert.match(modal, /hasPermission\("clients\.loyalty\.manage"\)/);
+  assert.doesNotMatch(modal, /currentRole === "owner"/);
+  assert.doesNotMatch(modal, /currentRole === "admin"/);
   assert.match(modal, /overview\?\.bookings/);
   assert.match(modal, /overview\.cashback\.balanceHalalas/);
 });
