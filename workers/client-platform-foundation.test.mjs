@@ -10,6 +10,10 @@ import {
   calculateCashbackEarnHalalas,
   DEFAULT_CASHBACK_POLICY,
 } from './core/repositories/cashback.js';
+import {
+  getClientDirectorySummary,
+  listClients,
+} from './core/repositories/clients.js';
 
 test('MALIKAT Connect normalizes Arabic and Persian digits', () => {
   assert.equal(normalizeConnectText('٠٥٤ ۶۵۳ ٥٤٠٤'), '054 653 5404');
@@ -165,6 +169,201 @@ test('client and staff MALIKAT Connect UI uses canonical Core routes', () => {
 });
 
 
+test('client directory search is server-side and pagination is not globally capped', () => {
+  const repo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+  const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+  const formatter = readFileSync('src/features/customers/customerFormatters.ts', 'utf8');
+
+  assert.match(page, /CoreClientService\.list\(search,/);
+  assert.match(page, /const PAGE_SIZE = 50/);
+  assert.match(page, /limit:\s*PAGE_SIZE \+ 1/);
+  assert.match(page, /offset:\s*page \* PAGE_SIZE/);
+  assert.match(page, /setHasNextPage\(safeRows\.length > PAGE_SIZE\)/);
+  assert.match(page, /safeRows\.slice\(0, PAGE_SIZE\)/);
+  assert.match(page, /source,/);
+  assert.doesNotMatch(page, /limit:\s*500/);
+  assert.doesNotMatch(page, /CoreClientService\.listAll/);
+  assert.match(page, /requestGenerationRef\.current/);
+  assert.match(page, /const visibleCustomers = customers/);
+  assert.doesNotMatch(page, /CoreClientService\.listAll/);
+
+  assert.doesNotMatch(repo, /Math\.min\(50_000,/);
+  assert.match(repo, /Math\.min\(Number\.MAX_SAFE_INTEGER,/);
+  assert.match(repo, /ORDER BY c\.updated_at DESC, c\.id DESC/);
+  assert.match(repo, /LIMIT \? OFFSET \?/);
+
+  assert.match(formatter, /\[?-?\]/);
+  assert.match(formatter, /\[?-?\]/);
+
+});
+
+test('client Core search resolves common Saudi mobile formats to the same canonical phone', async () => {
+  const canonicalClient = {
+    id: 'client-phone-regression',
+    salon_id: 'main',
+    name: 'Phone Regression',
+    phone_normalized: '0570142717',
+    updated_at: '2026-09-28T00:00:00.000Z',
+  };
+
+  for (const search of ['0570142717', '966570142717', '+966570142717']) {
+    const db = {
+      __fakeD1: true,
+      async all(sql, params) {
+        const normalized = sql.replace(/\s+/g, ' ').trim();
+        assert.match(normalized, /FROM clients/);
+        return params.includes(canonicalClient.phone_normalized)
+          ? [canonicalClient]
+          : [];
+      },
+    };
+
+    const rows = await listClients(db, 'main', {
+      search,
+      limit: 500,
+      offset: 0,
+    });
+
+    assert.equal(rows.length, 1, search);
+    assert.equal(rows[0].id, canonicalClient.id, search);
+  }
+});
+
+test('client Core pagination accepts offsets beyond 50,000 without clamping', async () => {
+  let observedOffset = -1;
+  let observedSql = '';
+
+  const db = {
+    __fakeD1: true,
+    async all(sql, params) {
+      observedSql = sql.replace(/\s+/g, ' ').trim();
+      observedOffset = Number(params.at(-1));
+      return [];
+    },
+  };
+
+  await listClients(db, 'main', {
+    limit: 500,
+    offset: 50_500,
+  });
+
+  assert.equal(observedOffset, 50_500);
+  assert.match(
+    observedSql,
+    /ORDER BY updated_at DESC, id DESC LIMIT \? OFFSET \?/
+  );
+});
+
+
+test('client Core applies directory filters before pagination', async () => {
+  const cases = [
+    {
+      options: { segment: 'vip' },
+      sql: /COALESCE\(c\.vip, 0\) = 1[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      options: { segment: 'with-bookings' },
+      sql: /EXISTS \(SELECT 1 FROM bookings fb[\s\S]*fb\.deleted_at IS NULL\)[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      options: { segment: 'without-bookings' },
+      sql: /NOT EXISTS \(SELECT 1 FROM bookings fb[\s\S]*fb\.deleted_at IS NULL\)[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      options: { segment: 'active-packages' },
+      sql: /EXISTS \(SELECT 1 FROM client_packages fp[\s\S]*fp\.status = 'active'[\s\S]*LIMIT \? OFFSET \?/,
+      parameter: (value) => typeof value === 'string' && value.includes('T'),
+    },
+    {
+      options: { lastVisit: 'never' },
+      sql: /NOT EXISTS \(SELECT 1 FROM bookings fv[\s\S]*fv\.status = 'completed'[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      options: { lastVisit: '30-days' },
+      sql: /fv\.booking_date >= date\(\?, '-30 days'\)[\s\S]*LIMIT \? OFFSET \?/,
+      parameter: (value) => typeof value === 'string' && value.includes('T'),
+    },
+    {
+      options: { lastVisit: '90-days' },
+      sql: /fv\.booking_date >= date\(\?, '-90 days'\)[\s\S]*LIMIT \? OFFSET \?/,
+      parameter: (value) => typeof value === 'string' && value.includes('T'),
+    },
+  ];
+
+  for (const testCase of cases) {
+    let observedSql = '';
+    let observedParams = [];
+
+    const db = {
+      __fakeD1: true,
+      async all(sql, params) {
+        observedSql = sql.replace(/\s+/g, ' ').trim();
+        observedParams = params;
+        return [];
+      },
+    };
+
+    await listClients(db, 'main', {
+      includeMetrics: true,
+      limit: 25,
+      offset: 50,
+      ...testCase.options,
+    });
+
+    assert.match(observedSql, testCase.sql);
+    assert.ok(
+      observedSql.indexOf('EXISTS') < 0 ||
+        observedSql.indexOf('EXISTS') < observedSql.indexOf('LIMIT ? OFFSET ?'),
+      JSON.stringify(testCase.options)
+    );
+
+    if (testCase.parameter) {
+      assert.ok(
+        observedParams.some(testCase.parameter),
+        JSON.stringify(testCase.options)
+      );
+    }
+  }
+});
+
+test('client Core applies directory sort before pagination', async () => {
+  const cases = [
+    {
+      sort: 'most',
+      sql: /ORDER BY \(SELECT COUNT\(\*\) FROM bookings sb[\s\S]*DESC, c\.id DESC[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      sort: 'latest',
+      sql: /ORDER BY COALESCE\(\(SELECT MAX\(sv\.booking_date \|\| ' ' \|\| sv\.start_time\)[\s\S]*DESC, c\.id DESC[\s\S]*LIMIT \? OFFSET \?/,
+    },
+    {
+      sort: 'newest',
+      sql: /ORDER BY c\.created_at DESC, c\.id DESC[\s\S]*LIMIT \? OFFSET \?/,
+    },
+  ];
+
+  for (const testCase of cases) {
+    let observedSql = '';
+
+    const db = {
+      __fakeD1: true,
+      async all(sql) {
+        observedSql = sql.replace(/\s+/g, ' ').trim();
+        return [];
+      },
+    };
+
+    await listClients(db, 'main', {
+      includeMetrics: true,
+      limit: 25,
+      offset: 0,
+      sort: testCase.sort,
+    });
+
+    assert.match(observedSql, testCase.sql, testCase.sort);
+  }
+});
+
 test('client dashboard uses the server-side Client 360 read model', () => {
   const clientsRepo = readFileSync('workers/core/repositories/clients.js', 'utf8');
   const bookingsRepo = readFileSync('workers/core/repositories/bookings.js', 'utf8');
@@ -199,4 +398,249 @@ test('client dashboard uses the server-side Client 360 read model', () => {
   assert.doesNotMatch(modal, /currentRole === "admin"/);
   assert.match(modal, /overview\?\.bookings/);
   assert.match(modal, /overview\.cashback\.balanceHalalas/);
+});
+
+
+test('client directory summary uses canonical status and directory filters', async () => {
+  let observedSql = '';
+  let observedParams = [];
+
+  const db = {
+    __fakeD1: true,
+    async first(sql, params) {
+      observedSql = sql.replace(/\s+/g, ' ').trim();
+      observedParams = params;
+
+      return {
+        total_clients: 7,
+        total_bookings: 21,
+        active_clients: 5,
+        new_this_month: 2,
+        vip_clients: 3,
+      };
+    },
+  };
+
+  const result = await getClientDirectorySummary(db, 'main', {
+    search: '0570142717',
+    segment: 'vip',
+    lastVisit: '30-days',
+    source: 'combined',
+  });
+
+  assert.match(
+    observedSql,
+    /SELECT c\.id, c\.vip, c\.status, c\.created_at FROM clients c/
+  );
+
+  assert.match(
+    observedSql,
+    /TRIM\(LOWER\(COALESCE\(fc\.status, ''\)\)\) IN \('', 'active'\)/
+  );
+
+  assert.doesNotMatch(
+    observedSql,
+    /CASE WHEN COALESCE\(bm\.bookings_count, 0\) > 0 THEN 1/
+  );
+
+  assert.match(
+    observedSql,
+    /COALESCE\(c\.vip, 0\) = 1/
+  );
+
+  assert.match(
+    observedSql,
+    /fv\.booking_date >= date\(\?, '-30 days'\)/
+  );
+
+  assert.match(
+    observedSql,
+    /EXISTS \(SELECT 1 FROM bookings fs/
+  );
+
+  assert.ok(
+    observedParams.includes('0570142717'),
+    'directory summary must receive the canonical phone search parameter'
+  );
+
+  assert.equal(result.totalClients, 7);
+  assert.equal(result.totalBookings, 21);
+  assert.equal(result.activeClients, 5);
+  assert.equal(result.newThisMonth, 2);
+  assert.equal(result.vipClients, 3);
+  assert.equal(result.averageBookings, 3);
+});
+
+
+test('client directory source contract has no booking-only legacy branch', () => {
+  const repo = readFileSync(
+    'workers/core/repositories/clients.js',
+    'utf8'
+  );
+
+  const types = readFileSync(
+    'src/features/customers/customerTypes.ts',
+    'utf8'
+  );
+
+  const sections = readFileSync(
+    'src/features/customers/CustomersPageSections.tsx',
+    'utf8'
+  );
+
+  const formatters = readFileSync(
+    'src/features/customers/customerFormatters.ts',
+    'utf8'
+  );
+
+  assert.doesNotMatch(repo, /booking-only/);
+  assert.doesNotMatch(types, /booking-only/);
+  assert.doesNotMatch(sections, /booking-only/);
+  assert.doesNotMatch(formatters, /booking-only/);
+
+  assert.match(
+    types,
+    /CustomerSource = "combined" \| "client-record"/
+  );
+});
+
+
+test('client directory summary and import upsert routes are wired to Core contracts', () => {
+  const worker = readFileSync(
+    'workers/core/index.js',
+    'utf8'
+  );
+
+  assert.match(
+    worker,
+    /path === "\/api\/core\/clients\/directory-summary" && method === "GET"/
+  );
+
+  assert.match(
+    worker,
+    /return \{ name: "client:directory-summary" \}/
+  );
+
+  assert.match(
+    worker,
+    /case "client:directory-summary":[\s\S]*?requireRole\(ctx\.role, OPERATIONS_ROLES\)[\s\S]*?getClientDirectorySummary/
+  );
+
+  assert.match(
+    worker,
+    /Object\.fromEntries\(new URL\(request\.url\)\.searchParams\.entries\(\)\)/
+  );
+
+  assert.match(
+    worker,
+    /path === "\/api\/core\/clients\/import-upsert" && method === "POST"/
+  );
+
+  assert.match(
+    worker,
+    /return \{ name: "client:import-upsert" \}/
+  );
+
+  assert.match(
+    worker,
+    /case "client:import-upsert":[\s\S]*?requirePermission\(ctx, "clients\.manage"\)[\s\S]*?upsertImportedClient/
+  );
+
+  assert.match(
+    worker,
+    /action: "client_import_upserted"/
+  );
+});
+
+
+test('client import and export use canonical Core workflows without a global directory cap', () => {
+  const repo = readFileSync(
+    'workers/core/repositories/clients.js',
+    'utf8'
+  );
+
+  const service = readFileSync(
+    'src/services/CoreClientService.ts',
+    'utf8'
+  );
+
+  const modal = readFileSync(
+    'src/features/customers/CustomersImportModal.tsx',
+    'utf8'
+  );
+
+  const page = readFileSync(
+    'src/pages/DashboardClients.tsx',
+    'utf8'
+  );
+
+  assert.match(
+    repo,
+    /export async function upsertImportedClient/
+  );
+
+  assert.match(
+    repo,
+    /resolveClientIdentity\(db, salonId/
+  );
+
+  assert.match(
+    repo,
+    /if \(identity\.client\)/
+  );
+
+  assert.match(
+    repo,
+    /patchClient\([\s\S]*?identity\.client\.id[\s\S]*?importedData[\s\S]*?\)/
+  );
+
+  assert.match(
+    repo,
+    /return createClient\(db, salonId/
+  );
+
+  assert.match(
+    service,
+    /async importUpsert\(/
+  );
+
+  assert.match(
+    service,
+    /"\/api\/core\/clients\/import-upsert"/
+  );
+
+  assert.match(
+    modal,
+    /CoreClientService\.importUpsert/
+  );
+
+  assert.match(
+    page,
+    /const EXPORT_PAGE_SIZE = 500/
+  );
+
+  assert.match(
+    page,
+    /\boffset,/
+  );
+
+  assert.match(
+    page,
+    /limit:\s*EXPORT_PAGE_SIZE/
+  );
+
+  assert.match(
+    page,
+    /if \(safeBatch\.length < EXPORT_PAGE_SIZE\)[\s\S]*?break;/
+  );
+
+  assert.match(
+    page,
+    /offset \+= safeBatch\.length/
+  );
+
+  assert.doesNotMatch(
+    page,
+    /CoreClientService\.list\("",\s*\{\s*includeMetrics:\s*true,\s*limit:\s*500/
+  );
 });

@@ -156,7 +156,10 @@ export function unnamedCustomerSearchHaystack(value: unknown): string {
 }
 
 export function customerPhoneDigits(value: unknown): string {
-  let digits = cleanText(value).replace(/\D/g, "");
+  let digits = cleanText(value)
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
+    .replace(/\D/g, "");
   if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
   if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
   if (/^05\d{8}$/.test(digits)) return `966${digits.slice(1)}`;
@@ -243,14 +246,12 @@ export function isCustomerActive(status: unknown): boolean {
 
 export function getCustomerSourceLabel(source: CustomerSource, language: DashboardLanguage = "ar"): string {
   if (source === "combined") return clientsText(language, "ملف موحّد وحجوزات");
-  if (source === "client-record") return clientsText(language, "ملف العميلة");
-  return clientsText(language, "سجل الحجوزات");
+  return clientsText(language, "ملف العميلة");
 }
 
 export function getCustomerSourceDescription(source: CustomerSource, language: DashboardLanguage = "ar"): string {
   if (source === "combined") return clientsText(language, "بيانات العميلة موجودة في السجل الموحد ومرتبطة بحجوزات");
-  if (source === "client-record") return clientsText(language, "ملف عميلة محفوظ في Core D1 ولا توجد له حجوزات حتى الآن");
-  return clientsText(language, "العميلة ظاهرة من سجل الحجوزات ولم يرتبط بها ملف Core موحد بعد");
+  return clientsText(language, "ملف عميلة محفوظ في Core D1 ولا توجد له حجوزات حتى الآن");
 }
 
 export function buildCustomerWhatsAppHref(nameValue: unknown, phoneValue: unknown): string {

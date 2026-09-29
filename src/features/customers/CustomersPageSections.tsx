@@ -159,7 +159,6 @@ const sourceOptions: Array<{ value: "all" | CustomerSource; label: string }> = [
   { value: "all", label: "كل المصادر" },
   { value: "combined", label: "ملف موحّد وحجوزات" },
   { value: "client-record", label: "ملف العميلة" },
-  { value: "booking-only", label: "سجل الحجوزات" },
 ];
 
 const sortOptions: Array<{ value: CustomerSort; label: string }> = [
