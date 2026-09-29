@@ -330,7 +330,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
         </>
       ) : null}
 
-      {selectedCustomer ? <CustomerRecordModal language={language} customer={selectedCustomer} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
+      {selectedCustomer ? <CustomerRecordModal language={language} customer={selectedCustomer} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
       <CustomersImportModal language={language} open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
       {copyToast ? <div className="dsv2-customers-copy-toast" role="status">{copyToast}</div> : null}
     </main>

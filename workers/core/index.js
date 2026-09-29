@@ -1275,7 +1275,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") {
         return getClientPreferences(db, ctx.salonId, route.id);
       }
-      requirePermission(ctx, "clients.update");
+      requirePermission(ctx, "clients.manage");
       const updated = await updateClientPreferences(
         db,
         ctx.salonId,
@@ -1494,7 +1494,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "client:loyalty-adjustment": {
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "clients.loyalty.manage");
       const loyalty = await adjustClientLoyalty(
         db,
         ctx.salonId,
@@ -1536,10 +1536,7 @@ async function dispatch(ctx, route, method, body, query, env) {
         return createClient(db, ctx.salonId, body);
       }
       if (method === "PATCH" && route.id) {
-        const updatesIdentity = ["name", "phone", "phoneNormalized"].some(
-          (field) => Object.prototype.hasOwnProperty.call(body || {}, field)
-        );
-        if (updatesIdentity) requireRole(ctx.role, ADMIN_ROLES);
+        requirePermission(ctx, "clients.manage");
         const before = await getClient(db, ctx.salonId, route.id);
         const updated = await patchClient(db, ctx.salonId, route.id, body);
         await recordAudit(db, ctx.salonId, {

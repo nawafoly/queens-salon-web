@@ -886,7 +886,7 @@ test("client offers require publication, active dates, and matching target ident
   assert.match(offerService, /targetClientIds/);
 });
 
-test("admin client overview is Core D1-backed, role-protected, and supports idempotent loyalty adjustments", () => {
+test("admin client overview is Core D1-backed, permission-protected, and supports idempotent loyalty adjustments", () => {
   const worker = readFileSync("workers/core/index.js", "utf8");
   const repo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
   const service = readFileSync("src/services/CoreClientService.ts", "utf8");
@@ -895,7 +895,9 @@ test("admin client overview is Core D1-backed, role-protected, and supports idem
   assert.match(worker, /clientOverview = \/\^\\\/api\\\/core\\\/clients/);
   assert.match(worker, /client:admin-overview/);
   assert.match(worker, /client:loyalty-adjustment/);
-  assert.match(worker, /requireRole\(ctx\.role, ADMIN_ROLES\)/);
+  assert.match(worker, /requirePermission\(ctx, "clients\.loyalty\.manage"\)/);
+  assert.match(worker, /requirePermission\(ctx, "clients\.manage"\)/);
+  assert.doesNotMatch(worker, /clients\.update/);
   assert.match(worker, /const isClientSelfRoute = new Set/);
   assert.doesNotMatch(worker, /startsWith\("client:"\)/);
   assert.match(repo, /getAdminClientOverview/);
