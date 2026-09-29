@@ -391,8 +391,17 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   }
 
   const fatalError = Boolean(error) && !loading && customers.length === 0;
-  const noData = !loading && !error && customers.length === 0;
-  const noResults = !loading && hasActiveFilters && visibleCustomers.length === 0;
+  const noData =
+    !loading &&
+    !error &&
+    !hasActiveFilters &&
+    customers.length === 0;
+
+  const noResults =
+    !loading &&
+    !error &&
+    hasActiveFilters &&
+    visibleCustomers.length === 0;
 
   return (
     <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>

@@ -92,9 +92,88 @@ function clientListSort(value) {
 }
 
 
+function normalizeClientDirectoryDigits(value) {
+  return cleanText(value)
+    .replace(/[\u0660-\u0669]/g, (digit) =>
+      String(digit.charCodeAt(0) - 0x0660)
+    )
+    .replace(/[\u06F0-\u06F9]/g, (digit) =>
+      String(digit.charCodeAt(0) - 0x06F0)
+    );
+}
+
+function normalizeClientDirectorySearchText(value) {
+  return normalizeClientDirectoryDigits(value)
+    .toLocaleLowerCase("ar")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627")
+    .replace(/\u0649/g, "\u064A")
+    .replace(/\u0629/g, "\u0647")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function clientDirectoryNormalizedNameSql(alias = "c") {
+  return `LOWER(
+    REPLACE(
+      REPLACE(
+        REPLACE(
+          REPLACE(
+            REPLACE(
+              REPLACE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(
+                      REPLACE(
+                        REPLACE(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(
+                                    REPLACE(
+                                      COALESCE(${alias}.name, ''),
+                                      CHAR(1600), ''
+                                    ),
+                                    CHAR(1611), ''
+                                  ),
+                                  CHAR(1612), ''
+                                ),
+                                CHAR(1613), ''
+                              ),
+                              CHAR(1614), ''
+                            ),
+                            CHAR(1615), ''
+                          ),
+                          CHAR(1616), ''
+                        ),
+                        CHAR(1617), ''
+                      ),
+                      CHAR(1618), ''
+                    ),
+                    CHAR(1648), ''
+                  ),
+                  CHAR(1571), CHAR(1575)
+                ),
+                CHAR(1573), CHAR(1575)
+              ),
+              CHAR(1570), CHAR(1575)
+            ),
+            CHAR(1649), CHAR(1575)
+          ),
+          CHAR(1609), CHAR(1610)
+        ),
+        CHAR(1577), CHAR(1607)
+      ),
+      CHAR(1619), ''
+    )
+  )`;
+}
+
 function clientDirectoryFilters(query = {}) {
-  const search = cleanText(query.search || query.q).toLowerCase();
-  const phone = normalizePhone(search);
+  const rawSearch = cleanText(query.search || query.q);
+  const search = normalizeClientDirectorySearchText(rawSearch);
+  const phone = normalizePhone(normalizeClientDirectoryDigits(rawSearch));
   const segment = clientListSegment(query.segment);
   const lastVisit = clientListLastVisit(query.lastVisit);
   const source = cleanText(query.source).toLowerCase();
@@ -103,7 +182,7 @@ function clientDirectoryFilters(query = {}) {
   const searchClause = search
     ? ` AND (
          INSTR(LOWER(COALESCE(c.id, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(c.name, '')), ?) > 0
+         OR INSTR(${clientDirectoryNormalizedNameSql("c")}, ?) > 0
          OR INSTR(LOWER(COALESCE(c.email, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
@@ -371,7 +450,7 @@ export async function listClients(db, salonId, query = {}) {
        LEFT JOIN manual_loyalty ml
          ON ml.client_id = sc.id
        ORDER BY sc.updated_at DESC, sc.id DESC`,
-      [salonId, ...filters.searchParams, limit, offset, salonId, salonId, salonId]
+      [salonId, ...filters.params, limit, offset, salonId, salonId, salonId]
     );
   }
 

@@ -197,6 +197,51 @@ test('client directory search is server-side and pagination is not globally capp
 
 });
 
+test('client directory preserves localized search normalization', () => {
+  const repo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+
+  assert.ok(repo.includes('function normalizeClientDirectoryDigits(value)'));
+  assert.ok(repo.includes('function normalizeClientDirectorySearchText(value)'));
+  assert.ok(repo.includes('normalizeClientDirectorySearchText(rawSearch)'));
+  assert.ok(repo.includes('normalizePhone(normalizeClientDirectoryDigits(rawSearch))'));
+  assert.ok(repo.includes('clientDirectoryNormalizedNameSql("c")'));
+
+  assert.ok(repo.includes('CHAR(1571), CHAR(1575)'));
+  assert.ok(repo.includes('CHAR(1573), CHAR(1575)'));
+  assert.ok(repo.includes('CHAR(1570), CHAR(1575)'));
+  assert.ok(repo.includes('CHAR(1649), CHAR(1575)'));
+  assert.ok(repo.includes('CHAR(1609), CHAR(1610)'));
+  assert.ok(repo.includes('CHAR(1577), CHAR(1607)'));
+});
+
+test('client loyalty directory binds the complete directory filter parameter set', () => {
+  const repo = readFileSync('workers/core/repositories/clients.js', 'utf8');
+
+  assert.match(
+    repo,
+    /\[salonId, \.\.\.filters\.params, limit, offset, salonId, salonId, salonId\]/
+  );
+
+  assert.doesNotMatch(
+    repo,
+    /\[salonId, \.\.\.filters\.searchParams, limit, offset, salonId, salonId, salonId\]/
+  );
+});
+
+test('client directory empty and filtered no-results states are mutually exclusive', () => {
+  const page = readFileSync('src/pages/DashboardClients.tsx', 'utf8');
+
+  assert.match(
+    page,
+    /const noData =[\s\S]*?!hasActiveFilters[\s\S]*?customers\.length === 0;/
+  );
+
+  assert.match(
+    page,
+    /const noResults =[\s\S]*?hasActiveFilters[\s\S]*?visibleCustomers\.length === 0;/
+  );
+});
+
 test('client Core search resolves common Saudi mobile formats to the same canonical phone', async () => {
   const canonicalClient = {
     id: 'client-phone-regression',
