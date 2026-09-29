@@ -15,6 +15,7 @@ import {
   WorkspaceTabHeaderV2,
 } from "../EmployeeWorkspacePrimitivesV2";
 import { useEmployeeLanguage } from "../../../../pages/dashboardEmployees/employeeLanguage";
+import { translateBookingCatalogLabel } from "../../../../helpers/dashboardBookingsLanguage";
 
 export type EmployeeBasicTabLiveV2Props = {
   readOnly: boolean;
@@ -515,12 +516,18 @@ export function EmployeeServicesTabLiveV2({
   }, [filteredServices, scope, selectedSet]);
 
   const selectedServices = useMemo(() => {
-    const query = selectedSearch.trim().toLocaleLowerCase("ar");
+    const query = selectedSearch.trim().toLocaleLowerCase(language === "en" ? "en" : "ar");
     return specialties
       .map((id) => serviceById.get(id))
       .filter((service): service is EmployeeServiceOptionLiveV2 => Boolean(service))
-      .filter((service) => !query || service.label.toLocaleLowerCase("ar").includes(query));
-  }, [selectedSearch, serviceById, specialties]);
+      .filter((service) => {
+        if (!query) return true;
+        const raw = service.label.toLocaleLowerCase("ar");
+        const translated = translateBookingCatalogLabel(language, service.label, "service")
+          .toLocaleLowerCase(language === "en" ? "en" : "ar");
+        return raw.includes(query) || translated.includes(query);
+      });
+  }, [language, selectedSearch, serviceById, specialties]);
 
   const selectVisible = () => {
     onSpecialtiesChange(Array.from(new Set([...specialties, ...scopedServices.map((service) => service.id)])));
@@ -558,7 +565,10 @@ export function EmployeeServicesTabLiveV2({
               value={section}
               options={[
                 { value: "all", label: t("كل الأقسام") },
-                ...sectionOptions.map((item) => ({ value: item.id, label: item.label })),
+                ...sectionOptions.map((item) => ({
+                  value: item.id,
+                  label: translateBookingCatalogLabel(language, item.label, "section"),
+                })),
               ]}
               onChange={onSectionChange}
             />
@@ -592,8 +602,14 @@ export function EmployeeServicesTabLiveV2({
                 return (
                   <article key={service.id} className="dsv2-ew-service-card" data-selected={selected ? "true" : "false"}>
                     <div className="dsv2-ew-service-card__main">
-                      <span className="dsv2-ew-service-card__category">{serviceSectionLabel(service, sectionOptions)}</span>
-                      <strong>{service.label}</strong>
+                      <span className="dsv2-ew-service-card__category">
+                        {translateBookingCatalogLabel(
+                          language,
+                          serviceSectionLabel(service, sectionOptions),
+                          "section"
+                        )}
+                      </span>
+                      <strong>{translateBookingCatalogLabel(language, service.label, "service")}</strong>
                       <small>
                         {Number(service.durationMin || 0) > 0 ? `${Number(service.durationMin).toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} ${t("دقيقة")}` : t("مدة غير محددة")}
                         {Number(service.price || 0) > 0 ? ` · ${Number(service.price).toLocaleString(language === "en" ? "en-US" : "ar-SA-u-nu-latn")} SAR` : ""}
@@ -635,10 +651,27 @@ export function EmployeeServicesTabLiveV2({
               {selectedServices.map((service) => (
                 <div key={service.id} className="dsv2-ew-selected-item">
                   <div>
-                    <strong>{service.label}</strong>
-                    <small>{serviceSectionLabel(service, sectionOptions)}</small>
+                    <strong>{translateBookingCatalogLabel(language, service.label, "service")}</strong>
+                    <small>
+                      {translateBookingCatalogLabel(
+                        language,
+                        serviceSectionLabel(service, sectionOptions),
+                        "section"
+                      )}
+                    </small>
                   </div>
-                  <button type="button" className="dsv2-ew-icon-btn" disabled={readOnly} aria-label={tr(`إزالة ${service.label}`, `Remove ${service.label}`)} onClick={() => onToggleSpecialty(service.id)}>×</button>
+                  <button
+                    type="button"
+                    className="dsv2-ew-icon-btn"
+                    disabled={readOnly}
+                    aria-label={tr(
+                      `إزالة ${service.label}`,
+                      `Remove ${translateBookingCatalogLabel(language, service.label, "service")}`
+                    )}
+                    onClick={() => onToggleSpecialty(service.id)}
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
