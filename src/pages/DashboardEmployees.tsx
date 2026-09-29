@@ -8925,7 +8925,7 @@ const canonicalSchedules =
         { key: "services", label: t("الخدمات") },
         { key: "profile", label: t("الملف") },
       ];
-  const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
+  const detailTabsBase: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
     { key: "basic", label: t("البيانات الأساسية"), hint: t("الاسم والحالة والظهور"), icon: faUserTie },
     { key: "profile", label: t("الملفات والصور"), hint: t("الصورة والمستندات والمرفقات والسجل"), icon: faFileLines },
     { key: "services", label: t("الخدمات"), hint: t("الخدمات المسندة للموظفة"), icon: faInbox },
@@ -8945,7 +8945,8 @@ const canonicalSchedules =
     ...(canViewEmployeeMessages
       ? [{ key: "messages" as EmployeeSplitTab, label: t("الرسائل"), hint: t("التواصل الداخلي"), icon: faEnvelope }]
       : []),
-  ].filter((tab) => canDisplayEmployeeTab(tab.key));
+  ];
+  const detailTabs = detailTabsBase.filter((tab) => canDisplayEmployeeTab(tab.key));
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     return !!leaveUntil && leaveUntil < todayIso();
