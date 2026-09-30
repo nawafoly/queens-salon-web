@@ -3,6 +3,10 @@ import { dashboardText, type DashboardLanguage } from "./dashboardLanguage";
 export type { DashboardLanguage } from "./dashboardLanguage";
 
 const settingsEnglish: Record<string, string> = {
+  "اسم القسم بالإنجليزي": "Section name in English",
+  "اسم الخدمة بالإنجليزي": "Service name in English",
+  "اسم التصنيف بالإنجليزي": "Category name in English",
+  "الاسم بالإنجليزي": "Name in English",
   "هوية المنصة": "Platform identity",
   "اسم الصالون والجوال والمدينة": "Salon name, phone and city",
   "ظهور الأقسام": "Section visibility",

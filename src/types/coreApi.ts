@@ -35,6 +35,7 @@ export type CoreServiceCategory = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -45,6 +46,7 @@ export type CoreService = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   sectionId?: string | null;
   categoryId?: string | null;
   description?: string | null;
@@ -393,6 +395,7 @@ export type CoreCatalogRow = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   sectionId?: string | null;
   active: boolean;
   sortOrder: number;

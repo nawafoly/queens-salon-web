@@ -51,6 +51,7 @@ export function mapCoreClient(row: Record<string, unknown>): CoreClient {
 export function mapCoreService(row: Record<string, unknown>): CoreService {
   const mapped = renameKeys<CoreService>(row, {
     salon_id: "salonId",
+    name_en: "nameEn",
     section_id: "sectionId",
     category_id: "categoryId",
     duration_minutes: "durationMinutes",
