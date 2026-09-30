@@ -18,7 +18,6 @@ async function setup() {
     workers: [
       {
         config: {
-          type: 'worker',
           name: 'cashback-runtime-test',
           compatibilityDate: '2026-06-24',
           manifest: {

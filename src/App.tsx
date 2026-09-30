@@ -544,6 +544,98 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!authUser || isLegacyClientSession(readStoredAuthSession())) return;
+
+    let alive = true;
+    let inFlight = false;
+
+    const refreshLiveAccountAccess = async () => {
+      if (!alive || inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+
+      try {
+        const me = await CoreAccountService.me();
+        if (!alive) return;
+
+        const account = me.user;
+        const liveRole = normalizeAuthRole(account.role || account.primaryRole);
+        const data: Record<string, unknown> = {
+          ...account,
+          uid: account.firebaseUid || account.uid || authUser.uid,
+          role: liveRole,
+          permissions: me.permissions,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
+          employeeLink: me.employeeLink,
+        };
+        const active = resolveOperationalAccountActive(data, liveRole);
+        const liveAccountState = resolveLiveAccountState(data, liveRole, active);
+        const liveName = String(
+          account.displayName || authUser.displayName || ""
+        ).trim();
+
+        setUserRole(liveRole);
+        setUserName(liveName);
+        setUserActive(active);
+        setAccountState(liveAccountState);
+
+        writeLiveAuthCache({
+          uid: authUser.uid,
+          email: String(account.email || authUser.email || "").trim(),
+          name: liveName,
+          role: liveRole,
+          active,
+          profile: data,
+        });
+        setStoredSession(readStoredAuthSession());
+      } catch (error) {
+        if (!alive) return;
+
+        const code = error instanceof CoreApiError ? error.code : "";
+        if (code === "ACCOUNT_PENDING") {
+          clearStoredAuthSession();
+          setStoredSession(null);
+          setUserRole("pending");
+          setAccountState("pending");
+          setUserActive(false);
+        } else if (code === "ACCOUNT_DISABLED") {
+          clearStoredAuthSession();
+          setStoredSession(null);
+          setUserRole("staff");
+          setAccountState("disabled");
+          setUserActive(false);
+        } else if (code === "ACCOUNT_DELETED") {
+          clearStoredAuthSession();
+          setStoredSession(null);
+          setUserRole("staff");
+          setAccountState("deleted");
+          setUserActive(false);
+        } else {
+          console.warn("[App] failed to refresh live Core account access", error);
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLiveAccountAccess();
+      }
+    };
+
+    window.addEventListener("focus", refreshWhenActive);
+    window.addEventListener("online", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", refreshWhenActive);
+      window.removeEventListener("online", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
+  }, [authUser]);
+
+  useEffect(() => {
     const onAuthChanged = () => {
       if (document.documentElement.dataset.profileEditOpen === "true") {
         return;

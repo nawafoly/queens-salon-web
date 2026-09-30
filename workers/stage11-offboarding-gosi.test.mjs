@@ -46,7 +46,7 @@ const MIGRATIONS = [
 
 async function setup() {
   const mf = new Miniflare({
-    workers: [{ config: { type: 'worker', name: 'stage11-test', compatibilityDate: '2026-06-24', manifest: {
+    workers: [{ config: { name: 'stage11-test', compatibilityDate: '2026-06-24', manifest: {
       mainModule: 'script-0.mjs', modulesRoot: process.cwd(), modules: { 'script-0.mjs': { type: 'esm', contents: 'export default { fetch(){ return new Response("ok") } }' } },
     }, env: { CORE_DB: { type: 'd1', id: 'stage11-core-test' } }, exports: {} }, dev: { rootPath: process.cwd() } }],
   });

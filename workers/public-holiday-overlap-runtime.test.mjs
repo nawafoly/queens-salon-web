@@ -12,7 +12,6 @@ async function setup() {
   const mf = new Miniflare({
     workers: [{
       config: {
-        type: 'worker',
         name: 'public-holiday-overlap-test-worker',
         compatibilityDate: '2026-06-24',
         manifest: {

@@ -25,7 +25,6 @@ async function setup() {
   const mf = new Miniflare({
     workers: [{
       config: {
-        type: 'worker',
         name: 'payroll-overtime-authority-test',
         compatibilityDate: '2026-06-24',
         manifest: {
