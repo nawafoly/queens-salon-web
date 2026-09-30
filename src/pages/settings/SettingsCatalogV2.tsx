@@ -1041,7 +1041,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 className="dsv2-btn dsv2-btn--accent"
                 onClick={() => {
                   if (activeListMode === "sections") {
-                    setNewSection({ name: "", order: nextSectionOrder, active: true });
+                    setNewSection({ name: "", nameEn: "", order: nextSectionOrder, active: true });
                     setComposerMode("section");
                   } else {
                     startServiceComposer();
