@@ -440,9 +440,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
         .map((row: any) => ({
           id: String(row.id || ""),
           name: String(row.name || ""),
-          nameEn: String(row.nameEn || row.name_en || ""),
-          nameEn: String(row.nameEn || row.name_en || ""),
-          nameEn: String(row.nameEn || row.name_en || ""),
+          nameEn: String(row.nameEn || ""),
           active: row.active !== false,
           order: clampInt(row.sortOrder ?? 0, 0),
           createdAt: row.createdAt,
@@ -455,6 +453,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           id: String(row.id || ""),
           sectionId: String(row.sectionId || ""),
           name: String(row.name || ""),
+          nameEn: String(row.nameEn || ""),
           active: row.active !== false,
           order: clampInt(row.sortOrder ?? 0, 0),
           createdAt: row.createdAt,
@@ -468,6 +467,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           sectionId: String(row.sectionId || ""),
           categoryId: String(row.categoryId || ""),
           name: String(row.name || ""),
+          nameEn: String(row.nameEn || ""),
           durationMin: clampInt(row.durationMinutes ?? 60, 5),
           price: Math.max(0, Number(row.priceHalalas || 0) / 100),
           seasonPrice: row.seasonPriceHalalas === null || row.seasonPriceHalalas === undefined
