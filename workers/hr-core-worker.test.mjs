@@ -92,7 +92,6 @@ async function setup() {
     workers: [
       {
         config: {
-          type: "worker",
           name: "core-test-worker",
           compatibilityDate: "2026-06-24",
           manifest: {

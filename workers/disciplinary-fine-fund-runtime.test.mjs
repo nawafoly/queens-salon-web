@@ -28,7 +28,7 @@ function splitMigrationStatements(sql) {
 async function setup() {
   const mf = new Miniflare({
     workers: [{ config: {
-      type: 'worker', name: 'disciplinary-fine-fund-test', compatibilityDate: '2026-06-24',
+      name: 'disciplinary-fine-fund-test', compatibilityDate: '2026-06-24',
       manifest: {
         mainModule: 'script-0.mjs', modulesRoot: process.cwd(),
         modules: { 'script-0.mjs': { type: 'esm', contents: 'export default { fetch(){ return new Response("ok") } }' } },

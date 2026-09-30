@@ -32,7 +32,6 @@ function splitMigrationStatements(sql) {
 async function setup() {
   const mf = new Miniflare({
     workers: [{ config: {
-      type: 'worker',
       name: 'deduction-classification-runtime-test',
       compatibilityDate: '2026-06-24',
       manifest: {

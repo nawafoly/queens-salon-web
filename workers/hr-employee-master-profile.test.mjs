@@ -30,7 +30,6 @@ async function setup() {
     workers: [
       {
         config: {
-          type: 'worker',
           name: 'hr-employee-master-profile-test-worker',
           compatibilityDate: '2026-06-24',
           manifest: {
