@@ -199,11 +199,13 @@ export async function createService(db, salonId, data) {
     season_price_halalas:
       data.seasonPriceHalalas === undefined && data.season_price_halalas === undefined
         ? null
-        : integer(
-            data.seasonPriceHalalas ?? data.season_price_halalas,
-            "seasonPriceHalalas",
-            { min: 0, max: 10_000_000 }
-          ),
+        : data.seasonPriceHalalas === null || data.season_price_halalas === null
+          ? null
+          : integer(
+              data.seasonPriceHalalas ?? data.season_price_halalas,
+              "seasonPriceHalalas",
+              { min: 0, max: 10_000_000 }
+            ),
     active: activeFlag(data.active, 1),
     image_url: optionalText(data.imageUrl || data.image_url) || null,
     sort_order: integer(
