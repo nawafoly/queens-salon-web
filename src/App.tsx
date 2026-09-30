@@ -592,14 +592,20 @@ const App: React.FC = () => {
 
         const code = error instanceof CoreApiError ? error.code : "";
         if (code === "ACCOUNT_PENDING") {
+          clearStoredAuthSession();
+          setStoredSession(null);
           setUserRole("pending");
           setAccountState("pending");
           setUserActive(false);
         } else if (code === "ACCOUNT_DISABLED") {
+          clearStoredAuthSession();
+          setStoredSession(null);
           setUserRole("staff");
           setAccountState("disabled");
           setUserActive(false);
         } else if (code === "ACCOUNT_DELETED") {
+          clearStoredAuthSession();
+          setStoredSession(null);
           setUserRole("staff");
           setAccountState("deleted");
           setUserActive(false);
