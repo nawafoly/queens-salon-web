@@ -117,3 +117,13 @@ test("party booking controls are styled and translated", () => {
   assert.match(language, /"إضافة مرافقة": "Add companion"/);
   assert.match(language, /"مجموعة الحجز": "Booking group"/);
 });
+
+
+test("new companions require a name but may omit phone and email", () => {
+  assert.match(tsx, /!addingCompanion && \(!phone \|\| phone\.length !== 10\)/);
+  assert.match(tsx, /phone: phone \|\| undefined/);
+  assert.match(tsx, /addingCompanion \? "اسم المرافقة" : "اسم العميلة"/);
+  assert.match(tsx, /addingCompanion \? "رقم الجوال \(اختياري\)" : "رقم الجوال"/);
+  assert.match(tsx, /اسم المرافقة مطلوب\. رقم الجوال والبريد الإلكتروني اختياريان\./);
+  assert.match(language, /"رقم الجوال \(اختياري\)": "Mobile number \(optional\)"/);
+});
