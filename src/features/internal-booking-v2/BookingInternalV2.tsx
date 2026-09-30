@@ -143,7 +143,7 @@ function readQuickClients(): ClientCandidate[] {
     const parsed = raw ? JSON.parse(raw) : {};
     return Object.entries(parsed || {})
       .map(([key, value]: [string, any]) => ({
-        id: `history:${key}`,
+        id: String(value?.id || `history:${key}`).trim(),
         name: String(value?.name || "بدون اسم").trim(),
         phone: phone10Digits(value?.phone || ""),
         source: String(value?.source || "history"),
@@ -164,6 +164,7 @@ function markQuickClientUsage(raw: ClientCandidate) {
     const parsed = JSON.parse(localStorage.getItem(QUICK_CLIENT_HISTORY_KEY) || "{}") || {};
     const prev = parsed[key] || {};
     parsed[key] = {
+      id: raw.id || prev.id || "",
       name: raw.name || prev.name || "",
       phone: raw.phone || prev.phone || "",
       usedCount: Math.max(1, Number(prev.usedCount || 0) + 1),
