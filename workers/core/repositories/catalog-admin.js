@@ -9,6 +9,7 @@ import {
   nowIso,
   requiredId,
   requiredText,
+  optionalText,
   updateById,
 } from '../d1.js';
 import { AppError } from '../errors.js';
@@ -55,6 +56,7 @@ export async function createCatalogRow(db, salonId, kind, data) {
     id: safeCatalogId(kind, data.id),
     salon_id: salonId,
     name: requiredText(data.name || data.title || data['الاسم'], 'name', 300),
+    name_en: optionalText(data.nameEn ?? data.name_en) || null,
     ...(kind === 'categories' ? { section_id: String(data.sectionId || data.section_id || '').trim() || null } : {}),
     active: activeFlag(data.active, 1),
     sort_order: integer(data.sortOrder ?? data.sort_order ?? data.order, 'sortOrder', { min: 0, max: 1_000_000, fallback: 0 }),
@@ -64,16 +66,16 @@ export async function createCatalogRow(db, salonId, kind, data) {
   if (kind === 'categories') {
     await dbRun(
       db,
-      `INSERT INTO ${table} (id, salon_id, name, section_id, active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.salon_id, row.name, row.section_id, row.active, row.sort_order, row.created_at, row.updated_at]
+      `INSERT INTO ${table} (id, salon_id, name, name_en, section_id, active, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.salon_id, row.name, row.name_en, row.section_id, row.active, row.sort_order, row.created_at, row.updated_at]
     );
   } else {
     await dbRun(
       db,
-      `INSERT INTO ${table} (id, salon_id, name, active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.salon_id, row.name, row.active, row.sort_order, row.created_at, row.updated_at]
+      `INSERT INTO ${table} (id, salon_id, name, name_en, active, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.salon_id, row.name, row.name_en, row.active, row.sort_order, row.created_at, row.updated_at]
     );
   }
   return row;
@@ -84,6 +86,9 @@ export async function patchCatalogRow(db, salonId, kind, id, data) {
     name: data.name === undefined && data.title === undefined && data['الاسم'] === undefined
       ? undefined
       : requiredText(data.name || data.title || data['الاسم'], 'name', 300),
+    name_en: data.nameEn === undefined && data.name_en === undefined
+      ? undefined
+      : optionalText(data.nameEn ?? data.name_en) || null,
     active: data.active === undefined ? undefined : activeFlag(data.active),
     sort_order: data.sortOrder === undefined && data.sort_order === undefined && data.order === undefined
       ? undefined
