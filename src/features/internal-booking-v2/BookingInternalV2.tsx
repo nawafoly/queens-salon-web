@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
+import HairLengthGuideDrawer from "../../components/bookingInternal/HairLengthGuideDrawer";
+import hairLengthGuideImage from "../../assets/images/hair-length-guide.png";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../../components/dashboard-v2";
 import "./booking-internal-v2.css";
 import PackageSessionsManager from "./PackageSessionsManager";
@@ -525,6 +527,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const money = (value: number) => `${Number(value || 0).toLocaleString(locale)} ${currency}`;
   const [step, setStep] = useState<Step>(1);
   const [mode, setMode] = useState<"new" | "sessions">("new");
+  const [hairGuideOpen, setHairGuideOpen] = useState(false);
+  const hairGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [companions, setCompanions] = useState<ClientCandidate[]>([]);
@@ -2194,6 +2198,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           <h1>{t("الحجز الإداري")}</h1>
           <p>{t("إنشاء حجز جديد بخطوات واضحة وسريعة.")}</p>
         </div>
+        <button
+          ref={hairGuideTriggerRef}
+          type="button"
+          className="bk2-hair-guide-trigger"
+          onClick={() => setHairGuideOpen(true)}
+        >
+          {language === "en" ? "Hair Length Guide" : "دليل أطوال الشعر"}
+        </button>
         <div className="bk2-mode-switch" aria-label={t("وضع الحجز")}>
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>{t("حجز جديد")}</button>
           <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>{t("الباقات والجلسات")}</button>
@@ -3017,6 +3029,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         </>
       )}
       <ConfirmModal open={showPastDateConfirmation} title={t("تأكيد الحجز بتاريخ سابق")} message={t("تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟")} confirmText={t("تأكيد وإنشاء الحجز")} cancelText={t("إلغاء")} showCancel onConfirm={confirmPastDateBooking} onCancel={() => setShowPastDateConfirmation(false)} />
+      <HairLengthGuideDrawer
+        open={hairGuideOpen}
+        imageUrl={hairLengthGuideImage}
+        triggerRef={hairGuideTriggerRef}
+        canUpload={false}
+        uploading={false}
+        onUpload={() => undefined}
+        onClose={() => setHairGuideOpen(false)}
+      />
     </div>
   );
 }

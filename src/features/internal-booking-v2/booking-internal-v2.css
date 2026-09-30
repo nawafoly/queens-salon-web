@@ -24,6 +24,30 @@
 .bk2-heading p { margin: 6px 0 0; color: var(--bk2-muted); }
 .bk2-eyebrow { color: var(--bk2-maroon) !important; font-size: .76rem; font-weight: 800; letter-spacing: .04em; }
 
+.bk2-hair-guide-trigger {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(123, 0, 29, .18);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--bk2-maroon);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(20, 25, 40, .05);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.bk2-hair-guide-trigger:hover {
+  transform: translateY(-1px);
+  border-color: rgba(123, 0, 29, .35);
+  box-shadow: 0 10px 28px rgba(20, 25, 40, .08);
+}
+.bk2-hair-guide-trigger:focus-visible {
+  outline: 3px solid rgba(123, 0, 29, .16);
+  outline-offset: 2px;
+}
+
 .bk2-mode-switch {
   display: inline-flex;
   padding: 4px;
@@ -155,6 +179,7 @@
 @media (max-width: 900px) {
   .bk2-page { padding: 14px; }
   .bk2-heading { align-items: stretch; flex-direction: column; }
+  .bk2-hair-guide-trigger { width: 100%; min-height: 44px; }
   .bk2-mode-switch { width: 100%; }
   .bk2-mode-switch button { min-width: 0; flex: 1; }
   .bk2-stepper { grid-template-columns: repeat(4, minmax(72px, 1fr)); overflow-x: auto; }
@@ -938,4 +963,143 @@
   .bk2-client-picker-shell{padding:11px}
   .bk2-client-grid>button{padding-inline-end:16px;padding-bottom:42px}
   .bk2-client-card-action{top:auto;bottom:10px;inset-inline-end:12px;transform:none}
+}
+
+/* Hair length guide dialog */
+.bk-hair-guide-overlay {
+  position: fixed;
+  z-index: 12050;
+  inset: 0;
+  display: flex;
+  justify-content: flex-start;
+  padding: 18px;
+  background: rgba(10, 8, 9, 0.48);
+  backdrop-filter: blur(3px);
+}
+.bk-hair-guide-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  animation: bk-guide-enter 180ms ease-out;
+}
+.bk-hair-guide-drawer__header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee5e7;
+  background: #fff;
+}
+.bk-hair-guide-drawer__header span { color: #777; font-size: 12px; font-weight: 700; }
+.bk-hair-guide-drawer__header h2 { margin: 2px 0 0; color: #2c070e; font-size: 20px; font-weight: 950; }
+.bk-hair-guide-close {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e4d7da;
+  border-radius: 13px;
+  color: #40010d;
+  background: #faf6f7;
+  font-size: 28px;
+}
+.bk-hair-guide-drawer__image {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 0;
+  background: #f5f3f2;
+  cursor: zoom-in;
+}
+.bk-hair-guide-drawer__image.is-zoomed { cursor: zoom-out; }
+.bk-hair-guide-drawer__image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 190px);
+  margin: auto;
+  object-fit: contain;
+  opacity: 0;
+}
+.bk-hair-guide-drawer__image.is-loaded img { opacity: 1; }
+.bk-hair-guide-drawer__image.is-zoomed img { width: auto; max-width: none; max-height: none; }
+.bk-hair-guide-placeholder {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #d8c7cb;
+  border-radius: 16px;
+  color: #8a7378;
+  background: #faf8f8;
+  font-weight: 800;
+}
+.bk-hair-guide-drawer__image.is-loaded .bk-hair-guide-placeholder { display: none; }
+.bk-hair-guide-drawer__admin {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid #eee5e7;
+  color: #777;
+  background: #fff;
+  font-size: 12px;
+}
+.bk-hair-guide-upload {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 11px;
+  color: #fff;
+  background: #40010d;
+  font-weight: 800;
+  cursor: pointer;
+}
+.bk-hair-guide-upload input { display: none; }
+
+@keyframes bk-guide-enter {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 700px) {
+  .bk-hair-guide-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .bk-hair-guide-drawer {
+    width: 100%;
+    max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation-name: bk-guide-sheet-enter;
+  }
+
+  .bk-hair-guide-drawer__image img {
+    max-height: calc(92dvh - 210px);
+  }
+}
+
+@keyframes bk-guide-sheet-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-hair-guide-drawer { animation: none; }
 }
