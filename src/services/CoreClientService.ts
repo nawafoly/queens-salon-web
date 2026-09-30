@@ -443,7 +443,7 @@ export const CoreClientService = {
   async create(input: {
     id?: string;
     name: string;
-    phone: string;
+    phone?: string;
     email?: string;
     firebaseUid?: string;
     notes?: string;

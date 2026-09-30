@@ -143,7 +143,7 @@ function readQuickClients(): ClientCandidate[] {
     const parsed = raw ? JSON.parse(raw) : {};
     return Object.entries(parsed || {})
       .map(([key, value]: [string, any]) => ({
-        id: `history:${key}`,
+        id: String(value?.id || `history:${key}`).trim(),
         name: String(value?.name || "بدون اسم").trim(),
         phone: phone10Digits(value?.phone || ""),
         source: String(value?.source || "history"),
@@ -164,6 +164,7 @@ function markQuickClientUsage(raw: ClientCandidate) {
     const parsed = JSON.parse(localStorage.getItem(QUICK_CLIENT_HISTORY_KEY) || "{}") || {};
     const prev = parsed[key] || {};
     parsed[key] = {
+      id: raw.id || prev.id || "",
       name: raw.name || prev.name || "",
       phone: raw.phone || prev.phone || "",
       usedCount: Math.max(1, Number(prev.usedCount || 0) + 1),
@@ -745,18 +746,19 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
-    if (name.length < 2) { setNewClientError(t("اكتبي اسم العميلة كاملًا.")); return; }
-    if (!phone || phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
+    if (name.length < 2) { setNewClientError(t(addingCompanion ? "اكتبي اسم المرافقة." : "اكتبي اسم العميلة كاملًا.")); return; }
+    if (!addingCompanion && (!phone || phone.length !== 10)) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
+    if (phone && phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة.")); return; }
 
     setCreatingClient(true);
-    setExistingClientChecking(true);
+    setExistingClientChecking(Boolean(phone));
     setExistingClientLookupError("");
     setNewClientError("");
 
     try {
       // Re-check immediately before CREATE. The preview lookup is UX only;
       // this gate is the authoritative client-side duplicate stop.
-      const existing = await findExistingClientByPhone(phone);
+      const existing = phone ? await findExistingClientByPhone(phone) : null;
       if (existing) {
         setExistingClientMatch(existing);
         setClientMessage(t("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة."));
@@ -765,7 +767,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       const created: any = await resolveCoreBookingDataSource().createClient({
         name,
-        phone,
+        phone: phone || undefined,
         email: email || undefined,
       });
       const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
@@ -784,7 +786,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       setExistingClientChecking(false);
       setCreatingClient(false);
     }
-  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
+  }, [newClientName, newClientPhone, newClientEmail, addingCompanion, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
@@ -2333,10 +2335,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                       <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t(addingCompanion ? "اسم المرافقة مطلوب. رقم الجوال والبريد الإلكتروني اختياريان." : "سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
-                        <label><span>{t("اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
-                        <label><span>{t("رقم الجوال")} *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
+                        <label><span>{t(addingCompanion ? "اسم المرافقة" : "اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>{t(addingCompanion ? "رقم الجوال (اختياري)" : "رقم الجوال")} {!addingCompanion ? "*" : ""}</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder={addingCompanion ? t("اختياري للمرافقة") : "05xxxxxxxx"} /></label>
                         <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
                       </div>
 

@@ -62,7 +62,7 @@ export interface BookingDataSource {
   getClient(id: string): Promise<BookingClientCandidate | null>;
   createClient(input: {
     name: string;
-    phone: string;
+    phone?: string;
     email?: string;
     firebaseUid?: string;
   }): Promise<BookingClientCandidate>;
