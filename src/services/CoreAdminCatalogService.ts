@@ -6,6 +6,7 @@ function mapRow(row: Record<string, unknown>): CoreCatalogRow {
     id: String(row.id || ""),
     salonId: String(row.salon_id || row.salonId || "main"),
     name: String(row.name || ""),
+    nameEn: row.name_en == null && row.nameEn == null ? null : String(row.name_en ?? row.nameEn),
     sectionId: row.section_id == null ? null : String(row.section_id),
     active: Number(row.active) === 1 || row.active === true,
     sortOrder: Number(row.sort_order || row.sortOrder || 0),
