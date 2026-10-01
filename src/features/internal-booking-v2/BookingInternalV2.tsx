@@ -2557,32 +2557,47 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             <div key={key} className={`bk2-party-client-chip ${activePartyClientKey === key ? "is-active" : ""}`}>
                               <button type="button" onClick={() => setActivePartyClientKey(key)}>
                                 <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                                <span><strong>{client.name}</strong><small>{index === 0 ? t("العميلة الأساسية") : t("مرافقة")}</small></span>
+                                <span>
+                                  <strong>{client.name}</strong>
+                                  <small>
+                                    {index === 0 ? t("العميلة الأساسية") : t("مرافقة")}
+                                    {isBookingGuest(client) ? ` · ${t("لهذا الحجز فقط")}` : ""}
+                                  </small>
+                                </span>
                               </button>
-                              {index > 0 ? <button
-                                type="button"
-                                className="bk2-party-client-remove"
-                                aria-label={t("إزالة المرافقة")}
-                                onClick={() => {
-                                  const lineKeys = cart.filter((item) => bookingLineClientKey(item) === key).map(bookingLineKey);
-                                  const removeKeys = new Set(lineKeys);
-                                  setCompanions((current) => current.filter((row) => partyClientKey(row) !== key));
-                                  setCart((current) => current.filter((item) => bookingLineClientKey(item) !== key));
-                                  setPriceAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setScheduleByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setAvailableTimes((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setEligibleStaffByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setSelectedOfferByClientKey((current) => {
-                                    const next = { ...current };
-                                    delete next[key];
-                                    if (!Object.values(next).some((value) => Boolean(String(value || "").trim()))) {
-                                      setDiscountMode("none");
-                                    }
-                                    return next;
-                                  });
-                                  if (activePartyClientKey === key) setActivePartyClientKey(partyClientKey(selectedClient));
-                                }}
-                              >×</button> : null}
+                              <div className="bk2-party-client-actions">
+                                <button
+                                  type="button"
+                                  className="bk2-party-client-edit"
+                                  onClick={() => openPartyMemberEditor(client)}
+                                >
+                                  <FiEdit2 /> {t("تعديل")}
+                                </button>
+                                {index > 0 ? <button
+                                  type="button"
+                                  className="bk2-party-client-remove"
+                                  aria-label={t("إزالة المرافقة")}
+                                  onClick={() => {
+                                    const lineKeys = cart.filter((item) => bookingLineClientKey(item) === key).map(bookingLineKey);
+                                    const removeKeys = new Set(lineKeys);
+                                    setCompanions((current) => current.filter((row) => partyClientKey(row) !== key));
+                                    setCart((current) => current.filter((item) => bookingLineClientKey(item) !== key));
+                                    setPriceAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setScheduleByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setAvailableTimes((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setEligibleStaffByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setSelectedOfferByClientKey((current) => {
+                                      const next = { ...current };
+                                      delete next[key];
+                                      if (!Object.values(next).some((value) => Boolean(String(value || "").trim()))) {
+                                        setDiscountMode("none");
+                                      }
+                                      return next;
+                                    });
+                                    if (activePartyClientKey === key) setActivePartyClientKey(partyClientKey(selectedClient));
+                                  }}
+                                >×</button> : null}
+                              </div>
                             </div>
                           );
                         })}
@@ -2612,15 +2627,22 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                         })}
                       </div>
                       <div className="bk2-divider"><span>{t("أو")}</span></div>
-                      <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
+                      <button className="bk2-add-client" type="button" onClick={() => { setEditingPartyClientKey(""); setNewClientName(""); setNewClientPhone(""); setNewClientEmail(""); setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t(addingCompanion ? "اسم المرافقة مطلوب. رقم الجوال والبريد الإلكتروني اختياريان." : "سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>{t(editingPartyClient ? (addingCompanion ? "تعديل بيانات المرافقة" : "تعديل بيانات العميلة") : addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t(editingPartyClient ? "عدّلي البيانات وسيبقى الحجز والخدمات والمواعيد كما هي." : addingCompanion ? "بدون رقم جوال ستُضاف كمرافقة لهذا الحجز فقط ولن يتم إنشاء ملف عميلة لها." : "سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => editingPartyClient ? closePartyMemberEditor() : setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
-                        <label><span>{t(addingCompanion ? "اسم المرافقة" : "اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>{t(addingCompanion ? "اسم المرافقة" : "اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch) && !editingPartyClient} /></label>
                         <label><span>{t(addingCompanion ? "رقم الجوال (اختياري)" : "رقم الجوال")} {!addingCompanion ? "*" : ""}</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder={addingCompanion ? t("اختياري للمرافقة") : "05xxxxxxxx"} /></label>
-                        <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
+                        <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch) && !editingPartyClient} /></label>
                       </div>
+
+                      {addingCompanion && !phone10Digits(newClientPhone) ? (
+                        <div className="bk2-client-identity-check is-guest" role="status">
+                          <span className="bk2-client-identity-dot" />
+                          <div><strong>{t("مرافقة لهذا الحجز فقط")}</strong><small>{t("لن يتم إنشاء ملف عميلة بدون رقم جوال.")}</small></div>
+                        </div>
+                      ) : null}
 
                       {existingClientChecking ? (
                         <div className="bk2-client-identity-check is-loading" role="status">
@@ -2665,13 +2687,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
                       {newClientError ? <p className="bk2-inline-warning">{newClientError}</p> : null}
                       <div className="bk2-new-client-actions">
-                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>{t("إلغاء")}</button>
+                        <button type="button" className="is-secondary" onClick={() => editingPartyClient ? closePartyMemberEditor() : setShowNewClient(false)} disabled={creatingClient}>{t("إلغاء")}</button>
                         <button
                           type="button"
                           className="is-primary"
-                          onClick={() => existingClientMatch
-                            ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
-                            : void createNewClient()
+                          onClick={() => editingPartyClient
+                            ? void savePartyMemberEdit()
+                            : existingClientMatch
+                              ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
+                              : void createNewClient()
                           }
                           disabled={creatingClient || existingClientChecking}
                         >
@@ -2679,11 +2703,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             ? t("جاري الحفظ...")
                             : existingClientChecking
                               ? t("جاري التحقق...")
-                              : existingClientMatch
-                                ? t("اختيار العميلة الموجودة")
-                                : existingClientLookupError
-                                  ? t("إعادة التحقق والحفظ")
-                                  : t("حفظ واختيار العميلة")}
+                              : editingPartyClient
+                                ? t("حفظ التعديل")
+                                : existingClientMatch
+                                  ? t("اختيار العميلة الموجودة")
+                                  : addingCompanion && !phone10Digits(newClientPhone)
+                                    ? t("إضافة المرافقة للحجز")
+                                    : existingClientLookupError
+                                      ? t("إعادة التحقق والحفظ")
+                                      : t("حفظ واختيار العميلة")}
                         </button>
                       </div>
                     </div>
