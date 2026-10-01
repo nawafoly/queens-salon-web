@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
 import HairLengthGuideDrawer from "../../components/bookingInternal/HairLengthGuideDrawer";
@@ -529,6 +529,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [hairGuideOpen, setHairGuideOpen] = useState(false);
   const hairGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const summaryScrollRef = useRef<HTMLDivElement | null>(null);
+  const handleSummaryWheel = useCallback((event: WheelEvent<HTMLElement>) => {
+    const scroller = summaryScrollRef.current;
+    if (!scroller || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    if (maxScrollTop <= 0) return;
+
+    const canScrollUp = event.deltaY < 0 && scroller.scrollTop > 0;
+    const canScrollDown = event.deltaY > 0 && scroller.scrollTop < maxScrollTop - 1;
+    if (!canScrollUp && !canScrollDown) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    scroller.scrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, scroller.scrollTop + event.deltaY)
+    );
+  }, []);
+
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [companions, setCompanions] = useState<ClientCandidate[]>([]);
@@ -1296,7 +1316,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : -1;
   }
 
-  const getCartScheduleConflict = useCallback((serviceKey: string, staffKey: string, time: string) => {
+  const getCartScheduleConflict = useCallback((
+    serviceKey: string,
+    staffKey: string,
+    time: string,
+    scheduleState: Record<string, ScheduleSelection> = scheduleByService
+  ) => {
     const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
@@ -1308,7 +1333,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     for (const other of cart) {
       const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) continue;
-      const selected = scheduleByService[otherKey];
+      const selected = scheduleState[otherKey];
       if (!selected?.time) continue;
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) continue;
@@ -1627,7 +1652,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
 
-    if (!allScheduled) {
+    const liveDraftConflict = cart.find((service) => {
+      const key = bookingLineKey(service);
+      const selected = scheduleByService[key];
+      return Boolean(
+        selected?.staffId &&
+        selected?.time &&
+        getCartScheduleConflict(key, selected.staffId, selected.time, scheduleByService)
+      );
+    });
+    if (!allScheduled || liveDraftConflict) {
       setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."));
       setStep(3);
       return;
@@ -2631,7 +2665,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                               ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
                                               : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
                                             : "";
-                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
+                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => {
+                                            if (conflicting) return;
+                                            setScheduleByService((current) => {
+                                              const liveStaffId = current[key]?.staffId || selection.staffId;
+                                              const liveConflict = getCartScheduleConflict(key, liveStaffId, time, current);
+                                              if (liveConflict) {
+                                                setScheduleMessage(
+                                                  liveConflict.kind === "staff"
+                                                    ? t("هذا الوقت أصبح مستخدمًا لنفس الموظفة في خدمة أخرى. اختاري وقتًا مختلفًا.")
+                                                    : t("العميلة لديها خدمة أخرى في هذا الوقت. اختاري وقتًا مختلفًا.")
+                                                );
+                                                return current;
+                                              }
+                                              setScheduleMessage("");
+                                              return { ...current, [key]: { ...current[key], time } };
+                                            });
+                                          }}>{formatTime12(time, time)}</button>;
                                         })}</div>
                                       ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
                                     </div>
@@ -2951,7 +3001,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               )}
             </main>
 
-            <aside className="bk2-summary-card">
+            <aside className="bk2-summary-card" onWheel={handleSummaryWheel}>
+              <div ref={summaryScrollRef} className="bk2-summary-scroll">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
@@ -2991,6 +3042,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   })}
                 </div>
               ) : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
+              </div>
+              <div className="bk2-summary-footer">
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
                 <div><span>{t("سعر الحجز")}</span><strong>{money(bookingSubtotal)}</strong></div>
@@ -3024,6 +3077,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                       : "أكملي الموظفة والوقت لكل خدمة وسيظهر زر المتابعة.")}</p>
                 </div>
               ) : null}
+              </div>
             </aside>
           </div>
         </>
