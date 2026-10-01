@@ -78,13 +78,13 @@ test("internal booking uses the full dashboard workspace width", () => {
 });
 
 
-test("sticky booking summary remains fully visible below the dashboard topbar", () => {
+test("sticky booking summary starts below the dashboard topbar without changing its prior viewport behavior", () => {
   assert.match(
     bookingCss,
     /\.bk2-summary-card\s*\{[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
   );
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 42px\);/
+    /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - 96px\);/
   );
 });
