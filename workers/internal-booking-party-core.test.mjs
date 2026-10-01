@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 
 const migration = readFileSync("migrations/core/0088_internal_booking_parties.sql", "utf8");
 const guestMigration = readFileSync("migrations/core/0090_internal_booking_guest_companions.sql", "utf8");
+const draftMigration = readFileSync("migrations/core/0091_internal_booking_drafts.sql", "utf8");
+const draftRepo = readFileSync("workers/core/repositories/internal-booking-drafts.js", "utf8");
 const cashbackRepo = readFileSync("workers/core/repositories/cashback.js", "utf8");
 const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
 const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
@@ -70,4 +72,17 @@ test("internal party rollback uses create authority and not cancel permission", 
   assert.match(repo, /core_booking:internal_rollback_window_expired/);
   assert.match(repo, /core_booking:internal_rollback_payment_exists/);
   assert.match(service, /rollbackInternalCreation/);
+});
+
+
+test("internal booking drafts stay outside operational booking state", () => {
+  const index = readFileSync("workers/core/index.js", "utf8");
+  assert.match(draftMigration, /CREATE TABLE IF NOT EXISTS internal_booking_drafts/);
+  assert.match(draftMigration, /draft_json TEXT NOT NULL/);
+  assert.doesNotMatch(draftMigration, /booking_slot_locks|invoices|payments/);
+  assert.match(draftRepo, /created_by_uid/);
+  assert.match(draftRepo, /listInternalBookingDrafts/);
+  assert.match(draftRepo, /saveInternalBookingDraft/);
+  assert.match(index, /internal-booking-drafts/);
+  assert.match(index, /requirePermission\(ctx, "bookings\.create"\)/);
 });
