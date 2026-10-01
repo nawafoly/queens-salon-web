@@ -9,6 +9,10 @@ import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { CoreSettingsService } from "../../services/CoreSettingsService";
 import { CoreOfferService } from "../../services/CoreOfferService";
+import {
+  CoreInternalBookingDraftService,
+  type CoreInternalBookingDraft,
+} from "../../services/CoreInternalBookingDraftService";
 import type { CoreDiscount } from "../../types/coreApi";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
@@ -72,6 +76,34 @@ type BookingPriceAdjustment = {
   price: string;
   reason: PriceAdjustmentReason | "";
   note: string;
+};
+
+type InternalBookingDraftSnapshot = {
+  version: 1;
+  step: Step;
+  selectedClient: ClientCandidate | null;
+  companions: ClientCandidate[];
+  activePartyClientKey: string;
+  cart: CatalogService[];
+  priceAdjustments: Record<string, BookingPriceAdjustment>;
+  bookingDate: string;
+  scheduleByService: Record<string, ScheduleSelection>;
+  selectedSectionId: string;
+  selectedCategoryId: string;
+  paymentMethod: PaymentMethod;
+  paymentType: PaymentType;
+  paidAmount: string;
+  cashAmount: string;
+  cardAmount: string;
+  transferAmount: string;
+  bookingNote: string;
+  discountMode: DiscountMode;
+  manualFixedDiscount: string;
+  manualPercentDiscount: string;
+  manualMaxDiscount: string;
+  selectedOfferByClientKey: Record<string, string>;
+  couponInput: string;
+  couponOfferId: string;
 };
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingBusinessHoursDay = { enabled: boolean; start: string; end: string };
@@ -629,6 +661,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
+  const [savedDrafts, setSavedDrafts] = useState<
+    CoreInternalBookingDraft<InternalBookingDraftSnapshot>[]
+  >([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [activeDraftId, setActiveDraftId] = useState("");
+  const pendingDraftCouponOfferIdRef = useRef("");
 
   const candidateFromCoreRow = useCallback((raw: any, fallbackSource = "core_d1"): ClientCandidate => ({
     id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
