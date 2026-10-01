@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
-import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
+import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiEdit2, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
 import HairLengthGuideDrawer from "../../components/bookingInternal/HairLengthGuideDrawer";
 import hairLengthGuideImage from "../../assets/images/hair-length-guide.png";
@@ -36,10 +36,13 @@ type ClientCandidate = {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   publicId?: string;
   source?: string;
   visits?: number;
   sessions?: number;
+  bookingGuest?: boolean;
+  partyKey?: string;
 };
 
 type CatalogSection = { id: string; title?: string; name?: string; label?: string };
@@ -160,6 +163,7 @@ function readQuickClients(): ClientCandidate[] {
 }
 
 function markQuickClientUsage(raw: ClientCandidate) {
+  if (isBookingGuest(raw)) return;
   const key = candidateIdentity(raw);
   if (!key) return;
   try {
@@ -187,8 +191,14 @@ function serviceTitle(service: any) {
   return catalogLabel(service, "خدمة");
 }
 
+function isBookingGuest(client: ClientCandidate | null | undefined) {
+  return Boolean(client?.bookingGuest);
+}
+
 function partyClientKey(client: ClientCandidate | null | undefined) {
   if (!client) return "";
+  const stablePartyKey = String(client.partyKey || "").trim();
+  if (stablePartyKey) return stablePartyKey;
   const rawId = String(client.id || "").trim();
 
   // Canonical Core client ID is the booking ownership key. Phone/name are only
@@ -555,6 +565,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [addingCompanion, setAddingCompanion] = useState(false);
   const [clientPickerOpen, setClientPickerOpen] = useState(true);
   const [activePartyClientKey, setActivePartyClientKey] = useState("");
+  const [editingPartyClientKey, setEditingPartyClientKey] = useState("");
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
   const [clientSearching, setClientSearching] = useState(false);
   const [clientMessage, setClientMessage] = useState("");
@@ -623,6 +634,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
     name: String(raw?.name || raw?.fullName || raw?.clientName || "بدون اسم").trim(),
     phone: phone10Digits(raw?.phone || raw?.mobile || raw?.clientPhone || raw?.phoneNormalized || raw?.phone_normalized || ""),
+    email: String(raw?.email || "").trim() || undefined,
     publicId: String(raw?.publicId || raw?.public_id || raw?.trackPublicId || raw?.mk || "").trim() || undefined,
     source: String(raw?.source || fallbackSource),
     visits: Math.max(0, Number(raw?.visits || raw?.usedCount || 0)) || undefined,
@@ -632,6 +644,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const bookingClients = useMemo(
     () => selectedClient ? [selectedClient, ...companions] : [],
     [selectedClient, companions]
+  );
+  const editingPartyClient = useMemo(
+    () => bookingClients.find((client) => partyClientKey(client) === editingPartyClientKey) || null,
+    [bookingClients, editingPartyClientKey]
   );
   const activeBookingClient = useMemo(() => {
     if (!bookingClients.length) return null;
