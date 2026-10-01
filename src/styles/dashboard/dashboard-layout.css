@@ -458,7 +458,7 @@
   .dashboard-skin .dashboard-sidebar,
   .dashboard-skin.is-sidebar-drawer .dashboard-sidebar {
     position: fixed !important;
-    top: 12px !important;
+    top: calc(10px + var(--dash-topbar-height) + 12px) !important;
     right: 12px !important;
     bottom: 12px !important;
     left: auto !important;
