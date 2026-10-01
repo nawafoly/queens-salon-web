@@ -1177,6 +1177,24 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
   useEffect(() => {
     let cancelled = false;
+    async function loadSavedDrafts() {
+      setDraftsLoading(true);
+      try {
+        const rows = await CoreInternalBookingDraftService.list<InternalBookingDraftSnapshot>();
+        if (!cancelled) setSavedDrafts(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        console.error("[BookingInternalV2] draft list load failed", error);
+        if (!cancelled) setDraftMessage(t("تعذر جلب مسودات الحجز المحفوظة."));
+      } finally {
+        if (!cancelled) setDraftsLoading(false);
+      }
+    }
+    void loadSavedDrafts();
+    return () => { cancelled = true; };
+  }, [language]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadAllServicesForOffers() {
       try {
         const rows = await resolveCoreBookingDataSource().getServices();
