@@ -1835,7 +1835,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
 
-    const invalidClient = bookingClients.find((client) => phone10Digits(client.phone).length !== 10);
+    const invalidClient = bookingClients.find(
+      (client) => !isBookingGuest(client) && phone10Digits(client.phone).length !== 10
+    );
     if (invalidClient) {
       setSubmitError(
         language === "en"
@@ -1990,6 +1992,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const canonicalByClientKey = new Map<string, string>();
       for (const client of bookingClients) {
         const clientKey = partyClientKey(client);
+        if (isBookingGuest(client)) {
+          canonicalByClientKey.set(clientKey, String(client.id || "").trim());
+          continue;
+        }
+
         const selectedClientId = String(client.id || "").trim();
         let canonicalClientId = "";
 
@@ -2005,7 +2012,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           const ensuredClient = await bookingDataSource.createClient({
             name: client.name,
             phone: client.phone,
-            email: String((client as any).email || "").trim() || undefined,
+            email: String(client.email || "").trim() || undefined,
           });
           canonicalClientId = String(ensuredClient?.id || "").trim();
         }
@@ -2041,6 +2048,13 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           client,
           clientKey,
           canonicalClientId: canonicalByClientKey.get(clientKey) || "",
+          guestParticipant: isBookingGuest(client)
+            ? {
+                id: String(client.id || "").trim(),
+                name: client.name,
+                email: client.email || null,
+              }
+            : undefined,
           memberOrder,
           memberCart,
           memberSubtotal,
@@ -2120,13 +2134,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
             return {
               clientId: plan.canonicalClientId,
+              guestParticipant: plan.guestParticipant,
               userId: null,
               createdBy: "staff",
               createdByUid: userId,
               channel: "internal",
               clientName: plan.client.name,
               clientPhone: plan.client.phone,
-              clientEmail: String((plan.client as any).email || "").trim() || null,
+              clientEmail: String(plan.client.email || "").trim() || null,
               serviceName: serviceTitle(service),
               serviceId: canonicalServiceId,
               serviceSnapshot: {
@@ -2246,7 +2261,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           ? references[0] || ""
           : `${references[0]} +${references.length - 1}`
       );
-      bookingClients.forEach(markQuickClientUsage);
+      bookingClients.filter((client) => !isBookingGuest(client)).forEach(markQuickClientUsage);
 
       if (effectivePaidAmount > 0 && createdParty.length) {
         const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
