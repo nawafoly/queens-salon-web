@@ -1939,6 +1939,66 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     activeDraftId, step, buildCurrentDraftSnapshot, language,
   ]);
 
+  const resumeSavedDraft = useCallback((
+    row: CoreInternalBookingDraft<InternalBookingDraftSnapshot>
+  ) => {
+    const draft = row?.draft;
+    if (!draft || draft.version !== 1) {
+      setDraftMessage(t("تعذر قراءة هذه المسودة."));
+      return;
+    }
+
+    const nextDate = String(draft.bookingDate || todayISO());
+    if (nextDate !== bookingDate) restoringDraftRef.current = true;
+
+    setActiveDraftId(row.id);
+    setMode("new");
+    setStep(Math.min(4, Math.max(1, Number(draft.step || row.current_step || 1))) as Step);
+    setSelectedClient(draft.selectedClient || null);
+    setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
+    setActivePartyClientKey(String(draft.activePartyClientKey || ""));
+    setQuery(String(draft.query || ""));
+    setAddingCompanion(Boolean(draft.addingCompanion));
+    setClientPickerOpen(Boolean(draft.clientPickerOpen));
+    setShowNewClient(Boolean(draft.showNewClient));
+    setNewClientName(String(draft.newClientName || ""));
+    setNewClientPhone(String(draft.newClientPhone || ""));
+    setNewClientEmail(String(draft.newClientEmail || ""));
+    setEditingPartyClientKey(String(draft.editingPartyClientKey || ""));
+    setCart(Array.isArray(draft.cart) ? draft.cart : []);
+    setServiceQuery(String(draft.serviceQuery || ""));
+    setPriceAdjustments(draft.priceAdjustments || {});
+    setBookingDate(nextDate);
+    setScheduleByService(draft.scheduleByService || {});
+    setAvailableTimes({});
+    setSelectedSectionId(String(draft.selectedSectionId || ""));
+    setSelectedCategoryId(String(draft.selectedCategoryId || ""));
+    setPaymentMethod(draft.paymentMethod || "cash");
+    setPaymentType(draft.paymentType || "full");
+    setPaidAmount(String(draft.paidAmount || ""));
+    setCashAmount(String(draft.cashAmount || ""));
+    setCardAmount(String(draft.cardAmount || ""));
+    setTransferAmount(String(draft.transferAmount || ""));
+    setBookingNote(String(draft.bookingNote || ""));
+    setDiscountMode(draft.discountMode || "none");
+    setManualFixedDiscount(String(draft.manualFixedDiscount || ""));
+    setManualPercentDiscount(String(draft.manualPercentDiscount || ""));
+    setManualMaxDiscount(String(draft.manualMaxDiscount || ""));
+    setSelectedOfferByClientKey(draft.selectedOfferByClientKey || {});
+    setCouponInput(String(draft.couponInput || ""));
+    setCouponOffer(null);
+    pendingDraftCouponOfferIdRef.current = String(draft.couponOfferId || "");
+    setCreatedBookingIds([]);
+    setCreatedPartyBookings([]);
+    setCreatedBookingReference("");
+    setSubmitError("");
+    setPostSaveWarning("");
+    setScheduleMessage(
+      t("تم استرجاع المسودة. سيتم التحقق من المواعيد مرة أخرى قبل الحفظ النهائي.")
+    );
+    setDraftMessage(t("تم استرجاع مسودة الحجز."));
+  }, [bookingDate, language]);
+
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
     setCouponMessage("");
