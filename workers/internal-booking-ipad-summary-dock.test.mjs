@@ -141,3 +141,16 @@ test("desktop booking keeps both workspace columns inside the viewport with inte
     /\.bk2-main-card\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;[\s\S]*scrollbar-gutter:\s*stable;/
   );
 });
+
+
+test("wheel input over the main booking workspace scrolls its bounded panel", () => {
+  assert.match(bookingTsx, /const mainScrollRef = useRef<HTMLElement \| null>\(null\)/);
+  assert.match(
+    bookingTsx,
+    /handleMainWheel = useCallback\(\(event: WheelEvent<HTMLElement>\)[\s\S]*routeWheelToScroller\(event, mainScrollRef\.current\)/
+  );
+  assert.match(
+    bookingTsx,
+    /<main ref=\{mainScrollRef\} className="bk2-main-card" onWheel=\{handleMainWheel\}>/
+  );
+});
