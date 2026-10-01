@@ -49,10 +49,18 @@ const bookingMobileCss = fs.readFileSync(
   "utf8"
 );
 
-test("booking summary owns vertical wheel scrolling on tablet and desktop", () => {
+test("booking summary scrolls independently while checkout controls stay outside the scroller", () => {
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - 96px\);[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;/
+    /\.bk2-summary-card\s*\{[\s\S]*grid-template-rows:\s*minmax\(0, 1fr\) auto;[\s\S]*overflow:\s*hidden;/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-scroll\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;/
+  );
+  assert.match(
+    bookingTsx,
+    /className="bk2-summary-scroll"[\s\S]*className="bk2-summary-footer"[\s\S]*className="bk2-totals"/
   );
   assert.match(
     bookingMobileCss,
