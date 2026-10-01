@@ -1,4 +1,4 @@
-import { CoreBookingService } from "../CoreBookingService";
+import { BookingClientCandidate, CoreBookingService } from "../CoreBookingService";
 import { CoreCatalogService } from "../CoreCatalogService";
 import { CoreClientService } from "../CoreClientService";
 import { CoreInvoiceService } from "../CoreInvoiceService";
@@ -35,7 +35,29 @@ function normalizePhone(value: unknown): string {
   return digits;
 }
 
+type BookingGuestParticipant = {
+  id: string;
+  name: string;
+  email?: string | null;
+};
+
+function readBookingGuestParticipant(booking: BookingDoc): BookingGuestParticipant | null {
+  const raw = (booking as BookingDoc & { guestParticipant?: BookingGuestParticipant }).guestParticipant;
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim();
+  const name = String(raw.name || "").trim();
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    email: String(raw.email || "").trim() || null,
+  };
+}
+
 async function resolveClientId(booking: BookingDoc): Promise<string> {
+  const guestParticipant = readBookingGuestParticipant(booking);
+  if (guestParticipant) return guestParticipant.id;
+
   const explicitClientId = String(booking.clientId || "").trim();
   const firebaseUid = String(
     booking.clientFirebaseUid ||
@@ -341,9 +363,14 @@ export const coreD1BookingDataSource: BookingDataSource = {
         (group.parent as BookingDoc & { id?: string }).id || ""
       ).trim() || generatedBookingId();
 
+    const guestParticipant =
+      readBookingGuestParticipant(group.parent) ||
+      readBookingGuestParticipant(firstItem) ||
+      undefined;
     const coreInput = {
       ...legacyBookingToCoreInput(firstItem, clientId),
       id: bookingId,
+      guestParticipant,
       partyId: String(group.parent.partyId || "").trim() || undefined,
       partyLeadClientId: String(group.parent.partyLeadClientId || "").trim() || undefined,
       partyMemberOrder: Number.isFinite(Number(group.parent.partyMemberOrder))
@@ -430,6 +457,11 @@ export const coreD1BookingDataSource: BookingDataSource = {
       parentPublicId: created.publicId || created.id,
       itemIds: created.items.map((item) => item.id),
     };
+  },
+
+  async updateClient(id, input) {
+    const updated = await CoreClientService.patch(id, input);
+    return updated as BookingClientCandidate;
   },
 
   async updateBooking(id, patch) {
