@@ -1799,6 +1799,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   useEffect(() => {
+    if (restoringDraftRef.current) {
+      restoringDraftRef.current = false;
+      setAvailableTimes({});
+      return;
+    }
     setScheduleByService({});
     setAvailableTimes({});
   }, [bookingDate]);
