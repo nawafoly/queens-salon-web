@@ -123,34 +123,22 @@ test("desktop summary fills the available viewport so page scrolling does not le
 });
 
 
-test("desktop booking keeps both workspace columns inside the viewport with internal scrolling", () => {
+test("desktop main booking area stays in normal page flow while only the summary is viewport-bounded", () => {
   assert.match(
     bookingCss,
-    /@media \(min-width: 1120px\)[\s\S]*--bk2-workspace-sticky-top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+    /\.bk2-main-card\s*\{[\s\S]*min-height:\s*635px;[\s\S]*padding:\s*var\(--dsv2-panel-padding\);/
   );
-  assert.match(
+  assert.doesNotMatch(
     bookingCss,
-    /@media \(min-width: 1120px\)[\s\S]*--bk2-workspace-viewport-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
+    /@media \(min-width: 1120px\)[\s\S]*\.bk2-main-card[\s\S]*overflow-y:\s*auto;/
   );
-  assert.match(
-    bookingCss,
-    /\.bk2-main-card,[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*height:\s*var\(--bk2-workspace-viewport-height\);[\s\S]*max-height:\s*var\(--bk2-workspace-viewport-height\);/
-  );
-  assert.match(
-    bookingCss,
-    /\.bk2-main-card\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;[\s\S]*scrollbar-gutter:\s*stable;/
-  );
-});
-
-
-test("wheel input over the main booking workspace scrolls its bounded panel", () => {
-  assert.match(bookingTsx, /const mainScrollRef = useRef<HTMLElement \| null>\(null\)/);
+  assert.doesNotMatch(bookingTsx, /mainScrollRef|handleMainWheel/);
   assert.match(
     bookingTsx,
-    /handleMainWheel = useCallback\(\(event: WheelEvent<HTMLElement>\)[\s\S]*routeWheelToScroller\(event, mainScrollRef\.current\)/
+    /<main className="bk2-main-card">/
   );
   assert.match(
-    bookingTsx,
-    /<main ref=\{mainScrollRef\} className="bk2-main-card" onWheel=\{handleMainWheel\}>/
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
   );
 });
