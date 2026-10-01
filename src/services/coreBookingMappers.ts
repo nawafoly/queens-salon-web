@@ -176,6 +176,8 @@ export function mapCoreBooking(
     client_id: "clientId",
     client_name: "clientName",
     client_phone: "clientPhone",
+    booking_guest: "bookingGuest",
+    guest_email: "guestEmail",
     party_id: "partyId",
     party_lead_client_id: "partyLeadClientId",
     party_member_order: "partyMemberOrder",
