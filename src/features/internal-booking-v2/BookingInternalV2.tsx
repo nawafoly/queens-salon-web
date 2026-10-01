@@ -1896,6 +1896,49 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     manualMaxDiscount, selectedOfferByClientKey, couponInput, couponOffer,
   ]);
 
+  const saveDraftForLater = useCallback(async () => {
+    const hasWork =
+      Boolean(selectedClient) ||
+      companions.length > 0 ||
+      cart.length > 0 ||
+      Boolean(String(newClientName || "").trim()) ||
+      Boolean(String(query || "").trim());
+
+    if (!hasWork) {
+      setDraftMessage(t("ابدئي الحجز أولًا قبل حفظه كمسودة."));
+      return;
+    }
+
+    setDraftSaving(true);
+    setDraftMessage("");
+    try {
+      const partyCount = (selectedClient ? 1 : 0) + companions.length;
+      const title = selectedClient
+        ? `${selectedClient.name}${partyCount > 1 ? ` +${partyCount - 1}` : ""} · ${bookingDate}`
+        : t("مسودة حجز غير مكتملة");
+      const saved = await CoreInternalBookingDraftService.save<InternalBookingDraftSnapshot>({
+        id: activeDraftId || undefined,
+        title,
+        currentStep: step,
+        draft: buildCurrentDraftSnapshot(),
+      });
+      setActiveDraftId(saved.id);
+      setSavedDrafts((current) => [
+        saved,
+        ...current.filter((row) => row.id !== saved.id),
+      ]);
+      setDraftMessage(t("تم حفظ مسودة الحجز. يمكنك الرجوع لها وإكمالها لاحقًا."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft save failed", error);
+      setDraftMessage(t("تعذر حفظ مسودة الحجز. حاولي مرة أخرى."));
+    } finally {
+      setDraftSaving(false);
+    }
+  }, [
+    selectedClient, companions, cart, newClientName, query, bookingDate,
+    activeDraftId, step, buildCurrentDraftSnapshot, language,
+  ]);
+
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
     setCouponMessage("");
