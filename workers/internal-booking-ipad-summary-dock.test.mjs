@@ -121,3 +121,23 @@ test("desktop summary fills the available viewport so page scrolling does not le
     /\.bk2-summary-card\s*\{[\s\S]*height:\s*auto;[\s\S]*max-height:\s*none;/
   );
 });
+
+
+test("desktop booking keeps both workspace columns inside the viewport with internal scrolling", () => {
+  assert.match(
+    bookingCss,
+    /@media \(min-width: 1120px\)[\s\S]*--bk2-workspace-sticky-top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+  );
+  assert.match(
+    bookingCss,
+    /@media \(min-width: 1120px\)[\s\S]*--bk2-workspace-viewport-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-main-card,[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*height:\s*var\(--bk2-workspace-viewport-height\);[\s\S]*max-height:\s*var\(--bk2-workspace-viewport-height\);/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-main-card\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;[\s\S]*scrollbar-gutter:\s*stable;/
+  );
+});
