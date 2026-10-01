@@ -2585,13 +2585,89 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         message.toLowerCase().includes("الموعد محجوز");
 
       if (isSlotConflict) {
-        setScheduleByService((current) => Object.fromEntries(
-          Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
-        ));
-        setAvailableTimes({});
-        setScheduleMessage(t("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة."));
-        setSubmitError(t("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر."));
+        const staleRows: Array<{ service: CatalogService; staff: StaffRow | null; serviceKey: string }> = [];
+        try {
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            const selected = scheduleByService[serviceKey];
+            if (!selected?.staffId || !selected?.time) continue;
+
+            const staff =
+              (eligibleStaffByService[serviceKey] || []).find(
+                (row) => staffId(row) === selected.staffId
+              ) || null;
+            if (!staff) {
+              staleRows.push({ service, staff: null, serviceKey });
+              continue;
+            }
+
+            const freshRows = await listCoreBookableStaffForDate({
+              serviceId: String(service.id || "").trim(),
+              date: bookingDate,
+              slotStepMin,
+              bufferMin,
+              requireShowOnBooking: false,
+              forceFresh: true,
+            });
+            const fresh = freshRows.find(
+              (row) => staffId(row.staff as StaffRow) === selected.staffId
+            );
+            if (
+              !fresh?.availability ||
+              !isCoreStaffStartBookable(fresh.availability, selected.time, {
+                durationMin: serviceDuration(service) || 30,
+                bufferMin,
+                slotStepMin,
+              })
+            ) {
+              staleRows.push({ service, staff, serviceKey });
+            }
+          }
+        } catch (revalidationError) {
+          console.error(
+            "[BookingInternalV2] post-conflict schedule revalidation failed",
+            revalidationError
+          );
+        }
+
+        if (staleRows.length) {
+          const staleKeys = new Set(staleRows.map((row) => row.serviceKey));
+          setScheduleByService((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) {
+              const selected = next[key];
+              if (selected) next[key] = { ...selected, time: "" };
+            }
+            return next;
+          });
+          setAvailableTimes((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) delete next[key];
+            return next;
+          });
+          await Promise.all(
+            staleRows
+              .filter((row): row is { service: CatalogService; staff: StaffRow; serviceKey: string } => Boolean(row.staff))
+              .map(({ service, staff }) => loadTimesForService(service, staff))
+          );
+          setScheduleMessage(
+            t("تم الاحتفاظ بكل المواعيد الصحيحة. أعيدي اختيار الوقت للخدمة المتعارضة فقط.")
+          );
+        } else {
+          setScheduleMessage(
+            t("حدث تعارض أثناء الحفظ. احتفظنا باختيارات الموعد الحالية لتراجعيها بدون إعادة إدخالها من جديد.")
+          );
+        }
+        setSubmitError(
+          t("تعذر إتمام الحجز بسبب تعارض موعد. تم الاحتفاظ ببقية بيانات الحجز.")
+        );
         setStep(3);
+      } else if (
+        code.startsWith("core_client:") ||
+        code.includes("phone")
+      ) {
+        setSubmitError(message || t("راجعي بيانات العميلة ثم حاولي مرة أخرى."));
+        setStep(1);
       } else if (
         code === "core_api:offline" ||
         code === "core_api:network_unavailable" ||
