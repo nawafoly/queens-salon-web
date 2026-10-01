@@ -14,3 +14,27 @@ test("compact iPad party summary stays horizontal instead of growing over the wo
   assert.match(css, /\.bk2-summary-party-group \.bk2-summary-services\s*\{[\s\S]*display:\s*flex;/);
   assert.match(css, /\.bk2-summary-party-group \.bk2-summary-services\s*\{[\s\S]*overflow-x:\s*auto;/);
 });
+
+
+const bookingTsx = fs.readFileSync(
+  new URL("../src/features/internal-booking-v2/BookingInternalV2.tsx", import.meta.url),
+  "utf8"
+);
+
+test("draft scheduling rechecks same-staff and same-client overlap against live state", () => {
+  assert.match(
+    bookingTsx,
+    /getCartScheduleConflict = useCallback\(\([\s\S]*scheduleState: Record<string, ScheduleSelection> = scheduleByService/
+  );
+  assert.match(bookingTsx, /const selected = scheduleState\[otherKey\]/);
+  assert.match(bookingTsx, /bookingLineClientKey\(other\) === currentClientKey/);
+  assert.match(bookingTsx, /if \(selected\.staffId === staffKey\)/);
+  assert.match(
+    bookingTsx,
+    /setScheduleByService\(\(current\) => \{[\s\S]*getCartScheduleConflict\(key, liveStaffId, time, current\)[\s\S]*return current;/
+  );
+  assert.match(
+    bookingTsx,
+    /const liveDraftConflict = cart\.find[\s\S]*getCartScheduleConflict\(key, selected\.staffId, selected\.time, scheduleByService\)/
+  );
+});
