@@ -3,6 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const migration = readFileSync("migrations/core/0088_internal_booking_parties.sql", "utf8");
+const guestMigration = readFileSync("migrations/core/0089_internal_booking_guest_companions.sql", "utf8");
+const cashbackRepo = readFileSync("workers/core/repositories/cashback.js", "utf8");
 const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
 const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
 const source = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
@@ -34,4 +36,25 @@ test("frontend/core contracts carry party metadata through the canonical booking
     assert.ok(mapper.includes(field), `missing mapper field ${field}`);
     assert.ok(source.includes(field), `missing data-source field ${field}`);
   }
+});
+
+
+test("booking-only party guests are persisted outside the canonical clients table", () => {
+  assert.match(guestMigration, /CREATE TABLE IF NOT EXISTS booking_party_guests/);
+  assert.match(guestMigration, /booking_id TEXT NOT NULL/);
+  assert.doesNotMatch(guestMigration, /INSERT INTO clients/);
+  assert.match(repo, /normalizeBookingGuestParticipant/);
+  assert.match(repo, /core_booking:guest_participant_invalid/);
+  assert.match(repo, /INSERT INTO booking_party_guests/);
+  assert.match(repo, /guest\?\.name \|\| client\?\.name/);
+  assert.match(repo, /booking_guest:\s*Boolean\(guest\)/);
+  assert.match(source, /readBookingGuestParticipant/);
+  assert.match(source, /guestParticipant,/);
+  assert.match(types, /guestParticipant\?:\s*\{/);
+});
+
+test("booking-only guests cannot use client packages or earn client cashback", () => {
+  assert.match(repo, /core_booking:guest_package_not_allowed/);
+  assert.match(cashbackRepo, /SELECT id FROM booking_party_guests WHERE salon_id = \? AND booking_id = \? LIMIT 1/);
+  assert.match(cashbackRepo, /skipped:\s*'booking_guest'/);
 });
