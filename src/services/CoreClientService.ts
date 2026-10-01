@@ -9,6 +9,15 @@ export type CoreClientLoyaltySummary = {
   totalPoints: number;
 };
 
+export type CoreClientDirectorySummary = {
+  totalClients: number;
+  totalBookings: number;
+  activeClients: number;
+  newThisMonth: number;
+  vipClients: number;
+  averageBookings: number;
+};
+
 const LOYALTY_SUMMARY_TTL_MS = 60_000;
 let loyaltySummaryCache: { value: CoreClientLoyaltySummary; expiresAt: number } | null = null;
 let loyaltySummaryRequest: Promise<CoreClientLoyaltySummary> | null = null;
@@ -356,6 +365,20 @@ export const CoreClientService = {
       }
     );
     return rows.map(mapClient);
+  },
+
+  async directorySummary(): Promise<CoreClientDirectorySummary> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/clients/directory-summary"
+    );
+    return {
+      totalClients: finiteNumber(row.totalClients ?? row.total_clients),
+      totalBookings: finiteNumber(row.totalBookings ?? row.total_bookings),
+      activeClients: finiteNumber(row.activeClients ?? row.active_clients),
+      newThisMonth: finiteNumber(row.newThisMonth ?? row.new_this_month),
+      vipClients: finiteNumber(row.vipClients ?? row.vip_clients),
+      averageBookings: finiteNumber(row.averageBookings ?? row.average_bookings),
+    };
   },
 
   async loyaltySummary(): Promise<CoreClientLoyaltySummary> {
