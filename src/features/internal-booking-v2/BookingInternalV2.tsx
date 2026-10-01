@@ -1986,8 +1986,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setManualMaxDiscount(String(draft.manualMaxDiscount || ""));
     setSelectedOfferByClientKey(draft.selectedOfferByClientKey || {});
     setCouponInput(String(draft.couponInput || ""));
-    setCouponOffer(null);
-    pendingDraftCouponOfferIdRef.current = String(draft.couponOfferId || "");
+    const savedCouponOfferId = String(draft.couponOfferId || "");
+    const restoredCoupon = savedCouponOfferId
+      ? offers.find(
+          (offer) => String((offer as any)?.id || "").trim() === savedCouponOfferId
+        ) || null
+      : null;
+    setCouponOffer(restoredCoupon);
+    pendingDraftCouponOfferIdRef.current =
+      restoredCoupon ? "" : savedCouponOfferId;
     setCreatedBookingIds([]);
     setCreatedPartyBookings([]);
     setCreatedBookingReference("");
@@ -1997,7 +2004,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       t("تم استرجاع المسودة. سيتم التحقق من المواعيد مرة أخرى قبل الحفظ النهائي.")
     );
     setDraftMessage(t("تم استرجاع مسودة الحجز."));
-  }, [bookingDate, language]);
+  }, [bookingDate, offers, language]);
 
   const removeSavedDraft = useCallback(async (id: string) => {
     const draftId = String(id || "").trim();
