@@ -245,12 +245,26 @@
 .dashboard-v2.is-booking-internal-route .bk2-summary-card {
   position: sticky;
   top: var(--dsv2-space-5);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   max-height: calc(100dvh - 96px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-summary-scroll {
+  min-height: 0;
   padding: var(--dsv2-card-padding);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-summary-footer {
+  padding: 0 var(--dsv2-card-padding) var(--dsv2-card-padding);
+  border-top: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface);
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-section-title,
