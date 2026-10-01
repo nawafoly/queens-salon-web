@@ -87,7 +87,11 @@ requireText(booking, "const staleSelections", "Stale schedule selection detectio
 requireMatch(booking, /staleSelections\.length[\s\S]{0,1200}setStep\(3\)/, "Stale-slot recovery no longer returns the user to scheduling step 3.");
 requireText(booking, "staff_slot_conflict", "Staff slot conflict handling marker is missing.");
 requireText(booking, "SLOT_TAKEN", "SLOT_TAKEN conflict handling marker is missing.");
-requireMatch(booking, /Number\(error\?\.status \|\| 0\) === 409/, "HTTP 409 slot-conflict handling is missing.");
+requireText(booking, "client_schedule_conflict", "Client schedule conflict handling marker is missing.");
+requireMatch(booking, /code\.includes\("slot"\)[\s\S]{0,220}code\.includes\("client_schedule_conflict"\)/, "Specific slot-conflict handling is missing.");
+if (/Number\(error\?\.status \|\| 0\) === 409[\s\S]{0,40}\|\|/.test(booking)) {
+  errors.push("Generic HTTP 409 must not be treated as a slot conflict.");
+}
 requireMatch(booking, /setAvailableTimes\(\{\}\)[\s\S]{0,450}setStep\(3\)/, "Conflict recovery no longer clears times and returns to step 3.");
 
 // Booking write and payment integrity.
