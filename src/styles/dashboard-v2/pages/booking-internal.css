@@ -269,6 +269,30 @@
   background: var(--dsv2-surface);
 }
 
+@media (min-width: 1120px) {
+  .dashboard-v2.is-booking-internal-route .bk2-workspace {
+    --bk2-workspace-sticky-top: calc(10px + var(--dash-topbar-height) + var(--dsv2-space-3));
+    --bk2-workspace-viewport-height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-main-card,
+  .dashboard-v2.is-booking-internal-route .bk2-summary-card {
+    position: sticky;
+    top: var(--bk2-workspace-sticky-top);
+    align-self: start;
+    min-height: 0;
+    height: var(--bk2-workspace-viewport-height);
+    max-height: var(--bk2-workspace-viewport-height);
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-main-card {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
 .dashboard-v2.is-booking-internal-route .bk2-section-title,
 .dashboard-v2.is-booking-internal-route .bk2-summary-title {
   display: flex;
