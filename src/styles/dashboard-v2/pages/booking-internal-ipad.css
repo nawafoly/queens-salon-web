@@ -155,6 +155,72 @@
     display: none;
   }
 
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-groups {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-groups::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group {
+    flex: 0 0 min(300px, 78vw);
+    width: min(300px, 78vw);
+    max-width: 300px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group > header {
+    padding: 8px 10px;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group .bk2-summary-services {
+    grid-column: auto;
+    display: flex;
+    gap: 6px;
+    max-width: 100%;
+    margin: 0;
+    padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-block: 1px solid var(--dsv2-divider);
+    scrollbar-width: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group .bk2-summary-services::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group .bk2-summary-services > div {
+    flex: 0 0 auto;
+    min-width: 132px;
+    max-width: 170px;
+    padding: 7px 8px;
+    border: 1px solid var(--dsv2-border);
+    border-radius: 9px;
+    background: var(--dsv2-surface-soft);
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group .bk2-summary-services > div > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-party-group > footer {
+    padding: 7px 10px;
+  }
+
   .dashboard-v2.is-booking-internal-route .bk2-section-tabs button {
     min-height: 48px;
     padding-inline: 16px;
