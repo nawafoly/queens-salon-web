@@ -248,6 +248,7 @@
   align-self: start;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
   max-height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
   padding: 0;
   overflow: hidden;
