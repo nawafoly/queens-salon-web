@@ -2803,6 +2803,20 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         >
           {language === "en" ? "Hair Length Guide" : "دليل أطوال الشعر"}
         </button>
+        {mode === "new" ? (
+          <button
+            type="button"
+            className="bk2-draft-save"
+            onClick={() => void saveDraftForLater()}
+            disabled={draftSaving}
+          >
+            {draftSaving
+              ? t("جاري حفظ المسودة...")
+              : activeDraftId
+                ? t("تحديث المسودة")
+                : t("حفظ ومتابعة لاحقًا")}
+          </button>
+        ) : null}
         <div className="bk2-mode-switch" aria-label={t("وضع الحجز")}>
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>{t("حجز جديد")}</button>
           <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>{t("الباقات والجلسات")}</button>
@@ -2811,6 +2825,50 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       {mode === "sessions" ? <PackageSessionsManager language={language} /> : (
         <>
+          {(draftsLoading || savedDrafts.length > 0 || draftMessage) ? (
+            <section className="bk2-drafts-panel">
+              <div className="bk2-drafts-head">
+                <div>
+                  <strong>{t("مسودات الحجز")}</strong>
+                  <small>{t("احفظي الحجز غير المكتمل وارجعي له بدون فقد البيانات.")}</small>
+                </div>
+                {draftsLoading ? <span>{t("جاري تحميل المسودات...")}</span> : null}
+              </div>
+              {draftMessage ? <p className="bk2-draft-message">{draftMessage}</p> : null}
+              {savedDrafts.length ? (
+                <div className="bk2-drafts-list">
+                  {savedDrafts.slice(0, 5).map((row) => (
+                    <article
+                      key={row.id}
+                      className={activeDraftId === row.id ? "is-active" : ""}
+                    >
+                      <div>
+                        <strong>{row.title || t("مسودة حجز")}</strong>
+                        <small>
+                          {t("آخر تحديث")}: {new Date(row.updated_at).toLocaleString(locale)}
+                          {" · "}
+                          {t("الخطوة")} {row.current_step}
+                        </small>
+                      </div>
+                      <div className="bk2-draft-actions">
+                        <button type="button" onClick={() => resumeSavedDraft(row)}>
+                          {t("استكمال")}
+                        </button>
+                        <button
+                          type="button"
+                          className="is-danger"
+                          onClick={() => void removeSavedDraft(row.id)}
+                        >
+                          {t("حذف المسودة")}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <nav className="bk2-stepper" aria-label={t("خطوات الحجز")}>
             {steps.map((item, index) => {
               const Icon = item.icon;
