@@ -85,7 +85,7 @@ test("desktop booking summary follows page scroll and sticks only below the topb
   );
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
+    /\.bk2-summary-card\s*\{[\s\S]*height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);[\s\S]*max-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
   );
   assert.match(
     css,
@@ -103,5 +103,21 @@ test("wheel input over the booking sidebar scrolls the sidebar before the page",
   assert.match(
     bookingTsx,
     /<aside className="bk2-summary-card" onWheel=\{handleSummaryWheel\}>[\s\S]*ref=\{summaryScrollRef\} className="bk2-summary-scroll"/
+  );
+});
+
+
+test("desktop summary fills the available viewport so page scrolling does not leave a blank column below it", () => {
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
+  );
+  assert.match(
+    css,
+    /@media \(min-width: 744px\) and \(max-width: 1119px\)[\s\S]*\.bk2-summary-card\s*\{[\s\S]*height:\s*auto;[\s\S]*max-height:\s*none;/
+  );
+  assert.match(
+    bookingMobileCss,
+    /\.bk2-summary-card\s*\{[\s\S]*height:\s*auto;[\s\S]*max-height:\s*none;/
   );
 });
