@@ -48,6 +48,10 @@ const bookingMobileCss = fs.readFileSync(
   new URL("../src/styles/dashboard-v2/pages/booking-internal-mobile.css", import.meta.url),
   "utf8"
 );
+const dashboardLayoutCss = fs.readFileSync(
+  new URL("../src/styles/dashboard/dashboard-layout.css", import.meta.url),
+  "utf8"
+);
 
 test("booking summary scrolls independently while checkout controls stay outside the scroller", () => {
   assert.match(
@@ -172,5 +176,17 @@ test("summary uses a normal-flow column wrapper so sticky begins only at the top
   assert.match(
     bookingMobileCss,
     /\.bk2-summary-column\s*\{[\s\S]*order:\s*1;[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
+  );
+});
+
+
+test("booking route does not create a false scroll container that breaks sticky summary", () => {
+  assert.match(
+    dashboardLayoutCss,
+    /\.dashboard-skin\.is-booking-internal-route\s*\{[\s\S]*overflow-x:\s*clip\s*!important;[\s\S]*overflow-y:\s*visible\s*!important;/
+  );
+  assert.doesNotMatch(
+    dashboardLayoutCss,
+    /\.dashboard-skin\.is-booking-internal-route\s*\{[\s\S]{0,220}overflow-x:\s*hidden\s*!important;/
   );
 });
