@@ -243,8 +243,8 @@
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-summary-card {
-  position: sticky;
-  top: calc(10px + var(--dash-topbar-height) + var(--dsv2-space-3));
+  position: relative;
+  top: auto;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   max-height: calc(100dvh - 96px);
