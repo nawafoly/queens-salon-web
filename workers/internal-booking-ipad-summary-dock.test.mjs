@@ -88,3 +88,16 @@ test("sticky booking summary starts below the dashboard topbar without changing 
     /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - 96px\);/
   );
 });
+
+
+test("wheel input over the booking sidebar scrolls the sidebar before the page", () => {
+  assert.match(bookingTsx, /const summaryScrollRef = useRef<HTMLDivElement \| null>\(null\)/);
+  assert.match(
+    bookingTsx,
+    /handleSummaryWheel = useCallback\(\(event: WheelEvent<HTMLElement>\)[\s\S]*scroller\.scrollTop = Math\.max/
+  );
+  assert.match(
+    bookingTsx,
+    /<aside className="bk2-summary-card" onWheel=\{handleSummaryWheel\}>[\s\S]*ref=\{summaryScrollRef\} className="bk2-summary-scroll"/
+  );
+});
