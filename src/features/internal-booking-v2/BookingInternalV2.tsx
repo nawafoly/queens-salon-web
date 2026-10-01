@@ -2240,7 +2240,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         }
       } catch (creationError) {
         const compensation = await Promise.allSettled(
-          createdParentIds.map((bookingId) => bookingDataSource.updateBookingStatus(bookingId, "cancelled"))
+          createdParentIds.map((bookingId) => bookingDataSource.rollbackBookingCreation(bookingId))
         );
         compensationFailed = compensation.some((result) => result.status === "rejected");
         if (compensationFailed) {
@@ -2325,9 +2325,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const code = String(error?.code || "").toLowerCase();
       const message = String(error?.message || error || "");
       const isSlotConflict =
-        Number(error?.status || 0) === 409 ||
         code.includes("slot") ||
         code.includes("staff_slot_conflict") ||
+        code.includes("client_schedule_conflict") ||
         message.toUpperCase().includes("SLOT_TAKEN") ||
         message.toLowerCase().includes("الموعد محجوز");
 
