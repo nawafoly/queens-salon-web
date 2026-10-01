@@ -78,10 +78,10 @@ test("internal booking uses the full dashboard workspace width", () => {
 });
 
 
-test("booking summary stays in normal page flow instead of sticking in the viewport", () => {
+test("desktop booking summary follows page scroll and sticks only below the topbar", () => {
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*static;[\s\S]*align-self:\s*start;/
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*align-self:\s*start;/
   );
   assert.match(
     bookingCss,
@@ -89,14 +89,8 @@ test("booking summary stays in normal page flow instead of sticking in the viewp
   );
   assert.match(
     css,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*static;[\s\S]*z-index:\s*auto;/
+    /@media \(min-width: 1120px\) and \(max-width: 1400px\)[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
   );
-  assert.match(
-    css,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
-  );
-  assert.doesNotMatch(bookingCss, /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;/);
-  assert.doesNotMatch(css, /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;/);
 });
 
 
