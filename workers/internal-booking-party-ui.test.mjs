@@ -119,11 +119,27 @@ test("party booking controls are styled and translated", () => {
 });
 
 
-test("new companions require a name but may omit phone and email", () => {
-  assert.match(tsx, /!addingCompanion && \(!phone \|\| phone\.length !== 10\)/);
-  assert.match(tsx, /phone: phone \|\| undefined/);
-  assert.match(tsx, /addingCompanion \? "اسم المرافقة" : "اسم العميلة"/);
-  assert.match(tsx, /addingCompanion \? "رقم الجوال \(اختياري\)" : "رقم الجوال"/);
-  assert.match(tsx, /اسم المرافقة مطلوب\. رقم الجوال والبريد الإلكتروني اختياريان\./);
-  assert.match(language, /"رقم الجوال \(اختياري\)": "Mobile number \(optional\)"/);
+test("no-phone companions stay booking-only instead of creating client profiles", () => {
+  assert.match(tsx, /if \(addingCompanion && !phone\)/);
+  assert.match(tsx, /const guestId = `booking_guest_/);
+  assert.match(tsx, /bookingGuest:\s*true/);
+  assert.match(tsx, /source:\s*"booking_guest"/);
+  assert.match(tsx, /!isBookingGuest\(client\) && phone10Digits\(client\.phone\)\.length !== 10/);
+  assert.match(tsx, /guestParticipant:\s*isBookingGuest\(client\)/);
+  assert.match(tsx, /إضافة المرافقة للحجز/);
+  assert.match(tsx, /بدون رقم جوال ستُضاف كمرافقة لهذا الحجز فقط ولن يتم إنشاء ملف عميلة لها/);
+  assert.match(language, /"إضافة المرافقة للحجز": "Add companion to booking"/);
+});
+
+test("party members can be edited without changing their booking ownership key", () => {
+  assert.match(tsx, /const \[editingPartyClientKey, setEditingPartyClientKey\]/);
+  assert.match(tsx, /const stablePartyKey = String\(client\.partyKey \|\| ""\)\.trim\(\)/);
+  assert.match(tsx, /partyKey:\s*oldKey/);
+  assert.match(tsx, /bookingLineClientKey\(item\) === oldKey/);
+  assert.match(tsx, /__partyClientName:\s*next\.name/);
+  assert.match(tsx, /className="bk2-party-client-edit"/);
+  assert.match(tsx, /openPartyMemberEditor\(client\)/);
+  assert.match(tsx, /className="bk2-party-review-members"/);
+  assert.match(css, /\.bk2-party-client-edit/);
+  assert.match(css, /\.bk2-party-review-member/);
 });
