@@ -226,10 +226,6 @@
   gap: var(--dsv2-grid-gap);
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-summary-column {
-  min-width: 0;
-  align-self: stretch;
-}
 
 .dashboard-v2.is-booking-internal-route .bk2-main-card,
 .dashboard-v2.is-booking-internal-route .bk2-summary-card,
@@ -250,6 +246,7 @@
 .dashboard-v2.is-booking-internal-route .bk2-summary-card {
   position: sticky;
   top: calc(10px + var(--dash-topbar-height) + var(--dsv2-space-3));
+  align-self: start;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
