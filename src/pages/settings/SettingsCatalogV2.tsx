@@ -355,7 +355,12 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     const needle = search.trim().toLowerCase();
     return sections
       .filter((row) => statusFilter === "all" ? true : statusFilter === "active" ? row.active : !row.active)
-      .filter((row) => !needle || row.id.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))
+      .filter((row) =>
+        !needle ||
+        row.id.toLowerCase().includes(needle) ||
+        row.name.toLowerCase().includes(needle) ||
+        String(row.nameEn || "").toLowerCase().includes(needle),
+      )
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
   }, [search, sections, statusFilter]);
 
@@ -366,9 +371,21 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       .filter((row) => serviceSectionFilter === "all" || String(row.sectionId || "").trim() === serviceSectionFilter)
       .filter((row) => {
         if (!needle) return true;
-        const sectionName = String(sectionById.get(String(row.sectionId || "").trim())?.name || "").toLowerCase();
-        const categoryName = String(categoryById.get(String(row.categoryId || "").trim())?.name || "").toLowerCase();
-        return row.id.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle) || sectionName.includes(needle) || categoryName.includes(needle);
+        const section = sectionById.get(String(row.sectionId || "").trim());
+        const category = categoryById.get(String(row.categoryId || "").trim());
+        const sectionName = String(section?.name || "").toLowerCase();
+        const sectionNameEn = String(section?.nameEn || "").toLowerCase();
+        const categoryName = String(category?.name || "").toLowerCase();
+        const categoryNameEn = String(category?.nameEn || "").toLowerCase();
+        return (
+          row.id.toLowerCase().includes(needle) ||
+          row.name.toLowerCase().includes(needle) ||
+          String(row.nameEn || "").toLowerCase().includes(needle) ||
+          sectionName.includes(needle) ||
+          sectionNameEn.includes(needle) ||
+          categoryName.includes(needle) ||
+          categoryNameEn.includes(needle)
+        );
       })
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
   }, [categoryById, search, sectionById, serviceSectionFilter, services, statusFilter]);
@@ -392,9 +409,21 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       .filter((row) => packageServiceView === "all" || selectedPackageServiceIds.includes(row.id))
       .filter((row) => {
         if (!needle) return true;
-        const sectionName = String(sectionById.get(String(row.sectionId || "").trim())?.name || "").toLowerCase();
-        const categoryName = String(categoryById.get(String(row.categoryId || "").trim())?.name || "").toLowerCase();
-        return row.name.toLowerCase().includes(needle) || row.id.toLowerCase().includes(needle) || sectionName.includes(needle) || categoryName.includes(needle);
+        const section = sectionById.get(String(row.sectionId || "").trim());
+        const category = categoryById.get(String(row.categoryId || "").trim());
+        const sectionName = String(section?.name || "").toLowerCase();
+        const sectionNameEn = String(section?.nameEn || "").toLowerCase();
+        const categoryName = String(category?.name || "").toLowerCase();
+        const categoryNameEn = String(category?.nameEn || "").toLowerCase();
+        return (
+          row.name.toLowerCase().includes(needle) ||
+          String(row.nameEn || "").toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          sectionName.includes(needle) ||
+          sectionNameEn.includes(needle) ||
+          categoryName.includes(needle) ||
+          categoryNameEn.includes(needle)
+        );
       })
       .sort((a, b) => {
         const selectedDelta = Number(selectedPackageServiceIds.includes(b.id)) - Number(selectedPackageServiceIds.includes(a.id));
