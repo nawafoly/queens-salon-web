@@ -244,10 +244,10 @@
 
 .dashboard-v2.is-booking-internal-route .bk2-summary-card {
   position: sticky;
-  top: var(--dsv2-space-5);
+  top: calc(10px + var(--dash-topbar-height) + var(--dsv2-space-3));
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  max-height: calc(100dvh - 96px);
+  max-height: calc(100dvh - var(--dash-topbar-height) - 42px);
   padding: 0;
   overflow: hidden;
 }
