@@ -69,13 +69,23 @@ function clientListOffset(value) {
   return Math.max(0, Math.min(50_000, Math.trunc(parsed)));
 }
 
+function clientPhoneSearchFragment(value) {
+  const digits = cleanText(value).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) return `966${digits.slice(5)}`;
+  if (digits.startsWith('9660')) return `966${digits.slice(4)}`;
+  if (digits.startsWith('05')) return `966${digits.slice(1)}`;
+  if (digits.startsWith('5')) return `966${digits}`;
+  return digits;
+}
+
 export async function listClients(db, salonId, query = {}) {
   const includeLoyalty = wantsLoyaltySummary(query);
   const includeMetrics = wantsClientMetrics(query);
   const limit = clientListLimit(query.limit);
   const offset = clientListOffset(query.offset);
   const search = cleanText(query.search || query.q).toLowerCase();
-  const phone = normalizePhone(search);
+  const phoneSearch = clientPhoneSearchFragment(search);
 
   const searchClause = search
     ? ` AND (
@@ -84,7 +94,7 @@ export async function listClients(db, salonId, query = {}) {
          OR INSTR(LOWER(COALESCE(c.email, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
-         OR (? <> '' AND c.phone_normalized = ?)
+         OR (? <> '' AND INSTR(COALESCE(c.phone_normalized, ''), ?) > 0)
        )`
     : '';
 
@@ -95,8 +105,8 @@ export async function listClients(db, salonId, query = {}) {
         search,
         search,
         search,
-        phone || '',
-        phone || '',
+        phoneSearch || '',
+        phoneSearch || '',
       ]
     : [];
 
@@ -299,7 +309,7 @@ export async function listClients(db, salonId, query = {}) {
          OR INSTR(LOWER(COALESCE(email, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(phone_normalized, '')), ?) > 0
-         OR (? <> '' AND phone_normalized = ?)
+         OR (? <> '' AND INSTR(COALESCE(phone_normalized, ''), ?) > 0)
        )`
     : '';
 
@@ -312,6 +322,62 @@ export async function listClients(db, salonId, query = {}) {
      LIMIT ? OFFSET ?`,
     [salonId, ...searchParams, limit, offset]
   );
+}
+
+
+export async function getClientDirectorySummary(db, salonId) {
+  const riyadhOffsetMs = 3 * 60 * 60 * 1000;
+  const shiftedNow = new Date(Date.now() + riyadhOffsetMs);
+  const year = shiftedNow.getUTCFullYear();
+  const month = shiftedNow.getUTCMonth();
+  const monthStart = new Date(Date.UTC(year, month, 1) - riyadhOffsetMs).toISOString();
+  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1) - riyadhOffsetMs).toISOString();
+
+  const clientSummary = await dbFirst(
+    db,
+    `SELECT
+       COUNT(*) AS total_clients,
+       COALESCE(SUM(
+         CASE
+           WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('', 'active') THEN 1
+           ELSE 0
+         END
+       ), 0) AS active_clients,
+       COALESCE(SUM(CASE WHEN COALESCE(vip, 0) = 1 THEN 1 ELSE 0 END), 0) AS vip_clients,
+       COALESCE(SUM(
+         CASE
+           WHEN created_at >= ? AND created_at < ? THEN 1
+           ELSE 0
+         END
+       ), 0) AS new_this_month
+     FROM clients
+     WHERE salon_id = ?`,
+    [monthStart, nextMonthStart, salonId]
+  );
+
+  const bookingSummary = await dbFirst(
+    db,
+    `SELECT COUNT(*) AS total_bookings
+       FROM bookings b
+       INNER JOIN clients c
+         ON c.salon_id = b.salon_id
+        AND c.id = b.client_id
+      WHERE b.salon_id = ?
+        AND b.deleted_at IS NULL`,
+    [salonId]
+  );
+
+  const totalClients = Number(clientSummary?.total_clients || 0);
+  const totalBookings = Number(bookingSummary?.total_bookings || 0);
+
+  return {
+    totalClients,
+    totalBookings,
+    activeClients: Number(clientSummary?.active_clients || 0),
+    newThisMonth: Number(clientSummary?.new_this_month || 0),
+    vipClients: Number(clientSummary?.vip_clients || 0),
+    averageBookings: totalClients ? totalBookings / totalClients : 0,
+  };
 }
 
 export async function getClientLoyaltySummary(db, salonId) {
