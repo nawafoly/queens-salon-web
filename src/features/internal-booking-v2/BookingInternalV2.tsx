@@ -1194,6 +1194,22 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [language]);
 
   useEffect(() => {
+    const pendingId = pendingDraftCouponOfferIdRef.current;
+    if (!pendingId || !offers.length) return;
+    const restored =
+      offers.find(
+        (offer) => String((offer as any)?.id || "").trim() === pendingId
+      ) || null;
+    setCouponOffer(restored);
+    pendingDraftCouponOfferIdRef.current = "";
+    if (!restored && discountMode === "coupon") {
+      setCouponMessage(
+        t("الكوبون المحفوظ لم يعد نشطًا. تحققي منه قبل إتمام الحجز.")
+      );
+    }
+  }, [offers, discountMode, language]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadAllServicesForOffers() {
       try {
