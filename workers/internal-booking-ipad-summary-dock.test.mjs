@@ -48,10 +48,6 @@ const bookingMobileCss = fs.readFileSync(
   new URL("../src/styles/dashboard-v2/pages/booking-internal-mobile.css", import.meta.url),
   "utf8"
 );
-const dashboardLayoutCss = fs.readFileSync(
-  new URL("../src/styles/dashboard/dashboard-layout.css", import.meta.url),
-  "utf8"
-);
 
 test("booking summary scrolls independently while checkout controls stay outside the scroller", () => {
   assert.match(
@@ -85,11 +81,7 @@ test("internal booking uses the full dashboard workspace width", () => {
 test("desktop booking summary follows page scroll and sticks only below the topbar", () => {
   assert.match(
     bookingCss,
-    /\.bk2-summary-column\s*\{[\s\S]*align-self:\s*stretch;/
-  );
-  assert.match(
-    bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*align-self:\s*start;/
   );
   assert.match(
     bookingCss,
@@ -156,37 +148,23 @@ test("desktop main booking area stays in normal page flow while only the summary
 });
 
 
-test("summary uses a normal-flow column wrapper so sticky begins only at the topbar boundary", () => {
+test("desktop summary is the direct sticky grid item and is not constrained by a same-height wrapper", () => {
+  assert.doesNotMatch(bookingTsx, /bk2-summary-column/);
   assert.match(
     bookingTsx,
-    /<div className="bk2-summary-column">[\s\S]*<aside className="bk2-summary-card">/
+    /<div className="bk2-workspace">[\s\S]*<main className="bk2-main-card">[\s\S]*<aside className="bk2-summary-card">/
   );
   assert.match(
     bookingCss,
-    /\.bk2-summary-column\s*\{[\s\S]*align-self:\s*stretch;/
-  );
-  assert.match(
-    bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*align-self:\s*start;/
   );
   assert.match(
     css,
-    /\.bk2-summary-column\s*\{[\s\S]*order:\s*1;[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
+    /@media \(min-width: 744px\) and \(max-width: 1119px\)[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;[\s\S]*order:\s*1;/
   );
   assert.match(
     bookingMobileCss,
-    /\.bk2-summary-column\s*\{[\s\S]*order:\s*1;[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*static;[\s\S]*order:\s*1;/
   );
 });
 
-
-test("booking route does not create a false scroll container that breaks sticky summary", () => {
-  assert.match(
-    dashboardLayoutCss,
-    /\.dashboard-skin\.is-booking-internal-route\s*\{[\s\S]*overflow-x:\s*clip\s*!important;[\s\S]*overflow-y:\s*visible\s*!important;/
-  );
-  assert.doesNotMatch(
-    dashboardLayoutCss,
-    /\.dashboard-skin\.is-booking-internal-route\s*\{[\s\S]{0,220}overflow-x:\s*hidden\s*!important;/
-  );
-});
