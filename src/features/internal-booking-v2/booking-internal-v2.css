@@ -226,6 +226,8 @@
 .bk2-client-identity-check.is-loading .bk2-client-identity-dot { background:#8b001f; box-shadow:0 0 0 4px rgba(139,0,31,.1); animation:bk2-client-check-pulse 1s ease-in-out infinite; }
 .bk2-client-identity-check.is-clear { border-color:#bfe4cf; background:#f4fcf7; }
 .bk2-client-identity-check.is-clear .bk2-client-identity-dot { background:#178150; box-shadow:0 0 0 4px rgba(23,129,80,.1); }
+.bk2-client-identity-check.is-guest { border-color:#ead59b; background:#fffaf0; }
+.bk2-client-identity-check.is-guest .bk2-client-identity-dot { background:#c49a00; box-shadow:0 0 0 4px rgba(196,154,0,.1); }
 .bk2-client-identity-check.is-error { border-color:#efbcc7; background:#fff6f8; }
 .bk2-client-identity-check.is-error strong { color:#9a1736; }
 @keyframes bk2-client-check-pulse { 50% { transform:scale(.72); opacity:.55; } }
@@ -594,6 +596,10 @@
 .bk2-party-client-chip>button:first-child>span:last-child{display:grid;gap:1px;min-width:0}
 .bk2-party-client-chip strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .bk2-party-client-chip small{color:#858da0;font-size:10px;font-weight:800}
+.bk2-party-client-actions{display:flex;align-items:stretch;border-inline-start:1px solid #edf0f4}
+.bk2-party-client-edit{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:62px;padding:0 9px;border:0;background:#fff;color:#5e4800;font:inherit;font-size:10px;font-weight:900;cursor:pointer}
+.bk2-party-client-edit:hover{background:#fff9df}
+.bk2-party-client-edit svg{font-size:12px}
 .bk2-party-client-remove{width:34px;border:0;border-inline-start:1px solid #edf0f4;background:#fff;color:#9b2441;font-size:20px;font-weight:500;cursor:pointer}
 .bk2-party-client-remove:hover{background:#fff1f4}
 .bk2-party-mode-note{margin:0;padding:9px 10px;border-radius:10px;background:#f4f0ff;color:#5f3a91;font-size:11px;font-weight:800;line-height:1.55}
@@ -609,6 +615,13 @@
 .bk2-party-service-owner button.is-active{border-color:#b58d00;background:#fff8dc;color:#5f4800;box-shadow:0 0 0 2px rgba(181,141,0,.08)}
 .bk2-party-service-owner button.is-active>small{color:#896d0c}
 
+.bk2-party-review-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px;margin:0 0 16px}
+.bk2-party-review-member{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #e2e6ed;border-radius:12px;background:#fbfcfd}
+.bk2-party-review-member>span{display:grid;gap:2px;min-width:0}
+.bk2-party-review-member strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#172033}
+.bk2-party-review-member small{font-size:10px;color:#858da0;font-weight:800}
+.bk2-party-review-member>button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:0 10px;border:1px solid #d8b84a;border-radius:9px;background:#fff9df;color:#5e4800;font:inherit;font-size:10px;font-weight:900;cursor:pointer;white-space:nowrap}
+
 .bk2-party-success-bookings{display:grid;gap:6px;width:min(100%,520px);margin:2px auto 4px}
 .bk2-party-success-bookings>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 11px;border:1px solid #d9e9df;border-radius:10px;background:#fbfffc}
 .bk2-party-success-bookings span{font-size:12px;font-weight:850;color:#31433a}
@@ -617,7 +630,9 @@
 @media(max-width:720px){
   .bk2-party-clients-head{align-items:stretch;flex-direction:column}
   .bk2-party-clients-head>button{width:100%}
-  .bk2-party-client-chip{min-width:165px}
+  .bk2-party-client-chip{min-width:210px}
+  .bk2-party-client-edit{min-width:56px;padding-inline:7px}
+  .bk2-party-review-members{grid-template-columns:1fr}
   .bk2-party-service-owner button{min-width:135px}
   .bk2-party-success-bookings{width:100%}
 }
