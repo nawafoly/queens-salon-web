@@ -2962,6 +2962,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               ) : (
                 <section className="bk2-payment-step">
                   <div className="bk2-section-title"><div><h2>{t("المراجعة والدفع")}</h2><p>{t("راجعي الحجز ثم اختاري طريقة ونوع التحصيل.")}</p></div><span><FiCreditCard /></span></div>
+                  {!createdBookingIds.length && bookingClients.length ? (
+                    <div className="bk2-party-review-members">
+                      {bookingClients.map((client, index) => {
+                        const key = partyClientKey(client);
+                        return (
+                          <div key={key} className="bk2-party-review-member">
+                            <span>
+                              <strong>{client.name}</strong>
+                              <small>
+                                {index === 0 ? t("العميلة الأساسية") : t("مرافقة")}
+                                {isBookingGuest(client) ? ` · ${t("لهذا الحجز فقط")}` : ""}
+                              </small>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStep(1);
+                                window.setTimeout(() => openPartyMemberEditor(client), 0);
+                              }}
+                            >
+                              <FiEdit2 /> {t("تعديل")}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {createdBookingIds.length ? (
                     <div className="bk2-booking-success">
                       <strong>✓ {t(createdPartyBookings.length > 1 ? "تم حفظ مجموعة الحجز بنجاح" : "تم حفظ الحجز بنجاح")}</strong>
