@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const migration = readFileSync("migrations/core/0088_internal_booking_parties.sql", "utf8");
-const guestMigration = readFileSync("migrations/core/0089_internal_booking_guest_companions.sql", "utf8");
+const guestMigration = readFileSync("migrations/core/0090_internal_booking_guest_companions.sql", "utf8");
 const cashbackRepo = readFileSync("workers/core/repositories/cashback.js", "utf8");
 const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
 const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
