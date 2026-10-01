@@ -137,11 +137,6 @@
     min-height: 0;
   }
 
-  .dashboard-v2.is-booking-internal-route .bk2-summary-column {
-    order: 1;
-    min-width: 0;
-  }
-
   .dashboard-v2.is-booking-internal-route .bk2-summary-card {
     position: static;
     order: 1;
