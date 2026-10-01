@@ -2573,6 +2573,27 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           );
         }
       }
+
+      if (activeDraftId) {
+        try {
+          await CoreInternalBookingDraftService.remove(activeDraftId);
+          setSavedDrafts((current) =>
+            current.filter((row) => row.id !== activeDraftId)
+          );
+          setActiveDraftId("");
+        } catch (draftCleanupError) {
+          console.error(
+            "[BookingInternalV2] completed draft cleanup failed",
+            draftCleanupError
+          );
+          setPostSaveWarning((current) =>
+            [
+              current,
+              t("تم إنشاء الحجز، لكن تعذر حذف المسودة المحفوظة. احذفيها يدويًا حتى لا يتم استكمالها بالخطأ."),
+            ].filter(Boolean).join(" ")
+          );
+        }
+      }
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
       const code = String(error?.code || "").toLowerCase();
