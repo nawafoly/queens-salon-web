@@ -76,3 +76,15 @@ test("internal booking uses the full dashboard workspace width", () => {
   );
   assert.doesNotMatch(bookingCss, /\.bk2-page > \*\s*\{[\s\S]{0,160}max-width:\s*1680px;/);
 });
+
+
+test("sticky booking summary remains fully visible below the dashboard topbar", () => {
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*max-height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 42px\);/
+  );
+});
