@@ -193,6 +193,37 @@ export function findClientItemOverlap(rows = []) {
   return null;
 }
 
+function isMissingGuestTableError(error) {
+  return cleanText(error?.message).toLowerCase().includes("no such table: booking_party_guests");
+}
+
+async function listBookingGuestsByBookingIds(db, salonId, ids) {
+  if (!ids.length) return [];
+  try {
+    return await dbAll(
+      db,
+      `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
+      [salonId, ...ids]
+    );
+  } catch (error) {
+    if (isMissingGuestTableError(error)) return [];
+    throw error;
+  }
+}
+
+async function getBookingGuestByBookingId(db, salonId, bookingId) {
+  try {
+    return await dbFirst(
+      db,
+      "SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1",
+      [salonId, bookingId]
+    );
+  } catch (error) {
+    if (isMissingGuestTableError(error)) return null;
+    throw error;
+  }
+}
+
 function normalizeBookingGuestParticipant(raw) {
   if (!raw || typeof raw !== "object") return null;
   const id = requiredId(raw.id, "guestParticipant.id");
@@ -541,11 +572,7 @@ export async function listBookings(db, salonId, query = {}) {
     ),
     Promise.all(
       bookingIdChunks.map((ids) =>
-        dbAll(
-          db,
-          `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
-          [salonId, ...ids]
-        )
+        listBookingGuestsByBookingIds(db, salonId, ids)
       )
     ),
   ]);
@@ -701,11 +728,7 @@ export async function getBooking(db, salonId, id) {
       "SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1",
       [salonId, booking.client_id]
     ),
-    dbFirst(
-      db,
-      "SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1",
-      [salonId, booking.id]
-    ),
+    getBookingGuestByBookingId(db, salonId, booking.id),
     booking.staff_id
       ? dbFirst(
           db,
