@@ -84,6 +84,7 @@ export interface BookingDataSource {
     parentPublicId: string;
     itemIds: string[];
   }>;
+  rollbackBookingCreation(id: string): Promise<void>;
   updateBooking(id: string, patch: Partial<BookingDoc>): Promise<void>;
   updateBookingStatus(
     id: string,
