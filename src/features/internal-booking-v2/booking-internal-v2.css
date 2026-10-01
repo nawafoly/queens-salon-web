@@ -48,6 +48,87 @@
   outline-offset: 2px;
 }
 
+.bk2-draft-save {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid #d9c4ca;
+  border-radius: 12px;
+  background: #fff8fa;
+  color: var(--bk2-maroon);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+.bk2-draft-save:disabled { opacity: .55; cursor: wait; }
+
+.bk2-drafts-panel {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid #eadde1;
+  border-radius: 16px;
+  background: #fffafb;
+}
+.bk2-drafts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.bk2-drafts-head strong,
+.bk2-drafts-head small { display: block; }
+.bk2-drafts-head small,
+.bk2-drafts-head > span {
+  margin-top: 3px;
+  color: var(--bk2-muted);
+  font-size: .75rem;
+}
+.bk2-draft-message {
+  margin: 10px 0 0;
+  color: #596174;
+  font-size: .8rem;
+}
+.bk2-drafts-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bk2-drafts-list > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+  border: 1px solid var(--bk2-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.bk2-drafts-list > article.is-active {
+  border-color: #b77e8e;
+  box-shadow: 0 0 0 2px rgba(91, 0, 22, .05);
+}
+.bk2-drafts-list strong,
+.bk2-drafts-list small { display: block; }
+.bk2-drafts-list small { margin-top: 3px; color: var(--bk2-muted); font-size: .72rem; }
+.bk2-draft-actions { display: flex; gap: 7px; flex: 0 0 auto; }
+.bk2-draft-actions button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid #d7dce5;
+  border-radius: 9px;
+  background: #fff;
+  color: #333b4e;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+.bk2-draft-actions button:first-child {
+  border-color: var(--bk2-maroon);
+  color: var(--bk2-maroon);
+}
+.bk2-draft-actions button.is-danger { color: #a12b3d; }
+
 .bk2-mode-switch {
   display: inline-flex;
   padding: 4px;
@@ -180,6 +261,11 @@
   .bk2-page { padding: 14px; }
   .bk2-heading { align-items: stretch; flex-direction: column; }
   .bk2-hair-guide-trigger { width: 100%; min-height: 44px; }
+  .bk2-draft-save { width: 100%; min-height: 44px; }
+  .bk2-drafts-head,
+  .bk2-drafts-list > article { align-items: stretch; flex-direction: column; }
+  .bk2-draft-actions { width: 100%; }
+  .bk2-draft-actions button { flex: 1; }
   .bk2-mode-switch { width: 100%; }
   .bk2-mode-switch button { min-width: 0; flex: 1; }
   .bk2-stepper { grid-template-columns: repeat(4, minmax(72px, 1fr)); overflow-x: auto; }
