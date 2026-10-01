@@ -142,3 +142,27 @@ test("desktop main booking area stays in normal page flow while only the summary
     /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*height:\s*calc\(100dvh - var\(--dash-topbar-height\) - 10px - var\(--dsv2-space-6\)\);/
   );
 });
+
+
+test("summary uses a normal-flow column wrapper so sticky begins only at the topbar boundary", () => {
+  assert.match(
+    bookingTsx,
+    /<div className="bk2-summary-column">[\s\S]*<aside className="bk2-summary-card" onWheel=\{handleSummaryWheel\}>/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-column\s*\{[\s\S]*align-self:\s*stretch;/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
+  );
+  assert.match(
+    css,
+    /\.bk2-summary-column\s*\{[\s\S]*order:\s*1;[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
+  );
+  assert.match(
+    bookingMobileCss,
+    /\.bk2-summary-column\s*\{[\s\S]*order:\s*1;[\s\S]*\.bk2-summary-card\s*\{[\s\S]*position:\s*static;/
+  );
+});
