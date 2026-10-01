@@ -140,10 +140,21 @@
   .dashboard-v2.is-booking-internal-route .bk2-summary-card {
     position: static;
     order: 1;
+    display: block;
     max-height: none;
+    overflow: visible;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-scroll {
+    padding: 0;
     overflow: visible;
     overscroll-behavior-y: auto;
     scrollbar-gutter: auto;
+  }
+
+  .dashboard-v2.is-booking-internal-route .bk2-summary-footer {
+    margin-top: 10px;
+    padding: 10px 0 0;
   }
 
   .dashboard-v2.is-booking-internal-route .bk2-section-title,
