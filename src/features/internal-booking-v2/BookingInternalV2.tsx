@@ -2982,6 +2982,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             </main>
 
             <aside className="bk2-summary-card">
+              <div className="bk2-summary-scroll">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
@@ -3021,6 +3022,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   })}
                 </div>
               ) : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
+              </div>
+              <div className="bk2-summary-footer">
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
                 <div><span>{t("سعر الحجز")}</span><strong>{money(bookingSubtotal)}</strong></div>
@@ -3054,6 +3057,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                       : "أكملي الموظفة والوقت لكل خدمة وسيظهر زر المتابعة.")}</p>
                 </div>
               ) : null}
+              </div>
             </aside>
           </div>
         </>
