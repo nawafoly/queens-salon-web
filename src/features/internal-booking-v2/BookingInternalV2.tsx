@@ -669,6 +669,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [draftMessage, setDraftMessage] = useState("");
   const [activeDraftId, setActiveDraftId] = useState("");
   const pendingDraftCouponOfferIdRef = useRef("");
+  const restoringDraftRef = useRef(false);
 
   const candidateFromCoreRow = useCallback((raw: any, fallbackSource = "core_d1"): ClientCandidate => ({
     id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
