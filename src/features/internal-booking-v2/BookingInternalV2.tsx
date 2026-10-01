@@ -529,9 +529,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [hairGuideOpen, setHairGuideOpen] = useState(false);
   const hairGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
   const summaryScrollRef = useRef<HTMLDivElement | null>(null);
-  const handleSummaryWheel = useCallback((event: WheelEvent<HTMLElement>) => {
-    const scroller = summaryScrollRef.current;
+  const routeWheelToScroller = useCallback((
+    event: WheelEvent<HTMLElement>,
+    scroller: HTMLElement | null
+  ) => {
     if (!scroller || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
 
     const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
@@ -548,6 +551,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       Math.min(maxScrollTop, scroller.scrollTop + event.deltaY)
     );
   }, []);
+
+  const handleMainWheel = useCallback((event: WheelEvent<HTMLElement>) => {
+    routeWheelToScroller(event, mainScrollRef.current);
+  }, [routeWheelToScroller]);
+
+  const handleSummaryWheel = useCallback((event: WheelEvent<HTMLElement>) => {
+    routeWheelToScroller(event, summaryScrollRef.current);
+  }, [routeWheelToScroller]);
 
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
@@ -2265,7 +2276,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           </nav>
 
           <div className="bk2-workspace">
-            <main className="bk2-main-card">
+            <main ref={mainScrollRef} className="bk2-main-card" onWheel={handleMainWheel}>
               {step === 1 ? (
                 <section className="bk2-client-step">
                   <div className="bk2-section-title"><div><h2>{t(addingCompanion ? "إضافة مرافقة للحجز" : selectedClient && !clientPickerOpen ? "العميلات في هذا الحجز" : "اختيار العميلة الأساسية")}</h2><p>{t(addingCompanion ? "الآن اختاري المرافقة من العملاء الموجودين أو أضيفي عميلة جديدة." : selectedClient && !clientPickerOpen ? "تم اختيار العميلة. يمكنك المتابعة أو إضافة مرافقة قبل اختيار الخدمات." : "ابدئي بالبحث عن العميلة الأساسية بالاسم أو الجوال أو رقم العضوية.")}</p></div><span><FiUser /></span></div>
