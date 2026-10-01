@@ -251,7 +251,7 @@
   position: sticky;
   top: calc(10px + var(--dash-topbar-height) + var(--dsv2-space-3));
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
   max-height: calc(100dvh - var(--dash-topbar-height) - 10px - var(--dsv2-space-6));
   padding: 0;
@@ -263,7 +263,7 @@
   padding: var(--dsv2-card-padding);
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
 }
 
@@ -309,8 +309,9 @@
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-summary-title {
-  padding-bottom: var(--dsv2-space-4);
+  padding: var(--dsv2-card-padding) var(--dsv2-card-padding) var(--dsv2-space-4);
   border-bottom: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface);
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-summary-title svg {
