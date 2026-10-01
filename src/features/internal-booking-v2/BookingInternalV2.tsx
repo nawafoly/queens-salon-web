@@ -1999,6 +1999,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setDraftMessage(t("تم استرجاع مسودة الحجز."));
   }, [bookingDate, language]);
 
+  const removeSavedDraft = useCallback(async (id: string) => {
+    const draftId = String(id || "").trim();
+    if (!draftId) return;
+    setDraftMessage("");
+    try {
+      await CoreInternalBookingDraftService.remove(draftId);
+      setSavedDrafts((current) => current.filter((row) => row.id !== draftId));
+      if (activeDraftId === draftId) setActiveDraftId("");
+      setDraftMessage(t("تم حذف مسودة الحجز."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft delete failed", error);
+      setDraftMessage(t("تعذر حذف مسودة الحجز."));
+    }
+  }, [activeDraftId, language]);
+
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
     setCouponMessage("");
