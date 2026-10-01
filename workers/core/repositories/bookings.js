@@ -524,7 +524,15 @@ export async function listBookings(db, salonId, query = {}) {
   const clientIds = [...new Set(rows.map((row) => cleanText(row.client_id)).filter(Boolean))];
   const staffIds = [...new Set(rows.map((row) => cleanText(row.staff_id)).filter(Boolean))];
   const bookingIdChunks = chunk(bookingIds);
-  const clientIdChunks = chunk(clientIds);
+  const guestBookingIdChunks = chunk(
+    rows
+      .filter((row) => cleanText(row.client_id).startsWith("booking_guest_"))
+      .map((row) => cleanText(row.id))
+      .filter(Boolean)
+  );
+  const clientIdChunks = chunk(
+    clientIds.filter((id) => !cleanText(id).startsWith("booking_guest_"))
+  );
   const staffIdChunks = chunk(staffIds);
 
   const [
@@ -571,7 +579,7 @@ export async function listBookings(db, salonId, query = {}) {
       )
     ),
     Promise.all(
-      bookingIdChunks.map((ids) =>
+      guestBookingIdChunks.map((ids) =>
         listBookingGuestsByBookingIds(db, salonId, ids)
       )
     ),
@@ -728,7 +736,9 @@ export async function getBooking(db, salonId, id) {
       "SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1",
       [salonId, booking.client_id]
     ),
-    getBookingGuestByBookingId(db, salonId, booking.id),
+    cleanText(booking.client_id).startsWith("booking_guest_")
+      ? getBookingGuestByBookingId(db, salonId, booking.id)
+      : Promise.resolve(null),
     booking.staff_id
       ? dbFirst(
           db,
