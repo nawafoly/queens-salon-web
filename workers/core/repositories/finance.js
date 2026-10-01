@@ -111,7 +111,7 @@ async function hydrateIncomeRows(db, salonId, rows) {
     ...new Set(bookings.map((row) => cleanText(row.client_id)).filter(Boolean)),
   ];
 
-  const [clientGroups, invoiceGroups, itemGroups] = await Promise.all([
+  const [clientGroups, invoiceGroups, itemGroups, guestGroups] = await Promise.all([
     Promise.all(
       chunkValues(clientIds).map((ids) =>
         dbAll(
@@ -139,10 +139,22 @@ async function hydrateIncomeRows(db, salonId, rows) {
         )
       )
     ),
+    Promise.all(
+      chunkValues(bookingIds).map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
+          [salonId, ...ids]
+        )
+      )
+    ),
   ]);
 
   const clientsById = new Map(
     clientGroups.flat().map((row) => [cleanText(row.id), row])
+  );
+  const guestsByBookingId = new Map(
+    guestGroups.flat().map((row) => [cleanText(row.booking_id), row])
   );
 
   const invoices = invoiceGroups.flat();
@@ -207,6 +219,7 @@ async function hydrateIncomeRows(db, salonId, rows) {
         ? explicitInvoice
         : invoiceByBookingId.get(effectiveBookingId);
     const client = clientsById.get(cleanText(booking.client_id));
+    const guest = guestsByBookingId.get(effectiveBookingId);
     const staffId =
       cleanText(booking.staff_id) ||
       firstItemStaffIdByBookingId.get(effectiveBookingId) ||
@@ -224,8 +237,8 @@ async function hydrateIncomeRows(db, salonId, rows) {
       booking_payment_status: cleanText(booking.payment_status) || null,
       booking_staff_id: staffId || null,
       booking_staff_name: cleanText(staff?.name) || null,
-      booking_client_name: cleanText(client?.name) || null,
-      booking_client_phone: cleanText(client?.phone_normalized) || null,
+      booking_client_name: cleanText(guest?.name || client?.name) || null,
+      booking_client_phone: guest ? null : cleanText(client?.phone_normalized) || null,
       booking_invoice_id: cleanText(invoice?.id) || null,
       booking_invoice_number: cleanText(invoice?.invoice_number) || null,
     };
