@@ -1,4 +1,4 @@
-import { BookingClientCandidate, CoreBookingService } from "../CoreBookingService";
+import { CoreBookingService } from "../CoreBookingService";
 import { CoreCatalogService } from "../CoreCatalogService";
 import { CoreClientService } from "../CoreClientService";
 import { CoreInvoiceService } from "../CoreInvoiceService";
@@ -18,7 +18,7 @@ import {
   coreStaffToLegacy,
   legacyBookingToCoreInput,
 } from "../coreBookingMappers";
-import type { BookingDataSource } from "../bookingDataSource";
+import type { BookingClientCandidate, BookingDataSource } from "../bookingDataSource";
 import type {
   BookingDoc,
   BookingStatus,
