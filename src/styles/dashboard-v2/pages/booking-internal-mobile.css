@@ -141,6 +141,7 @@
     position: static;
     order: 1;
     display: block;
+    height: auto;
     max-height: none;
     overflow: visible;
   }
