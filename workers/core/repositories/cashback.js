@@ -431,6 +431,14 @@ export async function reconcileCashbackForBooking(
   if (!cleanText(booking.client_id)) {
     return { enabled: true, changed: false, skipped: 'client_missing' };
   }
+  const bookingGuest = await dbFirst(
+    db,
+    'SELECT id FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1',
+    [salonId, bookingId]
+  );
+  if (bookingGuest) {
+    return { enabled: true, changed: false, skipped: 'booking_guest' };
+  }
 
   const [paymentRows, refundRows, itemRows, movementRows] = await Promise.all([
     dbAll(
