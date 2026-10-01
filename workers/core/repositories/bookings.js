@@ -193,6 +193,48 @@ export function findClientItemOverlap(rows = []) {
   return null;
 }
 
+function isMissingGuestTableError(error) {
+  return cleanText(error?.message).toLowerCase().includes("no such table: booking_party_guests");
+}
+
+async function listBookingGuestsByBookingIds(db, salonId, ids) {
+  if (!ids.length) return [];
+  try {
+    return await dbAll(
+      db,
+      `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
+      [salonId, ...ids]
+    );
+  } catch (error) {
+    if (isMissingGuestTableError(error)) return [];
+    throw error;
+  }
+}
+
+async function getBookingGuestByBookingId(db, salonId, bookingId) {
+  try {
+    return await dbFirst(
+      db,
+      "SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1",
+      [salonId, bookingId]
+    );
+  } catch (error) {
+    if (isMissingGuestTableError(error)) return null;
+    throw error;
+  }
+}
+
+function normalizeBookingGuestParticipant(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = requiredId(raw.id, "guestParticipant.id");
+  const name = requiredText(raw.name, "guestParticipant.name", 200);
+  const email = optionalText(raw.email) || null;
+  if (!/^booking_guest_[A-Za-z0-9_-]+$/.test(id)) {
+    throw new AppError(400, "core_booking:guest_participant_invalid");
+  }
+  return { id, name, email };
+}
+
 async function assertPartyBookingConsistency(
   db,
   salonId,
@@ -482,7 +524,15 @@ export async function listBookings(db, salonId, query = {}) {
   const clientIds = [...new Set(rows.map((row) => cleanText(row.client_id)).filter(Boolean))];
   const staffIds = [...new Set(rows.map((row) => cleanText(row.staff_id)).filter(Boolean))];
   const bookingIdChunks = chunk(bookingIds);
-  const clientIdChunks = chunk(clientIds);
+  const guestBookingIdChunks = chunk(
+    rows
+      .filter((row) => cleanText(row.client_id).startsWith("booking_guest_"))
+      .map((row) => cleanText(row.id))
+      .filter(Boolean)
+  );
+  const clientIdChunks = chunk(
+    clientIds.filter((id) => !cleanText(id).startsWith("booking_guest_"))
+  );
   const staffIdChunks = chunk(staffIds);
 
   const [
@@ -490,6 +540,7 @@ export async function listBookings(db, salonId, query = {}) {
     staffGroups,
     invoiceGroups,
     itemGroups,
+    guestGroups,
   ] = await Promise.all([
     Promise.all(
       clientIdChunks.map((ids) =>
@@ -527,6 +578,11 @@ export async function listBookings(db, salonId, query = {}) {
         )
       )
     ),
+    Promise.all(
+      guestBookingIdChunks.map((ids) =>
+        listBookingGuestsByBookingIds(db, salonId, ids)
+      )
+    ),
   ]);
 
   const clients = clientGroups.flat();
@@ -535,6 +591,9 @@ export async function listBookings(db, salonId, query = {}) {
 
   const clientsById = new Map(clients.map((row) => [cleanText(row.id), row]));
   const staffById = new Map(staffRows.map((row) => [cleanText(row.id), row]));
+  const guestsByBookingId = new Map(
+    guestGroups.flat().map((row) => [cleanText(row.booking_id), row])
+  );
 
   const itemsByBookingId = new Map();
   for (const item of itemGroups.flat()) {
@@ -553,13 +612,16 @@ export async function listBookings(db, salonId, query = {}) {
 
   const enriched = rows.map((row) => {
     const client = clientsById.get(cleanText(row.client_id));
+    const guest = guestsByBookingId.get(cleanText(row.id));
     const staff = staffById.get(cleanText(row.staff_id));
     const invoice = invoiceByBookingId.get(cleanText(row.id));
 
     return {
       ...row,
-      client_name: client?.name || null,
-      client_phone: client?.phone_normalized || null,
+      client_name: guest?.name || client?.name || null,
+      client_phone: guest ? null : client?.phone_normalized || null,
+      booking_guest: Boolean(guest),
+      guest_email: guest?.email || null,
       staff_name: staff?.name || null,
       invoice_id: invoice?.id || null,
       invoice_number: invoice?.invoice_number || null,
@@ -663,7 +725,7 @@ export async function getBooking(db, salonId, id) {
   );
   if (!booking) rowNotFound("booking");
 
-  const [items, client, staff, invoice] = await Promise.all([
+  const [items, client, guest, staff, invoice] = await Promise.all([
     dbAll(
       db,
       "SELECT * FROM booking_items WHERE booking_id = ? ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id",
@@ -674,6 +736,9 @@ export async function getBooking(db, salonId, id) {
       "SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1",
       [salonId, booking.client_id]
     ),
+    cleanText(booking.client_id).startsWith("booking_guest_")
+      ? getBookingGuestByBookingId(db, salonId, booking.id)
+      : Promise.resolve(null),
     booking.staff_id
       ? dbFirst(
           db,
@@ -690,8 +755,10 @@ export async function getBooking(db, salonId, id) {
 
   return {
     ...booking,
-    client_name: client?.name || null,
-    client_phone: client?.phone_normalized || null,
+    client_name: guest?.name || client?.name || null,
+    client_phone: guest ? null : client?.phone_normalized || null,
+    booking_guest: Boolean(guest),
+    guest_email: guest?.email || null,
     staff_name: staff?.name || null,
     invoice_id: invoice?.id || null,
     invoice_number: invoice?.invoice_number || null,
@@ -736,6 +803,9 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   );
   const now = nowIso();
   const partyId = optionalText(data.partyId || data.party_id) || null;
+  const guestParticipant = normalizeBookingGuestParticipant(
+    data.guestParticipant || data.guest_participant
+  );
   const partyLeadClientId = optionalText(data.partyLeadClientId || data.party_lead_client_id) || null;
   const partyMemberOrder = partyId
     ? integer(data.partyMemberOrder ?? data.party_member_order, "partyMemberOrder", { min: 0, max: 99, fallback: 0 })
@@ -749,7 +819,18 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   if (partyId && partySize <= partyMemberOrder) {
     throw new AppError(400, "core_booking:party_member_order_invalid");
   }
-  await getClient(db, salonId, clientId);
+  if (guestParticipant) {
+    if (
+      cleanText(data.source || data.channel).toLowerCase() !== "internal" ||
+      !partyId ||
+      !partyMemberOrder ||
+      guestParticipant.id !== clientId
+    ) {
+      throw new AppError(400, "core_booking:guest_participant_invalid");
+    }
+  } else {
+    await getClient(db, salonId, clientId);
+  }
   if (partyLeadClientId) await getClient(db, salonId, partyLeadClientId);
   await assertPartyBookingConsistency(db, salonId, {
     partyId,
@@ -760,6 +841,21 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   });
 
   const itemInputs = normalizeItems(data);
+  if (
+    guestParticipant &&
+    itemInputs.some((item) =>
+      Boolean(
+        item.packageCovered ||
+        item.package_covered ||
+        item.clientPackageId ||
+        item.client_package_id ||
+        item.packageReservationId ||
+        item.package_reservation_id
+      )
+    )
+  ) {
+    throw new AppError(400, "core_booking:guest_package_not_allowed");
+  }
   const rows = [];
   const lockRows = [];
   const localLocks = new Set();
@@ -1060,6 +1156,21 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         discountApplication.discountSnapshotJson,
       ],
     },
+    ...(guestParticipant ? [{
+      sql: `INSERT INTO booking_party_guests
+        (id, salon_id, party_id, booking_id, name, email, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        guestParticipant.id,
+        salonId,
+        partyId,
+        bookingId,
+        guestParticipant.name,
+        guestParticipant.email,
+        now,
+        now,
+      ],
+    }] : []),
     ...rows.map((row) => ({
       sql: `INSERT INTO booking_items
         (id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity,

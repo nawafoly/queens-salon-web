@@ -66,6 +66,11 @@ export interface BookingDataSource {
     email?: string;
     firebaseUid?: string;
   }): Promise<BookingClientCandidate>;
+  updateClient(id: string, input: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  }): Promise<BookingClientCandidate>;
   searchBookings(query?: BookingSearchQuery): Promise<BookingDocWithId[]>;
   getBooking(id: string): Promise<BookingDocWithId | null>;
   createBooking(
