@@ -2737,6 +2737,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     bufferMin,
     selectedSectionId,
     loadTimesForService,
+    activeDraftId,
     language,
   ]);
 
@@ -2806,6 +2807,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferByClientKey({}); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
+    setActiveDraftId("");
   }, []);
 
   return (
