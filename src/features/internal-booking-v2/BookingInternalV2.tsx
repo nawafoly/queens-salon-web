@@ -84,7 +84,16 @@ type InternalBookingDraftSnapshot = {
   selectedClient: ClientCandidate | null;
   companions: ClientCandidate[];
   activePartyClientKey: string;
+  query: string;
+  addingCompanion: boolean;
+  clientPickerOpen: boolean;
+  showNewClient: boolean;
+  newClientName: string;
+  newClientPhone: string;
+  newClientEmail: string;
+  editingPartyClientKey: string;
   cart: CatalogService[];
+  serviceQuery: string;
   priceAdjustments: Record<string, BookingPriceAdjustment>;
   bookingDate: string;
   scheduleByService: Record<string, ScheduleSelection>;
