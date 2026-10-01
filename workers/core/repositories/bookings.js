@@ -1999,6 +1999,75 @@ export async function cancelBooking(db, salonId, id, reason = "") {
 }
 
 
+export async function rollbackInternalBookingCreation(db, salonId, id, actor = {}) {
+  const bookingId = requiredId(id);
+  const booking = await dbFirst(
+    db,
+    "SELECT * FROM bookings WHERE salon_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1",
+    [salonId, bookingId]
+  );
+  if (!booking) rowNotFound("booking");
+
+  const actorUid = typeof actor === "string" ? cleanText(actor) : cleanText(actor?.uid);
+  const createdByUid = cleanText(booking.created_by_uid);
+  const createdAtMs = Date.parse(cleanText(booking.created_at));
+  const ageMs = Number.isFinite(createdAtMs) ? Date.now() - createdAtMs : Number.POSITIVE_INFINITY;
+  const status = cleanText(booking.status).toLowerCase();
+
+  if (
+    cleanText(booking.source).toLowerCase() !== "internal" ||
+    !cleanText(booking.party_id) ||
+    !actorUid ||
+    createdByUid !== actorUid
+  ) {
+    throw new AppError(403, "core_booking:internal_rollback_forbidden");
+  }
+  if (ageMs < -60_000 || ageMs > 30 * 60_000) {
+    throw new AppError(409, "core_booking:internal_rollback_window_expired");
+  }
+  if (status === "completed" || CANCELLED_STATUSES.has(status)) {
+    throw new AppError(409, "core_booking:internal_rollback_status_blocked");
+  }
+
+  const payment = await dbFirst(
+    db,
+    "SELECT id FROM payments WHERE salon_id = ? AND booking_id = ? LIMIT 1",
+    [salonId, bookingId]
+  );
+  if (payment) {
+    throw new AppError(409, "core_booking:internal_rollback_payment_exists");
+  }
+
+  let discountSourceId = "";
+  try {
+    const snapshot = JSON.parse(cleanText(booking.discount_snapshot_json) || "{}");
+    discountSourceId = cleanText(snapshot?.sourceId || snapshot?.source_id);
+  } catch {
+    discountSourceId = "";
+  }
+
+  const rolledBack = await cancelBooking(
+    db,
+    salonId,
+    bookingId,
+    "internal_party_creation_rollback"
+  );
+
+  if (discountSourceId) {
+    await dbRun(
+      db,
+      `UPDATE discounts
+          SET used_count = CASE WHEN used_count > 0 THEN used_count - 1 ELSE 0 END,
+              updated_at = ?
+        WHERE salon_id = ? AND id = ?`,
+      [nowIso(), salonId, discountSourceId]
+    );
+  }
+
+  return rolledBack;
+}
+
+
 export async function deleteBooking(db, salonId, id, actor = {}) {
   const bookingId = requiredId(id);
   const booking = await getBooking(db, salonId, bookingId);

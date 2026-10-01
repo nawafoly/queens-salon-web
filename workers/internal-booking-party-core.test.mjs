@@ -58,3 +58,16 @@ test("booking-only guests cannot use client packages or earn client cashback", (
   assert.match(cashbackRepo, /SELECT id FROM booking_party_guests WHERE salon_id = \? AND booking_id = \? LIMIT 1/);
   assert.match(cashbackRepo, /skipped:\s*'booking_guest'/);
 });
+
+
+test("internal party rollback uses create authority and not cancel permission", () => {
+  const index = readFileSync("workers/core/index.js", "utf8");
+  const service = readFileSync("src/services/CoreBookingService.ts", "utf8");
+  assert.match(index, /bookings:internal-rollback/);
+  assert.match(index, /case "bookings:internal-rollback":[\s\S]*requirePermission\(ctx, "bookings\.create"\)/);
+  assert.match(index, /rollbackInternalBookingCreation/);
+  assert.match(repo, /core_booking:internal_rollback_forbidden/);
+  assert.match(repo, /core_booking:internal_rollback_window_expired/);
+  assert.match(repo, /core_booking:internal_rollback_payment_exists/);
+  assert.match(service, /rollbackInternalCreation/);
+});

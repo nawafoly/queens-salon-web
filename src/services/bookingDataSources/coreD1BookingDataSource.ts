@@ -464,6 +464,22 @@ export const coreD1BookingDataSource: BookingDataSource = {
     return updated as BookingClientCandidate;
   },
 
+  async rollbackBookingCreation(id) {
+    const current = await CoreBookingService.get(id);
+    const hasPackageReservation = Boolean(
+      current?.items.some((item) => item.packageCovered)
+    );
+    const rolledBack = await CoreBookingService.rollbackInternalCreation(id);
+    invalidateCoreAvailability(current);
+    invalidateCoreAvailability(rolledBack);
+    if (hasPackageReservation) {
+      await PackageOperationsService.restoreReserved(
+        id,
+        "internal_party_creation_rollback"
+      );
+    }
+  },
+
   async updateBooking(id, patch) {
     const current = await CoreBookingService.get(id);
     const paidSar = Number(patch.paidAmount);

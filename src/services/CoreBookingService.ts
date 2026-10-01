@@ -101,6 +101,14 @@ export const CoreBookingService = {
     return mapBookingRow(row);
   },
 
+  async rollbackInternalCreation(id: string): Promise<CoreBooking> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/internal/bookings/${encodeURIComponent(id)}/rollback`,
+      { method: "POST", body: {} }
+    );
+    return mapBookingRow(row);
+  },
+
   async patch(
     id: string,
     input: Partial<{
