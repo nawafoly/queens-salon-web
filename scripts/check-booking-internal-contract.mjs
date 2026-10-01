@@ -107,7 +107,7 @@ requireText(booking, "if (selected.staffId === staffKey)", "Staff overlap must r
 requireText(booking, "for (const plan of memberPlans)", "Party checkout no longer creates a canonical booking per member.");
 requireText(booking, "partyLeadClientId: leadCanonicalClientId", "Party lead canonical identity is not attached to member bookings.");
 requireText(booking, "Promise.allSettled(", "Partial party creation compensation is missing.");
-requireText(booking, 'updateBookingStatus(bookingId, "cancelled")', "Partial party creation no longer cancels already-created member bookings.");
+requireText(booking, "rollbackBookingCreation(bookingId)", "Partial party creation no longer rolls back already-created member bookings.");
 requireText(booking, "const cashByMember = splitAmountByWeights(", "Cash allocation across party members is missing.");
 requireText(booking, "const cardByMember = splitAmountByWeights(", "Card allocation across party members is missing.");
 requireText(booking, "const transferByMember = splitAmountByWeights(", "Transfer allocation across party members is missing.");
