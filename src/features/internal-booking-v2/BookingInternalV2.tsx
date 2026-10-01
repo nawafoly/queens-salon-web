@@ -1296,7 +1296,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : -1;
   }
 
-  const getCartScheduleConflict = useCallback((serviceKey: string, staffKey: string, time: string) => {
+  const getCartScheduleConflict = useCallback((
+    serviceKey: string,
+    staffKey: string,
+    time: string,
+    scheduleState: Record<string, ScheduleSelection> = scheduleByService
+  ) => {
     const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
@@ -1308,7 +1313,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     for (const other of cart) {
       const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) continue;
-      const selected = scheduleByService[otherKey];
+      const selected = scheduleState[otherKey];
       if (!selected?.time) continue;
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) continue;
@@ -1627,7 +1632,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
 
-    if (!allScheduled) {
+    const liveDraftConflict = cart.find((service) => {
+      const key = bookingLineKey(service);
+      const selected = scheduleByService[key];
+      return Boolean(
+        selected?.staffId &&
+        selected?.time &&
+        getCartScheduleConflict(key, selected.staffId, selected.time, scheduleByService)
+      );
+    });
+    if (!allScheduled || liveDraftConflict) {
       setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."));
       setStep(3);
       return;
@@ -2631,7 +2645,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                               ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
                                               : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
                                             : "";
-                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
+                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => {
+                                            if (conflicting) return;
+                                            setScheduleByService((current) => {
+                                              const liveStaffId = current[key]?.staffId || selection.staffId;
+                                              const liveConflict = getCartScheduleConflict(key, liveStaffId, time, current);
+                                              if (liveConflict) {
+                                                setScheduleMessage(
+                                                  liveConflict.kind === "staff"
+                                                    ? t("هذا الوقت أصبح مستخدمًا لنفس الموظفة في خدمة أخرى. اختاري وقتًا مختلفًا.")
+                                                    : t("العميلة لديها خدمة أخرى في هذا الوقت. اختاري وقتًا مختلفًا.")
+                                                );
+                                                return current;
+                                              }
+                                              setScheduleMessage("");
+                                              return { ...current, [key]: { ...current[key], time } };
+                                            });
+                                          }}>{formatTime12(time, time)}</button>;
                                         })}</div>
                                       ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
                                     </div>
