@@ -1850,6 +1850,52 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const remainingAmount = Math.max(0, finalTotal - effectivePaidAmount);
   const mixedTotal = Math.max(0, Number(cashAmount || 0)) + Math.max(0, Number(cardAmount || 0)) + Math.max(0, Number(transferAmount || 0));
 
+  const buildCurrentDraftSnapshot = useCallback((): InternalBookingDraftSnapshot => ({
+    version: 1,
+    step,
+    selectedClient,
+    companions,
+    activePartyClientKey,
+    query,
+    addingCompanion,
+    clientPickerOpen,
+    showNewClient,
+    newClientName,
+    newClientPhone,
+    newClientEmail,
+    editingPartyClientKey,
+    cart,
+    serviceQuery,
+    priceAdjustments,
+    bookingDate,
+    scheduleByService,
+    selectedSectionId,
+    selectedCategoryId,
+    paymentMethod,
+    paymentType,
+    paidAmount,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    bookingNote,
+    discountMode,
+    manualFixedDiscount,
+    manualPercentDiscount,
+    manualMaxDiscount,
+    selectedOfferByClientKey,
+    couponInput,
+    couponOfferId: String((couponOffer as any)?.id || "").trim(),
+  }), [
+    step, selectedClient, companions, activePartyClientKey, query,
+    addingCompanion, clientPickerOpen, showNewClient, newClientName,
+    newClientPhone, newClientEmail, editingPartyClientKey, cart,
+    serviceQuery, priceAdjustments, bookingDate, scheduleByService,
+    selectedSectionId, selectedCategoryId, paymentMethod, paymentType,
+    paidAmount, cashAmount, cardAmount, transferAmount, bookingNote,
+    discountMode, manualFixedDiscount, manualPercentDiscount,
+    manualMaxDiscount, selectedOfferByClientKey, couponInput, couponOffer,
+  ]);
+
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
     setCouponMessage("");
