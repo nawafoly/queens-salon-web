@@ -100,7 +100,7 @@ async function assertPerClientLimit(db, salonId, clientId, row, request) {
   if (!needle) return;
   const result = await dbFirst(
     db,
-    "SELECT COUNT(*) AS count FROM bookings WHERE salon_id = ? AND client_id = ? AND COALESCE(discount_snapshot_json, '') LIKE ?",
+    "SELECT COUNT(*) AS count FROM bookings WHERE salon_id = ? AND client_id = ? AND deleted_at IS NULL AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled') AND COALESCE(discount_snapshot_json, '') LIKE ?",
     [salonId, clientId, `%${needle}%`]
   ).catch(() => ({ count: 0 }));
   if (Number(result?.count || 0) >= limit) {
