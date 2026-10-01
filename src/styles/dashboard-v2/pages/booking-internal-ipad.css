@@ -369,6 +369,8 @@
     z-index: auto;
     order: 1;
     display: grid;
+    height: auto;
+    max-height: none;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 12px;
     margin-top: 10px;
