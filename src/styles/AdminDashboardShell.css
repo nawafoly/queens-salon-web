@@ -418,7 +418,7 @@
 .dashboard-skin .dash-side-overlay {
   position: fixed !important;
   inset: 0;
-  z-index: 1190 !important;
+  z-index: 1290 !important;
   background: rgba(21, 10, 15, 0.58) !important;
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
@@ -455,7 +455,7 @@
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
     position: fixed !important;
     inset: 0 0 0 auto;
-    z-index: 1200;
+    z-index: 1300 !important;
     width: min(88vw, 320px) !important;
     max-width: min(88vw, 320px) !important;
     height: 100dvh;
@@ -1801,13 +1801,17 @@
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
     position: fixed !important;
+    inset-block: 0 !important;
     inset-inline-start: 0 !important;
-    top: calc(14px + var(--dash-topbar-height) + 10px) !important;
+    top: 0 !important;
     bottom: 0 !important;
-    z-index: 20 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
+    z-index: 1200 !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
     align-self: auto !important;
     overflow: hidden !important;
   }
