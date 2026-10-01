@@ -736,9 +736,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       }
       setClientMessage(message);
     }
-    setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+    if (!isBookingGuest(candidate)) {
+      setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+      markQuickClientUsage(candidate);
+    }
     setQuery("");
-    markQuickClientUsage(candidate);
     setShowNewClient(false);
     setNewClientName("");
     setNewClientPhone("");
@@ -786,9 +788,36 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
-    if (name.length < 2) { setNewClientError(t(addingCompanion ? "اكتبي اسم المرافقة." : "اكتبي اسم العميلة كاملًا.")); return; }
-    if (!addingCompanion && (!phone || phone.length !== 10)) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
-    if (phone && phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة.")); return; }
+    if (name.length < 2) {
+      setNewClientError(t(addingCompanion ? "اكتبي اسم المرافقة." : "اكتبي اسم العميلة كاملًا."));
+      return;
+    }
+    if (!addingCompanion && (!phone || phone.length !== 10)) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام."));
+      return;
+    }
+    if (phone && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة."));
+      return;
+    }
+
+    if (addingCompanion && !phone) {
+      const guestId = `booking_guest_${makeLocalId()}`;
+      const guest: ClientCandidate = {
+        id: guestId,
+        partyKey: `guest:${guestId}`,
+        name,
+        phone: "",
+        email: email || undefined,
+        source: "booking_guest",
+        bookingGuest: true,
+      };
+      chooseClientForBooking(
+        guest,
+        t("تمت إضافة المرافقة لهذا الحجز فقط دون إنشاء ملف عميلة.")
+      );
+      return;
+    }
 
     setCreatingClient(true);
     setExistingClientChecking(Boolean(phone));
@@ -807,10 +836,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       const created: any = await resolveCoreBookingDataSource().createClient({
         name,
-        phone: phone || undefined,
+        phone,
         email: email || undefined,
       });
-      const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
+      const candidate = candidateFromCoreRow(created || { name, phone, email }, "client_profile");
       chooseClientForBooking(candidate, t("تم اختيار العميلة للحجز بنجاح."));
     } catch (error: any) {
       console.error("[BookingInternalV2] client create/dedup check failed", error);
@@ -827,6 +856,180 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       setCreatingClient(false);
     }
   }, [newClientName, newClientPhone, newClientEmail, addingCompanion, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
+
+  const closePartyMemberEditor = useCallback(() => {
+    setEditingPartyClientKey("");
+    setShowNewClient(false);
+    setAddingCompanion(false);
+    setClientPickerOpen(false);
+    setNewClientName("");
+    setNewClientPhone("");
+    setNewClientEmail("");
+    setExistingClientMatch(null);
+    setExistingClientLookupError("");
+    setNewClientError("");
+  }, []);
+
+  const openPartyMemberEditor = useCallback((client: ClientCandidate) => {
+    const key = partyClientKey(client);
+    const isPrimary = Boolean(selectedClient && partyClientKey(selectedClient) === key);
+    setEditingPartyClientKey(key);
+    setNewClientName(client.name);
+    setNewClientPhone(client.phone || "");
+    setNewClientEmail(client.email || "");
+    setExistingClientMatch(null);
+    setExistingClientLookupError("");
+    setNewClientError("");
+    setAddingCompanion(!isPrimary);
+    setClientPickerOpen(true);
+    setShowNewClient(true);
+  }, [selectedClient]);
+
+  const savePartyMemberEdit = useCallback(async () => {
+    const current = bookingClients.find((client) => partyClientKey(client) === editingPartyClientKey);
+    if (!current) {
+      setNewClientError(t("تعذر العثور على بيانات العميلة داخل مجموعة الحجز."));
+      return;
+    }
+
+    const oldKey = partyClientKey(current);
+    const isPrimary = Boolean(selectedClient && partyClientKey(selectedClient) === oldKey);
+    const name = String(newClientName || "").trim();
+    const phone = phone10Digits(newClientPhone);
+    const email = String(newClientEmail || "").trim();
+
+    if (name.length < 2) {
+      setNewClientError(t(isPrimary ? "اكتبي اسم العميلة كاملًا." : "اكتبي اسم المرافقة."));
+      return;
+    }
+    if (isPrimary && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام."));
+      return;
+    }
+    if (phone && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة."));
+      return;
+    }
+
+    setCreatingClient(true);
+    setExistingClientChecking(Boolean(phone));
+    setExistingClientLookupError("");
+    setNewClientError("");
+
+    try {
+      const bookingDataSource = resolveCoreBookingDataSource();
+      const duplicate = phone ? await findExistingClientByPhone(phone) : null;
+      const duplicateAlreadyInParty = duplicate
+        ? bookingClients.find(
+            (row) =>
+              partyClientKey(row) !== oldKey &&
+              samePartyClient(row, duplicate)
+          )
+        : null;
+      if (duplicateAlreadyInParty) {
+        setNewClientError(t("هذه العميلة موجودة بالفعل في مجموعة الحجز."));
+        return;
+      }
+
+      let next: ClientCandidate;
+      const currentId = String(current.id || "").trim();
+      const currentIsCanonical = !isBookingGuest(current) && currentId && !currentId.startsWith("history:");
+
+      if (isBookingGuest(current) && !phone) {
+        next = {
+          ...current,
+          name,
+          phone: "",
+          email: email || undefined,
+          partyKey: oldKey,
+          bookingGuest: true,
+        };
+      } else if (isBookingGuest(current) || !currentIsCanonical) {
+        if (duplicate) {
+          next = {
+            ...duplicate,
+            partyKey: oldKey,
+            bookingGuest: false,
+          };
+        } else {
+          const created = await bookingDataSource.createClient({
+            name,
+            phone,
+            email: email || undefined,
+          });
+          next = {
+            ...candidateFromCoreRow(created, "client_profile"),
+            partyKey: oldKey,
+            bookingGuest: false,
+          };
+        }
+      } else {
+        if (duplicate && String(duplicate.id || "").trim() !== currentId) {
+          setNewClientError(t("رقم الجوال مرتبط بعميلة أخرى. استخدمي ملفها بدل تغيير هذا السجل."));
+          return;
+        }
+        const updated = await bookingDataSource.updateClient(currentId, {
+          name,
+          phone,
+          email,
+        });
+        next = {
+          ...candidateFromCoreRow(updated, "core_d1"),
+          partyKey: oldKey,
+          bookingGuest: false,
+        };
+      }
+
+      if (isPrimary) {
+        setSelectedClient(next);
+      } else {
+        setCompanions((rows) =>
+          rows.map((row) => partyClientKey(row) === oldKey ? next : row)
+        );
+      }
+
+      setCart((rows) =>
+        rows.map((item) =>
+          bookingLineClientKey(item) === oldKey
+            ? {
+                ...item,
+                __partyClientId: next.id,
+                __partyClientName: next.name,
+                __partyClientPhone: next.phone,
+              }
+            : item
+        )
+      );
+      if (!isBookingGuest(next)) {
+        setClients((rows) => [next, ...rows.filter((row) => !samePartyClient(row, next))]);
+        markQuickClientUsage(next);
+      }
+      setClientMessage(t("تم تحديث بيانات العميلة مع الاحتفاظ بالخدمات والمواعيد."));
+      closePartyMemberEditor();
+    } catch (error: any) {
+      console.error("[BookingInternalV2] party member edit failed", error);
+      const code = String(error?.code || "").toLowerCase();
+      if (code.includes("duplicate") || code.includes("phone")) {
+        setNewClientError(t("رقم الجوال مرتبط بعميلة أخرى. استخدمي ملفها بدل تغيير هذا السجل."));
+      } else {
+        setNewClientError(t("تعذر حفظ تعديل بيانات العميلة. حاولي مرة أخرى."));
+      }
+    } finally {
+      setExistingClientChecking(false);
+      setCreatingClient(false);
+    }
+  }, [
+    bookingClients,
+    editingPartyClientKey,
+    selectedClient,
+    newClientName,
+    newClientPhone,
+    newClientEmail,
+    findExistingClientByPhone,
+    candidateFromCoreRow,
+    closePartyMemberEditor,
+    language,
+  ]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
