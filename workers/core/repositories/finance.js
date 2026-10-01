@@ -107,8 +107,16 @@ async function hydrateIncomeRows(db, salonId, rows) {
     bookings.map((row) => [cleanText(row.id), row])
   );
   const bookingIds = [...bookingsById.keys()];
+  const guestBookingIds = bookings
+    .filter((row) => cleanText(row.client_id).startsWith("booking_guest_"))
+    .map((row) => cleanText(row.id))
+    .filter(Boolean);
   const clientIds = [
-    ...new Set(bookings.map((row) => cleanText(row.client_id)).filter(Boolean)),
+    ...new Set(
+      bookings
+        .map((row) => cleanText(row.client_id))
+        .filter((id) => Boolean(id) && !id.startsWith("booking_guest_"))
+    ),
   ];
 
   const [clientGroups, invoiceGroups, itemGroups, guestGroups] = await Promise.all([
@@ -140,7 +148,7 @@ async function hydrateIncomeRows(db, salonId, rows) {
       )
     ),
     Promise.all(
-      chunkValues(bookingIds).map((ids) =>
+      chunkValues(guestBookingIds).map((ids) =>
         dbAll(
           db,
           `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
