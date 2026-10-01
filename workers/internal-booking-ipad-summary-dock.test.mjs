@@ -81,7 +81,11 @@ test("internal booking uses the full dashboard workspace width", () => {
 test("desktop booking summary follows page scroll and sticks only below the topbar", () => {
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);[\s\S]*align-self:\s*start;/
+    /\.bk2-summary-column\s*\{[\s\S]*align-self:\s*stretch;/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*calc\(10px \+ var\(--dash-topbar-height\) \+ var\(--dsv2-space-3\)\);/
   );
   assert.match(
     bookingCss,
