@@ -52,15 +52,15 @@ const bookingMobileCss = fs.readFileSync(
 test("booking summary scrolls independently while checkout controls stay outside the scroller", () => {
   assert.match(
     bookingCss,
-    /\.bk2-summary-card\s*\{[\s\S]*grid-template-rows:\s*minmax\(0, 1fr\) auto;[\s\S]*overflow:\s*hidden;/
+    /\.bk2-summary-card\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto;[\s\S]*overflow:\s*hidden;/
   );
   assert.match(
     bookingCss,
-    /\.bk2-summary-scroll\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*contain;/
+    /\.bk2-summary-scroll\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*auto;/
   );
   assert.match(
     bookingTsx,
-    /className="bk2-summary-scroll"[\s\S]*className="bk2-summary-footer"[\s\S]*className="bk2-totals"/
+    /className="bk2-summary-title"[\s\S]*className="bk2-summary-scroll"[\s\S]*className="bk2-summary-footer"[\s\S]*className="bk2-totals"/
   );
   assert.match(
     bookingMobileCss,
@@ -98,15 +98,19 @@ test("desktop booking summary follows page scroll and sticks only below the topb
 });
 
 
-test("wheel input over the booking sidebar scrolls the sidebar before the page", () => {
-  assert.match(bookingTsx, /const summaryScrollRef = useRef<HTMLDivElement \| null>\(null\)/);
+test("summary keeps its header visible and uses native internal scrolling without wheel hijacking", () => {
+  assert.doesNotMatch(bookingTsx, /summaryScrollRef|handleSummaryWheel|WheelEvent/);
   assert.match(
     bookingTsx,
-    /handleSummaryWheel = useCallback\(\(event: WheelEvent<HTMLElement>\)[\s\S]*scroller\.scrollTop = Math\.max/
+    /<aside className="bk2-summary-card">[\s\S]*className="bk2-summary-title"[\s\S]*className="bk2-summary-scroll"/
   );
   assert.match(
-    bookingTsx,
-    /<aside className="bk2-summary-card" onWheel=\{handleSummaryWheel\}>[\s\S]*ref=\{summaryScrollRef\} className="bk2-summary-scroll"/
+    bookingCss,
+    /\.bk2-summary-card\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/
+  );
+  assert.match(
+    bookingCss,
+    /\.bk2-summary-scroll\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior-y:\s*auto;/
   );
 });
 
@@ -151,7 +155,7 @@ test("desktop main booking area stays in normal page flow while only the summary
 test("summary uses a normal-flow column wrapper so sticky begins only at the topbar boundary", () => {
   assert.match(
     bookingTsx,
-    /<div className="bk2-summary-column">[\s\S]*<aside className="bk2-summary-card" onWheel=\{handleSummaryWheel\}>/
+    /<div className="bk2-summary-column">[\s\S]*<aside className="bk2-summary-card">/
   );
   assert.match(
     bookingCss,
