@@ -412,7 +412,7 @@
 .dashboard-skin.is-booking-internal-route {
   height: auto !important;
   min-height: 100vh !important;
-  overflow-x: hidden !important;
+  overflow-x: clip !important;
   overflow-y: visible !important;
 }
 
