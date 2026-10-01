@@ -145,7 +145,10 @@ async function hydrateIncomeRows(db, salonId, rows) {
           db,
           `SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (${placeholders(ids.length)})`,
           [salonId, ...ids]
-        )
+        ).catch((error) => {
+          if (cleanText(error?.message).toLowerCase().includes("no such table: booking_party_guests")) return [];
+          throw error;
+        })
       )
     ),
   ]);
