@@ -431,19 +431,22 @@ export async function reconcileCashbackForBooking(
   if (!cleanText(booking.client_id)) {
     return { enabled: true, changed: false, skipped: 'client_missing' };
   }
-  let bookingGuest = null;
-  try {
-    bookingGuest = await dbFirst(
-      db,
-      'SELECT id FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1',
-      [salonId, bookingId]
-    );
-  } catch (error) {
-    if (!cleanText(error?.message).toLowerCase().includes('no such table: booking_party_guests')) {
-      throw error;
+  if (cleanText(booking.client_id).startsWith('booking_guest_')) {
+    let bookingGuest = null;
+    try {
+      bookingGuest = await dbFirst(
+        db,
+        'SELECT id FROM booking_party_guests WHERE salon_id = ? AND booking_id = ? LIMIT 1',
+        [salonId, bookingId]
+      );
+    } catch (error) {
+      if (!cleanText(error?.message).toLowerCase().includes('no such table: booking_party_guests')) {
+        throw error;
+      }
     }
-  }
-  if (bookingGuest) {
+    if (bookingGuest) {
+      return { enabled: true, changed: false, skipped: 'booking_guest' };
+    }
     return { enabled: true, changed: false, skipped: 'booking_guest' };
   }
 
