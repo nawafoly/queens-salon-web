@@ -3001,7 +3001,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               )}
             </main>
 
-            <aside className="bk2-summary-card" onWheel={handleSummaryWheel}>
+            <div className="bk2-summary-column">
+              <aside className="bk2-summary-card" onWheel={handleSummaryWheel}>
               <div ref={summaryScrollRef} className="bk2-summary-scroll">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
@@ -3078,7 +3079,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 </div>
               ) : null}
               </div>
-            </aside>
+              </aside>
+            </div>
           </div>
         </>
       )}
