@@ -59,3 +59,12 @@ test("booking summary owns vertical wheel scrolling on tablet and desktop", () =
     /\.bk2-summary-card\s*\{[\s\S]*position:\s*static;[\s\S]*max-height:\s*none;[\s\S]*overflow:\s*visible;/
   );
 });
+
+
+test("internal booking uses the full dashboard workspace width", () => {
+  assert.match(
+    bookingCss,
+    /\.bk2-page > \*\s*\{[\s\S]*width:\s*100%;[\s\S]*max-width:\s*none;[\s\S]*margin-inline:\s*0;/
+  );
+  assert.doesNotMatch(bookingCss, /\.bk2-page > \*\s*\{[\s\S]{0,160}max-width:\s*1680px;/);
+});
