@@ -274,6 +274,8 @@ const bookingEnglish: Record<string, string> = {
   "إدارة الاسترجاع": "Manage refund",
   "تسجيل استرجاع": "Record refund",
   "تعديل الحجز": "Edit booking",
+  "مثال: 200": "Example: 200",
+  "اختاري الوقت": "Choose time",
   "تم تعديل الحجز": "Booking updated",
   "تم الاطلاع على الحجز": "Booking viewed",
   "تم تأكيد الحجز": "Booking confirmed",
