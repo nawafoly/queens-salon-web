@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: client-booking-no-overlap-contract-main
+  group: client-booking-no-overlap-contract-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
