@@ -3807,6 +3807,11 @@ svg {
   font-family: inherit;
 }
 
+.bk-time-popover[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
 .bk-time-popover__head {
   min-height: 48px;
   display: flex;
@@ -3953,6 +3958,11 @@ svg {
       rgba(17, 24, 39, 0.07);
   direction: rtl;
   font-family: inherit;
+}
+
+.bk-calendar-popover[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
 }
 
 .bk-calendar-head {
