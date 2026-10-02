@@ -1,11 +1,23 @@
 name: Full Dashboard V2 Acceptance
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/dashboard-v2-full-acceptance.yml"
+      - "src/pages/**"
+      - "src/features/internal-booking-v2/**"
+      - "src/components/dashboard-v2/**"
+      - "src/components/EmployeeNotificationBellMenu.tsx"
+      - "src/styles/dashboard-v2/**"
+      - "scripts/check-dashboard-*.mjs"
+      - "scripts/check-booking-internal-*.mjs"
   push:
     branches: [main]
     paths:
       - ".github/workflows/dashboard-v2-full-acceptance.yml"
       - "src/pages/**"
+      - "src/features/internal-booking-v2/**"
       - "src/components/dashboard-v2/**"
       - "src/components/EmployeeNotificationBellMenu.tsx"
       - "src/styles/dashboard-v2/**"
