@@ -2,6 +2,17 @@
 name: Client Booking No Overlap Contract
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/pages/Booking.tsx"
+      - "src/features/internal-booking-v2/BookingInternalV2.tsx"
+      - "workers/core/repositories/bookings.js"
+      - "workers/client-booking-overlap-policy.test.mjs"
+      - "scripts/check-repo-hygiene.mjs"
+      - "scripts/check-no-legacy-booking-runtime.mjs"
+      - "scripts/audit-legacy-booking-runtime.mjs"
+      - ".github/workflows/client-booking-no-overlap.yml"
   push:
     branches: [main]
     paths:
@@ -19,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: client-booking-no-overlap-contract-main
+  group: client-booking-no-overlap-contract-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,11 +68,11 @@ jobs:
             [customer.includes('العميلة لديها خدمة أخرى في هذا الوقت داخل نفس الحجز'), 'customer conflict message missing'],
             [customer.includes('expandBookingOccupiedTimes(t, dur, 0, slotStepMin)'), 'customer cross-staff interval does not ignore staff buffer'],
             [internal.includes('kind: "client" as const'), 'internal client overlap guard missing'],
-            [internal.includes('they are assigned to different employees'), 'internal cross-staff rule missing'],
+            [/bookingLineClientKey\(other\)\s*===\s*currentClientKey\s*&&\s*start\s*<\s*otherClientEnd\s*&&\s*otherStart\s*<\s*clientEnd/.test(internal), 'internal same-client interval guard missing'],
             [internal.includes('العميلة لديها خدمة من'), 'internal client busy interval copy missing'],
             [core.includes('export function assertNoClientItemOverlap'), 'Core client overlap assertion missing'],
             [core.includes('core_booking:client_schedule_conflict'), 'Core conflict code missing'],
-            [core.includes('assertNoClientItemOverlap(rows);'), 'Core createBooking does not enforce client overlap'],
+            [/assertNoClientItemOverlap\(\s*rows\s*(?:,\s*\{[^}]*\}\s*)?\);/.test(core), 'Core createBooking does not enforce client overlap'],
           ];
           for (const [ok, message] of checks) if (!ok) throw new Error(message);
           console.log('[client-overlap] contract verified');
