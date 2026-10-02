@@ -53,7 +53,7 @@
     "test:core:dedupe": "node --test workers/core-client-dedup.test.mjs",
     "dedupe:core-clients:dry": "node scripts/dedupe-core-clients.mjs",
     "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply",
-    "test:booking:party": "node --test workers/internal-booking-party-core.test.mjs workers/internal-booking-party-ui.test.mjs",
+    "test:booking:party": "node --test workers/internal-booking-party-core.test.mjs workers/internal-booking-party-ui.test.mjs workers/internal-booking-draft-runtime.test.mjs",
     "check:booking-internal-contract": "node scripts/check-booking-internal-contract.mjs",
     "check:booking-internal-v2-style": "node scripts/check-booking-internal-v2-style.mjs",
     "check:employee-profile-v2": "node scripts/check-employee-profile-v2.mjs",
@@ -85,7 +85,7 @@
     "verify:operational-integrity": "npm run verify:operational-integrity:p8",
     "push:vapid:generate": "node scripts/generate-web-push-vapid.mjs",
     "test:employee:web-push": "node --test workers/employee-web-push-contract.test.mjs",
-    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs workers/client-connect-runtime.test.mjs workers/cashback-runtime.test.mjs"
+    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs workers/client-directory-runtime.test.mjs workers/client-connect-runtime.test.mjs workers/cashback-runtime.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
@@ -122,15 +122,16 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "miniflare": "^5.20260811.0-alpha",
+    "miniflare": "^5.20260926.1-alpha",
     "tsx": "^4.23.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.3.1",
-    "wrangler": "^4.127.1"
+    "wrangler": "^4.144.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.3.1",
-    "sharp": "0.35.4"
+    "sharp": "0.35.4",
+    "@grpc/grpc-js": "1.14.5"
   }
 }

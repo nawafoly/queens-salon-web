@@ -595,7 +595,7 @@ test('client directory summary and import upsert routes are wired to Core contra
 
   assert.match(
     worker,
-    /Object\.fromEntries\(new URL\(request\.url\)\.searchParams\.entries\(\)\)/
+    /getClientDirectorySummary\(\s*db,\s*ctx\.salonId,\s*query\s*\)/
   );
 
   assert.match(

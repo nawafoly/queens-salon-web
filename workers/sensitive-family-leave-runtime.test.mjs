@@ -40,7 +40,6 @@ async function setup() {
   const mf = new Miniflare({
     workers: [{
       config: {
-        type: 'worker',
         name: 'sensitive-family-leave-test-worker',
         compatibilityDate: '2026-06-24',
         manifest: {

@@ -17,7 +17,6 @@ async function setupConnectRuntime() {
     workers: [
       {
         config: {
-          type: 'worker',
           name: 'client-connect-runtime-test',
           compatibilityDate: '2026-06-24',
           manifest: {

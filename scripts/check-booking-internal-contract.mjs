@@ -87,8 +87,14 @@ requireText(booking, "const staleSelections", "Stale schedule selection detectio
 requireMatch(booking, /staleSelections\.length[\s\S]{0,1200}setStep\(3\)/, "Stale-slot recovery no longer returns the user to scheduling step 3.");
 requireText(booking, "staff_slot_conflict", "Staff slot conflict handling marker is missing.");
 requireText(booking, "SLOT_TAKEN", "SLOT_TAKEN conflict handling marker is missing.");
-requireMatch(booking, /Number\(error\?\.status \|\| 0\) === 409/, "HTTP 409 slot-conflict handling is missing.");
-requireMatch(booking, /setAvailableTimes\(\{\}\)[\s\S]{0,450}setStep\(3\)/, "Conflict recovery no longer clears times and returns to step 3.");
+requireText(booking, "client_schedule_conflict", "Client schedule conflict handling marker is missing.");
+requireMatch(booking, /code\.includes\("slot"\)[\s\S]{0,220}code\.includes\("client_schedule_conflict"\)/, "Specific slot-conflict handling is missing.");
+if (/Number\(error\?\.status \|\| 0\) === 409[\s\S]{0,40}\|\|/.test(booking)) {
+  errors.push("Generic HTTP 409 must not be treated as a slot conflict.");
+}
+requireText(booking, "const staleKeys = new Set(staleRows.map((row) => row.serviceKey))", "Post-write slot conflicts no longer isolate only stale service selections.");
+requireMatch(booking, /staleKeys[\s\S]{0,1400}setStep\(3\)/, "Conflict recovery must preserve valid schedule data and return to step 3.");
+requireText(booking, "تم الاحتفاظ بكل المواعيد الصحيحة", "Targeted conflict recovery message is missing.");
 
 // Booking write and payment integrity.
 requireText(booking, "createBookingGroup({ parent, items: itemRows })", "Grouped booking creation contract changed.");
@@ -107,11 +113,17 @@ requireText(booking, "if (selected.staffId === staffKey)", "Staff overlap must r
 requireText(booking, "for (const plan of memberPlans)", "Party checkout no longer creates a canonical booking per member.");
 requireText(booking, "partyLeadClientId: leadCanonicalClientId", "Party lead canonical identity is not attached to member bookings.");
 requireText(booking, "Promise.allSettled(", "Partial party creation compensation is missing.");
-requireText(booking, 'updateBookingStatus(bookingId, "cancelled")', "Partial party creation no longer cancels already-created member bookings.");
+requireText(booking, "rollbackBookingCreation(bookingId)", "Partial party creation no longer rolls back already-created member bookings.");
 requireText(booking, "const cashByMember = splitAmountByWeights(", "Cash allocation across party members is missing.");
 requireText(booking, "const cardByMember = splitAmountByWeights(", "Card allocation across party members is missing.");
 requireText(booking, "const transferByMember = splitAmountByWeights(", "Transfer allocation across party members is missing.");
 requireText(booking, "const paidByMember = memberPlans.map", "Exact per-member paid total derivation is missing.");
+
+// In-progress internal bookings can be persisted as Core drafts without becoming operational bookings.
+requireText(booking, "CoreInternalBookingDraftService.save", "Save-for-later draft persistence is missing.");
+requireText(booking, "resumeSavedDraft", "Saved draft resume flow is missing.");
+requireText(booking, 'className="bk2-draft-save"', "Save-for-later action is missing.");
+requireText(booking, 'className="bk2-drafts-panel"', "Saved draft list is missing.");
 
 // Historical-date confirmation and invoice/print handoff.
 requireText(booking, "showPastDateConfirmation", "Past-date confirmation state is missing.");

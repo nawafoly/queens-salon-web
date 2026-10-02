@@ -170,10 +170,21 @@ function clientDirectoryNormalizedNameSql(alias = "c") {
   )`;
 }
 
+function clientPhoneSearchFragment(value) {
+  const digits = normalizeClientDirectoryDigits(value).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) return `966${digits.slice(5)}`;
+  if (digits.startsWith('9660')) return `966${digits.slice(4)}`;
+  if (digits.startsWith('05')) return `966${digits.slice(1)}`;
+  if (digits.startsWith('5')) return `966${digits}`;
+  return digits;
+}
+
 function clientDirectoryFilters(query = {}) {
   const rawSearch = cleanText(query.search || query.q);
   const search = normalizeClientDirectorySearchText(rawSearch);
   const phone = normalizePhone(normalizeClientDirectoryDigits(rawSearch));
+  const phoneFragment = clientPhoneSearchFragment(rawSearch);
   const segment = clientListSegment(query.segment);
   const lastVisit = clientListLastVisit(query.lastVisit);
   const source = cleanText(query.source).toLowerCase();
@@ -198,6 +209,7 @@ function clientDirectoryFilters(query = {}) {
          OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
          OR (? <> '' AND c.phone_normalized = ?)
+         OR (? <> '' AND INSTR(COALESCE(c.phone_normalized, ''), ?) > 0)
          OR (? = 1 AND ${clientDirectoryNormalizedNameSql("c")} IN (?, ?))
        )`
     : '';
@@ -211,6 +223,8 @@ function clientDirectoryFilters(query = {}) {
         search,
         phone || '',
         phone || '',
+        phoneFragment || '',
+        phoneFragment || '',
         unnamedSearch ? 1 : 0,
         normalizeClientDirectorySearchText(
           "\u0639\u0645\u064A\u0644\u0629 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"
@@ -275,14 +289,18 @@ export async function listClients(db, salonId, query = {}) {
   const searchClause = filters.clause;
   const searchParams = filters.params;
   const selectedOrder =
-    sort === "most"
+    !query.sort
+      ? "c.updated_at DESC, c.id DESC"
+      : sort === "most"
       ? "(SELECT COUNT(*) FROM bookings sb WHERE sb.salon_id = c.salon_id AND sb.client_id = c.id AND sb.deleted_at IS NULL) DESC, c.id DESC"
       : sort === "latest"
         ? "COALESCE((SELECT MAX(sv.booking_date || ' ' || sv.start_time) FROM bookings sv WHERE sv.salon_id = c.salon_id AND sv.client_id = c.id AND sv.status = 'completed' AND sv.deleted_at IS NULL), '') DESC, c.id DESC"
         : "c.created_at DESC, c.id DESC";
 
   const metricsOrder =
-    sort === "most"
+    !query.sort
+      ? "sc.updated_at DESC, sc.id DESC"
+      : sort === "most"
       ? "COALESCE(bm.bookings_count, 0) DESC, sc.id DESC"
       : sort === "latest"
         ? "COALESCE(lc.last_visit_date || ' ' || lc.last_visit_time, '') DESC, sc.id DESC"

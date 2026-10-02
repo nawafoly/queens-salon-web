@@ -62,9 +62,14 @@ export interface BookingDataSource {
   getClient(id: string): Promise<BookingClientCandidate | null>;
   createClient(input: {
     name: string;
-    phone: string;
+    phone?: string;
     email?: string;
     firebaseUid?: string;
+  }): Promise<BookingClientCandidate>;
+  updateClient(id: string, input: {
+    name?: string;
+    phone?: string;
+    email?: string;
   }): Promise<BookingClientCandidate>;
   searchBookings(query?: BookingSearchQuery): Promise<BookingDocWithId[]>;
   getBooking(id: string): Promise<BookingDocWithId | null>;
@@ -79,6 +84,7 @@ export interface BookingDataSource {
     parentPublicId: string;
     itemIds: string[];
   }>;
+  rollbackBookingCreation(id: string): Promise<void>;
   updateBooking(id: string, patch: Partial<BookingDoc>): Promise<void>;
   updateBookingStatus(
     id: string,

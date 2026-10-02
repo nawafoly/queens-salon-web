@@ -29,7 +29,6 @@ async function setup(t) {
     workers: [
       {
         config: {
-          type: "worker",
           name: "identity-reconciliation-test-worker",
           compatibilityDate: "2026-06-24",
           manifest: {

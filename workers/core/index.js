@@ -47,6 +47,12 @@ import {
   staffIsPubliclyBookable,
 } from './repositories/staff.js';
 import {
+  deleteInternalBookingDraft,
+  getInternalBookingDraft,
+  listInternalBookingDrafts,
+  saveInternalBookingDraft,
+} from './repositories/internal-booking-drafts.js';
+import {
   cancelBooking,
   completeBooking,
   createBooking,
@@ -56,6 +62,7 @@ import {
   listBookings,
   patchBooking,
   rescheduleBooking,
+  rollbackInternalBookingCreation,
   listTakenBookingTimes,
 } from './repositories/bookings.js';
 import {
@@ -564,6 +571,15 @@ function match(url, method) {
   if (path === "/api/core/bookings/taken-times" && method === "GET") {
     return { name: "bookings:taken-times" };
   }
+
+  const internalBookingDraftDetail =
+    /^\/api\/core\/internal-booking-drafts\/([^/]+)$/.exec(path);
+  if (internalBookingDraftDetail) {
+    return { name: "internal-booking-drafts", id: internalBookingDraftDetail[1] };
+  }
+  if (path === "/api/core/internal-booking-drafts") {
+    return { name: "internal-booking-drafts" };
+  }
   const testimonialDetail = /^\/api\/core\/testimonials\/([^/]+)$/.exec(path);
   if (testimonialDetail) {
     return { name: "testimonials", id: testimonialDetail[1] };
@@ -627,6 +643,10 @@ function match(url, method) {
     return { name: "client-connect:assign", id: connectAssignment[1] };
   }
 
+  if (path === "/api/core/clients/directory-summary" && method === "GET") {
+    return { name: "client:directory-summary" };
+  }
+
   if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
     return { name: "client:loyalty-summary" };
   }
@@ -666,6 +686,12 @@ function match(url, method) {
 
   if (path === "/api/core/public/booking-track" && method === "GET") {
     return { name: "booking:public-track" };
+  }
+
+  const internalBookingRollback =
+    /^\/api\/core\/internal\/bookings\/([^/]+)\/rollback$/.exec(path);
+  if (internalBookingRollback && method === "POST") {
+    return { name: "bookings:internal-rollback", id: internalBookingRollback[1] };
   }
 
   if (path === "/api/core/internal/bookings" && method === "POST") {
@@ -1493,6 +1519,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       return wallet;
     }
 
+    case "client:directory-summary":
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      if (method === "GET") return getClientDirectorySummary(db, ctx.salonId);
+      break;
+
     case "client:loyalty-summary":
       requireRole(ctx.role, OPERATIONS_ROLES);
       if (method === "GET") return getClientLoyaltySummary(db, ctx.salonId);
@@ -1504,7 +1535,7 @@ async function dispatch(ctx, route, method, body, query, env) {
         return getClientDirectorySummary(
           db,
           ctx.salonId,
-          Object.fromEntries(new URL(request.url).searchParams.entries())
+          query
         );
       }
       break;
@@ -1801,6 +1832,30 @@ async function dispatch(ctx, route, method, body, query, env) {
         actorInfo
       );
 
+    case "internal-booking-drafts":
+      requirePermission(ctx, "bookings.create");
+      if (method === "GET" && route.id) {
+        return getInternalBookingDraft(db, ctx.salonId, route.id, actorInfo);
+      }
+      if (method === "GET") {
+        return listInternalBookingDrafts(db, ctx.salonId, actorInfo, query);
+      }
+      if (method === "POST" && !route.id) {
+        return saveInternalBookingDraft(db, ctx.salonId, body, actorInfo);
+      }
+      if (method === "PATCH" && route.id) {
+        return saveInternalBookingDraft(
+          db,
+          ctx.salonId,
+          { ...body, id: route.id },
+          actorInfo
+        );
+      }
+      if (method === "DELETE" && route.id) {
+        return deleteInternalBookingDraft(db, ctx.salonId, route.id, actorInfo);
+      }
+      break;
+
     case "bookings:internal":
       requirePermission(ctx, "bookings.create");
       return createBooking(
@@ -1820,6 +1875,15 @@ async function dispatch(ctx, route, method, body, query, env) {
           ),
         }
       );
+    case "bookings:internal-rollback":
+      requirePermission(ctx, "bookings.create");
+      return rollbackInternalBookingCreation(
+        db,
+        ctx.salonId,
+        route.id,
+        actorInfo
+      );
+
     case "booking:complete":
       requirePermission(ctx, "bookings.update");
       return completeBooking(db, ctx.salonId, route.id, actorInfo);

@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
+import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiEdit2, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
+import HairLengthGuideDrawer from "../../components/bookingInternal/HairLengthGuideDrawer";
+import hairLengthGuideImage from "../../assets/images/hair-length-guide.png";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../../components/dashboard-v2";
 import "./booking-internal-v2.css";
 import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { CoreSettingsService } from "../../services/CoreSettingsService";
 import { CoreOfferService } from "../../services/CoreOfferService";
+import {
+  CoreInternalBookingDraftService,
+  type CoreInternalBookingDraft,
+} from "../../services/CoreInternalBookingDraftService";
 import type { CoreDiscount } from "../../types/coreApi";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
 import { formatTime12 } from "../../helpers/timeDisplay";
 import { getCoreStaffBookableStartSlots, isCoreStaffStartBookable } from "../../helpers/coreBookingAvailability";
 import { listCoreBookableStaffForDate } from "../../services/coreBookableStaffService";
+
+import { clientConflictSelectionKeys } from "../../helpers/clientConflictSelectionKeys";
 
 import { todayISO } from "../../helpers/bookingDateUtils";
 import {
@@ -34,10 +42,13 @@ type ClientCandidate = {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   publicId?: string;
   source?: string;
   visits?: number;
   sessions?: number;
+  bookingGuest?: boolean;
+  partyKey?: string;
 };
 
 type CatalogSection = { id: string; title?: string; name?: string; label?: string };
@@ -67,6 +78,43 @@ type BookingPriceAdjustment = {
   price: string;
   reason: PriceAdjustmentReason | "";
   note: string;
+};
+
+type InternalBookingDraftSnapshot = {
+  version: 1;
+  step: Step;
+  selectedClient: ClientCandidate | null;
+  companions: ClientCandidate[];
+  activePartyClientKey: string;
+  query: string;
+  addingCompanion: boolean;
+  clientPickerOpen: boolean;
+  showNewClient: boolean;
+  newClientName: string;
+  newClientPhone: string;
+  newClientEmail: string;
+  editingPartyClientKey: string;
+  cart: CatalogService[];
+  serviceQuery: string;
+  priceAdjustments: Record<string, BookingPriceAdjustment>;
+  bookingDate: string;
+  scheduleByService: Record<string, ScheduleSelection>;
+  selectedSectionId: string;
+  selectedCategoryId: string;
+  paymentMethod: PaymentMethod;
+  paymentType: PaymentType;
+  paidAmount: string;
+  cashAmount: string;
+  cardAmount: string;
+  transferAmount: string;
+  bookingNote: string;
+  discountMode: DiscountMode;
+  manualFixedDiscount: string;
+  manualPercentDiscount: string;
+  manualMaxDiscount: string;
+  selectedOfferByClientKey: Record<string, string>;
+  couponInput: string;
+  couponOfferId: string;
 };
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingBusinessHoursDay = { enabled: boolean; start: string; end: string };
@@ -143,7 +191,7 @@ function readQuickClients(): ClientCandidate[] {
     const parsed = raw ? JSON.parse(raw) : {};
     return Object.entries(parsed || {})
       .map(([key, value]: [string, any]) => ({
-        id: `history:${key}`,
+        id: String(value?.id || `history:${key}`).trim(),
         name: String(value?.name || "بدون اسم").trim(),
         phone: phone10Digits(value?.phone || ""),
         source: String(value?.source || "history"),
@@ -158,12 +206,14 @@ function readQuickClients(): ClientCandidate[] {
 }
 
 function markQuickClientUsage(raw: ClientCandidate) {
+  if (isBookingGuest(raw)) return;
   const key = candidateIdentity(raw);
   if (!key) return;
   try {
     const parsed = JSON.parse(localStorage.getItem(QUICK_CLIENT_HISTORY_KEY) || "{}") || {};
     const prev = parsed[key] || {};
     parsed[key] = {
+      id: raw.id || prev.id || "",
       name: raw.name || prev.name || "",
       phone: raw.phone || prev.phone || "",
       usedCount: Math.max(1, Number(prev.usedCount || 0) + 1),
@@ -184,8 +234,14 @@ function serviceTitle(service: any) {
   return catalogLabel(service, "خدمة");
 }
 
+function isBookingGuest(client: ClientCandidate | null | undefined) {
+  return Boolean(client?.bookingGuest);
+}
+
 function partyClientKey(client: ClientCandidate | null | undefined) {
   if (!client) return "";
+  const stablePartyKey = String(client.partyKey || "").trim();
+  if (stablePartyKey) return stablePartyKey;
   const rawId = String(client.id || "").trim();
 
   // Canonical Core client ID is the booking ownership key. Phone/name are only
@@ -524,12 +580,35 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const money = (value: number) => `${Number(value || 0).toLocaleString(locale)} ${currency}`;
   const [step, setStep] = useState<Step>(1);
   const [mode, setMode] = useState<"new" | "sessions">("new");
+  const [hairGuideOpen, setHairGuideOpen] = useState(false);
+  const hairGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const summaryScrollRef = useRef<HTMLDivElement | null>(null);
+  const handleSummaryWheel = useCallback((event: WheelEvent<HTMLElement>) => {
+    const scroller = summaryScrollRef.current;
+    if (!scroller || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    if (maxScrollTop <= 0) return;
+
+    const canScrollUp = event.deltaY < 0 && scroller.scrollTop > 0;
+    const canScrollDown = event.deltaY > 0 && scroller.scrollTop < maxScrollTop - 1;
+    if (!canScrollUp && !canScrollDown) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    scroller.scrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, scroller.scrollTop + event.deltaY)
+    );
+  }, []);
+
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [companions, setCompanions] = useState<ClientCandidate[]>([]);
   const [addingCompanion, setAddingCompanion] = useState(false);
   const [clientPickerOpen, setClientPickerOpen] = useState(true);
   const [activePartyClientKey, setActivePartyClientKey] = useState("");
+  const [editingPartyClientKey, setEditingPartyClientKey] = useState("");
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
   const [clientSearching, setClientSearching] = useState(false);
   const [clientMessage, setClientMessage] = useState("");
@@ -593,11 +672,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
+  const [savedDrafts, setSavedDrafts] = useState<
+    CoreInternalBookingDraft<InternalBookingDraftSnapshot>[]
+  >([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [activeDraftId, setActiveDraftId] = useState("");
+  const pendingDraftCouponOfferIdRef = useRef("");
+  const restoringDraftRef = useRef(false);
 
   const candidateFromCoreRow = useCallback((raw: any, fallbackSource = "core_d1"): ClientCandidate => ({
     id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
     name: String(raw?.name || raw?.fullName || raw?.clientName || "بدون اسم").trim(),
     phone: phone10Digits(raw?.phone || raw?.mobile || raw?.clientPhone || raw?.phoneNormalized || raw?.phone_normalized || ""),
+    email: String(raw?.email || "").trim() || undefined,
     publicId: String(raw?.publicId || raw?.public_id || raw?.trackPublicId || raw?.mk || "").trim() || undefined,
     source: String(raw?.source || fallbackSource),
     visits: Math.max(0, Number(raw?.visits || raw?.usedCount || 0)) || undefined,
@@ -607,6 +696,10 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const bookingClients = useMemo(
     () => selectedClient ? [selectedClient, ...companions] : [],
     [selectedClient, companions]
+  );
+  const editingPartyClient = useMemo(
+    () => bookingClients.find((client) => partyClientKey(client) === editingPartyClientKey) || null,
+    [bookingClients, editingPartyClientKey]
   );
   const activeBookingClient = useMemo(() => {
     if (!bookingClients.length) return null;
@@ -695,9 +788,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       }
       setClientMessage(message);
     }
-    setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+    if (!isBookingGuest(candidate)) {
+      setClients((current) => [candidate, ...current.filter((row) => candidateIdentity(row) !== candidateIdentity(candidate))]);
+      markQuickClientUsage(candidate);
+    }
     setQuery("");
-    markQuickClientUsage(candidate);
     setShowNewClient(false);
     setNewClientName("");
     setNewClientPhone("");
@@ -745,18 +840,46 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     const name = String(newClientName || "").trim();
     const phone = phone10Digits(newClientPhone);
     const email = String(newClientEmail || "").trim();
-    if (name.length < 2) { setNewClientError(t("اكتبي اسم العميلة كاملًا.")); return; }
-    if (!phone || phone.length !== 10) { setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام.")); return; }
+    if (name.length < 2) {
+      setNewClientError(t(addingCompanion ? "اكتبي اسم المرافقة." : "اكتبي اسم العميلة كاملًا."));
+      return;
+    }
+    if (!addingCompanion && (!phone || phone.length !== 10)) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام."));
+      return;
+    }
+    if (phone && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة."));
+      return;
+    }
+
+    if (addingCompanion && !phone) {
+      const guestId = `booking_guest_${makeLocalId()}`;
+      const guest: ClientCandidate = {
+        id: guestId,
+        partyKey: `guest:${guestId}`,
+        name,
+        phone: "",
+        email: email || undefined,
+        source: "booking_guest",
+        bookingGuest: true,
+      };
+      chooseClientForBooking(
+        guest,
+        t("تمت إضافة المرافقة لهذا الحجز فقط دون إنشاء ملف عميلة.")
+      );
+      return;
+    }
 
     setCreatingClient(true);
-    setExistingClientChecking(true);
+    setExistingClientChecking(Boolean(phone));
     setExistingClientLookupError("");
     setNewClientError("");
 
     try {
       // Re-check immediately before CREATE. The preview lookup is UX only;
       // this gate is the authoritative client-side duplicate stop.
-      const existing = await findExistingClientByPhone(phone);
+      const existing = phone ? await findExistingClientByPhone(phone) : null;
       if (existing) {
         setExistingClientMatch(existing);
         setClientMessage(t("تم العثور على عميلة مسجلة بهذا الرقم. اختاري السجل الموجود للمتابعة."));
@@ -768,7 +891,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         phone,
         email: email || undefined,
       });
-      const candidate = candidateFromCoreRow(created || { name, phone }, "client_profile");
+      const candidate = candidateFromCoreRow(created || { name, phone, email }, "client_profile");
       chooseClientForBooking(candidate, t("تم اختيار العميلة للحجز بنجاح."));
     } catch (error: any) {
       console.error("[BookingInternalV2] client create/dedup check failed", error);
@@ -784,7 +907,181 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       setExistingClientChecking(false);
       setCreatingClient(false);
     }
-  }, [newClientName, newClientPhone, newClientEmail, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
+  }, [newClientName, newClientPhone, newClientEmail, addingCompanion, findExistingClientByPhone, candidateFromCoreRow, chooseClientForBooking, language]);
+
+  const closePartyMemberEditor = useCallback(() => {
+    setEditingPartyClientKey("");
+    setShowNewClient(false);
+    setAddingCompanion(false);
+    setClientPickerOpen(false);
+    setNewClientName("");
+    setNewClientPhone("");
+    setNewClientEmail("");
+    setExistingClientMatch(null);
+    setExistingClientLookupError("");
+    setNewClientError("");
+  }, []);
+
+  const openPartyMemberEditor = useCallback((client: ClientCandidate) => {
+    const key = partyClientKey(client);
+    const isPrimary = Boolean(selectedClient && partyClientKey(selectedClient) === key);
+    setEditingPartyClientKey(key);
+    setNewClientName(client.name);
+    setNewClientPhone(client.phone || "");
+    setNewClientEmail(client.email || "");
+    setExistingClientMatch(null);
+    setExistingClientLookupError("");
+    setNewClientError("");
+    setAddingCompanion(!isPrimary);
+    setClientPickerOpen(true);
+    setShowNewClient(true);
+  }, [selectedClient]);
+
+  const savePartyMemberEdit = useCallback(async () => {
+    const current = bookingClients.find((client) => partyClientKey(client) === editingPartyClientKey);
+    if (!current) {
+      setNewClientError(t("تعذر العثور على بيانات العميلة داخل مجموعة الحجز."));
+      return;
+    }
+
+    const oldKey = partyClientKey(current);
+    const isPrimary = Boolean(selectedClient && partyClientKey(selectedClient) === oldKey);
+    const name = String(newClientName || "").trim();
+    const phone = phone10Digits(newClientPhone);
+    const email = String(newClientEmail || "").trim();
+
+    if (name.length < 2) {
+      setNewClientError(t(isPrimary ? "اكتبي اسم العميلة كاملًا." : "اكتبي اسم المرافقة."));
+      return;
+    }
+    if (isPrimary && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام."));
+      return;
+    }
+    if (phone && phone.length !== 10) {
+      setNewClientError(t("أدخلي رقم جوال سعودي صحيح من 10 أرقام أو اتركيه فارغًا للمرافقة."));
+      return;
+    }
+
+    setCreatingClient(true);
+    setExistingClientChecking(Boolean(phone));
+    setExistingClientLookupError("");
+    setNewClientError("");
+
+    try {
+      const bookingDataSource = resolveCoreBookingDataSource();
+      const duplicate = phone ? await findExistingClientByPhone(phone) : null;
+      const duplicateAlreadyInParty = duplicate
+        ? bookingClients.find(
+            (row) =>
+              partyClientKey(row) !== oldKey &&
+              samePartyClient(row, duplicate)
+          )
+        : null;
+      if (duplicateAlreadyInParty) {
+        setNewClientError(t("هذه العميلة موجودة بالفعل في مجموعة الحجز."));
+        return;
+      }
+
+      let next: ClientCandidate;
+      const currentId = String(current.id || "").trim();
+      const currentIsCanonical = !isBookingGuest(current) && currentId && !currentId.startsWith("history:");
+
+      if (isBookingGuest(current) && !phone) {
+        next = {
+          ...current,
+          name,
+          phone: "",
+          email: email || undefined,
+          partyKey: oldKey,
+          bookingGuest: true,
+        };
+      } else if (isBookingGuest(current) || !currentIsCanonical) {
+        if (duplicate) {
+          next = {
+            ...duplicate,
+            partyKey: oldKey,
+            bookingGuest: false,
+          };
+        } else {
+          const created = await bookingDataSource.createClient({
+            name,
+            phone,
+            email: email || undefined,
+          });
+          next = {
+            ...candidateFromCoreRow(created, "client_profile"),
+            partyKey: oldKey,
+            bookingGuest: false,
+          };
+        }
+      } else {
+        if (duplicate && String(duplicate.id || "").trim() !== currentId) {
+          setNewClientError(t("رقم الجوال مرتبط بعميلة أخرى. استخدمي ملفها بدل تغيير هذا السجل."));
+          return;
+        }
+        const updated = await bookingDataSource.updateClient(currentId, {
+          name,
+          phone,
+          email,
+        });
+        next = {
+          ...candidateFromCoreRow(updated, "core_d1"),
+          partyKey: oldKey,
+          bookingGuest: false,
+        };
+      }
+
+      if (isPrimary) {
+        setSelectedClient(next);
+      } else {
+        setCompanions((rows) =>
+          rows.map((row) => partyClientKey(row) === oldKey ? next : row)
+        );
+      }
+
+      setCart((rows) =>
+        rows.map((item) =>
+          bookingLineClientKey(item) === oldKey
+            ? {
+                ...item,
+                __partyClientId: next.id,
+                __partyClientName: next.name,
+                __partyClientPhone: next.phone,
+              }
+            : item
+        )
+      );
+      if (!isBookingGuest(next)) {
+        setClients((rows) => [next, ...rows.filter((row) => !samePartyClient(row, next))]);
+        markQuickClientUsage(next);
+      }
+      setClientMessage(t("تم تحديث بيانات العميلة مع الاحتفاظ بالخدمات والمواعيد."));
+      closePartyMemberEditor();
+    } catch (error: any) {
+      console.error("[BookingInternalV2] party member edit failed", error);
+      const code = String(error?.code || "").toLowerCase();
+      if (code.includes("duplicate") || code.includes("phone")) {
+        setNewClientError(t("رقم الجوال مرتبط بعميلة أخرى. استخدمي ملفها بدل تغيير هذا السجل."));
+      } else {
+        setNewClientError(t("تعذر حفظ تعديل بيانات العميلة. حاولي مرة أخرى."));
+      }
+    } finally {
+      setExistingClientChecking(false);
+      setCreatingClient(false);
+    }
+  }, [
+    bookingClients,
+    editingPartyClientKey,
+    selectedClient,
+    newClientName,
+    newClientPhone,
+    newClientEmail,
+    findExistingClientByPhone,
+    candidateFromCoreRow,
+    closePartyMemberEditor,
+    language,
+  ]);
 
   const searchClients = useCallback(async (rawQuery: string) => {
     const qRaw = String(rawQuery || "").trim();
@@ -889,6 +1186,40 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     void loadDiscountOffers();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSavedDrafts() {
+      setDraftsLoading(true);
+      try {
+        const rows = await CoreInternalBookingDraftService.list<InternalBookingDraftSnapshot>();
+        if (!cancelled) setSavedDrafts(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        console.error("[BookingInternalV2] draft list load failed", error);
+        if (!cancelled) setDraftMessage(t("تعذر جلب مسودات الحجز المحفوظة."));
+      } finally {
+        if (!cancelled) setDraftsLoading(false);
+      }
+    }
+    void loadSavedDrafts();
+    return () => { cancelled = true; };
+  }, [language]);
+
+  useEffect(() => {
+    const pendingId = pendingDraftCouponOfferIdRef.current;
+    if (!pendingId || !offers.length) return;
+    const restored =
+      offers.find(
+        (offer) => String((offer as any)?.id || "").trim() === pendingId
+      ) || null;
+    setCouponOffer(restored);
+    pendingDraftCouponOfferIdRef.current = "";
+    if (!restored && discountMode === "coupon") {
+      setCouponMessage(
+        t("الكوبون المحفوظ لم يعد نشطًا. تحققي منه قبل إتمام الحجز.")
+      );
+    }
+  }, [offers, discountMode, language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1290,7 +1621,12 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : -1;
   }
 
-  const getCartScheduleConflict = useCallback((serviceKey: string, staffKey: string, time: string) => {
+  const getCartScheduleConflict = useCallback((
+    serviceKey: string,
+    staffKey: string,
+    time: string,
+    scheduleState: Record<string, ScheduleSelection> = scheduleByService
+  ) => {
     const currentService = cart.find((item) => bookingLineKey(item) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
@@ -1302,7 +1638,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     for (const other of cart) {
       const otherKey = bookingLineKey(other);
       if (otherKey === serviceKey) continue;
-      const selected = scheduleByService[otherKey];
+      const selected = scheduleState[otherKey];
       if (!selected?.time) continue;
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) continue;
@@ -1474,6 +1810,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   useEffect(() => {
+    if (restoringDraftRef.current) {
+      restoringDraftRef.current = false;
+      setAvailableTimes({});
+      return;
+    }
     setScheduleByService({});
     setAvailableTimes({});
   }, [bookingDate]);
@@ -1510,6 +1851,177 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       : Math.max(0, Number(paidAmount || 0));
   const remainingAmount = Math.max(0, finalTotal - effectivePaidAmount);
   const mixedTotal = Math.max(0, Number(cashAmount || 0)) + Math.max(0, Number(cardAmount || 0)) + Math.max(0, Number(transferAmount || 0));
+
+  const buildCurrentDraftSnapshot = useCallback((): InternalBookingDraftSnapshot => ({
+    version: 1,
+    step,
+    selectedClient,
+    companions,
+    activePartyClientKey,
+    query,
+    addingCompanion,
+    clientPickerOpen,
+    showNewClient,
+    newClientName,
+    newClientPhone,
+    newClientEmail,
+    editingPartyClientKey,
+    cart,
+    serviceQuery,
+    priceAdjustments,
+    bookingDate,
+    scheduleByService,
+    selectedSectionId,
+    selectedCategoryId,
+    paymentMethod,
+    paymentType,
+    paidAmount,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    bookingNote,
+    discountMode,
+    manualFixedDiscount,
+    manualPercentDiscount,
+    manualMaxDiscount,
+    selectedOfferByClientKey,
+    couponInput,
+    couponOfferId: String((couponOffer as any)?.id || "").trim(),
+  }), [
+    step, selectedClient, companions, activePartyClientKey, query,
+    addingCompanion, clientPickerOpen, showNewClient, newClientName,
+    newClientPhone, newClientEmail, editingPartyClientKey, cart,
+    serviceQuery, priceAdjustments, bookingDate, scheduleByService,
+    selectedSectionId, selectedCategoryId, paymentMethod, paymentType,
+    paidAmount, cashAmount, cardAmount, transferAmount, bookingNote,
+    discountMode, manualFixedDiscount, manualPercentDiscount,
+    manualMaxDiscount, selectedOfferByClientKey, couponInput, couponOffer,
+  ]);
+
+  const saveDraftForLater = useCallback(async () => {
+    const hasWork =
+      Boolean(selectedClient) ||
+      companions.length > 0 ||
+      cart.length > 0 ||
+      Boolean(String(newClientName || "").trim()) ||
+      Boolean(String(query || "").trim());
+
+    if (!hasWork) {
+      setDraftMessage(t("ابدئي الحجز أولًا قبل حفظه كمسودة."));
+      return;
+    }
+
+    setDraftSaving(true);
+    setDraftMessage("");
+    try {
+      const partyCount = (selectedClient ? 1 : 0) + companions.length;
+      const title = selectedClient
+        ? `${selectedClient.name}${partyCount > 1 ? ` +${partyCount - 1}` : ""} · ${bookingDate}`
+        : t("مسودة حجز غير مكتملة");
+      const saved = await CoreInternalBookingDraftService.save<InternalBookingDraftSnapshot>({
+        id: activeDraftId || undefined,
+        title,
+        currentStep: step,
+        draft: buildCurrentDraftSnapshot(),
+      });
+      setActiveDraftId(saved.id);
+      setSavedDrafts((current) => [
+        saved,
+        ...current.filter((row) => row.id !== saved.id),
+      ]);
+      setDraftMessage(t("تم حفظ مسودة الحجز. يمكنك الرجوع لها وإكمالها لاحقًا."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft save failed", error);
+      setDraftMessage(t("تعذر حفظ مسودة الحجز. حاولي مرة أخرى."));
+    } finally {
+      setDraftSaving(false);
+    }
+  }, [
+    selectedClient, companions, cart, newClientName, query, bookingDate,
+    activeDraftId, step, buildCurrentDraftSnapshot, language,
+  ]);
+
+  const resumeSavedDraft = useCallback((
+    row: CoreInternalBookingDraft<InternalBookingDraftSnapshot>
+  ) => {
+    const draft = row?.draft;
+    if (!draft || draft.version !== 1) {
+      setDraftMessage(t("تعذر قراءة هذه المسودة."));
+      return;
+    }
+
+    const nextDate = String(draft.bookingDate || todayISO());
+    if (nextDate !== bookingDate) restoringDraftRef.current = true;
+
+    setActiveDraftId(row.id);
+    setMode("new");
+    setStep(Math.min(4, Math.max(1, Number(draft.step || row.current_step || 1))) as Step);
+    setSelectedClient(draft.selectedClient || null);
+    setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
+    setActivePartyClientKey(String(draft.activePartyClientKey || ""));
+    setQuery(String(draft.query || ""));
+    setAddingCompanion(Boolean(draft.addingCompanion));
+    setClientPickerOpen(Boolean(draft.clientPickerOpen));
+    setShowNewClient(Boolean(draft.showNewClient));
+    setNewClientName(String(draft.newClientName || ""));
+    setNewClientPhone(String(draft.newClientPhone || ""));
+    setNewClientEmail(String(draft.newClientEmail || ""));
+    setEditingPartyClientKey(String(draft.editingPartyClientKey || ""));
+    setCart(Array.isArray(draft.cart) ? draft.cart : []);
+    setServiceQuery(String(draft.serviceQuery || ""));
+    setPriceAdjustments(draft.priceAdjustments || {});
+    setBookingDate(nextDate);
+    setScheduleByService(draft.scheduleByService || {});
+    setAvailableTimes({});
+    setSelectedSectionId(String(draft.selectedSectionId || ""));
+    setSelectedCategoryId(String(draft.selectedCategoryId || ""));
+    setPaymentMethod(draft.paymentMethod || "cash");
+    setPaymentType(draft.paymentType || "full");
+    setPaidAmount(String(draft.paidAmount || ""));
+    setCashAmount(String(draft.cashAmount || ""));
+    setCardAmount(String(draft.cardAmount || ""));
+    setTransferAmount(String(draft.transferAmount || ""));
+    setBookingNote(String(draft.bookingNote || ""));
+    setDiscountMode(draft.discountMode || "none");
+    setManualFixedDiscount(String(draft.manualFixedDiscount || ""));
+    setManualPercentDiscount(String(draft.manualPercentDiscount || ""));
+    setManualMaxDiscount(String(draft.manualMaxDiscount || ""));
+    setSelectedOfferByClientKey(draft.selectedOfferByClientKey || {});
+    setCouponInput(String(draft.couponInput || ""));
+    const savedCouponOfferId = String(draft.couponOfferId || "");
+    const restoredCoupon = savedCouponOfferId
+      ? offers.find(
+          (offer) => String((offer as any)?.id || "").trim() === savedCouponOfferId
+        ) || null
+      : null;
+    setCouponOffer(restoredCoupon);
+    pendingDraftCouponOfferIdRef.current =
+      restoredCoupon ? "" : savedCouponOfferId;
+    setCreatedBookingIds([]);
+    setCreatedPartyBookings([]);
+    setCreatedBookingReference("");
+    setSubmitError("");
+    setPostSaveWarning("");
+    setScheduleMessage(
+      t("تم استرجاع المسودة. سيتم التحقق من المواعيد مرة أخرى قبل الحفظ النهائي.")
+    );
+    setDraftMessage(t("تم استرجاع مسودة الحجز."));
+  }, [bookingDate, offers, language]);
+
+  const removeSavedDraft = useCallback(async (id: string) => {
+    const draftId = String(id || "").trim();
+    if (!draftId) return;
+    setDraftMessage("");
+    try {
+      await CoreInternalBookingDraftService.remove(draftId);
+      setSavedDrafts((current) => current.filter((row) => row.id !== draftId));
+      if (activeDraftId === draftId) setActiveDraftId("");
+      setDraftMessage(t("تم حذف مسودة الحجز."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft delete failed", error);
+      setDraftMessage(t("تعذر حذف مسودة الحجز."));
+    }
+  }, [activeDraftId, language]);
 
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
@@ -1585,7 +2097,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
 
-    const invalidClient = bookingClients.find((client) => phone10Digits(client.phone).length !== 10);
+    const invalidClient = bookingClients.find(
+      (client) => !isBookingGuest(client) && phone10Digits(client.phone).length !== 10
+    );
     if (invalidClient) {
       setSubmitError(
         language === "en"
@@ -1621,7 +2135,16 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       return;
     }
 
-    if (!allScheduled) {
+    const liveDraftConflict = cart.find((service) => {
+      const key = bookingLineKey(service);
+      const selected = scheduleByService[key];
+      return Boolean(
+        selected?.staffId &&
+        selected?.time &&
+        getCartScheduleConflict(key, selected.staffId, selected.time, scheduleByService)
+      );
+    });
+    if (!allScheduled || liveDraftConflict) {
       setSubmitError(t("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."));
       setStep(3);
       return;
@@ -1679,6 +2202,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     submittingRef.current = true;
     setSubmitting(true);
 
+    let attemptedClientKey = "";
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
       for (const service of cart) {
@@ -1731,6 +2255,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const canonicalByClientKey = new Map<string, string>();
       for (const client of bookingClients) {
         const clientKey = partyClientKey(client);
+        if (isBookingGuest(client)) {
+          canonicalByClientKey.set(clientKey, String(client.id || "").trim());
+          continue;
+        }
+
         const selectedClientId = String(client.id || "").trim();
         let canonicalClientId = "";
 
@@ -1746,7 +2275,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           const ensuredClient = await bookingDataSource.createClient({
             name: client.name,
             phone: client.phone,
-            email: String((client as any).email || "").trim() || undefined,
+            email: String(client.email || "").trim() || undefined,
           });
           canonicalClientId = String(ensuredClient?.id || "").trim();
         }
@@ -1782,6 +2311,13 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           client,
           clientKey,
           canonicalClientId: canonicalByClientKey.get(clientKey) || "",
+          guestParticipant: isBookingGuest(client)
+            ? {
+                id: String(client.id || "").trim(),
+                name: client.name,
+                email: client.email || null,
+              }
+            : undefined,
           memberOrder,
           memberCart,
           memberSubtotal,
@@ -1861,13 +2397,14 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
             return {
               clientId: plan.canonicalClientId,
+              guestParticipant: plan.guestParticipant,
               userId: null,
               createdBy: "staff",
               createdByUid: userId,
               channel: "internal",
               clientName: plan.client.name,
               clientPhone: plan.client.phone,
-              clientEmail: String((plan.client as any).email || "").trim() || null,
+              clientEmail: String(plan.client.email || "").trim() || null,
               serviceName: serviceTitle(service),
               serviceId: canonicalServiceId,
               serviceSnapshot: {
@@ -1942,6 +2479,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             } : {}),
           } as any;
 
+          attemptedClientKey = plan.clientKey;
           const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
           const bookingId = String(created.parentId || "");
           if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
@@ -1966,7 +2504,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         }
       } catch (creationError) {
         const compensation = await Promise.allSettled(
-          createdParentIds.map((bookingId) => bookingDataSource.updateBookingStatus(bookingId, "cancelled"))
+          createdParentIds.map((bookingId) => bookingDataSource.rollbackBookingCreation(bookingId))
         );
         compensationFailed = compensation.some((result) => result.status === "rejected");
         if (compensationFailed) {
@@ -1987,7 +2525,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           ? references[0] || ""
           : `${references[0]} +${references.length - 1}`
       );
-      bookingClients.forEach(markQuickClientUsage);
+      bookingClients.filter((client) => !isBookingGuest(client)).forEach(markQuickClientUsage);
 
       if (effectivePaidAmount > 0 && createdParty.length) {
         const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
@@ -2046,25 +2584,140 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           );
         }
       }
+
+      if (activeDraftId) {
+        try {
+          await CoreInternalBookingDraftService.remove(activeDraftId);
+          setSavedDrafts((current) =>
+            current.filter((row) => row.id !== activeDraftId)
+          );
+          setActiveDraftId("");
+        } catch (draftCleanupError) {
+          console.error(
+            "[BookingInternalV2] completed draft cleanup failed",
+            draftCleanupError
+          );
+          setPostSaveWarning((current) =>
+            [
+              current,
+              t("تم إنشاء الحجز، لكن تعذر حذف المسودة المحفوظة. احذفيها يدويًا حتى لا يتم استكمالها بالخطأ."),
+            ].filter(Boolean).join(" ")
+          );
+        }
+      }
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
       const code = String(error?.code || "").toLowerCase();
       const message = String(error?.message || error || "");
       const isSlotConflict =
-        Number(error?.status || 0) === 409 ||
         code.includes("slot") ||
         code.includes("staff_slot_conflict") ||
+        code.includes("client_schedule_conflict") ||
         message.toUpperCase().includes("SLOT_TAKEN") ||
         message.toLowerCase().includes("الموعد محجوز");
 
       if (isSlotConflict) {
-        setScheduleByService((current) => Object.fromEntries(
-          Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
-        ));
-        setAvailableTimes({});
-        setScheduleMessage(t("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة."));
-        setSubmitError(t("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر."));
+        const staleRows: Array<{ service: CatalogService; staff: StaffRow | null; serviceKey: string }> = [];
+        if (code.includes("client_schedule_conflict")) {
+          const affectedKeys = clientConflictSelectionKeys(
+            cart.map((service) => ({
+              key: bookingLineKey(service),
+              clientKey: bookingLineClientKey(service),
+              time: scheduleByService[bookingLineKey(service)]?.time || "",
+              duration: serviceDuration(service) || 30,
+            })),
+            attemptedClientKey,
+            error?.details
+          );
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            if (affectedKeys.has(serviceKey)) {
+              staleRows.push({ service, staff: null, serviceKey });
+            }
+          }
+        }
+        try {
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            const selected = scheduleByService[serviceKey];
+            if (!selected?.staffId || !selected?.time) continue;
+
+            const staff =
+              (eligibleStaffByService[serviceKey] || []).find(
+                (row) => staffId(row) === selected.staffId
+              ) || null;
+            if (!staff) {
+              staleRows.push({ service, staff: null, serviceKey });
+              continue;
+            }
+
+            const freshRows = await listCoreBookableStaffForDate({
+              serviceId: String(service.id || "").trim(),
+              date: bookingDate,
+              slotStepMin,
+              bufferMin,
+              requireShowOnBooking: false,
+              forceFresh: true,
+            });
+            const fresh = freshRows.find(
+              (row) => staffId(row.staff as StaffRow) === selected.staffId
+            );
+            if (
+              !fresh?.availability ||
+              !isCoreStaffStartBookable(fresh.availability, selected.time, {
+                durationMin: serviceDuration(service) || 30,
+                bufferMin,
+                slotStepMin,
+              })
+            ) {
+              staleRows.push({ service, staff, serviceKey });
+            }
+          }
+        } catch (revalidationError) {
+          console.error(
+            "[BookingInternalV2] post-conflict schedule revalidation failed",
+            revalidationError
+          );
+        }
+
+        if (staleRows.length) {
+          const staleKeys = new Set(staleRows.map((row) => row.serviceKey));
+          setScheduleByService((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) {
+              const selected = next[key];
+              if (selected) next[key] = { ...selected, time: "" };
+            }
+            return next;
+          });
+          setAvailableTimes((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) delete next[key];
+            return next;
+          });
+          await Promise.all(
+            staleRows
+              .filter((row): row is { service: CatalogService; staff: StaffRow; serviceKey: string } => Boolean(row.staff))
+              .map(({ service, staff }) => loadTimesForService(service, staff))
+          );
+          setScheduleMessage(
+            t("تم الاحتفاظ بكل المواعيد الصحيحة. أعيدي اختيار الوقت للخدمة المتعارضة فقط.")
+          );
+        } else {
+          setScheduleMessage(
+            t("حدث تعارض أثناء الحفظ. احتفظنا باختيارات الموعد الحالية لتراجعيها بدون إعادة إدخالها من جديد.")
+          );
+        }
+        setSubmitError(
+          t("تعذر إتمام الحجز بسبب تعارض موعد. تم الاحتفاظ ببقية بيانات الحجز.")
+        );
         setStep(3);
+      } else if (
+        code.startsWith("core_client:") ||
+        code.includes("phone")
+      ) {
+        setSubmitError(message || t("راجعي بيانات العميلة ثم حاولي مرة أخرى."));
+        setStep(1);
       } else if (
         code === "core_api:offline" ||
         code === "core_api:network_unavailable" ||
@@ -2113,6 +2766,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     bufferMin,
     selectedSectionId,
     loadTimesForService,
+    activeDraftId,
     language,
   ]);
 
@@ -2182,6 +2836,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferByClientKey({}); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
+    setActiveDraftId("");
   }, []);
 
   return (
@@ -2192,6 +2847,28 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           <h1>{t("الحجز الإداري")}</h1>
           <p>{t("إنشاء حجز جديد بخطوات واضحة وسريعة.")}</p>
         </div>
+        <button
+          ref={hairGuideTriggerRef}
+          type="button"
+          className="bk2-hair-guide-trigger"
+          onClick={() => setHairGuideOpen(true)}
+        >
+          {language === "en" ? "Hair Length Guide" : "دليل أطوال الشعر"}
+        </button>
+        {mode === "new" ? (
+          <button
+            type="button"
+            className="bk2-draft-save"
+            onClick={() => void saveDraftForLater()}
+            disabled={draftSaving}
+          >
+            {draftSaving
+              ? t("جاري حفظ المسودة...")
+              : activeDraftId
+                ? t("تحديث المسودة")
+                : t("حفظ ومتابعة لاحقًا")}
+          </button>
+        ) : null}
         <div className="bk2-mode-switch" aria-label={t("وضع الحجز")}>
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>{t("حجز جديد")}</button>
           <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>{t("الباقات والجلسات")}</button>
@@ -2200,6 +2877,50 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       {mode === "sessions" ? <PackageSessionsManager language={language} /> : (
         <>
+          {(draftsLoading || savedDrafts.length > 0 || draftMessage) ? (
+            <section className="bk2-drafts-panel">
+              <div className="bk2-drafts-head">
+                <div>
+                  <strong>{t("مسودات الحجز")}</strong>
+                  <small>{t("احفظي الحجز غير المكتمل وارجعي له بدون فقد البيانات.")}</small>
+                </div>
+                {draftsLoading ? <span>{t("جاري تحميل المسودات...")}</span> : null}
+              </div>
+              {draftMessage ? <p className="bk2-draft-message">{draftMessage}</p> : null}
+              {savedDrafts.length ? (
+                <div className="bk2-drafts-list">
+                  {savedDrafts.map((row) => (
+                    <article
+                      key={row.id}
+                      className={activeDraftId === row.id ? "is-active" : ""}
+                    >
+                      <div>
+                        <strong>{row.title || t("مسودة حجز")}</strong>
+                        <small>
+                          {t("آخر تحديث")}: {new Date(row.updated_at).toLocaleString(locale)}
+                          {" · "}
+                          {t("الخطوة")} {row.current_step}
+                        </small>
+                      </div>
+                      <div className="bk2-draft-actions">
+                        <button type="button" onClick={() => resumeSavedDraft(row)}>
+                          {t("استكمال")}
+                        </button>
+                        <button
+                          type="button"
+                          className="is-danger"
+                          onClick={() => void removeSavedDraft(row.id)}
+                        >
+                          {t("حذف المسودة")}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <nav className="bk2-stepper" aria-label={t("خطوات الحجز")}>
             {steps.map((item, index) => {
               const Icon = item.icon;
@@ -2275,32 +2996,47 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             <div key={key} className={`bk2-party-client-chip ${activePartyClientKey === key ? "is-active" : ""}`}>
                               <button type="button" onClick={() => setActivePartyClientKey(key)}>
                                 <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                                <span><strong>{client.name}</strong><small>{index === 0 ? t("العميلة الأساسية") : t("مرافقة")}</small></span>
+                                <span>
+                                  <strong>{client.name}</strong>
+                                  <small>
+                                    {index === 0 ? t("العميلة الأساسية") : t("مرافقة")}
+                                    {isBookingGuest(client) ? ` · ${t("لهذا الحجز فقط")}` : ""}
+                                  </small>
+                                </span>
                               </button>
-                              {index > 0 ? <button
-                                type="button"
-                                className="bk2-party-client-remove"
-                                aria-label={t("إزالة المرافقة")}
-                                onClick={() => {
-                                  const lineKeys = cart.filter((item) => bookingLineClientKey(item) === key).map(bookingLineKey);
-                                  const removeKeys = new Set(lineKeys);
-                                  setCompanions((current) => current.filter((row) => partyClientKey(row) !== key));
-                                  setCart((current) => current.filter((item) => bookingLineClientKey(item) !== key));
-                                  setPriceAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setScheduleByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setAvailableTimes((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setEligibleStaffByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
-                                  setSelectedOfferByClientKey((current) => {
-                                    const next = { ...current };
-                                    delete next[key];
-                                    if (!Object.values(next).some((value) => Boolean(String(value || "").trim()))) {
-                                      setDiscountMode("none");
-                                    }
-                                    return next;
-                                  });
-                                  if (activePartyClientKey === key) setActivePartyClientKey(partyClientKey(selectedClient));
-                                }}
-                              >×</button> : null}
+                              <div className="bk2-party-client-actions">
+                                <button
+                                  type="button"
+                                  className="bk2-party-client-edit"
+                                  onClick={() => openPartyMemberEditor(client)}
+                                >
+                                  <FiEdit2 /> {t("تعديل")}
+                                </button>
+                                {index > 0 ? <button
+                                  type="button"
+                                  className="bk2-party-client-remove"
+                                  aria-label={t("إزالة المرافقة")}
+                                  onClick={() => {
+                                    const lineKeys = cart.filter((item) => bookingLineClientKey(item) === key).map(bookingLineKey);
+                                    const removeKeys = new Set(lineKeys);
+                                    setCompanions((current) => current.filter((row) => partyClientKey(row) !== key));
+                                    setCart((current) => current.filter((item) => bookingLineClientKey(item) !== key));
+                                    setPriceAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setScheduleByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setAvailableTimes((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setEligibleStaffByService((current) => Object.fromEntries(Object.entries(current).filter(([lineKey]) => !removeKeys.has(lineKey))));
+                                    setSelectedOfferByClientKey((current) => {
+                                      const next = { ...current };
+                                      delete next[key];
+                                      if (!Object.values(next).some((value) => Boolean(String(value || "").trim()))) {
+                                        setDiscountMode("none");
+                                      }
+                                      return next;
+                                    });
+                                    if (activePartyClientKey === key) setActivePartyClientKey(partyClientKey(selectedClient));
+                                  }}
+                                >×</button> : null}
+                              </div>
                             </div>
                           );
                         })}
@@ -2330,15 +3066,22 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                         })}
                       </div>
                       <div className="bk2-divider"><span>{t("أو")}</span></div>
-                      <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
+                      <button className="bk2-add-client" type="button" onClick={() => { setEditingPartyClientKey(""); setNewClientName(""); setNewClientPhone(""); setNewClientEmail(""); setShowNewClient(true); setNewClientError(""); setExistingClientMatch(null); setExistingClientLookupError(""); }}><FiPlus />{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head"><div><strong>{t(addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t("سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
+                      <div className="bk2-new-client-head"><div><strong>{t(editingPartyClient ? (addingCompanion ? "تعديل بيانات المرافقة" : "تعديل بيانات العميلة") : addingCompanion ? "إضافة مرافقة جديدة" : "إضافة عميلة جديدة")}</strong><small>{t(editingPartyClient ? "عدّلي البيانات وسيبقى الحجز والخدمات والمواعيد كما هي." : addingCompanion ? "بدون رقم جوال ستُضاف كمرافقة لهذا الحجز فقط ولن يتم إنشاء ملف عميلة لها." : "سنفحص رقم الجوال أولًا حتى لا يتم إنشاء سجل مكرر.")}</small></div><button type="button" onClick={() => editingPartyClient ? closePartyMemberEditor() : setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
-                        <label><span>{t("اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch)} /></label>
-                        <label><span>{t("رقم الجوال")} *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder="05xxxxxxxx" /></label>
-                        <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch)} /></label>
+                        <label><span>{t(addingCompanion ? "اسم المرافقة" : "اسم العميلة")} *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder={t("مثال: رانيا الحربي")} disabled={Boolean(existingClientMatch) && !editingPartyClient} /></label>
+                        <label><span>{t(addingCompanion ? "رقم الجوال (اختياري)" : "رقم الجوال")} {!addingCompanion ? "*" : ""}</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => { setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10)); setNewClientError(""); }} placeholder={addingCompanion ? t("اختياري للمرافقة") : "05xxxxxxxx"} /></label>
+                        <label className="is-wide"><span>{t("البريد الإلكتروني (اختياري)")}</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" disabled={Boolean(existingClientMatch) && !editingPartyClient} /></label>
                       </div>
+
+                      {addingCompanion && !phone10Digits(newClientPhone) ? (
+                        <div className="bk2-client-identity-check is-guest" role="status">
+                          <span className="bk2-client-identity-dot" />
+                          <div><strong>{t("مرافقة لهذا الحجز فقط")}</strong><small>{t("لن يتم إنشاء ملف عميلة بدون رقم جوال.")}</small></div>
+                        </div>
+                      ) : null}
 
                       {existingClientChecking ? (
                         <div className="bk2-client-identity-check is-loading" role="status">
@@ -2383,13 +3126,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
                       {newClientError ? <p className="bk2-inline-warning">{newClientError}</p> : null}
                       <div className="bk2-new-client-actions">
-                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>{t("إلغاء")}</button>
+                        <button type="button" className="is-secondary" onClick={() => editingPartyClient ? closePartyMemberEditor() : setShowNewClient(false)} disabled={creatingClient}>{t("إلغاء")}</button>
                         <button
                           type="button"
                           className="is-primary"
-                          onClick={() => existingClientMatch
-                            ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
-                            : void createNewClient()
+                          onClick={() => editingPartyClient
+                            ? void savePartyMemberEdit()
+                            : existingClientMatch
+                              ? chooseClientForBooking(existingClientMatch, t("تم اختيار العميلة الموجودة. لم يتم إنشاء سجل جديد."))
+                              : void createNewClient()
                           }
                           disabled={creatingClient || existingClientChecking}
                         >
@@ -2397,11 +3142,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                             ? t("جاري الحفظ...")
                             : existingClientChecking
                               ? t("جاري التحقق...")
-                              : existingClientMatch
-                                ? t("اختيار العميلة الموجودة")
-                                : existingClientLookupError
-                                  ? t("إعادة التحقق والحفظ")
-                                  : t("حفظ واختيار العميلة")}
+                              : editingPartyClient
+                                ? t("حفظ التعديل")
+                                : existingClientMatch
+                                  ? t("اختيار العميلة الموجودة")
+                                  : addingCompanion && !phone10Digits(newClientPhone)
+                                    ? t("إضافة المرافقة للحجز")
+                                    : existingClientLookupError
+                                      ? t("إعادة التحقق والحفظ")
+                                      : t("حفظ واختيار العميلة")}
                         </button>
                       </div>
                     </div>
@@ -2617,7 +3366,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                               ? `Unavailable: conflicts with ${serviceTitle(conflict.service)} from ${formatTime12(conflict.start, conflict.start)} to ${formatTime12(conflict.end, conflict.end)}`
                                               : `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`)
                                             : "";
-                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
+                                          return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `${t("اختيار")} ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => {
+                                            if (conflicting) return;
+                                            setScheduleByService((current) => {
+                                              const liveStaffId = current[key]?.staffId || selection.staffId;
+                                              const liveConflict = getCartScheduleConflict(key, liveStaffId, time, current);
+                                              if (liveConflict) {
+                                                setScheduleMessage(
+                                                  liveConflict.kind === "staff"
+                                                    ? t("هذا الوقت أصبح مستخدمًا لنفس الموظفة في خدمة أخرى. اختاري وقتًا مختلفًا.")
+                                                    : t("العميلة لديها خدمة أخرى في هذا الوقت. اختاري وقتًا مختلفًا.")
+                                                );
+                                                return current;
+                                              }
+                                              setScheduleMessage("");
+                                              return { ...current, [key]: { ...current[key], time } };
+                                            });
+                                          }}>{formatTime12(time, time)}</button>;
                                         })}</div>
                                       ) : <p>{t("لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.")}</p>}
                                     </div>
@@ -2636,6 +3401,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               ) : (
                 <section className="bk2-payment-step">
                   <div className="bk2-section-title"><div><h2>{t("المراجعة والدفع")}</h2><p>{t("راجعي الحجز ثم اختاري طريقة ونوع التحصيل.")}</p></div><span><FiCreditCard /></span></div>
+                  {!createdBookingIds.length && bookingClients.length ? (
+                    <div className="bk2-party-review-members">
+                      {bookingClients.map((client, index) => {
+                        const key = partyClientKey(client);
+                        return (
+                          <div key={key} className="bk2-party-review-member">
+                            <span>
+                              <strong>{client.name}</strong>
+                              <small>
+                                {index === 0 ? t("العميلة الأساسية") : t("مرافقة")}
+                                {isBookingGuest(client) ? ` · ${t("لهذا الحجز فقط")}` : ""}
+                              </small>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStep(1);
+                                window.setTimeout(() => openPartyMemberEditor(client), 0);
+                              }}
+                            >
+                              <FiEdit2 /> {t("تعديل")}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {createdBookingIds.length ? (
                     <div className="bk2-booking-success">
                       <strong>✓ {t(createdPartyBookings.length > 1 ? "تم حفظ مجموعة الحجز بنجاح" : "تم حفظ الحجز بنجاح")}</strong>
@@ -2937,7 +3729,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               )}
             </main>
 
-            <aside className="bk2-summary-card">
+            <aside className="bk2-summary-card" onWheel={handleSummaryWheel}>
+              <div ref={summaryScrollRef} className="bk2-summary-scroll">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
@@ -2977,6 +3770,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   })}
                 </div>
               ) : <div className="bk2-empty-services"><FiShoppingBag /><p>{t("لم تتم إضافة خدمات بعد")}</p></div>}
+              </div>
+              <div className="bk2-summary-footer">
               <div className="bk2-totals">
                 {hasPriceAdjustments ? <div><span>{t("إجمالي الكتالوج")}</span><strong>{money(catalogTotal)}</strong></div> : null}
                 <div><span>{t("سعر الحجز")}</span><strong>{money(bookingSubtotal)}</strong></div>
@@ -3010,11 +3805,21 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                       : "أكملي الموظفة والوقت لكل خدمة وسيظهر زر المتابعة.")}</p>
                 </div>
               ) : null}
+              </div>
             </aside>
           </div>
         </>
       )}
       <ConfirmModal open={showPastDateConfirmation} title={t("تأكيد الحجز بتاريخ سابق")} message={t("تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟")} confirmText={t("تأكيد وإنشاء الحجز")} cancelText={t("إلغاء")} showCancel onConfirm={confirmPastDateBooking} onCancel={() => setShowPastDateConfirmation(false)} />
+      <HairLengthGuideDrawer
+        open={hairGuideOpen}
+        imageUrl={hairLengthGuideImage}
+        triggerRef={hairGuideTriggerRef}
+        canUpload={false}
+        uploading={false}
+        onUpload={() => undefined}
+        onClose={() => setHairGuideOpen(false)}
+      />
     </div>
   );
 }

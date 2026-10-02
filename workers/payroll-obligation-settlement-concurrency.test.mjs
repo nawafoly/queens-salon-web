@@ -30,7 +30,6 @@ async function setup() {
   const mf = new Miniflare({
     workers: [{
       config: {
-        type: 'worker',
         name: 'payroll-obligation-concurrency-test',
         compatibilityDate: '2026-06-24',
         manifest: {

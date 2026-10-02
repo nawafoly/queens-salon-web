@@ -51,6 +51,7 @@ export function mapCoreClient(row: Record<string, unknown>): CoreClient {
 export function mapCoreService(row: Record<string, unknown>): CoreService {
   const mapped = renameKeys<CoreService>(row, {
     salon_id: "salonId",
+    name_en: "nameEn",
     section_id: "sectionId",
     category_id: "categoryId",
     duration_minutes: "durationMinutes",
@@ -175,6 +176,8 @@ export function mapCoreBooking(
     client_id: "clientId",
     client_name: "clientName",
     client_phone: "clientPhone",
+    booking_guest: "bookingGuest",
+    guest_email: "guestEmail",
     party_id: "partyId",
     party_lead_client_id: "partyLeadClientId",
     party_member_order: "partyMemberOrder",

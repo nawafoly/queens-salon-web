@@ -34,6 +34,7 @@ class FakeD1 {
       "hr_shift_templates",
       "bookings",
       "booking_items",
+      "booking_party_guests",
       "booking_slot_locks",
       "invoices",
       "payments",
@@ -1285,7 +1286,27 @@ class FakeD1 {
         (!normalized.includes("deleted_at IS NULL") || !row.deleted_at)
       );
     }
-    if (normalized.startsWith("SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (")) {
+    if (normalized.startsWith("SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id IN (")) {
+      const [salonId, ...ids] = params;
+      const bookingIds = new Set(ids.map(String));
+      return this.rows("booking_party_guests").filter(
+        (row) => row.salon_id === salonId && bookingIds.has(String(row.booking_id))
+      );
+    }
+    if (normalized.startsWith("SELECT * FROM booking_party_guests WHERE salon_id = ? AND booking_id = ?")) {
+      const [salonId, bookingId] = params;
+      return this.rows("booking_party_guests")
+        .filter((row) => row.salon_id === salonId && row.booking_id === bookingId)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT id FROM booking_party_guests WHERE salon_id = ? AND booking_id = ?")) {
+      const [salonId, bookingId] = params;
+      return this.rows("booking_party_guests")
+        .filter((row) => row.salon_id === salonId && row.booking_id === bookingId)
+        .slice(0, 1)
+        .map((row) => ({ id: row.id }));
+    }
+        if (normalized.startsWith("SELECT * FROM booking_items WHERE salon_id = ? AND booking_id IN (")) {
       const [salonId, ...ids] = params;
       const bookingIds = new Set(ids.map(String));
       return this.rows("booking_items").filter(
@@ -2121,6 +2142,18 @@ class FakeD1 {
           staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
           created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json,
+        }));
+      } else if (sql.startsWith("INSERT INTO booking_party_guests")) {
+        const [id, salon_id, party_id, booking_id, name, email, created_at, updated_at] = params;
+        results.push(this.insert("booking_party_guests", {
+          id,
+          salon_id,
+          party_id,
+          booking_id,
+          name,
+          email,
+          created_at,
+          updated_at,
         }));
       } else if (sql.startsWith("INSERT INTO booking_items")) {
         const [
@@ -3794,6 +3827,68 @@ test("internal party booking metadata is canonical, validated, and queryable", a
   body = await json(response);
   assert.equal(response.status, 400, JSON.stringify(body));
   assert.equal(body.error, "core_booking:party_lead_client_required");
+});
+
+test("internal party booking keeps no-phone companions outside clients", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      id: "party-guest-lead",
+      clientId: "client-a",
+      partyId: "party-guest-test",
+      partyLeadClientId: "client-a",
+      partyMemberOrder: 0,
+      partySize: 2,
+      staffId: "staff-a",
+      bookingDate: "2027-05-01",
+      startTime: "10:00",
+      items: [{ id: "party-guest-lead-item", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      id: "party-guest-companion",
+      clientId: "booking_guest_test_companion",
+      guestParticipant: {
+        id: "booking_guest_test_companion",
+        name: "Guest Companion",
+        email: "guest@example.com",
+      },
+      partyId: "party-guest-test",
+      partyLeadClientId: "client-a",
+      partyMemberOrder: 1,
+      partySize: 2,
+      staffId: "staff-a",
+      bookingDate: "2027-05-01",
+      startTime: "11:00",
+      source: "internal",
+      items: [{ id: "party-guest-companion-item", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(fake.find("clients", "main", "booking_guest_test_companion"), null);
+
+  const guest = fake.rows("booking_party_guests").find(
+    (row) => row.id === "booking_guest_test_companion"
+  );
+  assert.equal(guest?.name, "Guest Companion");
+  assert.equal(guest?.booking_id, "party-guest-companion");
+
+  response = await worker.fetch(request("/api/core/bookings?partyId=party-guest-test"), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const guestBooking = body.data.find((row) => row.id === "party-guest-companion");
+  assert.equal(guestBooking?.booking_guest, true);
+  assert.equal(guestBooking?.client_name, "Guest Companion");
+  assert.equal(guestBooking?.client_phone, null);
 });
 
 test("public booking rejects a past item date even when its parent date is future", async () => {

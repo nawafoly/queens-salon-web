@@ -181,6 +181,7 @@ export async function createService(db, salonId, data) {
     id: requiredId(data.id || generatedId("service")),
     salon_id: salonId,
     name: requiredText(data.name, "name"),
+    name_en: optionalText(data.nameEn ?? data.name_en) || null,
     section_id:
       optionalText(data.sectionId || data.section_id) || null,
     category_id:
@@ -199,11 +200,13 @@ export async function createService(db, salonId, data) {
     season_price_halalas:
       data.seasonPriceHalalas === undefined && data.season_price_halalas === undefined
         ? null
-        : integer(
-            data.seasonPriceHalalas ?? data.season_price_halalas,
-            "seasonPriceHalalas",
-            { min: 0, max: 10_000_000 }
-          ),
+        : data.seasonPriceHalalas === null || data.season_price_halalas === null
+          ? null
+          : integer(
+              data.seasonPriceHalalas ?? data.season_price_halalas,
+              "seasonPriceHalalas",
+              { min: 0, max: 10_000_000 }
+            ),
     active: activeFlag(data.active, 1),
     image_url: optionalText(data.imageUrl || data.image_url) || null,
     sort_order: integer(
@@ -218,12 +221,13 @@ export async function createService(db, salonId, data) {
   await dbRun(
     db,
     `INSERT INTO services
-      (id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, season_price_halalas, active, image_url, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, salon_id, name, name_en, section_id, category_id, description, duration_minutes, price_halalas, season_price_halalas, active, image_url, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.salon_id,
       row.name,
+      row.name_en,
       row.section_id,
       row.category_id,
       row.description,
@@ -246,6 +250,10 @@ export async function patchService(db, salonId, id, data) {
       data.name === undefined
         ? undefined
         : requiredText(data.name, "name"),
+    name_en:
+      data.nameEn === undefined && data.name_en === undefined
+        ? undefined
+        : optionalText(data.nameEn ?? data.name_en) || null,
     section_id:
       data.sectionId === undefined && data.section_id === undefined
         ? undefined

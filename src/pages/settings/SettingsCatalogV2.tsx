@@ -22,6 +22,7 @@ const DEFAULT_PACKAGE_SESSIONS = 1;
 type SectionRow = {
   id: string;
   name: string;
+  nameEn?: string;
   active: boolean;
   order: number;
   createdAt?: any;
@@ -32,6 +33,7 @@ type CategoryRow = {
   id: string;
   sectionId: string;
   name: string;
+  nameEn?: string;
   active: boolean;
   order: number;
   createdAt?: any;
@@ -43,6 +45,7 @@ type ServiceRow = {
   sectionId: string;
   categoryId: string;
   name: string;
+  nameEn?: string;
   durationMin: number;
   price: number;
   seasonPrice?: number | null;
@@ -204,6 +207,7 @@ function ToggleCard(props: {
 
 export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: SettingsCatalogV2Props) {
   const t = (text: string) => settingsText(language, text);
+  const catalogName = (row?: { name?: string; nameEn?: string | null } | null) => language === "en" ? String(row?.nameEn || row?.name || "") : String(row?.name || "");
   const [catalogMsg, setCatalogMsg] = useState("");
   const [pendingSectionDeleteId, setPendingSectionDeleteId] = useState<string | null>(null);
   const [secLoading, setSecLoading] = useState(false);
@@ -227,12 +231,14 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
   const [serviceSectionFilter, setServiceSectionFilter] = useState("all");
   const [composerMode, setComposerMode] = useState<ComposerMode>(null);
 
-  const [newSection, setNewSection] = useState({ name: "", order: 1, active: true });
+  const [newSection, setNewSection] = useState({ name: "", nameEn: "", order: 1, active: true });
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryNameEn, setNewCategoryNameEn] = useState("");
   const [newService, setNewService] = useState({
     sectionId: "",
     categoryId: "",
     name: "",
+    nameEn: "",
     durationMin: 60,
     price: 0,
     seasonPrice: null as number | null,
@@ -349,7 +355,12 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     const needle = search.trim().toLowerCase();
     return sections
       .filter((row) => statusFilter === "all" ? true : statusFilter === "active" ? row.active : !row.active)
-      .filter((row) => !needle || row.id.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))
+      .filter((row) =>
+        !needle ||
+        row.id.toLowerCase().includes(needle) ||
+        row.name.toLowerCase().includes(needle) ||
+        String(row.nameEn || "").toLowerCase().includes(needle),
+      )
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
   }, [search, sections, statusFilter]);
 
@@ -360,9 +371,21 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       .filter((row) => serviceSectionFilter === "all" || String(row.sectionId || "").trim() === serviceSectionFilter)
       .filter((row) => {
         if (!needle) return true;
-        const sectionName = String(sectionById.get(String(row.sectionId || "").trim())?.name || "").toLowerCase();
-        const categoryName = String(categoryById.get(String(row.categoryId || "").trim())?.name || "").toLowerCase();
-        return row.id.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle) || sectionName.includes(needle) || categoryName.includes(needle);
+        const section = sectionById.get(String(row.sectionId || "").trim());
+        const category = categoryById.get(String(row.categoryId || "").trim());
+        const sectionName = String(section?.name || "").toLowerCase();
+        const sectionNameEn = String(section?.nameEn || "").toLowerCase();
+        const categoryName = String(category?.name || "").toLowerCase();
+        const categoryNameEn = String(category?.nameEn || "").toLowerCase();
+        return (
+          row.id.toLowerCase().includes(needle) ||
+          row.name.toLowerCase().includes(needle) ||
+          String(row.nameEn || "").toLowerCase().includes(needle) ||
+          sectionName.includes(needle) ||
+          sectionNameEn.includes(needle) ||
+          categoryName.includes(needle) ||
+          categoryNameEn.includes(needle)
+        );
       })
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
   }, [categoryById, search, sectionById, serviceSectionFilter, services, statusFilter]);
@@ -386,9 +409,21 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       .filter((row) => packageServiceView === "all" || selectedPackageServiceIds.includes(row.id))
       .filter((row) => {
         if (!needle) return true;
-        const sectionName = String(sectionById.get(String(row.sectionId || "").trim())?.name || "").toLowerCase();
-        const categoryName = String(categoryById.get(String(row.categoryId || "").trim())?.name || "").toLowerCase();
-        return row.name.toLowerCase().includes(needle) || row.id.toLowerCase().includes(needle) || sectionName.includes(needle) || categoryName.includes(needle);
+        const section = sectionById.get(String(row.sectionId || "").trim());
+        const category = categoryById.get(String(row.categoryId || "").trim());
+        const sectionName = String(section?.name || "").toLowerCase();
+        const sectionNameEn = String(section?.nameEn || "").toLowerCase();
+        const categoryName = String(category?.name || "").toLowerCase();
+        const categoryNameEn = String(category?.nameEn || "").toLowerCase();
+        return (
+          row.name.toLowerCase().includes(needle) ||
+          String(row.nameEn || "").toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          sectionName.includes(needle) ||
+          sectionNameEn.includes(needle) ||
+          categoryName.includes(needle) ||
+          categoryNameEn.includes(needle)
+        );
       })
       .sort((a, b) => {
         const selectedDelta = Number(selectedPackageServiceIds.includes(b.id)) - Number(selectedPackageServiceIds.includes(a.id));
@@ -434,6 +469,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
         .map((row: any) => ({
           id: String(row.id || ""),
           name: String(row.name || ""),
+          nameEn: String(row.nameEn || ""),
           active: row.active !== false,
           order: clampInt(row.sortOrder ?? 0, 0),
           createdAt: row.createdAt,
@@ -446,6 +482,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           id: String(row.id || ""),
           sectionId: String(row.sectionId || ""),
           name: String(row.name || ""),
+          nameEn: String(row.nameEn || ""),
           active: row.active !== false,
           order: clampInt(row.sortOrder ?? 0, 0),
           createdAt: row.createdAt,
@@ -459,6 +496,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
           sectionId: String(row.sectionId || ""),
           categoryId: String(row.categoryId || ""),
           name: String(row.name || ""),
+          nameEn: String(row.nameEn || ""),
           durationMin: clampInt(row.durationMinutes ?? 60, 5),
           price: Math.max(0, Number(row.priceHalalas || 0) / 100),
           seasonPrice: row.seasonPriceHalalas === null || row.seasonPriceHalalas === undefined
@@ -562,7 +600,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     if (!name) { showMsg(t("❌ اسم القسم لا يمكن يكون فارغ"), 2000); return false; }
     try {
       setSecLoading(true);
-      await CoreAdminCatalogService.patchSection(row.id, { name, active: row.active !== false, sortOrder: Number(row.order || 0) });
+      await CoreAdminCatalogService.patchSection(row.id, { name, nameEn: String(row.nameEn || "").trim() || null, active: row.active !== false, sortOrder: Number(row.order || 0) });
       showMsg(t("✅ تم حفظ القسم"));
       return true;
     } catch (error) {
@@ -580,7 +618,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     try {
       setSrvLoading(true);
       await CoreCatalogService.patchService(row.id, {
-        categoryId, sectionId, name, durationMinutes: Math.max(5, Number(row.durationMin || 0)),
+        categoryId, sectionId, name, nameEn: String(row.nameEn || "").trim() || null, durationMinutes: Math.max(5, Number(row.durationMin || 0)),
         priceHalalas: Math.round(Math.max(0, Number(row.price || 0)) * 100),
         seasonPriceHalalas: row.seasonPrice == null || String(row.seasonPrice) === "" ? null : Math.round(Math.max(0, Number(row.seasonPrice)) * 100),
         active: row.active !== false,
@@ -598,8 +636,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     if (!id) return showMsg(t("❌ تعذر توليد ID للقسم"), 2200);
     try {
       setSecLoading(true);
-      await CoreAdminCatalogService.createSection({ name, active: newSection.active !== false, sortOrder: Number(newSection.order || 0) });
-      showMsg(t("✅ تم إنشاء القسم")); await loadCatalog(); setActiveListMode("sections"); setComposerMode(null); setNewSection({ name: "", order: nextSectionOrder, active: true });
+      await CoreAdminCatalogService.createSection({ name, nameEn: newSection.nameEn.trim() || null, active: newSection.active !== false, sortOrder: Number(newSection.order || 0) });
+      showMsg(t("✅ تم إنشاء القسم")); await loadCatalog(); setActiveListMode("sections"); setComposerMode(null); setNewSection({ name: "", nameEn: "", order: nextSectionOrder, active: true });
     } catch (error) { console.error("createSection error:", error); showMsg(t("❌ تعذر إنشاء القسم"), 2500); }
     finally { setSecLoading(false); }
   };
@@ -628,15 +666,15 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       setCatLoading(true);
       const rows = categories.filter((row) => String(row.sectionId || "").trim() === sectionId);
       const nextOrder = rows.length ? Math.max(...rows.map((row) => Number(row.order || 0))) + 1 : 1;
-      await CoreAdminCatalogService.createCategory({ id, sectionId, name, active: true, sortOrder: nextOrder });
-      showMsg(t("✅ تم إضافة التصنيف")); setNewCategoryName(""); await loadCatalog(); setActiveCategoryId(id);
+      await CoreAdminCatalogService.createCategory({ id, sectionId, name, nameEn: newCategoryNameEn.trim() || null, active: true, sortOrder: nextOrder });
+      showMsg(t("✅ تم إضافة التصنيف")); setNewCategoryName(""); setNewCategoryNameEn(""); await loadCatalog(); setActiveCategoryId(id);
     } catch (error) { console.error("createCategory error:", error); showMsg(t("❌ تعذر إضافة التصنيف"), 2500); }
     finally { setCatLoading(false); }
   };
 
   const saveCategory = async (row: CategoryRow) => {
     const name = row.name.trim(); if (!name) return showMsg(t("❌ اسم التصنيف لا يمكن يكون فارغ"), 2000);
-    try { setCatLoading(true); await CoreAdminCatalogService.patchCategory(row.id, { name, active: row.active !== false, sortOrder: Number(row.order || 0) }); showMsg(t("✅ تم حفظ التصنيف")); await loadCatalog(); }
+    try { setCatLoading(true); await CoreAdminCatalogService.patchCategory(row.id, { name, nameEn: String(row.nameEn || "").trim() || null, active: row.active !== false, sortOrder: Number(row.order || 0) }); showMsg(t("✅ تم حفظ التصنيف")); await loadCatalog(); }
     catch (error) { console.error("saveCategory error:", error); showMsg(t("❌ تعذر حفظ التصنيف"), 2500); }
     finally { setCatLoading(false); }
   };
@@ -664,6 +702,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       sectionId: resolvedSectionId,
       categoryId: resolvedCategoryId,
       name: "",
+      nameEn: "",
       durationMin: 60,
       price: 0,
       seasonPrice: null,
@@ -679,8 +718,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     if (!sectionId) return showMsg(t("❌ التصنيف المختار غير صالح"), 2200); const id = buildId(`${categoryId}_${name}`);
     try {
       setSrvLoading(true);
-      await CoreCatalogService.createService({ id, categoryId, sectionId, name, durationMinutes: Math.max(5, Number(newService.durationMin || 60)), priceHalalas: Math.round(Math.max(0, Number(newService.price || 0)) * 100), seasonPriceHalalas: newService.seasonPrice == null || String(newService.seasonPrice) === "" ? null : Math.round(Math.max(0, Number(newService.seasonPrice)) * 100), active: newService.active !== false });
-      showMsg(language === "en" ? `✅ Service added (id: ${id})` : `✅ تم إضافة الخدمة (id: ${id})`); await loadCatalog(); setComposerMode(null); setActiveCategoryId(categoryId); setOpenedServiceId(id); setNewService({ sectionId: "", categoryId: "", name: "", durationMin: 60, price: 0, seasonPrice: null, active: true });
+      await CoreCatalogService.createService({ id, categoryId, sectionId, name, nameEn: newService.nameEn.trim() || null, durationMinutes: Math.max(5, Number(newService.durationMin || 60)), priceHalalas: Math.round(Math.max(0, Number(newService.price || 0)) * 100), seasonPriceHalalas: newService.seasonPrice == null || String(newService.seasonPrice) === "" ? null : Math.round(Math.max(0, Number(newService.seasonPrice)) * 100), active: newService.active !== false });
+      showMsg(language === "en" ? `✅ Service added (id: ${id})` : `✅ تم إضافة الخدمة (id: ${id})`); await loadCatalog(); setComposerMode(null); setActiveCategoryId(categoryId); setOpenedServiceId(id); setNewService({ sectionId: "", categoryId: "", name: "", nameEn: "", durationMin: 60, price: 0, seasonPrice: null, active: true });
     } catch (error) { console.error("createService error:", error); showMsg(t("❌ تعذر إضافة الخدمة"), 2500); }
     finally { setSrvLoading(false); }
   };
@@ -939,7 +978,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
     );
   }
 
-  const sectionOptions = sections.map((section) => ({ value: section.id, label: section.name }));
+  const sectionOptions = sections.map((section) => ({ value: section.id, label: catalogName(section) }));
   const statusOptions = [
     { value: "all", label: t("كل الحالات") },
     { value: "active", label: t("نشط") },
@@ -1031,7 +1070,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 className="dsv2-btn dsv2-btn--accent"
                 onClick={() => {
                   if (activeListMode === "sections") {
-                    setNewSection({ name: "", order: nextSectionOrder, active: true });
+                    setNewSection({ name: "", nameEn: "", order: nextSectionOrder, active: true });
                     setComposerMode("section");
                   } else {
                     startServiceComposer();
@@ -1051,6 +1090,9 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 <div className="settings-catalog-v2-form-grid">
                   <Field language={language} label={t("اسم القسم")} wide>
                     <input className="dsv2-input" value={newSection.name} onChange={(event) => setNewSection((previous) => ({ ...previous, name: event.target.value }))} />
+                  </Field>
+                  <Field language={language} label={t("اسم القسم بالإنجليزي")} wide>
+                    <input className="dsv2-input" dir="ltr" value={newSection.nameEn} onChange={(event) => setNewSection((previous) => ({ ...previous, nameEn: event.target.value }))} />
                   </Field>
                   <Field language={language} label={t("الترتيب")}>
                     <DashboardNumberInputV2 className="dsv2-input" value={newSection.order} onChange={(event) => setNewSection((previous) => ({ ...previous, order: Number(event.target.value || 0) }))} />
@@ -1083,12 +1125,15 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                     <DashboardSelectV2
                       value={newService.categoryId}
                       placeholder={t("اختر التصنيف")}
-                      options={composerCategories.map((category) => ({ value: category.id, label: category.name }))}
+                      options={composerCategories.map((category) => ({ value: category.id, label: catalogName(category) }))}
                       onChange={(categoryId) => setNewService((previous) => ({ ...previous, categoryId }))}
                     />
                   </Field>
                   <Field language={language} label={t("اسم الخدمة")} wide>
                     <input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} />
+                  </Field>
+                  <Field language={language} label={t("اسم الخدمة بالإنجليزي")} wide>
+                    <input className="dsv2-input" dir="ltr" value={newService.nameEn} onChange={(event) => setNewService((previous) => ({ ...previous, nameEn: event.target.value }))} />
                   </Field>
                   <Field language={language} label={t("المدة (دقيقة)")}>
                     <DashboardNumberInputV2 className="dsv2-input" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} />
@@ -1115,7 +1160,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 filteredSections.length ? filteredSections.map((section) => (
                   <button key={section.id} type="button" className={`settings-catalog-v2-row ${selectedId === section.id ? "is-selected" : ""}`} onClick={() => setSelectedId(section.id)}>
                     <span className="settings-catalog-v2-row__copy">
-                      <strong>{section.name}</strong>
+                      <strong>{catalogName(section)}</strong>
                       <small>ID: {section.id}</small>
                     </span>
                     <span className="settings-catalog-v2-row__meta">
@@ -1129,8 +1174,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 filteredServices.length ? filteredServices.map((service) => (
                   <button key={service.id} type="button" className={`settings-catalog-v2-row ${selectedId === service.id ? "is-selected" : ""}`} onClick={() => setSelectedId(service.id)}>
                     <span className="settings-catalog-v2-row__copy">
-                      <strong>{service.name}</strong>
-                      <small>{sectionById.get(service.sectionId)?.name || t("قسم غير محدد")} · {categoryById.get(service.categoryId)?.name || t("بدون تصنيف")}</small>
+                      <strong>{catalogName(service)}</strong>
+                      <small>{catalogName(sectionById.get(service.sectionId)) || t("قسم غير محدد")} · {catalogName(categoryById.get(service.categoryId)) || t("بدون تصنيف")}</small>
                     </span>
                     <span className="settings-catalog-v2-row__meta">
                       <span>{service.durationMin} {t("دقيقة")}</span>
@@ -1212,8 +1257,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                     <button type="button" key={service.id} className={`settings-catalog-v2-service-option ${checked ? "is-selected" : ""}`} onClick={() => togglePackageService(service.id)}>
                       <span className="settings-catalog-v2-service-option__check">{checked ? "✓" : ""}</span>
                       <span className="settings-catalog-v2-service-option__copy">
-                        <strong>{service.name}</strong>
-                        <small>{sectionById.get(service.sectionId)?.name || t("قسم غير محدد")} · {categoryById.get(service.categoryId)?.name || t("بدون تصنيف")}</small>
+                        <strong>{catalogName(service)}</strong>
+                        <small>{catalogName(sectionById.get(service.sectionId)) || t("قسم غير محدد")} · {catalogName(categoryById.get(service.categoryId)) || t("بدون تصنيف")}</small>
                       </span>
                       <span className="settings-catalog-v2-service-option__meta">{service.durationMin} {language === "en" ? "min" : "د"} · {money(service.price, language)} {language === "en" ? "SAR" : "ر.س"}</span>
                     </button>
@@ -1225,7 +1270,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 <header><strong>{t("الخدمات المختارة")}</strong><span>{selectedPackageServices.length}</span></header>
                 {selectedPackageServices.length ? selectedPackageServices.map((service) => (
                   <div key={service.id} className="settings-catalog-v2-selected-service">
-                    <div><strong>{service.name}</strong><small>{money(service.price, language)} {language === "en" ? "SAR" : "ر.س"} · {service.durationMin} {language === "en" ? "min" : "د"}</small></div>
+                    <div><strong>{catalogName(service)}</strong><small>{money(service.price, language)} {language === "en" ? "SAR" : "ر.س"} · {service.durationMin} {language === "en" ? "min" : "د"}</small></div>
                     <div>
                       <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => openServiceFromPackage(service.id)}>{t("تعديل الخدمة")}</button>
                       <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => togglePackageService(service.id)}>{t("إزالة")}</button>
@@ -1288,7 +1333,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
       <DashboardModalV2
         open={Boolean(selectedLive)}
         onClose={() => { setSelectedId(null); setMode("view"); setOpenedServiceId(null); setComposerMode(null); }}
-        title={selectedLive?.name || t("تفاصيل الكتالوج")}
+        title={catalogName(selectedLive) || t("تفاصيل الكتالوج")}
         description={activeListMode === "sections" ? t("إدارة بيانات القسم والتصنيفات والخدمات المرتبطة.") : t("إدارة بيانات الخدمة والسعر والمدة.")}
         eyebrow={activeListMode === "sections" ? t("تفاصيل القسم") : t("تفاصيل الخدمة")}
         size="xl"
@@ -1335,6 +1380,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 {activeTab === "overview" ? (
                   <div className="settings-catalog-v2-form-grid">
                     <Field language={language} label={t("اسم القسم")}><input className="dsv2-input" value={(mode === "edit" ? sectionDraft?.name : selectedSectionLive.name) || ""} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, name: event.target.value } : previous)} /></Field>
+                    <Field language={language} label={t("اسم القسم بالإنجليزي")}><input className="dsv2-input" dir="ltr" value={(mode === "edit" ? sectionDraft?.nameEn : selectedSectionLive.nameEn) || ""} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, nameEn: event.target.value } : previous)} /></Field>
                     <Field language={language} label={t("الترتيب")}><DashboardNumberInputV2 className="dsv2-input" value={mode === "edit" ? sectionDraft?.order ?? 0 : selectedSectionLive.order} disabled={mode !== "edit"} onChange={(event) => setSectionDraft((previous) => previous ? { ...previous, order: Number(event.target.value || 0) } : previous)} /></Field>
                     <Field language={language} label="ID"><input className="dsv2-input" value={selectedSectionLive.id} disabled /></Field>
                     <ToggleCard language={language} checked={mode === "edit" ? sectionDraft?.active !== false : selectedSectionLive.active !== false} label={t("القسم نشط")} hint={t("حالة ظهور القسم داخل الكتالوج.")} disabled={mode !== "edit"} onChange={(active) => setSectionDraft((previous) => previous ? { ...previous, active } : previous)} />
@@ -1344,7 +1390,8 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 {activeTab === "variants" ? (
                   <div className="settings-catalog-v2-categories">
                     <div className="settings-catalog-v2-inline-create">
-                      <input className="dsv2-input" value={newCategoryName} disabled={mode !== "edit"} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={t("اسم تصنيف جديد")} onKeyDown={(event) => { if (event.key === "Enter" && mode === "edit") void createCategory(); }} />
+                      <input className="dsv2-input" value={newCategoryName} disabled={mode !== "edit"} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={t("اسم تصنيف جديد")} />
+                      <input className="dsv2-input" dir="ltr" value={newCategoryNameEn} disabled={mode !== "edit"} onChange={(event) => setNewCategoryNameEn(event.target.value)} placeholder={t("اسم التصنيف بالإنجليزي")} onKeyDown={(event) => { if (event.key === "Enter" && mode === "edit") void createCategory(); }} />
                       <button type="button" className="dsv2-btn dsv2-btn--accent" disabled={mode !== "edit" || catLoading} onClick={() => void createCategory()}>{t("إضافة تصنيف")}</button>
                     </div>
 
@@ -1352,6 +1399,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                       <article key={category.id} className={`settings-catalog-v2-category-card ${activeCategoryId === category.id ? "is-active" : ""}`}>
                         <div className="settings-catalog-v2-category-card__fields">
                           <input className="dsv2-input" value={category.name} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, name: event.target.value } : row))} />
+                          <input className="dsv2-input" dir="ltr" value={category.nameEn || ""} disabled={mode !== "edit"} placeholder={t("الاسم بالإنجليزي")} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, nameEn: event.target.value } : row))} />
                           <DashboardNumberInputV2 className="dsv2-input settings-catalog-v2-category-order" value={category.order} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, order: Number(event.target.value || 0) } : row))} />
                           <button type="button" className={`dsv2-btn dsv2-btn--sm ${category.active ? "dsv2-btn--success" : "dsv2-btn--secondary"}`} disabled={mode !== "edit"} aria-pressed={category.active} onClick={() => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, active: !row.active } : row))}>{category.active ? t("نشط") : t("معطل")}</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setActiveCategoryId(category.id); setOpenedServiceId(null); }}>{t("الخدمات")} ({services.filter((service) => service.categoryId === category.id).length})</button>
@@ -1364,7 +1412,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                     {activeCategoryId ? (
                       <section className="settings-catalog-v2-category-services">
                         <header>
-                          <div><strong>{t("خدمات التصنيف")}: {categoryById.get(activeCategoryId)?.name || "—"}</strong><span>{servicesInActiveCategory.length} {t("خدمة")}</span></div>
+                          <div><strong>{t("خدمات التصنيف")}: {catalogName(categoryById.get(activeCategoryId)) || "—"}</strong><span>{servicesInActiveCategory.length} {t("خدمة")}</span></div>
                           <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => startServiceComposer(selectedSectionLive.id, activeCategoryId)}>{t("+ إضافة خدمة")}</button>
                         </header>
 
@@ -1372,6 +1420,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                           <div className="settings-catalog-v2-composer">
                             <div className="settings-catalog-v2-form-grid">
                               <Field language={language} label={t("اسم الخدمة")} wide><input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} /></Field>
+                              <Field language={language} label={t("اسم الخدمة بالإنجليزي")} wide><input className="dsv2-input" dir="ltr" value={newService.nameEn} onChange={(event) => setNewService((previous) => ({ ...previous, nameEn: event.target.value }))} /></Field>
                               <Field language={language} label={t("المدة (دقيقة)")}><DashboardNumberInputV2 className="dsv2-input" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} /></Field>
                               <Field language={language} label={t("السعر")}><DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} /></Field>
                               <Field language={language} label={t("سعر الموسم")}><DashboardNumberInputV2 className="dsv2-input" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} /></Field>
@@ -1387,7 +1436,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                         <div className="settings-catalog-v2-category-services__list">
                           {servicesInActiveCategory.length ? servicesInActiveCategory.map((service) => (
                             <button type="button" key={service.id} className={`settings-catalog-v2-linked-service ${openedServiceId === service.id ? "is-open" : ""}`} onClick={() => { setOpenedServiceId(service.id); setOpenedServiceMode("view"); }}>
-                              <span><strong>{service.name}</strong><small>{service.durationMin} {language === "en" ? "min" : "د"} · {money(service.price, language)} {language === "en" ? "SAR" : "ر.س"}</small></span>
+                              <span><strong>{catalogName(service)}</strong><small>{service.durationMin} {language === "en" ? "min" : "د"} · {money(service.price, language)} {language === "en" ? "SAR" : "ر.س"}</small></span>
                               <span className={`dsv2-badge ${service.active ? "dsv2-badge--success" : ""}`}>{service.active ? t("نشط") : t("معطل")}</span>
                             </button>
                           )) : <p className="settings-catalog-v2-muted">{t("لا توجد خدمات داخل هذا التصنيف.")}</p>}
@@ -1414,11 +1463,12 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                             </header>
                             <div className="settings-catalog-v2-form-grid">
                               <Field language={language} label={t("اسم الخدمة")}><input className="dsv2-input" value={openedServiceDraft.name} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, name: event.target.value } : previous)} /></Field>
+                              <Field language={language} label={t("اسم الخدمة بالإنجليزي")}><input className="dsv2-input" dir="ltr" value={openedServiceDraft.nameEn || ""} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, nameEn: event.target.value } : previous)} /></Field>
                               <Field language={language} label={t("التصنيف")}>
                                 <DashboardSelectV2
                                   value={openedServiceDraft.categoryId}
                                   disabled={openedServiceMode !== "edit"}
-                                  options={categoriesInSection.map((category) => ({ value: category.id, label: category.name }))}
+                                  options={categoriesInSection.map((category) => ({ value: category.id, label: catalogName(category) }))}
                                   onChange={(categoryId) => setOpenedServiceDraft((previous) => previous ? { ...previous, categoryId, sectionId: String(categoryById.get(categoryId)?.sectionId || previous.sectionId) } : previous)}
                                 />
                               </Field>
@@ -1449,6 +1499,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                 {activeTab === "overview" ? (
                   <div className="settings-catalog-v2-form-grid">
                     <Field language={language} label={t("اسم الخدمة")}><input className="dsv2-input" value={(mode === "edit" ? serviceDraft?.name : selectedServiceLive.name) || ""} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, name: event.target.value } : previous)} /></Field>
+                    <Field language={language} label={t("اسم الخدمة بالإنجليزي")}><input className="dsv2-input" dir="ltr" value={(mode === "edit" ? serviceDraft?.nameEn : selectedServiceLive.nameEn) || ""} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, nameEn: event.target.value } : previous)} /></Field>
                     <Field language={language} label="ID"><input className="dsv2-input" value={selectedServiceLive.id} disabled /></Field>
                     <Field language={language} label={t("القسم")}>
                       <DashboardSelectV2
@@ -1465,7 +1516,7 @@ export default function SettingsCatalogV2({ hasAdminPower, language = "ar" }: Se
                       <DashboardSelectV2
                         value={String(mode === "edit" ? serviceDraft?.categoryId || "" : selectedServiceLive.categoryId || "")}
                         disabled={mode !== "edit"}
-                        options={categories.filter((category) => category.sectionId === String(mode === "edit" ? serviceDraft?.sectionId || selectedServiceLive.sectionId : selectedServiceLive.sectionId)).map((category) => ({ value: category.id, label: category.name }))}
+                        options={categories.filter((category) => category.sectionId === String(mode === "edit" ? serviceDraft?.sectionId || selectedServiceLive.sectionId : selectedServiceLive.sectionId)).map((category) => ({ value: category.id, label: catalogName(category) }))}
                         onChange={(categoryId) => { const category = categoryById.get(categoryId); setServiceDraft((previous) => previous ? { ...previous, categoryId, sectionId: String(category?.sectionId || previous.sectionId || "").trim() } : previous); }}
                       />
                     </Field>

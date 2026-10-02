@@ -24,6 +24,113 @@
 .bk2-heading p { margin: 6px 0 0; color: var(--bk2-muted); }
 .bk2-eyebrow { color: var(--bk2-maroon) !important; font-size: .76rem; font-weight: 800; letter-spacing: .04em; }
 
+.bk2-hair-guide-trigger {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(123, 0, 29, .18);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--bk2-maroon);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(20, 25, 40, .05);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.bk2-hair-guide-trigger:hover {
+  transform: translateY(-1px);
+  border-color: rgba(123, 0, 29, .35);
+  box-shadow: 0 10px 28px rgba(20, 25, 40, .08);
+}
+.bk2-hair-guide-trigger:focus-visible {
+  outline: 3px solid rgba(123, 0, 29, .16);
+  outline-offset: 2px;
+}
+
+.bk2-draft-save {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid #d9c4ca;
+  border-radius: 12px;
+  background: #fff8fa;
+  color: var(--bk2-maroon);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+.bk2-draft-save:disabled { opacity: .55; cursor: wait; }
+
+.bk2-drafts-panel {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid #eadde1;
+  border-radius: 16px;
+  background: #fffafb;
+}
+.bk2-drafts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.bk2-drafts-head strong,
+.bk2-drafts-head small { display: block; }
+.bk2-drafts-head small,
+.bk2-drafts-head > span {
+  margin-top: 3px;
+  color: var(--bk2-muted);
+  font-size: .75rem;
+}
+.bk2-draft-message {
+  margin: 10px 0 0;
+  color: #596174;
+  font-size: .8rem;
+}
+.bk2-drafts-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bk2-drafts-list > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+  border: 1px solid var(--bk2-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.bk2-drafts-list > article.is-active {
+  border-color: #b77e8e;
+  box-shadow: 0 0 0 2px rgba(91, 0, 22, .05);
+}
+.bk2-drafts-list strong,
+.bk2-drafts-list small { display: block; }
+.bk2-drafts-list small { margin-top: 3px; color: var(--bk2-muted); font-size: .72rem; }
+.bk2-draft-actions { display: flex; gap: 7px; flex: 0 0 auto; }
+.bk2-draft-actions button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid #d7dce5;
+  border-radius: 9px;
+  background: #fff;
+  color: #333b4e;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+.bk2-draft-actions button:first-child {
+  border-color: var(--bk2-maroon);
+  color: var(--bk2-maroon);
+}
+.bk2-draft-actions button.is-danger { color: #a12b3d; }
+
 .bk2-mode-switch {
   display: inline-flex;
   padding: 4px;
@@ -155,6 +262,12 @@
 @media (max-width: 900px) {
   .bk2-page { padding: 14px; }
   .bk2-heading { align-items: stretch; flex-direction: column; }
+  .bk2-hair-guide-trigger { width: 100%; min-height: 44px; }
+  .bk2-draft-save { width: 100%; min-height: 44px; }
+  .bk2-drafts-head,
+  .bk2-drafts-list > article { align-items: stretch; flex-direction: column; }
+  .bk2-draft-actions { width: 100%; }
+  .bk2-draft-actions button { flex: 1; }
   .bk2-mode-switch { width: 100%; }
   .bk2-mode-switch button { min-width: 0; flex: 1; }
   .bk2-stepper { grid-template-columns: repeat(4, minmax(72px, 1fr)); overflow-x: auto; }
@@ -201,6 +314,8 @@
 .bk2-client-identity-check.is-loading .bk2-client-identity-dot { background:#8b001f; box-shadow:0 0 0 4px rgba(139,0,31,.1); animation:bk2-client-check-pulse 1s ease-in-out infinite; }
 .bk2-client-identity-check.is-clear { border-color:#bfe4cf; background:#f4fcf7; }
 .bk2-client-identity-check.is-clear .bk2-client-identity-dot { background:#178150; box-shadow:0 0 0 4px rgba(23,129,80,.1); }
+.bk2-client-identity-check.is-guest { border-color:#ead59b; background:#fffaf0; }
+.bk2-client-identity-check.is-guest .bk2-client-identity-dot { background:#c49a00; box-shadow:0 0 0 4px rgba(196,154,0,.1); }
 .bk2-client-identity-check.is-error { border-color:#efbcc7; background:#fff6f8; }
 .bk2-client-identity-check.is-error strong { color:#9a1736; }
 @keyframes bk2-client-check-pulse { 50% { transform:scale(.72); opacity:.55; } }
@@ -569,6 +684,10 @@
 .bk2-party-client-chip>button:first-child>span:last-child{display:grid;gap:1px;min-width:0}
 .bk2-party-client-chip strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .bk2-party-client-chip small{color:#858da0;font-size:10px;font-weight:800}
+.bk2-party-client-actions{display:flex;align-items:stretch;border-inline-start:1px solid #edf0f4}
+.bk2-party-client-edit{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:62px;padding:0 9px;border:0;background:#fff;color:#5e4800;font:inherit;font-size:10px;font-weight:900;cursor:pointer}
+.bk2-party-client-edit:hover{background:#fff9df}
+.bk2-party-client-edit svg{font-size:12px}
 .bk2-party-client-remove{width:34px;border:0;border-inline-start:1px solid #edf0f4;background:#fff;color:#9b2441;font-size:20px;font-weight:500;cursor:pointer}
 .bk2-party-client-remove:hover{background:#fff1f4}
 .bk2-party-mode-note{margin:0;padding:9px 10px;border-radius:10px;background:#f4f0ff;color:#5f3a91;font-size:11px;font-weight:800;line-height:1.55}
@@ -584,6 +703,13 @@
 .bk2-party-service-owner button.is-active{border-color:#b58d00;background:#fff8dc;color:#5f4800;box-shadow:0 0 0 2px rgba(181,141,0,.08)}
 .bk2-party-service-owner button.is-active>small{color:#896d0c}
 
+.bk2-party-review-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px;margin:0 0 16px}
+.bk2-party-review-member{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #e2e6ed;border-radius:12px;background:#fbfcfd}
+.bk2-party-review-member>span{display:grid;gap:2px;min-width:0}
+.bk2-party-review-member strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#172033}
+.bk2-party-review-member small{font-size:10px;color:#858da0;font-weight:800}
+.bk2-party-review-member>button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:0 10px;border:1px solid #d8b84a;border-radius:9px;background:#fff9df;color:#5e4800;font:inherit;font-size:10px;font-weight:900;cursor:pointer;white-space:nowrap}
+
 .bk2-party-success-bookings{display:grid;gap:6px;width:min(100%,520px);margin:2px auto 4px}
 .bk2-party-success-bookings>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 11px;border:1px solid #d9e9df;border-radius:10px;background:#fbfffc}
 .bk2-party-success-bookings span{font-size:12px;font-weight:850;color:#31433a}
@@ -592,7 +718,9 @@
 @media(max-width:720px){
   .bk2-party-clients-head{align-items:stretch;flex-direction:column}
   .bk2-party-clients-head>button{width:100%}
-  .bk2-party-client-chip{min-width:165px}
+  .bk2-party-client-chip{min-width:210px}
+  .bk2-party-client-edit{min-width:56px;padding-inline:7px}
+  .bk2-party-review-members{grid-template-columns:1fr}
   .bk2-party-service-owner button{min-width:135px}
   .bk2-party-success-bookings{width:100%}
 }
@@ -938,4 +1066,143 @@
   .bk2-client-picker-shell{padding:11px}
   .bk2-client-grid>button{padding-inline-end:16px;padding-bottom:42px}
   .bk2-client-card-action{top:auto;bottom:10px;inset-inline-end:12px;transform:none}
+}
+
+/* Hair length guide dialog */
+.bk-hair-guide-overlay {
+  position: fixed;
+  z-index: 12050;
+  inset: 0;
+  display: flex;
+  justify-content: flex-start;
+  padding: 18px;
+  background: rgba(10, 8, 9, 0.48);
+  backdrop-filter: blur(3px);
+}
+.bk-hair-guide-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  animation: bk-guide-enter 180ms ease-out;
+}
+.bk-hair-guide-drawer__header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee5e7;
+  background: #fff;
+}
+.bk-hair-guide-drawer__header span { color: #777; font-size: 12px; font-weight: 700; }
+.bk-hair-guide-drawer__header h2 { margin: 2px 0 0; color: #2c070e; font-size: 20px; font-weight: 950; }
+.bk-hair-guide-close {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e4d7da;
+  border-radius: 13px;
+  color: #40010d;
+  background: #faf6f7;
+  font-size: 28px;
+}
+.bk-hair-guide-drawer__image {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 0;
+  background: #f5f3f2;
+  cursor: zoom-in;
+}
+.bk-hair-guide-drawer__image.is-zoomed { cursor: zoom-out; }
+.bk-hair-guide-drawer__image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 190px);
+  margin: auto;
+  object-fit: contain;
+  opacity: 0;
+}
+.bk-hair-guide-drawer__image.is-loaded img { opacity: 1; }
+.bk-hair-guide-drawer__image.is-zoomed img { width: auto; max-width: none; max-height: none; }
+.bk-hair-guide-placeholder {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #d8c7cb;
+  border-radius: 16px;
+  color: #8a7378;
+  background: #faf8f8;
+  font-weight: 800;
+}
+.bk-hair-guide-drawer__image.is-loaded .bk-hair-guide-placeholder { display: none; }
+.bk-hair-guide-drawer__admin {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid #eee5e7;
+  color: #777;
+  background: #fff;
+  font-size: 12px;
+}
+.bk-hair-guide-upload {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 11px;
+  color: #fff;
+  background: #40010d;
+  font-weight: 800;
+  cursor: pointer;
+}
+.bk-hair-guide-upload input { display: none; }
+
+@keyframes bk-guide-enter {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 700px) {
+  .bk-hair-guide-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .bk-hair-guide-drawer {
+    width: 100%;
+    max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation-name: bk-guide-sheet-enter;
+  }
+
+  .bk-hair-guide-drawer__image img {
+    max-height: calc(92dvh - 210px);
+  }
+}
+
+@keyframes bk-guide-sheet-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-hair-guide-drawer { animation: none; }
 }

@@ -35,6 +35,7 @@ export type CoreServiceCategory = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -45,6 +46,7 @@ export type CoreService = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   sectionId?: string | null;
   categoryId?: string | null;
   description?: string | null;
@@ -135,6 +137,8 @@ export type CoreBooking = {
   clientId: string;
   clientName?: string | null;
   clientPhone?: string | null;
+  bookingGuest?: boolean;
+  guestEmail?: string | null;
   partyId?: string | null;
   partyLeadClientId?: string | null;
   partyMemberOrder?: number | null;
@@ -294,6 +298,11 @@ export type CoreExpenseEntry = {
 export type CoreCreateBookingInput = {
   id?: string;
   clientId: string;
+  guestParticipant?: {
+    id: string;
+    name: string;
+    email?: string | null;
+  };
   partyId?: string;
   partyLeadClientId?: string;
   partyMemberOrder?: number;
@@ -393,6 +402,7 @@ export type CoreCatalogRow = {
   id: string;
   salonId: string;
   name: string;
+  nameEn?: string | null;
   sectionId?: string | null;
   active: boolean;
   sortOrder: number;
