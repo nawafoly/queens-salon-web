@@ -2360,7 +2360,6 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
   const dateTriggerRef = useRef<HTMLButtonElement>(null);
   const datePanelRef = useRef<HTMLDivElement>(null);
-  const timeInputRef = useRef<HTMLInputElement>(null);
 
   const parseIsoDate = useCallback((value: string) => {
     const match = String(value || "").match(
@@ -2621,11 +2620,6 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     );
   }, [date, parseIsoDate, toArabicDigits]);
 
-  const timeLabel = useMemo(() => {
-    if (!time) return "اختاري الوقت";
-    return formatTime12(time);
-  }, [time]);
-
   const calendarYear =
     calendarCursor.getFullYear();
 
@@ -2743,35 +2737,6 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       onDateChange,
     ]
   );
-
-  const openTimePicker = useCallback(() => {
-    if (disabled) return;
-
-    const input = timeInputRef.current;
-
-    if (!input) return;
-
-    const picker = input as HTMLInputElement & {
-      showPicker?: () => void;
-    };
-
-    try {
-      input.focus({
-        preventScroll: true,
-      });
-
-      if (
-        typeof picker.showPicker === "function"
-      ) {
-        picker.showPicker();
-        return;
-      }
-    } catch {
-      // fallback below
-    }
-
-    input.click();
-  }, [disabled]);
 
   const calendarPanel =
     calendarOpen &&
@@ -2995,35 +2960,15 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           الوقت
         </div>
 
-        <button
-          type="button"
-          className="bk-edit-picker-control"
-          disabled={disabled}
-          onClick={openTimePicker}
-        >
-          <span
-            className={
-              time ? "" : "is-placeholder"
-            }
-          >
-            {timeLabel}
-          </span>
-
-          <FontAwesomeIcon
-            icon={faClock}
-            aria-hidden="true"
-          />
-        </button>
-
         <DashboardTimeInputV2
-          ref={timeInputRef}
-          className="bk-edit-picker-native-input"
+          className="bk-edit-time-input"
           value={time}
           onChange={(event) =>
             onTimeChange(event.target.value)
           }
           disabled={disabled}
-          tabIndex={-1}
+          clock="12h"
+          step={300}
           aria-label="اختيار الوقت"
         />
       </div>
