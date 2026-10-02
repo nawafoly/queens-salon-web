@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 const migration = readFileSync("migrations/core/0088_internal_booking_parties.sql", "utf8");
 const guestMigration = readFileSync("migrations/core/0090_internal_booking_guest_companions.sql", "utf8");
 const draftMigration = readFileSync("migrations/core/0091_internal_booking_drafts.sql", "utf8");
+const slotIndexCleanupMigration = readFileSync("migrations/core/0092_drop_legacy_parent_booking_slot_unique.sql", "utf8");
 const draftRepo = readFileSync("workers/core/repositories/internal-booking-drafts.js", "utf8");
 const cashbackRepo = readFileSync("workers/core/repositories/cashback.js", "utf8");
 const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
@@ -85,4 +86,12 @@ test("internal booking drafts stay outside operational booking state", () => {
   assert.match(draftRepo, /saveInternalBookingDraft/);
   assert.match(index, /internal-booking-drafts/);
   assert.match(index, /requirePermission\(ctx, "bookings\.create"\)/);
+});
+
+
+test("legacy parent booking staff/start unique is removed after item-level slot locks became canonical", () => {
+  assert.match(slotIndexCleanupMigration, /DROP INDEX IF EXISTS idx_core_bookings_staff_slot_active/);
+  assert.doesNotMatch(slotIndexCleanupMigration.replace(/^--.*$/gm, ""), /DROP TABLE|DELETE FROM|UPDATE bookings/);
+  assert.match(repo, /booking_slot_locks/);
+  assert.match(repo, /assertStaffRangeAvailable/);
 });
