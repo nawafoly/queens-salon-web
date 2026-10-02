@@ -3564,36 +3564,28 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                                             {t("سبب تعديل السعر")}
                                             {adjusted ? " *" : ""}
                                           </span>
-                                          <select
+                                          <DashboardSelectV2
                                             value={draft.reason}
-                                            onChange={(event) =>
+                                            placeholder={t("اختاري السبب")}
+                                            options={[
+                                              { value: "", label: t("اختاري السبب") },
+                                              { value: "catalog_pending_update", label: t("السعر محدث ولم يحدث الكتالوج") },
+                                              { value: "management_approved", label: t("سعر معتمد من الإدارة") },
+                                              { value: "special_price", label: t("سعر خاص") },
+                                              { value: "other", label: t("أخرى") },
+                                            ]}
+                                            onChange={(value) =>
                                               setPriceAdjustments((current) => ({
                                                 ...current,
                                                 [key]: {
                                                   ...current[key],
-                                                  reason: event.target.value as
+                                                  reason: value as
                                                     | PriceAdjustmentReason
                                                     | "",
                                                 },
                                               }))
                                             }
-                                          >
-                                            <option value="">
-                                              {t("اختاري السبب")}
-                                            </option>
-                                            <option value="catalog_pending_update">
-                                              {t("السعر محدث ولم يحدث الكتالوج")}
-                                            </option>
-                                            <option value="management_approved">
-                                              {t("سعر معتمد من الإدارة")}
-                                            </option>
-                                            <option value="special_price">
-                                              {t("سعر خاص")}
-                                            </option>
-                                            <option value="other">
-                                              {t("أخرى")}
-                                            </option>
-                                          </select>
+                                          />
                                         </label>
 
                                         <label className="is-wide">

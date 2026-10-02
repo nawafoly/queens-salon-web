@@ -125,3 +125,47 @@
   --dsv2-transition: 190ms var(--dsv2-ease);
 
 }
+
+/* Attendance status colors shared by calendar cells, legends, and notices. */
+.dashboard-v2 {
+  --dsv2-attendance-present-surface: #ecfdf3;
+  --dsv2-attendance-present-border: #86efac;
+  --dsv2-attendance-present-accent: #15803d;
+  --dsv2-attendance-late-surface: #fef9c3;
+  --dsv2-attendance-late-border: #facc15;
+  --dsv2-attendance-late-accent: #a16207;
+  --dsv2-attendance-short-hours-surface: #ffedd5;
+  --dsv2-attendance-short-hours-border: #fb923c;
+  --dsv2-attendance-short-hours-accent: #c2410c;
+  --dsv2-attendance-late-short-hours-border: #f59e0b;
+  --dsv2-attendance-late-short-hours-accent: #b45309;
+  --dsv2-attendance-absent-surface: #ffe4e6;
+  --dsv2-attendance-absent-border: #fb7185;
+  --dsv2-attendance-absent-accent: #9f1239;
+  --dsv2-attendance-rest-surface: #f1f5f9;
+  --dsv2-attendance-rest-border: #cbd5e1;
+  --dsv2-attendance-rest-accent: #475569;
+  --dsv2-attendance-incomplete-surface: #e0f2fe;
+  --dsv2-attendance-incomplete-border: #7dd3fc;
+  --dsv2-attendance-incomplete-accent: #0284c7;
+  --dsv2-attendance-incomplete-legend-text: #0369a1;
+  --dsv2-attendance-incomplete-legend-dot: #38bdf8;
+  --dsv2-attendance-worked-rest-surface: #ccfbf1;
+  --dsv2-attendance-worked-rest-border: #2dd4bf;
+  --dsv2-attendance-worked-rest-accent: #0f766e;
+  --dsv2-attendance-worked-rest-legend-dot: #14b8a6;
+  --dsv2-attendance-weekly-rest-surface: #dbeafe;
+  --dsv2-attendance-weekly-rest-border: #93c5fd;
+  --dsv2-attendance-weekly-rest-accent: #1d4ed8;
+  --dsv2-attendance-compensatory-surface: #d1fae5;
+  --dsv2-attendance-compensatory-border: #6ee7b7;
+  --dsv2-attendance-compensatory-accent: #047857;
+  --dsv2-attendance-annual-surface: #fef3c7;
+  --dsv2-attendance-annual-border: #fcd34d;
+  --dsv2-attendance-exceptional-surface: #fce7f3;
+  --dsv2-attendance-exceptional-border: #f9a8d4;
+  --dsv2-attendance-exceptional-accent: #9d174d;
+  --dsv2-attendance-warning-surface: #fff7ed;
+  --dsv2-attendance-annual-accent: var(--dsv2-attendance-late-short-hours-accent);
+  --dsv2-chip-surface: #111111;
+}
