@@ -4,7 +4,6 @@ import * as XLSX from "xlsx";
 import { DashboardModalV2 } from "../../components/dashboard-v2";
 import { clientsText, type DashboardLanguage } from "../../helpers/dashboardClientsLanguage";
 import { CoreClientService } from "../../services/CoreClientService";
-import type { CoreClient } from "../../types/coreApi";
 import {
   customerPhoneDigits,
   formatCustomerPhone,
@@ -43,12 +42,11 @@ function parseVip(value: unknown): boolean {
 type Props = {
   language: DashboardLanguage;
   open: boolean;
-  existingClients: CoreClient[];
   onClose: () => void;
-  onImported: (clients: CoreClient[]) => void;
+  onImported: () => void | Promise<void>;
 };
 
-export default function CustomersImportModal({ language, open, existingClients, onClose, onImported }: Props) {
+export default function CustomersImportModal({ language, open, onClose, onImported }: Props) {
   const t = (text: string) => clientsText(language, text);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
@@ -109,17 +107,18 @@ export default function CustomersImportModal({ language, open, existingClients, 
     setImporting(true);
     setError("");
     try {
-      const existingByPhone = new Map(existingClients.map((client) => [customerPhoneDigits(client.phoneNormalized), client]));
       for (const row of preview) {
-        const existing = existingByPhone.get(row.digits);
         const persistedName = row.rawName || UNNAMED_CUSTOMER_LABEL;
-        if (existing?.id) {
-          await CoreClientService.patch(existing.id, { name: persistedName, phone: row.phone, vip: row.vip, notes: row.note });
-        } else {
-          await CoreClientService.create({ id: crypto.randomUUID(), name: persistedName, phone: row.phone, vip: row.vip, notes: row.note });
-        }
+
+        await CoreClientService.importUpsert({
+          name: persistedName,
+          phone: row.phone,
+          vip: row.vip,
+          notes: row.note,
+        });
       }
-      onImported(await CoreClientService.list());
+
+      await onImported();
       setPreview([]);
       setError("");
       if (fileInputRef.current) fileInputRef.current.value = "";

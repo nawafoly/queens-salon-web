@@ -925,3 +925,5 @@
     grid-column: 1 / -1;
   }
 }
+
+.dsv2-customers-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--dsv2-space-3, 12px); margin-block: var(--dsv2-space-4, 16px); }

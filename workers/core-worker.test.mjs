@@ -596,6 +596,38 @@ class FakeD1 {
         (row) => row.salon_id === salonId && requestedIds.has(String(row.id))
       );
     }
+    if (normalized.startsWith("SELECT c.* FROM clients c WHERE c.salon_id = ?")) {
+      const salonId = params[0];
+      const hasSearch = normalized.includes("LOWER(COALESCE(c.name");
+      const search = hasSearch ? String(params[1] || "").toLowerCase() : "";
+      const exactPhone = hasSearch
+        ? String(params.find((value) =>
+            /^\+?\d{7,15}$/.test(String(value || ""))
+          ) || "")
+        : "";
+
+      const limit = Number(params[params.length - 2] || 500);
+      const offset = Number(params[params.length - 1] || 0);
+
+      return this.rows("clients")
+        .filter((row) => row.salon_id === salonId)
+        .filter((row) =>
+          !hasSearch ||
+          [row.id, row.name, row.email, row.firebase_uid, row.phone_normalized]
+            .some((value) =>
+              String(value || "").toLowerCase().includes(search)
+            ) ||
+          (exactPhone &&
+            String(row.phone_normalized || "") === exactPhone)
+        )
+        .sort((a, b) =>
+          String(b.updated_at || "").localeCompare(
+            String(a.updated_at || "")
+          )
+        )
+        .slice(offset, offset + limit);
+    }
+
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND (")) {
       const [salonId, search] = params;
       const needle = String(search || "").toLowerCase();

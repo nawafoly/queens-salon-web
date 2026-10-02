@@ -27,6 +27,7 @@ import {
   getClientLoyaltySummary,
   listClients,
   patchClient,
+  upsertImportedClient,
 } from './repositories/clients.js';
 import {
   createService,
@@ -648,6 +649,14 @@ function match(url, method) {
 
   if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
     return { name: "client:loyalty-summary" };
+  }
+
+  if (path === "/api/core/clients/directory-summary" && method === "GET") {
+    return { name: "client:directory-summary" };
+  }
+
+  if (path === "/api/core/clients/import-upsert" && method === "POST") {
+    return { name: "client:import-upsert" };
   }
 
   const clientPreferences = /^\/api\/core\/clients\/([^/]+)\/preferences$/.exec(path);
@@ -1519,6 +1528,41 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireRole(ctx.role, OPERATIONS_ROLES);
       if (method === "GET") return getClientLoyaltySummary(db, ctx.salonId);
       break;
+
+    case "client:directory-summary":
+      requireRole(ctx.role, OPERATIONS_ROLES);
+      if (method === "GET") {
+        return getClientDirectorySummary(
+          db,
+          ctx.salonId,
+          query
+        );
+      }
+      break;
+
+    case "client:import-upsert": {
+      requirePermission(ctx, "clients.manage");
+
+      const imported = await upsertImportedClient(
+        db,
+        ctx.salonId,
+        body
+      );
+
+      await recordAudit(db, ctx.salonId, {
+        action: "client_import_upserted",
+        entityType: "client",
+        entityId: imported.id,
+        description: "Client record created or updated through the authenticated import workflow.",
+        after: {
+          name: imported.name,
+          phone: imported.phone_normalized,
+          vip: imported.vip,
+        },
+      }, actorInfo);
+
+      return imported;
+    }
 
     case "client:admin-overview":
       requireRole(ctx.role, OPERATIONS_ROLES);

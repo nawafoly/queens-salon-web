@@ -2,13 +2,6 @@ import { coreApiRequest } from "./coreApiClient";
 import { mapCoreBooking, mapCoreClient } from "./coreBookingMappers";
 import type { CoreBooking, CoreClient } from "../types/coreApi";
 
-export type CoreClientLoyaltySummary = {
-  totalClients: number;
-  vipCount: number;
-  activeLoyaltyCount: number;
-  totalPoints: number;
-};
-
 export type CoreClientDirectorySummary = {
   totalClients: number;
   totalBookings: number;
@@ -16,6 +9,13 @@ export type CoreClientDirectorySummary = {
   newThisMonth: number;
   vipClients: number;
   averageBookings: number;
+};
+
+export type CoreClientLoyaltySummary = {
+  totalClients: number;
+  vipCount: number;
+  activeLoyaltyCount: number;
+  totalPoints: number;
 };
 
 const LOYALTY_SUMMARY_TTL_MS = 60_000;
@@ -348,6 +348,10 @@ export const CoreClientService = {
     options: {
       includeLoyalty?: boolean;
       includeMetrics?: boolean;
+      segment?: string;
+      lastVisit?: string;
+      source?: string;
+      sort?: string;
       limit?: number;
       offset?: number;
     } = {}
@@ -359,6 +363,10 @@ export const CoreClientService = {
           search,
           ...(options.includeLoyalty ? { includeLoyalty: "1" } : {}),
           ...(options.includeMetrics ? { includeMetrics: "1" } : {}),
+          segment: options.segment,
+          lastVisit: options.lastVisit,
+          source: options.source,
+          sort: options.sort,
           limit: options.limit,
           offset: options.offset,
         },
@@ -367,19 +375,56 @@ export const CoreClientService = {
     return rows.map(mapClient);
   },
 
-  async directorySummary(): Promise<CoreClientDirectorySummary> {
+  async directorySummary(
+    search = "",
+    options: {
+      segment?: string;
+      lastVisit?: string;
+      source?: string;
+    } = {}
+  ): Promise<CoreClientDirectorySummary> {
     const row = await coreApiRequest<Record<string, unknown>>(
-      "/api/core/clients/directory-summary"
+      "/api/core/clients/directory-summary",
+      {
+        query: {
+          search,
+          segment: options.segment,
+          lastVisit: options.lastVisit,
+          source: options.source,
+        },
+      }
     );
+
     return {
       totalClients: finiteNumber(row.totalClients ?? row.total_clients),
       totalBookings: finiteNumber(row.totalBookings ?? row.total_bookings),
       activeClients: finiteNumber(row.activeClients ?? row.active_clients),
       newThisMonth: finiteNumber(row.newThisMonth ?? row.new_this_month),
       vipClients: finiteNumber(row.vipClients ?? row.vip_clients),
-      averageBookings: finiteNumber(row.averageBookings ?? row.average_bookings),
+      averageBookings: finiteNumber(
+        row.averageBookings ?? row.average_bookings
+      ),
     };
   },
+
+  async importUpsert(data: {
+    id?: string;
+    name: string;
+    phone: string;
+    vip?: boolean;
+    notes?: string;
+  }): Promise<CoreClient> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/clients/import-upsert",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+
+    return mapClient(row);
+  },
+
 
   async loyaltySummary(): Promise<CoreClientLoyaltySummary> {
     const now = Date.now();

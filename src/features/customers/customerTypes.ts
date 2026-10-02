@@ -1,4 +1,4 @@
-export type CustomerSource = "combined" | "client-record" | "booking-only";
+export type CustomerSource = "combined" | "client-record";
 
 export type CustomerSegment =
   | "all"

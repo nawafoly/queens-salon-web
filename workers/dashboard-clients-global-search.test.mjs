@@ -20,9 +20,9 @@ const core = fs.readFileSync(
 );
 
 test("dashboard client search queries Core instead of filtering only the first loaded page", () => {
-  assert.match(page, /CoreClientService\.list\(searchTerm,[\s\S]*includeMetrics:\s*true/);
-  assert.match(page, /const activeCoreClients = deferredQuery\.trim\(\)[\s\S]*searchClients/);
-  assert.match(page, /CoreClientService\.directorySummary\(\)/);
+  assert.match(page, /CoreClientService\.list\(search,[\s\S]*includeMetrics:\s*true/);
+  assert.match(page, /const search = String\(deferredQuery/);
+  assert.match(page, /CoreClientService\.directorySummary\(search,/);
 });
 
 test("Core client search normalizes partial Saudi phone fragments", () => {

@@ -66,11 +66,112 @@ function clientListLimit(value) {
 function clientListOffset(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(50_000, Math.trunc(parsed)));
+  return Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(parsed)));
+}
+
+
+function clientListSegment(value) {
+  const normalized = cleanText(value).toLowerCase();
+  return ["vip", "with-bookings", "without-bookings", "active-packages"].includes(normalized)
+    ? normalized
+    : "all";
+}
+
+function clientListLastVisit(value) {
+  const normalized = cleanText(value).toLowerCase();
+  return ["30-days", "90-days", "never"].includes(normalized)
+    ? normalized
+    : "all";
+}
+
+function clientListSort(value) {
+  const normalized = cleanText(value).toLowerCase();
+  return ["latest", "most", "newest"].includes(normalized)
+    ? normalized
+    : "latest";
+}
+
+
+function normalizeClientDirectoryDigits(value) {
+  return cleanText(value)
+    .replace(/[\u0660-\u0669]/g, (digit) =>
+      String(digit.charCodeAt(0) - 0x0660)
+    )
+    .replace(/[\u06F0-\u06F9]/g, (digit) =>
+      String(digit.charCodeAt(0) - 0x06F0)
+    );
+}
+
+function normalizeClientDirectorySearchText(value) {
+  return normalizeClientDirectoryDigits(value)
+    .toLocaleLowerCase("ar")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627")
+    .replace(/\u0649/g, "\u064A")
+    .replace(/\u0629/g, "\u0647")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function clientDirectoryNormalizedNameSql(alias = "c") {
+  return `LOWER(
+    REPLACE(
+      REPLACE(
+        REPLACE(
+          REPLACE(
+            REPLACE(
+              REPLACE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(
+                      REPLACE(
+                        REPLACE(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(
+                                    REPLACE(
+                                      COALESCE(${alias}.name, ''),
+                                      CHAR(1600), ''
+                                    ),
+                                    CHAR(1611), ''
+                                  ),
+                                  CHAR(1612), ''
+                                ),
+                                CHAR(1613), ''
+                              ),
+                              CHAR(1614), ''
+                            ),
+                            CHAR(1615), ''
+                          ),
+                          CHAR(1616), ''
+                        ),
+                        CHAR(1617), ''
+                      ),
+                      CHAR(1618), ''
+                    ),
+                    CHAR(1648), ''
+                  ),
+                  CHAR(1571), CHAR(1575)
+                ),
+                CHAR(1573), CHAR(1575)
+              ),
+              CHAR(1570), CHAR(1575)
+            ),
+            CHAR(1649), CHAR(1575)
+          ),
+          CHAR(1609), CHAR(1610)
+        ),
+        CHAR(1577), CHAR(1607)
+      ),
+      CHAR(1619), ''
+    )
+  )`;
 }
 
 function clientPhoneSearchFragment(value) {
-  const digits = cleanText(value).replace(/\D/g, '');
+  const digits = normalizeClientDirectoryDigits(value).replace(/\D/g, '');
   if (!digits) return '';
   if (digits.startsWith('00966')) return `966${digits.slice(5)}`;
   if (digits.startsWith('9660')) return `966${digits.slice(4)}`;
@@ -79,22 +180,37 @@ function clientPhoneSearchFragment(value) {
   return digits;
 }
 
-export async function listClients(db, salonId, query = {}) {
-  const includeLoyalty = wantsLoyaltySummary(query);
-  const includeMetrics = wantsClientMetrics(query);
-  const limit = clientListLimit(query.limit);
-  const offset = clientListOffset(query.offset);
-  const search = cleanText(query.search || query.q).toLowerCase();
-  const phoneSearch = clientPhoneSearchFragment(search);
+function clientDirectoryFilters(query = {}) {
+  const rawSearch = cleanText(query.search || query.q);
+  const search = normalizeClientDirectorySearchText(rawSearch);
+  const phone = normalizePhone(normalizeClientDirectoryDigits(rawSearch));
+  const phoneFragment = clientPhoneSearchFragment(rawSearch);
+  const segment = clientListSegment(query.segment);
+  const lastVisit = clientListLastVisit(query.lastVisit);
+  const source = cleanText(query.source).toLowerCase();
+  const filterNow = nowIso();
+
+  const unnamedSearchAliases = [
+    "\u0639\u0645\u064A\u0644\u0629 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "\u0639\u0645\u064A\u0644 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645",
+    "unnamed client",
+    "unnamed",
+  ].map(normalizeClientDirectorySearchText);
+
+  const unnamedSearch =
+    Boolean(search) && unnamedSearchAliases.includes(search);
 
   const searchClause = search
     ? ` AND (
          INSTR(LOWER(COALESCE(c.id, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(c.name, '')), ?) > 0
+         OR INSTR(${clientDirectoryNormalizedNameSql("c")}, ?) > 0
          OR INSTR(LOWER(COALESCE(c.email, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.firebase_uid, '')), ?) > 0
          OR INSTR(LOWER(COALESCE(c.phone_normalized, '')), ?) > 0
+         OR (? <> '' AND c.phone_normalized = ?)
          OR (? <> '' AND INSTR(COALESCE(c.phone_normalized, ''), ?) > 0)
+         OR (? = 1 AND ${clientDirectoryNormalizedNameSql("c")} IN (?, ?))
        )`
     : '';
 
@@ -105,10 +221,91 @@ export async function listClients(db, salonId, query = {}) {
         search,
         search,
         search,
-        phoneSearch || '',
-        phoneSearch || '',
+        phone || '',
+        phone || '',
+        phoneFragment || '',
+        phoneFragment || '',
+        unnamedSearch ? 1 : 0,
+        normalizeClientDirectorySearchText(
+          "\u0639\u0645\u064A\u0644\u0629 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"
+        ),
+        normalizeClientDirectorySearchText(
+          "\u0639\u0645\u064A\u0644 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"
+        ),
       ]
     : [];
+
+  const segmentClause =
+    segment === "vip"
+      ? " AND COALESCE(c.vip, 0) = 1"
+      : segment === "with-bookings"
+        ? " AND EXISTS (SELECT 1 FROM bookings fb WHERE fb.salon_id = c.salon_id AND fb.client_id = c.id AND fb.deleted_at IS NULL)"
+        : segment === "without-bookings"
+          ? " AND NOT EXISTS (SELECT 1 FROM bookings fb WHERE fb.salon_id = c.salon_id AND fb.client_id = c.id AND fb.deleted_at IS NULL)"
+          : segment === "active-packages"
+            ? " AND EXISTS (SELECT 1 FROM client_packages fp WHERE fp.salon_id = c.salon_id AND fp.canonical_client_id = c.canonical_client_id AND fp.status = 'active' AND (fp.expires_at IS NULL OR fp.expires_at >= ?) AND (fp.remaining_sessions > 0 OR fp.reserved_sessions > 0))"
+            : "";
+
+  const segmentParams =
+    segment === "active-packages" ? [filterNow] : [];
+
+  const lastVisitClause =
+    lastVisit === "never"
+      ? " AND NOT EXISTS (SELECT 1 FROM bookings fv WHERE fv.salon_id = c.salon_id AND fv.client_id = c.id AND fv.status = 'completed' AND fv.deleted_at IS NULL)"
+      : lastVisit === "30-days"
+        ? " AND EXISTS (SELECT 1 FROM bookings fv WHERE fv.salon_id = c.salon_id AND fv.client_id = c.id AND fv.status = 'completed' AND fv.deleted_at IS NULL AND fv.booking_date >= date(?, '-30 days'))"
+        : lastVisit === "90-days"
+          ? " AND EXISTS (SELECT 1 FROM bookings fv WHERE fv.salon_id = c.salon_id AND fv.client_id = c.id AND fv.status = 'completed' AND fv.deleted_at IS NULL AND fv.booking_date >= date(?, '-90 days'))"
+          : "";
+
+  const lastVisitParams =
+    lastVisit === "30-days" || lastVisit === "90-days"
+      ? [filterNow]
+      : [];
+
+  const sourceClause =
+    source === "combined"
+      ? " AND EXISTS (SELECT 1 FROM bookings fs WHERE fs.salon_id = c.salon_id AND fs.client_id = c.id AND fs.deleted_at IS NULL)"
+      : source === "client-record"
+        ? " AND NOT EXISTS (SELECT 1 FROM bookings fs WHERE fs.salon_id = c.salon_id AND fs.client_id = c.id AND fs.deleted_at IS NULL)"
+        : "";
+
+  return {
+    clause: `${searchClause}${segmentClause}${lastVisitClause}${sourceClause}`,
+    params: [...searchParams, ...segmentParams, ...lastVisitParams],
+    search,
+    searchParams,
+  };
+}
+
+export async function listClients(db, salonId, query = {}) {
+  const includeLoyalty = wantsLoyaltySummary(query);
+  const includeMetrics = wantsClientMetrics(query);
+  const limit = clientListLimit(query.limit);
+  const offset = clientListOffset(query.offset);
+  const sort = clientListSort(query.sort);
+  const filters = clientDirectoryFilters(query);
+
+  const searchClause = filters.clause;
+  const searchParams = filters.params;
+  const selectedOrder =
+    !query.sort
+      ? "c.updated_at DESC, c.id DESC"
+      : sort === "most"
+      ? "(SELECT COUNT(*) FROM bookings sb WHERE sb.salon_id = c.salon_id AND sb.client_id = c.id AND sb.deleted_at IS NULL) DESC, c.id DESC"
+      : sort === "latest"
+        ? "COALESCE((SELECT MAX(sv.booking_date || ' ' || sv.start_time) FROM bookings sv WHERE sv.salon_id = c.salon_id AND sv.client_id = c.id AND sv.status = 'completed' AND sv.deleted_at IS NULL), '') DESC, c.id DESC"
+        : "c.created_at DESC, c.id DESC";
+
+  const metricsOrder =
+    !query.sort
+      ? "sc.updated_at DESC, sc.id DESC"
+      : sort === "most"
+      ? "COALESCE(bm.bookings_count, 0) DESC, sc.id DESC"
+      : sort === "latest"
+        ? "COALESCE(lc.last_visit_date || ' ' || lc.last_visit_time, '') DESC, sc.id DESC"
+        : "sc.created_at DESC, sc.id DESC";
+
 
   if (includeMetrics) {
     const now = nowIso();
@@ -118,7 +315,7 @@ export async function listClients(db, salonId, query = {}) {
          SELECT c.*
            FROM clients c
           WHERE c.salon_id = ?${searchClause}
-          ORDER BY c.updated_at DESC
+          ORDER BY ${selectedOrder}
           LIMIT ? OFFSET ?
        ),
        booking_metrics AS (
@@ -193,7 +390,7 @@ export async function listClients(db, salonId, query = {}) {
          ON lc.client_id = sc.id
        LEFT JOIN package_metrics pm
          ON pm.client_id = sc.canonical_client_id
-       ORDER BY sc.updated_at DESC`,
+       ORDER BY ${metricsOrder}`,
       [
         salonId,
         ...searchParams,
@@ -214,8 +411,8 @@ export async function listClients(db, salonId, query = {}) {
          SELECT c.*
            FROM clients c
           WHERE c.salon_id = ?${searchClause}
-          ORDER BY c.updated_at DESC
-          LIMIT 500
+          ORDER BY c.updated_at DESC, c.id DESC
+          LIMIT ? OFFSET ?
        ),
        completed_bookings AS (
          SELECT
@@ -297,86 +494,76 @@ export async function listClients(db, salonId, query = {}) {
          ON bl.client_id = sc.id
        LEFT JOIN manual_loyalty ml
          ON ml.client_id = sc.id
-       ORDER BY sc.updated_at DESC`,
-      [salonId, ...searchParams, salonId, salonId, salonId]
+       ORDER BY sc.updated_at DESC, sc.id DESC`,
+      [salonId, ...filters.params, limit, offset, salonId, salonId, salonId]
     );
   }
 
-  const plainSearchClause = search
-    ? ` AND (
-         INSTR(LOWER(COALESCE(id, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(name, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(email, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(firebase_uid, '')), ?) > 0
-         OR INSTR(LOWER(COALESCE(phone_normalized, '')), ?) > 0
-         OR (? <> '' AND INSTR(COALESCE(phone_normalized, ''), ?) > 0)
-       )`
-    : '';
-
   return dbAll(
     db,
-    `SELECT *
-     FROM clients
-     WHERE salon_id = ?${plainSearchClause}
-     ORDER BY updated_at DESC
+    `SELECT c.*
+     FROM clients c
+     WHERE c.salon_id = ?${searchClause}
+     ORDER BY ${selectedOrder}
      LIMIT ? OFFSET ?`,
     [salonId, ...searchParams, limit, offset]
   );
 }
 
 
-export async function getClientDirectorySummary(db, salonId) {
-  const riyadhOffsetMs = 3 * 60 * 60 * 1000;
-  const shiftedNow = new Date(Date.now() + riyadhOffsetMs);
-  const year = shiftedNow.getUTCFullYear();
-  const month = shiftedNow.getUTCMonth();
-  const monthStart = new Date(Date.UTC(year, month, 1) - riyadhOffsetMs).toISOString();
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1) - riyadhOffsetMs).toISOString();
+export async function getClientDirectorySummary(db, salonId, query = {}) {
+  const filters = clientDirectoryFilters(query);
 
-  const clientSummary = await dbFirst(
+  const row = await dbFirst(
     db,
-    `SELECT
+    `WITH filtered_clients AS (
+       SELECT c.id, c.vip, c.status, c.created_at
+       FROM clients c
+       WHERE c.salon_id = ?${filters.clause}
+     ),
+     booking_metrics AS (
+       SELECT
+         b.client_id,
+         COUNT(*) AS bookings_count
+       FROM bookings b
+       INNER JOIN filtered_clients fc
+         ON fc.id = b.client_id
+       WHERE b.salon_id = ?
+         AND b.deleted_at IS NULL
+       GROUP BY b.client_id
+     )
+     SELECT
        COUNT(*) AS total_clients,
+       COALESCE(SUM(CASE WHEN COALESCE(fc.vip, 0) = 1 THEN 1 ELSE 0 END), 0) AS vip_clients,
        COALESCE(SUM(
          CASE
-           WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('', 'active') THEN 1
+           WHEN TRIM(LOWER(COALESCE(fc.status, ''))) IN ('', 'active') THEN 1
            ELSE 0
          END
        ), 0) AS active_clients,
-       COALESCE(SUM(CASE WHEN COALESCE(vip, 0) = 1 THEN 1 ELSE 0 END), 0) AS vip_clients,
        COALESCE(SUM(
          CASE
-           WHEN created_at >= ? AND created_at < ? THEN 1
+           WHEN date(fc.created_at) >= date('now', 'start of month') THEN 1
            ELSE 0
          END
-       ), 0) AS new_this_month
-     FROM clients
-     WHERE salon_id = ?`,
-    [monthStart, nextMonthStart, salonId]
+       ), 0) AS new_this_month,
+       COALESCE(SUM(COALESCE(bm.bookings_count, 0)), 0) AS total_bookings
+     FROM filtered_clients fc
+     LEFT JOIN booking_metrics bm
+       ON bm.client_id = fc.id`,
+    [salonId, ...filters.params, salonId]
   );
 
-  const bookingSummary = await dbFirst(
-    db,
-    `SELECT COUNT(*) AS total_bookings
-       FROM bookings b
-       INNER JOIN clients c
-         ON c.salon_id = b.salon_id
-        AND c.id = b.client_id
-      WHERE b.salon_id = ?
-        AND b.deleted_at IS NULL`,
-    [salonId]
-  );
-
-  const totalClients = Number(clientSummary?.total_clients || 0);
-  const totalBookings = Number(bookingSummary?.total_bookings || 0);
+  const totalClients = Number(row?.total_clients || 0);
+  const totalBookings = Number(row?.total_bookings || 0);
 
   return {
     totalClients,
     totalBookings,
-    activeClients: Number(clientSummary?.active_clients || 0),
-    newThisMonth: Number(clientSummary?.new_this_month || 0),
-    vipClients: Number(clientSummary?.vip_clients || 0),
-    averageBookings: totalClients ? totalBookings / totalClients : 0,
+    activeClients: Number(row?.active_clients || 0),
+    newThisMonth: Number(row?.new_this_month || 0),
+    vipClients: Number(row?.vip_clients || 0),
+    averageBookings: totalClients > 0 ? totalBookings / totalClients : 0,
   };
 }
 
@@ -656,6 +843,62 @@ export async function createClient(db, salonId, data) {
   );
 
   return row;
+}
+
+export async function upsertImportedClient(db, salonId, data) {
+  const phone =
+    normalizePhone(data.phoneNormalized || data.phone || data.mobile) || null;
+
+  if (!phone) {
+    throw new AppError(
+      400,
+      'core_client:invalid_phone',
+      'A valid Saudi mobile number is required.'
+    );
+  }
+
+  const email =
+    data.email === undefined
+      ? null
+      : normalizedClientEmail(data.email) || null;
+
+  const firebaseUid =
+    optionalText(data.firebaseUid || data.uid || data.authUid) || null;
+
+  const identity = await resolveClientIdentity(db, salonId, {
+    phone,
+    email,
+    firebaseUid,
+  });
+
+  const importedData = {
+    name: data.name,
+    phone,
+    ...(data.email !== undefined ? { email } : {}),
+    ...(data.firebaseUid !== undefined ||
+    data.uid !== undefined ||
+    data.authUid !== undefined
+      ? { firebaseUid }
+      : {}),
+    ...(data.vip !== undefined ? { vip: data.vip } : {}),
+    ...(data.notes !== undefined || data.note !== undefined
+      ? { notes: data.notes ?? data.note }
+      : {}),
+  };
+
+  if (identity.client) {
+    return patchClient(
+      db,
+      salonId,
+      identity.client.id,
+      importedData
+    );
+  }
+
+  return createClient(db, salonId, {
+    ...importedData,
+    id: data.id || generatedId("client"),
+  });
 }
 
 export async function patchClient(db, salonId, id, data) {
