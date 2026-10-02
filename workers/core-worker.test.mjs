@@ -6722,6 +6722,17 @@ test("overlapping ranges are rejected while adjacent ranges are allowed", async 
   const overlapBody = await json(overlap);
   assert.equal(overlap.status, 409, JSON.stringify(overlapBody));
   assert.equal(overlapBody.error, "core_booking:staff_slot_conflict");
+  assert.equal(overlapBody.details?.conflictType, "staff_slot_conflict");
+  assert.equal(overlapBody.details?.source, "existing_booking");
+  assert.equal(overlapBody.details?.clientId, "client-a");
+  assert.equal(overlapBody.details?.staffId, "staff-a");
+  assert.equal(overlapBody.details?.serviceId, "svc-a");
+  assert.equal(overlapBody.details?.bookingDate, "2027-01-10");
+  assert.equal(overlapBody.details?.startTime, "10:20");
+  assert.equal(overlapBody.details?.conflictingBookingId, "booking-range-a");
+  assert.equal(overlapBody.details?.conflictingServiceId, "svc-a");
+  assert.equal(overlapBody.details?.conflictingStartTime, "10:00");
+  assert.equal(overlapBody.details?.conflictingEndTime, "10:30");
 
   const adjacent = await worker.fetch(request("/api/core/bookings", {
     method: "POST",
@@ -6736,6 +6747,60 @@ test("overlapping ranges are rejected while adjacent ranges are allowed", async 
     },
   }), env(fake));
   assert.equal(adjacent.status, 200, JSON.stringify(await json(adjacent)));
+});
+
+test("same-request staff overlap returns the exact conflicting booking item", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-request-overlap",
+      clientId: "client-a",
+      bookingDate: "2027-01-10",
+      startTime: "12:00",
+      slotStepMin: 5,
+      items: [
+        {
+          id: "request-overlap-item-a",
+          cartItemId: "cart-first",
+          serviceId: "svc-a",
+          staffId: "staff-a",
+          bookingDate: "2027-01-10",
+          startTime: "12:00",
+        },
+        {
+          id: "request-overlap-item-b",
+          cartItemId: "cart-second",
+          serviceId: "svc-a",
+          staffId: "staff-a",
+          bookingDate: "2027-01-10",
+          startTime: "12:20",
+        },
+      ],
+    },
+  }), env(fake));
+
+  const body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:staff_slot_conflict");
+  assert.equal(body.details?.conflictType, "staff_slot_conflict");
+  assert.equal(body.details?.source, "request_internal_overlap");
+  assert.equal(body.details?.clientId, "client-a");
+  assert.equal(body.details?.staffId, "staff-a");
+  assert.equal(body.details?.serviceId, "svc-a");
+  assert.equal(body.details?.bookingDate, "2027-01-10");
+  assert.equal(body.details?.startTime, "12:20");
+  assert.equal(body.details?.endTime, "12:50");
+  assert.equal(body.details?.cartItemId, "cart-second");
+  assert.equal(body.details?.conflictingCartItemId, "cart-first");
+  assert.equal(body.details?.conflictingServiceId, "svc-a");
+  assert.equal(body.details?.conflictingStartTime, "12:00");
+  assert.equal(body.details?.conflictingEndTime, "12:30");
+  assert.equal(fake.rows("bookings").length, 0);
+  assert.equal(fake.rows("booking_slot_locks").length, 0);
 });
 
 test("cancelling a booking releases D1 slot locks", async () => {
