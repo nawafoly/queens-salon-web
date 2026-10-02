@@ -533,6 +533,10 @@ test("dashboard booking edit uses Core D1, owner bypasses password, and admins r
   assert.match(dashboard, /sanitizeBookingNoteForEditor/);
   assert.match(dashboard, /resolveBookingDataSource\(\)\.getServiceSections/);
   assert.match(dashboard, /resolveBookingDataSource\(\)\.getActiveStaff/);
+  assert.match(dashboard, /className="bk-edit-time-input"/);
+  assert.match(dashboard, /clock="12h"/);
+  assert.doesNotMatch(dashboard, /showPicker\(\)/);
+  assert.doesNotMatch(dashboard, /className="bk-edit-picker-native-input"/);
   assert.doesNotMatch(dashboard, /const BOOKING_ACTION_PIN/);
 
   assert.match(
