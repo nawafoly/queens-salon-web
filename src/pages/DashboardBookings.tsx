@@ -431,9 +431,12 @@ function bookingActivityDisplayText(value: string, language: DashboardLanguage):
       ? translateBookingCatalogLabel(language, suffixRaw, rule.kind)
       : bookingsText(language, suffixRaw);
 
-    suffix = String(suffix || suffixRaw)
-      .replace(/\s*ر\.س\b/g, " SAR")
-      .trim();
+    suffix = bookingDateTimeLabelText(
+      String(suffix || suffixRaw)
+        .replace(/\s*ر\.س\b/g, " SAR")
+        .trim(),
+      language
+    );
 
     return `${rule.english} ${suffix}`.trim();
   }
