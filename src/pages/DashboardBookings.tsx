@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
-import { DashboardDateInputV2, DashboardSelectBridgeV2, DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
+import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -2335,10 +2335,17 @@ type EditBookingScheduleSectionProps = {
   staffLoading: boolean;
   date: string;
   time: string;
+  slotStepMin: number;
   disabled: boolean;
   onEmployeeChange: (value: string) => void;
   onDateChange: (value: string) => void;
   onTimeChange: (value: string) => void;
+};
+
+type EditBookingTimeDraft = {
+  hour: number;
+  minute: number;
+  period: "am" | "pm";
 };
 
 
@@ -2351,15 +2358,37 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   staffLoading,
   date,
   time,
+  slotStepMin,
   disabled,
   onEmployeeChange,
   onDateChange,
   onTimeChange,
 }: EditBookingScheduleSectionProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
 
   const dateTriggerRef = useRef<HTMLButtonElement>(null);
   const datePanelRef = useRef<HTMLDivElement>(null);
+  const timeTriggerRef = useRef<HTMLButtonElement>(null);
+  const timePanelRef = useRef<HTMLDivElement>(null);
+
+  const parseTimeDraft = useCallback((value: string): EditBookingTimeDraft => {
+    const match = String(value || "").match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    if (!match) return { hour: 12, minute: 0, period: "pm" };
+
+    const hour24 = Number(match[1]);
+    const minute = Number(match[2]);
+
+    return {
+      hour: hour24 % 12 || 12,
+      minute,
+      period: hour24 >= 12 ? "pm" : "am",
+    };
+  }, []);
+
+  const [timeDraft, setTimeDraft] = useState<EditBookingTimeDraft>(() =>
+    parseTimeDraft(time)
+  );
 
   const parseIsoDate = useCallback((value: string) => {
     const match = String(value || "").match(
@@ -2404,6 +2433,11 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   });
 
   const [calendarPosition, setCalendarPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 330,
+  });
+  const [timePosition, setTimePosition] = useState({
     top: 0,
     left: 0,
     width: 330,
@@ -2518,6 +2552,38 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     });
   }, []);
 
+  const updateTimePosition = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const trigger = timeTriggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(360, Math.max(300, rect.width));
+    const viewportPadding = 12;
+    const estimatedHeight = 340;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openAbove = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
+    let top = openAbove
+      ? rect.top - estimatedHeight - 8
+      : rect.bottom + 8;
+
+    top = Math.max(
+      viewportPadding,
+      Math.min(top, window.innerHeight - estimatedHeight - viewportPadding)
+    );
+
+    let left = rect.right - width;
+    left = Math.max(
+      viewportPadding,
+      Math.min(left, window.innerWidth - width - viewportPadding)
+    );
+
+    setTimePosition({ top, left, width });
+  }, []);
+
   useEffect(() => {
     if (!calendarOpen) return;
 
@@ -2594,6 +2660,40 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     };
   }, [calendarOpen, updateCalendarPosition]);
 
+  useEffect(() => {
+    if (!timeOpen) return;
+
+    setTimeDraft(parseTimeDraft(time));
+    updateTimePosition();
+
+    const handlePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      const insideTrigger = timeTriggerRef.current?.contains(target);
+      const insidePanel = timePanelRef.current?.contains(target);
+      if (!insideTrigger && !insidePanel) setTimeOpen(false);
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTimeOpen(false);
+    };
+
+    const handleViewport = () => updateTimePosition();
+
+    document.addEventListener("pointerdown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleViewport);
+    window.addEventListener("scroll", handleViewport, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleViewport);
+      window.removeEventListener("scroll", handleViewport, true);
+    };
+  }, [parseTimeDraft, time, timeOpen, updateTimePosition]);
+
   const toArabicDigits = useCallback(
     (value: string | number) =>
       String(value).replace(
@@ -2619,6 +2719,32 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       toArabicDigits(selected.year)
     );
   }, [date, parseIsoDate, toArabicDigits]);
+
+  const timeLabel = useMemo(
+    () => (time ? formatTime12(time) : "اختاري الوقت"),
+    [time]
+  );
+
+  const minuteStep = Math.max(5, Math.min(30, Number(slotStepMin || 10)));
+  const minuteOptions = useMemo(() => {
+    const values: number[] = [];
+    for (let minute = 0; minute < 60; minute += minuteStep) values.push(minute);
+    return values;
+  }, [minuteStep]);
+
+  const commitTimeDraft = useCallback(() => {
+    const hour24 =
+      timeDraft.period === "pm"
+        ? (timeDraft.hour % 12) + 12
+        : timeDraft.hour % 12;
+
+    onTimeChange(
+      String(hour24).padStart(2, "0") +
+        ":" +
+        String(timeDraft.minute).padStart(2, "0")
+    );
+    setTimeOpen(false);
+  }, [onTimeChange, timeDraft]);
 
   const calendarYear =
     calendarCursor.getFullYear();
@@ -2893,6 +3019,120 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
         )
       : null;
 
+  const timePanel =
+    timeOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={timePanelRef}
+            className="bk-time-popover"
+            style={{
+              top: timePosition.top,
+              left: timePosition.left,
+              width: timePosition.width,
+            }}
+          >
+            <div className="bk-time-popover__head">
+              <strong>اختيار الوقت</strong>
+              <span>{formatTime12(
+                String(
+                  timeDraft.period === "pm"
+                    ? (timeDraft.hour % 12) + 12
+                    : timeDraft.hour % 12
+                ).padStart(2, "0") +
+                  ":" +
+                  String(timeDraft.minute).padStart(2, "0")
+              )}</span>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">الفترة</span>
+              <div className="bk-time-period">
+                {([
+                  ["am", "ص"],
+                  ["pm", "م"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={timeDraft.period === value ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        period: value,
+                      }))
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">الساعة</span>
+              <div className="bk-time-hours">
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
+                  <button
+                    key={hour}
+                    type="button"
+                    className={timeDraft.hour === hour ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        hour,
+                      }))
+                    }
+                  >
+                    {hour}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">الدقائق</span>
+              <div className="bk-time-minutes">
+                {minuteOptions.map((minute) => (
+                  <button
+                    key={minute}
+                    type="button"
+                    className={timeDraft.minute === minute ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        minute,
+                      }))
+                    }
+                  >
+                    {String(minute).padStart(2, "0")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__foot">
+              <button
+                type="button"
+                onClick={() => {
+                  onTimeChange("");
+                  setTimeOpen(false);
+                }}
+              >
+                مسح
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                onClick={commitTimeDraft}
+              >
+                تم
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="bk-edit-grid bk-edit-grid--schedule">
       <BookingSelectField
@@ -2930,6 +3170,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             .join(" ")}
           disabled={disabled}
           onClick={() => {
+            setTimeOpen(false);
             updateCalendarPosition();
 
             setCalendarOpen(
@@ -2960,17 +3201,28 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           الوقت
         </div>
 
-        <DashboardTimeInputV2
-          className="bk-edit-time-input"
-          value={time}
-          onChange={(event) =>
-            onTimeChange(event.target.value)
-          }
+        <button
+          ref={timeTriggerRef}
+          type="button"
+          className={[
+            "bk-edit-picker-control",
+            timeOpen ? "is-open" : "",
+          ].filter(Boolean).join(" ")}
           disabled={disabled}
-          clock="12h"
-          step={300}
-          aria-label="اختيار الوقت"
-        />
+          onClick={() => {
+            setCalendarOpen(false);
+            setTimeDraft(parseTimeDraft(time));
+            updateTimePosition();
+            setTimeOpen((current) => !current);
+          }}
+        >
+          <span className={time ? "" : "is-placeholder"}>
+            {timeLabel}
+          </span>
+          <FontAwesomeIcon icon={faClock} aria-hidden="true" />
+        </button>
+
+        {timePanel}
       </div>
     </div>
   );
@@ -3903,6 +4155,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             staffLoading={staffLoading}
             date={draft.date}
             time={draft.time}
+            slotStepMin={Math.max(5, Number(target?.slotStepMinAtBooking || 10))}
             disabled={saving}
             onEmployeeChange={onEmployeeChange}
             onDateChange={onDateChange}
