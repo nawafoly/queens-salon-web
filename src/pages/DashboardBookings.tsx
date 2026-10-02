@@ -379,12 +379,29 @@ function bookingClockText(value: string, language: DashboardLanguage): string {
   return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
 }
 
+function bookingDateTimeLabelText(value: unknown, language: DashboardLanguage): string {
+  const raw = String(value || "").trim();
+  if (!raw || language === "ar") return raw;
+  return raw
+    .replace(/\sص(?=\s|$)/g, " AM")
+    .replace(/\sم(?=\s|$)/g, " PM");
+}
+
+function bookingFormattedDateTimeText(value: unknown, language: DashboardLanguage): string {
+  return bookingDateTimeLabelText(formatAnyDateTime(value), language);
+}
+
 function bookingActivityDisplayText(value: string, language: DashboardLanguage): string {
   const raw = String(value || "").trim();
   if (!raw || language === "ar") return raw;
 
   const direct = bookingsText(language, raw);
   if (direct !== raw) return direct;
+
+  const saveErrorMatch = raw.match(/^تعذر حفظ تعديل الحجز \((.+)\)\.$/);
+  if (saveErrorMatch) {
+    return `Could not save booking changes (${saveErrorMatch[1]}).`;
+  }
 
   const rules: Array<{
     prefix: string;
@@ -2341,8 +2358,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
           options={categoryOptions}
           placeholder={
             categories.length
-              ? "بدون تحديد"
-              : "لا توجد تصنيفات"
+              ? t("بدون تحديد")
+              : t("لا توجد تصنيفات")
           }
           disabled={
             disabled ||
@@ -2361,8 +2378,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
         options={serviceOptions}
         placeholder={
           services.length
-            ? "اختاري الخدمة"
-            : "لا توجد خدمات"
+            ? t("اختاري الخدمة")
+            : t("لا توجد خدمات")
         }
         disabled={
           disabled ||
@@ -2765,7 +2782,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     const selected = parseIsoDate(date);
 
     if (!selected) {
-      return "اختاري التاريخ";
+      return t("اختاري التاريخ");
     }
 
     if (language === "en") {
@@ -2788,8 +2805,8 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   }, [date, language, parseIsoDate, toArabicDigits]);
 
   const timeLabel = useMemo(
-    () => (time ? formatTime12(time) : "اختاري الوقت"),
-    [time]
+    () => (time ? bookingClockText(time, language) : t("اختاري الوقت")),
+    [language, time]
   );
 
   const minuteStep = Math.max(5, Math.min(30, Number(slotStepMin || 10)));
@@ -3039,7 +3056,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                         chooseDate(day)
                       }
                     >
-                      {toArabicDigits(day)}
+                      {language === "en" ? day : toArabicDigits(day)}
                     </button>
                   );
                 }
@@ -3097,14 +3114,15 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           >
             <div className="bk-time-popover__head">
               <strong>{t("اختيار الوقت")}</strong>
-              <span>{formatTime12(
+              <span>{bookingClockText(
                 String(
                   timeDraft.period === "pm"
                     ? (timeDraft.hour % 12) + 12
                     : timeDraft.hour % 12
                 ).padStart(2, "0") +
                   ":" +
-                  String(timeDraft.minute).padStart(2, "0")
+                  String(timeDraft.minute).padStart(2, "0"),
+                language
               )}</span>
             </div>
 
@@ -3477,7 +3495,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                   event.target.value
                 )
               }
-              placeholder="مثال: 200"
+              placeholder={t("مثال: 200")}
               disabled={disabled}
             />
           </label>
@@ -3515,7 +3533,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             onChange={(event) =>
               onPaidAmountChange(event.target.value)
             }
-            placeholder="مثال: 100"
+            placeholder={t("مثال: 100")}
             disabled={disabled}
           />
         </label>
@@ -3654,7 +3672,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     return () => {
       cancelled = true;
     };
-  }, [open, target?.id]);
+  }, [language, open, target?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4222,7 +4240,20 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       <div className="bk-cancel-body">
         <div className="bk-cancel-meta">
           <span>{t("رقم الحجز")}: {bookingRef(target)}</span>
-          <span>{t("الخدمة")}: {target ? translateBookingCatalogLabel(language, serviceSummaryForTable(target), "service") : "—"}</span>
+          <span>
+            {t("الخدمة")}:{" "}
+            {target
+              ? translateBookingCatalogLabel(
+                  language,
+                  String(
+                    target.serviceName ||
+                      resolvePrimaryBookingServiceSelection(target).serviceName ||
+                      serviceSummaryForTable(target)
+                  ),
+                  "service"
+                )
+              : "—"}
+          </span>
         </div>
 
         <div className="bk-edit-form">
@@ -7792,11 +7823,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       <span className="bk-item-val">{bookingRef(selectedBooking)}</span>
                       <div className="bk-item-chip-row">
                         <span className="bk-created-badge">
-                          {t("تم إنشاء الحجز")}: {formatAnyDateTime(bookingCreationRefMs(selectedBooking))}
+                          {t("تم إنشاء الحجز")}: {bookingFormattedDateTimeText(bookingCreationRefMs(selectedBooking), language)}
                         </span>
                         {lastUpdateMap[selectedBooking.id]?.at ? (
                           <span className="bk-created-badge is-muted">
-                            {t("آخر تحديث")}: {lastUpdateMap[selectedBooking.id]?.at}
+                            {t("آخر تحديث")}: {bookingDateTimeLabelText(lastUpdateMap[selectedBooking.id]?.at, language)}
                           </span>
                         ) : null}
                       </div>
@@ -7918,7 +7949,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                 </div>
                               </div>
 
-                              <div className="bk-activity-time">{event.atLabel}</div>
+                              <div className="bk-activity-time">{bookingDateTimeLabelText(event.atLabel, language)}</div>
                             </div>
 
                             {event.changes.length ? (
@@ -7956,7 +7987,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     </div>
                   ) : (
                     <div className="bk-activity-empty">
-                      {selectedBookingActivityError ? t(selectedBookingActivityError) : t("لا توجد أحداث مسجلة لهذا الحجز حتى الآن.")}
+                      {selectedBookingActivityError
+                        ? bookingActivityDisplayText(selectedBookingActivityError, language)
+                        : t("لا توجد أحداث مسجلة لهذا الحجز حتى الآن.")}
                     </div>
                   )}
 
