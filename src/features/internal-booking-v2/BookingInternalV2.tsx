@@ -20,6 +20,8 @@ import { formatTime12 } from "../../helpers/timeDisplay";
 import { getCoreStaffBookableStartSlots, isCoreStaffStartBookable } from "../../helpers/coreBookingAvailability";
 import { listCoreBookableStaffForDate } from "../../services/coreBookableStaffService";
 
+import { clientConflictSelectionKeys } from "../../helpers/clientConflictSelectionKeys";
+
 import { todayISO } from "../../helpers/bookingDateUtils";
 import {
   buildDiscountSnapshot,
@@ -2200,6 +2202,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     submittingRef.current = true;
     setSubmitting(true);
 
+    let attemptedClientKey = "";
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
       for (const service of cart) {
@@ -2476,6 +2479,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             } : {}),
           } as any;
 
+          attemptedClientKey = plan.clientKey;
           const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
           const bookingId = String(created.parentId || "");
           if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
@@ -2614,6 +2618,24 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       if (isSlotConflict) {
         const staleRows: Array<{ service: CatalogService; staff: StaffRow | null; serviceKey: string }> = [];
+        if (code.includes("client_schedule_conflict")) {
+          const affectedKeys = clientConflictSelectionKeys(
+            cart.map((service) => ({
+              key: bookingLineKey(service),
+              clientKey: bookingLineClientKey(service),
+              time: scheduleByService[bookingLineKey(service)]?.time || "",
+              duration: serviceDuration(service) || 30,
+            })),
+            attemptedClientKey,
+            error?.details
+          );
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            if (affectedKeys.has(serviceKey)) {
+              staleRows.push({ service, staff: null, serviceKey });
+            }
+          }
+        }
         try {
           for (const service of cart) {
             const serviceKey = bookingLineKey(service);
@@ -2867,7 +2889,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               {draftMessage ? <p className="bk2-draft-message">{draftMessage}</p> : null}
               {savedDrafts.length ? (
                 <div className="bk2-drafts-list">
-                  {savedDrafts.slice(0, 5).map((row) => (
+                  {savedDrafts.map((row) => (
                     <article
                       key={row.id}
                       className={activeDraftId === row.id ? "is-active" : ""}

@@ -1794,7 +1794,7 @@ async function dispatch(ctx, route, method, body, query, env) {
         return getInternalBookingDraft(db, ctx.salonId, route.id, actorInfo);
       }
       if (method === "GET") {
-        return listInternalBookingDrafts(db, ctx.salonId, actorInfo);
+        return listInternalBookingDrafts(db, ctx.salonId, actorInfo, query);
       }
       if (method === "POST" && !route.id) {
         return saveInternalBookingDraft(db, ctx.salonId, body, actorInfo);

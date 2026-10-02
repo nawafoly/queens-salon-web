@@ -47,8 +47,10 @@ function mapDraft(row) {
   };
 }
 
-export async function listInternalBookingDrafts(db, salonId, actor = {}) {
+export async function listInternalBookingDrafts(db, salonId, actor = {}, query = {}) {
   const uid = requireActorUid(actor);
+  const requestedOffset = Number(query.offset);
+  const offset = Number.isSafeInteger(requestedOffset) ? Math.max(0, requestedOffset) : 0;
   const rows = await dbAll(
     db,
     `SELECT *
@@ -56,9 +58,9 @@ export async function listInternalBookingDrafts(db, salonId, actor = {}) {
       WHERE salon_id = ?
         AND created_by_uid = ?
         AND deleted_at IS NULL
-      ORDER BY updated_at DESC
-      LIMIT 20`,
-    [salonId, uid]
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 20 OFFSET ?`,
+    [salonId, uid, offset]
   );
   return rows.map(mapDraft);
 }

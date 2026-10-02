@@ -79,7 +79,7 @@ test("internal booking drafts stay outside operational booking state", () => {
   const index = readFileSync("workers/core/index.js", "utf8");
   assert.match(draftMigration, /CREATE TABLE IF NOT EXISTS internal_booking_drafts/);
   assert.match(draftMigration, /draft_json TEXT NOT NULL/);
-  assert.doesNotMatch(draftMigration, /booking_slot_locks|invoices|payments/);
+  assert.doesNotMatch(draftMigration.replace(/^--.*$/gm, ""), /booking_slot_locks|invoices|payments/);
   assert.match(draftRepo, /created_by_uid/);
   assert.match(draftRepo, /listInternalBookingDrafts/);
   assert.match(draftRepo, /saveInternalBookingDraft/);

@@ -14,10 +14,17 @@ export type CoreInternalBookingDraft<T = Record<string, unknown>> = {
 };
 
 export const CoreInternalBookingDraftService = {
-  list<T = Record<string, unknown>>() {
-    return coreApiRequest<CoreInternalBookingDraft<T>[]>(
-      "/api/core/internal-booking-drafts"
-    );
+  async list<T = Record<string, unknown>>() {
+    const result: CoreInternalBookingDraft<T>[] = [];
+    const limit = 20;
+    for (let offset = 0; ; offset += limit) {
+      const page = await coreApiRequest<CoreInternalBookingDraft<T>[]>(
+        "/api/core/internal-booking-drafts",
+        { query: { limit, offset } }
+      );
+      result.push(...page);
+      if (page.length < limit) return result;
+    }
   },
 
   save<T = Record<string, unknown>>(input: {

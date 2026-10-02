@@ -53,7 +53,7 @@
     "test:core:dedupe": "node --test workers/core-client-dedup.test.mjs",
     "dedupe:core-clients:dry": "node scripts/dedupe-core-clients.mjs",
     "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply",
-    "test:booking:party": "node --test workers/internal-booking-party-core.test.mjs workers/internal-booking-party-ui.test.mjs",
+    "test:booking:party": "node --test workers/internal-booking-party-core.test.mjs workers/internal-booking-party-ui.test.mjs workers/internal-booking-draft-runtime.test.mjs",
     "check:booking-internal-contract": "node scripts/check-booking-internal-contract.mjs",
     "check:booking-internal-v2-style": "node scripts/check-booking-internal-v2-style.mjs",
     "check:employee-profile-v2": "node scripts/check-employee-profile-v2.mjs",
@@ -131,6 +131,7 @@
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.3.1",
-    "sharp": "0.35.4"
+    "sharp": "0.35.4",
+    "@grpc/grpc-js": "1.14.5"
   }
 }
