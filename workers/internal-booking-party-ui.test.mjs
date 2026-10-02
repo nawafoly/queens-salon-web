@@ -143,3 +143,20 @@ test("party members can be edited without changing their booking ownership key",
   assert.match(css, /\.bk2-party-client-edit/);
   assert.match(css, /\.bk2-party-review-member/);
 });
+
+
+test("internal booking draft controls preserve unfinished work", () => {
+  assert.match(tsx, /CoreInternalBookingDraftService/);
+  assert.match(tsx, /saveDraftForLater/);
+  assert.match(tsx, /resumeSavedDraft/);
+  assert.match(tsx, /bk2-draft-save/);
+  assert.match(tsx, /bk2-drafts-panel/);
+  assert.match(css, /bk2-drafts-panel/);
+  assert.match(language, /Save and continue later/);
+});
+
+test("slot conflict recovery targets only stale schedule rows", () => {
+  assert.match(tsx, /staleRows/);
+  assert.match(tsx, /staleKeys/);
+  assert.match(tsx, /تم الاحتفاظ بكل المواعيد الصحيحة/);
+});

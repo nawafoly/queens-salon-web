@@ -46,6 +46,12 @@ import {
   staffIsPubliclyBookable,
 } from './repositories/staff.js';
 import {
+  deleteInternalBookingDraft,
+  getInternalBookingDraft,
+  listInternalBookingDrafts,
+  saveInternalBookingDraft,
+} from './repositories/internal-booking-drafts.js';
+import {
   cancelBooking,
   completeBooking,
   createBooking,
@@ -563,6 +569,15 @@ function match(url, method) {
   }
   if (path === "/api/core/bookings/taken-times" && method === "GET") {
     return { name: "bookings:taken-times" };
+  }
+
+  const internalBookingDraftDetail =
+    /^\/api\/core\/internal-booking-drafts\/([^/]+)$/.exec(path);
+  if (internalBookingDraftDetail) {
+    return { name: "internal-booking-drafts", id: internalBookingDraftDetail[1] };
+  }
+  if (path === "/api/core/internal-booking-drafts") {
+    return { name: "internal-booking-drafts" };
   }
   const testimonialDetail = /^\/api\/core\/testimonials\/([^/]+)$/.exec(path);
   if (testimonialDetail) {
@@ -1772,6 +1787,30 @@ async function dispatch(ctx, route, method, body, query, env) {
         body.status,
         actorInfo
       );
+
+    case "internal-booking-drafts":
+      requirePermission(ctx, "bookings.create");
+      if (method === "GET" && route.id) {
+        return getInternalBookingDraft(db, ctx.salonId, route.id, actorInfo);
+      }
+      if (method === "GET") {
+        return listInternalBookingDrafts(db, ctx.salonId, actorInfo, query);
+      }
+      if (method === "POST" && !route.id) {
+        return saveInternalBookingDraft(db, ctx.salonId, body, actorInfo);
+      }
+      if (method === "PATCH" && route.id) {
+        return saveInternalBookingDraft(
+          db,
+          ctx.salonId,
+          { ...body, id: route.id },
+          actorInfo
+        );
+      }
+      if (method === "DELETE" && route.id) {
+        return deleteInternalBookingDraft(db, ctx.salonId, route.id, actorInfo);
+      }
+      break;
 
     case "bookings:internal":
       requirePermission(ctx, "bookings.create");

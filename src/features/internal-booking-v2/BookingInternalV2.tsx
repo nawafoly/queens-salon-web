@@ -9,12 +9,18 @@ import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { CoreSettingsService } from "../../services/CoreSettingsService";
 import { CoreOfferService } from "../../services/CoreOfferService";
+import {
+  CoreInternalBookingDraftService,
+  type CoreInternalBookingDraft,
+} from "../../services/CoreInternalBookingDraftService";
 import type { CoreDiscount } from "../../types/coreApi";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
 import { formatTime12 } from "../../helpers/timeDisplay";
 import { getCoreStaffBookableStartSlots, isCoreStaffStartBookable } from "../../helpers/coreBookingAvailability";
 import { listCoreBookableStaffForDate } from "../../services/coreBookableStaffService";
+
+import { clientConflictSelectionKeys } from "../../helpers/clientConflictSelectionKeys";
 
 import { todayISO } from "../../helpers/bookingDateUtils";
 import {
@@ -72,6 +78,43 @@ type BookingPriceAdjustment = {
   price: string;
   reason: PriceAdjustmentReason | "";
   note: string;
+};
+
+type InternalBookingDraftSnapshot = {
+  version: 1;
+  step: Step;
+  selectedClient: ClientCandidate | null;
+  companions: ClientCandidate[];
+  activePartyClientKey: string;
+  query: string;
+  addingCompanion: boolean;
+  clientPickerOpen: boolean;
+  showNewClient: boolean;
+  newClientName: string;
+  newClientPhone: string;
+  newClientEmail: string;
+  editingPartyClientKey: string;
+  cart: CatalogService[];
+  serviceQuery: string;
+  priceAdjustments: Record<string, BookingPriceAdjustment>;
+  bookingDate: string;
+  scheduleByService: Record<string, ScheduleSelection>;
+  selectedSectionId: string;
+  selectedCategoryId: string;
+  paymentMethod: PaymentMethod;
+  paymentType: PaymentType;
+  paidAmount: string;
+  cashAmount: string;
+  cardAmount: string;
+  transferAmount: string;
+  bookingNote: string;
+  discountMode: DiscountMode;
+  manualFixedDiscount: string;
+  manualPercentDiscount: string;
+  manualMaxDiscount: string;
+  selectedOfferByClientKey: Record<string, string>;
+  couponInput: string;
+  couponOfferId: string;
 };
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingBusinessHoursDay = { enabled: boolean; start: string; end: string };
@@ -629,6 +672,15 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
+  const [savedDrafts, setSavedDrafts] = useState<
+    CoreInternalBookingDraft<InternalBookingDraftSnapshot>[]
+  >([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [activeDraftId, setActiveDraftId] = useState("");
+  const pendingDraftCouponOfferIdRef = useRef("");
+  const restoringDraftRef = useRef(false);
 
   const candidateFromCoreRow = useCallback((raw: any, fallbackSource = "core_d1"): ClientCandidate => ({
     id: String(raw?.id || `${fallbackSource}:${makeLocalId()}`),
@@ -1134,6 +1186,40 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     void loadDiscountOffers();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSavedDrafts() {
+      setDraftsLoading(true);
+      try {
+        const rows = await CoreInternalBookingDraftService.list<InternalBookingDraftSnapshot>();
+        if (!cancelled) setSavedDrafts(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        console.error("[BookingInternalV2] draft list load failed", error);
+        if (!cancelled) setDraftMessage(t("تعذر جلب مسودات الحجز المحفوظة."));
+      } finally {
+        if (!cancelled) setDraftsLoading(false);
+      }
+    }
+    void loadSavedDrafts();
+    return () => { cancelled = true; };
+  }, [language]);
+
+  useEffect(() => {
+    const pendingId = pendingDraftCouponOfferIdRef.current;
+    if (!pendingId || !offers.length) return;
+    const restored =
+      offers.find(
+        (offer) => String((offer as any)?.id || "").trim() === pendingId
+      ) || null;
+    setCouponOffer(restored);
+    pendingDraftCouponOfferIdRef.current = "";
+    if (!restored && discountMode === "coupon") {
+      setCouponMessage(
+        t("الكوبون المحفوظ لم يعد نشطًا. تحققي منه قبل إتمام الحجز.")
+      );
+    }
+  }, [offers, discountMode, language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1724,6 +1810,11 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   }, [bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   useEffect(() => {
+    if (restoringDraftRef.current) {
+      restoringDraftRef.current = false;
+      setAvailableTimes({});
+      return;
+    }
     setScheduleByService({});
     setAvailableTimes({});
   }, [bookingDate]);
@@ -1760,6 +1851,177 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       : Math.max(0, Number(paidAmount || 0));
   const remainingAmount = Math.max(0, finalTotal - effectivePaidAmount);
   const mixedTotal = Math.max(0, Number(cashAmount || 0)) + Math.max(0, Number(cardAmount || 0)) + Math.max(0, Number(transferAmount || 0));
+
+  const buildCurrentDraftSnapshot = useCallback((): InternalBookingDraftSnapshot => ({
+    version: 1,
+    step,
+    selectedClient,
+    companions,
+    activePartyClientKey,
+    query,
+    addingCompanion,
+    clientPickerOpen,
+    showNewClient,
+    newClientName,
+    newClientPhone,
+    newClientEmail,
+    editingPartyClientKey,
+    cart,
+    serviceQuery,
+    priceAdjustments,
+    bookingDate,
+    scheduleByService,
+    selectedSectionId,
+    selectedCategoryId,
+    paymentMethod,
+    paymentType,
+    paidAmount,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    bookingNote,
+    discountMode,
+    manualFixedDiscount,
+    manualPercentDiscount,
+    manualMaxDiscount,
+    selectedOfferByClientKey,
+    couponInput,
+    couponOfferId: String((couponOffer as any)?.id || "").trim(),
+  }), [
+    step, selectedClient, companions, activePartyClientKey, query,
+    addingCompanion, clientPickerOpen, showNewClient, newClientName,
+    newClientPhone, newClientEmail, editingPartyClientKey, cart,
+    serviceQuery, priceAdjustments, bookingDate, scheduleByService,
+    selectedSectionId, selectedCategoryId, paymentMethod, paymentType,
+    paidAmount, cashAmount, cardAmount, transferAmount, bookingNote,
+    discountMode, manualFixedDiscount, manualPercentDiscount,
+    manualMaxDiscount, selectedOfferByClientKey, couponInput, couponOffer,
+  ]);
+
+  const saveDraftForLater = useCallback(async () => {
+    const hasWork =
+      Boolean(selectedClient) ||
+      companions.length > 0 ||
+      cart.length > 0 ||
+      Boolean(String(newClientName || "").trim()) ||
+      Boolean(String(query || "").trim());
+
+    if (!hasWork) {
+      setDraftMessage(t("ابدئي الحجز أولًا قبل حفظه كمسودة."));
+      return;
+    }
+
+    setDraftSaving(true);
+    setDraftMessage("");
+    try {
+      const partyCount = (selectedClient ? 1 : 0) + companions.length;
+      const title = selectedClient
+        ? `${selectedClient.name}${partyCount > 1 ? ` +${partyCount - 1}` : ""} · ${bookingDate}`
+        : t("مسودة حجز غير مكتملة");
+      const saved = await CoreInternalBookingDraftService.save<InternalBookingDraftSnapshot>({
+        id: activeDraftId || undefined,
+        title,
+        currentStep: step,
+        draft: buildCurrentDraftSnapshot(),
+      });
+      setActiveDraftId(saved.id);
+      setSavedDrafts((current) => [
+        saved,
+        ...current.filter((row) => row.id !== saved.id),
+      ]);
+      setDraftMessage(t("تم حفظ مسودة الحجز. يمكنك الرجوع لها وإكمالها لاحقًا."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft save failed", error);
+      setDraftMessage(t("تعذر حفظ مسودة الحجز. حاولي مرة أخرى."));
+    } finally {
+      setDraftSaving(false);
+    }
+  }, [
+    selectedClient, companions, cart, newClientName, query, bookingDate,
+    activeDraftId, step, buildCurrentDraftSnapshot, language,
+  ]);
+
+  const resumeSavedDraft = useCallback((
+    row: CoreInternalBookingDraft<InternalBookingDraftSnapshot>
+  ) => {
+    const draft = row?.draft;
+    if (!draft || draft.version !== 1) {
+      setDraftMessage(t("تعذر قراءة هذه المسودة."));
+      return;
+    }
+
+    const nextDate = String(draft.bookingDate || todayISO());
+    if (nextDate !== bookingDate) restoringDraftRef.current = true;
+
+    setActiveDraftId(row.id);
+    setMode("new");
+    setStep(Math.min(4, Math.max(1, Number(draft.step || row.current_step || 1))) as Step);
+    setSelectedClient(draft.selectedClient || null);
+    setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
+    setActivePartyClientKey(String(draft.activePartyClientKey || ""));
+    setQuery(String(draft.query || ""));
+    setAddingCompanion(Boolean(draft.addingCompanion));
+    setClientPickerOpen(Boolean(draft.clientPickerOpen));
+    setShowNewClient(Boolean(draft.showNewClient));
+    setNewClientName(String(draft.newClientName || ""));
+    setNewClientPhone(String(draft.newClientPhone || ""));
+    setNewClientEmail(String(draft.newClientEmail || ""));
+    setEditingPartyClientKey(String(draft.editingPartyClientKey || ""));
+    setCart(Array.isArray(draft.cart) ? draft.cart : []);
+    setServiceQuery(String(draft.serviceQuery || ""));
+    setPriceAdjustments(draft.priceAdjustments || {});
+    setBookingDate(nextDate);
+    setScheduleByService(draft.scheduleByService || {});
+    setAvailableTimes({});
+    setSelectedSectionId(String(draft.selectedSectionId || ""));
+    setSelectedCategoryId(String(draft.selectedCategoryId || ""));
+    setPaymentMethod(draft.paymentMethod || "cash");
+    setPaymentType(draft.paymentType || "full");
+    setPaidAmount(String(draft.paidAmount || ""));
+    setCashAmount(String(draft.cashAmount || ""));
+    setCardAmount(String(draft.cardAmount || ""));
+    setTransferAmount(String(draft.transferAmount || ""));
+    setBookingNote(String(draft.bookingNote || ""));
+    setDiscountMode(draft.discountMode || "none");
+    setManualFixedDiscount(String(draft.manualFixedDiscount || ""));
+    setManualPercentDiscount(String(draft.manualPercentDiscount || ""));
+    setManualMaxDiscount(String(draft.manualMaxDiscount || ""));
+    setSelectedOfferByClientKey(draft.selectedOfferByClientKey || {});
+    setCouponInput(String(draft.couponInput || ""));
+    const savedCouponOfferId = String(draft.couponOfferId || "");
+    const restoredCoupon = savedCouponOfferId
+      ? offers.find(
+          (offer) => String((offer as any)?.id || "").trim() === savedCouponOfferId
+        ) || null
+      : null;
+    setCouponOffer(restoredCoupon);
+    pendingDraftCouponOfferIdRef.current =
+      restoredCoupon ? "" : savedCouponOfferId;
+    setCreatedBookingIds([]);
+    setCreatedPartyBookings([]);
+    setCreatedBookingReference("");
+    setSubmitError("");
+    setPostSaveWarning("");
+    setScheduleMessage(
+      t("تم استرجاع المسودة. سيتم التحقق من المواعيد مرة أخرى قبل الحفظ النهائي.")
+    );
+    setDraftMessage(t("تم استرجاع مسودة الحجز."));
+  }, [bookingDate, offers, language]);
+
+  const removeSavedDraft = useCallback(async (id: string) => {
+    const draftId = String(id || "").trim();
+    if (!draftId) return;
+    setDraftMessage("");
+    try {
+      await CoreInternalBookingDraftService.remove(draftId);
+      setSavedDrafts((current) => current.filter((row) => row.id !== draftId));
+      if (activeDraftId === draftId) setActiveDraftId("");
+      setDraftMessage(t("تم حذف مسودة الحجز."));
+    } catch (error) {
+      console.error("[BookingInternalV2] draft delete failed", error);
+      setDraftMessage(t("تعذر حذف مسودة الحجز."));
+    }
+  }, [activeDraftId, language]);
 
   const verifyCoupon = useCallback(async () => {
     const code = normalizeDiscountCode(couponInput);
@@ -1940,6 +2202,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     submittingRef.current = true;
     setSubmitting(true);
 
+    let attemptedClientKey = "";
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
       for (const service of cart) {
@@ -2216,6 +2479,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             } : {}),
           } as any;
 
+          attemptedClientKey = plan.clientKey;
           const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
           const bookingId = String(created.parentId || "");
           if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
@@ -2320,6 +2584,27 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           );
         }
       }
+
+      if (activeDraftId) {
+        try {
+          await CoreInternalBookingDraftService.remove(activeDraftId);
+          setSavedDrafts((current) =>
+            current.filter((row) => row.id !== activeDraftId)
+          );
+          setActiveDraftId("");
+        } catch (draftCleanupError) {
+          console.error(
+            "[BookingInternalV2] completed draft cleanup failed",
+            draftCleanupError
+          );
+          setPostSaveWarning((current) =>
+            [
+              current,
+              t("تم إنشاء الحجز، لكن تعذر حذف المسودة المحفوظة. احذفيها يدويًا حتى لا يتم استكمالها بالخطأ."),
+            ].filter(Boolean).join(" ")
+          );
+        }
+      }
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
       const code = String(error?.code || "").toLowerCase();
@@ -2332,13 +2617,107 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         message.toLowerCase().includes("الموعد محجوز");
 
       if (isSlotConflict) {
-        setScheduleByService((current) => Object.fromEntries(
-          Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
-        ));
-        setAvailableTimes({});
-        setScheduleMessage(t("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة."));
-        setSubmitError(t("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر."));
+        const staleRows: Array<{ service: CatalogService; staff: StaffRow | null; serviceKey: string }> = [];
+        if (code.includes("client_schedule_conflict")) {
+          const affectedKeys = clientConflictSelectionKeys(
+            cart.map((service) => ({
+              key: bookingLineKey(service),
+              clientKey: bookingLineClientKey(service),
+              time: scheduleByService[bookingLineKey(service)]?.time || "",
+              duration: serviceDuration(service) || 30,
+            })),
+            attemptedClientKey,
+            error?.details
+          );
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            if (affectedKeys.has(serviceKey)) {
+              staleRows.push({ service, staff: null, serviceKey });
+            }
+          }
+        }
+        try {
+          for (const service of cart) {
+            const serviceKey = bookingLineKey(service);
+            const selected = scheduleByService[serviceKey];
+            if (!selected?.staffId || !selected?.time) continue;
+
+            const staff =
+              (eligibleStaffByService[serviceKey] || []).find(
+                (row) => staffId(row) === selected.staffId
+              ) || null;
+            if (!staff) {
+              staleRows.push({ service, staff: null, serviceKey });
+              continue;
+            }
+
+            const freshRows = await listCoreBookableStaffForDate({
+              serviceId: String(service.id || "").trim(),
+              date: bookingDate,
+              slotStepMin,
+              bufferMin,
+              requireShowOnBooking: false,
+              forceFresh: true,
+            });
+            const fresh = freshRows.find(
+              (row) => staffId(row.staff as StaffRow) === selected.staffId
+            );
+            if (
+              !fresh?.availability ||
+              !isCoreStaffStartBookable(fresh.availability, selected.time, {
+                durationMin: serviceDuration(service) || 30,
+                bufferMin,
+                slotStepMin,
+              })
+            ) {
+              staleRows.push({ service, staff, serviceKey });
+            }
+          }
+        } catch (revalidationError) {
+          console.error(
+            "[BookingInternalV2] post-conflict schedule revalidation failed",
+            revalidationError
+          );
+        }
+
+        if (staleRows.length) {
+          const staleKeys = new Set(staleRows.map((row) => row.serviceKey));
+          setScheduleByService((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) {
+              const selected = next[key];
+              if (selected) next[key] = { ...selected, time: "" };
+            }
+            return next;
+          });
+          setAvailableTimes((current) => {
+            const next = { ...current };
+            for (const key of staleKeys) delete next[key];
+            return next;
+          });
+          await Promise.all(
+            staleRows
+              .filter((row): row is { service: CatalogService; staff: StaffRow; serviceKey: string } => Boolean(row.staff))
+              .map(({ service, staff }) => loadTimesForService(service, staff))
+          );
+          setScheduleMessage(
+            t("تم الاحتفاظ بكل المواعيد الصحيحة. أعيدي اختيار الوقت للخدمة المتعارضة فقط.")
+          );
+        } else {
+          setScheduleMessage(
+            t("حدث تعارض أثناء الحفظ. احتفظنا باختيارات الموعد الحالية لتراجعيها بدون إعادة إدخالها من جديد.")
+          );
+        }
+        setSubmitError(
+          t("تعذر إتمام الحجز بسبب تعارض موعد. تم الاحتفاظ ببقية بيانات الحجز.")
+        );
         setStep(3);
+      } else if (
+        code.startsWith("core_client:") ||
+        code.includes("phone")
+      ) {
+        setSubmitError(message || t("راجعي بيانات العميلة ثم حاولي مرة أخرى."));
+        setStep(1);
       } else if (
         code === "core_api:offline" ||
         code === "core_api:network_unavailable" ||
@@ -2387,6 +2766,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     bufferMin,
     selectedSectionId,
     loadTimesForService,
+    activeDraftId,
     language,
   ]);
 
@@ -2456,6 +2836,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
     setCreatedBookingIds([]); setCreatedPartyBookings([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferByClientKey({}); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
+    setActiveDraftId("");
   }, []);
 
   return (
@@ -2474,6 +2855,20 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         >
           {language === "en" ? "Hair Length Guide" : "دليل أطوال الشعر"}
         </button>
+        {mode === "new" ? (
+          <button
+            type="button"
+            className="bk2-draft-save"
+            onClick={() => void saveDraftForLater()}
+            disabled={draftSaving}
+          >
+            {draftSaving
+              ? t("جاري حفظ المسودة...")
+              : activeDraftId
+                ? t("تحديث المسودة")
+                : t("حفظ ومتابعة لاحقًا")}
+          </button>
+        ) : null}
         <div className="bk2-mode-switch" aria-label={t("وضع الحجز")}>
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>{t("حجز جديد")}</button>
           <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>{t("الباقات والجلسات")}</button>
@@ -2482,6 +2877,50 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       {mode === "sessions" ? <PackageSessionsManager language={language} /> : (
         <>
+          {(draftsLoading || savedDrafts.length > 0 || draftMessage) ? (
+            <section className="bk2-drafts-panel">
+              <div className="bk2-drafts-head">
+                <div>
+                  <strong>{t("مسودات الحجز")}</strong>
+                  <small>{t("احفظي الحجز غير المكتمل وارجعي له بدون فقد البيانات.")}</small>
+                </div>
+                {draftsLoading ? <span>{t("جاري تحميل المسودات...")}</span> : null}
+              </div>
+              {draftMessage ? <p className="bk2-draft-message">{draftMessage}</p> : null}
+              {savedDrafts.length ? (
+                <div className="bk2-drafts-list">
+                  {savedDrafts.map((row) => (
+                    <article
+                      key={row.id}
+                      className={activeDraftId === row.id ? "is-active" : ""}
+                    >
+                      <div>
+                        <strong>{row.title || t("مسودة حجز")}</strong>
+                        <small>
+                          {t("آخر تحديث")}: {new Date(row.updated_at).toLocaleString(locale)}
+                          {" · "}
+                          {t("الخطوة")} {row.current_step}
+                        </small>
+                      </div>
+                      <div className="bk2-draft-actions">
+                        <button type="button" onClick={() => resumeSavedDraft(row)}>
+                          {t("استكمال")}
+                        </button>
+                        <button
+                          type="button"
+                          className="is-danger"
+                          onClick={() => void removeSavedDraft(row.id)}
+                        >
+                          {t("حذف المسودة")}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <nav className="bk2-stepper" aria-label={t("خطوات الحجز")}>
             {steps.map((item, index) => {
               const Icon = item.icon;
