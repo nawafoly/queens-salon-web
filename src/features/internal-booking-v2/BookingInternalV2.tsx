@@ -2618,6 +2618,47 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       if (isSlotConflict) {
         const staleRows: Array<{ service: CatalogService; staff: StaffRow | null; serviceKey: string }> = [];
+        const conflictDetails =
+          error?.details && typeof error.details === "object"
+            ? (error.details as Record<string, unknown>)
+            : {};
+        const pushStaleRow = (service: CatalogService, staff: StaffRow | null = null) => {
+          const serviceKey = bookingLineKey(service);
+          if (staleRows.some((row) => row.serviceKey === serviceKey)) return;
+          staleRows.push({ service, staff, serviceKey });
+        };
+
+        if (code.includes("staff_slot_conflict")) {
+          const detailCartItemId = String(conflictDetails.cartItemId || "").trim();
+          const detailServiceId = String(conflictDetails.serviceId || "").trim();
+          const detailStaffId = String(conflictDetails.staffId || "").trim();
+          const detailStartTime = String(conflictDetails.startTime || "").trim();
+
+          const affectedService =
+            (detailCartItemId
+              ? cart.find((service) => bookingLineKey(service) === detailCartItemId)
+              : undefined) ||
+            cart.find((service) => {
+              const serviceKey = bookingLineKey(service);
+              const selected = scheduleByService[serviceKey];
+              if (attemptedClientKey && bookingLineClientKey(service) !== attemptedClientKey) return false;
+              if (detailServiceId && String(service.id || "").trim() !== detailServiceId) return false;
+              if (detailStaffId && selected?.staffId !== detailStaffId) return false;
+              if (detailStartTime && selected?.time !== detailStartTime) return false;
+              return Boolean(detailServiceId || detailStaffId || detailStartTime);
+            });
+
+          if (affectedService) {
+            const serviceKey = bookingLineKey(affectedService);
+            const selected = scheduleByService[serviceKey];
+            const staff =
+              (eligibleStaffByService[serviceKey] || []).find(
+                (row) => staffId(row) === selected?.staffId
+              ) || null;
+            pushStaleRow(affectedService, staff);
+          }
+        }
+
         if (code.includes("client_schedule_conflict")) {
           const affectedKeys = clientConflictSelectionKeys(
             cart.map((service) => ({
@@ -2632,7 +2673,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           for (const service of cart) {
             const serviceKey = bookingLineKey(service);
             if (affectedKeys.has(serviceKey)) {
-              staleRows.push({ service, staff: null, serviceKey });
+              pushStaleRow(service, null);
             }
           }
         }
@@ -2647,7 +2688,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 (row) => staffId(row) === selected.staffId
               ) || null;
             if (!staff) {
-              staleRows.push({ service, staff: null, serviceKey });
+              pushStaleRow(service, null);
               continue;
             }
 
@@ -2670,7 +2711,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 slotStepMin,
               })
             ) {
-              staleRows.push({ service, staff, serviceKey });
+              pushStaleRow(service, staff);
             }
           }
         } catch (revalidationError) {
@@ -2708,8 +2749,19 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             t("حدث تعارض أثناء الحفظ. احتفظنا باختيارات الموعد الحالية لتراجعيها بدون إعادة إدخالها من جديد.")
           );
         }
+        const conflictServiceName = String(conflictDetails.serviceName || "").trim();
+        const conflictStartTime = String(conflictDetails.startTime || "").trim();
+        const conflictEndTime = String(conflictDetails.endTime || "").trim();
+        const conflictSummary = [
+          conflictServiceName,
+          conflictStartTime && conflictEndTime ? `${conflictStartTime}–${conflictEndTime}` : conflictStartTime,
+        ].filter(Boolean).join(" · ");
         setSubmitError(
-          t("تعذر إتمام الحجز بسبب تعارض موعد. تم الاحتفاظ ببقية بيانات الحجز.")
+          conflictSummary
+            ? language === "en"
+              ? `Could not complete the booking because of a schedule conflict in ${conflictSummary}. The other booking data was preserved.`
+              : `تعذر إتمام الحجز بسبب تعارض في ${conflictSummary}. تم الاحتفاظ ببقية بيانات الحجز.`
+            : t("تعذر إتمام الحجز بسبب تعارض موعد. تم الاحتفاظ ببقية بيانات الحجز.")
         );
         setStep(3);
       } else if (

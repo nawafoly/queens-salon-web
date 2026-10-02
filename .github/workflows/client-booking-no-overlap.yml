@@ -72,7 +72,7 @@ jobs:
             [internal.includes('العميلة لديها خدمة من'), 'internal client busy interval copy missing'],
             [core.includes('export function assertNoClientItemOverlap'), 'Core client overlap assertion missing'],
             [core.includes('core_booking:client_schedule_conflict'), 'Core conflict code missing'],
-            [core.includes('assertNoClientItemOverlap(rows);'), 'Core createBooking does not enforce client overlap'],
+            [/assertNoClientItemOverlap\(\s*rows\s*(?:,\s*\{[^}]*\}\s*)?\);/.test(core), 'Core createBooking does not enforce client overlap'],
           ];
           for (const [ok, message] of checks) if (!ok) throw new Error(message);
           console.log('[client-overlap] contract verified');

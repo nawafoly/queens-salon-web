@@ -166,10 +166,13 @@ function occupiedSlotTimes(startTime, endTime, slotStepMin, bufferMin) {
   return slots;
 }
 
-function conflictError() {
-  const error = new Error("booking_conflict");
-  error.code = "core_booking:staff_slot_conflict";
-  return error;
+function conflictError(details = {}) {
+  return new AppError(
+    409,
+    "core_booking:staff_slot_conflict",
+    "A staff member cannot receive overlapping services",
+    details
+  );
 }
 
 export function findClientItemOverlap(rows = []) {
@@ -294,13 +297,26 @@ function clientScheduleConflict(details = {}) {
   );
 }
 
-export function assertNoClientItemOverlap(rows = []) {
+export function assertNoClientItemOverlap(rows = [], context = {}) {
   const conflict = findClientItemOverlap(rows);
   if (!conflict) return;
   throw clientScheduleConflict({
+    ...context,
+    conflictType: "client_schedule_conflict",
+    source: "request_internal_overlap",
     leftItemId: cleanText(conflict.left?.id),
     rightItemId: cleanText(conflict.right?.id),
+    leftCartItemId: cleanText(conflict.left?.cart_item_id || conflict.left?.cartItemId),
+    rightCartItemId: cleanText(conflict.right?.cart_item_id || conflict.right?.cartItemId),
+    leftServiceId: cleanText(conflict.left?.service_id || conflict.left?.serviceId),
+    rightServiceId: cleanText(conflict.right?.service_id || conflict.right?.serviceId),
+    leftStaffId: cleanText(conflict.left?.staff_id || conflict.left?.staffId),
+    rightStaffId: cleanText(conflict.right?.staff_id || conflict.right?.staffId),
     bookingDate: cleanText(conflict.left?.booking_date || conflict.left?.bookingDate),
+    leftStartTime: cleanText(conflict.left?.start_time || conflict.left?.startTime),
+    leftEndTime: cleanText(conflict.left?.end_time || conflict.left?.endTime),
+    rightStartTime: cleanText(conflict.right?.start_time || conflict.right?.startTime),
+    rightEndTime: cleanText(conflict.right?.end_time || conflict.right?.endTime),
   });
 }
 
@@ -327,14 +343,34 @@ export async function existingClientRangeConflict(
       const itemDate = cleanText(item.booking_date || booking.booking_date);
       const itemStart = cleanText(item.start_time || booking.start_time);
       const itemEnd = cleanText(item.end_time || booking.end_time);
-      if (itemDate === bookingDate && itemStart < endTime && itemEnd > startTime) return { id: booking.id };
+      if (itemDate === bookingDate && itemStart < endTime && itemEnd > startTime) {
+        return {
+          id: booking.id,
+          public_id: booking.public_id || "",
+          booking_item_id: item.id || "",
+          service_id: item.service_id || "",
+          service_name_snapshot: item.service_name_snapshot || "",
+          staff_id: item.staff_id || booking.staff_id || "",
+          booking_date: itemDate,
+          start_time: itemStart,
+          end_time: itemEnd,
+        };
+      }
     }
     return null;
   }
 
   return dbFirst(
     db,
-    `SELECT b.id
+    `SELECT b.id,
+            b.public_id,
+            bi.id AS booking_item_id,
+            bi.service_id,
+            bi.service_name_snapshot,
+            COALESCE(bi.staff_id, b.staff_id) AS staff_id,
+            COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+            COALESCE(bi.start_time, b.start_time) AS start_time,
+            COALESCE(bi.end_time, b.end_time) AS end_time
        FROM booking_items bi
        INNER JOIN bookings b ON b.id = bi.booking_id AND b.salon_id = bi.salon_id
       WHERE bi.salon_id = ?
@@ -379,7 +415,17 @@ async function existingRangeConflict(
         itemStart < endTime &&
         itemEnd > startTime
       ) {
-        return { id: booking.id };
+        return {
+          id: booking.id,
+          public_id: booking.public_id || "",
+          booking_item_id: item.id || "",
+          service_id: item.service_id || "",
+          service_name_snapshot: item.service_name_snapshot || "",
+          staff_id: itemStaffId,
+          booking_date: itemDate,
+          start_time: itemStart,
+          end_time: itemEnd,
+        };
       }
     }
     return null;
@@ -387,7 +433,15 @@ async function existingRangeConflict(
 
   return dbFirst(
     db,
-    `SELECT b.id
+    `SELECT b.id,
+            b.public_id,
+            bi.id AS booking_item_id,
+            bi.service_id,
+            bi.service_name_snapshot,
+            COALESCE(bi.staff_id, b.staff_id) AS staff_id,
+            COALESCE(bi.booking_date, b.booking_date) AS booking_date,
+            COALESCE(bi.start_time, b.start_time) AS start_time,
+            COALESCE(bi.end_time, b.end_time) AS end_time
        FROM booking_items bi
        INNER JOIN bookings b ON b.id = bi.booking_id AND b.salon_id = bi.salon_id
       WHERE bi.salon_id = ?
@@ -409,7 +463,8 @@ async function assertStaffRangeAvailable(
   bookingDate,
   startTime,
   endTime,
-  excludeBookingId = ""
+  excludeBookingId = "",
+  conflictDetails = {}
 ) {
   if (!staffId) return;
   const staff = await getStaff(db, salonId, staffId);
@@ -432,19 +487,95 @@ async function assertStaffRangeAvailable(
     error.reason = bookingDay.reason || "unavailable";
     throw error;
   }
-  if (
-    await existingRangeConflict(
-      db,
-      salonId,
+  const existingConflict = await existingRangeConflict(
+    db,
+    salonId,
+    staffId,
+    bookingDate,
+    startTime,
+    endTime,
+    excludeBookingId
+  );
+  if (existingConflict) {
+    throw conflictError({
+      ...conflictDetails,
+      conflictType: "staff_slot_conflict",
+      source: "existing_booking",
       staffId,
       bookingDate,
       startTime,
-      endTime,
-      excludeBookingId
-    )
-  ) {
-    throw conflictError();
+      conflictingBookingId: cleanText(existingConflict.id),
+      conflictingBookingPublicId: cleanText(existingConflict.public_id),
+      conflictingBookingItemId: cleanText(existingConflict.booking_item_id),
+      conflictingServiceId: cleanText(existingConflict.service_id),
+      conflictingServiceName: cleanText(existingConflict.service_name_snapshot),
+      conflictingStaffId: cleanText(existingConflict.staff_id),
+      conflictingBookingDate: cleanText(existingConflict.booking_date),
+      conflictingStartTime: cleanText(existingConflict.start_time),
+      conflictingEndTime: cleanText(existingConflict.end_time),
+    });
   }
+}
+
+async function existingSlotLockConflict(db, salonId, lockRows = []) {
+  for (const lock of lockRows) {
+    if (!lock?.staff_id || !lock?.booking_date || !lock?.slot_time) continue;
+
+    if (db.__fakeD1 && typeof db.rows === "function") {
+      const match = db.rows("booking_slot_locks").find(
+        (row) =>
+          row.salon_id === salonId &&
+          row.staff_id === lock.staff_id &&
+          row.booking_date === lock.booking_date &&
+          row.slot_time === lock.slot_time
+      );
+      if (!match) continue;
+      const booking = db.rows("bookings").find(
+        (row) => row.salon_id === salonId && row.id === match.booking_id
+      ) || {};
+      const item = db.rows("booking_items").find(
+        (row) => row.id === match.booking_item_id && row.booking_id === match.booking_id
+      ) || {};
+      return {
+        ...match,
+        public_id: booking.public_id || "",
+        service_id: item.service_id || "",
+        service_name_snapshot: item.service_name_snapshot || "",
+        start_time: item.start_time || booking.start_time || "",
+        end_time: item.end_time || booking.end_time || "",
+      };
+    }
+
+    const match = await dbFirst(
+      db,
+      `SELECT l.booking_id,
+              l.booking_item_id,
+              l.staff_id,
+              l.booking_date,
+              l.slot_time,
+              b.public_id,
+              bi.service_id,
+              bi.service_name_snapshot,
+              COALESCE(bi.start_time, b.start_time) AS start_time,
+              COALESCE(bi.end_time, b.end_time) AS end_time
+         FROM booking_slot_locks l
+         LEFT JOIN bookings b
+           ON b.salon_id = l.salon_id
+          AND b.id = l.booking_id
+         LEFT JOIN booking_items bi
+           ON bi.salon_id = l.salon_id
+          AND bi.booking_id = l.booking_id
+          AND bi.id = l.booking_item_id
+        WHERE l.salon_id = ?
+          AND l.staff_id = ?
+          AND l.booking_date = ?
+          AND l.slot_time = ?
+        LIMIT 1`,
+      [salonId, lock.staff_id, lock.booking_date, lock.slot_time]
+    );
+    if (match) return match;
+  }
+  return null;
 }
 
 export async function listBookings(db, salonId, query = {}) {
@@ -819,6 +950,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   if (partyId && partySize <= partyMemberOrder) {
     throw new AppError(400, "core_booking:party_member_order_invalid");
   }
+  let bookingClient = null;
   if (guestParticipant) {
     if (
       cleanText(data.source || data.channel).toLowerCase() !== "internal" ||
@@ -829,7 +961,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       throw new AppError(400, "core_booking:guest_participant_invalid");
     }
   } else {
-    await getClient(db, salonId, clientId);
+    bookingClient = await getClient(db, salonId, clientId);
   }
   if (partyLeadClientId) await getClient(db, salonId, partyLeadClientId);
   await assertPartyBookingConsistency(db, salonId, {
@@ -839,6 +971,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
     partySize,
     clientId,
   });
+  const clientName = cleanText(guestParticipant?.name || bookingClient?.name);
 
   const itemInputs = normalizeItems(data);
   if (
@@ -858,7 +991,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   }
   const rows = [];
   const lockRows = [];
-  const localLocks = new Set();
+  const localLocks = new Map();
   let subtotal = 0;
   let cursorDate = parentDate;
   let cursorTime = parentStart;
@@ -964,6 +1097,24 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       throw error;
     }
     const staffId = optionalText(item.staffId || item.staff_id) || parentStaffId;
+    const itemId = requiredId(item.id || generatedId("booking_item"));
+    const cartItemId = optionalText(
+      item.cartItemId || item.cart_item_id
+    ) || `item_${index}`;
+    const conflictContext = {
+      clientId,
+      clientName,
+      staffId: staffId || "",
+      serviceId: cleanText(service.id),
+      serviceName: cleanText(service.name),
+      bookingDate,
+      startTime,
+      endTime,
+      bufferMin,
+      bookingItemId: itemId,
+      cartItemId,
+      itemIndex: index,
+    };
     if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {
       const error = new Error("staff_service_not_assigned");
       error.code = "core_booking:staff_service_not_assigned";
@@ -975,13 +1126,10 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       staffId,
       bookingDate,
       startTime,
-      addMinutes(endTime, bufferMin)
+      addMinutes(endTime, bufferMin),
+      "",
+      conflictContext
     );
-
-    const itemId = requiredId(item.id || generatedId("booking_item"));
-    const cartItemId = optionalText(
-      item.cartItemId || item.cart_item_id
-    ) || `item_${index}`;
     // Slot locks always use a fixed five-minute granularity. The UI slot step
     // remains configurable, but lock precision must not vary per request or two
     // concurrent bookings using different slot steps could overlap without
@@ -992,8 +1140,33 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
 
     for (const slotTime of slots) {
       const lockKey = `${staffId}\u0000${bookingDate}\u0000${slotTime}`;
-      if (localLocks.has(lockKey)) throw conflictError();
-      localLocks.add(lockKey);
+      const localConflict = localLocks.get(lockKey);
+      if (localConflict) {
+        throw conflictError({
+          ...conflictContext,
+          conflictType: "staff_slot_conflict",
+          source: "request_internal_overlap",
+          slotTime,
+          conflictingBookingItemId: localConflict.bookingItemId,
+          conflictingCartItemId: localConflict.cartItemId,
+          conflictingServiceId: localConflict.serviceId,
+          conflictingServiceName: localConflict.serviceName,
+          conflictingStaffId: localConflict.staffId,
+          conflictingBookingDate: localConflict.bookingDate,
+          conflictingStartTime: localConflict.startTime,
+          conflictingEndTime: localConflict.endTime,
+        });
+      }
+      localLocks.set(lockKey, {
+        bookingItemId: itemId,
+        cartItemId,
+        serviceId: cleanText(service.id),
+        serviceName: cleanText(service.name),
+        staffId: staffId || "",
+        bookingDate,
+        startTime,
+        endTime,
+      });
       lockRows.push({
         salon_id: salonId,
         staff_id: staffId,
@@ -1037,7 +1210,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   }
 
   // One client cannot be in two services at the same time, regardless of staff.
-  assertNoClientItemOverlap(rows);
+  assertNoClientItemOverlap(rows, { clientId, clientName });
   for (const row of rows) {
     const existingClientConflict = await existingClientRangeConflict(
       db,
@@ -1050,10 +1223,27 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
     );
     if (existingClientConflict) {
       throw clientScheduleConflict({
-        conflictingBookingId: cleanText(existingClientConflict.id),
+        conflictType: "client_schedule_conflict",
+        source: "existing_booking",
+        clientId,
+        clientName,
+        bookingItemId: cleanText(row.id),
+        cartItemId: cleanText(row.cart_item_id),
+        serviceId: cleanText(row.service_id),
+        serviceName: cleanText(row.service_name_snapshot),
+        staffId: cleanText(row.staff_id),
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
+        conflictingBookingId: cleanText(existingClientConflict.id),
+        conflictingBookingPublicId: cleanText(existingClientConflict.public_id),
+        conflictingBookingItemId: cleanText(existingClientConflict.booking_item_id),
+        conflictingServiceId: cleanText(existingClientConflict.service_id),
+        conflictingServiceName: cleanText(existingClientConflict.service_name_snapshot),
+        conflictingStaffId: cleanText(existingClientConflict.staff_id),
+        conflictingBookingDate: cleanText(existingClientConflict.booking_date),
+        conflictingStartTime: cleanText(existingClientConflict.start_time),
+        conflictingEndTime: cleanText(existingClientConflict.end_time),
       });
     }
   }
@@ -1325,7 +1515,8 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   try {
     await dbBatch(db, statements);
   } catch (error) {
-    if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) {
+    const uniqueMessage = cleanText(error?.message).toUpperCase();
+    if (uniqueMessage.includes("UNIQUE")) {
       if (requestedBookingId) {
         const existing = await dbFirst(
           db,
@@ -1334,7 +1525,45 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         );
         if (existing) return getBooking(db, salonId, bookingId);
       }
-      throw conflictError();
+      if (uniqueMessage.includes("BOOKING_SLOT_LOCKS")) {
+        const existingLock = await existingSlotLockConflict(db, salonId, lockRows);
+        const attemptedLock = existingLock
+          ? lockRows.find(
+              (row) =>
+                row.staff_id === existingLock.staff_id &&
+                row.booking_date === existingLock.booking_date &&
+                row.slot_time === existingLock.slot_time
+            )
+          : null;
+        const attemptedItem = attemptedLock
+          ? rows.find((row) => row.id === attemptedLock.booking_item_id)
+          : null;
+        throw conflictError({
+          conflictType: "staff_slot_conflict",
+          source: "slot_lock_unique",
+          clientId,
+          clientName,
+          staffId: cleanText(attemptedLock?.staff_id || existingLock?.staff_id),
+          serviceId: cleanText(attemptedItem?.service_id),
+          serviceName: cleanText(attemptedItem?.service_name_snapshot),
+          bookingDate: cleanText(attemptedLock?.booking_date || existingLock?.booking_date),
+          startTime: cleanText(attemptedItem?.start_time),
+          endTime: cleanText(attemptedItem?.end_time),
+          bufferMin,
+          bookingItemId: cleanText(attemptedItem?.id),
+          cartItemId: cleanText(attemptedItem?.cart_item_id),
+          slotTime: cleanText(existingLock?.slot_time || attemptedLock?.slot_time),
+          conflictingBookingId: cleanText(existingLock?.booking_id),
+          conflictingBookingPublicId: cleanText(existingLock?.public_id),
+          conflictingBookingItemId: cleanText(existingLock?.booking_item_id),
+          conflictingServiceId: cleanText(existingLock?.service_id),
+          conflictingServiceName: cleanText(existingLock?.service_name_snapshot),
+          conflictingStaffId: cleanText(existingLock?.staff_id),
+          conflictingBookingDate: cleanText(existingLock?.booking_date),
+          conflictingStartTime: cleanText(existingLock?.start_time),
+          conflictingEndTime: cleanText(existingLock?.end_time),
+        });
+      }
     }
     throw error;
   }

@@ -93,7 +93,9 @@ if (/Number\(error\?\.status \|\| 0\) === 409[\s\S]{0,40}\|\|/.test(booking)) {
   errors.push("Generic HTTP 409 must not be treated as a slot conflict.");
 }
 requireText(booking, "const staleKeys = new Set(staleRows.map((row) => row.serviceKey))", "Post-write slot conflicts no longer isolate only stale service selections.");
-requireMatch(booking, /staleKeys[\s\S]{0,1400}setStep\(3\)/, "Conflict recovery must preserve valid schedule data and return to step 3.");
+requireMatch(booking, /staleKeys[\s\S]{0,3000}setStep\(3\)/, "Conflict recovery must preserve valid schedule data and return to step 3.");
+requireText(booking, "conflictDetails.cartItemId", "Precise Core conflict details are no longer used to target the affected service row.");
+requireText(booking, "pushStaleRow(affectedService, staff)", "Staff conflict recovery no longer isolates the exact conflicting service row.");
 requireText(booking, "تم الاحتفاظ بكل المواعيد الصحيحة", "Targeted conflict recovery message is missing.");
 
 // Booking write and payment integrity.
