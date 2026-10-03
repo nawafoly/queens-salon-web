@@ -38,7 +38,7 @@ const targets = {
     cwd: resolve(root, 'workers'),
     config: resolve(root, 'workers/wrangler.toml'),
     database: 'malikat-attendance',
-    stateRoot: resolve(root, 'workers/.wrangler/state'),
+    stateRoot: resolve(root, '.wrangler/state'),
     requiredTables: ['attendance_records', 'work_zones'],
     reportTables: ['attendance_records', 'work_zones'],
   },
