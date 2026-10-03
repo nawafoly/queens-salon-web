@@ -93,6 +93,14 @@ function fakeDeferralRows(db) {
   }
 }
 
+function pendingDeferralSchema(error) {
+  const message = cleanText(error?.message).toLowerCase();
+  return (
+    message.includes('no such table: payroll_deduction_deferrals') ||
+    message.includes('no such table payroll_deduction_deferrals')
+  );
+}
+
 export async function listPayrollDeductionDeferrals(
   db,
   salonId,
@@ -182,16 +190,26 @@ export async function getActivePayrollDeductionDeferralTotal(
     }, 0);
   }
 
-  const row = await dbFirst(
-    db,
-    `SELECT COALESCE(SUM(amount_halalas), 0) AS amount_halalas
-       FROM payroll_deduction_deferrals
-      WHERE salon_id = ?
-        AND employee_id = ?
-        AND source_payroll_month = ?
-        AND status = 'active'`,
-    [salonId, employeeId, sourcePayrollMonth]
-  );
+  let row;
+  try {
+    row = await dbFirst(
+      db,
+      `SELECT COALESCE(SUM(amount_halalas), 0) AS amount_halalas
+         FROM payroll_deduction_deferrals
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND source_payroll_month = ?
+          AND status = 'active'`,
+      [salonId, employeeId, sourcePayrollMonth]
+    );
+  } catch (error) {
+    // This read is used by the existing payroll path during rolling schema
+    // upgrades. Before 0093 exists there cannot be any canonical deferrals,
+    // so zero is the only valid total. Creation still requires the migration
+    // and therefore never silently writes around a missing canonical table.
+    if (pendingDeferralSchema(error)) return 0;
+    throw error;
+  }
 
   const amountHalalas = Number(row?.amount_halalas || 0);
 
