@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiEdit2, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
 import HairLengthGuideDrawer from "../../components/bookingInternal/HairLengthGuideDrawer";
@@ -582,26 +582,6 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
   const [mode, setMode] = useState<"new" | "sessions">("new");
   const [hairGuideOpen, setHairGuideOpen] = useState(false);
   const hairGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const summaryScrollRef = useRef<HTMLDivElement | null>(null);
-  const handleSummaryWheel = useCallback((event: WheelEvent<HTMLElement>) => {
-    const scroller = summaryScrollRef.current;
-    if (!scroller || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-
-    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    if (maxScrollTop <= 0) return;
-
-    const canScrollUp = event.deltaY < 0 && scroller.scrollTop > 0;
-    const canScrollDown = event.deltaY > 0 && scroller.scrollTop < maxScrollTop - 1;
-    if (!canScrollUp && !canScrollDown) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    scroller.scrollTop = Math.max(
-      0,
-      Math.min(maxScrollTop, scroller.scrollTop + event.deltaY)
-    );
-  }, []);
-
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [companions, setCompanions] = useState<ClientCandidate[]>([]);
@@ -3773,9 +3753,9 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               )}
             </main>
 
-            <aside className="bk2-summary-card" onWheel={handleSummaryWheel}>
-              <div ref={summaryScrollRef} className="bk2-summary-scroll">
+            <aside className="bk2-summary-card">
               <div className="bk2-summary-title"><h2>{t("ملخص الحجز")}</h2><FiCalendar /></div>
+              <div className="bk2-summary-scroll">
               <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || t("لم يتم اختيار عميلة بعد")}</strong><small>{selectedClient ? (companions.length ? `${selectedClient.phone} · +${companions.length} ${t("مرافقات")}` : selectedClient.phone) : t("اختاري عميلة للمتابعة")}</small></div></div>
               <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> {t("نوع الحجز")}</dt><dd>{t("حجز داخل الصالون")}</dd></div><div><dt><FiCalendar /> {t("التاريخ")}</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> {t("الموظفة")}</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
               {cart.length ? (
