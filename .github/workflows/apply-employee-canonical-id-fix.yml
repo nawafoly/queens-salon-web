@@ -1,0 +1,41 @@
+name: Apply employee canonical id fix
+
+on:
+  push:
+    branches:
+      - fix/dashboard-booking-edit-time-picker-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/dashboard-booking-edit-time-picker-v2
+          fetch-depth: 0
+
+      - name: Apply deterministic patch
+        run: node scripts/apply-employee-canonical-id-fix.mjs
+
+      - name: Run focused contracts
+        run: |
+          node --test workers/hr-employee-canonical-id-contract.test.mjs
+          node --test workers/hr-employee-stale-noop-contract.test.mjs
+
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit branch-only fix and remove patch scaffolding
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/apply-employee-canonical-id-fix.mjs .github/workflows/apply-employee-canonical-id-fix.yml
+          git add src/pages/DashboardEmployees.tsx workers/hr-employee-canonical-id-contract.test.mjs
+          git commit -m "fix(hr): keep employee editor on canonical id"
+          git push origin HEAD:fix/dashboard-booking-edit-time-picker-v2
