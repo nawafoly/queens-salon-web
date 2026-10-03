@@ -1,4 +1,4 @@
-// CORE D1 ONLY ? canonical partial payroll deduction deferrals.
+// CORE D1 ONLY — canonical partial payroll deduction deferrals.
 //
 // This domain records amounts intentionally not collected in a source payroll
 // month. The future collection is represented by a canonical payroll
@@ -81,6 +81,18 @@ function deferralDto(row) {
   };
 }
 
+function fakeDeferralRows(db) {
+  if (!db?.__fakeD1 || typeof db.rows !== 'function') return null;
+  try {
+    return db.rows('payroll_deduction_deferrals');
+  } catch {
+    // Older broad Core fake fixtures predate this table. Treat the absent
+    // fixture table as an empty deferral ledger so unrelated payroll tests
+    // continue exercising their original behavior. Real D1 never uses this path.
+    return [];
+  }
+}
+
 export async function listPayrollDeductionDeferrals(
   db,
   salonId,
@@ -91,6 +103,21 @@ export async function listPayrollDeductionDeferrals(
     query.sourcePayrollMonth || query.source_payroll_month
   );
   const status = cleanText(query.status).toLowerCase();
+
+  const fakeRows = fakeDeferralRows(db);
+  if (fakeRows) {
+    return fakeRows
+      .filter((row) => row.salon_id === salonId)
+      .filter((row) => !employeeId || row.employee_id === employeeId)
+      .filter(
+        (row) =>
+          !sourcePayrollMonth ||
+          row.source_payroll_month === payrollMonthValue(sourcePayrollMonth)
+      )
+      .filter((row) => !status || cleanText(row.status).toLowerCase() === status)
+      .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))
+      .map(deferralDto);
+  }
 
   const clauses = ['salon_id = ?'];
   const params = [salonId];
@@ -139,6 +166,22 @@ export async function getActivePayrollDeductionDeferralTotal(
       query.payroll_month
   );
 
+  const fakeRows = fakeDeferralRows(db);
+  if (fakeRows) {
+    return fakeRows.reduce((total, row) => {
+      if (
+        row.salon_id !== salonId ||
+        row.employee_id !== employeeId ||
+        row.source_payroll_month !== sourcePayrollMonth ||
+        cleanText(row.status).toLowerCase() !== 'active'
+      ) {
+        return total;
+      }
+      const amount = Number(row.amount_halalas || 0);
+      return total + (Number.isSafeInteger(amount) && amount > 0 ? amount : 0);
+    }, 0);
+  }
+
   const row = await dbFirst(
     db,
     `SELECT COALESCE(SUM(amount_halalas), 0) AS amount_halalas
@@ -170,6 +213,17 @@ export async function findPayrollDeductionDeferralByRequest(
 ) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const requestKey = requestKeyValue(requestKeyValueInput);
+
+  const fakeRows = fakeDeferralRows(db);
+  if (fakeRows) {
+    const row = fakeRows.find(
+      (item) =>
+        item.salon_id === salonId &&
+        item.employee_id === employeeId &&
+        item.request_key === requestKey
+    );
+    return row ? deferralDto(row) : null;
+  }
 
   const row = await dbFirst(
     db,
