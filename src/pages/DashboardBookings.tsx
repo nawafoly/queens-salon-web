@@ -1,4 +1,4 @@
-﻿import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
+import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
@@ -47,10 +47,10 @@ import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
 
-// âœ… NEW: resolve service name (make it readable)
+// ✅ NEW: resolve service name (make it readable)
 import { resolveServiceName } from "../services/serviceResolver";
 
-// âœ… AppSettings through the unified Core settings adapter
+// ✅ AppSettings through the unified Core settings adapter
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 import { SALON_ID } from "../helpers/bookingSharedConstants";
 import { bookingsText, translateBookingCatalogLabel, type DashboardLanguage } from "../helpers/dashboardBookingsLanguage";
@@ -104,7 +104,7 @@ import {
   type DashboardBookingServiceItem as BookingServiceItem,
 } from "./DashboardBookings.helpers";
 
-// âœ… Styles
+// ✅ Styles
 
 /* =========================
    Constants / Types
@@ -146,8 +146,8 @@ function BookingDecisionDialog({
         type="button"
         className="bk-decision-modal__close"
         onClick={() => onDecision("close")}
-        aria-label="ط¥ط؛ظ„ط§ظ‚"
-        title="ط¥ط؛ظ„ط§ظ‚ ط¨ط¯ظˆظ† طھط؛ظٹظٹط± ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²"
+        aria-label="إغلاق"
+        title="إغلاق بدون تغيير حالة الحجز"
       >
         <FontAwesomeIcon icon={faXmark} />
       </button>
@@ -173,8 +173,8 @@ function BookingDecisionDialog({
         <div className="bk-decision-modal__copy">
           <span className="bk-decision-modal__kicker">
             {isSuccess
-              ? "ط­ط§ظ„ط© ط§ظ„ط³ط¯ط§ط¯"
-              : "طھط£ظƒظٹط¯ ط§ظ„ط¥ط¬ط±ط§ط،"}
+              ? "حالة السداد"
+              : "تأكيد الإجراء"}
           </span>
 
           <h3>{options.title}</h3>
@@ -289,16 +289,16 @@ function BookingMoney({ value, language = "ar" }: { value: unknown; language?: D
   return (
     <span className="bk-money" dir="ltr">
       <bdi className="bk-money-number">{formatBookingAmount(value)}</bdi>
-      <span className="bk-money-currency">{language === "en" ? "SAR" : "ط±.ط³"}</span>
+      <span className="bk-money-currency">{language === "en" ? "SAR" : "ر.س"}</span>
     </span>
   );
 }
 
 function compactPaymentStatusLabel(payment: ReturnType<typeof resolveBookingPaymentSummary>) {
-  if (payment.totalAmount <= 0) return "ط¨ط¯ظˆظ† ط³ط¹ط±";
-  if (payment.paidAmount <= 0 && payment.remainingAmount > 0) return "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط³ط¯ط§ط¯";
-  if (payment.remainingAmount <= 0) return "ظ…ط¯ظپظˆط¹ ط¨ط§ظ„ظƒط§ظ…ظ„";
-  return "ط¯ظپط¹ ط¬ط²ط¦ظٹ";
+  if (payment.totalAmount <= 0) return "بدون سعر";
+  if (payment.paidAmount <= 0 && payment.remainingAmount > 0) return "بانتظار السداد";
+  if (payment.remainingAmount <= 0) return "مدفوع بالكامل";
+  return "دفع جزئي";
 }
 
 /* =========================
@@ -318,21 +318,21 @@ function detectPaymentMethod(b: Booking): PaymentMethod {
     return stored as PaymentMethod;
   }
   const s = String((b as any)?.note || "").toLowerCase();
-  if (s.includes("ظ…ط®طھظ„ط·") || s.includes("mixed")) return "mixed";
-  if (s.includes("ط´ط¨ظƒط©") || s.includes("ظ…ط¯ظ‰") || s.includes("card")) return "card";
-  if (s.includes("طھط­ظˆظٹظ„") || s.includes("transfer")) return "transfer";
-  if (s.includes("ظƒط§ط´") || s.includes("cash") || s.includes("ظ†ظ‚ط¯")) return "cash";
+  if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("card")) return "card";
+  if (s.includes("تحويل") || s.includes("transfer")) return "transfer";
+  if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
   return "transfer";
 }
 
 function paymentMethodLabel(method: PaymentMethodFilterOption | PaymentMethod | "none") {
-  if (method === "cash") return "ظƒط§ط´";
-  if (method === "card") return "ط´ط¨ظƒط©";
-  if (method === "transfer") return "طھط­ظˆظٹظ„";
-  if (method === "mixed") return "ظ…ط®طھظ„ط·";
-  if (method === "other") return "ط£ط®ط±ظ‰";
-  if (method === "none") return "ط¨ط¯ظˆظ† ط¯ظپط¹";
-  return "ط§ظ„ظƒظ„";
+  if (method === "cash") return "كاش";
+  if (method === "card") return "شبكة";
+  if (method === "transfer") return "تحويل";
+  if (method === "mixed") return "مختلط";
+  if (method === "other") return "أخرى";
+  if (method === "none") return "بدون دفع";
+  return "الكل";
 }
 
 function readPaymentBreakdown(raw: any): { cash: number; card: number; transfer: number } {
@@ -368,7 +368,7 @@ function paymentMethodDisplayText(b: Booking) {
   const method = bookingPaymentMethodFilterValue(b);
   if (method !== "mixed") return paymentMethodLabel(method);
   const breakdown = readPaymentBreakdown(b);
-  return `ظ…ط®طھظ„ط·: ${breakdown.cash} ظƒط§ط´ + ${breakdown.card} ط´ط¨ظƒط© + ${breakdown.transfer} طھط­ظˆظٹظ„`;
+  return `مختلط: ${breakdown.cash} كاش + ${breakdown.card} شبكة + ${breakdown.transfer} تحويل`;
 }
 
 function bookingClockText(value: string, language: DashboardLanguage): string {
@@ -383,8 +383,8 @@ function bookingDateTimeLabelText(value: unknown, language: DashboardLanguage): 
   const raw = String(value || "").trim();
   if (!raw || language === "ar") return raw;
   return raw
-    .replace(/\sطµ(?=\s|$)/g, " AM")
-    .replace(/\sظ…(?=\s|$)/g, " PM");
+    .replace(/\sص(?=\s|$)/g, " AM")
+    .replace(/\sم(?=\s|$)/g, " PM");
 }
 
 function bookingFormattedDateTimeText(value: unknown, language: DashboardLanguage): string {
@@ -398,7 +398,7 @@ function bookingActivityDisplayText(value: string, language: DashboardLanguage):
   const direct = bookingsText(language, raw);
   if (direct !== raw) return direct;
 
-  const saveErrorMatch = raw.match(/^طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط² \((.+)\)\.$/);
+  const saveErrorMatch = raw.match(/^تعذر حفظ تعديل الحجز \((.+)\)\.$/);
   if (saveErrorMatch) {
     return `Could not save booking changes (${saveErrorMatch[1]}).`;
   }
@@ -408,20 +408,20 @@ function bookingActivityDisplayText(value: string, language: DashboardLanguage):
     english: string;
     kind?: "service" | "section" | "category";
   }> = [
-    { prefix: "ط§ظ„طھط§ط±ظٹط® ط¥ظ„ظ‰ ", english: "Date changed to" },
-    { prefix: "ط§ظ„ظˆظ‚طھ ط¥ظ„ظ‰ ", english: "Time changed to" },
-    { prefix: "ط§ظ„ظ‚ط³ظ… ط¥ظ„ظ‰ ", english: "Section changed to", kind: "section" },
-    { prefix: "ط§ظ„طھطµظ†ظٹظپ ط¥ظ„ظ‰ ", english: "Category changed to", kind: "category" },
-    { prefix: "ط§ظ„ظ…ظˆط¸ظپط© ط¥ظ„ظ‰ ", english: "Staff member changed to" },
-    { prefix: "ط§ظ„ط®ط¯ظ…ط© ط¥ظ„ظ‰ ", english: "Service changed to", kind: "service" },
-    { prefix: "ط§ظ„ط¹ظ…ظٹظ„ط© ط¥ظ„ظ‰ ", english: "Client changed to" },
-    { prefix: "ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط¥ظ„ظ‰ ", english: "Phone number changed to" },
-    { prefix: "ط§ظ„ط­ط§ظ„ط© ط¥ظ„ظ‰ ", english: "Status changed to" },
-    { prefix: "ظ†ظˆط¹ ط§ظ„ط¯ظپط¹ ط¥ظ„ظ‰ ", english: "Payment type changed to" },
-    { prefix: "ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹ ط¥ظ„ظ‰ ", english: "Payment method changed to" },
-    { prefix: "ط§ظ„ظ…ط¯ظپظˆط¹ ط¥ظ„ظ‰ ", english: "Paid amount changed to" },
-    { prefix: "ط§ظ„ظ…طھط¨ظ‚ظٹ ط¥ظ„ظ‰ ", english: "Remaining amount changed to" },
-    { prefix: "ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ط¥ظ„ظ‰ ", english: "Total changed to" },
+    { prefix: "التاريخ إلى ", english: "Date changed to" },
+    { prefix: "الوقت إلى ", english: "Time changed to" },
+    { prefix: "القسم إلى ", english: "Section changed to", kind: "section" },
+    { prefix: "التصنيف إلى ", english: "Category changed to", kind: "category" },
+    { prefix: "الموظفة إلى ", english: "Staff member changed to" },
+    { prefix: "الخدمة إلى ", english: "Service changed to", kind: "service" },
+    { prefix: "العميلة إلى ", english: "Client changed to" },
+    { prefix: "رقم الجوال إلى ", english: "Phone number changed to" },
+    { prefix: "الحالة إلى ", english: "Status changed to" },
+    { prefix: "نوع الدفع إلى ", english: "Payment type changed to" },
+    { prefix: "طريقة الدفع إلى ", english: "Payment method changed to" },
+    { prefix: "المدفوع إلى ", english: "Paid amount changed to" },
+    { prefix: "المتبقي إلى ", english: "Remaining amount changed to" },
+    { prefix: "الإجمالي إلى ", english: "Total changed to" },
   ];
 
   for (const rule of rules) {
@@ -433,7 +433,7 @@ function bookingActivityDisplayText(value: string, language: DashboardLanguage):
 
     suffix = bookingDateTimeLabelText(
       String(suffix || suffixRaw)
-        .replace(/\s*ط±\.ط³\b/g, " SAR")
+        .replace(/\s*ر\.س\b/g, " SAR")
         .trim(),
       language
     );
@@ -441,14 +441,14 @@ function bookingActivityDisplayText(value: string, language: DashboardLanguage):
     return `${rule.english} ${suffix}`.trim();
   }
 
-  return raw.replace(/\s*ط±\.ط³\b/g, " SAR");
+  return raw.replace(/\s*ر\.س\b/g, " SAR");
 }
 
 function bookingPaymentMethodText(b: Booking, language: DashboardLanguage): string {
   if (language === "ar") return paymentMethodDisplayText(b);
   if (bookingPaymentMethodFilterValue(b) !== "mixed") return bookingsText(language, paymentMethodDisplayText(b));
   const amounts = readPaymentBreakdown(b);
-  return `${bookingsText(language, "ظ…ط®طھظ„ط·")}: ${amounts.cash} ${bookingsText(language, "ظƒط§ط´")} + ${amounts.card} ${bookingsText(language, "ط´ط¨ظƒط©")} + ${amounts.transfer} ${bookingsText(language, "طھط­ظˆظٹظ„")}`;
+  return `${bookingsText(language, "مختلط")}: ${amounts.cash} ${bookingsText(language, "كاش")} + ${amounts.card} ${bookingsText(language, "شبكة")} + ${amounts.transfer} ${bookingsText(language, "تحويل")}`;
 }
 
 function createInvoicePrintRequestId(source: string) {
@@ -714,32 +714,32 @@ function datePresetRange(preset: DatePresetOption) {
 }
 
 function dateFilterLabel(dateFrom: string, dateTo: string, datePreset: DatePresetOption) {
-  if (datePreset === "all" || (!dateFrom && !dateTo)) return "ظƒظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ";
+  if (datePreset === "all" || (!dateFrom && !dateTo)) return "كل الحجوزات";
   const labels: Record<DatePresetOption, string> = {
-    all: "ظƒظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ",
-    today: "ط§ظ„ظٹظˆظ…",
-    yesterday: "ط£ظ…ط³",
-    week: "ظ‡ط°ط§ ط§ظ„ط£ط³ط¨ظˆط¹",
-    month: "ظ‡ط°ط§ ط§ظ„ط´ظ‡ط±",
-    last_month: "ط§ظ„ط´ظ‡ط± ط§ظ„ظ…ط§ط¶ظٹ",
-    custom: "ظ†ط·ط§ظ‚ ظ…ط®طµطµ",
+    all: "كل الحجوزات",
+    today: "اليوم",
+    yesterday: "أمس",
+    week: "هذا الأسبوع",
+    month: "هذا الشهر",
+    last_month: "الشهر الماضي",
+    custom: "نطاق مخصص",
   };
-  return `${labels[datePreset] || "ظ†ط·ط§ظ‚ ظ…ط®طµطµ"} (${dateFrom || "ط§ظ„ط¨ط¯ط§ظٹط©"} - ${dateTo || "ط§ظ„ظ†ظ‡ط§ظٹط©"})`;
+  return `${labels[datePreset] || "نطاق مخصص"} (${dateFrom || "البداية"} - ${dateTo || "النهاية"})`;
 }
 
 function normalizeEditBookingTimeInput(raw: string): string {
-  const arabicIndicDigits = "ظ ظ،ظ¢ظ£ظ¤ظ¥ظ¦ظ§ظ¨ظ©";
-  const easternArabicDigits = "غ°غ±غ²غ³غ´غµغ¶غ·غ¸غ¹";
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const easternArabicDigits = "۰۱۲۳۴۵۶۷۸۹";
   const normalized = String(raw || "")
-    .replace(/[ظ -ظ©]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
-    .replace(/[غ°-غ¹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
     .replace(/[\u200e\u200f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
   if (!normalized) return "";
 
-  const match = normalized.match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp]\.?[Mm]\.?|[طµظ…]))?$/u);
+  const match = normalized.match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp]\.?[Mm]\.?|[صم]))?$/u);
   if (!match) return "";
 
   let hours = Number(match[1]);
@@ -752,8 +752,8 @@ function normalizeEditBookingTimeInput(raw: string): string {
 
   if (meridiem) {
     if (hours < 1 || hours > 12) return "";
-    const isAm = meridiem === "طµ" || meridiem === "am" || meridiem === "a.m.";
-    const isPm = meridiem === "ظ…" || meridiem === "pm" || meridiem === "p.m.";
+    const isAm = meridiem === "ص" || meridiem === "am" || meridiem === "a.m.";
+    const isPm = meridiem === "م" || meridiem === "pm" || meridiem === "p.m.";
     if (!isAm && !isPm) return "";
     if (isAm) {
       hours = hours === 12 ? 0 : hours;
@@ -768,12 +768,12 @@ function normalizeEditBookingTimeInput(raw: string): string {
 }
 
 function normalizedDigitsOnly(raw: string): string {
-  const arabicIndicDigits = "ظ ظ،ظ¢ظ£ظ¤ظ¥ظ¦ظ§ظ¨ظ©";
-  const easternArabicDigits = "غ°غ±غ²غ³غ´غµغ¶غ·غ¸غ¹";
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const easternArabicDigits = "۰۱۲۳۴۵۶۷۸۹";
   return digitsOnly(
     String(raw || "")
-      .replace(/[ظ -ظ©]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
-      .replace(/[غ°-غ¹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
+      .replace(/[٠-٩]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
+      .replace(/[۰-۹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
   );
 }
 
@@ -1139,9 +1139,9 @@ function normalizeIncomePaymentMethod(raw: any): PaymentMethod {
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
   if (s === "other") return "other";
-  if (s.includes("ظƒط§ط´") || s.includes("ظ†ظ‚ط¯")) return "cash";
-  if (s.includes("ط´ط¨ظƒط©") || s.includes("ظ…ط¯ظ‰") || s.includes("ط¨ط·ط§ظ‚")) return "card";
-  if (s.includes("طھط­ظˆظٹظ„")) return "transfer";
+  if (s.includes("كاش") || s.includes("نقد")) return "cash";
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
+  if (s.includes("تحويل")) return "transfer";
   return "transfer";
 }
 
@@ -1154,16 +1154,16 @@ type SensitiveBookingAction =
 function sensitiveActionDescription(action: SensitiveBookingAction | null, language: DashboardLanguage = "ar") {
   if (!action) return "";
   if (action.kind === "status") {
-    return language === "en" ? `Change booking ${action.bookingRef} to ${bookingsText(language, statusLabel[action.nextStatus])}` : `طھط؛ظٹظٹط± ط­ط§ظ„ط© ط§ظ„ط­ط¬ط² ${action.bookingRef} ط¥ظ„ظ‰ ${statusLabel[action.nextStatus]}`;
+    return language === "en" ? `Change booking ${action.bookingRef} to ${bookingsText(language, statusLabel[action.nextStatus])}` : `تغيير حالة الحجز ${action.bookingRef} إلى ${statusLabel[action.nextStatus]}`;
   }
   if (language === "en") {
     if (action.kind === "edit") return `Edit booking ${bookingRef(action.booking)}`;
     if (action.kind === "refund") return `Manage refund for booking ${bookingRef(action.booking)}`;
     return `Remove booking ${bookingRef(action.booking)} from the bookings page`;
   }
-  if (action.kind === "edit") return `طھط¹ط¯ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)}`;
-  if (action.kind === "refund") return `ط¥ط¯ط§ط±ط© ط§ط³طھط±ط¬ط§ط¹ ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)}`;
-  return `ط¥ط²ط§ظ„ط© ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)} ظ…ظ† طµظپط­ط© ط§ظ„ط­ط¬ظˆط²ط§طھ`;
+  if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
+  if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
+  return `إزالة الحجز ${bookingRef(action.booking)} من صفحة الحجوزات`;
 }
 
 type ActionPinModalProps = {
@@ -1204,7 +1204,7 @@ const ActionPinModal = memo(function ActionPinModal({
   const handleConfirm = useCallback(async () => {
     if (!action) return;
     if (!String(password).trim()) {
-      setError("ط£ط¯ط®ظ„ظٹ ظƒظ„ظ…ط© ظ…ط±ظˆط± ط§ظ„ط­ط³ط§ط¨ ط§ظ„ط­ط§ظ„ظٹ.");
+      setError("أدخلي كلمة مرور الحساب الحالي.");
       return;
     }
 
@@ -1223,16 +1223,16 @@ const ActionPinModal = memo(function ActionPinModal({
         code.includes("wrong-password") ||
         code.includes("invalid-login-credentials")
       ) {
-        setError("ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط± ط؛ظٹط± طµط­ظٹط­ط©.");
+        setError("كلمة المرور غير صحيحة.");
       } else if (code.includes("too-many-requests")) {
-        setError("طھظ… ط¥ظٹظ‚ط§ظپ ط§ظ„ظ…ط­ط§ظˆظ„ط§طھ ظ…ط¤ظ‚طھظ‹ط§ ط¨ط³ط¨ط¨ ظƒط«ط±ط© ط§ظ„ظ…ط­ط§ظˆظ„ط§طھ. ط§ظ†طھط¸ط±ظٹ ظ‚ظ„ظٹظ„ظ‹ط§ ط«ظ… ط£ط¹ظٹط¯ظٹ ط§ظ„ظ…ط­ط§ظˆظ„ط©.");
+        setError("تم إيقاف المحاولات مؤقتًا بسبب كثرة المحاولات. انتظري قليلًا ثم أعيدي المحاولة.");
       } else if (code.includes("requires-recent-login")) {
-        setError("ط§ظ†طھظ‡طھ طµظ„ط§ط­ظٹط© ط§ظ„طھط­ظ‚ظ‚. ط³ط¬ظ‘ظ„ظٹ ط§ظ„ط®ط±ظˆط¬ ط«ظ… ط§ط¯ط®ظ„ظٹ ظ…ط±ط© ط£ط®ط±ظ‰.");
+        setError("انتهت صلاحية التحقق. سجّلي الخروج ثم ادخلي مرة أخرى.");
       } else {
         setError(
           caught instanceof Error && String(caught.message || "").trim()
             ? caught.message
-            : "طھط¹ط°ط± ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±."
+            : "تعذر التحقق من كلمة المرور."
         );
       }
     } finally {
@@ -1246,27 +1246,27 @@ const ActionPinModal = memo(function ActionPinModal({
     <Modal
       open={open}
       onClose={handleClose}
-      ariaLabel={t("ط§ظ„طھط­ظ‚ظ‚ ط¨ظƒظ„ظ…ط© ظ…ط±ظˆط± ط§ظ„ط­ط³ط§ط¨")}
+      ariaLabel={t("التحقق بكلمة مرور الحساب")}
       overlayClassName="bookings-v2-modal-overlay bk-action-pin-overlay"
       panelClassName={`bookings-v2-modal-panel bk-cancel-modal bk-action-pin-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
       size="sm"
     >
-      <div className="bk-cancel-head">{t("طھط£ظƒظٹط¯ ظƒظ„ظ…ط© ظ…ط±ظˆط± ط§ظ„ط­ط³ط§ط¨")}</div>
+      <div className="bk-cancel-head">{t("تأكيد كلمة مرور الحساب")}</div>
       <div className="bk-cancel-body">
         <div className="bk-action-pin-summary">
-          <div className="bk-action-pin-summary-label">{t("ط§ظ„ط¥ط¬ط±ط§ط، ط§ظ„ظ…ط·ظ„ظˆط¨")}</div>
+          <div className="bk-action-pin-summary-label">{t("الإجراء المطلوب")}</div>
           <div className="bk-action-pin-summary-value">
-            {sensitiveActionDescription(action, language) || t("ط¥ط¬ط±ط§ط، ط­ط³ط§ط³")}
+            {sensitiveActionDescription(action, language) || t("إجراء حساس")}
           </div>
           {action?.kind === "delete" ? (
             <div className="bk-action-pin-warning">
-              {t("ط³ظٹط®طھظپظٹ ط§ظ„ط­ط¬ط² ظ…ظ† طµظپط­ط© ط§ظ„ط­ط¬ظˆط²ط§طھطŒ ظ…ط¹ ط§ظ„ط§ط­طھظپط§ط¸ ط¨ط§ظ„ظپط§طھظˆط±ط© ظˆط§ظ„ظ…ط¯ظپظˆط¹ط§طھ ظˆط§ظ„ط³ط¬ظ„ ط§ظ„ظ…ط§ظ„ظٹ ظ„ظ„ظ…ط±ط§ط¬ط¹ط©.")}
+              {t("سيختفي الحجز من صفحة الحجوزات، مع الاحتفاظ بالفاتورة والمدفوعات والسجل المالي للمراجعة.")}
             </div>
           ) : null}
         </div>
         <div className="bk-action-pin-form">
           <label className="bk-action-pin-label" htmlFor={passwordInputId}>
-            {t("ظƒظ„ظ…ط© ظ…ط±ظˆط± ط­ط³ط§ط¨ظƒ ط§ظ„ط­ط§ظ„ظٹ")}
+            {t("كلمة مرور حسابك الحالي")}
           </label>
           <input
             id={passwordInputId}
@@ -1279,7 +1279,7 @@ const ActionPinModal = memo(function ActionPinModal({
               event.preventDefault();
               void handleConfirm();
             }}
-            placeholder={t("ط£ط¯ط®ظ„ظٹ ظƒظ„ظ…ط© ظ…ط±ظˆط± ط§ظ„ط­ط³ط§ط¨")}
+            placeholder={t("أدخلي كلمة مرور الحساب")}
             autoComplete="current-password"
             name="booking_action_current_password"
             maxLength={128}
@@ -1288,14 +1288,14 @@ const ActionPinModal = memo(function ActionPinModal({
             autoFocus
           />
           <div className="bk-action-pin-hint" id={passwordHintId}>
-            {t("ط³ظٹطھظ… ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظƒظ„ظ…ط© ظ…ط±ظˆط± ط§ظ„ط­ط³ط§ط¨ ط§ظ„ظ…ط³ط¬ظ„ ط­ط§ظ„ظٹظ‹ط§ ظ‚ط¨ظ„ طھظ†ظپظٹط° ط§ظ„ط¥ط¬ط±ط§ط،.")}
+            {t("سيتم التحقق من كلمة مرور الحساب المسجل حاليًا قبل تنفيذ الإجراء.")}
           </div>
         </div>
         {error ? <div className="bk-action-pin-error">{t(error)}</div> : null}
       </div>
       <div className="bk-cancel-foot">
         <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={busy}>
-          {t("ط¥ظ„ط؛ط§ط،")}
+          {t("إلغاء")}
         </button>
         <button
           type="button"
@@ -1303,7 +1303,7 @@ const ActionPinModal = memo(function ActionPinModal({
           onClick={() => void handleConfirm()}
           disabled={busy}
         >
-          {busy ? t("ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚...") : t("ظ…طھط§ط¨ط¹ط©")}
+          {busy ? t("جاري التحقق...") : t("متابعة")}
         </button>
       </div>
     </Modal>
@@ -1331,19 +1331,19 @@ const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
   return (
     <>
       <label>
-        <div className="bk-field-label">{t("ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط©")}</div>
+        <div className="bk-field-label">{t("اسم العميلة")}</div>
         <input
           type="text"
           className="bk-input"
           value={customerName}
           onChange={(e) => onCustomerNameChange(e.target.value)}
-          placeholder={t("ظ…ط«ط§ظ„: ط³ط§ط±ط© ط£ط­ظ…ط¯")}
+          placeholder={t("مثال: سارة أحمد")}
           disabled={disabled}
         />
       </label>
 
       <label>
-        <div className="bk-field-label">{t("ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„")}</div>
+        <div className="bk-field-label">{t("رقم الجوال")}</div>
         <input
           type="text"
           className="bk-input"
@@ -1376,28 +1376,28 @@ type BookingFilterDateFieldProps = {
 };
 
 const BOOKING_FILTER_MONTHS_AR = [
-  "ظٹظ†ط§ظٹط±",
-  "ظپط¨ط±ط§ظٹط±",
-  "ظ…ط§ط±ط³",
-  "ط£ط¨ط±ظٹظ„",
-  "ظ…ط§ظٹظˆ",
-  "ظٹظˆظ†ظٹظˆ",
-  "ظٹظˆظ„ظٹظˆ",
-  "ط£ط؛ط³ط·ط³",
-  "ط³ط¨طھظ…ط¨ط±",
-  "ط£ظƒطھظˆط¨ط±",
-  "ظ†ظˆظپظ…ط¨ط±",
-  "ط¯ظٹط³ظ…ط¨ط±",
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
 ] as const;
 
 const BOOKING_FILTER_WEEKDAYS_AR = [
-  "ط­",
-  "ظ†",
-  "ط«",
-  "ط±",
-  "ط®",
-  "ط¬",
-  "ط³",
+  "ح",
+  "ن",
+  "ث",
+  "ر",
+  "خ",
+  "ج",
+  "س",
 ] as const;
 
 function bookingFilterParseDate(value: string) {
@@ -1488,7 +1488,7 @@ const BookingFilterDateField = memo(
       ? `${String(selected.day).padStart(2, "0")} / ${String(
           selected.month + 1
         ).padStart(2, "0")} / ${selected.year}`
-      : t("ط§ط®طھط§ط±ظٹ ط§ظ„طھط§ط±ظٹط®");
+      : t("اختاري التاريخ");
 
     const updatePosition = useCallback(() => {
       if (typeof window === "undefined") {
@@ -1779,8 +1779,8 @@ const BookingFilterDateField = memo(
                 onChange("");
                 setOpen(false);
               }}
-              aria-label={`${t("ظ…ط³ط­")} ${label}`}
-              title={t("ظ…ط³ط­ ط§ظ„طھط§ط±ظٹط®")}
+              aria-label={`${t("مسح")} ${label}`}
+              title={t("مسح التاريخ")}
             >
               <FontAwesomeIcon
                 icon={faXmark}
@@ -1798,7 +1798,7 @@ const BookingFilterDateField = memo(
                 className="bk-filter-calendar-portal"
                 style={panelStyle}
                 role="dialog"
-                aria-label={`${t("ط§ط®طھظٹط§ط±")} ${label}`}
+                aria-label={`${t("اختيار")} ${label}`}
                 dir={language === "en" ? "ltr" : "rtl"}
               >
                 <div className="bk-filter-calendar__head">
@@ -1807,9 +1807,9 @@ const BookingFilterDateField = memo(
                     onClick={() =>
                       moveMonth(-1)
                     }
-                    aria-label={t("ط§ظ„ط´ظ‡ط± ط§ظ„ط³ط§ط¨ظ‚")}
+                    aria-label={t("الشهر السابق")}
                   >
-                    â€¹
+                    ‹
                   </button>
 
                   <strong>
@@ -1826,9 +1826,9 @@ const BookingFilterDateField = memo(
                     onClick={() =>
                       moveMonth(1)
                     }
-                    aria-label={t("ط§ظ„ط´ظ‡ط± ط§ظ„طھط§ظ„ظٹ")}
+                    aria-label={t("الشهر التالي")}
                   >
-                    â€؛
+                    ›
                   </button>
                 </div>
 
@@ -1915,7 +1915,7 @@ const BookingFilterDateField = memo(
                       setOpen(false);
                     }}
                   >
-                    {t("ط§ظ„ظٹظˆظ…")}
+                    {t("اليوم")}
                   </button>
 
                   {value ? (
@@ -1927,7 +1927,7 @@ const BookingFilterDateField = memo(
                         setOpen(false);
                       }}
                     >
-                      {t("ظ…ط³ط­")}
+                      {t("مسح")}
                     </button>
                   ) : null}
                 </div>
@@ -2305,8 +2305,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     {
       value: "",
       label: catalogLoading
-        ? t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ط£ظ‚ط³ط§ظ…...")
-        : t("ط§ط®طھط§ط±ظٹ ط§ظ„ظ‚ط³ظ…"),
+        ? t("جاري تحميل الأقسام...")
+        : t("اختاري القسم"),
     },
     ...sections.map((section) => ({
       value: section.id,
@@ -2318,8 +2318,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     {
       value: "",
       label: categories.length
-        ? t("ط¨ط¯ظˆظ† طھط­ط¯ظٹط¯")
-        : t("ظ„ط§ طھظˆط¬ط¯ طھطµظ†ظٹظپط§طھ"),
+        ? t("بدون تحديد")
+        : t("لا توجد تصنيفات"),
       disabled: !categories.length,
     },
     ...categories.map((category) => ({
@@ -2332,8 +2332,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     {
       value: "",
       label: services.length
-        ? t("ط§ط®طھط§ط±ظٹ ط§ظ„ط®ط¯ظ…ط©")
-        : t("ظ„ط§ طھظˆط¬ط¯ ط®ط¯ظ…ط§طھ"),
+        ? t("اختاري الخدمة")
+        : t("لا توجد خدمات"),
       disabled: !services.length,
     },
     ...services.map((service) => ({
@@ -2346,23 +2346,23 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     <>
       <div className="bk-edit-grid bk-edit-grid--catalog">
         <BookingSelectField
-          label={t("ط§ظ„ظ‚ط³ظ…")}
+          label={t("القسم")}
           value={sectionId}
           options={sectionOptions}
-          placeholder={t("ط§ط®طھط§ط±ظٹ ط§ظ„ظ‚ط³ظ…")}
+          placeholder={t("اختاري القسم")}
           disabled={disabled || catalogLoading}
           onChange={onSectionChange}
           language={language}
         />
 
         <BookingSelectField
-          label={t("ط§ظ„طھطµظ†ظٹظپ")}
+          label={t("التصنيف")}
           value={categoryId}
           options={categoryOptions}
           placeholder={
             categories.length
-              ? t("ط¨ط¯ظˆظ† طھط­ط¯ظٹط¯")
-              : t("ظ„ط§ طھظˆط¬ط¯ طھطµظ†ظٹظپط§طھ")
+              ? t("بدون تحديد")
+              : t("لا توجد تصنيفات")
           }
           disabled={
             disabled ||
@@ -2376,13 +2376,13 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
       </div>
 
       <BookingSelectField
-        label={t("ط§ظ„ط®ط¯ظ…ط©")}
+        label={t("الخدمة")}
         value={serviceId}
         options={serviceOptions}
         placeholder={
           services.length
-            ? t("ط§ط®طھط§ط±ظٹ ط§ظ„ط®ط¯ظ…ط©")
-            : t("ظ„ط§ طھظˆط¬ط¯ ط®ط¯ظ…ط§طھ")
+            ? t("اختاري الخدمة")
+            : t("لا توجد خدمات")
         }
         disabled={
           disabled ||
@@ -2396,7 +2396,7 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
 
       {catalogLoading ? (
         <div className="bk-edit-helper">
-          {t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ط£ظ‚ط³ط§ظ… ظˆط§ظ„طھطµظ†ظٹظپط§طھ ظˆط§ظ„ط®ط¯ظ…ط§طھ...")}
+          {t("جاري تحميل الأقسام والتصنيفات والخدمات...")}
         </div>
       ) : null}
     </>
@@ -2533,10 +2533,10 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     {
       value: "",
       label: staffLoading
-        ? t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ...")
+        ? t("جاري تحميل الموظفات...")
         : staffOptions.length
-          ? t("ط§ط®طھط§ط±ظٹ ط§ظ„ظ…ظˆط¸ظپط©")
-          : t("ظ„ط§ طھظˆط¬ط¯ ظ…ظˆط¸ظپط§طھ ظ…طھط§ط­ط©"),
+          ? t("اختاري الموظفة")
+          : t("لا توجد موظفات متاحة"),
       disabled: !staffOptions.length,
     },
     ...staffOptions.map((staff) => ({
@@ -2544,7 +2544,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       label:
         staff.name +
         (staff.active === false
-          ? " â€” " + t("ط؛ظٹط± ظ†ط´ط·ط©")
+          ? " — " + t("غير نشطة")
           : ""),
     })),
   ];
@@ -2776,7 +2776,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       String(value).replace(
         /\d/g,
         (digit) =>
-          "ظ ظ،ظ¢ظ£ظ¤ظ¥ظ¦ظ§ظ¨ظ©"[Number(digit)]
+          "٠١٢٣٤٥٦٧٨٩"[Number(digit)]
       ),
     []
   );
@@ -2785,7 +2785,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     const selected = parseIsoDate(date);
 
     if (!selected) {
-      return t("ط§ط®طھط§ط±ظٹ ط§ظ„طھط§ط±ظٹط®");
+      return t("اختاري التاريخ");
     }
 
     if (language === "en") {
@@ -2808,7 +2808,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   }, [date, language, parseIsoDate, toArabicDigits]);
 
   const timeLabel = useMemo(
-    () => (time ? bookingClockText(time, language) : t("ط§ط®طھط§ط±ظٹ ط§ظ„ظˆظ‚طھ")),
+    () => (time ? bookingClockText(time, language) : t("اختاري الوقت")),
     [language, time]
   );
 
@@ -2973,9 +2973,9 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                     )
                   )
                 }
-                aria-label={t("ط§ظ„ط´ظ‡ط± ط§ظ„ط³ط§ط¨ظ‚")}
+                aria-label={t("الشهر السابق")}
               >
-                â€¹
+                ‹
               </button>
 
               <strong>
@@ -2994,16 +2994,16 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                     )
                   )
                 }
-                aria-label={t("ط§ظ„ط´ظ‡ط± ط§ظ„طھط§ظ„ظٹ")}
+                aria-label={t("الشهر التالي")}
               >
-                â€؛
+                ›
               </button>
             </div>
 
             <div className="bk-calendar-weekdays">
               {(language === "en"
                 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-                : ["ط£ط­ط¯", "ط§ط«ظ†", "ط«ظ„ط§", "ط£ط±ط¨", "ط®ظ…ظٹ", "ط¬ظ…ط¹", "ط³ط¨طھ"]
+                : ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"]
               ).map((label) => (
                 <span key={label}>
                   {label}
@@ -3074,7 +3074,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                   setCalendarOpen(false);
                 }}
               >
-                {t("ظ…ط³ط­")}
+                {t("مسح")}
               </button>
 
               <button
@@ -3094,7 +3094,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                   setCalendarOpen(false);
                 }}
               >
-                {t("ط§ظ„ظٹظˆظ…")}
+                {t("اليوم")}
               </button>
             </div>
           </div>,
@@ -3116,7 +3116,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             }}
           >
             <div className="bk-time-popover__head">
-              <strong>{t("ط§ط®طھظٹط§ط± ط§ظ„ظˆظ‚طھ")}</strong>
+              <strong>{t("اختيار الوقت")}</strong>
               <span>{bookingClockText(
                 String(
                   timeDraft.period === "pm"
@@ -3130,11 +3130,11 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             </div>
 
             <div className="bk-time-popover__section">
-              <span className="bk-time-popover__label">{t("ط§ظ„ظپطھط±ط©")}</span>
+              <span className="bk-time-popover__label">{t("الفترة")}</span>
               <div className="bk-time-period">
                 {([
-                  ["am", language === "en" ? "AM" : "طµ"],
-                  ["pm", language === "en" ? "PM" : "ظ…"],
+                  ["am", language === "en" ? "AM" : "ص"],
+                  ["pm", language === "en" ? "PM" : "م"],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -3154,7 +3154,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             </div>
 
             <div className="bk-time-popover__section">
-              <span className="bk-time-popover__label">{t("ط§ظ„ط³ط§ط¹ط©")}</span>
+              <span className="bk-time-popover__label">{t("الساعة")}</span>
               <div className="bk-time-hours">
                 {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
                   <button
@@ -3175,7 +3175,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             </div>
 
             <div className="bk-time-popover__section">
-              <span className="bk-time-popover__label">{t("ط§ظ„ط¯ظ‚ط§ط¦ظ‚")}</span>
+              <span className="bk-time-popover__label">{t("الدقائق")}</span>
               <div className="bk-time-minutes">
                 {minuteOptions.map((minute) => (
                   <button
@@ -3203,14 +3203,14 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                   setTimeOpen(false);
                 }}
               >
-                {t("ظ…ط³ط­")}
+                {t("مسح")}
               </button>
               <button
                 type="button"
                 className="is-primary"
                 onClick={commitTimeDraft}
               >
-                {t("طھظ…")}
+                {t("تم")}
               </button>
             </div>
           </div>,
@@ -3221,13 +3221,13 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   return (
     <div className="bk-edit-grid bk-edit-grid--schedule">
       <BookingSelectField
-        label={t("ط§ظ„ظ…ظˆط¸ظپط©")}
+        label={t("الموظفة")}
         value={employeeId}
         options={employeeOptions}
         placeholder={
           staffLoading
-            ? t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ...")
-            : t("ط§ط®طھط§ط±ظٹ ط§ظ„ظ…ظˆط¸ظپط©")
+            ? t("جاري تحميل الموظفات...")
+            : t("اختاري الموظفة")
         }
         disabled={
           disabled ||
@@ -3240,7 +3240,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
       <div className="bk-edit-picker-field">
         <div className="bk-field-label">
-          {t("ط§ظ„طھط§ط±ظٹط®")}
+          {t("التاريخ")}
         </div>
 
         <button
@@ -3284,7 +3284,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
       <div className="bk-edit-picker-field">
         <div className="bk-field-label">
-          {t("ط§ظ„ظˆظ‚طھ")}
+          {t("الوقت")}
         </div>
 
         <button
@@ -3382,7 +3382,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
     return (
       String(
         round2(Math.max(0, total - paid))
-      ) + " ط±.ط³"
+      ) + " ر.س"
     );
   }, [
     mixedCardAmount,
@@ -3399,24 +3399,24 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       : paymentType;
 
   const paymentModeOptions: BookingSelectOption[] = [
-    { value: "full", label: t("ط¯ظپط¹ ظƒط§ظ…ظ„") },
-    { value: "partial", label: t("ط¹ط±ط¨ظˆظ†") },
-    { value: "none", label: t("ط¨ط¯ظˆظ† ط¯ظپط¹") },
+    { value: "full", label: t("دفع كامل") },
+    { value: "partial", label: t("عربون") },
+    { value: "none", label: t("بدون دفع") },
   ];
 
   const paymentMethodOptions: BookingSelectOption[] = [
-    { value: "cash", label: t("ظƒط§ط´") },
-    { value: "card", label: t("ط´ط¨ظƒط©") },
-    { value: "transfer", label: t("طھط­ظˆظٹظ„") },
-    { value: "mixed", label: t("ط¯ظپط¹ ظ…ط®طھظ„ط·") },
-    { value: "other", label: t("ط£ط®ط±ظ‰") },
+    { value: "cash", label: t("كاش") },
+    { value: "card", label: t("شبكة") },
+    { value: "transfer", label: t("تحويل") },
+    { value: "mixed", label: t("دفع مختلط") },
+    { value: "other", label: t("أخرى") },
   ];
 
   return (
     <>
       <label>
         <div className="bk-field-label">
-          {t("ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط² (ظ„ظ„ظ‚ط±ط§ط،ط© ظپظ‚ط·)")}
+          {t("إجمالي الحجز (للقراءة فقط)")}
         </div>
 
         <DashboardNumberInputV2
@@ -3428,15 +3428,15 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           disabled
         />
         <small className="bk-helper-text">
-          {t("طھط¹ط¯ظٹظ„ ط§ظ„ط³ط¹ط± ظ„ط§ ظٹطھظ… ظ…ظ† ط§ظ„ط¯ظپط¹ط› ظٹط³طھط®ط¯ظ… ظ…ط³ط§ط± طھط¹ط¯ظٹظ„ ط³ط¹ط± ط§ظ„ط­ط¬ط² ط§ظ„ظ…ط®طµطµ.")}
+          {t("تعديل السعر لا يتم من الدفع؛ يستخدم مسار تعديل سعر الحجز المخصص.")}
         </small>
       </label>
 
       <BookingSelectField
-        label={t("ظ†ظˆط¹ ط§ظ„ط¯ظپط¹")}
+        label={t("نوع الدفع")}
         value={paymentModeValue}
         options={paymentModeOptions}
-        placeholder={t("ط§ط®طھط§ط±ظٹ ظ†ظˆط¹ ط§ظ„ط¯ظپط¹")}
+        placeholder={t("اختاري نوع الدفع")}
         disabled={disabled}
         onChange={(value) =>
           onPaymentModeChange(value as UiPaymentMode)
@@ -3446,10 +3446,10 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
 
       {paymentMethod !== "none" ? (
         <BookingSelectField
-          label={t("ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}
+          label={t("طريقة الدفع")}
           value={paymentMethod}
           options={paymentMethodOptions}
-          placeholder={t("ط§ط®طھط§ط±ظٹ ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}
+          placeholder={t("اختاري طريقة الدفع")}
           disabled={disabled}
           onChange={(value) =>
             onPaymentMethodChange(
@@ -3465,7 +3465,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
         <div className="bk-mixed-payment-box">
           <label>
             <div className="bk-field-label">
-              {t("ظ…ط¨ظ„ط؛ ط§ظ„ظƒط§ط´")}
+              {t("مبلغ الكاش")}
             </div>
 
             <DashboardNumberInputV2
@@ -3478,14 +3478,14 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                   event.target.value
                 )
               }
-              placeholder={t("ظ…ط«ط§ظ„: 100")}
+              placeholder={t("مثال: 100")}
               disabled={disabled}
             />
           </label>
 
           <label>
             <div className="bk-field-label">
-              {t("ظ…ط¨ظ„ط؛ ط§ظ„ط´ط¨ظƒط©")}
+              {t("مبلغ الشبكة")}
             </div>
 
             <DashboardNumberInputV2
@@ -3498,7 +3498,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                   event.target.value
                 )
               }
-              placeholder={t("ظ…ط«ط§ظ„: 200")}
+              placeholder={t("مثال: 200")}
               disabled={disabled}
             />
           </label>
@@ -3511,11 +3511,11 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                 : "is-unbalanced",
             ].join(" ")}
           >
-            {t("ط§ظ„ظ…ط¬ظ…ظˆط¹")}: {mixedPaid} {language === "en" ? "SAR" : "ط±.ط³"} | {t("ط§ظ„ظ…طھط¨ظ‚ظٹ")}:{" "}
+            {t("المجموع")}: {mixedPaid} {language === "en" ? "SAR" : "ر.س"} | {t("المتبقي")}:{" "}
             {round2(
               Math.max(0, mixedRemaining)
             )}{" "}
-            {language === "en" ? "SAR" : "ط±.ط³"}
+            {language === "en" ? "SAR" : "ر.س"}
           </div>
         </div>
       ) : null}
@@ -3525,7 +3525,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       paymentType === "partial" ? (
         <label>
           <div className="bk-field-label">
-            {t("ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ†")}
+            {t("مبلغ العربون")}
           </div>
 
           <DashboardNumberInputV2
@@ -3536,15 +3536,15 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             onChange={(event) =>
               onPaidAmountChange(event.target.value)
             }
-            placeholder={t("ظ…ط«ط§ظ„: 100")}
+            placeholder={t("مثال: 100")}
             disabled={disabled}
           />
         </label>
       ) : null}
 
       <div className="bk-helper-text">
-        {t("ط§ظ„ظ…طھط¨ظ‚ظٹ ط¨ط¹ط¯ ط§ظ„طھط¹ط¯ظٹظ„")}:{" "}
-        {language === "en" ? remainingAfterEditText.replace("ط±.ط³", "SAR") : remainingAfterEditText}
+        {t("المتبقي بعد التعديل")}:{" "}
+        {language === "en" ? remainingAfterEditText.replace("ر.س", "SAR") : remainingAfterEditText}
       </div>
     </>
   );
@@ -3566,13 +3566,13 @@ const EditBookingNoteSection = memo(function EditBookingNoteSection({
   const t = (arabic: string) => bookingsText(language, arabic);
   return (
     <label>
-      <div className="bk-field-label">{t("ظ…ظ„ط§ط­ط¸ط© ط§ظ„ط­ط¬ط²")}</div>
+      <div className="bk-field-label">{t("ملاحظة الحجز")}</div>
       <textarea
         className="bk-input"
         rows={3}
         value={note}
         onChange={(e) => onNoteChange(e.target.value)}
-        placeholder={t("ظ…ظ„ط§ط­ط¸ط© ط¯ط§ط®ظ„ظٹط© ط¹ظ„ظ‰ ظ†ظپط³ ط§ظ„ط­ط¬ط²")}
+        placeholder={t("ملاحظة داخلية على نفس الحجز")}
         disabled={disabled}
       />
     </label>
@@ -3717,8 +3717,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
 
         const nextServices = (serviceRows || [])
           .map((raw: any) => {
-            const duration = Number(raw?.durationMin ?? raw?.duration ?? raw?.["ط§ظ„ظ…ط¯ط©"] ?? 60) || 60;
-            const price = Number(raw?.price ?? raw?.["ط§ظ„ط³ط¹ط±"] ?? 0) || 0;
+            const duration = Number(raw?.durationMin ?? raw?.duration ?? raw?.["المدة"] ?? 60) || 60;
+            const price = Number(raw?.price ?? raw?.["السعر"] ?? 0) || 0;
             return {
               id: String(raw?.id || "").trim(),
               name:
@@ -4007,35 +4007,35 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     if (hasNoPaymentMethod) paidAmount = 0;
 
     if (!customerName) {
-      setError("ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط© ظ…ط·ظ„ظˆط¨.");
+      setError("اسم العميلة مطلوب.");
       return;
     }
     if (!sectionId) {
-      setError("ط§ظ„ظ‚ط³ظ… ظ…ط·ظ„ظˆط¨.");
+      setError("القسم مطلوب.");
       return;
     }
     if (!employeeId) {
-      setError("ط§ظ„ظ…ظˆط¸ظپط© ظ…ط·ظ„ظˆط¨ط©.");
+      setError("الموظفة مطلوبة.");
       return;
     }
     if (!employeeName) {
-      setError("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط®طھط§ط±ط©.");
+      setError("تعذر تحديد الموظفة المختارة.");
       return;
     }
     if (!serviceId || !selectedService) {
-      setError("ط§ظ„ط®ط¯ظ…ط© ظ…ط·ظ„ظˆط¨ط©.");
+      setError("الخدمة مطلوبة.");
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError("ط§ظ„طھط§ط±ظٹط® ط؛ظٹط± طµط­ظٹط­.");
+      setError("التاريخ غير صحيح.");
       return;
     }
     if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
-      setError("ط§ظ„ظˆظ‚طھ ط؛ظٹط± طµط­ظٹط­ (HH:MM).");
+      setError("الوقت غير صحيح (HH:MM).");
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setError("ط§ظ„ط³ط¹ط± ط؛ظٹط± طµط­ظٹط­.");
+      setError("السعر غير صحيح.");
       return;
     }
     if (isMixedPayment) {
@@ -4045,21 +4045,21 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         mixedCashAmount < 0 ||
         mixedCardAmount < 0
       ) {
-        setError("ظ…ط¨ط§ظ„ط؛ ط§ظ„ط¯ظپط¹ ط§ظ„ظ…ط®طھظ„ط· ظٹط¬ط¨ ط£ظ† طھظƒظˆظ† 0 ط£ظˆ ط£ظƒط«ط±.");
+        setError("مبالغ الدفع المختلط يجب أن تكون 0 أو أكثر.");
         return;
       }
       if (round2(mixedCashAmount + mixedCardAmount) !== round2(price)) {
-        setError("ظ…ط¬ظ…ظˆط¹ ط§ظ„ظƒط§ط´ ظˆط§ظ„ط´ط¨ظƒط© ظٹط¬ط¨ ط£ظ† ظٹط³ط§ظˆظٹ ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط².");
+        setError("مجموع الكاش والشبكة يجب أن يساوي إجمالي الحجز.");
         return;
       }
     }
     if (!isMixedPayment && paymentType === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
-        setError("ط£ط¯ط®ظ„ظٹ ظ…ط¨ظ„ط؛ ط¹ط±ط¨ظˆظ† طµط­ظٹط­ (0 ط£ظˆ ط£ظƒط«ط±).");
+        setError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
       }
       if (paidAmount > price) {
-        setError("ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ† ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹطھط¬ط§ظˆط² ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط².");
+        setError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
         return;
       }
     }
@@ -4201,13 +4201,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       shouldClose = true;
     } catch (e: any) {
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
-        setError("ط§ظ„ظ…ظˆط¹ط¯ ظٹطھط¹ط§ط±ط¶ ظ…ط¹ ط­ط¬ط² ط¢ط®ط± ظ„ظ†ظپط³ ط§ظ„ظ…ظˆط¸ظپط©. ط§ط®طھط§ط±ظٹ ظˆظ‚طھظ‹ط§ ط£ظˆ ظ…ظˆط¸ظپط© ط£ط®ط±ظ‰.");
+        setError("الموعد يتعارض مع حجز آخر لنفس الموظفة. اختاري وقتًا أو موظفة أخرى.");
       } else if (e?.code === "BOOKING_DAY_CLOSED") {
-        setError("ط§ظ„ظٹظˆظ… ط§ظ„ظ…ط®طھط§ط± ط؛ظٹط± ظ…طھط§ط­ ظ„ظ„ط­ط¬ط². ط§ط®طھط§ط±ظٹ طھط§ط±ظٹط®ظ‹ط§ ط¢ط®ط±.");
+        setError("اليوم المختار غير متاح للحجز. اختاري تاريخًا آخر.");
       } else if (e?.code === "BOOKING_TIME_OUT_OF_HOURS") {
-        setError("ط§ظ„ظˆظ‚طھ ط§ظ„ظ…ط®طھط§ط± ط®ط§ط±ط¬ ط³ط§ط¹ط§طھ ط§ظ„ط¯ظˆط§ظ… ط£ظˆ ظ„ط§ ظٹظƒظپظٹ ظ„ظ…ط¯ط© ط§ظ„ط®ط¯ظ…ط© ظˆط§ظ„ط¨ط§ظپط±.");
+        setError("الوقت المختار خارج ساعات الدوام أو لا يكفي لمدة الخدمة والبافر.");
       } else if (e?.code === "EMPLOYEE_UNAVAILABLE") {
-        setError("ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط¹ظٹظ†ط© ط¹ظ„ظ‰ ظ‡ط°ط§ ط§ظ„ط­ط¬ط² ظ„ظ… طھط¹ط¯ ظ†ط´ط·ط© طھط´ط؛ظٹظ„ظٹظ‹ط§ ظ„ظ‡ط°ط§ ط§ظ„ظ…ظˆط¹ط¯. ط§ط®طھط§ط±ظٹ ظ…ظˆط¸ظپط© ط£ط®ط±ظ‰ ط£ظˆ ط£ط¹ظٹط¯ظٹ ط¬ط¯ظˆظ„ط© ط§ظ„ط­ط¬ط².");
+        setError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
       } else {
         console.error("[DashboardBookings] update booking failed", {
           bookingId: target.id,
@@ -4219,8 +4219,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         const code = String(e?.code || "").trim();
         setError(
           code
-            ? `طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط² (${code}).`
-            : "طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط². ط±ط§ط¬ط¹ظٹ Console ظ„ظ…ط¹ط±ظپط© ط§ظ„ط®ط·ط£ ط§ظ„طھظپطµظٹظ„ظٹ."
+            ? `تعذر حفظ تعديل الحجز (${code}).`
+            : "تعذر حفظ تعديل الحجز. راجعي Console لمعرفة الخطأ التفصيلي."
         );
       }
     } finally {
@@ -4234,17 +4234,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     <Modal
       open={open}
       onClose={handleClose}
-      ariaLabel={t("طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط²")}
+      ariaLabel={t("تعديل الحجز")}
       overlayClassName="bookings-v2-modal-overlay"
       panelClassName={`bookings-v2-modal-panel bk-edit-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
       size="lg"
     >
-      <div className="bk-cancel-head">{t("طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط²")}</div>
+      <div className="bk-cancel-head">{t("تعديل الحجز")}</div>
       <div className="bk-cancel-body">
         <div className="bk-cancel-meta">
-          <span>{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²")}: {bookingRef(target)}</span>
+          <span>{t("رقم الحجز")}: {bookingRef(target)}</span>
           <span>
-            {t("ط§ظ„ط®ط¯ظ…ط©")}:{" "}
+            {t("الخدمة")}:{" "}
             {target
               ? translateBookingCatalogLabel(
                   language,
@@ -4255,7 +4255,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
                   ),
                   "service"
                 )
-              : "â€”"}
+              : "—"}
           </span>
         </div>
 
@@ -4301,15 +4301,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
 
           {/* BOOKING_EDIT_STATUS_FIELD_V2 */}
           <BookingSelectField
-            label={t("ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²")}
+            label={t("حالة الحجز")}
             value={draft.status}
             options={[
-              { value: "pending", label: t("ظپظٹ ط§ظ„ط§ظ†طھط¸ط§ط±") },
-              { value: "confirmed", label: t("ظ…ط¤ظƒط¯") },
-              { value: "completed", label: t("ظ…ظƒطھظ…ظ„") },
-              { value: "cancelled", label: t("ظ…ظ„ط؛ظٹ") },
+              { value: "pending", label: t("في الانتظار") },
+              { value: "confirmed", label: t("مؤكد") },
+              { value: "completed", label: t("مكتمل") },
+              { value: "cancelled", label: t("ملغي") },
             ]}
-            placeholder={t("ط§ط®طھط§ط±ظٹ ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²")}
+            placeholder={t("اختاري حالة الحجز")}
             disabled={saving}
             language={language}
             onChange={(value) => {
@@ -4361,10 +4361,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       </div>
       <div className="bk-cancel-foot">
         <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={saving}>
-          {t("ط±ط¬ظˆط¹")}
+          {t("رجوع")}
         </button>
         <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? t("ط¬ط§ط±ظٹ ط§ظ„ط­ظپط¸...") : t("ط­ظپط¸ ط§ظ„طھط¹ط¯ظٹظ„ط§طھ")}
+          {saving ? t("جاري الحفظ...") : t("حفظ التعديلات")}
         </button>
       </div>
     </Modal>
@@ -4595,7 +4595,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       updatedByUid: currentUid || null,
       updatedByEmail: currentEmail || null,
       updatedByName: actorName || null,
-      label: actorName || "â€”",
+      label: actorName || "—",
     };
   }, [authUser.displayName, authUser.email, userNamesByUid]);
   const touchLastUpdate = useCallback((bookingId: string, atMs = Date.now()) => {
@@ -4607,7 +4607,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     const currentUid = String(auth.currentUser?.uid || "").trim();
     const fallbackEmailLabel = currentEmail ? currentEmail.split("@")[0] : "";
     const mappedUidLabel = currentUid ? String(userNamesByUid[currentUid] || "").trim() : "";
-    const by = currentDisplayName || fallbackEmailLabel || mappedUidLabel || (currentUid ? currentUid.slice(0, 8) : "â€”");
+    const by = currentDisplayName || fallbackEmailLabel || mappedUidLabel || (currentUid ? currentUid.slice(0, 8) : "—");
 
     setLastUpdateMap((prev) => ({
       ...prev,
@@ -4635,7 +4635,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     const currentUser = auth.currentUser;
     const email = String(currentUser?.email || "").trim();
     if (!currentUser || !email) {
-      throw new Error("ظ„ط§ ظٹظ…ظƒظ† ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظ‡ط°ط§ ط§ظ„ط­ط³ط§ط¨ ظ„ط£ظ†ظ‡ ظ„ط§ ظٹط­طھظˆظٹ ط¹ظ„ظ‰ ط¨ط±ظٹط¯ ط¥ظ„ظƒطھط±ظˆظ†ظٹ ظ…ط³ط¬ظ„.");
+      throw new Error("لا يمكن التحقق من هذا الحساب لأنه لا يحتوي على بريد إلكتروني مسجل.");
     }
     const credential = EmailAuthProvider.credential(email, password);
     await reauthenticateWithCredential(currentUser, credential);
@@ -4674,7 +4674,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       } catch (loadError) {
         if (!active) return;
         console.error("[DashboardBookings] Core booking load failed", loadError);
-        setError("طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ظ† Core D1. ط§ط¶ط؛ط· طھط­ط¯ظٹط« ط§ظ„ط¨ظٹط§ظ†ط§طھ ظˆط­ط§ظˆظ„ ظ…ط±ط© ط£ط®ط±ظ‰.");
+        setError("تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى.");
       } finally {
         requestInFlight = false;
         if (active) setLoading(false);
@@ -4702,8 +4702,8 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   useEffect(() => {
     const baseList = mergedBookingSources.map((b: any) => ({
       ...b,
-      customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "ط؛ظٹط± ظ…طھظˆظپط±",
-      phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "ط؛ظٹط± ظ…طھظˆظپط±",
+      customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "غير متوفر",
+      phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "غير متوفر",
       services: extractServicesFromAny(b),
     }));
     setBookings(baseList);
@@ -4881,7 +4881,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               .map((entry) => mapBookingActivityItem(entry, selectedBooking, userNamesByUid))
           );
         } catch {
-          partialErrors.push("طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط§ظ„ط¹ظ…ظ„ظٹط§طھ ظ„ظ‡ط°ط§ ط§ظ„ط­ط¬ط².");
+          partialErrors.push("تعذر تحميل سجل العمليات لهذا الحجز.");
         }
 
         const lifecycleItems = buildBookingLifecycleActivityItems(selectedBooking, userNamesByUid);
@@ -4907,7 +4907,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
             [fallbackUpdated, fallbackCreated, ...lifecycleItems].filter(Boolean) as BookingActivityItem[]
           ).sort((a, b) => b.sortMs - a.sortMs || b.id.localeCompare(a.id))
         );
-        setSelectedBookingActivityError("طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¬ط² ط¨ط§ظ„ظƒط§ظ…ظ„ ط­ط§ظ„ظٹط§ظ‹.");
+        setSelectedBookingActivityError("تعذر تحميل سجل الحجز بالكامل حالياً.");
       } finally {
         if (!cancelled) setSelectedBookingActivityLoading(false);
       }
@@ -4992,7 +4992,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         return;
       }
       const fallback = serviceSummaryForTable(b);
-      if (fallback && fallback !== "â€”") {
+      if (fallback && fallback !== "—") {
         map.set(fallback, fallback);
         serviceFilterLabelCacheRef.current.set(fallback, fallback);
       }
@@ -5299,18 +5299,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     return [
       {
         key: "normal",
-        title: "ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¹ط§ط¯ظٹط©",
+        title: "الحجوزات العادية",
         description:
-          "طھط¸ظ‡ط± ظ‡ظ†ط§ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¹ط§ط¯ظٹط© ظپظ‚ط·طŒ ظˆظٹط¸ظ‡ط± ط§ظ„ط­ط¬ط² ط§ظ„ط¯ط§ط®ظ„ظٹ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹ ظ‚ط¨ظ„ ط§ظ„ط¯ظپط¹ ظ…ط¤ظ‚طھظ‹ط§ ظپظٹ ظ‡ط°ط§ ط§ظ„ظ‚ط³ظ….",
+          "تظهر هنا الحجوزات العادية فقط، ويظهر الحجز الداخلي المستقبلي قبل الدفع مؤقتًا في هذا القسم.",
         rows: normalRows,
         blocks: buildDashboardBookingBlocks(normalRows),
         temporaryInternalCount: normalRows.filter((row) => isTemporaryNormalInternalBooking(row)).length,
       },
       {
         key: "internal",
-        title: "ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¯ط§ط®ظ„ظٹط©",
+        title: "الحجوزات الداخلية",
         description:
-          "طھط¸ظ‡ط± ظ‡ظ†ط§ ط¬ظ…ظٹط¹ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¯ط§ط®ظ„ظٹط© ط¨ط´ظƒظ„ ظ…ط³طھظ‚ظ„طŒ ظˆظ„ط§ ظٹط¨ظ‚ظ‰ ط£ظٹ ط­ط¬ط² ط¯ط§ط®ظ„ظٹ ط¯ط§ط®ظ„ ط§ظ„ظ‚ط³ظ… ط§ظ„ط¹ط§ط¯ظٹ ط¨ط¹ط¯ ط§ظ„ط¯ظپط¹ ط£ظˆ ط§ظ„طھط£ظƒظٹط¯.",
+          "تظهر هنا جميع الحجوزات الداخلية بشكل مستقل، ولا يبقى أي حجز داخلي داخل القسم العادي بعد الدفع أو التأكيد.",
         rows: internalRows,
         blocks: buildDashboardBookingBlocks(internalRows),
         temporaryInternalCount: 0,
@@ -5485,11 +5485,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const sensitiveActionDescription = (action: SensitiveBookingAction | null) => {
     if (!action) return "";
     if (action.kind === "status") {
-      return `طھط؛ظٹظٹط± ط­ط§ظ„ط© ط§ظ„ط­ط¬ط² ${action.bookingRef} ط¥ظ„ظ‰ ${statusLabel[action.nextStatus]}`;
+      return `تغيير حالة الحجز ${action.bookingRef} إلى ${statusLabel[action.nextStatus]}`;
     }
-    if (action.kind === "edit") return `طھط¹ط¯ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)}`;
-    if (action.kind === "refund") return `ط¥ط¯ط§ط±ط© ط§ط³طھط±ط¬ط§ط¹ ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)}`;
-    return `ط¥ط²ط§ظ„ط© ط§ظ„ط­ط¬ط² ${bookingRef(action.booking)} ظ…ظ† طµظپط­ط© ط§ظ„ط­ط¬ظˆط²ط§طھ`;
+    if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
+    if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
+    return `إزالة الحجز ${bookingRef(action.booking)} من صفحة الحجوزات`;
   };
 
   const executeStatusUpdate = async (id: string, newStatus: BookingStatus) => {
@@ -5497,7 +5497,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
     if (!allowed.includes(newStatus)) {
-      alert("ط؛ظٹط± ظ…ط³ظ…ظˆط­ ظ„ظƒ ط¨ظ‡ط°ط§ ط§ظ„طھط؛ظٹظٹط±.");
+      alert("غير مسموح لك بهذا التغيير.");
       return;
     }
     if (newStatus === "cancelled") {
@@ -5549,7 +5549,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, ...localPatch } : prev));
       touchLastUpdate(id, localAuditPatch.atMs);
     } catch (e) {
-      alert("ظپط´ظ„ طھط­ط¯ظٹط« ط§ظ„ط­ط§ظ„ط©");
+      alert("فشل تحديث الحالة");
     }
   };
 
@@ -5558,7 +5558,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
     if (!allowed.includes(newStatus)) {
-      alert("ط؛ظٹط± ظ…ط³ظ…ظˆط­ ظ„ظƒ ط¨ظ‡ط°ط§ ط§ظ„طھط؛ظٹظٹط±.");
+      alert("غير مسموح لك بهذا التغيير.");
       return;
     }
     requestSensitiveAction({
@@ -5593,22 +5593,22 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         mixedCashAmount < 0 ||
         mixedCardAmount < 0
       ) {
-        setConfirmError("ظ…ط¨ط§ظ„ط؛ ط§ظ„ط¯ظپط¹ ط§ظ„ظ…ط®طھظ„ط· ظٹط¬ط¨ ط£ظ† طھظƒظˆظ† 0 ط£ظˆ ط£ظƒط«ط±.");
+        setConfirmError("مبالغ الدفع المختلط يجب أن تكون 0 أو أكثر.");
         return;
       }
       if (round2(mixedCashAmount + mixedCardAmount) !== round2(totalAmount)) {
-        setConfirmError("ظ…ط¬ظ…ظˆط¹ ط§ظ„ظƒط§ط´ ظˆط§ظ„ط´ط¨ظƒط© ظٹط¬ط¨ ط£ظ† ظٹط³ط§ظˆظٹ ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط².");
+        setConfirmError("مجموع الكاش والشبكة يجب أن يساوي إجمالي الحجز.");
         return;
       }
     }
 
     if (!isMixedPayment && nextMode === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
-        setConfirmError("ط£ط¯ط®ظ„ظٹ ظ…ط¨ظ„ط؛ ط¹ط±ط¨ظˆظ† طµط­ظٹط­ (0 ط£ظˆ ط£ظƒط«ط±).");
+        setConfirmError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
       }
       if (paidAmount > totalAmount) {
-        setConfirmError("ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ† ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹطھط¬ط§ظˆط² ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط².");
+        setConfirmError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
         return;
       }
     }
@@ -5664,7 +5664,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
       setConfirmTarget(null);
     } catch {
-      setConfirmError("طھط¹ط°ط± طھط£ظƒظٹط¯ ط§ظ„ط­ط¬ط² ط§ظ„ط¢ظ†.");
+      setConfirmError("تعذر تأكيد الحجز الآن.");
     } finally {
       setConfirmSaving(false);
     }
@@ -5689,7 +5689,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       touchLastUpdate(cancelTarget.id, localAuditPatch.atMs);
       setCancelTarget(null);
     } catch {
-      alert("ظپط´ظ„ ط¥ظ„ط؛ط§ط، ط§ظ„ط­ط¬ط²");
+      alert("فشل إلغاء الحجز");
     } finally {
       setCancelBusy(false);
     }
@@ -5697,7 +5697,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
   const executeDeleteBooking = async (b: Booking) => {
     if (uiRole !== "owner") {
-      alert("ط­ط°ظپ ط§ظ„ط­ط¬ط² ظ…طھط§ط­ ظ„ظ„ظ…ط§ظ„ظƒ ظپظ‚ط·");
+      alert("حذف الحجز متاح للمالك فقط");
       return;
     }
 
@@ -5725,13 +5725,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     } catch (error) {
       console.error("[DashboardBookings] booking delete failed", error);
       if (error instanceof Error) throw error;
-      throw new Error("طھط¹ط°ط± ط­ط°ظپ ط§ظ„ط­ط¬ط² ط§ظ„ط¢ظ†.");
+      throw new Error("تعذر حذف الحجز الآن.");
     }
   };
 
   const handleDeleteBooking = useCallback((b: Booking) => {
     if (uiRole !== "owner") {
-      alert("ط­ط°ظپ ط§ظ„ط­ط¬ط² ظ…طھط§ط­ ظ„ظ„ظ…ط§ظ„ظƒ ظپظ‚ط·");
+      alert("حذف الحجز متاح للمالك فقط");
       return;
     }
     requestSensitiveAction({ kind: "delete", booking: b });
@@ -5744,12 +5744,12 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         !canManageCompletedBooking
       ) {
         alert(
-          "ط§ظ„ط­ط¬ط² ط§ظ„ظ…ظƒطھظ…ظ„ ظ…ط­ظ…ظٹ ظˆظ„ط§ ظٹظ…ظƒظ† طھط¹ط¯ظٹظ„ظ‡ ظ…ظ† ظ‡ط°ط§ ط§ظ„ط­ط³ط§ط¨."
+          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
         );
         return;
       }
 
-      alert("ط§ظ„طھط¹ط¯ظٹظ„ ظ…طھط§ط­ ظپظ‚ط· ظ„ظ„ظ…ط§ظ„ظƒ ط£ظˆ ط§ظ„ط£ط¯ظ…ظ†.");
+      alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
 
@@ -5766,12 +5766,12 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         !canManageCompletedBooking
       ) {
         alert(
-          "ط§ظ„ط­ط¬ط² ط§ظ„ظ…ظƒطھظ…ظ„ ظ…ط­ظ…ظٹ ظˆظ„ط§ ظٹظ…ظƒظ† طھط¹ط¯ظٹظ„ظ‡ ظ…ظ† ظ‡ط°ط§ ط§ظ„ط­ط³ط§ط¨."
+          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
         );
         return;
       }
 
-      alert("ط§ظ„طھط¹ط¯ظٹظ„ ظ…طھط§ط­ ظپظ‚ط· ظ„ظ„ظ…ط§ظ„ظƒ ط£ظˆ ط§ظ„ط£ط¯ظ…ظ†.");
+      alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
 
@@ -5821,7 +5821,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const confirmSensitiveAction = async () => {
     if (!pendingSensitiveAction) return;
     if (String(actionPin).trim() !== BOOKING_ACTION_PIN) {
-      setActionPinError("ط§ظ„ط±ظ‚ظ… ط§ظ„ط³ط±ظٹ ط؛ظٹط± طµط­ظٹط­.");
+      setActionPinError("الرقم السري غير صحيح.");
       return;
     }
 
@@ -5881,36 +5881,36 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (hasNoPaymentMethod) paidAmount = 0;
 
     if (!customerName) {
-      setEditError("ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط© ظ…ط·ظ„ظˆط¨.");
+      setEditError("اسم العميلة مطلوب.");
       return;
     }
     if (!sectionId) {
-      setEditError("ط§ظ„ظ‚ط³ظ… ظ…ط·ظ„ظˆط¨.");
+      setEditError("القسم مطلوب.");
       return;
     }
     if (!serviceId || !selectedService) {
-      setEditError("ط§ظ„ط®ط¯ظ…ط© ظ…ط·ظ„ظˆط¨ط©.");
+      setEditError("الخدمة مطلوبة.");
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setEditError("ط§ظ„طھط§ط±ظٹط® ط؛ظٹط± طµط­ظٹط­.");
+      setEditError("التاريخ غير صحيح.");
       return;
     }
     if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(time)) {
-      setEditError("ط§ظ„ظˆظ‚طھ ط؛ظٹط± طµط­ظٹط­ (HH:MM).");
+      setEditError("الوقت غير صحيح (HH:MM).");
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setEditError("ط§ظ„ط³ط¹ط± ط؛ظٹط± طµط­ظٹط­.");
+      setEditError("السعر غير صحيح.");
       return;
     }
     if (paymentType === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
-        setEditError("ط£ط¯ط®ظ„ظٹ ظ…ط¨ظ„ط؛ ط¹ط±ط¨ظˆظ† طµط­ظٹط­ (0 ط£ظˆ ط£ظƒط«ط±).");
+        setEditError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
       }
       if (paidAmount > price) {
-        setEditError("ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ† ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹطھط¬ط§ظˆط² ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط².");
+        setEditError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
         return;
       }
     }
@@ -5954,11 +5954,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       (editTarget.status === "pending" || editTarget.status === "confirmed")
     ) {
       const paymentStatusDecision = await askBookingDecision({
-        title: "طھظ… ط§ظƒطھظ…ط§ظ„ ط§ظ„ط³ط¯ط§ط¯",
+        title: "تم اكتمال السداد",
         message:
-          "ط£طµط¨ط­ ط§ظ„ظ…طھط¨ظ‚ظٹ 0 ط±.ط³. ط§ظƒطھظ…ط§ظ„ ط§ظ„ط¯ظپط¹ ظ„ط§ ظٹط¹ظ†ظٹ ط¨ط§ظ„ط¶ط±ظˆط±ط© ط£ظ† ط§ظ„ط®ط¯ظ…ط© ط§ظ†طھظ‡طھطŒ ظ„ط°ظ„ظƒ ط§ط®طھط§ط±ظٹ ط­ط§ظ„ط© ط§ظ„ط­ط¬ط² ط§ظ„طµط­ظٹط­ط©.",
-        confirmText: "طھط­ظˆظٹظ„ ط¥ظ„ظ‰ ظ…ظƒطھظ…ظ„",
-        cancelText: "ط§ظ„ط¥ط¨ظ‚ط§ط، ظ…ط¤ظƒط¯ظ‹ط§",
+          "أصبح المتبقي 0 ر.س. اكتمال الدفع لا يعني بالضرورة أن الخدمة انتهت، لذلك اختاري حالة الحجز الصحيحة.",
+        confirmText: "تحويل إلى مكتمل",
+        cancelText: "الإبقاء مؤكدًا",
         tone: "success",
       });
 
@@ -5967,7 +5967,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       } else if (paymentStatusDecision === "cancel") {
         statusAfterEdit = "confirmed";
       } else {
-        // X / ط¥ط؛ظ„ط§ظ‚: ظ„ط§ ظ†ط؛ظٹظ‘ط± ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²
+        // X / إغلاق: لا نغيّر حالة الحجز
         statusAfterEdit = null;
       }
     }
@@ -6068,9 +6068,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       setEditTarget(null);
     } catch (e: any) {
       if (e?.code === "EMPLOYEE_UNAVAILABLE") {
-        setEditError("ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط¹ظٹظ†ط© ط¹ظ„ظ‰ ظ‡ط°ط§ ط§ظ„ط­ط¬ط² ظ„ظ… طھط¹ط¯ ظ†ط´ط·ط© طھط´ط؛ظٹظ„ظٹظ‹ط§ ظ„ظ‡ط°ط§ ط§ظ„ظ…ظˆط¹ط¯. ط§ط®طھط§ط±ظٹ ظ…ظˆط¸ظپط© ط£ط®ط±ظ‰ ط£ظˆ ط£ط¹ظٹط¯ظٹ ط¬ط¯ظˆظ„ط© ط§ظ„ط­ط¬ط².");
+        setEditError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
       } else {
-        setEditError("طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط².");
+        setEditError("تعذر حفظ تعديل الحجز.");
       }
     } finally {
       setEditSaving(false);
@@ -6128,9 +6128,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       return stored as PaymentMethod;
     }
     const s = String((b as any)?.note || "").toLowerCase();
-    if (s.includes("ط´ط¨ظƒط©") || s.includes("ظ…ط¯ظ‰") || s.includes("card")) return "card";
-    if (s.includes("طھط­ظˆظٹظ„") || s.includes("transfer")) return "transfer";
-    if (s.includes("ظƒط§ط´") || s.includes("cash") || s.includes("ظ†ظ‚ط¯")) return "cash";
+    if (s.includes("شبكة") || s.includes("مدى") || s.includes("card")) return "card";
+    if (s.includes("تحويل") || s.includes("transfer")) return "transfer";
+    if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
     return "transfer";
   };
   */
@@ -6185,16 +6185,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     const bookingAmount = readBookingTotalAmount(b);
     const amountInput = Number(refundDraft.amount || 0);
     if (!Number.isFinite(amountInput) || amountInput <= 0) {
-      setRefundError("ط£ط¯ط®ظ„ ظ…ط¨ظ„ط؛ ط§ط³طھط±ط¬ط§ط¹ طµط­ظٹط­.");
+      setRefundError("أدخل مبلغ استرجاع صحيح.");
       return;
     }
     if (amountInput > bookingAmount) {
-      setRefundError("ظ…ط¨ظ„ط؛ ط§ظ„ط§ط³طھط±ط¬ط§ط¹ ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹطھط¬ط§ظˆط² ظ‚ظٹظ…ط© ط§ظ„ط­ط¬ط².");
+      setRefundError("مبلغ الاسترجاع لا يمكن أن يتجاوز قيمة الحجز.");
       return;
     }
     const reason = String(refundDraft.reason || "").trim();
     if (!reason) {
-      setRefundError("ط³ط¨ط¨ ط§ظ„ط§ط³طھط±ط¬ط§ط¹ ظ…ط·ظ„ظˆط¨.");
+      setRefundError("سبب الاسترجاع مطلوب.");
       return;
     }
     const details = String(refundDraft.details || "").trim();
@@ -6255,7 +6255,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       }));
       setRefundTarget(null);
     } catch {
-      setRefundError("طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط§ط³طھط±ط¬ط§ط¹.");
+      setRefundError("تعذر تسجيل الاسترجاع.");
     } finally {
       setRefundSaving(false);
       setRefundBusyId("");
@@ -6290,7 +6290,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       });
       setRefundTarget(null);
     } catch {
-      setRefundError("طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط±ط¬ط§ط¹.");
+      setRefundError("تعذر إلغاء الاسترجاع.");
     } finally {
       setRefundSaving(false);
       setRefundBusyId("");
@@ -6363,7 +6363,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     } catch (error) {
       console.error("[DashboardBookings] Core admin note save failed", error);
       setSavedNoteId("");
-      setError("طھط¹ط°ط± ط­ظپط¸ ظ…ظ„ط§ط­ط¸ط© ط§ظ„ط¥ط¯ط§ط±ط© ظپظٹ Core D1. ط­ط§ظˆظ„ ظ…ط±ط© ط£ط®ط±ظ‰.");
+      setError("تعذر حفظ ملاحظة الإدارة في Core D1. حاول مرة أخرى.");
     } finally {
       noteSaveInFlightRef.current[id] = false;
       setSavingNoteId((current) => current === id ? "" : current);
@@ -6463,28 +6463,28 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const filterSummaryText = useMemo(() => {
     const parts = [
       language === "en"
-        ? `${t(datePreset === "all" ? "ظƒظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ" : datePreset === "today" ? "ط§ظ„ظٹظˆظ…" : datePreset === "yesterday" ? "ط£ظ…ط³" : datePreset === "week" ? "ظ‡ط°ط§ ط§ظ„ط£ط³ط¨ظˆط¹" : datePreset === "month" ? "ظ‡ط°ط§ ط§ظ„ط´ظ‡ط±" : datePreset === "last_month" ? "ط§ظ„ط´ظ‡ط± ط§ظ„ظ…ط§ط¶ظٹ" : "ظ†ط·ط§ظ‚ ظ…ط®طµطµ")}${datePreset === "all" ? "" : ` (${dateFrom || "start"} - ${dateTo || "end"})`}`
+        ? `${t(datePreset === "all" ? "كل الحجوزات" : datePreset === "today" ? "اليوم" : datePreset === "yesterday" ? "أمس" : datePreset === "week" ? "هذا الأسبوع" : datePreset === "month" ? "هذا الشهر" : datePreset === "last_month" ? "الشهر الماضي" : "نطاق مخصص")}${datePreset === "all" ? "" : ` (${dateFrom || "start"} - ${dateTo || "end"})`}`
         : dateFilterLabel(dateFrom, dateTo, datePreset),
-      statusFilter === "all" ? t("ظƒظ„ ط§ظ„ط­ط§ظ„ط§طھ") : `${t("ط§ظ„ط­ط§ظ„ط©")}: ${t(statusLabel[statusFilter])}`,
+      statusFilter === "all" ? t("كل الحالات") : `${t("الحالة")}: ${t(statusLabel[statusFilter])}`,
       settlementFilter === "all"
         ? ""
-        : `${t("ط­ط§ظ„ط© ط§ظ„ط¯ظپط¹")}: ${t(
+        : `${t("حالة الدفع")}: ${t(
             settlementFilter === "paid"
-              ? "ظ…ط¯ظپظˆط¹ ط¨ط§ظ„ظƒط§ظ…ظ„"
+              ? "مدفوع بالكامل"
               : settlementFilter === "partial"
-                ? "ظ…ط¯ظپظˆط¹ ط¬ط²ط¦ظٹط§"
-                : "ط؛ظٹط± ظ…ط¯ظپظˆط¹"
+                ? "مدفوع جزئيا"
+                : "غير مدفوع"
           )}`,
-      paymentMethodFilter === "all" ? "" : `${t("ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}: ${t(paymentMethodLabel(paymentMethodFilter))}`,
+      paymentMethodFilter === "all" ? "" : `${t("طريقة الدفع")}: ${t(paymentMethodLabel(paymentMethodFilter))}`,
       employeeFilter === "all"
         ? ""
-        : `${t("ط§ظ„ظ…ظˆط¸ظپط©")}: ${employeeFilterOptions.find(([id]) => id === employeeFilter)?.[1] || employeeFilter}`,
+        : `${t("الموظفة")}: ${employeeFilterOptions.find(([id]) => id === employeeFilter)?.[1] || employeeFilter}`,
       serviceFilter === "all"
         ? ""
-        : `${t("ط§ظ„ط®ط¯ظ…ط©")}: ${serviceFilterOptions.find(([id]) => id === serviceFilter)?.[1] || serviceFilter}`,
-      sourceFilter === "all" ? "" : `${t("ط§ظ„ظ…طµط¯ط±")}: ${t(sourceFilter)}`,
-      oldPendingFilter === "off" ? "" : t("ط­ط¬ظˆط²ط§طھ ظ‚ط¯ظٹظ…ط© ظ…ط§ ط²ط§ظ„طھ ط¨ط§ظ„ط§ظ†طھط¸ط§ط±"),
-      q.trim() ? `${t("ط¨ط­ط«")}: ${q.trim()}` : "",
+        : `${t("الخدمة")}: ${serviceFilterOptions.find(([id]) => id === serviceFilter)?.[1] || serviceFilter}`,
+      sourceFilter === "all" ? "" : `${t("المصدر")}: ${t(sourceFilter)}`,
+      oldPendingFilter === "off" ? "" : t("حجوزات قديمة ما زالت بالانتظار"),
+      q.trim() ? `${t("بحث")}: ${q.trim()}` : "",
     ].filter(Boolean);
     return parts.join(" | ");
   }, [
@@ -6576,11 +6576,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const selectAllMatchingBookings = useCallback(async () => {
     if (!filteredBookingIds.length) return;
     const ok = await askBookingDecision({
-      title: "طھط­ط¯ظٹط¯ ظƒظ„ ط§ظ„ظ†طھط§ط¦ط¬",
+      title: "تحديد كل النتائج",
       message:
-        `ط³ظٹطھظ… طھط­ط¯ظٹط¯ ${filteredBookingIds.length} ط­ط¬ط² ظ…ط·ط§ط¨ظ‚ ظ„ظ„ظپظ„ط§طھط± ط§ظ„ط­ط§ظ„ظٹط©طŒ ظˆظ„ظٹط³ ط§ظ„طµظپط­ط© ط§ظ„ط­ط§ظ„ظٹط© ظپظ‚ط·.`,
-      confirmText: "طھط­ط¯ظٹط¯ ط§ظ„ظƒظ„",
-      cancelText: "ط±ط¬ظˆط¹",
+        `سيتم تحديد ${filteredBookingIds.length} حجز مطابق للفلاتر الحالية، وليس الصفحة الحالية فقط.`,
+      confirmText: "تحديد الكل",
+      cancelText: "رجوع",
       tone: "warning",
     });
 
@@ -6597,7 +6597,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     setBulkError("");
 
     if (!selectedBookings.length) {
-      setBulkError("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط£ظٹ ط­ط¬ط².");
+      setBulkError("لم يتم تحديد أي حجز.");
       return;
     }
 
@@ -6607,7 +6607,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
     if (!eligible.length) {
       setBulkError(
-        `طھظ… طھط­ط¯ظٹط¯ ${selectedBookings.length} ط­ط¬ط²طŒ ظˆط¬ظ…ظٹط¹ظ‡ط§ ط­ط§ظ„طھظ‡ط§ ط¨ط§ظ„ظپط¹ظ„ ${statusLabel[nextStatus]}.`
+        `تم تحديد ${selectedBookings.length} حجز، وجميعها حالتها بالفعل ${statusLabel[nextStatus]}.`
       );
       return;
     }
@@ -6628,8 +6628,8 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (!bookingIds.length) {
       setBulkError(
         selectedBookings.length && bulkTargetStatus
-          ? `ط¬ظ…ظٹط¹ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…ط­ط¯ط¯ط© ط­ط§ظ„طھظ‡ط§ ط¨ط§ظ„ظپط¹ظ„ ${statusLabel[bulkTargetStatus]}.`
-          : "ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط£ظٹ ط­ط¬ط²."
+          ? `جميع الحجوزات المحددة حالتها بالفعل ${statusLabel[bulkTargetStatus]}.`
+          : "لم يتم تحديد أي حجز."
       );
       return;
     }
@@ -6642,7 +6642,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         bookingIds,
         status: bulkTargetStatus,
         filterSummary: filterSummaryText,
-        note: `طھط­ط¯ظٹط« ط¬ظ…ط§ط¹ظٹ ظ„ط­ط§ظ„ط© ط§ظ„ط­ط¬ظˆط²ط§طھ ط¥ظ„ظ‰ ${statusLabel[bulkTargetStatus]}`,
+        note: `تحديث جماعي لحالة الحجوزات إلى ${statusLabel[bulkTargetStatus]}`,
       });
 
       // BOOKING_BULK_COMPLETED_PAYMENT_V2
@@ -6680,7 +6680,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           : prev
       );
       setBulkResultMessage(
-        `طھظ… طھط­ط¯ظٹط« ${result.successCount} ط­ط¬ط². ظپط´ظ„ ${result.failedCount} ط­ط¬ط².`
+        `تم تحديث ${result.successCount} حجز. فشل ${result.failedCount} حجز.`
       );
       if (result.failedCount === 0) {
         setSelectedBookingIds((prev) => {
@@ -6693,7 +6693,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         setBulkError(result.failures.map((failure) => `${failure.bookingId}: ${failure.message}`).join(" | "));
       }
     } catch (e: any) {
-      setBulkError(String(e?.message || e || "طھط¹ط°ط± طھظ†ظپظٹط° ط§ظ„طھط­ط¯ظٹط« ط§ظ„ط¬ظ…ط§ط¹ظٹ."));
+      setBulkError(String(e?.message || e || "تعذر تنفيذ التحديث الجماعي."));
     } finally {
       setBulkSaving(false);
     }
@@ -6726,13 +6726,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
       );
       if (!popup || popup === window) {
-        setError("طھظ… ظ…ظ†ط¹ ظپطھط­ ظ†ط§ظپط°ط© ط§ظ„ظپط§طھظˆط±ط©. ظپط¹ظ‘ظ„ظٹ ط§ظ„ظ†ظˆط§ظپط° ط§ظ„ظ…ظ†ط¨ط«ظ‚ط© ظ„ظ„ظ…ظˆظ‚ط¹ ط«ظ… ط¬ط±ظ‘ط¨ظٹ ظ…ط±ط© ط£ط®ط±ظ‰.");
+        setError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم جرّبي مرة أخرى.");
         return;
       }
       popup.focus();
     } catch (e) {
       console.error("print booking invoice error:", e);
-      setError("طھط¹ط°ط± طھط¬ظ‡ظٹط² ط§ظ„ظپط§طھظˆط±ط© ظ„ظ„ط·ط¨ط§ط¹ط©.");
+      setError("تعذر تجهيز الفاتورة للطباعة.");
     } finally {
       window.setTimeout(() => {
         printInvoiceLockRef.current = false;
@@ -6753,10 +6753,10 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           <p>{t(section.description)}</p>
         </div>
         <div className="bk-bookings-section-meta">
-          <span className="bk-bookings-section-count">{section.rows.length} {t("ط­ط¬ط²")}</span>
+          <span className="bk-bookings-section-count">{section.rows.length} {t("حجز")}</span>
           {section.key === "normal" && section.temporaryInternalCount > 0 ? (
             <span className="bk-bookings-section-note">
-              {t("ظ…ظ†ظ‡ط§")} {section.temporaryInternalCount} {t("ط­ط¬ط² ط¯ط§ط®ظ„ظٹ ظ…ط³طھظ‚ط¨ظ„ظٹ ظ‚ط¨ظ„ ط§ظ„ط¯ظپط¹")}
+              {t("منها")} {section.temporaryInternalCount} {t("حجز داخلي مستقبلي قبل الدفع")}
             </span>
           ) : null}
         </div>
@@ -6783,15 +6783,15 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       onChange={() =>
                         toggleSectionSelection(section.rows)
                       }
-                      aria-label={`${t("طھط­ط¯ظٹط¯ ط­ط¬ظˆط²ط§طھ ظ‚ط³ظ…")} ${t(section.title)}`}
+                      aria-label={`${t("تحديد حجوزات قسم")} ${t(section.title)}`}
                     />
                   </th>
-                  <th>{t("ط§ظ„ط­ط¬ط²")}</th>
-                  <th>{t("ط§ظ„ط¹ظ…ظٹظ„ط©")}</th>
-                  <th>{t("ط§ظ„ط®ط¯ظ…ط© ظˆط§ظ„ظ…ظˆط¸ظپط©")}</th>
-                  <th>{t("ط§ظ„ظ…ظˆط¹ط¯")}</th>
-                  <th>{t("ط§ظ„طھط­طµظٹظ„")}</th>
-                  <th>{t("ط§ظ„ط¥ط¬ط±ط§ط،ط§طھ")}</th>
+                  <th>{t("الحجز")}</th>
+                  <th>{t("العميلة")}</th>
+                  <th>{t("الخدمة والموظفة")}</th>
+                  <th>{t("الموعد")}</th>
+                  <th>{t("التحصيل")}</th>
+                  <th>{t("الإجراءات")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -6802,9 +6802,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       <tr key={`${section.key}-group-${block.key}`} className="bookings-group-row">
                         <td colSpan={7}>
                           <div className="bookings-group-row-inner">
-                            <span className="bookings-group-title">{t("ط­ط¬ط² ظ…ط¬ظ…ظ‘ط¹")}</span>
+                            <span className="bookings-group-title">{t("حجز مجمّع")}</span>
                             <span className="bookings-group-meta">
-                              {t("ط§ظ„ظ…ط±ط¬ط¹")}: {block.label} â€¢ {block.rows.length} {t("ط®ط¯ظ…ط§طھ")}
+                              {t("المرجع")}: {block.label} • {block.rows.length} {t("خدمات")}
                             </span>
                           </div>
                         </td>
@@ -6835,16 +6835,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                             className="bk-select-checkbox"
                             checked={selectedBookingIds.has(String(b.id || "").trim())}
                             onChange={() => toggleBookingSelection(b.id)}
-                            aria-label={`${t("طھط­ط¯ظٹط¯ ط§ظ„ط­ط¬ط²")} ${bookingRef(b)}`}
+                            aria-label={`${t("تحديد الحجز")} ${bookingRef(b)}`}
                           />
                         </td>
                         <td>
                           <div className="bk-ref-cell">
                             <div className="bk-ref-title-row">
-                              <button type="button" className="bk-ref-code" onClick={() => setSelectedBooking(b)} title={t("ظپطھط­ طھظپط§طµظٹظ„ ط§ظ„ط­ط¬ط²")}>
+                              <button type="button" className="bk-ref-code" onClick={() => setSelectedBooking(b)} title={t("فتح تفاصيل الحجز")}>
                                 <bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi>
                               </button>
-                              {isNewBooking ? <span className="bk-new-row-badge">{t("ط¬ط¯ظٹط¯")}</span> : null}
+                              {isNewBooking ? <span className="bk-new-row-badge">{t("جديد")}</span> : null}
                             </div>
                             <div className="bk-ref-meta">
                               <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
@@ -6856,17 +6856,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                 </span>
                               ) : null}
                             </div>
-                            <small className="bk-row-update">{t("ط¢ط®ط± طھط­ط¯ظٹط«")}: {lastUpdateMap[b.id]?.at || "â€”"}</small>
+                            <small className="bk-row-update">{t("آخر تحديث")}: {lastUpdateMap[b.id]?.at || "—"}</small>
                           </div>
                         </td>
                         <td>
-                          <div className="bk-customer-name">{b.customerName || "â€”"}</div>
-                          <div className="bk-customer-phone"><bdi className="bk-numeric" dir="ltr">{b.phone || "â€”"}</bdi></div>
+                          <div className="bk-customer-name">{b.customerName || "—"}</div>
+                          <div className="bk-customer-phone"><bdi className="bk-numeric" dir="ltr">{b.phone || "—"}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
                           <div className="bk-service-meta">{serviceMetaSummaryForTable(b)}</div>
-                          <span className="bk-employee-pill">{b.employeeName || t("ط؛ظٹط± ظ…ط­ط¯ط¯ط©")}</span>
+                          <span className="bk-employee-pill">{b.employeeName || t("غير محددة")}</span>
                         </td>
                         <td>
                           <div className="bk-appointment-cell">
@@ -6877,7 +6877,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                         <td>
                           <div className="bk-payment-cell bk-payment-cell--compact">
                             <div className="bk-payment-total">
-                              <span className="bk-payment-total-label">{t("ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ")}</span>
+                              <span className="bk-payment-total-label">{t("الإجمالي")}</span>
                               <span className="bk-payment-total-value"><BookingMoney value={payment.totalAmount} language={language} /></span>
                             </div>
                             <div className="bk-payment-state-row">
@@ -6899,29 +6899,29 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                               ) : null}
                             </div>
                             <div className="bk-payment-inline-metrics">
-                              <span className="bk-payment-inline-paid">{t("ظ…ط¯ظپظˆط¹")}<b><BookingMoney value={payment.paidAmount} language={language} /></b></span>
-                              <span className="bk-payment-inline-remaining">{t("ظ…طھط¨ظ‚ظٹ")}<b><BookingMoney value={payment.remainingAmount} language={language} /></b></span>
+                              <span className="bk-payment-inline-paid">{t("مدفوع")}<b><BookingMoney value={payment.paidAmount} language={language} /></b></span>
+                              <span className="bk-payment-inline-remaining">{t("متبقي")}<b><BookingMoney value={payment.remainingAmount} language={language} /></b></span>
                             </div>
                           </div>
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
                             <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm bookings-v2-row-primary" onClick={() => setSelectedBooking(b)}>
-                              {t("ظپطھط­")}
+                              {t("فتح")}
                             </button>
                             <button
                               type="button"
                               className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bk-print-invoice-btn"
                               onClick={() => void handlePrintBookingInvoice(b)}
                               disabled={printInvoiceBusyId === b.id}
-                              title={t("ط·ط¨ط§ط¹ط© ط§ظ„ظپط§طھظˆط±ط©")}
+                              title={t("طباعة الفاتورة")}
                             >
                               <FontAwesomeIcon icon={faPrint} aria-hidden="true" />
-                              <span>{printInvoiceBusyId === b.id ? t("طھط¬ظ‡ظٹط²...") : t("ط·ط¨ط§ط¹ط©")}</span>
+                              <span>{printInvoiceBusyId === b.id ? t("تجهيز...") : t("طباعة")}</span>
                             </button>
                             {canEditBooking(b) ? (
                               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bookings-v2-row-edit" onClick={() => openEditBookingModal(b)}>
-                                {t("طھط¹ط¯ظٹظ„")}
+                                {t("تعديل")}
                               </button>
                             ) : null}
                             <button
@@ -6930,11 +6930,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                               onClick={() => openRefundModal(b)}
                               disabled={!canManageRefund(b) || refundBusyId === b.id}
                             >
-                              {refundMapByBookingId[String(b.id || "").trim()] ? t("ط§ظ„ط§ط³طھط±ط¬ط§ط¹") : t("ط§ط³طھط±ط¬ط§ط¹")}
+                              {refundMapByBookingId[String(b.id || "").trim()] ? t("الاسترجاع") : t("استرجاع")}
                             </button>
                             {(uiRole === "owner" || uiRole === "admin") ? (
                               <details className={`bk-status-menu bk-owner-status-${b.status}`}>
-                              <summary aria-label={`${t("طھط؛ظٹظٹط± ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²")} ${bookingRef(b)}`}>
+                              <summary aria-label={`${t("تغيير حالة الحجز")} ${bookingRef(b)}`}>
                                 {t(statusLabel[b.status])}
                               </summary>
                               <div className="bk-status-menu__panel" role="menu">
@@ -6960,15 +6960,15 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                 type="button"
                                 className="dsv2-btn dsv2-btn--danger dsv2-btn--sm bookings-v2-row-delete"
                                 onClick={() => handleDeleteBooking(b)}
-                                title={t("ط¥ط²ط§ظ„ط© ط§ظ„ط­ط¬ط² ظ…ظ† ط§ظ„ظ‚ط§ط¦ظ…ط© ظ…ط¹ ط­ظپط¸ ط§ظ„ط³ط¬ظ„ط§طھ ط§ظ„ظ…ط§ظ„ظٹط©")}
+                                title={t("إزالة الحجز من القائمة مع حفظ السجلات المالية")}
                               >
-                                {t("ط­ط°ظپ")}
+                                {t("حذف")}
                               </button>
                             ) : null}
                             {uiRole === "reception" && b.status === "pending" ? (
                               <>
-                                <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "confirmed")}>{t("طھط£ظƒظٹط¯")}</button>
-                                <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "cancelled")}>{t("ط¥ظ„ط؛ط§ط،")}</button>
+                                <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "confirmed")}>{t("تأكيد")}</button>
+                                <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "cancelled")}>{t("إلغاء")}</button>
                               </>
                             ) : null}
                           </div>
@@ -6988,8 +6988,8 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               <div key={`mob-${section.key}-${block.key}`} className="bk-mobile-group">
                 {block.rows.length > 1 ? (
                   <div className="bk-mobile-group-head">
-                    <span>{t("ط­ط¬ط² ظ…ط¬ظ…ظ‘ط¹")}</span>
-                    <span>{block.label} - {block.rows.length} {t("ط®ط¯ظ…ط§طھ")}</span>
+                    <span>{t("حجز مجمّع")}</span>
+                    <span>{block.label} - {block.rows.length} {t("خدمات")}</span>
                   </div>
                 ) : null}
                 {block.rows.map((b) => {
@@ -7015,54 +7015,54 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           checked={selectedBookingIds.has(String(b.id || "").trim())}
                           onChange={() => toggleBookingSelection(b.id)}
                         />
-                        <span>{t("طھط­ط¯ظٹط¯ ظ‡ط°ط§ ط§ظ„ط­ط¬ط²")}</span>
+                        <span>{t("تحديد هذا الحجز")}</span>
                       </label>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²:")}</span>
+                        <span className="bk-mobile-label">{t("رقم الحجز:")}</span>
                         <span className="bk-mobile-val bk-mobile-ref-value">
                           <bdi className="bk-numeric bk-font-strong" dir="ltr">{bookingRef(b)}</bdi>
-                          {isNewBooking ? <span className="bk-mobile-new-badge">{t("ط¬ط¯ظٹط¯")}</span> : null}
+                          {isNewBooking ? <span className="bk-mobile-new-badge">{t("جديد")}</span> : null}
                         </span>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ط¹ظ…ظٹظ„ط©:")}</span>
-                        <span className="bk-mobile-val">{b.customerName || "â€”"}</span>
+                        <span className="bk-mobile-label">{t("العميلة:")}</span>
+                        <span className="bk-mobile-val">{b.customerName || "—"}</span>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ط¬ظˆط§ظ„:")}</span>
-                        <bdi className="bk-mobile-val bk-numeric" dir="ltr">{b.phone || "â€”"}</bdi>
+                        <span className="bk-mobile-label">{t("الجوال:")}</span>
+                        <bdi className="bk-mobile-val bk-numeric" dir="ltr">{b.phone || "—"}</bdi>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ط®ط¯ظ…ط©:")}</span>
+                        <span className="bk-mobile-label">{t("الخدمة:")}</span>
                         <span className="bk-mobile-val">
                           {serviceSummaryForTable(b)}
                           <div className="bk-cell-meta">{serviceMetaSummaryForTable(b)}</div>
                         </span>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ظ…ظˆط¸ظپط©:")}</span>
-                        <span className="bk-mobile-val">{b.employeeName || "â€”"}</span>
+                        <span className="bk-mobile-label">{t("الموظفة:")}</span>
+                        <span className="bk-mobile-val">{b.employeeName || "—"}</span>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„طھط§ط±ظٹط®:")}</span>
+                        <span className="bk-mobile-label">{t("التاريخ:")}</span>
                         <bdi className="bk-mobile-val bk-mobile-date-val bk-numeric" dir="ltr">{b.date} {formatTime12(b.time)}</bdi>
                       </div>
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ط­ط§ظ„ط©:")}</span>
+                        <span className="bk-mobile-label">{t("الحالة:")}</span>
                         <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                           {t(statusLabel[safeStatus])}
                         </span>
                       </div>
                       {channelBadge ? (
                         <div className="bk-mobile-row">
-                          <span className="bk-mobile-label">{t("ظ†ظˆط¹ ط§ظ„ط­ط¬ط²:")}</span>
+                          <span className="bk-mobile-label">{t("نوع الحجز:")}</span>
                           <span className={`bk-channel-badge${isTemporaryInternal ? " is-temporary" : ""}`}>
                             {t(channelBadge)}
                           </span>
                         </div>
                       ) : null}
                       <div className="bk-mobile-row">
-                        <span className="bk-mobile-label">{t("ط§ظ„ط¯ظپط¹:")}</span>
+                        <span className="bk-mobile-label">{t("الدفع:")}</span>
                         <div className="bk-mobile-val bk-mobile-payment-val">
                           <strong>{t(paymentStatusLabel(payment))}</strong>
                           <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
@@ -7081,7 +7081,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                         </div>
                       </div>
                       <div className="bk-mobile-actions">
-                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => setSelectedBooking(b)}>{t("طھظپط§طµظٹظ„")}</button>
+                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => setSelectedBooking(b)}>{t("تفاصيل")}</button>
                         <button
                           type="button"
                           className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100 bk-print-invoice-btn"
@@ -7089,11 +7089,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           disabled={printInvoiceBusyId === b.id}
                         >
                           <FontAwesomeIcon icon={faPrint} />
-                          {printInvoiceBusyId === b.id ? t("ط¬ط§ط±ظٹ طھط¬ظ‡ظٹط² ط§ظ„ظپط§طھظˆط±ط©...") : t("ط·ط¨ط§ط¹ط© ط§ظ„ظپط§طھظˆط±ط©")}
+                          {printInvoiceBusyId === b.id ? t("جاري تجهيز الفاتورة...") : t("طباعة الفاتورة")}
                         </button>
                         {canEditBooking(b) && (
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => openEditBookingModal(b)}>
-                            {t("طھط¹ط¯ظٹظ„")}
+                            {t("تعديل")}
                           </button>
                         )}
                         <button
@@ -7102,13 +7102,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           onClick={() => openRefundModal(b)}
                           disabled={!canManageRefund(b) || refundBusyId === b.id}
                         >
-                          {refundMapByBookingId[String(b.id || "").trim()] ? t("ط§ظ„ط§ط³طھط±ط¬ط§ط¹ ظ…ط³ط¬ظ„") : t("ط§ط³طھط±ط¬ط§ط¹")}
+                          {refundMapByBookingId[String(b.id || "").trim()] ? t("الاسترجاع مسجل") : t("استرجاع")}
                         </button>
                         {(uiRole === "owner" || uiRole === "admin") && (
                           <>
                             {uiRole === "owner" && (
                               <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm w-100" onClick={() => handleDeleteBooking(b)}>
-                                {t("ط­ط°ظپ ط§ظ„ط­ط¬ط²")}
+                                {t("حذف الحجز")}
                               </button>
                             )}
                             <details className={`bk-status-menu bk-status-menu--mobile bk-owner-status-${b.status}`}>
@@ -7137,10 +7137,10 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                         {uiRole === "reception" && b.status === "pending" && (
                           <>
                             <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
-                              {t("طھط£ظƒظٹط¯")}
+                              {t("تأكيد")}
                             </button>
                             <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
-                              {t("ط¥ظ„ط؛ط§ط،")}
+                              {t("إلغاء")}
                             </button>
                           </>
                         )}
@@ -7160,17 +7160,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
             </span>
             <strong>
               {hasActiveBookingFilters
-                ? t("ظ„ط§ طھظˆط¬ط¯ ظ†طھط§ط¦ط¬ ظ…ط·ط§ط¨ظ‚ط©")
-                : `${t("ظ„ط§ طھظˆط¬ط¯")} ${t(section.key === "internal" ? "ط­ط¬ظˆط²ط§طھ ط¯ط§ط®ظ„ظٹط©" : "ط­ط¬ظˆط²ط§طھ ط¹ط§ط¯ظٹط©")} ${t("ط­ط§ظ„ظٹط§ظ‹")}`}
+                ? t("لا توجد نتائج مطابقة")
+                : `${t("لا توجد")} ${t(section.key === "internal" ? "حجوزات داخلية" : "حجوزات عادية")} ${t("حالياً")}`}
             </strong>
             <p>
               {hasActiveBookingFilters
-                ? t("ط؛ظٹظ‘ط± ط§ظ„ط¨ط­ط« ط£ظˆ ط§ظ„ظپظ„ط§طھط± ط§ظ„ط­ط§ظ„ظٹط© ظ„ط¹ط±ط¶ ط­ط¬ظˆط²ط§طھ ظ‡ط°ط§ ط§ظ„ظ‚ط³ظ….")
-                : t("ط¹ظ†ط¯ ط¥ط¶ط§ظپط© ط­ط¬ظˆط²ط§طھ ظ„ظ‡ط°ط§ ط§ظ„ظ‚ط³ظ… ط³طھط¸ظ‡ط± ظ‡ظ†ط§ ظ…ط¨ط§ط´ط±ط©.")}
+                ? t("غيّر البحث أو الفلاتر الحالية لعرض حجوزات هذا القسم.")
+                : t("عند إضافة حجوزات لهذا القسم ستظهر هنا مباشرة.")}
             </p>
             {hasActiveBookingFilters ? (
               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={resetBookingFilters}>
-                <FontAwesomeIcon icon={faRotate} /> {t("ط¥ط¹ط§ط¯ط© ط¶ط¨ط· ط§ظ„ظپظ„ط§طھط±")}
+                <FontAwesomeIcon icon={faRotate} /> {t("إعادة ضبط الفلاتر")}
               </button>
             ) : null}
           </div>
@@ -7230,8 +7230,8 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     return (
       <main className="dsv2-page bookings-v2-page" dir={language === "en" ? "ltr" : "rtl"}>
         <section className="dsv2-card dsv2-card--padded bookings-v2-loading" role="status">
-          <strong>{t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ...")}</strong>
-          <span>{t("ظٹطھظ… طھط¬ظ‡ظٹط² ظ‚ط§ط¦ظ…ط© ط§ظ„ط­ط¬ظˆط²ط§طھ ظˆط§ظ„ط­ط§ظ„ط§طھ ط§ظ„ظ…ط§ظ„ظٹط©.")}</span>
+          <strong>{t("جاري تحميل الحجوزات...")}</strong>
+          <span>{t("يتم تجهيز قائمة الحجوزات والحالات المالية.")}</span>
         </section>
       </main>
     );
@@ -7242,18 +7242,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       <div className="bookings-v2-layout">
         <header className="dsv2-card dsv2-card--padded dsv2-card--elevated bookings-v2-hero">
           <div className="bookings-v2-hero__content">
-            <span className="dsv2-badge dsv2-badge--gold">{t("طھط´ط؛ظٹظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ")}</span>
-            <h1 id="bookings-v2-title" className="dsv2-page-title">{t("ظ…ط±ظƒط² ط¥ط¯ط§ط±ط© ط§ظ„ط­ط¬ظˆط²ط§طھ")}</h1>
-            <p className="dsv2-page-subtitle">{t("ظˆط§ط¬ظ‡ط© طھط´ط؛ظٹظ„ ظ…ظˆط­ط¯ط© ظ„ظ…طھط§ط¨ط¹ط© ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¬ط¯ظٹط¯ط©طŒ ط§ظ„ظ…ظˆط§ط¹ظٹط¯طŒ ط§ظ„طھط­طµظٹظ„طŒ ظˆط§ظ„ط¥ط¬ط±ط§ط،ط§طھ ط§ظ„ظٹظˆظ…ظٹط©.")}</p>
+            <span className="dsv2-badge dsv2-badge--gold">{t("تشغيل الحجوزات")}</span>
+            <h1 id="bookings-v2-title" className="dsv2-page-title">{t("مركز إدارة الحجوزات")}</h1>
+            <p className="dsv2-page-subtitle">{t("واجهة تشغيل موحدة لمتابعة الحجوزات الجديدة، المواعيد، التحصيل، والإجراءات اليومية.")}</p>
           </div>
           <div className="bookings-v2-hero__actions">
             <Link to="/dashboard/booking-internal" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm">
               <FontAwesomeIcon icon={faPlus} />
-              {t("ط¥ظ†ط´ط§ط، ط­ط¬ط² ط¬ط¯ظٹط¯")}
+              {t("إنشاء حجز جديد")}
             </Link>
             <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={refreshBookingData}>
               <FontAwesomeIcon icon={faRotate} />
-              {t("طھط­ط¯ظٹط«")}
+              {t("تحديث")}
             </button>
             
           </div>
@@ -7261,26 +7261,26 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
         {error ? <div className="bookings-v2-error" role="alert">{error}</div> : null}
 
-        <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label={t("ظ…ظ„ط®طµ ط¹ظ…ظ„ظٹط§طھ ط§ظ„ط­ط¬ظˆط²ط§طھ")}>
+        <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label={t("ملخص عمليات الحجوزات")}>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
-            <div><small className="dsv2-metric-card__label">{t("ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ…")}</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayCount}</strong><em className="dsv2-metric-card__meta">{bookingOperationsOverview.today}</em></div>
+            <div><small className="dsv2-metric-card__label">{t("حجوزات اليوم")}</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayCount}</strong><em className="dsv2-metric-card__meta">{bookingOperationsOverview.today}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--success bookings-v2-metric">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
-            <div><small className="dsv2-metric-card__label">{t("ط§ظ„ظ…ط¤ظƒط¯ ظˆط§ظ„ظ…ظƒطھظ…ظ„ ط§ظ„ظٹظˆظ…")}</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em className="dsv2-metric-card__meta">{t("ظ…ط¤ظƒط¯")} {bookingOperationsOverview.todayConfirmed} â€¢ {t("ظ…ظƒطھظ…ظ„")} {bookingOperationsOverview.todayCompleted}</em></div>
+            <div><small className="dsv2-metric-card__label">{t("المؤكد والمكتمل اليوم")}</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em className="dsv2-metric-card__meta">{t("مؤكد")} {bookingOperationsOverview.todayConfirmed} • {t("مكتمل")} {bookingOperationsOverview.todayCompleted}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark bookings-v2-metric">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
-            <div><small className="dsv2-metric-card__label">{t("ط§ظ„ظ…ط­طµظ‘ظ„ ط§ظ„ظٹظˆظ…")}</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} language={language} /></strong><em className="dsv2-metric-card__meta">{t("ط­ط³ط¨ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…ط­ظ…ظ‘ظ„ط©")}</em></div>
+            <div><small className="dsv2-metric-card__label">{t("المحصّل اليوم")}</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} language={language} /></strong><em className="dsv2-metric-card__meta">{t("حسب الحجوزات المحمّلة")}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--danger bookings-v2-metric bookings-v2-metric--alert">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
-            <div><small className="dsv2-metric-card__label">{t("طھط­طھط§ط¬ ظ…طھط§ط¨ط¹ط©")}</small><strong className="dsv2-metric-card__value">{attentionBookingCount}</strong><em className="dsv2-metric-card__meta">{t("ط­ط¬ظˆط²ط§طھ ظ‚ط¯ظٹظ…ط© ط£ظˆ ط؛ظٹط± ظ…ط؛ظ„ظ‚ط©")}</em></div>
+            <div><small className="dsv2-metric-card__label">{t("تحتاج متابعة")}</small><strong className="dsv2-metric-card__value">{attentionBookingCount}</strong><em className="dsv2-metric-card__meta">{t("حجوزات قديمة أو غير مغلقة")}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
-            <div><small className="dsv2-metric-card__label">{t("ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…طھط¨ظ‚ظٹ")}</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} language={language} /></strong><em className="dsv2-metric-card__meta">{t("ط¹ظ„ظ‰ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…ظپطھظˆط­ط© ظپظ‚ط·")}</em></div>
+            <div><small className="dsv2-metric-card__label">{t("إجمالي المتبقي")}</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} language={language} /></strong><em className="dsv2-metric-card__meta">{t("على الحجوزات المفتوحة فقط")}</em></div>
           </article>
         </section>
 
@@ -7288,9 +7288,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           <article className="dsv2-card dsv2-card--padded bookings-v2-panel bookings-v2-panel--new-queue">
             <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
-                <span className="bk-panel-kicker">{t("ط§ظ„ظˆط§ط±ط¯ ط§ظ„ط¬ط¯ظٹط¯")}</span>
-                <h2 className="dsv2-section-title">{t("ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¬ط¯ظٹط¯ط©")}</h2>
-                <p className="dsv2-section-caption">{t("ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ… ظˆط§ظ„ظ…ظˆط§ط¹ظٹط¯ ط§ظ„ظ‚ط§ط¯ظ…ط©طŒ ظ…ط±طھط¨ط© ط­ط³ط¨ ط£ظ‚ط±ط¨ ظ…ظˆط¹ط¯.")}</p>
+                <span className="bk-panel-kicker">{t("الوارد الجديد")}</span>
+                <h2 className="dsv2-section-title">{t("الحجوزات الجديدة")}</h2>
+                <p className="dsv2-section-caption">{t("حجوزات اليوم والمواعيد القادمة، مرتبة حسب أقرب موعد.")}</p>
               </div>
               <span className="bk-panel-count">{unseenNewBookings.length}</span>
             </div>
@@ -7304,8 +7304,8 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       <small>{booking.date}</small>
                     </span>
                     <span className="bookings-v2-queue-copy">
-                      <strong>{booking.customerName || t("ط¹ظ…ظٹظ„ط© ط؛ظٹط± ظ…ط¹ط±ظˆظپط©")}</strong>
-                      <small>{serviceSummaryForTable(booking)} â€¢ {booking.employeeName || t("ط¨ط¯ظˆظ† ظ…ظˆط¸ظپط©")}</small>
+                      <strong>{booking.customerName || t("عميلة غير معروفة")}</strong>
+                      <small>{serviceSummaryForTable(booking)} • {booking.employeeName || t("بدون موظفة")}</small>
                     </span>
                     <span className="bookings-v2-queue-ref"><bdi dir="ltr">{bookingRef(booking)}</bdi></span>
                   </button>
@@ -7314,39 +7314,39 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
             ) : (
               <div className="bookings-v2-empty-state">
                 <FontAwesomeIcon icon={faCheckCircle} />
-                <strong>{t("ظ„ط§ طھظˆط¬ط¯ ط­ط¬ظˆط²ط§طھ ظ‚ط§ط¯ظ…ط©")}</strong>
-                <span>{t("ط³طھط¸ظ‡ط± ظ‡ظ†ط§ ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ… ظˆط§ظ„ظ…ظˆط§ط¹ظٹط¯ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹط© ظ…ط¨ط§ط´ط±ط©.")}</span>
+                <strong>{t("لا توجد حجوزات قادمة")}</strong>
+                <span>{t("ستظهر هنا حجوزات اليوم والمواعيد المستقبلية مباشرة.")}</span>
               </div>
             )}
 
             <div className="bookings-v2-panel-actions">
-              <button type="button" onClick={() => { resetBookingFilters(); setSortOrder("newest"); }} disabled={!unseenNewBookings.length}>{t("ط¹ط±ط¶ ط§ظ„ط£ط­ط¯ط« ظپظٹ ط§ظ„ظ‚ط§ط¦ظ…ط©")}</button>
-              <button type="button" onClick={markNewBookingsSeen} disabled={!unseenNewBookings.length}>{t("طھط­ط¯ظٹط¯ ط§ظ„ظƒظ„ ظƒظ…ظڈط·ظ‘ظ„ط¹ ط¹ظ„ظٹظ‡")}</button>
+              <button type="button" onClick={() => { resetBookingFilters(); setSortOrder("newest"); }} disabled={!unseenNewBookings.length}>{t("عرض الأحدث في القائمة")}</button>
+              <button type="button" onClick={markNewBookingsSeen} disabled={!unseenNewBookings.length}>{t("تحديد الكل كمُطّلع عليه")}</button>
             </div>
           </article>
 
           <article className="dsv2-card dsv2-card--padded bookings-v2-panel bookings-v2-panel--attention">
             <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
-                <span className="bk-panel-kicker">{t("ظ…ط±ظƒط² ط§ظ„ظ…طھط§ط¨ط¹ط©")}</span>
-                <h2 className="dsv2-section-title">{t("ط­ط¬ظˆط²ط§طھ طھط­طھط§ط¬ ط¥ط¬ط±ط§ط،")}</h2>
-                <p className="dsv2-section-caption">{t("ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ…طھط£ط®ط±ط© ط£ظˆ ط§ظ„طھظٹ ط¨ظ‚ظٹطھ ط¨ط­ط§ظ„ط© ظ…ظپطھظˆط­ط©.")}</p>
+                <span className="bk-panel-kicker">{t("مركز المتابعة")}</span>
+                <h2 className="dsv2-section-title">{t("حجوزات تحتاج إجراء")}</h2>
+                <p className="dsv2-section-caption">{t("الحجوزات المتأخرة أو التي بقيت بحالة مفتوحة.")}</p>
               </div>
               <span className="bk-panel-count is-warning">{attentionBookingCount}</span>
             </div>
 
             <div className="bookings-v2-attention-stats">
               <button type="button" onClick={() => { setStatusFilter("pending"); setOldPendingFilter("before_today"); }}>
-                <span>{t("ظ‚ط¯ظٹظ… ط¨ط§ظ„ط§ظ†طھط¸ط§ط±")}</span><strong>{stalePendingCount}</strong>
+                <span>{t("قديم بالانتظار")}</span><strong>{stalePendingCount}</strong>
               </button>
               <button type="button" onClick={() => { setStatusFilter("confirmed"); setOldPendingFilter("off"); setDatePreset("custom"); setDateFrom(""); setDateTo(shiftISODate(todayISOLocal(), -1)); }}>
-                <span>{t("ظ‚ط¯ظٹظ… ظˆظ…ط¤ظƒط¯")}</span><strong>{staleConfirmedCount}</strong>
+                <span>{t("قديم ومؤكد")}</span><strong>{staleConfirmedCount}</strong>
               </button>
               <button type="button" onClick={() => { setStatusFilter("pending"); setSettlementFilter("partial"); }}>
-                <span>{t("ط¹ط±ط¨ظˆظ† ط؛ظٹط± ظ…ط؛ظ„ظ‚")}</span><strong>{expiredPendingDayDepositBookings.length}</strong>
+                <span>{t("عربون غير مغلق")}</span><strong>{expiredPendingDayDepositBookings.length}</strong>
               </button>
               <button type="button" onClick={() => { setStatusFilter("pending"); setSettlementFilter("unpaid"); }}>
-                <span>{t("ط¨ط¯ظˆظ† ط¯ظپط¹")}</span><strong>{expiredPendingDayNoPaymentBookings.length}</strong>
+                <span>{t("بدون دفع")}</span><strong>{expiredPendingDayNoPaymentBookings.length}</strong>
               </button>
             </div>
 
@@ -7355,7 +7355,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 {stalePreviewBookings.slice(0, 4).map((booking) => (
                   <button key={`attention_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
                     <span className={`status-badge ${booking.status}`}>{t(statusLabel[booking.status])}</span>
-                    <span><strong>{booking.customerName || "â€”"}</strong><small>{booking.date} â€¢ {formatTime12(booking.time)}</small></span>
+                    <span><strong>{booking.customerName || "—"}</strong><small>{booking.date} • {formatTime12(booking.time)}</small></span>
                     <bdi dir="ltr">{bookingRef(booking)}</bdi>
                   </button>
                 ))}
@@ -7363,16 +7363,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
             ) : (
               <div className="bookings-v2-empty-state is-compact">
                 <FontAwesomeIcon icon={faCheckCircle} />
-                <strong>{t("ظ„ط§ طھظˆط¬ط¯ ط­ط¬ظˆط²ط§طھ ظ…طھط£ط®ط±ط©")}</strong>
+                <strong>{t("لا توجد حجوزات متأخرة")}</strong>
               </div>
             )}
           </article>
         </section>
 
-        <section className="dsv2-card dsv2-card--padded bookings-v2-command" aria-label={t("ط§ظ„ط¨ط­ط« ظˆط§ظ„ظپظ„ط§طھط±")}>
+        <section className="dsv2-card dsv2-card--padded bookings-v2-command" aria-label={t("البحث والفلاتر")}>
           <div className="dsv2-section-head bookings-v2-command__head">
-            <div><span className="dsv2-badge dsv2-badge--gold">{t("ظ…ط³ط§ط­ط© ط§ظ„ط¹ظ…ظ„")}</span><h2 className="dsv2-section-title">{t("ط§ظ„ط¨ط­ط« ظˆط¥ط¯ط§ط±ط© ط§ظ„ظ‚ط§ط¦ظ…ط©")}</h2></div>
-            <div className="bk-command-result"><strong>{filteredSorted.length}</strong><span>{t("ظ†طھظٹط¬ط© ظ…ط·ط§ط¨ظ‚ط©")}</span></div>
+            <div><span className="dsv2-badge dsv2-badge--gold">{t("مساحة العمل")}</span><h2 className="dsv2-section-title">{t("البحث وإدارة القائمة")}</h2></div>
+            <div className="bk-command-result"><strong>{filteredSorted.length}</strong><span>{t("نتيجة مطابقة")}</span></div>
           </div>
 
           <div className="bk-command-primary-row">
@@ -7391,9 +7391,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 autoCapitalize="none"
                 inputMode="search"
                 enterKeyHint="search"
-                aria-label={t("ط¨ط­ط« ط§ظ„ط­ط¬ظˆط²ط§طھ")}
+                aria-label={t("بحث الحجوزات")}
                 readOnly={!bookingSearchFocused}
-                placeholder={t("ط§ط¨ط­ط«ظٹ ط¨ط§ظ„ط§ط³ظ…طŒ ط§ظ„ط¬ظˆط§ظ„طŒ ط±ظ‚ظ… ط§ظ„ط­ط¬ط²طŒ ط§ظ„ط®ط¯ظ…ط© ط£ظˆ ط§ظ„ظ…ظˆط¸ظپط©...")}
+                placeholder={t("ابحثي بالاسم، الجوال، رقم الحجز، الخدمة أو الموظفة...")}
                 value={q}
                 onFocus={(event) => {
                   setBookingSearchFocused(true);
@@ -7414,24 +7414,24 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   setQ(next);
                 }}
               />
-              {q ? <button type="button" onClick={() => setQ("")} aria-label={t("ظ…ط³ط­ ط§ظ„ط¨ط­ط«")}><FontAwesomeIcon icon={faXmark} /></button> : null}
+              {q ? <button type="button" onClick={() => setQ("")} aria-label={t("مسح البحث")}><FontAwesomeIcon icon={faXmark} /></button> : null}
             </label>
 
             
             <BookingSelectField
                 language={language}
-              label={t("ط§ظ„ظپطھط±ط©")}
+              label={t("الفترة")}
               value={datePreset}
               options={[
-                { value: "all", label: t("ظƒظ„ ط§ظ„ط­ط¬ظˆط²ط§طھ") },
-                { value: "today", label: t("ط§ظ„ظٹظˆظ…") },
-                { value: "yesterday", label: t("ط£ظ…ط³") },
-                { value: "week", label: t("ظ‡ط°ط§ ط§ظ„ط£ط³ط¨ظˆط¹") },
-                { value: "month", label: t("ظ‡ط°ط§ ط§ظ„ط´ظ‡ط±") },
-                { value: "last_month", label: t("ط§ظ„ط´ظ‡ط± ط§ظ„ظ…ط§ط¶ظٹ") },
-                { value: "custom", label: t("ظ†ط·ط§ظ‚ ظ…ط®طµطµ") },
+                { value: "all", label: t("كل الحجوزات") },
+                { value: "today", label: t("اليوم") },
+                { value: "yesterday", label: t("أمس") },
+                { value: "week", label: t("هذا الأسبوع") },
+                { value: "month", label: t("هذا الشهر") },
+                { value: "last_month", label: t("الشهر الماضي") },
+                { value: "custom", label: t("نطاق مخصص") },
               ]}
-              placeholder={t("ط§ط®طھط§ط±ظٹ ط§ظ„ظپطھط±ط©")}
+              placeholder={t("اختاري الفترة")}
               onChange={(value) => {
                 const next =
                   value as DatePresetOption;
@@ -7446,23 +7446,23 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
             <button type="button" className={`bk-advanced-toggle ${advancedFiltersOpen ? "is-open" : ""}`} onClick={() => setAdvancedFiltersOpen((open) => !open)}>
               <FontAwesomeIcon icon={faFilter} />
-              {t("ظپظ„ط§طھط± ظ…طھظ‚ط¯ظ…ط©")}
+              {t("فلاتر متقدمة")}
               {activeFilterCount ? <span>{activeFilterCount}</span> : null}
               <FontAwesomeIcon icon={advancedFiltersOpen ? faChevronUp : faChevronDown} />
             </button>
 
             <button type="button" className="bk-clear-filters" onClick={resetBookingFilters} disabled={!hasActiveBookingFilters}>
-              {t("ظ…ط³ط­ ط§ظ„ظپظ„ط§طھط±")}
+              {t("مسح الفلاتر")}
             </button>
           </div>
 
-          <div className="bk-status-tabs" role="tablist" aria-label={t("ظپظ„طھط±ط© ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²")}>
+          <div className="bk-status-tabs" role="tablist" aria-label={t("فلترة حالة الحجز")}>
             {([
-              ["all", "ط§ظ„ظƒظ„", statusTabCounts.all],
-              ["pending", "ط¨ط§ظ„ط§ظ†طھط¸ط§ط±", statusTabCounts.pending],
-              ["confirmed", "ظ…ط¤ظƒط¯", statusTabCounts.confirmed],
-              ["completed", "ظ…ظƒطھظ…ظ„", statusTabCounts.completed],
-              ["cancelled", "ظ…ظ„ط؛ظٹ", statusTabCounts.cancelled],
+              ["all", "الكل", statusTabCounts.all],
+              ["pending", "بالانتظار", statusTabCounts.pending],
+              ["confirmed", "مؤكد", statusTabCounts.confirmed],
+              ["completed", "مكتمل", statusTabCounts.completed],
+              ["cancelled", "ملغي", statusTabCounts.cancelled],
             ] as Array<[StatusOption, string, number]>).map(([status, label, count]) => (
               <button key={status} type="button" className={`bk-status-tab ${statusFilter === status ? "is-active" : ""}`} onClick={() => setStatusFilter(status)}>
                 {t(label)}<span>{count}</span>
@@ -7476,7 +7476,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingFilterDateField
                 language={language}
-                label={t("ظ…ظ† طھط§ط±ظٹط®")}
+                label={t("من تاريخ")}
                 value={dateFrom}
                 onChange={(value) => {
                   setDatePreset("custom");
@@ -7486,7 +7486,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingFilterDateField
                 language={language}
-                label={t("ط¥ظ„ظ‰ طھط§ط±ظٹط®")}
+                label={t("إلى تاريخ")}
                 value={dateTo}
                 onChange={(value) => {
                   setDatePreset("custom");
@@ -7496,21 +7496,21 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط§ط³طھط«ظ†ط§ط، ط­ط§ظ„ط©")}
+                label={t("استثناء حالة")}
                 value={excludedStatus}
                 options={[
                   {
                     value: "",
-                    label: t("ط¨ط¯ظˆظ† ط§ط³طھط«ظ†ط§ط،"),
+                    label: t("بدون استثناء"),
                   },
                   ...allStatusOptions.map((status) => ({
                     value: status,
                     label:
-                      t("ط§ط³طھط«ظ†ط§ط،: ") +
+                      t("استثناء: ") +
                       t(statusLabel[status]),
                   })),
                 ]}
-                placeholder={t("ط¨ط¯ظˆظ† ط§ط³طھط«ظ†ط§ط،")}
+                placeholder={t("بدون استثناء")}
                 disabled={statusFilter !== "all"}
                 onChange={(value) =>
                   setExcludedStatus(
@@ -7521,24 +7521,24 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط­ط§ظ„ط© ط§ظ„ط³ط¯ط§ط¯")}
+                label={t("حالة السداد")}
                 value={settlementFilter}
                 options={[
-                  { value: "all", label: t("ط§ظ„ظƒظ„") },
+                  { value: "all", label: t("الكل") },
                   {
                     value: "paid",
-                    label: t("ظ…ط¯ظپظˆط¹ ط¨ط§ظ„ظƒط§ظ…ظ„"),
+                    label: t("مدفوع بالكامل"),
                   },
                   {
                     value: "partial",
-                    label: t("ظ…ط¯ظپظˆط¹ ط¬ط²ط¦ظٹظ‹ط§"),
+                    label: t("مدفوع جزئيًا"),
                   },
                   {
                     value: "unpaid",
-                    label: t("ط؛ظٹط± ظ…ط¯ظپظˆط¹"),
+                    label: t("غير مدفوع"),
                   },
                 ]}
-                placeholder={t("ظƒظ„ ط­ط§ظ„ط§طھ ط§ظ„ط³ط¯ط§ط¯")}
+                placeholder={t("كل حالات السداد")}
                 onChange={(value) =>
                   setSettlementFilter(
                     value as SettlementFilterOption
@@ -7548,30 +7548,30 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}
+                label={t("طريقة الدفع")}
                 value={paymentMethodFilter}
                 options={[
                   {
                     value: "all",
-                    label: t("ظƒظ„ ط§ظ„ط·ط±ظ‚"),
+                    label: t("كل الطرق"),
                   },
-                  { value: "cash", label: t("ظƒط§ط´") },
-                  { value: "card", label: t("ط´ط¨ظƒط©") },
+                  { value: "cash", label: t("كاش") },
+                  { value: "card", label: t("شبكة") },
                   {
                     value: "transfer",
-                    label: t("طھط­ظˆظٹظ„"),
+                    label: t("تحويل"),
                   },
                   {
                     value: "mixed",
-                    label: t("ط¯ظپط¹ ظ…ط®طھظ„ط·"),
+                    label: t("دفع مختلط"),
                   },
-                  { value: "other", label: t("ط£ط®ط±ظ‰") },
+                  { value: "other", label: t("أخرى") },
                   {
                     value: "none",
-                    label: t("ط¨ط¯ظˆظ† ط¯ظپط¹"),
+                    label: t("بدون دفع"),
                   },
                 ]}
-                placeholder={t("ظƒظ„ ط·ط±ظ‚ ط§ظ„ط¯ظپط¹")}
+                placeholder={t("كل طرق الدفع")}
                 onChange={(value) =>
                   setPaymentMethodFilter(
                     value as PaymentMethodFilterOption
@@ -7581,12 +7581,12 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط§ظ„ظ…ظˆط¸ظپط©")}
+                label={t("الموظفة")}
                 value={employeeFilter}
                 options={[
                   {
                     value: "all",
-                    label: t("ظƒظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ"),
+                    label: t("كل الموظفات"),
                   },
                   ...employeeFilterOptions.map(
                     ([value, label]) => ({
@@ -7595,18 +7595,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     })
                   ),
                 ]}
-                placeholder={t("ظƒظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ")}
+                placeholder={t("كل الموظفات")}
                 onChange={setEmployeeFilter}
               />
 
               <BookingSelectField
                 language={language}
-                label={t("ط§ظ„ط®ط¯ظ…ط©")}
+                label={t("الخدمة")}
                 value={serviceFilter}
                 options={[
                   {
                     value: "all",
-                    label: t("ظƒظ„ ط§ظ„ط®ط¯ظ…ط§طھ"),
+                    label: t("كل الخدمات"),
                   },
                   ...serviceFilterOptions.map(
                     ([value, label]) => ({
@@ -7615,37 +7615,37 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     })
                   ),
                 ]}
-                placeholder={t("ظƒظ„ ط§ظ„ط®ط¯ظ…ط§طھ")}
+                placeholder={t("كل الخدمات")}
                 onChange={setServiceFilter}
               />
 
               <BookingSelectField
                 language={language}
-                label={t("ظ…طµط¯ط± ط§ظ„ط­ط¬ط²")}
+                label={t("مصدر الحجز")}
                 value={sourceFilter}
                 options={[
                   {
                     value: "all",
-                    label: t("ظƒظ„ ط§ظ„ظ…طµط§ط¯ط±"),
+                    label: t("كل المصادر"),
                   },
                   {
                     value: "client",
-                    label: t("ظ…ظˆظ‚ط¹ ط§ظ„ط¹ظ…ظٹظ„ط§طھ"),
+                    label: t("موقع العميلات"),
                   },
                   {
                     value: "dashboard",
-                    label: t("ط§ظ„ط¯ط§ط´ط¨ظˆط±ط¯"),
+                    label: t("الداشبورد"),
                   },
                   {
                     value: "internal",
-                    label: t("ط§ظ„ط­ط¬ط² ط§ظ„ط¯ط§ط®ظ„ظٹ"),
+                    label: t("الحجز الداخلي"),
                   },
                   {
                     value: "unknown",
-                    label: t("ط؛ظٹط± ظ…ط­ط¯ط¯"),
+                    label: t("غير محدد"),
                   },
                 ]}
-                placeholder={t("ظƒظ„ ط§ظ„ظ…طµط§ط¯ط±")}
+                placeholder={t("كل المصادر")}
                 onChange={(value) =>
                   setSourceFilter(
                     value as BookingSourceFilterOption
@@ -7655,19 +7655,19 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط§ظ„طھط±طھظٹط¨")}
+                label={t("الترتيب")}
                 value={sortOrder}
                 options={[
                   {
                     value: "newest",
-                    label: t("ط§ظ„ط£ط­ط¯ط« ط£ظˆظ„ظ‹ط§"),
+                    label: t("الأحدث أولًا"),
                   },
                   {
                     value: "oldest",
-                    label: t("ط§ظ„ط£ظ‚ط¯ظ… ط£ظˆظ„ظ‹ط§"),
+                    label: t("الأقدم أولًا"),
                   },
                 ]}
-                placeholder={t("ط§ط®طھط§ط±ظٹ ط§ظ„طھط±طھظٹط¨")}
+                placeholder={t("اختاري الترتيب")}
                 onChange={(value) =>
                   setSortOrder(
                     value as SortOrderOption
@@ -7677,31 +7677,31 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <BookingSelectField
                 language={language}
-                label={t("ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط©")}
+                label={t("الحجوزات القديمة")}
                 value={oldPendingFilter}
                 options={[
                   {
                     value: "off",
-                    label: t("ط¨ط¯ظˆظ† ظپظ„طھط±"),
+                    label: t("بدون فلتر"),
                   },
                   {
                     value: "before_today",
-                    label: t("ط§ظ„ط£ظ‚ط¯ظ… ظ…ظ† ط§ظ„ظٹظˆظ…"),
+                    label: t("الأقدم من اليوم"),
                   },
                   {
                     value: "older_7",
-                    label: t("ط§ظ„ط£ظ‚ط¯ظ… ظ…ظ† 7 ط£ظٹط§ظ…"),
+                    label: t("الأقدم من 7 أيام"),
                   },
                   {
                     value: "older_30",
-                    label: t("ط§ظ„ط£ظ‚ط¯ظ… ظ…ظ† 30 ظٹظˆظ…ظ‹ط§"),
+                    label: t("الأقدم من 30 يومًا"),
                   },
                   {
                     value: "custom",
-                    label: t("ظ†ط·ط§ظ‚ ظ…ط®طµطµ"),
+                    label: t("نطاق مخصص"),
                   },
                 ]}
-                placeholder={t("ط¨ط¯ظˆظ† ظپظ„طھط±")}
+                placeholder={t("بدون فلتر")}
                 onChange={(value) =>
                   setOldPendingFilter(
                     value as OldPendingFilterOption
@@ -7713,14 +7713,14 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <>
                   <BookingFilterDateField
                 language={language}
-                    label={t("ظ‚ط¯ظٹظ… ظ…ظ†")}
+                    label={t("قديم من")}
                     value={oldPendingFrom}
                     onChange={setOldPendingFrom}
                   />
 
                   <BookingFilterDateField
                 language={language}
-                    label={t("ظ‚ط¯ظٹظ… ط¥ظ„ظ‰")}
+                    label={t("قديم إلى")}
                     value={oldPendingTo}
                     onChange={setOldPendingTo}
                   />
@@ -7731,25 +7731,25 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
           <div className="bk-command-footer" role="status">
             <div className="bk-result-summary">
-              <span>{t("ط§ظ„ظ…ط­ظ…ظ‘ظ„")}<strong>{bookings.length}</strong></span>
-              <span>{t("ط§ظ„ظ…ط·ط§ط¨ظ‚")}<strong>{filteredSorted.length}</strong></span>
-              <span>{t("ط§ظ„ظ…ط¹ط±ظˆط¶")}<strong>{pagedBookings.length}</strong></span>
-              <span>{t("ط§ظ„طµظپط­ط©")}<strong>{currentPage} / {totalPages}</strong></span>
+              <span>{t("المحمّل")}<strong>{bookings.length}</strong></span>
+              <span>{t("المطابق")}<strong>{filteredSorted.length}</strong></span>
+              <span>{t("المعروض")}<strong>{pagedBookings.length}</strong></span>
+              <span>{t("الصفحة")}<strong>{currentPage} / {totalPages}</strong></span>
             </div>
-            <div className="bk-total-remaining">{t("ط§ظ„ظ…طھط¨ظ‚ظٹ ط¶ظ…ظ† ط§ظ„ظ†طھط§ط¦ط¬")}<strong><BookingMoney value={totalRemainingAmount} language={language} /></strong></div>
+            <div className="bk-total-remaining">{t("المتبقي ضمن النتائج")}<strong><BookingMoney value={totalRemainingAmount} language={language} /></strong></div>
           </div>
         </section>
 
         {selectedBookingIds.size || bulkResultMessage || bulkError ? (
           <section className="dsv2-card dsv2-card--padded bookings-v2-bulk-toolbar">
-            <div className="bk-bulk-summary"><strong>{selectedBookingIds.size}</strong><span>{t("ط­ط¬ط² ظ…ط­ط¯ط¯")}</span><small>{selectedMatchingCount} {t("ط¶ظ…ظ† ط§ظ„ظ†طھط§ط¦ط¬ ط§ظ„ط­ط§ظ„ظٹط©")}</small></div>
+            <div className="bk-bulk-summary"><strong>{selectedBookingIds.size}</strong><span>{t("حجز محدد")}</span><small>{selectedMatchingCount} {t("ضمن النتائج الحالية")}</small></div>
             <div className="bk-bulk-actions">
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>{allPageSelected ? t("ط¥ظ„ط؛ط§ط، طھط­ط¯ظٹط¯ ط§ظ„طµظپط­ط©") : t("طھط­ط¯ظٹط¯ ط§ظ„طµظپط­ط©")}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>{t("طھط­ط¯ظٹط¯ ظƒظ„ ط§ظ„ظ†طھط§ط¦ط¬")}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>{t("ط¥ظ„ط؛ط§ط، ط§ظ„طھط­ط¯ظٹط¯")}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>{t("ظ…ظƒطھظ…ظ„")}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>{t("ظ…ط¤ظƒط¯")}</button>
-              <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>{t("ظ…ظ„ط؛ظٹ")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>{allPageSelected ? t("إلغاء تحديد الصفحة") : t("تحديد الصفحة")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>{t("تحديد كل النتائج")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>{t("إلغاء التحديد")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>{t("مكتمل")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>{t("مؤكد")}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>{t("ملغي")}</button>
             </div>
             {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
             {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
@@ -7760,15 +7760,15 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           {bookingSectionsView}
         </div>
 
-        <nav className="dsv2-card bookings-v2-pagination-bar" aria-label={t("ط§ظ„طھظ†ظ‚ظ„ ط¨ظٹظ† طµظپط­ط§طھ ط§ظ„ط­ط¬ظˆط²ط§طھ")}>
+        <nav className="dsv2-card bookings-v2-pagination-bar" aria-label={t("التنقل بين صفحات الحجوزات")}>
           <div className="bk-pagination-count">
-            {t("ط¹ط±ط¶")} {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} {t("ظ…ظ†")} {filteredSorted.length}
+            {t("عرض")} {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} {t("من")} {filteredSorted.length}
           </div>
           <div className="bk-pagination-controls">
             <div className="bk-page-size-control">
-              <span>{t("ظ„ظƒظ„ طµظپط­ط©")}</span>
+              <span>{t("لكل صفحة")}</span>
               <details className="bk-page-size-menu">
-                <summary aria-label={`${t("ط¹ط¯ط¯ ط§ظ„ط­ط¬ظˆط²ط§طھ ظپظٹ ط§ظ„طµظپط­ط©")}: ${pageSize}`}>{pageSize}</summary>
+                <summary aria-label={`${t("عدد الحجوزات في الصفحة")}: ${pageSize}`}>{pageSize}</summary>
                 <div className="bk-page-size-menu__panel" role="menu">
                   {pageSizeOptions.map((size) => (
                     <button
@@ -7787,11 +7787,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 </div>
               </details>
             </div>
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>{t("ط§ظ„ط£ظˆظ„ظ‰")}</button>
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>{t("ط§ظ„ط³ط§ط¨ظ‚")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>{t("الأولى")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>{t("السابق")}</button>
             <span className="bk-page-number">{currentPage} / {totalPages}</span>
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>{t("ط§ظ„طھط§ظ„ظٹ")}</button>
-            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>{t("ط§ظ„ط£ط®ظٹط±ط©")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>{t("التالي")}</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>{t("الأخيرة")}</button>
           </div>
         </nav>
 
@@ -7799,13 +7799,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           <Modal
             open={!!selectedBooking}
             onClose={closeBookingModal}
-            ariaLabel={t("طھظپط§طµظٹظ„ ط§ظ„ط­ط¬ط²")}
+            ariaLabel={t("تفاصيل الحجز")}
             overlayClassName="bookings-v2-modal-overlay"
             panelClassName={`bookings-v2-modal-panel bk-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
             size="lg"
           >
             <div className="modal-head">
-              <b>{t("طھظپط§طµظٹظ„ ط§ظ„ط­ط¬ط²")} #{bookingRef(selectedBooking)}</b>
+              <b>{t("تفاصيل الحجز")} #{bookingRef(selectedBooking)}</b>
               <button className="dsv2-btn dsv2-btn--secondary" onClick={closeBookingModal}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
@@ -7815,95 +7815,95 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <section className="bk-booking-section">
                   <div className="bk-booking-section-head">
                     <div>
-                      <h4>{t("ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط¬ط²")}</h4>
-                      <span>{t("ظ†ظپط³ ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط§ظ„ظٹط© ظ…ط¹ طھط±طھظٹط¨ ط£ظˆط¶ط­ ظˆظ…ط³ط§ظپط§طھ ط£ظ†ط¸ظپ ط¨ظٹظ† ط§ظ„ط¨ط·ط§ظ‚ط§طھ.")}</span>
+                      <h4>{t("بيانات الحجز")}</h4>
+                      <span>{t("نفس البيانات الحالية مع ترتيب أوضح ومسافات أنظف بين البطاقات.")}</span>
                     </div>
                   </div>
 
                   <div className="bk-details-grid">
                     <div className="bk-item bk-item--hero">
-                      <span className="bk-item-label">{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²")}</span>
+                      <span className="bk-item-label">{t("رقم الحجز")}</span>
                       <span className="bk-item-val">{bookingRef(selectedBooking)}</span>
                       <div className="bk-item-chip-row">
                         <span className="bk-created-badge">
-                          {t("طھظ… ط¥ظ†ط´ط§ط، ط§ظ„ط­ط¬ط²")}: {bookingFormattedDateTimeText(bookingCreationRefMs(selectedBooking), language)}
+                          {t("تم إنشاء الحجز")}: {bookingFormattedDateTimeText(bookingCreationRefMs(selectedBooking), language)}
                         </span>
                         {lastUpdateMap[selectedBooking.id]?.at ? (
                           <span className="bk-created-badge is-muted">
-                            {t("ط¢ط®ط± طھط­ط¯ظٹط«")}: {bookingDateTimeLabelText(lastUpdateMap[selectedBooking.id]?.at, language)}
+                            {t("آخر تحديث")}: {bookingDateTimeLabelText(lastUpdateMap[selectedBooking.id]?.at, language)}
                           </span>
                         ) : null}
                       </div>
                     </div>
 
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ط³ظ… ط§ظ„ط²ط¨ظˆظ†")}</span>
-                      <span className="bk-item-val">{selectedBooking.customerName || "â€”"}</span>
+                      <span className="bk-item-label">{t("اسم الزبون")}</span>
+                      <span className="bk-item-val">{selectedBooking.customerName || "—"}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط±ظ‚ظ… ط§ظ„ظ‡ط§طھظپ")}</span>
-                      <span className="bk-item-val">{selectedBooking.phone || "â€”"}</span>
+                      <span className="bk-item-label">{t("رقم الهاتف")}</span>
+                      <span className="bk-item-val">{selectedBooking.phone || "—"}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ظ†ظ‚ط§ط· ط§ظ„ط¹ظ…ظٹظ„ط©")}</span>
+                      <span className="bk-item-label">{t("نقاط العميلة")}</span>
                       <span className="bk-item-val">
-                        {clientLoyaltyLoading ? "..." : `${clientLoyalty?.points ?? 0} ${t("ظ†ظ‚ط·ط©")}`}
+                        {clientLoyaltyLoading ? "..." : `${clientLoyalty?.points ?? 0} ${t("نقطة")}`}
                       </span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ظˆظ„ط§ط، ط§ظ„ط¹ظ…ظٹظ„ط©")}</span>
+                      <span className="bk-item-label">{t("ولاء العميلة")}</span>
                       <span className="bk-item-val">
                         {clientLoyaltyLoading
                           ? "..."
-                          : `${clientLoyalty?.loyaltyScore ?? 0}${clientLoyalty?.isVip ? " â€¢ VIP" : ""}`}
+                          : `${clientLoyalty?.loyaltyScore ?? 0}${clientLoyalty?.isVip ? " • VIP" : ""}`}
                       </span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ظ…طµط¯ط±")}</span>
+                      <span className="bk-item-label">{t("المصدر")}</span>
                       <span className="bk-item-val">{t(channelLabel(selectedBooking.channel))}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„طھط§ط±ظٹط®")}</span>
+                      <span className="bk-item-label">{t("التاريخ")}</span>
                       <span className="bk-item-val">{selectedBooking.date}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ظˆظ‚طھ")}</span>
+                      <span className="bk-item-label">{t("الوقت")}</span>
                       <span className="bk-item-val">{bookingClockText(selectedBooking.time, language)}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ظ…ظˆط¸ظپط©")}</span>
-                      <span className="bk-item-val">{selectedBooking.employeeName || "â€”"}</span>
+                      <span className="bk-item-label">{t("الموظفة")}</span>
+                      <span className="bk-item-val">{selectedBooking.employeeName || "—"}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ظ…ط¯ط© ط§ظ„ط®ط¯ظ…ط©")}</span>
+                      <span className="bk-item-label">{t("مدة الخدمة")}</span>
                       <span className="bk-item-val">
                         {Number(selectedBooking.durationMin || 0) > 0
-                          ? `${selectedBooking.durationMin} ${t("ط¯ظ‚ظٹظ‚ط©")}`
-                          : "â€”"}
+                          ? `${selectedBooking.durationMin} ${t("دقيقة")}`
+                          : "—"}
                       </span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ط³ط¹ط± ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ")}</span>
-                      <span className="bk-item-val">{selectedBookingPayment.totalAmount} {language === "en" ? "SAR" : "ط±.ط³"}</span>
+                      <span className="bk-item-label">{t("السعر الإجمالي")}</span>
+                      <span className="bk-item-val">{selectedBookingPayment.totalAmount} {language === "en" ? "SAR" : "ر.س"}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ظ†ظˆط¹ ط§ظ„ط¯ظپط¹")}</span>
+                      <span className="bk-item-label">{t("نوع الدفع")}</span>
                       <span className="bk-item-val">{t(paymentStatusLabel(selectedBookingPayment))}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}</span>
+                      <span className="bk-item-label">{t("طريقة الدفع")}</span>
                       <span className="bk-item-val">{bookingPaymentMethodText(selectedBooking, language)}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ظ…ط¯ظپظˆط¹")}</span>
-                      <span className="bk-item-val">{selectedBookingPayment.paidAmount} {language === "en" ? "SAR" : "ط±.ط³"}</span>
+                      <span className="bk-item-label">{t("المدفوع")}</span>
+                      <span className="bk-item-val">{selectedBookingPayment.paidAmount} {language === "en" ? "SAR" : "ر.س"}</span>
                     </div>
                     <div className="bk-item">
-                      <span className="bk-item-label">{t("ط§ظ„ظ…طھط¨ظ‚ظٹ")}</span>
-                      <span className="bk-item-val">{selectedBookingPayment.remainingAmount} {language === "en" ? "SAR" : "ط±.ط³"}</span>
+                      <span className="bk-item-label">{t("المتبقي")}</span>
+                      <span className="bk-item-val">{selectedBookingPayment.remainingAmount} {language === "en" ? "SAR" : "ر.س"}</span>
                     </div>
                     <div className="bk-item bk-item--wide">
-                      <span className="bk-item-label">{t("ط§ظ„ط­ط§ظ„ط©")}</span>
+                      <span className="bk-item-label">{t("الحالة")}</span>
                       <span className="bk-item-val">
                         <span
                           className={`status-badge ${selectedBooking.status}${selectedBookingIsPendingDeposit ? " pending-deposit" : ""}`}
@@ -7918,13 +7918,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <section className="bk-booking-section bk-booking-section--timeline">
                   <div className="bk-booking-section-head">
                     <div>
-                      <h4>{t("ط³ط¬ظ„ ط§ظ„ط­ط¬ط²")}</h4>
-                      <span>{t("طھط³ظ„ط³ظ„ ط§ظ„ط£ط­ط¯ط§ط« ظ„ظ„ط­ط¬ط² ظ…ظ† ط§ظ„ط£ط­ط¯ط« ط¥ظ„ظ‰ ط§ظ„ط£ظ‚ط¯ظ….")}</span>
+                      <h4>{t("سجل الحجز")}</h4>
+                      <span>{t("تسلسل الأحداث للحجز من الأحدث إلى الأقدم.")}</span>
                     </div>
                   </div>
 
                   {selectedBookingActivityLoading ? (
-                    <div className="bk-activity-empty">{t("ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¬ط²...")}</div>
+                    <div className="bk-activity-empty">{t("جاري تحميل سجل الحجز...")}</div>
                   ) : selectedBookingActivity.length > 0 ? (
                     <div className="bk-activity-timeline">
                       {selectedBookingActivity.map((event) => (
@@ -7946,7 +7946,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                     {bookingActivityDisplayText(event.actorKindLabel, language)}
                                   </span>
                                   <span>
-                                    <span className="bk-activity-meta-label">{t("ط¨ظˆط§ط³ط·ط©:")}</span>{" "}
+                                    <span className="bk-activity-meta-label">{t("بواسطة:")}</span>{" "}
                                     {bookingActivityDisplayText(event.actorName, language)}
                                   </span>
                                 </div>
@@ -7958,7 +7958,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                             {event.changes.length ? (
                               <div className="bk-activity-changes">
                                 <div className="bk-activity-changes__head">
-                                  <span>{t("طھظپط§طµظٹظ„ ط§ظ„ط¹ظ…ظ„ظٹط©")}</span>
+                                  <span>{t("تفاصيل العملية")}</span>
                                   <b>{event.changes.length}</b>
                                 </div>
 
@@ -7992,7 +7992,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     <div className="bk-activity-empty">
                       {selectedBookingActivityError
                         ? bookingActivityDisplayText(selectedBookingActivityError, language)
-                        : t("ظ„ط§ طھظˆط¬ط¯ ط£ط­ط¯ط§ط« ظ…ط³ط¬ظ„ط© ظ„ظ‡ط°ط§ ط§ظ„ط­ط¬ط² ط­طھظ‰ ط§ظ„ط¢ظ†.")}
+                        : t("لا توجد أحداث مسجلة لهذا الحجز حتى الآن.")}
                     </div>
                   )}
 
@@ -8004,7 +8004,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <section className="bk-booking-section">
                   <div className="bk-booking-section-head">
                     <div>
-                      <h4>{t("ط§ظ„ط®ط¯ظ…ط§طھ ط¯ط§ط®ظ„ ط§ظ„ط­ط¬ط²")}</h4>
+                      <h4>{t("الخدمات داخل الحجز")}</h4>
                     </div>
                   </div>
                   <div className="bk-services-list">
@@ -8041,7 +8041,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                             ),
                       ]
                         .filter(Boolean)
-                        .join(" â€¢ ");
+                        .join(" • ");
 
                       const serviceDuration = Number(s.durationMin || 0);
                       const servicePrice = Number(s.price || 0);
@@ -8053,7 +8053,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                         >
                           <div className="bk-service-row__main">
                             <span className="bk-service-row__eyebrow">
-                              {t("ط§ظ„ط®ط¯ظ…ط©")}
+                              {t("الخدمة")}
                             </span>
 
                             <strong className="bk-service-row__name">
@@ -8073,7 +8073,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                       s.serviceId ||
                                       ""
                                     ),
-                                    t("ط®ط¯ظ…ط©")
+                                    t("خدمة")
                                   )}
                             </strong>
 
@@ -8087,22 +8087,22 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           <div className="bk-service-row__facts">
                             {serviceEmployeeName ? (
                               <span className="bk-service-fact">
-                                <small>{t("ط§ظ„ظ…ظˆط¸ظپط©")}</small>
+                                <small>{t("الموظفة")}</small>
                                 <b>{serviceEmployeeName}</b>
                               </span>
                             ) : null}
 
                             {serviceDuration > 0 ? (
                               <span className="bk-service-fact">
-                                <small>{t("ط§ظ„ظ…ط¯ط©")}</small>
-                                <b>{serviceDuration} {t("ط¯ظ‚ظٹظ‚ط©")}</b>
+                                <small>{t("المدة")}</small>
+                                <b>{serviceDuration} {t("دقيقة")}</b>
                               </span>
                             ) : null}
 
                             {servicePrice > 0 ? (
                               <span className="bk-service-fact">
-                                <small>{t("ط§ظ„ط³ط¹ط±")}</small>
-                                <b>{servicePrice} {language === "en" ? "SAR" : "ط±.ط³"}</b>
+                                <small>{t("السعر")}</small>
+                                <b>{servicePrice} {language === "en" ? "SAR" : "ر.س"}</b>
                               </span>
                             ) : null}
                           </div>
@@ -8115,11 +8115,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <section className="bk-booking-section">
                   <div className="bk-booking-section-head">
                     <div>
-                      <h4>{t("ظ…ظ„ط§ط­ط¸ط§طھ ط³ط§ط¨ظ‚ط© ط¹ظ„ظ‰ ط§ظ„ط¹ظ…ظٹظ„ط©")}</h4>
+                      <h4>{t("ملاحظات سابقة على العميلة")}</h4>
                     </div>
                   </div>
                   {previousClientNotes.length === 0 ? (
-                    <div className="bk-events-empty">{t("ظ„ط§ طھظˆط¬ط¯ ظ…ظ„ط§ط­ط¸ط§طھ ط³ط§ط¨ظ‚ط© ظ„ظ‡ط°ظ‡ ط§ظ„ط¹ظ…ظٹظ„ط©.")}</div>
+                    <div className="bk-events-empty">{t("لا توجد ملاحظات سابقة لهذه العميلة.")}</div>
                   ) : (
                     <div className="bk-events-list">
                       {previousClientNotes.map((n) => (
@@ -8138,13 +8138,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 <section className="bk-booking-section">
                   <div className="bk-booking-section-head">
                     <div>
-                      <h4>{t("ظ…ظ„ط§ط­ط¸ط§طھ ط§ظ„ط¥ط¯ط§ط±ط© (ط®ط§طµط©)")}</h4>
+                      <h4>{t("ملاحظات الإدارة (خاصة)")}</h4>
                     </div>
                   </div>
                   <textarea
                     className="bk-input bk-booking-note-input"
                     rows={3}
-                    placeholder={t("ط£ط¶ظپ ظ…ظ„ط§ط­ط¸ط§طھ ظ‡ظ†ط§...")}
+                    placeholder={t("أضف ملاحظات هنا...")}
                     value={noteDrafts[selectedBooking.id] ?? selectedBooking.adminNote ?? ""}
                     onChange={(e) => updateNote(selectedBooking.id, e.target.value)}
                     disabled={savingNoteId === selectedBooking.id}
@@ -8156,10 +8156,10 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       onClick={() => saveNote(selectedBooking.id)}
                       disabled={savingNoteId === selectedBooking.id}
                     >
-                      {t("ط­ظپط¸ ط§ظ„ظ…ظ„ط§ط­ط¸ط©")}
+                      {t("حفظ الملاحظة")}
                     </button>
                     {savedNoteId === selectedBooking.id ? (
-                      <span className="bk-note-saved">{t("طھظ… ط§ظ„ط­ظپط¸")}</span>
+                      <span className="bk-note-saved">{t("تم الحفظ")}</span>
                     ) : null}
                   </div>
                 </section>
@@ -8167,75 +8167,75 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               <div className="bk-booking-legacy-hide" aria-hidden="true">
               <div className="bk-details-grid">
                 <div className="bk-item">
-                  <span className="bk-item-label">ط±ظ‚ظ… ط§ظ„ط­ط¬ط²</span>
+                  <span className="bk-item-label">رقم الحجز</span>
                   <span className="bk-item-val">{bookingRef(selectedBooking)}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ط³ظ… ط§ظ„ط²ط¨ظˆظ†</span>
-                  <span className="bk-item-val">{selectedBooking.customerName || "â€”"}</span>
+                  <span className="bk-item-label">اسم الزبون</span>
+                  <span className="bk-item-val">{selectedBooking.customerName || "—"}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط±ظ‚ظ… ط§ظ„ظ‡ط§طھظپ</span>
-                  <span className="bk-item-val">{selectedBooking.phone || "â€”"}</span>
+                  <span className="bk-item-label">رقم الهاتف</span>
+                  <span className="bk-item-val">{selectedBooking.phone || "—"}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ظ†ظ‚ط§ط· ط§ظ„ط¹ظ…ظٹظ„ط©</span>
+                  <span className="bk-item-label">نقاط العميلة</span>
                   <span className="bk-item-val">
-                    {clientLoyaltyLoading ? "..." : `${clientLoyalty?.points ?? 0} ظ†ظ‚ط·ط©`}
+                    {clientLoyaltyLoading ? "..." : `${clientLoyalty?.points ?? 0} نقطة`}
                   </span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ظˆظ„ط§ط، ط§ظ„ط¹ظ…ظٹظ„ط©</span>
+                  <span className="bk-item-label">ولاء العميلة</span>
                   <span className="bk-item-val">
                     {clientLoyaltyLoading
                       ? "..."
-                      : `${clientLoyalty?.loyaltyScore ?? 0}${(clientLoyalty?.isVip ? " â€¢ VIP" : "")}`}
+                      : `${clientLoyalty?.loyaltyScore ?? 0}${(clientLoyalty?.isVip ? " • VIP" : "")}`}
                   </span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ظ…طµط¯ط±</span>
+                  <span className="bk-item-label">المصدر</span>
                   <span className="bk-item-val">{channelLabel(selectedBooking.channel)}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„طھط§ط±ظٹط®</span>
+                  <span className="bk-item-label">التاريخ</span>
                   <span className="bk-item-val">{selectedBooking.date}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ظˆظ‚طھ</span>
+                  <span className="bk-item-label">الوقت</span>
                   <span className="bk-item-val">{formatTime12(selectedBooking.time)}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ظ…ظˆط¸ظپط©</span>
-                  <span className="bk-item-val">{selectedBooking.employeeName || "â€”"}</span>
+                  <span className="bk-item-label">الموظفة</span>
+                  <span className="bk-item-val">{selectedBooking.employeeName || "—"}</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ظ…ط¯ط© ط§ظ„ط®ط¯ظ…ط©</span>
+                  <span className="bk-item-label">مدة الخدمة</span>
                   <span className="bk-item-val">
                     {Number(selectedBooking.durationMin || 0) > 0
-                      ? `${selectedBooking.durationMin} ط¯ظ‚ظٹظ‚ط©`
-                      : "â€”"}
+                      ? `${selectedBooking.durationMin} دقيقة`
+                      : "—"}
                   </span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ط³ط¹ط± ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ</span>
-                  <span className="bk-item-val">{selectedBookingPayment.totalAmount} ط±.ط³</span>
+                  <span className="bk-item-label">السعر الإجمالي</span>
+                  <span className="bk-item-val">{selectedBookingPayment.totalAmount} ر.س</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ظ†ظˆط¹ ط§ظ„ط¯ظپط¹</span>
+                  <span className="bk-item-label">نوع الدفع</span>
                   <span className="bk-item-val">
                     {paymentStatusLabel(selectedBookingPayment)}
                   </span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ظ…ط¯ظپظˆط¹</span>
-                  <span className="bk-item-val">{selectedBookingPayment.paidAmount} ط±.ط³</span>
+                  <span className="bk-item-label">المدفوع</span>
+                  <span className="bk-item-val">{selectedBookingPayment.paidAmount} ر.س</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ظ…طھط¨ظ‚ظٹ</span>
-                  <span className="bk-item-val">{selectedBookingPayment.remainingAmount} ط±.ط³</span>
+                  <span className="bk-item-label">المتبقي</span>
+                  <span className="bk-item-val">{selectedBookingPayment.remainingAmount} ر.س</span>
                 </div>
                 <div className="bk-item">
-                  <span className="bk-item-label">ط§ظ„ط­ط§ظ„ط©</span>
+                  <span className="bk-item-label">الحالة</span>
                   <span className="bk-item-val">
                     <span
                       className={`status-badge ${selectedBooking.status}${selectedBookingIsPendingDeposit ? " pending-deposit" : ""}`}
@@ -8247,7 +8247,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               </div>
 
               <div className="bk-note-area">
-                <label className="bk-item-label">ط§ظ„ط®ط¯ظ…ط§طھ ط¯ط§ط®ظ„ ط§ظ„ط­ط¬ط²</label>
+                <label className="bk-item-label">الخدمات داخل الحجز</label>
                 <div className="bk-services-list">
                   {(selectedBooking.services && selectedBooking.services.length > 0
                     ? selectedBooking.services
@@ -8255,13 +8255,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   ).map((s, idx) => (
                     <div key={`${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
                       <span>
-                        {toArabicOnlyLabel(String(s.serviceName || s.serviceId || ""), "ط®ط¯ظ…ط©")}
+                        {toArabicOnlyLabel(String(s.serviceName || s.serviceId || ""), "خدمة")}
                         <div className="bk-cell-meta">
-                          {toArabicOnlyLabel(String(s.sectionLabel || ""), "â€”")} â€¢ {toArabicOnlyLabel(String(s.categoryLabel || ""), "â€”")}
+                          {toArabicOnlyLabel(String(s.sectionLabel || ""), "—")} • {toArabicOnlyLabel(String(s.categoryLabel || ""), "—")}
                         </div>
                       </span>
                       <span>
-                        {Number(s.durationMin || 0) > 0 ? `${s.durationMin} ط¯` : "â€”"} آ· {Number(s.price || 0) > 0 ? `${s.price} ط±.ط³` : "â€”"}
+                        {Number(s.durationMin || 0) > 0 ? `${s.durationMin} د` : "—"} · {Number(s.price || 0) > 0 ? `${s.price} ر.س` : "—"}
                       </span>
                     </div>
                   ))}
@@ -8269,9 +8269,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               </div>
 
               <div className="bk-note-area">
-                <label className="bk-item-label">ظ…ظ„ط§ط­ط¸ط§طھ ط³ط§ط¨ظ‚ط© ط¹ظ„ظ‰ ط§ظ„ط¹ظ…ظٹظ„ط©</label>
+                <label className="bk-item-label">ملاحظات سابقة على العميلة</label>
                 {previousClientNotes.length === 0 ? (
-                  <div className="bk-events-empty">ظ„ط§ طھظˆط¬ط¯ ظ…ظ„ط§ط­ط¸ط§طھ ط³ط§ط¨ظ‚ط© ظ„ظ‡ط°ظ‡ ط§ظ„ط¹ظ…ظٹظ„ط©.</div>
+                  <div className="bk-events-empty">لا توجد ملاحظات سابقة لهذه العميلة.</div>
                 ) : (
                   <div className="bk-events-list">
                     {previousClientNotes.map((n) => (
@@ -8288,11 +8288,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               </div>
 
               <div className="bk-note-area">
-                <label className="bk-item-label">ظ…ظ„ط§ط­ط¸ط§طھ ط§ظ„ط¥ط¯ط§ط±ط© (ط®ط§طµط©)</label>
+                <label className="bk-item-label">ملاحظات الإدارة (خاصة)</label>
                 <textarea 
                   className="bk-input" 
                   rows={3} 
-                  placeholder="ط£ط¶ظپ ظ…ظ„ط§ط­ط¸ط§طھ ظ‡ظ†ط§..."
+                  placeholder="أضف ملاحظات هنا..."
                   value={noteDrafts[selectedBooking.id] ?? selectedBooking.adminNote ?? ""}
                   onChange={e => updateNote(selectedBooking.id, e.target.value)}
                   disabled={savingNoteId === selectedBooking.id}
@@ -8304,10 +8304,10 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     onClick={() => saveNote(selectedBooking.id)}
                       disabled={savingNoteId === selectedBooking.id}
                   >
-                    ط­ظپط¸ ط§ظ„ظ…ظ„ط§ط­ط¸ط©
+                    حفظ الملاحظة
                   </button>
                   {savedNoteId === selectedBooking.id ? (
-                    <span className="bk-note-saved">طھظ… ط§ظ„ط­ظپط¸</span>
+                    <span className="bk-note-saved">تم الحفظ</span>
                   ) : null}
                 </div>
               </div>
@@ -8317,21 +8317,21 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               {canManageRefund(selectedBooking) && (
                 <button className="dsv2-btn dsv2-btn--secondary" onClick={() => openRefundModal(selectedBooking)}>
                   {refundMapByBookingId[String(selectedBooking.id || "").trim()]
-                    ? t("ط¥ط¯ط§ط±ط© ط§ظ„ط§ط³طھط±ط¬ط§ط¹")
-                    : t("طھط³ط¬ظٹظ„ ط§ط³طھط±ط¬ط§ط¹")}
+                    ? t("إدارة الاسترجاع")
+                    : t("تسجيل استرجاع")}
                 </button>
               )}
               {canEditBooking(selectedBooking) && (
                 <button className="dsv2-btn dsv2-btn--secondary" onClick={() => openEditBookingModal(selectedBooking)}>
-                  {t("طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط²")}
+                  {t("تعديل الحجز")}
                 </button>
               )}
               {uiRole === "owner" && (
                 <button className="dsv2-btn dsv2-btn--danger" onClick={() => handleDeleteBooking(selectedBooking)}>
-                  {t("ط­ط°ظپ ط§ظ„ط­ط¬ط²")}
+                  {t("حذف الحجز")}
                 </button>
               )}
-              <button className="dsv2-btn dsv2-btn--primary bk-close-btn" onClick={closeBookingModal}>{t("ط¥ط؛ظ„ط§ظ‚")}</button>
+              <button className="dsv2-btn dsv2-btn--primary bk-close-btn" onClick={closeBookingModal}>{t("إغلاق")}</button>
             </div>
           </Modal>
         )}
@@ -8350,24 +8350,24 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={actionPinOpen}
           onClose={closeActionPinModal}
-          ariaLabel="ط§ظ„طھط­ظ‚ظ‚ ط¨ط§ظ„ط±ظ‚ظ… ط§ظ„ط³ط±ظٹ"
+          ariaLabel="التحقق بالرقم السري"
           panelClassName="bk-cancel-modal bk-action-pin-modal"
           size="sm"
         >
-          <div className="bk-cancel-head">طھط£ظƒظٹط¯ ط§ظ„ط¥ط¬ط±ط§ط،</div>
+          <div className="bk-cancel-head">تأكيد الإجراء</div>
           <div className="bk-cancel-body">
             <div className="bk-action-pin-summary">
-              <div className="bk-action-pin-summary-label">ط§ظ„ط¥ط¬ط±ط§ط، ط§ظ„ظ…ط·ظ„ظˆط¨</div>
+              <div className="bk-action-pin-summary-label">الإجراء المطلوب</div>
               <div className="bk-action-pin-summary-value">
-                {sensitiveActionDescription(pendingSensitiveAction) || "ط¥ط¬ط±ط§ط، ط­ط³ط§ط³"}
+                {sensitiveActionDescription(pendingSensitiveAction) || "إجراء حساس"}
               </div>
               {pendingSensitiveAction?.kind === "delete" ? (
-                <div className="bk-action-pin-warning">ط³ظٹط®طھظپظٹ ط§ظ„ط­ط¬ط² ظ…ظ† طµظپط­ط© ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط¹ ط§ظ„ط§ط­طھظپط§ط¸ ط¨ط§ظ„ط³ط¬ظ„ط§طھ ط§ظ„ظ…ط§ظ„ظٹط©.</div>
+                <div className="bk-action-pin-warning">سيختفي الحجز من صفحة الحجوزات مع الاحتفاظ بالسجلات المالية.</div>
               ) : null}
             </div>
             <div className="bk-action-pin-form">
               <label className="bk-action-pin-label" htmlFor="booking_action_pin_input">
-                ط§ظ„ط±ظ‚ظ… ط§ظ„ط³ط±ظٹ
+                الرقم السري
               </label>
               <input
                 id="booking_action_pin_input"
@@ -8375,14 +8375,14 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 className="bk-input bk-action-pin-input"
                 value={actionPin}
                 onChange={(e) => setActionPin(e.target.value)}
-                placeholder="ط£ط¯ط®ظ„ظٹ ط§ظ„ط±ظ‚ظ… ط§ظ„ط³ط±ظٹ"
+                placeholder="أدخلي الرقم السري"
                 autoComplete="new-password"
                 name="booking_action_pin"
                 inputMode="numeric"
                 disabled={actionPinBusy}
                 autoFocus
               />
-              <div className="bk-action-pin-hint">ظ‡ط°ط§ ط§ظ„طھط­ظ‚ظ‚ ظ…ط®طµطµ ظ„ط­ظ…ط§ظٹط© ط§ظ„طھط¹ط¯ظٹظ„ط§طھ ط§ظ„ط­ط³ط§ط³ط©.</div>
+              <div className="bk-action-pin-hint">هذا التحقق مخصص لحماية التعديلات الحساسة.</div>
             </div>
             {actionPinError ? (
               <div className="bk-action-pin-error">{actionPinError}</div>
@@ -8395,7 +8395,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={closeActionPinModal}
               disabled={actionPinBusy}
             >
-              ط¥ظ„ط؛ط§ط،
+              إلغاء
             </button>
             <button
               type="button"
@@ -8403,7 +8403,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={confirmSensitiveAction}
               disabled={actionPinBusy}
             >
-              {actionPinBusy ? "ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚..." : "ظ…طھط§ط¨ط¹ط©"}
+              {actionPinBusy ? "جاري التحقق..." : "متابعة"}
             </button>
           </div>
         </Modal>
@@ -8412,39 +8412,39 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={!!bulkTargetStatus}
           onClose={closeBulkStatusModal}
-          ariaLabel={t("طھط£ظƒظٹط¯ ط§ظ„ط¥ط¬ط±ط§ط، ط§ظ„ط¬ظ…ط§ط¹ظٹ ظ„ظ„ط­ط¬ظˆط²ط§طھ")}
+          ariaLabel={t("تأكيد الإجراء الجماعي للحجوزات")}
           overlayClassName="bookings-v2-modal-overlay"
           panelClassName={`bookings-v2-modal-panel bk-cancel-modal bk-bulk-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
           size="sm"
         >
-          <div className="bk-cancel-head">{t("طھط£ظƒظٹط¯ ط§ظ„ط¥ط¬ط±ط§ط، ط§ظ„ط¬ظ…ط§ط¹ظٹ")}</div>
+          <div className="bk-cancel-head">{t("تأكيد الإجراء الجماعي")}</div>
           <div className="bk-cancel-body">
             <div className="bk-bulk-confirm-list">
               <div>
-                <span>{t("ط¹ط¯ط¯ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„طھظٹ ط³طھطھط؛ظٹط±")}</span>
+                <span>{t("عدد الحجوزات التي ستتغير")}</span>
                 <strong>{bulkTargetBookings.length}</strong>
               </div>
               <div>
-                <span>{t("ط§ظ„ط­ط§ظ„ط© ط§ظ„ط­ط§ظ„ظٹط©")}</span>
-                <strong>{bulkCurrentStatusSummary || t("ط؛ظٹط± ظ…ط­ط¯ط¯")}</strong>
+                <span>{t("الحالة الحالية")}</span>
+                <strong>{bulkCurrentStatusSummary || t("غير محدد")}</strong>
               </div>
               <div>
-                <span>{t("ط§ظ„ط­ط§ظ„ط© ط§ظ„ط¬ط¯ظٹط¯ط©")}</span>
-                <strong>{bulkTargetStatus ? t(statusLabel[bulkTargetStatus]) : t("ط؛ظٹط± ظ…ط­ط¯ط¯")}</strong>
+                <span>{t("الحالة الجديدة")}</span>
+                <strong>{bulkTargetStatus ? t(statusLabel[bulkTargetStatus]) : t("غير محدد")}</strong>
               </div>
               <div>
-                <span>{t("ط§ظ„طھط§ط±ظٹط®/ط§ظ„ظپظ„ط§طھط± ط§ظ„ظ…ط³طھط®ط¯ظ…ط©")}</span>
-                <strong>{filterSummaryText || t("ط¨ط¯ظˆظ† ظپظ„ط§طھط±")}</strong>
+                <span>{t("التاريخ/الفلاتر المستخدمة")}</span>
+                <strong>{filterSummaryText || t("بدون فلاتر")}</strong>
               </div>
             </div>
             <div className="bk-action-pin-warning">
-              {t("طھظ†ط¨ظٹظ‡: ظ‡ط°ط§ ط§ظ„ط¥ط¬ط±ط§ط، ط³ظٹط¤ط«ط± ظپظٹ ط¹ط¯ط© ط­ط¬ظˆط²ط§طھ ظ…ط­ط¯ط¯ط© ظپظ‚ط·. ظ„ظ† ظٹطھظ… طھط¹ط¯ظٹظ„ ط£ظٹ ط­ط¬ط² ط؛ظٹط± ظ…ط­ط¯ط¯.")}
+              {t("تنبيه: هذا الإجراء سيؤثر في عدة حجوزات محددة فقط. لن يتم تعديل أي حجز غير محدد.")}
             </div>
             {bulkError ? <div className="bk-action-pin-error">{bulkError}</div> : null}
           </div>
           <div className="bk-cancel-foot">
             <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeBulkStatusModal} disabled={bulkSaving}>
-              {t("ط±ط¬ظˆط¹")}
+              {t("رجوع")}
             </button>
             <button
               type="button"
@@ -8452,7 +8452,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={() => void confirmBulkStatusUpdate()}
               disabled={bulkSaving || !bulkTargetBookings.length}
             >
-              {bulkSaving ? t("ط¬ط§ط±ظٹ ط§ظ„طھط­ط¯ظٹط«...") : t("طھط£ظƒظٹط¯ ط§ظ„طھط­ط¯ظٹط« ط§ظ„ط¬ظ…ط§ط¹ظٹ")}
+              {bulkSaving ? t("جاري التحديث...") : t("تأكيد التحديث الجماعي")}
             </button>
           </div>
         </Modal>
@@ -8460,53 +8460,53 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={!!refundTarget}
           onClose={closeRefundModal}
-          ariaLabel={t("ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}
+          ariaLabel={t("الاسترجاع")}
           overlayClassName="bookings-v2-modal-overlay"
           panelClassName={`bookings-v2-modal-panel bk-refund-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
           size="sm"
         >
-          <div className="bk-cancel-head">{t("ط¥ط¯ط§ط±ط© ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</div>
+          <div className="bk-cancel-head">{t("إدارة الاسترجاع")}</div>
           <div className="bk-cancel-body">
             <div className="bk-cancel-meta">
-              <span>{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²")}: {bookingRef(refundTarget)}</span>
-              <span>{t("ط§ظ„ط¹ظ…ظٹظ„ط©")}: {refundTarget?.customerName || "â€”"}</span>
-              <span>{t("ظ‚ظٹظ…ط© ط§ظ„ط­ط¬ط²")}: {refundTarget ? readBookingTotalAmount(refundTarget) : 0} {language === "en" ? "SAR" : "ط±.ط³"}</span>
+              <span>{t("رقم الحجز")}: {bookingRef(refundTarget)}</span>
+              <span>{t("العميلة")}: {refundTarget?.customerName || "—"}</span>
+              <span>{t("قيمة الحجز")}: {refundTarget ? readBookingTotalAmount(refundTarget) : 0} {language === "en" ? "SAR" : "ر.س"}</span>
             </div>
 
             <div className={`bk-refund-status ${activeRefundForTarget ? "is-refunded" : "is-none"}`}>
               {activeRefundForTarget ? (
                 <>
-                  <strong>{t("ط­ط§ظ„ط© ط§ظ„ط§ط³طھط±ط¬ط§ط¹: طھظ… ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</strong>
+                  <strong>{t("حالة الاسترجاع: تم الاسترجاع")}</strong>
                   <span>
-                    {t("ط§ظ„ظ…ط¨ظ„ط؛")}: {Number(activeRefundForTarget.amount || 0).toLocaleString("ar-SA-u-nu-latn")} {language === "en" ? "SAR" : "ط±.ط³"}
-                    {" â€¢ "}
-                    {t("ط§ظ„ط·ط±ظٹظ‚ط©")}: {t(activeRefundForTarget.method === "transfer" ? "طھط­ظˆظٹظ„" : activeRefundForTarget.method === "card" ? "ط´ط¨ظƒط©" : "ظƒط§ط´")}
-                    {" â€¢ "}
-                    {t("ط§ظ„طھط§ط±ظٹط®")}: {activeRefundForTarget.date || "â€”"}
+                    {t("المبلغ")}: {Number(activeRefundForTarget.amount || 0).toLocaleString("ar-SA-u-nu-latn")} {language === "en" ? "SAR" : "ر.س"}
+                    {" • "}
+                    {t("الطريقة")}: {t(activeRefundForTarget.method === "transfer" ? "تحويل" : activeRefundForTarget.method === "card" ? "شبكة" : "كاش")}
+                    {" • "}
+                    {t("التاريخ")}: {activeRefundForTarget.date || "—"}
                   </span>
                 </>
               ) : (
                 <>
-                  <strong>{t("ط­ط§ظ„ط© ط§ظ„ط§ط³طھط±ط¬ط§ط¹: ط؛ظٹط± ظ…ط³طھط±ط¬ط¹")}</strong>
-                  <span>{t("ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط±ط¬ط§ط¹ ظ…ط³ط¬ظ„ ظ„ظ‡ط°ط§ ط§ظ„ط­ط¬ط² ط­ط§ظ„ظٹط§ظ‹.")}</span>
+                  <strong>{t("حالة الاسترجاع: غير مسترجع")}</strong>
+                  <span>{t("لا يوجد استرجاع مسجل لهذا الحجز حالياً.")}</span>
                 </>
               )}
             </div>
 
             <div className="bk-refund-form">
               <label>
-                <div className="bk-field-label">{t("ظ…ط¨ظ„ط؛ ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</div>
+                <div className="bk-field-label">{t("مبلغ الاسترجاع")}</div>
                 <DashboardNumberInputV2
                   className="bk-input"
                   value={refundDraft.amount}
                   onChange={(e) => setRefundDraft((p) => ({ ...p, amount: e.target.value }))}
-                  placeholder={t("ظ…ط«ط§ظ„: 120")}
+                  placeholder={t("مثال: 120")}
                   disabled={refundSaving}
                 />
               </label>
 
               <label>
-                <div className="bk-field-label">{t("ط·ط±ظٹظ‚ط© ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</div>
+                <div className="bk-field-label">{t("طريقة الاسترجاع")}</div>
                 <DashboardSelectBridgeV2
                   className="bk-select"
                   value={refundDraft.method}
@@ -8515,39 +8515,39 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   }
                   disabled={refundSaving}
                 >
-                  <option value="transfer">{t("طھط­ظˆظٹظ„")}</option>
-                  <option value="cash">{t("ظƒط§ط´")}</option>
-                  <option value="card">{t("ط´ط¨ظƒط©")}</option>
-                  <option value="none">{t("ظ„ط§ ظٹظˆط¬ط¯ ط¯ظپط¹")}</option>
-                  <option value="other">{t("ط£ط®ط±ظ‰")}</option>
+                  <option value="transfer">{t("تحويل")}</option>
+                  <option value="cash">{t("كاش")}</option>
+                  <option value="card">{t("شبكة")}</option>
+                  <option value="none">{t("لا يوجد دفع")}</option>
+                  <option value="other">{t("أخرى")}</option>
                 </DashboardSelectBridgeV2>
               </label>
 
               <label>
-                <div className="bk-field-label">{t("طھط§ط±ظٹط® ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</div>
+                <div className="bk-field-label">{t("تاريخ الاسترجاع")}</div>
                 <DashboardDateInputV2 className="bk-input" value={refundDraft.date} onChange={(e) => setRefundDraft((p) => ({ ...p, date: e.target.value }))} disabled={refundSaving} />
               </label>
 
               <label>
-                <div className="bk-field-label">{t("ط³ط¨ط¨ ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}</div>
+                <div className="bk-field-label">{t("سبب الاسترجاع")}</div>
                 <input
                   type="text"
                   className="bk-input"
                   value={refundDraft.reason}
                   onChange={(e) => setRefundDraft((p) => ({ ...p, reason: e.target.value }))}
-                  placeholder={t("ظ…ط«ط§ظ„: ط¥ظ„ط؛ط§ط، ظ‚ط¨ظ„ ط§ظ„ظ…ظˆط¹ط¯")}
+                  placeholder={t("مثال: إلغاء قبل الموعد")}
                   disabled={refundSaving}
                 />
               </label>
 
               <label>
-                <div className="bk-field-label">{t("طھظپط§طµظٹظ„ ط¥ط¶ط§ظپظٹط©")}</div>
+                <div className="bk-field-label">{t("تفاصيل إضافية")}</div>
                 <textarea
                   className="bk-input"
                   rows={3}
                   value={refundDraft.details}
                   onChange={(e) => setRefundDraft((p) => ({ ...p, details: e.target.value }))}
-                  placeholder={t("ط£ظٹ طھظپط§طµظٹظ„ ط¯ط§ط®ظ„ظٹط© ظ„ظ„ط§ط³طھط±ط¬ط§ط¹")}
+                  placeholder={t("أي تفاصيل داخلية للاسترجاع")}
                   disabled={refundSaving}
                 />
               </label>
@@ -8564,7 +8564,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={closeRefundModal}
               disabled={refundSaving}
             >
-              {t("ط±ط¬ظˆط¹")}
+              {t("رجوع")}
             </button>
             {refundTarget && refundMapByBookingId[String(refundTarget.id || "").trim()] ? (
               <button
@@ -8572,9 +8572,9 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 className="dsv2-btn dsv2-btn--danger"
                 onClick={handleCancelRefund}
                 disabled={refundSaving}
-                title={t("ظٹظ…ظƒظ† ط§ظ„طھط±ط§ط¬ط¹ ط¹ظ† ط§ظ„ط§ط³طھط±ط¬ط§ط¹ ظ…ظ† ظ‡ظ†ط§")}
+                title={t("يمكن التراجع عن الاسترجاع من هنا")}
               >
-                {refundSaving ? t("ط¬ط§ط±ظٹ ط§ظ„ط¥ظ„ط؛ط§ط،...") : t("ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}
+                {refundSaving ? t("جاري الإلغاء...") : t("إلغاء الاسترجاع")}
               </button>
             ) : null}
             <button
@@ -8583,7 +8583,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={handleSaveRefund}
               disabled={refundSaving}
             >
-              {refundSaving ? t("ط¬ط§ط±ظٹ ط§ظ„ط­ظپط¸...") : t("ط­ظپط¸ ط§ظ„ط§ط³طھط±ط¬ط§ط¹")}
+              {refundSaving ? t("جاري الحفظ...") : t("حفظ الاسترجاع")}
             </button>
           </div>
         </Modal>
@@ -8591,39 +8591,39 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={!!confirmTarget}
           onClose={closeConfirmModal}
-          ariaLabel={t("طھط£ظƒظٹط¯ ط§ظ„ط­ط¬ط² ظ…ط¹ ط§ظ„ط¯ظپط¹")}
+          ariaLabel={t("تأكيد الحجز مع الدفع")}
           overlayClassName="bookings-v2-modal-overlay"
           panelClassName={`bookings-v2-modal-panel bk-edit-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
           size="sm"
         >
-          <div className="bk-cancel-head">{t("طھط£ظƒظٹط¯ ط§ظ„ط­ط¬ط²")}</div>
+          <div className="bk-cancel-head">{t("تأكيد الحجز")}</div>
           <div className="bk-cancel-body">
             <div className="bk-cancel-meta">
-              <span>{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²")}: {bookingRef(confirmTarget)}</span>
-              <span>{t("ط§ظ„ط¹ظ…ظٹظ„ط©")}: {confirmTarget?.customerName || "â€”"}</span>
-              <span>{t("ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط­ط¬ط²")}: {readBookingTotalAmount(confirmTarget)} {language === "en" ? "SAR" : "ط±.ط³"}</span>
+              <span>{t("رقم الحجز")}: {bookingRef(confirmTarget)}</span>
+              <span>{t("العميلة")}: {confirmTarget?.customerName || "—"}</span>
+              <span>{t("إجمالي الحجز")}: {readBookingTotalAmount(confirmTarget)} {language === "en" ? "SAR" : "ر.س"}</span>
             </div>
 
             <div className="bk-edit-form">
               
               <BookingSelectField
-                label={t("ظ†ظˆط¹ ط§ظ„ط¯ظپط¹ ظˆظ‚طھ ط§ظ„طھط£ظƒظٹط¯")}
+                label={t("نوع الدفع وقت التأكيد")}
                 value={confirmDraft.paymentMode}
                 options={[
                   {
                     value: "full",
-                    label: t("ط¯ظپط¹ ظƒط§ظ…ظ„"),
+                    label: t("دفع كامل"),
                   },
                   {
                     value: "partial",
-                    label: t("ط¹ط±ط¨ظˆظ†"),
+                    label: t("عربون"),
                   },
                   {
                     value: "none",
-                    label: t("ط¨ط¯ظˆظ† ط¯ظپط¹"),
+                    label: t("بدون دفع"),
                   },
                 ]}
-                placeholder={t("ط§ط®طھط§ط±ظٹ ظ†ظˆط¹ ط§ظ„ط¯ظپط¹")}
+                placeholder={t("اختاري نوع الدفع")}
                 disabled={confirmSaving}
                 onChange={(value) =>
                   setConfirmDraft((p) => {
@@ -8655,16 +8655,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 
                 <BookingSelectField
                   language={language}
-                  label={t("ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}
+                  label={t("طريقة الدفع")}
                   value={confirmDraft.paymentMethod}
                   options={[
-                    { value: "cash", label: t("ظƒط§ط´") },
-                    { value: "card", label: t("ط´ط¨ظƒط©") },
-                    { value: "transfer", label: t("طھط­ظˆظٹظ„") },
-                    { value: "mixed", label: t("ط¯ظپط¹ ظ…ط®طھظ„ط·") },
-                    { value: "other", label: t("ط£ط®ط±ظ‰") },
+                    { value: "cash", label: t("كاش") },
+                    { value: "card", label: t("شبكة") },
+                    { value: "transfer", label: t("تحويل") },
+                    { value: "mixed", label: t("دفع مختلط") },
+                    { value: "other", label: t("أخرى") },
                   ]}
-                  placeholder={t("ط§ط®طھط§ط±ظٹ ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹")}
+                  placeholder={t("اختاري طريقة الدفع")}
                   disabled={confirmSaving}
                   onChange={(value) =>
                     setConfirmDraft((p) => ({
@@ -8679,7 +8679,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               {confirmDraft.paymentMethod === "mixed" ? (
                 <div className="bk-mixed-payment-box">
                   <label>
-                    <div className="bk-field-label">{t("ظ…ط¨ظ„ط؛ ط§ظ„ظƒط§ط´")}</div>
+                    <div className="bk-field-label">{t("مبلغ الكاش")}</div>
                     <DashboardNumberInputV2
                       min={0}
                       step="0.01"
@@ -8692,7 +8692,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     />
                   </label>
                   <label>
-                    <div className="bk-field-label">{t("ظ…ط¨ظ„ط؛ ط§ظ„ط´ط¨ظƒط©")}</div>
+                    <div className="bk-field-label">{t("مبلغ الشبكة")}</div>
                     <DashboardNumberInputV2
                       min={0}
                       step="0.01"
@@ -8714,7 +8714,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     });
                     return (
                       <div className={`bk-mixed-payment-balance ${round2(total - paid) === 0 ? "is-balanced" : "is-unbalanced"}`}>
-                        {t("ط§ظ„ظ…ط¬ظ…ظˆط¹")}: {paid} {language === "en" ? "SAR" : "ط±.ط³"} | {t("ط§ظ„ظ…طھط¨ظ‚ظٹ")}: {round2(Math.max(0, total - paid))} {language === "en" ? "SAR" : "ط±.ط³"}
+                        {t("المجموع")}: {paid} {language === "en" ? "SAR" : "ر.س"} | {t("المتبقي")}: {round2(Math.max(0, total - paid))} {language === "en" ? "SAR" : "ر.س"}
                       </div>
                     );
                   })()}
@@ -8723,7 +8723,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               {confirmDraft.paymentMode === "partial" && confirmDraft.paymentMethod !== "mixed" ? (
                 <label>
-                  <div className="bk-field-label">{t("ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ†")}</div>
+                  <div className="bk-field-label">{t("مبلغ العربون")}</div>
                   <DashboardNumberInputV2
                     min={0}
                     step="0.01"
@@ -8732,7 +8732,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     onChange={(e) =>
                       setConfirmDraft((p) => ({ ...p, paidAmount: e.target.value }))
                     }
-                    placeholder={t("ظ…ط«ط§ظ„: 150")}
+                    placeholder={t("مثال: 150")}
                     disabled={confirmSaving}
                   />
                 </label>
@@ -8760,7 +8760,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     totalAmount: total,
                   };
                   return language === "en"
-                    ? `${confirmDraft.paymentType === "full" ? "Paid in full" : "Deposit"}: ${round2(paid)} SAR آ· Remaining: ${remaining} SAR آ· Total: ${total} SAR`
+                    ? `${confirmDraft.paymentType === "full" ? "Paid in full" : "Deposit"}: ${round2(paid)} SAR · Remaining: ${remaining} SAR · Total: ${total} SAR`
                     : paymentBreakdownText(breakdown);
                 })()}
               </div>
@@ -8777,7 +8777,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={closeConfirmModal}
               disabled={confirmSaving}
             >
-              {t("ط±ط¬ظˆط¹")}
+              {t("رجوع")}
             </button>
             <button
               type="button"
@@ -8785,7 +8785,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={handleConfirmPending}
               disabled={confirmSaving}
             >
-              {confirmSaving ? t("ط¬ط§ط±ظٹ ط§ظ„طھط£ظƒظٹط¯...") : t("طھط£ظƒظٹط¯")}
+              {confirmSaving ? t("جاري التأكيد...") : t("تأكيد")}
             </button>
           </div>
         </Modal>
@@ -8798,32 +8798,32 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={!!editTarget}
           onClose={closeEditModal}
-          ariaLabel="طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط²"
+          ariaLabel="تعديل الحجز"
           panelClassName="bk-edit-modal"
           size="sm"
         >
-          <div className="bk-cancel-head">طھط¹ط¯ظٹظ„ ط§ظ„ط­ط¬ط²</div>
+          <div className="bk-cancel-head">تعديل الحجز</div>
           <div className="bk-cancel-body">
             <div className="bk-cancel-meta">
-              <span>ط±ظ‚ظ… ط§ظ„ط­ط¬ط²: {bookingRef(editTarget)}</span>
-              <span>ط§ظ„ط®ط¯ظ…ط©: {editTarget ? serviceSummaryForTable(editTarget) : "â€”"}</span>
+              <span>رقم الحجز: {bookingRef(editTarget)}</span>
+              <span>الخدمة: {editTarget ? serviceSummaryForTable(editTarget) : "—"}</span>
             </div>
 
             <div className="bk-edit-form">
               <label>
-                <div className="bk-field-label">ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط©</div>
+                <div className="bk-field-label">اسم العميلة</div>
                 <input
                   type="text"
                   className="bk-input"
                   value={editDraft.customerName}
                   onChange={(e) => setEditDraft((p) => ({ ...p, customerName: e.target.value }))}
-                  placeholder="ظ…ط«ط§ظ„: ط³ط§ط±ط© ط£ط­ظ…ط¯"
+                  placeholder="مثال: سارة أحمد"
                   disabled={editSaving}
                 />
               </label>
 
               <label>
-                <div className="bk-field-label">ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„</div>
+                <div className="bk-field-label">رقم الجوال</div>
                 <input
                   type="text"
                   className="bk-input"
@@ -8836,7 +8836,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
               <div className="bk-edit-grid bk-edit-grid--catalog">
                 <label>
-                  <div className="bk-field-label">ط§ظ„ظ‚ط³ظ…</div>
+                  <div className="bk-field-label">القسم</div>
                   <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.sectionId}
@@ -8851,7 +8851,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     }}
                     disabled={editSaving || editCatalogLoading}
                   >
-                    <option value="">ط§ط®طھط§ط±ظٹ ط§ظ„ظ‚ط³ظ…</option>
+                    <option value="">اختاري القسم</option>
                     {editSections.map((section) => (
                       <option key={`edit_section_${section.id}`} value={section.id}>
                         {section.name}
@@ -8861,7 +8861,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                 </label>
 
                 <label>
-                  <div className="bk-field-label">ط§ظ„طھطµظ†ظٹظپ</div>
+                  <div className="bk-field-label">التصنيف</div>
                   <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.categoryId}
@@ -8876,7 +8876,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     disabled={editSaving || editCatalogLoading || !editDraft.sectionId || !editCategories.length}
                   >
                     <option value="">
-                      {editCategories.length ? "ط¨ط¯ظˆظ† طھط­ط¯ظٹط¯" : "ظ„ط§ طھظˆط¬ط¯ طھطµظ†ظٹظپط§طھ"}
+                      {editCategories.length ? "بدون تحديد" : "لا توجد تصنيفات"}
                     </option>
                     {editCategories.map((category) => (
                       <option key={`edit_category_${category.id}`} value={category.id}>
@@ -8888,7 +8888,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               </div>
 
               <label>
-                <div className="bk-field-label">ط§ظ„ط®ط¯ظ…ط©</div>
+                <div className="bk-field-label">الخدمة</div>
                 <DashboardSelectBridgeV2
                   className="bk-select"
                   value={editDraft.serviceId}
@@ -8906,7 +8906,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   disabled={editSaving || editCatalogLoading || !editDraft.sectionId}
                 >
                   <option value="">
-                    {filteredEditServices.length ? "ط§ط®طھط§ط±ظٹ ط§ظ„ط®ط¯ظ…ط©" : "ظ„ط§ طھظˆط¬ط¯ ط®ط¯ظ…ط§طھ"}
+                    {filteredEditServices.length ? "اختاري الخدمة" : "لا توجد خدمات"}
                   </option>
                   {filteredEditServices.map((service) => (
                     <option key={`edit_service_${service.id}`} value={service.id}>
@@ -8917,23 +8917,23 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               </label>
 
               {editCatalogLoading ? (
-                <div className="bk-edit-helper">ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ط£ظ‚ط³ط§ظ… ظˆط§ظ„طھطµظ†ظٹظپط§طھ ظˆط§ظ„ط®ط¯ظ…ط§طھ...</div>
+                <div className="bk-edit-helper">جاري تحميل الأقسام والتصنيفات والخدمات...</div>
               ) : null}
 
               <div className="bk-edit-grid">
                 <label>
-                  <div className="bk-field-label">ط§ظ„طھط§ط±ظٹط®</div>
+                  <div className="bk-field-label">التاريخ</div>
                   <DashboardDateInputV2 className="bk-input" value={editDraft.date} onChange={(e) => setEditDraft((p) => ({ ...p, date: e.target.value }))} disabled={editSaving} />
                 </label>
 
                 <label>
-                  <div className="bk-field-label">ط§ظ„ظˆظ‚طھ</div>
+                  <div className="bk-field-label">الوقت</div>
                   <DashboardTimeInputV2 className="bk-input" value={editDraft.time} onChange={(e) => setEditDraft((p) => ({ ...p, time: e.target.value }))} disabled={editSaving} />
                 </label>
               </div>
 
               <label>
-                <div className="bk-field-label">ط§ظ„ط³ط¹ط± ط§ظ„ظ†ظ‡ط§ط¦ظٹ</div>
+                <div className="bk-field-label">السعر النهائي</div>
                 <input dir="ltr" lang="en"
                   type="number"
                   min={0}
@@ -8941,13 +8941,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   className="bk-input"
                   value={editDraft.price}
                   onChange={(e) => setEditDraft((p) => ({ ...p, price: e.target.value }))}
-                  placeholder="ظ…ط«ط§ظ„: 120"
+                  placeholder="مثال: 120"
                   disabled={editSaving}
                 />
               </label>
 
               <label>
-                <div className="bk-field-label">ظ†ظˆط¹ ط§ظ„ط¯ظپط¹</div>
+                <div className="bk-field-label">نوع الدفع</div>
                 <DashboardSelectBridgeV2
                   className="bk-select"
                   value={editDraft.paymentMethod === "none" ? "none" : editDraft.paymentType}
@@ -8971,15 +8971,15 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                   }
                   disabled={editSaving}
                 >
-                  <option value="full">ط¯ظپط¹ ظƒط§ظ…ظ„</option>
-                  <option value="partial">ط¹ط±ط¨ظˆظ†</option>
-                  <option value="none">ط¨ط¯ظˆظ† ط¯ظپط¹</option>
+                  <option value="full">دفع كامل</option>
+                  <option value="partial">عربون</option>
+                  <option value="none">بدون دفع</option>
                 </DashboardSelectBridgeV2>
               </label>
 
               {editDraft.paymentMethod !== "none" ? (
                 <label>
-                  <div className="bk-field-label">ط·ط±ظٹظ‚ط© ط§ظ„ط¯ظپط¹</div>
+                  <div className="bk-field-label">طريقة الدفع</div>
                   <DashboardSelectBridgeV2
                     className="bk-select"
                     value={editDraft.paymentMethod}
@@ -8991,17 +8991,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     }
                     disabled={editSaving}
                   >
-                    <option value="cash">ظƒط§ط´</option>
-                    <option value="card">ط´ط¨ظƒط©</option>
-                    <option value="transfer">طھط­ظˆظٹظ„</option>
-                    <option value="other">ط£ط®ط±ظ‰</option>
+                    <option value="cash">كاش</option>
+                    <option value="card">شبكة</option>
+                    <option value="transfer">تحويل</option>
+                    <option value="other">أخرى</option>
                   </DashboardSelectBridgeV2>
                 </label>
               ) : null}
 
               {editDraft.paymentMethod !== "none" && editDraft.paymentType === "partial" ? (
                 <label>
-                  <div className="bk-field-label">ظ…ط¨ظ„ط؛ ط§ظ„ط¹ط±ط¨ظˆظ†</div>
+                  <div className="bk-field-label">مبلغ العربون</div>
                   <input dir="ltr" lang="en"
                     type="number"
                     min={0}
@@ -9009,14 +9009,14 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     className="bk-input"
                     value={editDraft.paidAmount}
                     onChange={(e) => setEditDraft((p) => ({ ...p, paidAmount: e.target.value }))}
-                    placeholder="ظ…ط«ط§ظ„: 100"
+                    placeholder="مثال: 100"
                     disabled={editSaving}
                   />
                 </label>
               ) : null}
 
               <div className="bk-helper-text">
-                ط§ظ„ظ…طھط¨ظ‚ظٹ ط¨ط¹ط¯ ط§ظ„طھط¹ط¯ظٹظ„:{" "}
+                المتبقي بعد التعديل:{" "}
                 {(() => {
                   const total = Math.max(0, Number(editDraft.price || 0));
                   const paid =
@@ -9025,18 +9025,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       : editDraft.paymentType === "full"
                       ? total
                       : Math.max(0, Number(editDraft.paidAmount || 0));
-                  return `${round2(Math.max(0, total - paid))} ط±.ط³`;
+                  return `${round2(Math.max(0, total - paid))} ر.س`;
                 })()}
               </div>
 
               <label>
-                <div className="bk-field-label">ظ…ظ„ط§ط­ط¸ط© ط§ظ„ط­ط¬ط²</div>
+                <div className="bk-field-label">ملاحظة الحجز</div>
                 <textarea
                   className="bk-input"
                   rows={3}
                   value={editDraft.note}
                   onChange={(e) => setEditDraft((p) => ({ ...p, note: e.target.value }))}
-                  placeholder="ظ…ظ„ط§ط­ط¸ط© ط¯ط§ط®ظ„ظٹط© ط¹ظ„ظ‰ ظ†ظپط³ ط§ظ„ط­ط¬ط²"
+                  placeholder="ملاحظة داخلية على نفس الحجز"
                   disabled={editSaving}
                 />
               </label>
@@ -9053,7 +9053,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={closeEditModal}
               disabled={editSaving}
             >
-              ط±ط¬ظˆط¹
+              رجوع
             </button>
             <button
               type="button"
@@ -9061,7 +9061,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={handleSaveBookingEdit}
               disabled={editSaving}
             >
-              {editSaving ? "ط¬ط§ط±ظٹ ط§ظ„ط­ظپط¸..." : "ط­ظپط¸ ط§ظ„طھط¹ط¯ظٹظ„ط§طھ"}
+              {editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}
             </button>
           </div>
         </Modal>
@@ -9070,18 +9070,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         <Modal
           open={!!cancelTarget}
           onClose={() => (cancelBusy ? null : closeCancelModal())}
-          ariaLabel={t("طھط£ظƒظٹط¯ ط¥ظ„ط؛ط§ط، ط§ظ„ط­ط¬ط²")}
+          ariaLabel={t("تأكيد إلغاء الحجز")}
           overlayClassName="bookings-v2-modal-overlay"
           panelClassName={`bookings-v2-modal-panel bk-cancel-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
           size="sm"
         >
-          <div className="bk-cancel-head">{t("طھط£ظƒظٹط¯ ط¥ظ„ط؛ط§ط، ط§ظ„ط­ط¬ط²")}</div>
+          <div className="bk-cancel-head">{t("تأكيد إلغاء الحجز")}</div>
           <div className="bk-cancel-body">
-            <p>{t("ظ‡ظ„ طھط±ظٹط¯ ط¨ط§ظ„ظپط¹ظ„ ط¥ظ„ط؛ط§ط، ظ‡ط°ط§ ط§ظ„ط­ط¬ط²طں")}</p>
+            <p>{t("هل تريد بالفعل إلغاء هذا الحجز؟")}</p>
             <div className="bk-cancel-meta">
-              <span>{t("ط±ظ‚ظ… ط§ظ„ط­ط¬ط²")}: {bookingRef(cancelTarget)}</span>
-              <span>{t("ط§ظ„ط¹ظ…ظٹظ„ط©")}: {cancelTarget?.customerName || "â€”"}</span>
-              <span>{t("ط§ظ„طھط§ط±ظٹط®")}: {cancelTarget?.date || "â€”"} - {bookingClockText(cancelTarget?.time || "", language)}</span>
+              <span>{t("رقم الحجز")}: {bookingRef(cancelTarget)}</span>
+              <span>{t("العميلة")}: {cancelTarget?.customerName || "—"}</span>
+              <span>{t("التاريخ")}: {cancelTarget?.date || "—"} - {bookingClockText(cancelTarget?.time || "", language)}</span>
             </div>
           </div>
           <div className="bk-cancel-foot">
@@ -9091,7 +9091,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={closeCancelModal}
               disabled={cancelBusy}
             >
-              {t("ط±ط¬ظˆط¹")}
+              {t("رجوع")}
             </button>
             <button
               type="button"
@@ -9099,7 +9099,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               onClick={confirmCancelBooking}
               disabled={cancelBusy}
             >
-              {cancelBusy ? t("ط¬ط§ط±ظٹ ط§ظ„ط¥ظ„ط؛ط§ط،...") : t("طھط£ظƒظٹط¯ ط§ظ„ط¥ظ„ط؛ط§ط،")}
+              {cancelBusy ? t("جاري الإلغاء...") : t("تأكيد الإلغاء")}
             </button>
           </div>
         </Modal>
