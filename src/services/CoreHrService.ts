@@ -1383,6 +1383,26 @@ export const CoreHrService = {
     return camel<CorePayrollEntry>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-preview", { method: "POST", body: input }));
   },
 
+  async deferPayrollDeductions(input: {
+    employeeId: string;
+    originalPayrollMonth: string;
+    targetPayrollMonth: string;
+    amountHalalas: number;
+    requestKey: string;
+    reason: string;
+    note?: string;
+  }) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/payroll-deduction-deferrals/defer",
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+
+    return camelRecord(payload);
+  },
+
   async deferAttendanceDeduction(input: {
     employeeId: string;
     originalPayrollMonth: string;

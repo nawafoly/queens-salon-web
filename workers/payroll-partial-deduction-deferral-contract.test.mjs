@@ -14,6 +14,8 @@ test('partial payroll deduction deferral is canonical, atomic, and excluded from
   const payroll = read('workers/core/repositories/payroll.js');
   const obligations = read('workers/core/repositories/payroll-obligations.js');
   const deferrals = read('workers/core/repositories/payroll-deduction-deferrals.js');
+  const service = read('src/services/CoreHrService.ts');
+  const dashboard = read('src/pages/DashboardPayroll.tsx');
 
   assert.match(migration, /CREATE TABLE IF NOT EXISTS payroll_deduction_deferrals/);
   assert.match(migration, /idx_payroll_deduction_deferrals_request/);
@@ -43,6 +45,29 @@ test('partial payroll deduction deferral is canonical, atomic, and excluded from
     /canonicalAdvanceHalalas\s*-\s*canonicalDeferredDeductionsHalalas/
   );
   assert.match(payroll, /partial_deduction_deferral_exceeds_available_deductions/);
+
+  assert.match(service, /async deferPayrollDeductions/);
+  assert.match(
+    service,
+    /\/api\/core\/hr\/payroll-deduction-deferrals\/defer/
+  );
+
+  assert.match(
+    dashboard,
+    /CoreHrService\.deferPayrollDeductions/
+  );
+  assert.match(
+    dashboard,
+    /تأجيل جزء من الخصومات/
+  );
+  assert.match(
+    dashboard,
+    /تأكيد تأجيل المبلغ/
+  );
+  assert.match(
+    dashboard,
+    /payrollPartialDeferralRequestKey/
+  );
 });
 
 test('partial deferral total is zero only while migration 0093 is not yet present', async () => {
