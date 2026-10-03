@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import {
+  getActivePayrollDeductionDeferralTotal,
+} from './core/repositories/payroll-deduction-deferrals.js';
 
 const read = (path) => readFileSync(path, 'utf8');
 
@@ -29,6 +32,7 @@ test('partial payroll deduction deferral is canonical, atomic, and excluded from
   assert.match(deferrals, /buildCanonicalPayrollObligationCreate/);
   assert.match(deferrals, /await dbBatch\(/);
   assert.match(deferrals, /partial_deduction_deferral_idempotency_conflict/);
+  assert.match(deferrals, /pendingDeferralSchema/);
 
   assert.match(payroll, /export async function deferPayrollDeductions/);
   assert.match(payroll, /getActivePayrollDeductionDeferralTotal/);
@@ -39,4 +43,61 @@ test('partial payroll deduction deferral is canonical, atomic, and excluded from
     /canonicalAdvanceHalalas\s*-\s*canonicalDeferredDeductionsHalalas/
   );
   assert.match(payroll, /partial_deduction_deferral_exceeds_available_deductions/);
+});
+
+test('partial deferral total is zero only while migration 0093 is not yet present', async () => {
+  const missingSchemaDb = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              throw new Error(
+                'D1_ERROR: no such table: payroll_deduction_deferrals: SQLITE_ERROR'
+              );
+            },
+          };
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await getActivePayrollDeductionDeferralTotal(
+      missingSchemaDb,
+      'main',
+      {
+        employeeId: 'emp-1',
+        payrollMonth: '2026-10',
+      }
+    ),
+    0
+  );
+
+  const brokenDb = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              throw new Error('database unavailable');
+            },
+          };
+        },
+      };
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      getActivePayrollDeductionDeferralTotal(
+        brokenDb,
+        'main',
+        {
+          employeeId: 'emp-1',
+          payrollMonth: '2026-10',
+        }
+      ),
+    /database unavailable/
+  );
 });
