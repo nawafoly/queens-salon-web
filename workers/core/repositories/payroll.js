@@ -34,7 +34,10 @@ import {
   PAYROLL_CARRYOVER_SOURCE_TYPE,
   withoutPayrollCarryoverItems,
 } from '../../../src/helpers/hr/payrollCarryoverPolicy.js';
-import { withoutPayrollObligationDeductionItems } from '../../../src/helpers/hr/payrollObligationPolicy.js';
+import {
+  isDeferrableDeductionKind,
+  withoutPayrollObligationDeductionItems,
+} from '../../../src/helpers/hr/payrollObligationPolicy.js';
 import {
   applyTargetBonusToPayrollData,
   approveEmployeeTargetSummary,
@@ -48,6 +51,11 @@ import {
   payrollObligationPaidStatements,
   payrollObligationPaymentReversalStatements,
 } from './payroll-obligations.js';
+import {
+  createPayrollDeductionDeferralRecord,
+  findPayrollDeductionDeferralByRequest,
+  getActivePayrollDeductionDeferralTotal,
+} from './payroll-deduction-deferrals.js';
 
 const PAYROLL_DAY_MS = 24 * 60 * 60 * 1000;
 const PAYROLL_RIYADH_ZONE = 'Asia/Riyadh';
@@ -945,6 +953,39 @@ function deductionItemsTotal(items) {
   }, 0);
 }
 
+
+function deferrableDeductionItemKind(item) {
+  return cleanText(
+    item?.obligationKind ??
+    item?.obligation_kind ??
+    item?.trace?.obligationKind ??
+    item?.trace?.obligation_kind ??
+    item?.deductionKind ??
+    item?.deduction_kind ??
+    item?.kind ??
+    ''
+  ).toLowerCase();
+}
+
+function deferrableDeductionItemsTotal(items) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    const kind = deferrableDeductionItemKind(item);
+    if (!isDeferrableDeductionKind(kind)) return sum;
+
+    const amount = Number(
+      item?.amountHalalas ??
+      item?.amount_halalas ??
+      item?.amount ??
+      0
+    );
+
+    return sum + (
+      Number.isFinite(amount) && amount > 0
+        ? Math.round(amount)
+        : 0
+    );
+  }, 0);
+}
 function cleanStatus(value) {
   const status = cleanText(value || 'draft');
   if (['draft', 'reviewed', 'approved', 'paid'].includes(status)) return status;
@@ -1742,13 +1783,44 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     intMoney(sourceEntry.allowances_halalas) +
     intMoney(sourceEntry.manual_additions_halalas) +
     overtimeValueHalalas;
-  const totalDeductionsHalalas =
+  const insuranceDeductionHalalas =
+    intMoney(sourceEntry.insurance_deduction_halalas);
+
+  const deferrableDeductionsHalalas =
     absenceDeductionHalalas +
     missingHoursDeductionHalalas +
-    intMoney(sourceEntry.insurance_deduction_halalas) +
     intMoney(sourceEntry.manual_deductions_halalas) +
     intMoney(sourceEntry.advances_halalas) +
     intMoney(sourceEntry.other_deductions_halalas);
+
+  // A partial deduction deferral already has a canonical obligation in the
+  // target month. Remove it from the locked source recalculation so the same
+  // amount cannot be recreated as a historical carryover.
+  // Statutory insurance/GOSI remains outside the deferrable pool.
+  const partialDeductionDeferralHalalas =
+    await getActivePayrollDeductionDeferralTotal(
+      db,
+      salonId,
+      {
+        employeeId: sourceEntry.employee_id,
+        sourcePayrollMonth: sourceEntry.payroll_month,
+      }
+    );
+
+  if (
+    partialDeductionDeferralHalalas >
+    deferrableDeductionsHalalas
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:partial_deduction_deferral_exceeds_available_deductions'
+    );
+  }
+
+  const totalDeductionsHalalas =
+    insuranceDeductionHalalas +
+    deferrableDeductionsHalalas -
+    partialDeductionDeferralHalalas;
   return {
     netSalaryHalalas: Math.max(0, grossSalaryHalalas - totalDeductionsHalalas),
     attendanceSummary: summary,
@@ -2838,6 +2910,9 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   const canonicalManualDeductionsHalalas =
     deductionItemsTotal(canonicalDeductions);
 
+  const canonicalDeferrableManualDeductionsHalalas =
+    deferrableDeductionItemsTotal(canonicalDeductions);
+
   const hasInternalCanonicalAdvance = Object.prototype.hasOwnProperty.call(
     options,
     'internalCanonicalAdvanceHalalas'
@@ -2895,12 +2970,43 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     canonicalManualAdditionsHalalas +
     authority.overtimeValueHalalas;
   const canonicalLegacyOtherDeductionsHalalas = 0;
-  const canonicalTotalDeductionsHalalas =
+  // Partial payroll deferral is a collection-timing adjustment only.
+  // Statutory deductions (including GOSI/social insurance) are never part of
+  // the amount available for deferral.
+  const canonicalDeferrableDeductionsHalalas =
     authority.absenceDeductionHalalas +
     authority.missingHoursDeductionHalalas +
-    authority.insuranceDeductionHalalas +
-    canonicalManualDeductionsHalalas +
+    canonicalDeferrableManualDeductionsHalalas +
     canonicalAdvanceHalalas;
+
+  const canonicalDeferredDeductionsHalalas =
+    await getActivePayrollDeductionDeferralTotal(
+      db,
+      salonId,
+      {
+        employeeId,
+        sourcePayrollMonth: payrollMonth,
+      }
+    );
+
+  if (
+    canonicalDeferredDeductionsHalalas >
+    canonicalDeferrableDeductionsHalalas
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:partial_deduction_deferral_exceeds_available_deductions'
+    );
+  }
+
+  const canonicalTotalDeductionsHalalas =
+    authority.insuranceDeductionHalalas +
+    authority.absenceDeductionHalalas +
+    authority.missingHoursDeductionHalalas +
+    canonicalManualDeductionsHalalas +
+    canonicalAdvanceHalalas -
+    canonicalDeferredDeductionsHalalas;
+
   const canonicalNetSalaryHalalas = Math.max(
     0,
     canonicalGrossSalaryHalalas - canonicalTotalDeductionsHalalas
@@ -3133,6 +3239,295 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   return saved;
 }
 
+
+
+export async function deferPayrollDeductions(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const employeeId = requiredId(
+    data.employeeId ?? data.employee_id,
+    'employee_id'
+  );
+
+  const originalPayrollMonth = cleanText(
+    data.originalPayrollMonth ??
+    data.original_payroll_month
+  );
+
+  const targetPayrollMonth = cleanText(
+    data.targetPayrollMonth ??
+    data.target_payroll_month
+  );
+
+  payrollMonthBoundsCanonical(originalPayrollMonth);
+  payrollMonthBoundsCanonical(targetPayrollMonth);
+
+  if (targetPayrollMonth <= originalPayrollMonth) {
+    throw new AppError(
+      400,
+      'core_payroll:partial_deduction_deferral_target_must_be_future'
+    );
+  }
+
+  const amountHalalas = Number(
+    data.amountHalalas ?? data.amount_halalas
+  );
+
+  if (
+    !Number.isSafeInteger(amountHalalas) ||
+    amountHalalas <= 0
+  ) {
+    throw new AppError(
+      400,
+      'core_payroll:invalid_partial_deduction_deferral_amount'
+    );
+  }
+
+  const requestKey = cleanText(
+    data.requestKey ?? data.request_key
+  );
+
+  if (!requestKey) {
+    throw new AppError(
+      400,
+      'core_payroll:partial_deduction_deferral_request_key_required'
+    );
+  }
+
+  const reason = cleanText(data.reason);
+
+  if (!reason) {
+    throw new AppError(
+      400,
+      'core_payroll:partial_deduction_deferral_reason_required'
+    );
+  }
+
+  const existingDeferralRequest =
+    await findPayrollDeductionDeferralByRequest(
+      db,
+      salonId,
+      employeeId,
+      requestKey
+    );
+
+  if (existingDeferralRequest) {
+    // Delegate exact payload comparison to the repository so retry
+    // semantics have one canonical authority. An identical request
+    // returns the existing record; changed payload throws conflict.
+    const deferral =
+      await createPayrollDeductionDeferralRecord(
+        db,
+        salonId,
+        {
+          employeeId,
+          requestKey,
+          sourcePayrollMonth: originalPayrollMonth,
+          targetPayrollMonth,
+          amountHalalas,
+          reason,
+          note: data.note,
+        },
+        actor
+      );
+
+    return {
+      employeeId,
+      originalPayrollMonth,
+      targetPayrollMonth,
+      requestKey,
+      amountHalalas,
+      idempotent: true,
+      deferral,
+    };
+  }
+
+  const sourceEntry = await dbFirst(
+    db,
+    `SELECT id, status
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+      LIMIT 1`,
+    [salonId, employeeId, originalPayrollMonth]
+  );
+
+  if (
+    sourceEntry &&
+    ['approved', 'paid'].includes(
+      cleanText(sourceEntry.status).toLowerCase()
+    )
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:partial_deduction_deferral_source_payroll_locked'
+    );
+  }
+
+  const targetEntry = await dbFirst(
+    db,
+    `SELECT id, status
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+      LIMIT 1`,
+    [salonId, employeeId, targetPayrollMonth]
+  );
+
+  if (
+    targetEntry &&
+    ['approved', 'paid'].includes(
+      cleanText(targetEntry.status).toLowerCase()
+    )
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:partial_deduction_deferral_target_payroll_locked'
+    );
+  }
+
+  for (const month of [
+    originalPayrollMonth,
+    targetPayrollMonth,
+  ]) {
+    const period = await dbFirst(
+      db,
+      `SELECT status
+         FROM payroll_periods
+        WHERE salon_id = ?
+          AND payroll_month = ?
+        LIMIT 1`,
+      [salonId, month]
+    );
+
+    if (
+      period &&
+      LOCKED_PAYROLL_PERIOD_STATUSES.has(
+        cleanText(period.status || 'open').toLowerCase()
+      )
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:partial_deduction_deferral_period_locked'
+      );
+    }
+  }
+
+  const authority =
+    await buildCanonicalPayrollAuthority(
+      db,
+      salonId,
+      employeeId,
+      originalPayrollMonth,
+      {},
+      options
+    );
+
+  const obligationCanonical =
+    await canonicalizePayrollObligationDeductions(
+      db,
+      salonId,
+      {
+        employeeId,
+        payrollMonth: originalPayrollMonth,
+        deductions: [],
+      }
+    );
+
+  const canonicalManualDeductions =
+    Array.isArray(obligationCanonical?.deductions)
+      ? obligationCanonical.deductions
+      : [];
+
+  const deferrableManualHalalas =
+    deferrableDeductionItemsTotal(
+      canonicalManualDeductions
+    );
+
+  const canonicalAdvanceRows =
+    await listPayrollAdvanceDeductions(
+      db,
+      salonId,
+      {
+        employeeId,
+        payrollMonth: originalPayrollMonth,
+      }
+    );
+
+  const advanceHalalas = Math.max(
+    0,
+    Number(
+      canonicalAdvanceRows[0]?.amount_halalas || 0
+    )
+  );
+
+  const eligibleHalalas =
+    Number(authority.absenceDeductionHalalas || 0) +
+    Number(authority.missingHoursDeductionHalalas || 0) +
+    deferrableManualHalalas +
+    advanceHalalas;
+
+  const alreadyDeferredHalalas =
+    await getActivePayrollDeductionDeferralTotal(
+      db,
+      salonId,
+      {
+        employeeId,
+        sourcePayrollMonth: originalPayrollMonth,
+      }
+    );
+
+  const remainingEligibleHalalas = Math.max(
+    0,
+    eligibleHalalas - alreadyDeferredHalalas
+  );
+
+  if (amountHalalas > remainingEligibleHalalas) {
+    throw new AppError(
+      409,
+      'core_payroll:partial_deduction_deferral_exceeds_available_deductions'
+    );
+  }
+
+  const deferral =
+    await createPayrollDeductionDeferralRecord(
+      db,
+      salonId,
+      {
+        employeeId,
+        requestKey,
+        sourcePayrollMonth: originalPayrollMonth,
+        targetPayrollMonth,
+        amountHalalas,
+        reason,
+        note: data.note,
+      },
+      actor
+    );
+
+  return {
+    employeeId,
+    originalPayrollMonth,
+    targetPayrollMonth,
+    requestKey,
+    amountHalalas,
+    eligibleHalalas,
+    alreadyDeferredHalalas,
+    remainingEligibleBeforeHalalas:
+      remainingEligibleHalalas,
+    remainingEligibleAfterHalalas: Math.max(
+      0,
+      remainingEligibleHalalas - amountHalalas
+    ),
+    deferral,
+  };
+}
 
 export async function deferAttendanceDeduction(
   db,
