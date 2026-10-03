@@ -1782,16 +1782,26 @@ test("Stage 2 canonical leave authority never mirrors operational leave into sta
       "src/pages/DashboardEmployees.tsx"
     );
 
+  const controlledSaveStart = dashboard.indexOf(
+    "EMPLOYEE_CONTROLLED_SAVE_V1"
+  );
+  const masterGuard = dashboard.indexOf(
+    "if (employeeSavePlan.writeEmployeeMaster)",
+    controlledSaveStart
+  );
   const saveStart = dashboard.indexOf(
-    "await CoreHrService.saveEmployee({"
+    "await CoreHrService.saveEmployee({",
+    masterGuard
   );
   const saveEnd = dashboard.indexOf(
-    "if (workingHourOverridesChanged)",
+    "if (employeeSavePlan.syncWorkingHourExceptions)",
     saveStart
   );
 
   assert.ok(
-    saveStart >= 0 &&
+    controlledSaveStart >= 0 &&
+    masterGuard > controlledSaveStart &&
+    saveStart > masterGuard &&
     saveEnd > saveStart,
     "Dashboard employee master must save through CoreHrService"
   );
@@ -1804,6 +1814,12 @@ test("Stage 2 canonical leave authority never mirrors operational leave into sta
   assert.match(
     employeeMasterSave,
     /\.saveEmployee\(\{/
+  );
+
+  assert.match(
+    dashboard.slice(masterGuard, saveStart),
+    /if \(employeeSavePlan\.writeEmployeeMaster\)/,
+    "Dashboard must not rewrite employee master for an independent schedule-only save"
   );
 
   assert.match(
