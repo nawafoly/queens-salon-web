@@ -165,77 +165,90 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
     <div
       className={[
         "dsv2-time-v2",
-        clock === "12h" ? "dsv2-time-v2--12h" : "",
+        clock === "12h" ? "dsv2-time-v2--12h" : "dsv2-time-v2--native",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
       {name ? <input type="hidden" name={name} value={current} /> : null}
-      <input
-        ref={ref}
-        id={id}
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        lang="en"
-        dir="ltr"
-        className="dsv2-time-v2__input dsv2-input"
-        value={clock === "12h" ? draft12 : current}
-        placeholder={resolvedPlaceholder}
-        disabled={disabled}
-        required={required}
-        aria-label={resolvedPlaceholder}
-        data-min={min}
-        data-max={max}
-        data-step={step}
-        onFocus={() => {
-          if (clock === "12h") editing12Ref.current = true;
-        }}
-        onChange={(event) => {
-          if (clock === "12h") {
-            commit12Draft(event.target.value);
-            return;
-          }
-          commit(normalizeTimeTyping(event.target.value));
-        }}
-        onBlur={(event) => {
-          if (clock === "12h") {
-            editing12Ref.current = false;
-            const canonical = to24HourTime(event.target.value, period12);
-            if (canonical) {
-              const normalized = to12HourParts(canonical);
-              setDraft12(normalized.draft);
-              if (canonical !== current) commit(canonical);
-              return;
-            }
-
-            const fallback = to12HourParts(current);
-            setDraft12(fallback.draft);
-            setPeriod12(fallback.period);
-            return;
-          }
-
-          const normalized = normalizeCommittedTime(event.target.value);
-          if (normalized !== current) commit(normalized);
-        }}
-      />
 
       {clock === "12h" ? (
-        <select
-          className="dsv2-time-v2__period"
-          value={period12}
-          disabled={disabled}
-          aria-label="الفترة الزمنية"
-          onChange={(event) =>
-            changePeriod(event.target.value as TimePeriod)
-          }
-        >
-          <option value="am">ص</option>
-          <option value="pm">م</option>
-        </select>
+        <>
+          <input
+            ref={ref}
+            id={id}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            lang="en"
+            dir="ltr"
+            className="dsv2-time-v2__input dsv2-input"
+            value={draft12}
+            placeholder={resolvedPlaceholder}
+            disabled={disabled}
+            required={required}
+            aria-label={resolvedPlaceholder}
+            data-min={min}
+            data-max={max}
+            data-step={step}
+            onFocus={() => {
+              editing12Ref.current = true;
+            }}
+            onChange={(event) => {
+              commit12Draft(event.target.value);
+            }}
+            onBlur={(event) => {
+              editing12Ref.current = false;
+              const canonical = to24HourTime(event.target.value, period12);
+              if (canonical) {
+                const normalized = to12HourParts(canonical);
+                setDraft12(normalized.draft);
+                if (canonical !== current) commit(canonical);
+                return;
+              }
+
+              const fallback = to12HourParts(current);
+              setDraft12(fallback.draft);
+              setPeriod12(fallback.period);
+            }}
+          />
+
+          <select
+            className="dsv2-time-v2__period"
+            value={period12}
+            disabled={disabled}
+            aria-label="الفترة الزمنية"
+            onChange={(event) =>
+              changePeriod(event.target.value as TimePeriod)
+            }
+          >
+            <option value="am">ص</option>
+            <option value="pm">م</option>
+          </select>
+        </>
       ) : (
-        <span className="dsv2-time-v2__icon" aria-hidden="true">◷</span>
+        <input
+          ref={ref}
+          id={id}
+          type="time"
+          lang="en"
+          dir="ltr"
+          className="dsv2-time-v2__input dsv2-input"
+          value={current}
+          placeholder={resolvedPlaceholder}
+          disabled={disabled}
+          required={required}
+          min={min}
+          max={max}
+          step={step}
+          aria-label={resolvedPlaceholder}
+          onChange={(event) => commit(normalizeCommittedTime(event.target.value))}
+          onBlur={(event) => {
+            const normalized = normalizeCommittedTime(event.target.value);
+            if (normalized !== current) commit(normalized);
+          }}
+        />
       )}
     </div>
   );

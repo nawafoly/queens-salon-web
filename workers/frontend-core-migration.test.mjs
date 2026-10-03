@@ -533,10 +533,33 @@ test("dashboard booking edit uses Core D1, owner bypasses password, and admins r
   assert.match(dashboard, /sanitizeBookingNoteForEditor/);
   assert.match(dashboard, /resolveBookingDataSource\(\)\.getServiceSections/);
   assert.match(dashboard, /resolveBookingDataSource\(\)\.getActiveStaff/);
-  assert.match(dashboard, /className="bk-edit-time-input"/);
-  assert.match(dashboard, /clock="12h"/);
+  assert.match(dashboard, /className="bk-time-popover"/);
+  assert.match(dashboard, /className="bk-time-hours"/);
+  assert.match(dashboard, /className="bk-time-minutes"/);
+  assert.match(dashboard, /className="bk-time-period"/);
+  assert.match(dashboard, /slotStepMin=/);
   assert.doesNotMatch(dashboard, /showPicker\(\)/);
+  assert.doesNotMatch(dashboard, /className="bk-edit-time-input"/);
   assert.doesNotMatch(dashboard, /className="bk-edit-picker-native-input"/);
+  assert.match(dashboard, /<EditBookingModal target=\{editTarget\} language=\{language\}/);
+  assert.match(dashboard, /translateBookingCatalogLabel/);
+  assert.match(dashboard, /bookingActivityDisplayText\(event\.title, language\)/);
+  assert.match(dashboard, /bookingActivityDisplayText\(change, language\)/);
+  assert.match(dashboard, /bookingDateTimeLabelText\(event\.atLabel, language\)/);
+  assert.match(dashboard, /label=\{t\("حالة الحجز"\)\}/);
+  assert.match(dashboard, /t\("حفظ التعديلات"\)/);
+  const bookingLanguage = readFileSync("src/helpers/dashboardBookingsLanguage.ts", "utf8");
+  for (const key of [
+    "تم تعديل الحجز",
+    "الإدارة",
+    "القسم",
+    "التصنيف",
+    "حالة الحجز",
+    "حفظ التعديلات",
+    "اختيار الوقت",
+  ]) {
+    assert.match(bookingLanguage, new RegExp(JSON.stringify(key).slice(1, -1)));
+  }
   assert.doesNotMatch(dashboard, /const BOOKING_ACTION_PIN/);
 
   assert.match(

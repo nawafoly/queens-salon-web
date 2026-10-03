@@ -112,6 +112,78 @@ function optionalMoneyHalalas(value, field) {
   return moneyHalalas(value, field);
 }
 
+const EMPLOYEE_STALE_NOOP_IGNORED_FIELDS = new Set([
+  'created_at',
+  'updated_at',
+  'updated_by_uid',
+  'updated_by_email',
+  'social_insurance_updated_by_uid',
+  'social_insurance_updated_by_email',
+  'social_insurance_updated_at',
+]);
+
+const EMPLOYEE_STALE_NOOP_JSON_ARRAY_FIELDS = new Set([
+  'weekly_off_days_json',
+  'allowed_zone_ids_json',
+  'specialties_json',
+]);
+
+function canonicalJsonArrayForCompare(value) {
+  let parsed = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = [];
+    }
+  }
+  if (!Array.isArray(parsed)) return '[]';
+  return JSON.stringify(
+    parsed
+      .map((item) => cleanText(item))
+      .filter(Boolean)
+      .sort()
+  );
+}
+
+function comparableEmployeeField(key, value) {
+  if (EMPLOYEE_STALE_NOOP_JSON_ARRAY_FIELDS.has(key)) {
+    return canonicalJsonArrayForCompare(value);
+  }
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  return String(value).trim();
+}
+
+function employeeRowSemanticallyMatches(existingRow, desiredRow) {
+  if (!existingRow || !desiredRow) return false;
+
+  for (const [key, desiredValue] of Object.entries(desiredRow)) {
+    if (EMPLOYEE_STALE_NOOP_IGNORED_FIELDS.has(key)) continue;
+    if (
+      comparableEmployeeField(key, existingRow[key]) !==
+      comparableEmployeeField(key, desiredValue)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function sameStringSet(left, right) {
+  const normalize = (values) =>
+    Array.from(
+      new Set(
+        (Array.isArray(values) ? values : [])
+          .map((value) => cleanText(value))
+          .filter(Boolean)
+      )
+    ).sort();
+
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
 async function employmentFor(db, salonId, employeeId) {
   return dbFirst(
     db,
@@ -645,6 +717,50 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         'Offboarded employment lifecycle dates require a dedicated lifecycle operation'
       );
     }
+  }
+
+  // EMPLOYEE_STALE_NOOP_REPLAY_V1
+  // An old optimistic-concurrency token must still reject a real employee
+  // master edit. If the requested canonical employee/staff state already
+  // equals the current state, however, this is only a semantic replay (for
+  // example the Dashboard is saving an independent schedule exception). In
+  // that case do not make the unrelated employee master revision block the
+  // schedule command that follows.
+  if (
+    enforceConcurrency &&
+    cleanText(existing?.updated_at) !== expectedUpdatedAt
+  ) {
+    const currentSpecialtyRows = bookingSpecialtiesProvided
+      ? await dbAll(
+          db,
+          `SELECT service_id
+             FROM staff_services
+            WHERE salon_id = ?
+              AND staff_id = ?
+              AND active = 1
+            ORDER BY service_id`,
+          [salonId, id]
+        )
+      : [];
+
+    const currentSpecialtyIds = currentSpecialtyRows.map((row) => row.service_id);
+    const semanticNoop =
+      employeeRowSemanticallyMatches(existing, profile) &&
+      employeeRowSemanticallyMatches(existingEmployment, employment) &&
+      employeeRowSemanticallyMatches(existingStaff, staff) &&
+      (
+        !bookingSpecialtiesProvided ||
+        sameStringSet(currentSpecialtyIds, bookingSpecialtyIds || [])
+      );
+
+    if (semanticNoop) {
+      return getHrEmployee(db, salonId, id);
+    }
+
+    throw new AppError(
+      409,
+      'core_hr:employee_changed'
+    );
   }
 
   const writeStatements = [

@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
-import { DashboardDateInputV2, DashboardSelectBridgeV2, DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
+import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -53,7 +53,7 @@ import { resolveServiceName } from "../services/serviceResolver";
 // ✅ AppSettings through the unified Core settings adapter
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 import { SALON_ID } from "../helpers/bookingSharedConstants";
-import { bookingsText, type DashboardLanguage } from "../helpers/dashboardBookingsLanguage";
+import { bookingsText, translateBookingCatalogLabel, type DashboardLanguage } from "../helpers/dashboardBookingsLanguage";
 
 import {
   formatTime12,
@@ -377,6 +377,71 @@ function bookingClockText(value: string, language: DashboardLanguage): string {
   if (!match) return value;
   const hour = Number(match[1]);
   return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+function bookingDateTimeLabelText(value: unknown, language: DashboardLanguage): string {
+  const raw = String(value || "").trim();
+  if (!raw || language === "ar") return raw;
+  return raw
+    .replace(/\sص(?=\s|$)/g, " AM")
+    .replace(/\sم(?=\s|$)/g, " PM");
+}
+
+function bookingFormattedDateTimeText(value: unknown, language: DashboardLanguage): string {
+  return bookingDateTimeLabelText(formatAnyDateTime(value), language);
+}
+
+function bookingActivityDisplayText(value: string, language: DashboardLanguage): string {
+  const raw = String(value || "").trim();
+  if (!raw || language === "ar") return raw;
+
+  const direct = bookingsText(language, raw);
+  if (direct !== raw) return direct;
+
+  const saveErrorMatch = raw.match(/^تعذر حفظ تعديل الحجز \((.+)\)\.$/);
+  if (saveErrorMatch) {
+    return `Could not save booking changes (${saveErrorMatch[1]}).`;
+  }
+
+  const rules: Array<{
+    prefix: string;
+    english: string;
+    kind?: "service" | "section" | "category";
+  }> = [
+    { prefix: "التاريخ إلى ", english: "Date changed to" },
+    { prefix: "الوقت إلى ", english: "Time changed to" },
+    { prefix: "القسم إلى ", english: "Section changed to", kind: "section" },
+    { prefix: "التصنيف إلى ", english: "Category changed to", kind: "category" },
+    { prefix: "الموظفة إلى ", english: "Staff member changed to" },
+    { prefix: "الخدمة إلى ", english: "Service changed to", kind: "service" },
+    { prefix: "العميلة إلى ", english: "Client changed to" },
+    { prefix: "رقم الجوال إلى ", english: "Phone number changed to" },
+    { prefix: "الحالة إلى ", english: "Status changed to" },
+    { prefix: "نوع الدفع إلى ", english: "Payment type changed to" },
+    { prefix: "طريقة الدفع إلى ", english: "Payment method changed to" },
+    { prefix: "المدفوع إلى ", english: "Paid amount changed to" },
+    { prefix: "المتبقي إلى ", english: "Remaining amount changed to" },
+    { prefix: "الإجمالي إلى ", english: "Total changed to" },
+  ];
+
+  for (const rule of rules) {
+    if (!raw.startsWith(rule.prefix)) continue;
+    const suffixRaw = raw.slice(rule.prefix.length).trim();
+    let suffix = rule.kind
+      ? translateBookingCatalogLabel(language, suffixRaw, rule.kind)
+      : bookingsText(language, suffixRaw);
+
+    suffix = bookingDateTimeLabelText(
+      String(suffix || suffixRaw)
+        .replace(/\s*ر\.س\b/g, " SAR")
+        .trim(),
+      language
+    );
+
+    return `${rule.english} ${suffix}`.trim();
+  }
+
+  return raw.replace(/\s*ر\.س\b/g, " SAR");
 }
 
 function bookingPaymentMethodText(b: Booking, language: DashboardLanguage): string {
@@ -1249,6 +1314,7 @@ type EditBookingCustomerSectionProps = {
   customerName: string;
   phone: string;
   disabled: boolean;
+  language: DashboardLanguage;
   onCustomerNameChange: (value: string) => void;
   onPhoneChange: (value: string) => void;
 };
@@ -1257,25 +1323,27 @@ const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
   customerName,
   phone,
   disabled,
+  language,
   onCustomerNameChange,
   onPhoneChange,
 }: EditBookingCustomerSectionProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   return (
     <>
       <label>
-        <div className="bk-field-label">اسم العميلة</div>
+        <div className="bk-field-label">{t("اسم العميلة")}</div>
         <input
           type="text"
           className="bk-input"
           value={customerName}
           onChange={(e) => onCustomerNameChange(e.target.value)}
-          placeholder="مثال: سارة أحمد"
+          placeholder={t("مثال: سارة أحمد")}
           disabled={disabled}
         />
       </label>
 
       <label>
-        <div className="bk-field-label">رقم الجوال</div>
+        <div className="bk-field-label">{t("رقم الجوال")}</div>
         <input
           type="text"
           className="bk-input"
@@ -2203,6 +2271,7 @@ const BookingSelectField = memo(function BookingSelectField({
 });
 
 type EditBookingCatalogSectionProps = {
+  language: DashboardLanguage;
   sectionId: string;
   categoryId: string;
   serviceId: string;
@@ -2218,6 +2287,7 @@ type EditBookingCatalogSectionProps = {
 
 
 const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
+  language,
   sectionId,
   categoryId,
   serviceId,
@@ -2230,12 +2300,13 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
   onCategoryChange,
   onServiceChange,
 }: EditBookingCatalogSectionProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   const sectionOptions: BookingSelectOption[] = [
     {
       value: "",
       label: catalogLoading
-        ? "جاري تحميل الأقسام..."
-        : "اختاري القسم",
+        ? t("جاري تحميل الأقسام...")
+        : t("اختاري القسم"),
     },
     ...sections.map((section) => ({
       value: section.id,
@@ -2247,8 +2318,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     {
       value: "",
       label: categories.length
-        ? "بدون تحديد"
-        : "لا توجد تصنيفات",
+        ? t("بدون تحديد")
+        : t("لا توجد تصنيفات"),
       disabled: !categories.length,
     },
     ...categories.map((category) => ({
@@ -2261,8 +2332,8 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     {
       value: "",
       label: services.length
-        ? "اختاري الخدمة"
-        : "لا توجد خدمات",
+        ? t("اختاري الخدمة")
+        : t("لا توجد خدمات"),
       disabled: !services.length,
     },
     ...services.map((service) => ({
@@ -2275,22 +2346,23 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     <>
       <div className="bk-edit-grid bk-edit-grid--catalog">
         <BookingSelectField
-          label="القسم"
+          label={t("القسم")}
           value={sectionId}
           options={sectionOptions}
-          placeholder="اختاري القسم"
+          placeholder={t("اختاري القسم")}
           disabled={disabled || catalogLoading}
           onChange={onSectionChange}
+          language={language}
         />
 
         <BookingSelectField
-          label="التصنيف"
+          label={t("التصنيف")}
           value={categoryId}
           options={categoryOptions}
           placeholder={
             categories.length
-              ? "بدون تحديد"
-              : "لا توجد تصنيفات"
+              ? t("بدون تحديد")
+              : t("لا توجد تصنيفات")
           }
           disabled={
             disabled ||
@@ -2299,17 +2371,18 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
             !categories.length
           }
           onChange={onCategoryChange}
+          language={language}
         />
       </div>
 
       <BookingSelectField
-        label="الخدمة"
+        label={t("الخدمة")}
         value={serviceId}
         options={serviceOptions}
         placeholder={
           services.length
-            ? "اختاري الخدمة"
-            : "لا توجد خدمات"
+            ? t("اختاري الخدمة")
+            : t("لا توجد خدمات")
         }
         disabled={
           disabled ||
@@ -2318,11 +2391,12 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
           !services.length
         }
         onChange={onServiceChange}
+        language={language}
       />
 
       {catalogLoading ? (
         <div className="bk-edit-helper">
-          جاري تحميل الأقسام والتصنيفات والخدمات...
+          {t("جاري تحميل الأقسام والتصنيفات والخدمات...")}
         </div>
       ) : null}
     </>
@@ -2335,10 +2409,18 @@ type EditBookingScheduleSectionProps = {
   staffLoading: boolean;
   date: string;
   time: string;
+  slotStepMin: number;
   disabled: boolean;
+  language: DashboardLanguage;
   onEmployeeChange: (value: string) => void;
   onDateChange: (value: string) => void;
   onTimeChange: (value: string) => void;
+};
+
+type EditBookingTimeDraft = {
+  hour: number;
+  minute: number;
+  period: "am" | "pm";
 };
 
 
@@ -2351,15 +2433,39 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   staffLoading,
   date,
   time,
+  slotStepMin,
   disabled,
+  language,
   onEmployeeChange,
   onDateChange,
   onTimeChange,
 }: EditBookingScheduleSectionProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
 
   const dateTriggerRef = useRef<HTMLButtonElement>(null);
   const datePanelRef = useRef<HTMLDivElement>(null);
+  const timeTriggerRef = useRef<HTMLButtonElement>(null);
+  const timePanelRef = useRef<HTMLDivElement>(null);
+
+  const parseTimeDraft = useCallback((value: string): EditBookingTimeDraft => {
+    const match = String(value || "").match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    if (!match) return { hour: 12, minute: 0, period: "pm" };
+
+    const hour24 = Number(match[1]);
+    const minute = Number(match[2]);
+
+    return {
+      hour: hour24 % 12 || 12,
+      minute,
+      period: hour24 >= 12 ? "pm" : "am",
+    };
+  }, []);
+
+  const [timeDraft, setTimeDraft] = useState<EditBookingTimeDraft>(() =>
+    parseTimeDraft(time)
+  );
 
   const parseIsoDate = useCallback((value: string) => {
     const match = String(value || "").match(
@@ -2408,6 +2514,11 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     left: 0,
     width: 330,
   });
+  const [timePosition, setTimePosition] = useState({
+    top: 0,
+    left: 0,
+    width: 330,
+  });
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -2422,10 +2533,10 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     {
       value: "",
       label: staffLoading
-        ? "جاري تحميل الموظفات..."
+        ? t("جاري تحميل الموظفات...")
         : staffOptions.length
-          ? "اختاري الموظفة"
-          : "لا توجد موظفات متاحة",
+          ? t("اختاري الموظفة")
+          : t("لا توجد موظفات متاحة"),
       disabled: !staffOptions.length,
     },
     ...staffOptions.map((staff) => ({
@@ -2433,7 +2544,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       label:
         staff.name +
         (staff.active === false
-          ? " — غير نشطة"
+          ? " — " + t("غير نشطة")
           : ""),
     })),
   ];
@@ -2518,6 +2629,38 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     });
   }, []);
 
+  const updateTimePosition = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const trigger = timeTriggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(360, Math.max(300, rect.width));
+    const viewportPadding = 12;
+    const estimatedHeight = 340;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openAbove = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
+    let top = openAbove
+      ? rect.top - estimatedHeight - 8
+      : rect.bottom + 8;
+
+    top = Math.max(
+      viewportPadding,
+      Math.min(top, window.innerHeight - estimatedHeight - viewportPadding)
+    );
+
+    let left = rect.right - width;
+    left = Math.max(
+      viewportPadding,
+      Math.min(left, window.innerWidth - width - viewportPadding)
+    );
+
+    setTimePosition({ top, left, width });
+  }, []);
+
   useEffect(() => {
     if (!calendarOpen) return;
 
@@ -2594,6 +2737,40 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     };
   }, [calendarOpen, updateCalendarPosition]);
 
+  useEffect(() => {
+    if (!timeOpen) return;
+
+    setTimeDraft(parseTimeDraft(time));
+    updateTimePosition();
+
+    const handlePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      const insideTrigger = timeTriggerRef.current?.contains(target);
+      const insidePanel = timePanelRef.current?.contains(target);
+      if (!insideTrigger && !insidePanel) setTimeOpen(false);
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTimeOpen(false);
+    };
+
+    const handleViewport = () => updateTimePosition();
+
+    document.addEventListener("pointerdown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleViewport);
+    window.addEventListener("scroll", handleViewport, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleViewport);
+      window.removeEventListener("scroll", handleViewport, true);
+    };
+  }, [parseTimeDraft, time, timeOpen, updateTimePosition]);
+
   const toArabicDigits = useCallback(
     (value: string | number) =>
       String(value).replace(
@@ -2608,7 +2785,17 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     const selected = parseIsoDate(date);
 
     if (!selected) {
-      return "اختاري التاريخ";
+      return t("اختاري التاريخ");
+    }
+
+    if (language === "en") {
+      return (
+        String(selected.month).padStart(2, "0") +
+        "/" +
+        String(selected.day).padStart(2, "0") +
+        "/" +
+        String(selected.year)
+      );
     }
 
     return (
@@ -2618,7 +2805,33 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       "/" +
       toArabicDigits(selected.year)
     );
-  }, [date, parseIsoDate, toArabicDigits]);
+  }, [date, language, parseIsoDate, toArabicDigits]);
+
+  const timeLabel = useMemo(
+    () => (time ? bookingClockText(time, language) : t("اختاري الوقت")),
+    [language, time]
+  );
+
+  const minuteStep = Math.max(5, Math.min(30, Number(slotStepMin || 10)));
+  const minuteOptions = useMemo(() => {
+    const values: number[] = [];
+    for (let minute = 0; minute < 60; minute += minuteStep) values.push(minute);
+    return values;
+  }, [minuteStep]);
+
+  const commitTimeDraft = useCallback(() => {
+    const hour24 =
+      timeDraft.period === "pm"
+        ? (timeDraft.hour % 12) + 12
+        : timeDraft.hour % 12;
+
+    onTimeChange(
+      String(hour24).padStart(2, "0") +
+        ":" +
+        String(timeDraft.minute).padStart(2, "0")
+    );
+    setTimeOpen(false);
+  }, [onTimeChange, timeDraft]);
 
   const calendarYear =
     calendarCursor.getFullYear();
@@ -2674,7 +2887,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
   const monthTitle = useMemo(() => {
     return new Intl.DateTimeFormat(
-      "ar-SA-u-ca-gregory-nu-latn",
+      language === "en" ? "en-US" : "ar-SA-u-ca-gregory-nu-latn",
       {
         month: "long",
         year: "numeric",
@@ -2686,7 +2899,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
         1
       )
     );
-  }, [calendarMonth, calendarYear]);
+  }, [calendarMonth, calendarYear, language]);
 
   const selectedDate = parseIsoDate(date);
 
@@ -2745,6 +2958,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           <div
             ref={datePanelRef}
             className="bk-calendar-popover"
+            dir={language === "en" ? "ltr" : "rtl"}
           >
             <div className="bk-calendar-head">
               <button
@@ -2759,7 +2973,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                     )
                   )
                 }
-                aria-label="الشهر السابق"
+                aria-label={t("الشهر السابق")}
               >
                 ‹
               </button>
@@ -2780,22 +2994,17 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                     )
                   )
                 }
-                aria-label="الشهر التالي"
+                aria-label={t("الشهر التالي")}
               >
                 ›
               </button>
             </div>
 
             <div className="bk-calendar-weekdays">
-              {[
-                "أحد",
-                "اثن",
-                "ثلا",
-                "أرب",
-                "خمي",
-                "جمع",
-                "سبت",
-              ].map((label) => (
+              {(language === "en"
+                ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                : ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"]
+              ).map((label) => (
                 <span key={label}>
                   {label}
                 </span>
@@ -2850,7 +3059,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                         chooseDate(day)
                       }
                     >
-                      {toArabicDigits(day)}
+                      {language === "en" ? day : toArabicDigits(day)}
                     </button>
                   );
                 }
@@ -2865,7 +3074,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                   setCalendarOpen(false);
                 }}
               >
-                مسح
+                {t("مسح")}
               </button>
 
               <button
@@ -2885,7 +3094,123 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
                   setCalendarOpen(false);
                 }}
               >
-                اليوم
+                {t("اليوم")}
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  const timePanel =
+    timeOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={timePanelRef}
+            className="bk-time-popover"
+            dir={language === "en" ? "ltr" : "rtl"}
+            style={{
+              top: timePosition.top,
+              left: timePosition.left,
+              width: timePosition.width,
+            }}
+          >
+            <div className="bk-time-popover__head">
+              <strong>{t("اختيار الوقت")}</strong>
+              <span>{bookingClockText(
+                String(
+                  timeDraft.period === "pm"
+                    ? (timeDraft.hour % 12) + 12
+                    : timeDraft.hour % 12
+                ).padStart(2, "0") +
+                  ":" +
+                  String(timeDraft.minute).padStart(2, "0"),
+                language
+              )}</span>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">{t("الفترة")}</span>
+              <div className="bk-time-period">
+                {([
+                  ["am", language === "en" ? "AM" : "ص"],
+                  ["pm", language === "en" ? "PM" : "م"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={timeDraft.period === value ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        period: value,
+                      }))
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">{t("الساعة")}</span>
+              <div className="bk-time-hours">
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
+                  <button
+                    key={hour}
+                    type="button"
+                    className={timeDraft.hour === hour ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        hour,
+                      }))
+                    }
+                  >
+                    {hour}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__section">
+              <span className="bk-time-popover__label">{t("الدقائق")}</span>
+              <div className="bk-time-minutes">
+                {minuteOptions.map((minute) => (
+                  <button
+                    key={minute}
+                    type="button"
+                    className={timeDraft.minute === minute ? "is-selected" : ""}
+                    onClick={() =>
+                      setTimeDraft((current) => ({
+                        ...current,
+                        minute,
+                      }))
+                    }
+                  >
+                    {String(minute).padStart(2, "0")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bk-time-popover__foot">
+              <button
+                type="button"
+                onClick={() => {
+                  onTimeChange("");
+                  setTimeOpen(false);
+                }}
+              >
+                {t("مسح")}
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                onClick={commitTimeDraft}
+              >
+                {t("تم")}
               </button>
             </div>
           </div>,
@@ -2896,13 +3221,13 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   return (
     <div className="bk-edit-grid bk-edit-grid--schedule">
       <BookingSelectField
-        label="الموظفة"
+        label={t("الموظفة")}
         value={employeeId}
         options={employeeOptions}
         placeholder={
           staffLoading
-            ? "جاري تحميل الموظفات..."
-            : "اختاري الموظفة"
+            ? t("جاري تحميل الموظفات...")
+            : t("اختاري الموظفة")
         }
         disabled={
           disabled ||
@@ -2910,11 +3235,12 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           !staffOptions.length
         }
         onChange={onEmployeeChange}
+        language={language}
       />
 
       <div className="bk-edit-picker-field">
         <div className="bk-field-label">
-          التاريخ
+          {t("التاريخ")}
         </div>
 
         <button
@@ -2930,6 +3256,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             .join(" ")}
           disabled={disabled}
           onClick={() => {
+            setTimeOpen(false);
             updateCalendarPosition();
 
             setCalendarOpen(
@@ -2957,20 +3284,31 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
 
       <div className="bk-edit-picker-field">
         <div className="bk-field-label">
-          الوقت
+          {t("الوقت")}
         </div>
 
-        <DashboardTimeInputV2
-          className="bk-edit-time-input"
-          value={time}
-          onChange={(event) =>
-            onTimeChange(event.target.value)
-          }
+        <button
+          ref={timeTriggerRef}
+          type="button"
+          className={[
+            "bk-edit-picker-control",
+            timeOpen ? "is-open" : "",
+          ].filter(Boolean).join(" ")}
           disabled={disabled}
-          clock="12h"
-          step={300}
-          aria-label="اختيار الوقت"
-        />
+          onClick={() => {
+            setCalendarOpen(false);
+            setTimeDraft(parseTimeDraft(time));
+            updateTimePosition();
+            setTimeOpen((current) => !current);
+          }}
+        >
+          <span className={time ? "" : "is-placeholder"}>
+            {timeLabel}
+          </span>
+          <FontAwesomeIcon icon={faClock} aria-hidden="true" />
+        </button>
+
+        {timePanel}
       </div>
     </div>
   );
@@ -2984,6 +3322,7 @@ type EditBookingPaymentSectionProps = {
   mixedCashAmount: string;
   mixedCardAmount: string;
   disabled: boolean;
+  language: DashboardLanguage;
   onPaymentModeChange: (mode: UiPaymentMode) => void;
   onPaymentMethodChange: (method: EditPaymentMethodOption) => void;
   onPaidAmountChange: (value: string) => void;
@@ -3000,12 +3339,14 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   mixedCashAmount,
   mixedCardAmount,
   disabled,
+  language,
   onPaymentModeChange,
   onPaymentMethodChange,
   onPaidAmountChange,
   onMixedCashAmountChange,
   onMixedCardAmountChange,
 }: EditBookingPaymentSectionProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   const total = Math.max(0, Number(price || 0));
   const mixedCash = Math.max(
     0,
@@ -3058,24 +3399,24 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       : paymentType;
 
   const paymentModeOptions: BookingSelectOption[] = [
-    { value: "full", label: "دفع كامل" },
-    { value: "partial", label: "عربون" },
-    { value: "none", label: "بدون دفع" },
+    { value: "full", label: t("دفع كامل") },
+    { value: "partial", label: t("عربون") },
+    { value: "none", label: t("بدون دفع") },
   ];
 
   const paymentMethodOptions: BookingSelectOption[] = [
-    { value: "cash", label: "كاش" },
-    { value: "card", label: "شبكة" },
-    { value: "transfer", label: "تحويل" },
-    { value: "mixed", label: "دفع مختلط" },
-    { value: "other", label: "أخرى" },
+    { value: "cash", label: t("كاش") },
+    { value: "card", label: t("شبكة") },
+    { value: "transfer", label: t("تحويل") },
+    { value: "mixed", label: t("دفع مختلط") },
+    { value: "other", label: t("أخرى") },
   ];
 
   return (
     <>
       <label>
         <div className="bk-field-label">
-          إجمالي الحجز (للقراءة فقط)
+          {t("إجمالي الحجز (للقراءة فقط)")}
         </div>
 
         <DashboardNumberInputV2
@@ -3087,27 +3428,28 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           disabled
         />
         <small className="bk-helper-text">
-          تعديل السعر لا يتم من الدفع؛ يستخدم مسار تعديل سعر الحجز المخصص.
+          {t("تعديل السعر لا يتم من الدفع؛ يستخدم مسار تعديل سعر الحجز المخصص.")}
         </small>
       </label>
 
       <BookingSelectField
-        label="نوع الدفع"
+        label={t("نوع الدفع")}
         value={paymentModeValue}
         options={paymentModeOptions}
-        placeholder="اختاري نوع الدفع"
+        placeholder={t("اختاري نوع الدفع")}
         disabled={disabled}
         onChange={(value) =>
           onPaymentModeChange(value as UiPaymentMode)
         }
+        language={language}
       />
 
       {paymentMethod !== "none" ? (
         <BookingSelectField
-          label="طريقة الدفع"
+          label={t("طريقة الدفع")}
           value={paymentMethod}
           options={paymentMethodOptions}
-          placeholder="اختاري طريقة الدفع"
+          placeholder={t("اختاري طريقة الدفع")}
           disabled={disabled}
           onChange={(value) =>
             onPaymentMethodChange(
@@ -3115,6 +3457,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                 "transfer"
             )
           }
+          language={language}
         />
       ) : null}
 
@@ -3122,7 +3465,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
         <div className="bk-mixed-payment-box">
           <label>
             <div className="bk-field-label">
-              مبلغ الكاش
+              {t("مبلغ الكاش")}
             </div>
 
             <DashboardNumberInputV2
@@ -3135,14 +3478,14 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                   event.target.value
                 )
               }
-              placeholder="مثال: 100"
+              placeholder={t("مثال: 100")}
               disabled={disabled}
             />
           </label>
 
           <label>
             <div className="bk-field-label">
-              مبلغ الشبكة
+              {t("مبلغ الشبكة")}
             </div>
 
             <DashboardNumberInputV2
@@ -3155,7 +3498,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                   event.target.value
                 )
               }
-              placeholder="مثال: 200"
+              placeholder={t("مثال: 200")}
               disabled={disabled}
             />
           </label>
@@ -3168,11 +3511,11 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
                 : "is-unbalanced",
             ].join(" ")}
           >
-            المجموع: {mixedPaid} ر.س | المتبقي:{" "}
+            {t("المجموع")}: {mixedPaid} {language === "en" ? "SAR" : "ر.س"} | {t("المتبقي")}:{" "}
             {round2(
               Math.max(0, mixedRemaining)
             )}{" "}
-            ر.س
+            {language === "en" ? "SAR" : "ر.س"}
           </div>
         </div>
       ) : null}
@@ -3182,7 +3525,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       paymentType === "partial" ? (
         <label>
           <div className="bk-field-label">
-            مبلغ العربون
+            {t("مبلغ العربون")}
           </div>
 
           <DashboardNumberInputV2
@@ -3193,15 +3536,15 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             onChange={(event) =>
               onPaidAmountChange(event.target.value)
             }
-            placeholder="مثال: 100"
+            placeholder={t("مثال: 100")}
             disabled={disabled}
           />
         </label>
       ) : null}
 
       <div className="bk-helper-text">
-        المتبقي بعد التعديل:{" "}
-        {remainingAfterEditText}
+        {t("المتبقي بعد التعديل")}:{" "}
+        {language === "en" ? remainingAfterEditText.replace("ر.س", "SAR") : remainingAfterEditText}
       </div>
     </>
   );
@@ -3210,23 +3553,26 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
 type EditBookingNoteSectionProps = {
   note: string;
   disabled: boolean;
+  language: DashboardLanguage;
   onNoteChange: (value: string) => void;
 };
 
 const EditBookingNoteSection = memo(function EditBookingNoteSection({
   note,
   disabled,
+  language,
   onNoteChange,
 }: EditBookingNoteSectionProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   return (
     <label>
-      <div className="bk-field-label">ملاحظة الحجز</div>
+      <div className="bk-field-label">{t("ملاحظة الحجز")}</div>
       <textarea
         className="bk-input"
         rows={3}
         value={note}
         onChange={(e) => onNoteChange(e.target.value)}
-        placeholder="ملاحظة داخلية على نفس الحجز"
+        placeholder={t("ملاحظة داخلية على نفس الحجز")}
         disabled={disabled}
       />
     </label>
@@ -3235,11 +3581,13 @@ const EditBookingNoteSection = memo(function EditBookingNoteSection({
 
 type EditBookingModalProps = {
   target: Booking | null;
+  language: DashboardLanguage;
   onClose: () => void;
   onSaved: (bookingId: string, patch: Partial<Booking>) => void;
 };
 
-const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSaved }: EditBookingModalProps) {
+const EditBookingModal = memo(function EditBookingModal({ target, language, onClose, onSaved }: EditBookingModalProps) {
+  const t = (arabic: string) => bookingsText(language, arabic);
   const open = !!target;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -3280,7 +3628,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     draftTargetIdRef.current = target.id;
     setDraft(buildEditBookingDraftFromBooking(target));
     setError("");
-  }, [open, target?.id]);
+  }, [language, open, target?.id]);
 
   const handleClose = useCallback(() => {
     if (saving) return;
@@ -3301,7 +3649,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         const nextSections = (rows || [])
           .map((raw: any) => ({
             id: String(raw?.id || "").trim(),
-            name: readCatalogLabel(raw, String(raw?.id || "").trim()),
+            name:
+              language === "en"
+                ? String(raw?.nameEn || raw?.name_en || "").trim() ||
+                  translateBookingCatalogLabel(
+                    language,
+                    readCatalogLabel(raw, String(raw?.id || "").trim()),
+                    "section"
+                  )
+                : readCatalogLabel(raw, String(raw?.id || "").trim()),
             active: raw?.active !== false,
           }))
           .filter((row) => row.id && row.name && row.active)
@@ -3319,7 +3675,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     return () => {
       cancelled = true;
     };
-  }, [open, target?.id]);
+  }, [language, open, target?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3345,7 +3701,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         const nextCategories = (categoryRows || [])
           .map((raw: any) => ({
             id: String(raw?.id || "").trim(),
-            name: readCatalogLabel(raw, String(raw?.id || "").trim()),
+            name:
+              language === "en"
+                ? String(raw?.nameEn || raw?.name_en || "").trim() ||
+                  translateBookingCatalogLabel(
+                    language,
+                    readCatalogLabel(raw, String(raw?.id || "").trim()),
+                    "category"
+                  )
+                : readCatalogLabel(raw, String(raw?.id || "").trim()),
             sectionId: String(raw?.sectionId || sectionId).trim(),
             active: raw?.active !== false,
           }))
@@ -3357,7 +3721,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             const price = Number(raw?.price ?? raw?.["السعر"] ?? 0) || 0;
             return {
               id: String(raw?.id || "").trim(),
-              name: readCatalogLabel(raw, String(raw?.id || "").trim()),
+              name:
+                language === "en"
+                  ? String(raw?.nameEn || raw?.name_en || "").trim() ||
+                    translateBookingCatalogLabel(
+                      language,
+                      readCatalogLabel(raw, String(raw?.id || "").trim()),
+                      "service"
+                    )
+                  : readCatalogLabel(raw, String(raw?.id || "").trim()),
               sectionId: String(raw?.sectionId || sectionId).trim(),
               categoryId: String(raw?.categoryId || "").trim(),
               price: Math.max(0, price),
@@ -3383,7 +3755,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     return () => {
       cancelled = true;
     };
-  }, [draft.sectionId, open, target?.id]);
+  }, [draft.sectionId, language, open, target?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3862,16 +4234,29 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     <Modal
       open={open}
       onClose={handleClose}
-      ariaLabel="تعديل الحجز"
+      ariaLabel={t("تعديل الحجز")}
       overlayClassName="bookings-v2-modal-overlay"
-      panelClassName="bookings-v2-modal-panel bk-edit-modal"
+      panelClassName={`bookings-v2-modal-panel bk-edit-modal${language === "en" ? " bookings-v2-modal-panel--en" : ""}`}
       size="lg"
     >
-      <div className="bk-cancel-head">تعديل الحجز</div>
+      <div className="bk-cancel-head">{t("تعديل الحجز")}</div>
       <div className="bk-cancel-body">
         <div className="bk-cancel-meta">
-          <span>رقم الحجز: {bookingRef(target)}</span>
-          <span>الخدمة: {target ? serviceSummaryForTable(target) : "—"}</span>
+          <span>{t("رقم الحجز")}: {bookingRef(target)}</span>
+          <span>
+            {t("الخدمة")}:{" "}
+            {target
+              ? translateBookingCatalogLabel(
+                  language,
+                  String(
+                    target.serviceName ||
+                      resolvePrimaryBookingServiceSelection(target).serviceName ||
+                      serviceSummaryForTable(target)
+                  ),
+                  "service"
+                )
+              : "—"}
+          </span>
         </div>
 
         <div className="bk-edit-form">
@@ -3879,11 +4264,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             customerName={draft.customerName}
             phone={draft.phone}
             disabled={saving}
+            language={language}
             onCustomerNameChange={onCustomerNameChange}
             onPhoneChange={onPhoneChange}
           />
 
           <EditBookingCatalogSection
+            language={language}
             sectionId={draft.sectionId}
             categoryId={draft.categoryId}
             serviceId={draft.serviceId}
@@ -3898,11 +4285,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           />
 
           <EditBookingScheduleSection
+            language={language}
             employeeId={draft.employeeId}
             staffOptions={staffOptions}
             staffLoading={staffLoading}
             date={draft.date}
             time={draft.time}
+            slotStepMin={Math.max(5, Number(target?.slotStepMinAtBooking || 10))}
             disabled={saving}
             onEmployeeChange={onEmployeeChange}
             onDateChange={onDateChange}
@@ -3912,16 +4301,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
           {/* BOOKING_EDIT_STATUS_FIELD_V2 */}
           <BookingSelectField
-            label="حالة الحجز"
+            label={t("حالة الحجز")}
             value={draft.status}
             options={[
-              { value: "pending", label: "في الانتظار" },
-              { value: "confirmed", label: "مؤكد" },
-              { value: "completed", label: "مكتمل" },
-              { value: "cancelled", label: "ملغي" },
+              { value: "pending", label: t("في الانتظار") },
+              { value: "confirmed", label: t("مؤكد") },
+              { value: "completed", label: t("مكتمل") },
+              { value: "cancelled", label: t("ملغي") },
             ]}
-            placeholder="اختاري حالة الحجز"
+            placeholder={t("اختاري حالة الحجز")}
             disabled={saving}
+            language={language}
             onChange={(value) => {
               const nextStatus = value as BookingStatus;
 
@@ -3949,6 +4339,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           />
 
           <EditBookingPaymentSection
+            language={language}
             price={draft.price}
             paymentMethod={draft.paymentMethod}
             paymentType={draft.paymentType}
@@ -3963,17 +4354,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             onMixedCardAmountChange={onMixedCardAmountChange}
           />
 
-          <EditBookingNoteSection note={draft.note} disabled={saving} onNoteChange={onNoteChange} />
+          <EditBookingNoteSection note={draft.note} disabled={saving} language={language} onNoteChange={onNoteChange} />
         </div>
 
-        {error ? <div className="bk-inline-error">{error}</div> : null}
+        {error ? <div className="bk-inline-error">{bookingActivityDisplayText(error, language)}</div> : null}
       </div>
       <div className="bk-cancel-foot">
         <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={saving}>
-          رجوع
+          {t("رجوع")}
         </button>
         <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+          {saving ? t("جاري الحفظ...") : t("حفظ التعديلات")}
         </button>
       </div>
     </Modal>
@@ -7435,11 +7826,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       <span className="bk-item-val">{bookingRef(selectedBooking)}</span>
                       <div className="bk-item-chip-row">
                         <span className="bk-created-badge">
-                          {t("تم إنشاء الحجز")}: {formatAnyDateTime(bookingCreationRefMs(selectedBooking))}
+                          {t("تم إنشاء الحجز")}: {bookingFormattedDateTimeText(bookingCreationRefMs(selectedBooking), language)}
                         </span>
                         {lastUpdateMap[selectedBooking.id]?.at ? (
                           <span className="bk-created-badge is-muted">
-                            {t("آخر تحديث")}: {lastUpdateMap[selectedBooking.id]?.at}
+                            {t("آخر تحديث")}: {bookingDateTimeLabelText(lastUpdateMap[selectedBooking.id]?.at, language)}
                           </span>
                         ) : null}
                       </div>
@@ -7549,19 +7940,19 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           <div className="bk-activity-card">
                             <div className="bk-activity-top">
                               <div className="bk-activity-copy">
-                                <strong>{event.title}</strong>
+                                <strong>{bookingActivityDisplayText(event.title, language)}</strong>
                                 <div className="bk-activity-meta">
                                   <span className={`bk-activity-kind bk-activity-kind--${event.actorKind}`}>
-                                    {event.actorKindLabel}
+                                    {bookingActivityDisplayText(event.actorKindLabel, language)}
                                   </span>
                                   <span>
                                     <span className="bk-activity-meta-label">{t("بواسطة:")}</span>{" "}
-                                    {event.actorName}
+                                    {bookingActivityDisplayText(event.actorName, language)}
                                   </span>
                                 </div>
                               </div>
 
-                              <div className="bk-activity-time">{event.atLabel}</div>
+                              <div className="bk-activity-time">{bookingDateTimeLabelText(event.atLabel, language)}</div>
                             </div>
 
                             {event.changes.length ? (
@@ -7582,7 +7973,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                                       </span>
 
                                       <span className="bk-activity-change__text">
-                                        {change}
+                                        {bookingActivityDisplayText(change, language)}
                                       </span>
                                     </div>
                                   ))}
@@ -7591,7 +7982,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                             ) : null}
 
                             {event.note ? (
-                              <div className="bk-activity-note">{event.note}</div>
+                              <div className="bk-activity-note">{bookingActivityDisplayText(event.note, language)}</div>
                             ) : null}
                           </div>
                         </div>
@@ -7599,12 +7990,14 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                     </div>
                   ) : (
                     <div className="bk-activity-empty">
-                      {selectedBookingActivityError ? t(selectedBookingActivityError) : t("لا توجد أحداث مسجلة لهذا الحجز حتى الآن.")}
+                      {selectedBookingActivityError
+                        ? bookingActivityDisplayText(selectedBookingActivityError, language)
+                        : t("لا توجد أحداث مسجلة لهذا الحجز حتى الآن.")}
                     </div>
                   )}
 
                   {selectedBookingActivityError && selectedBookingActivity.length > 0 ? (
-                    <div className="bk-activity-note">{selectedBookingActivityError}</div>
+                    <div className="bk-activity-note">{bookingActivityDisplayText(selectedBookingActivityError, language)}</div>
                   ) : null}
                 </section>
 
@@ -7626,14 +8019,26 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                       ).trim();
 
                       const serviceMeta = [
-                        toArabicOnlyLabel(
-                          String(s.sectionLabel || ""),
-                          ""
-                        ),
-                        toArabicOnlyLabel(
-                          String(s.categoryLabel || ""),
-                          ""
-                        ),
+                        language === "en"
+                          ? translateBookingCatalogLabel(
+                              language,
+                              String(s.sectionLabel || ""),
+                              "section"
+                            )
+                          : toArabicOnlyLabel(
+                              String(s.sectionLabel || ""),
+                              ""
+                            ),
+                        language === "en"
+                          ? translateBookingCatalogLabel(
+                              language,
+                              String(s.categoryLabel || ""),
+                              "category"
+                            )
+                          : toArabicOnlyLabel(
+                              String(s.categoryLabel || ""),
+                              ""
+                            ),
                       ]
                         .filter(Boolean)
                         .join(" • ");
@@ -7652,14 +8057,24 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                             </span>
 
                             <strong className="bk-service-row__name">
-                              {toArabicOnlyLabel(
-                                String(
-                                  s.serviceName ||
-                                  s.serviceId ||
-                                  ""
-                                ),
-                                t("خدمة")
-                              )}
+                              {language === "en"
+                                ? translateBookingCatalogLabel(
+                                    language,
+                                    String(
+                                      s.serviceName ||
+                                      s.serviceId ||
+                                      ""
+                                    ),
+                                    "service"
+                                  )
+                                : toArabicOnlyLabel(
+                                    String(
+                                      s.serviceName ||
+                                      s.serviceId ||
+                                      ""
+                                    ),
+                                    t("خدمة")
+                                  )}
                             </strong>
 
                             {serviceMeta ? (
@@ -8376,7 +8791,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         </Modal>
 
         {editTarget ? (
-          <EditBookingModal target={editTarget} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
+          <EditBookingModal target={editTarget} language={language} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
         ) : null}
 
         {/*
