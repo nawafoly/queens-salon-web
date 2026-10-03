@@ -31,6 +31,9 @@ test("stale employee master writes allow only semantic no-op replays", () => {
     source.slice(replayIndex, conflictIndex),
     /return getHrEmployee\(db, salonId, id\)/
   );
+
+  assert.match(source, /export async function replaceHrSchedules\(/);
+  assert.match(source, /EMPLOYEE_OPTIMISTIC_CONCURRENCY_V1/);
 });
 
 test("24-hour dashboard time controls use a real native time input", () => {
