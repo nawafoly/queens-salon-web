@@ -852,6 +852,18 @@ function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIden
   };
 }
 
+function employeeCanonicalUiId(
+  staff?: Partial<StaffPublicUi> | null,
+  fallbackId = ""
+) {
+  const identity = employeeIdentityOf(staff || null);
+  return cleanText(
+    identity.employeeId ||
+      identity.id ||
+      fallbackId
+  );
+}
+
 function employeeIdentityValues(staff: Partial<StaffPublicUi>, rawDocId = "") {
   return uniqueCleanTexts([
     staff.id,
@@ -992,16 +1004,31 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
       (fallback as any)?.userId ||
       (fallback as any)?.linkedUserId
   );
-  const primaryCanonicalDocId = employeeCanonicalDocIdOf(primary);
-  const fallbackCanonicalDocId = employeeCanonicalDocIdOf(fallback);
-  const staffPublicDocId = cleanText(
-    primaryCanonicalDocId ||
-      fallbackCanonicalDocId ||
-      (primary as any)?.staffPublicDocId ||
-      (fallback as any)?.staffPublicDocId
+  // Canonical employee document ids must win over authentication UIDs.
+  // A core_staff mirror may use firebase_uid as its row id while core_hr owns
+  // the real employee_profiles.id. Merge both identities without promoting
+  // the auth UID to the employee master key.
+  const linkedUidSet = new Set([
+    ...employeeLinkedUidValues(primary),
+    ...employeeLinkedUidValues(fallback),
+  ]);
+  const canonicalCandidates = uniqueCleanTexts([
+    employeeCanonicalDocIdOf(primary),
+    employeeCanonicalDocIdOf(fallback),
+    ...employeeExplicitDocIdValues(primary),
+    ...employeeExplicitDocIdValues(fallback),
+    (primary as any)?.sourceDocId,
+    (fallback as any)?.sourceDocId,
+    primary.id,
+    fallback.id,
+  ]);
+  const canonicalEmployeeId = cleanText(
+    canonicalCandidates.find((value) => !linkedUidSet.has(value)) ||
+      canonicalCandidates[0] ||
+      ""
   );
+  const staffPublicDocId = canonicalEmployeeId;
   const sourceDocId = cleanText((primary as any)?.sourceDocId || (fallback as any)?.sourceDocId);
-  const canonicalEmployeeId = cleanText(staffPublicDocId || primary.id || fallback.id);
 
   return {
     ...fallback,
@@ -3611,12 +3638,14 @@ function DashboardEmployeesContent() {
 
   const openEdit = (x: StaffPublicUi, updateRoute = true) => {
     closingEmployeeDetailRef.current = false;
-    selectedEmployeeIdentityRef.current = employeeIdentityOf(x);
-    setSelectedEmployeeId(x.id);
+    const employeeIdentity = employeeIdentityOf(x);
+    const canonicalEmployeeId = employeeCanonicalUiId(x, x.id);
+    selectedEmployeeIdentityRef.current = employeeIdentity;
+    setSelectedEmployeeId(canonicalEmployeeId);
     setActiveTab("basic");
     setActiveStatsSubTab("payroll");
     setMode("edit");
-    setEditId(x.id);
+    setEditId(canonicalEmployeeId);
     setModalTab("basic");
     setName(x.name ?? "");
     setBio(x.bio ?? "");
@@ -3645,7 +3674,7 @@ function DashboardEmployeesContent() {
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
     const switchingScheduleEmployee =
       cleanText(editId) !==
-      cleanText(x.id);
+      canonicalEmployeeId;
 
     if (switchingScheduleEmployee) {
       coreEmployeeUpdatedAtBaselineRef.current = "";
@@ -3830,7 +3859,7 @@ function DashboardEmployeesContent() {
     setLeaveAdjustNote("");
     setLeaveEntitlementDate(String((x as any).leaveEntitlementDate || ""));
     setIsOpen(true);
-    if (updateRoute) navigate(`/dashboard/employees/${encodeURIComponent(x.id)}/basic`);
+    if (updateRoute) navigate(`/dashboard/employees/${encodeURIComponent(canonicalEmployeeId)}/basic`);
   };
 
   useEffect(() => {
@@ -4011,7 +4040,11 @@ function DashboardEmployeesContent() {
       }
       return;
     }
-    if (editId !== matched.id) openEdit(matched, false);
+    const matchedCanonicalEmployeeId = employeeCanonicalUiId(
+      matched,
+      matched.id
+    );
+    if (editId !== matchedCanonicalEmployeeId) openEdit(matched, false);
     const resolvedRouteSection: EmployeeSplitTab =
       routeSection === "shifts"
         ? "booking"
@@ -4034,7 +4067,7 @@ function DashboardEmployeesContent() {
       allowedRouteSection !== resolvedRouteSection
     ) {
       navigate(
-        `/dashboard/employees/${encodeURIComponent(matched.id)}/${allowedRouteSection}`,
+        `/dashboard/employees/${encodeURIComponent(matchedCanonicalEmployeeId)}/${allowedRouteSection}`,
         { replace: true },
       );
     }
@@ -4849,12 +4882,17 @@ function DashboardEmployeesContent() {
                 leaveState.entries as LeaveEntry[];
             }
 
-            setSelectedEmployeeId(matched.id);
+            const matchedIdentity = employeeIdentityOf(matched);
+            const matchedCanonicalEmployeeId = employeeCanonicalUiId(
+              matched,
+              matched.id
+            );
+            setSelectedEmployeeId(matchedCanonicalEmployeeId);
             setEditId((current) =>
-              current ? matched.id : current
+              current ? matchedCanonicalEmployeeId : current
             );
             selectedEmployeeIdentityRef.current =
-              employeeIdentityOf(matched);
+              matchedIdentity;
           }
         }
 
@@ -5073,11 +5111,18 @@ function DashboardEmployeesContent() {
     const selectedIdentity = selectedEmployeeIdentityRef.current;
     const matched = list.find((x) => x.id === selectedEmployeeId || employeeMatchesIdentity(x, selectedIdentity));
     if (matched) {
-      if (matched.id !== selectedEmployeeId) {
-        setSelectedEmployeeId(matched.id);
-        setEditId((current) => (current ? matched.id : current));
-        selectedEmployeeIdentityRef.current = employeeIdentityOf(matched);
+      const matchedIdentity = employeeIdentityOf(matched);
+      const matchedCanonicalEmployeeId = employeeCanonicalUiId(
+        matched,
+        matched.id
+      );
+      if (matchedCanonicalEmployeeId !== selectedEmployeeId) {
+        setSelectedEmployeeId(matchedCanonicalEmployeeId);
+        setEditId((current) =>
+          current ? matchedCanonicalEmployeeId : current
+        );
       }
+      selectedEmployeeIdentityRef.current = matchedIdentity;
       return;
     }
     if (loading || saving) return;
@@ -5847,9 +5892,7 @@ function DashboardEmployeesContent() {
       : "";
     const targetEmployeeId = cleanText(
       editId
-        ? (editingStaff as any)?.staffPublicDocId ||
-            ((editingStaff as any)?.source === "core_staff" || (editingStaff as any)?.source === "staff_public" ? (editingStaff as any)?.sourceDocId : "") ||
-            editId
+        ? employeeCanonicalUiId(editingStaff, editId)
         : generatedEmployeeId
     );
     const linkedUidForSave = cleanText(
@@ -8379,7 +8422,14 @@ const canonicalSchedules =
   ]);
 
   const editingStaff = useMemo(
-    () => (editId ? list.find((x) => x.id === editId) || null : null),
+    () =>
+      editId
+        ? list.find(
+            (x) =>
+              cleanText(x.id) === cleanText(editId) ||
+              employeeMatchesRouteId(x, editId)
+          ) || null
+        : null,
     [editId, list]
   );
   const modalStaffScheduleSummary = useMemo(
