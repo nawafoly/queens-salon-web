@@ -3109,11 +3109,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
             ref={timePanelRef}
             className="bk-time-popover"
             dir={language === "en" ? "ltr" : "rtl"}
-            style={{
-              top: timePosition.top,
-              left: timePosition.left,
-              width: timePosition.width,
-            }}
+            style={timePosition}
           >
             <div className="bk-time-popover__head">
               <strong>{t("اختيار الوقت")}</strong>
