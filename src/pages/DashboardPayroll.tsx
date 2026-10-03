@@ -105,6 +105,15 @@ type AttendanceDeferralDraft = {
   note: string;
 };
 
+type PartialDeductionDeferralDraft = {
+  entry: PayrollEntryView;
+  amountRiyals: string;
+  targetPayrollMonth: string;
+  requestKey: string;
+  reason: string;
+  note: string;
+};
+
 type PayrollApprovalConfirmationDraft = {
   entry: PayrollEntryView;
   expectedNetHalalas: number;
@@ -395,6 +404,16 @@ function futurePayrollMonthOptions(monthKey: string, count = 12) {
   });
 }
 
+function payrollPartialDeferralRequestKey() {
+  const random =
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return `payroll-ui:${random}`;
+}
+
 function formatPreviousPeriodAdjustment(entry: PayrollEntryView) {
   const signed = payrollEntryCarryoverNetHalalas(entry);
   if (!signed) return "لا يوجد";
@@ -465,6 +484,57 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "core_payroll:obligation_snapshot_stale") {
     return "جدول الخصومات والالتزامات تغير بعد حساب المسودة. أعد حساب المسيرة قبل الاعتماد.";
   }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_target_must_be_future"
+  ) {
+    return "شهر التحصيل يجب أن يكون بعد شهر المسيرة الحالية.";
+  }
+  if (
+    message ===
+      "core_payroll:invalid_partial_deduction_deferral_amount" ||
+    message ===
+      "core_payroll:partial_deduction_deferral_amount_invalid"
+  ) {
+    return "مبلغ التأجيل يجب أن يكون أكبر من صفر.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_reason_required"
+  ) {
+    return "سبب تأجيل الخصم مطلوب.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_source_payroll_locked"
+  ) {
+    return "لا يمكن تأجيل خصم من مسيرة معتمدة أو مدفوعة.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_target_payroll_locked"
+  ) {
+    return "شهر التحصيل المختار يحتوي على مسيرة مقفلة. اختر شهرًا آخر.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_period_locked"
+  ) {
+    return "فترة المصدر أو شهر التحصيل مقفلة ولا تقبل التأجيل.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_exceeds_available_deductions"
+  ) {
+    return "المبلغ المطلوب أكبر من الخصومات المتاحة للتأجيل. التأمينات والاستقطاعات النظامية لا تدخل ضمن المبلغ القابل للتأجيل.";
+  }
+  if (
+    message ===
+    "core_payroll:partial_deduction_deferral_idempotency_conflict"
+  ) {
+    return "تغيرت بيانات طلب التأجيل أثناء الحفظ. أغلق النافذة وافتحها من جديد.";
+  }
+
   if (message === "core_payroll:attendance_deferral_snapshot_stale") {
     return "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.";
   }
@@ -605,6 +675,8 @@ export default function DashboardPayroll() {
   const [entries, setEntries] = useState<PayrollEntryView[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
   const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);
+  const [partialDeductionDeferral, setPartialDeductionDeferral] =
+    useState<PartialDeductionDeferralDraft | null>(null);
   const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);
   const [approvalConfirmation, setApprovalConfirmation] =
     useState<PayrollApprovalConfirmationDraft | null>(null);
@@ -1369,6 +1441,182 @@ export default function DashboardPayroll() {
           : actionError?.message === "manual_payroll_item_amount_required"
             ? "المبلغ مطلوب ويجب أن يكون أكبر من صفر."
             : String(actionError?.message || "تعذر حفظ البند اليدوي.")
+      );
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const openPartialDeductionDeferral = (
+    entry: PayrollEntryView
+  ) => {
+    if (
+      !canManage ||
+      isPayrollSnapshotLocked(entry.status)
+    ) {
+      return;
+    }
+
+    const visibleNonStatutoryHalalas = Math.max(
+      0,
+      Number(entry.totalDeductionsHalalas || 0) -
+        Number(entry.insuranceDeductionHalalas || 0) -
+        carryoverDeductionHalalas(entry)
+    );
+
+    if (visibleNonStatutoryHalalas <= 0) {
+      setError(
+        "لا توجد خصومات حالية ظاهرة قابلة للتأجيل في هذه المسيرة."
+      );
+      return;
+    }
+
+    setError("");
+    setPartialDeductionDeferral({
+      entry,
+      amountRiyals: "",
+      targetPayrollMonth: shiftPayrollMonth(
+        entry.payrollMonth,
+        1
+      ),
+      requestKey: payrollPartialDeferralRequestKey(),
+      reason: "",
+      note: "",
+    });
+  };
+
+  const submitPartialDeductionDeferral = async () => {
+    if (
+      !partialDeductionDeferral ||
+      !canManage ||
+      isPayrollSnapshotLocked(
+        partialDeductionDeferral.entry.status
+      )
+    ) {
+      return;
+    }
+
+    const amountHalalas = riyalsToHalalas(
+      partialDeductionDeferral.amountRiyals
+    );
+
+    if (amountHalalas <= 0) {
+      setError(
+        "أدخل مبلغ التأجيل ويجب أن يكون أكبر من صفر."
+      );
+      return;
+    }
+
+    const reason =
+      partialDeductionDeferral.reason.trim();
+
+    if (!reason) {
+      setError("سبب تأجيل الخصم مطلوب.");
+      return;
+    }
+
+    if (
+      partialDeductionDeferral.targetPayrollMonth <=
+      partialDeductionDeferral.entry.payrollMonth
+    ) {
+      setError(
+        "شهر التحصيل يجب أن يكون بعد شهر المسيرة الحالية."
+      );
+      return;
+    }
+
+    setBusy("partial-deduction-deferral");
+    setError("");
+
+    try {
+      const result =
+        await CoreHrService.deferPayrollDeductions({
+          employeeId:
+            partialDeductionDeferral.entry.employeeId,
+          originalPayrollMonth:
+            partialDeductionDeferral.entry.payrollMonth,
+          targetPayrollMonth:
+            partialDeductionDeferral.targetPayrollMonth,
+          amountHalalas,
+          requestKey:
+            partialDeductionDeferral.requestKey,
+          reason,
+          note:
+            partialDeductionDeferral.note.trim() ||
+            undefined,
+        });
+
+      const [entryYear, entryMonth] =
+        partialDeductionDeferral.entry.payrollMonth
+          .split("-")
+          .map(Number);
+
+      const generated =
+        await generatePayrollEntries({
+          year: entryYear,
+          month: entryMonth,
+          employeeId:
+            partialDeductionDeferral.entry.employeeId,
+          currentEntries: entries,
+        });
+
+      const recalculated =
+        generated[0] ||
+        partialDeductionDeferral.entry;
+
+      const next = recalculated.id
+        ? (
+            await savePayrollDrafts([
+              {
+                ...recalculated,
+                periodId:
+                  recalculated.periodId ||
+                  partialDeductionDeferral.entry
+                    .periodId,
+              },
+            ])
+          )[0] || recalculated
+        : recalculated;
+
+      setEntries((current) =>
+        replaceEntry(current, next)
+      );
+
+      setSelectedEntry((current) =>
+        current?.employeeId === next.employeeId
+          ? next
+          : current
+      );
+
+      const targetMonth =
+        partialDeductionDeferral.targetPayrollMonth;
+
+      const remainingHalalas = Math.max(
+        0,
+        Number(
+          result.remainingEligibleAfterHalalas || 0
+        )
+      );
+
+      setPartialDeductionDeferral(null);
+
+      setMessage(
+        `تم تأجيل ${formatPayrollMoney(
+          amountHalalas
+        )} من خصومات ${next.employeeName} إلى ${targetMonth}.${
+          remainingHalalas > 0
+            ? ` المتبقي القابل للتأجيل حسب Core: ${formatPayrollMoney(
+                remainingHalalas
+              )}.`
+            : ""
+        }`
+      );
+    } catch (actionError: any) {
+      setError(
+        payrollActionErrorMessage(
+          actionError,
+          "تعذر تأجيل جزء من الخصومات."
+        )
       );
     } finally {
       setBusy("");
@@ -2272,6 +2520,29 @@ export default function DashboardPayroll() {
                         إضافة استحقاق
                       </button>
 
+                      {Math.max(
+                        0,
+                        Number(entry.totalDeductionsHalalas || 0) -
+                          Number(entry.insuranceDeductionHalalas || 0) -
+                          carryoverDeductionHalalas(entry)
+                      ) > 0 &&
+                      !isPayrollSnapshotLocked(entry.status) ? (
+                        <button
+                          type="button"
+                          disabled={
+                            !actions.canEditAdjustments ||
+                            busy ===
+                              "partial-deduction-deferral"
+                          }
+                          onClick={() => {
+                            setActionMenu(null);
+                            openPartialDeductionDeferral(entry);
+                          }}
+                        >
+                          <FiClock /> تأجيل جزء من الخصومات
+                        </button>
+                      ) : null}
+
                       {deferredAttendanceHalalas > 0 ? (
                         <span className="payroll-action-help">
                           <small>
@@ -3062,6 +3333,181 @@ export default function DashboardPayroll() {
                 onClick={() => void submitReopen()}
               >
                 تأكيد إعادة الفتح
+              </button>
+            </footer>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
+
+      {partialDeductionDeferral ? createPortal(
+        <div
+          className="dashboard-v2 payroll-modal-backdrop"
+          role="presentation"
+          onMouseDown={() =>
+            setPartialDeductionDeferral(null)
+          }
+        >
+          <aside
+            className="payroll-modal payroll-adjustment-modal dsv2-workflow-reference"
+            role="dialog"
+            aria-modal="true"
+            aria-label="تأجيل جزء من الخصومات"
+            onMouseDown={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <header>
+              <div>
+                <span>إدارة خصومات المسيرة</span>
+                <h2>
+                  تأجيل جزء من الخصومات —{" "}
+                  {
+                    partialDeductionDeferral.entry
+                      .employeeName
+                  }
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setPartialDeductionDeferral(null)
+                }
+                aria-label="إغلاق"
+              >
+                <FiX />
+              </button>
+            </header>
+
+            <div className="payroll-alert is-warning">
+              <FiAlertTriangle />
+              <div>
+                <strong>
+                  التأجيل يغيّر شهر التحصيل فقط.
+                </strong>
+                <small>
+                  GOSI والاستقطاعات النظامية لا يمكن
+                  تأجيلها. الـCore يتحقق من المبلغ
+                  القابل للتأجيل قبل الحفظ، لذلك لا
+                  يمكن تجاوز الخصومات المؤهلة.
+                </small>
+              </div>
+            </div>
+
+            <label>
+              <span>إجمالي خصومات المسيرة الحالية</span>
+              <input
+                readOnly
+                value={formatPayrollMoney(
+                  partialDeductionDeferral.entry
+                    .totalDeductionsHalalas
+                )}
+              />
+            </label>
+
+            <label>
+              <span>من شهر</span>
+              <input
+                readOnly
+                dir="ltr"
+                value={
+                  partialDeductionDeferral.entry
+                    .payrollMonth
+                }
+              />
+            </label>
+
+            <label>
+              <span>المبلغ المراد تأجيله</span>
+              <DashboardNumberInputV2
+                min="0.01"
+                step="0.01"
+                inputMode="decimal"
+                value={
+                  partialDeductionDeferral.amountRiyals
+                }
+                onChange={(event) =>
+                  setPartialDeductionDeferral({
+                    ...partialDeductionDeferral,
+                    amountRiyals: event.target.value,
+                  })
+                }
+                placeholder="مثال: 300.00"
+              />
+            </label>
+
+            <label>
+              <span>إلى شهر</span>
+              <DashboardSelectV2
+                value={
+                  partialDeductionDeferral.targetPayrollMonth
+                }
+                options={futurePayrollMonthOptions(
+                  partialDeductionDeferral.entry
+                    .payrollMonth
+                )}
+                onChange={(value) =>
+                  setPartialDeductionDeferral({
+                    ...partialDeductionDeferral,
+                    targetPayrollMonth: value,
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span>سبب التأجيل</span>
+              <input
+                value={partialDeductionDeferral.reason}
+                onChange={(event) =>
+                  setPartialDeductionDeferral({
+                    ...partialDeductionDeferral,
+                    reason: event.target.value,
+                  })
+                }
+                placeholder="مثال: ظرف الموظفة — بموافقة الإدارة"
+              />
+            </label>
+
+            <label>
+              <span>ملاحظة اختيارية</span>
+              <textarea
+                value={partialDeductionDeferral.note}
+                onChange={(event) =>
+                  setPartialDeductionDeferral({
+                    ...partialDeductionDeferral,
+                    note: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <footer>
+              <button
+                type="button"
+                onClick={() =>
+                  setPartialDeductionDeferral(null)
+                }
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="button"
+                className="is-primary"
+                disabled={
+                  busy ===
+                    "partial-deduction-deferral" ||
+                  !partialDeductionDeferral
+                    .amountRiyals ||
+                  !partialDeductionDeferral.reason.trim()
+                }
+                onClick={() =>
+                  void submitPartialDeductionDeferral()
+                }
+              >
+                تأكيد تأجيل المبلغ
               </button>
             </footer>
           </aside>
