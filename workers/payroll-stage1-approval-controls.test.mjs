@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { payrollCarryoverDelta } from "../src/helpers/hr/payrollCarryoverPolicy.js";
+import { normalizeError } from "./core/errors.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -40,6 +41,20 @@ test("late payroll approval is explicit, audited and Core-authoritative", () => 
   assert.doesNotMatch(
     repo.match(/export async function recordLatePayrollApproval[\s\S]*?export async function reopenPayrollEntry/)?.[0] || "",
     /paid_at\s*=/
+  );
+});
+
+test("payroll D1 approval guard abort is a domain conflict, not HTTP 500", () => {
+  const normalized = normalizeError(
+    new Error(
+      "D1_ERROR: payroll_deduction_legal_class_required: SQLITE_CONSTRAINT"
+    )
+  );
+
+  assert.equal(normalized.status, 409);
+  assert.equal(
+    normalized.code,
+    "core_payroll:deduction_legal_class_required"
   );
 });
 

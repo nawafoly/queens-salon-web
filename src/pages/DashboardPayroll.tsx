@@ -485,6 +485,29 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
     return "جدول الخصومات والالتزامات تغير بعد حساب المسودة. أعد حساب المسيرة قبل الاعتماد.";
   }
   if (
+    message === "core_payroll:deduction_legal_class_required" ||
+    message === "core_payroll:deduction_evidence_reference_required" ||
+    message === "core_payroll:written_consent_reference_required" ||
+    message === "core_payroll:obligation_deduction_class_required" ||
+    message === "core_payroll:obligation_deduction_evidence_required"
+  ) {
+    return "يوجد خصم يحتاج استكمال التصنيف أو المستند النظامي قبل اعتماد المسيرة.";
+  }
+  if (
+    message === "core_payroll:reconciled_overtime_snapshot_stale" ||
+    message === "core_payroll:reconciled_overtime_hours_mismatch" ||
+    message === "core_payroll:reconciled_overtime_value_formula_mismatch"
+  ) {
+    return "بيانات العمل الإضافي تغيرت أو لا تطابق المصدر المعتمد. أعد حساب المسيرة ثم حاول مرة أخرى.";
+  }
+  if (
+    message === "core_payroll:aggregate_deduction_cap_exceeded" ||
+    message === "core_payroll:employer_loan_deduction_cap_exceeded" ||
+    message === "core_payroll:judicial_deduction_cap_exceeded"
+  ) {
+    return "الخصومات تتجاوز الحد النظامي المسموح لهذه المسيرة. راجع تفاصيل الخصومات قبل الاعتماد.";
+  }
+  if (
     message ===
     "core_payroll:partial_deduction_deferral_target_must_be_future"
   ) {

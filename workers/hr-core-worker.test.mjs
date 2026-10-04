@@ -24,6 +24,7 @@ import {
 import { createAbsence, deleteAbsence } from './core/repositories/absences.js';
 import {
   approvePayrollEntry,
+  recordLatePayrollApproval,
   deferAttendanceDeduction,
   listPayrollCarryoverAdjustments,
   markPayrollEntryPaid,
@@ -434,6 +435,58 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
       dailyScheduledHours: 8,
     },
   }, actor);
+  // Regression: a saved draft can predate newer payroll/GOSI/compliance state.
+  // Late approval must canonically refresh the live row before D1 status
+  // transition guards run, while keeping the historical approved amount/date
+  // as the immutable approval snapshot.
+  const lateApprovedJulyPayroll =
+    await recordLatePayrollApproval(
+      db,
+      'main',
+      payroll.id,
+      {
+        approvalDate: '2026-07-31',
+        approvedNetHalalas: 480000,
+        reason:
+          'Historical payroll approval recorded after the fact',
+      },
+      actor
+    );
+
+  assert.equal(
+    lateApprovedJulyPayroll.status,
+    'approved'
+  );
+  assert.equal(
+    lateApprovedJulyPayroll.approved_at,
+    '2026-07-31'
+  );
+
+  const lateApprovalSnapshot = await db
+    .prepare(
+      `SELECT approved_at, approved_net_halalas, approval_version
+         FROM payroll_approval_snapshots
+        WHERE salon_id = 'main'
+          AND payroll_entry_id = ?
+        ORDER BY approval_version DESC
+        LIMIT 1`
+    )
+    .bind(payroll.id)
+    .first();
+
+  assert.equal(
+    lateApprovalSnapshot.approved_at,
+    '2026-07-31'
+  );
+  assert.equal(
+    Number(lateApprovalSnapshot.approved_net_halalas),
+    480000
+  );
+  assert.equal(
+    Number(lateApprovalSnapshot.approval_version),
+    1
+  );
+
   for (const date of ['2026-08-09', '2026-08-16', '2026-08-23', '2026-08-30']) {
     await recordAttendance(db, 'main', {
       employeeId: 'emp-1', employeeUid: 'uid-1', type: 'check_in', date,

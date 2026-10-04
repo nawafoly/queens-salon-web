@@ -3902,9 +3902,10 @@ export async function recordLatePayrollApproval(
   salonId,
   id,
   data = {},
-  actor = {}
+  actor = {},
+  options = {}
 ) {
-  const existing = await getPayrollEntry(db, salonId, id);
+  let existing = await getPayrollEntry(db, salonId, id);
   const currentStatus = cleanText(existing.status || 'draft');
 
   if (currentStatus === 'paid') {
@@ -3946,6 +3947,47 @@ export async function recordLatePayrollApproval(
     throw new AppError(400, 'core_payroll:late_approval_reason_required');
   }
 
+  // Late approval records a historical decision, but the live mutable payroll
+  // row must still satisfy today's canonical Core invariants before it can cross
+  // the approved boundary. A previously saved draft may predate current GOSI,
+  // overtime, obligation, carryover, or deduction-compliance rules.
+  //
+  // Preserve the pre-refresh row for the historical snapshot. The canonical
+  // refresh below is only the live state that D1 approval guards evaluate.
+  const historicalSourceEntry = existing;
+
+  existing = await upsertPayrollEntry(
+    db,
+    salonId,
+    {
+      ...existing,
+      id: existing.id,
+      employeeId: existing.employee_id,
+      employeeName: existing.employee_name,
+      payrollMonth: existing.payroll_month,
+      periodId: existing.period_id,
+      status: currentStatus,
+      additions: parseJsonArray(existing.additions_json),
+      deductions: parseJsonArray(existing.deductions_json),
+      notes: existing.notes,
+      auditLog: parseJsonArray(existing.audit_log_json).concat({
+        action: 'canonical_recalculation_before_late_approval',
+        byUid: optionalText(actor.uid) || null,
+        byEmail: optionalText(actor.email) || null,
+        at: nowIso(),
+      }),
+    },
+    actor,
+    options
+  );
+
+  if (!['draft', 'reviewed'].includes(cleanText(existing.status))) {
+    throw new AppError(
+      409,
+      'core_payroll:late_approval_concurrent_mutation'
+    );
+  }
+
   const now = nowIso();
   const auditEntry = {
     action: 'late_approval_recorded',
@@ -3967,7 +4009,7 @@ export async function recordLatePayrollApproval(
   // The explicitly entered approved amount is therefore the immutable carryover
   // baseline. The current Core row remains available for later final reconciliation.
   const historicalSnapshotEntry = {
-    ...existing,
+    ...historicalSourceEntry,
     status: 'approved',
     approved_at: approvalDate,
     approved_by_uid: optionalText(actor.uid) || null,
@@ -3990,7 +4032,7 @@ export async function recordLatePayrollApproval(
   const snapshotStatement = await buildApprovalSnapshotStatement(
     db,
     salonId,
-    existing,
+    historicalSourceEntry,
     actor,
     approvalDate,
     {

@@ -3267,7 +3267,11 @@ async function dispatch(ctx, route, method, body, query, env) {
           ctx.salonId,
           route.id,
           body,
-          actorInfo
+          actorInfo,
+          {
+            externalAttendanceDb:
+              env.ATTENDANCE_DB || null,
+          }
         );
       }
       break;
