@@ -379,6 +379,29 @@ test('late payroll approval refreshes canonical state and keeps the historical s
   );
   assert.equal(retry.status, 'approved');
   assert.equal(retry.idempotent, true);
+  const approvedBeforeRejectedRetries = await db.prepare(
+    `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ?`
+  ).bind(staleDraft.id).first();
+  for (const changedRequest of [
+    { reason: 'Different historical approval reason' },
+    { approvalDate: '2026-08-30' },
+    { approvedNetHalalas: 333334 },
+  ]) {
+    await assert.rejects(
+      withFixedRiyadhDate(t, () => recordLatePayrollApproval(db, 'main', staleDraft.id, {
+        approvalDate: '2026-08-31',
+        approvedNetHalalas: 333333,
+        reason: 'Historical approval amount from signed payroll',
+        ...changedRequest,
+      }, actor), '2026-09-10'),
+      { code: 'core_payroll:already_approved' }
+    );
+  }
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ?`)
+      .bind(staleDraft.id).first(),
+    approvedBeforeRejectedRetries
+  );
   assert.equal(
     Number((await db.prepare(
       `SELECT COUNT(*) AS count
@@ -413,6 +436,29 @@ test('late payroll approval refreshes canonical state and keeps the historical s
     '2026-09-10'
   );
   assert.equal(approvedReviewed.status, 'approved');
+
+  // An older late snapshot must not authenticate a retry after a newer standard
+  // approval, even when its date and amount match the previous late approval.
+  await reopenPayrollEntry(db, 'main', reviewed.id, {
+    reason: 'Replace historical approval with standard approval',
+  }, actor);
+  await withFixedRiyadhDate(t, () =>
+    approvePayrollEntry(db, 'main', reviewed.id, actor), '2026-08-30');
+  await assert.rejects(
+    withFixedRiyadhDate(t, () => recordLatePayrollApproval(db, 'main', reviewed.id, {
+      approvalDate: '2026-08-30',
+      approvedNetHalalas: 410000,
+      reason: 'Reviewed row was approved outside the system',
+    }, actor), '2026-09-10'),
+    { code: 'core_payroll:already_approved' }
+  );
+  const reopenedSnapshots = (await db.prepare(
+    `SELECT * FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ? ORDER BY approval_version`
+  ).bind(reviewed.id).all()).results;
+  assert.equal(reopenedSnapshots.length, 2);
+  assert.ok(JSON.parse(reopenedSnapshots[0].entry_snapshot_json).late_approval_record);
+  assert.equal(JSON.parse(reopenedSnapshots[1].entry_snapshot_json).late_approval_record, undefined);
 
   await seedNonSaudiPayrollEmployment(db, 'emp-late-invalid', 420000);
   const invalid = await upsertPayrollEntry(db, 'main', {
@@ -468,13 +514,34 @@ test('late payroll approval refreshes canonical state and keeps the historical s
     payrollMonth: '2026-08',
     skipTargetBonus: true,
   }, actor);
-  const standardApproved = await approvePayrollEntry(
+  const standardApproved = await withFixedRiyadhDate(t, () => approvePayrollEntry(
     db,
     'main',
     standard.id,
     actor
-  );
+  ), '2026-08-28');
   assert.equal(standardApproved.status, 'approved');
+  const standardBeforeLateRequest = await db.prepare(
+    `SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ?`
+  ).bind(standard.id).first();
+  await assert.rejects(
+    withFixedRiyadhDate(t, () => recordLatePayrollApproval(db, 'main', standard.id, {
+      approvalDate: '2026-08-28',
+      approvedNetHalalas: 430000,
+      reason: 'Must not report a standard approval as a recorded late approval',
+    }, actor), '2026-09-10'),
+    { code: 'core_payroll:already_approved' }
+  );
+  assert.deepEqual(
+    await db.prepare(`SELECT * FROM payroll_entries WHERE salon_id = 'main' AND id = ?`)
+      .bind(standard.id).first(),
+    standardBeforeLateRequest
+  );
+  const standardSnapshots = (await db.prepare(
+    `SELECT * FROM payroll_approval_snapshots WHERE salon_id = 'main' AND payroll_entry_id = ?`
+  ).bind(standard.id).all()).results;
+  assert.equal(standardSnapshots.length, 1);
+  assert.equal(JSON.parse(standardSnapshots[0].entry_snapshot_json).late_approval_record, undefined);
   const paid = await markPayrollEntryPaid(db, 'main', standard.id, actor);
   assert.equal(paid.status, 'paid');
   const unpaid = await reversePayrollEntryPayment(

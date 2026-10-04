@@ -3970,7 +3970,25 @@ export async function recordLatePayrollApproval(
       salonId,
       existing.id
     );
+    const snapshotEntry = parseJsonObject(existingSnapshot?.entry_snapshot_json);
+    const lateApprovalRecord = snapshotEntry.late_approval_record;
+    // The latest snapshot is only a candidate. Require the historical marker
+    // and the matching current approval audit event before acknowledging a retry.
+    // A standard approval (including after reopen) is a different operation.
+    const approvalAudit = parseJsonArray(existing.audit_log_json)
+      .findLast((entry) => ['approved', 'late_approval_recorded', 'reopened'].includes(entry?.action));
     const matchesExistingHistoricalApproval =
+      snapshotEntry.id === existing.id &&
+      lateApprovalRecord &&
+      approvalAudit?.action === 'late_approval_recorded' &&
+      cleanText(lateApprovalRecord.recorded_at) !== '' &&
+      cleanText(lateApprovalRecord.recorded_at) === cleanText(approvalAudit.at) &&
+      payrollApprovalDateKey(lateApprovalRecord.effective_approval_date) === approvalDate &&
+      Number(lateApprovalRecord.approved_net_halalas ?? -1) === approvedNetHalalas &&
+      optionalText(lateApprovalRecord.reason) === reason &&
+      payrollApprovalDateKey(approvalAudit.effectiveApprovalDate) === approvalDate &&
+      Number(approvalAudit.approvedNetHalalas ?? -1) === approvedNetHalalas &&
+      optionalText(approvalAudit.reason) === reason &&
       payrollApprovalDateKey(existing.approved_at) === approvalDate &&
       payrollApprovalDateKey(existingSnapshot?.approved_at) === approvalDate &&
       Number(existingSnapshot?.approved_net_halalas ?? -1) ===
