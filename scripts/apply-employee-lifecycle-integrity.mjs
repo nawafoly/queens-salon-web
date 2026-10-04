@@ -110,7 +110,7 @@ export function normalizeEmployeeIdentityIds(values: readonly unknown[]) {
   if (profileMappingMatches.length !== 2) {
     throw new Error("CoreHrService profile mappings: expected 2 matches, found " + profileMappingMatches.length);
   }
-  source = source.replace(profileMappingPattern, \`    return normalizeCoreEmployee(row);\`);
+  source = source.replace(profileMappingPattern, "    return normalizeCoreEmployee(row);");
   write(file, source);
 }
 
