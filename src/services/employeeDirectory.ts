@@ -4,6 +4,7 @@ import { CoreHrService } from "./CoreHrService";
 import { CoreStaffService } from "./CoreStaffService";
 import type { EmployeeDirectoryEntry } from "./employeeHub";
 import type { PartnerMemberOperationalProfile } from "../types/partner";
+import { employeeIdentityEquals, normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -61,13 +62,13 @@ async function fetchDirectoryFromCore(): Promise<EmployeeDirectoryEntry[]> {
     CoreAccountService.list(false, "internal").catch(() => []),
   ]);
 
-  const staffById = new Map(staffRows.map((row) => [cleanText(row.id), row] as const));
+  const staffById = new Map(staffRows.map((row) => [normalizeEmployeeIdentityId(row.id), row] as const));
   const serviceLabelById = new Map(
     services.map((row) => [cleanText(row.id), cleanText(row.name || row.id)] as const),
   );
   const accountByEmployeeId = new Map<string, (typeof accounts)[number]>();
   for (const account of accounts) {
-    const employeeId = cleanText(account.employeeLink?.employeeId);
+    const employeeId = normalizeEmployeeIdentityId(account.employeeLink?.employeeId);
     if (employeeId && !accountByEmployeeId.has(employeeId)) {
       accountByEmployeeId.set(employeeId, account);
     }
@@ -75,7 +76,7 @@ async function fetchDirectoryFromCore(): Promise<EmployeeDirectoryEntry[]> {
 
   return employees
     .map((employee): EmployeeDirectoryEntry => {
-      const employeeId = cleanText(employee.id);
+      const employeeId = normalizeEmployeeIdentityId(employee.id);
       const employment = cleanRecord(employee.employment) || {};
       const staff = staffById.get(employeeId);
       const account = accountByEmployeeId.get(employeeId);
@@ -164,17 +165,17 @@ export async function listEmployeeDirectory(): Promise<EmployeeDirectoryEntry[]>
 }
 
 export async function getEmployeeDirectoryEntry(employeeId: string) {
-  const normalizedId = cleanText(employeeId);
+  const normalizedId = normalizeEmployeeIdentityId(employeeId);
   if (!normalizedId) return null;
   const rows = await listEmployeeDirectory();
   return (
     rows.find(
       (row) =>
-        cleanText(row.employeeId) === normalizedId ||
-        cleanText(row.employeeDocId) === normalizedId ||
-        cleanText(row.linkedEmployeeDocId) === normalizedId ||
-        cleanText(row.employeeUid) === normalizedId ||
-        cleanText(row.linkedUid) === normalizedId,
+        employeeIdentityEquals(row.employeeId, normalizedId) ||
+        employeeIdentityEquals(row.employeeDocId, normalizedId) ||
+        employeeIdentityEquals(row.linkedEmployeeDocId, normalizedId) ||
+        employeeIdentityEquals(row.employeeUid, normalizedId) ||
+        employeeIdentityEquals(row.linkedUid, normalizedId),
     ) || null
   );
 }

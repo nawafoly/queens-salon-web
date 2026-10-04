@@ -39,6 +39,7 @@ import {
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
 import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
+import { isCanonicalEmployeeIdentityId } from "../helpers/employeeIdentityId";
 import {
   calculateAttendanceDisciplineDay,
   formatAttendanceHours,
@@ -647,9 +648,7 @@ export default function DashboardAttendanceSecurity() {
             .map((value) => String(value || "").trim())
             .find(
               (value) =>
-                value &&
-                !value.startsWith("app_user_") &&
-                /^[A-Za-z0-9_-]+$/.test(value)
+                isCanonicalEmployeeIdentityId(value)
             );
 
           if (!canonicalEmployeeId) continue;
