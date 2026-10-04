@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
+import type { AriaAttributes } from "react";
 import { normalizeWesternDigits } from "../../helpers/displayLocalePolicy";
 
 export type DashboardTimePickerV2Props = {
@@ -14,6 +15,8 @@ export type DashboardTimePickerV2Props = {
   max?: string;
   step?: number | string;
   clock?: "24h" | "12h";
+  "aria-describedby"?: string;
+  "aria-invalid"?: AriaAttributes["aria-invalid"];
   onChange?: (value: string) => void;
 };
 
@@ -109,6 +112,8 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
   max,
   step,
   clock = "24h",
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   onChange,
 }, ref) {
   const controlled = value !== undefined;
@@ -189,6 +194,8 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
             disabled={disabled}
             required={required}
             aria-label={resolvedPlaceholder}
+            aria-describedby={ariaDescribedBy}
+            aria-invalid={ariaInvalid}
             data-min={min}
             data-max={max}
             data-step={step}
@@ -243,6 +250,8 @@ const DashboardTimePickerV2 = forwardRef<HTMLInputElement, DashboardTimePickerV2
           max={max}
           step={step}
           aria-label={resolvedPlaceholder}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           onChange={(event) => commit(normalizeCommittedTime(event.target.value))}
           onBlur={(event) => {
             const normalized = normalizeCommittedTime(event.target.value);
