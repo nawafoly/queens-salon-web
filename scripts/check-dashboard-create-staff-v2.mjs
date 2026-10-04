@@ -61,9 +61,28 @@ for (const guard of [
   "CoreWorkforceService.createNotification",
   "CoreHrService.saveEmployee = async",
   "pendingEmployeeOnboarding",
+  "existingCoreAccount.employeeLink?.employeeId",
+  "existingLinkedEmployeeId !== requestedEmployeeId",
+  "existingLinkedEmployeeId !== savedEmployeeId",
+  "const employeeInput: Record<string, unknown> = { ...input };",
 ]) {
   requireText(coordinator, guard, `Canonical onboarding coordinator guard missing: ${guard}`);
 }
+rejectText(
+  coordinator,
+  '...(onboarding.email ? { email: onboarding.email } : {})',
+  "Account email must not be injected invisibly into Employee Master during onboarding."
+);
+rejectText(
+  coordinator,
+  '...(onboarding.phone ? { phone: onboarding.phone } : {})',
+  "Account phone must not be injected invisibly into Employee Master during onboarding."
+);
+rejectText(
+  coordinator,
+  'throw new Error("يوجد حساب في النظام بنفس البريد. اربط الحساب الموجود بدل إنشاء حساب جديد.")',
+  "A same-employee onboarding retry must reconcile an existing account instead of failing unconditionally."
+);
 rejectText(coordinator, "firebase/firestore", "Canonical onboarding coordinator must remain authentication-only for Firebase.");
 rejectText(coordinator, "staff_public", "Canonical onboarding coordinator must not restore legacy staff_public writes.");
 
