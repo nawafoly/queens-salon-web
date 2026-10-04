@@ -8,6 +8,7 @@ on:
       - ".github/workflows/contextual-feedback-codemod.yml"
       - "scripts/apply-contextual-feedback-payroll.mjs"
       - "scripts/apply-contextual-feedback-aria.mjs"
+      - "scripts/apply-contextual-feedback-packages.mjs"
 
 permissions:
   contents: write
@@ -26,6 +27,7 @@ jobs:
         run: |
           node scripts/apply-contextual-feedback-payroll.mjs
           node scripts/apply-contextual-feedback-aria.mjs
+          node scripts/apply-contextual-feedback-packages.mjs
 
       - name: Commit generated changes
         shell: bash
@@ -42,6 +44,7 @@ jobs:
             src/components/dashboard-v2/DashboardDatePickerV2.tsx \
             src/components/dashboard-v2/DashboardSelectV2.tsx \
             src/components/dashboard-v2/DashboardMonthPickerV2.tsx \
-            src/components/dashboard-v2/DashboardTimePickerV2.tsx
-          git commit -m "fix(ui): propagate contextual field ARIA state"
+            src/components/dashboard-v2/DashboardTimePickerV2.tsx \
+            src/features/internal-booking-v2/PackageSessionsManager.tsx
+          git commit -m "fix(ui): contextualize action feedback surfaces"
           git push origin HEAD:fix/contextual-action-feedback-20261004
