@@ -14,6 +14,7 @@ import { auth } from "./firebase";
 import { CoreAccountService } from "./CoreAccountService";
 import { CoreHrService } from "./CoreHrService";
 import { CoreWorkforceService } from "./CoreWorkforceService";
+import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 export type EmployeeOnboardingRole =
   | "staff"
@@ -160,16 +161,16 @@ if (!service[coordinatorFlag]) {
 
     await waitForPrimaryFirebaseSession();
 
-    const requestedEmployeeId = cleanText(input.id || input.employeeId);
+    const requestedEmployeeId = normalizeEmployeeIdentityId(input.id || input.employeeId);
     const existingCoreAccount = await findCoreAccountByEmail(onboarding.email);
 
     // A retry can legitimately arrive here after the previous attempt already
     // created/linked the account but the outer Employee Master verification
     // failed later. Reuse only when the account is unlinked or already points
-    // to this exact deterministic employee id. Never hijack another employee's
+    // to this exact canonical employee id. Never hijack another employee's
     // account merely because the email matches.
     if (existingCoreAccount) {
-      const existingLinkedEmployeeId = cleanText(
+      const existingLinkedEmployeeId = normalizeEmployeeIdentityId(
         existingCoreAccount.employeeLink?.employeeId,
       );
       const existingFirebaseUid = cleanText(
@@ -206,11 +207,14 @@ if (!service[coordinatorFlag]) {
           employmentSource: cleanText(input.employmentSource) || "salon",
           includeInEmployeeManagement: input.includeInEmployeeManagement ?? true,
         });
-        const savedEmployeeId = cleanText((employee as any)?.id) || employeeId;
+        const savedEmployeeId =
+          normalizeEmployeeIdentityId((employee as any)?.id) || employeeId;
 
-        if (existingLinkedEmployeeId !== savedEmployeeId) {
-          await CoreAccountService.linkEmployee(existingCoreAccount.id, savedEmployeeId);
-        }
+        // Always rewrite the link through the canonical id. This is intentional:
+        // older partial attempts may have persisted a percent-encoded employee
+        // id even though it resolves to the same employee. Re-linking converges
+        // the stored relation instead of leaving a latent %D8/%25D8 identity.
+        await CoreAccountService.linkEmployee(existingCoreAccount.id, savedEmployeeId);
 
         await CoreWorkforceService.createNotification({
           targetUid: existingFirebaseUid,
@@ -261,7 +265,7 @@ if (!service[coordinatorFlag]) {
         employmentSource: cleanText(input.employmentSource) || "salon",
         includeInEmployeeManagement: input.includeInEmployeeManagement ?? true,
       });
-      savedEmployeeId = cleanText((employee as any)?.id) || employeeId;
+      savedEmployeeId = normalizeEmployeeIdentityId((employee as any)?.id) || employeeId;
 
       const account = await CoreAccountService.create({
         firebaseUid,
