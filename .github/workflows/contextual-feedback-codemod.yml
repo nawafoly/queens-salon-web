@@ -1,0 +1,38 @@
+name: Contextual Feedback Codemod
+
+on:
+  push:
+    branches:
+      - fix/contextual-action-feedback-20261004
+    paths:
+      - ".github/workflows/contextual-feedback-codemod.yml"
+      - "scripts/apply-contextual-feedback-payroll.mjs"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/contextual-action-feedback-20261004
+          fetch-depth: 0
+
+      - name: Apply guarded codemod
+        run: node scripts/apply-contextual-feedback-payroll.mjs
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No codemod changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/DashboardPayroll.tsx src/styles/dashboard-v2/pages/payroll.css
+          git commit -m "fix(payroll): contextualize late approval feedback"
+          git push origin HEAD:fix/contextual-action-feedback-20261004
