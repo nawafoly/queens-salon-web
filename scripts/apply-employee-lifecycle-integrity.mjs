@@ -215,12 +215,15 @@ export const CoreStaffService = {
     `  return {\n    ...mapped,\n    staffId: normalizeEmployeeIdentityId(mapped.staffId),\n    active: Number(row.active) === 1,\n  };\n}\n\nexport function mapCoreStaff`,
     "core staff schedule id",
   );
-  source = replaceOnce(
-    source,
-    `  return {\n    ...mapped,\n    active: Number(row.active) === 1,\n`,
-    `  return {\n    ...mapped,\n    id: normalizeEmployeeIdentityId(mapped.id),\n    active: Number(row.active) === 1,\n`,
-    "core staff id",
-  );
+  const mapCoreStaffIndex = source.indexOf("export function mapCoreStaff");
+  if (mapCoreStaffIndex < 0) throw new Error("mapCoreStaff function not found");
+  const staffReturnAnchor = `  return {\n    ...mapped,\n    active: Number(row.active) === 1,\n`;
+  const staffReturnIndex = source.indexOf(staffReturnAnchor, mapCoreStaffIndex);
+  if (staffReturnIndex < 0) throw new Error("mapCoreStaff return anchor not found");
+  source =
+    source.slice(0, staffReturnIndex) +
+    `  return {\n    ...mapped,\n    id: normalizeEmployeeIdentityId(mapped.id),\n    active: Number(row.active) === 1,\n` +
+    source.slice(staffReturnIndex + staffReturnAnchor.length);
   write(file, source);
 }
 
