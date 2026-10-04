@@ -8,6 +8,7 @@ on:
       - ".github/workflows/dashboard-action-feedback-codemod.yml"
       - "scripts/apply-dashboard-action-feedback-system.mjs"
       - "scripts/apply-contextual-feedback-bookings.mjs"
+      - "scripts/apply-employee-request-feedback.mjs"
       - "scripts/prepatch-dashboard-refresh.mjs"
       - "scripts/prepatch-feedback-codemod-script.mjs"
 
@@ -34,6 +35,7 @@ jobs:
           node scripts/prepatch-dashboard-refresh.mjs
           node scripts/prepatch-feedback-codemod-script.mjs
           node scripts/apply-dashboard-action-feedback-system.mjs
+          node scripts/apply-employee-request-feedback.mjs
           node scripts/apply-contextual-feedback-bookings.mjs
 
       - name: Commit generated source changes
