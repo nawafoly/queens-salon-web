@@ -1,5 +1,6 @@
 import { coreApiRequest } from "./coreApiClient";
 import type { AppPermission, UserRole } from "../helpers/permissions";
+import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 export type AccountStatus = "active" | "disabled" | "pending" | "deleted";
 
@@ -87,9 +88,38 @@ export type AccountUpdateInput = Partial<AccountCreateInput> & {
   primaryRole?: string;
 };
 
+function normalizeEmployeeLink(link: CoreEmployeeLink): CoreEmployeeLink {
+  if (!link) return null;
+
+  const employeeId = normalizeEmployeeIdentityId(link.employeeId);
+  return {
+    ...link,
+    employeeId,
+    employee: link.employee
+      ? {
+          ...link.employee,
+          id: normalizeEmployeeIdentityId(link.employee.id || employeeId),
+        }
+      : link.employee,
+  };
+}
+
+function normalizeAccount(account: CoreAccount): CoreAccount {
+  return {
+    ...account,
+    ...(Object.prototype.hasOwnProperty.call(account, "employeeLink")
+      ? { employeeLink: normalizeEmployeeLink(account.employeeLink || null) }
+      : {}),
+  };
+}
+
 export const CoreAccountService = {
   me() {
-    return coreApiRequest<CoreAuthMe>("/api/auth/me");
+    return coreApiRequest<CoreAuthMe>("/api/auth/me").then((payload) => ({
+      ...payload,
+      user: normalizeAccount(payload.user),
+      employeeLink: normalizeEmployeeLink(payload.employeeLink),
+    }));
   },
 
   list(includeDeleted = false, scope: "all" | "internal" = "all") {
@@ -98,50 +128,50 @@ export const CoreAccountService = {
         ...(includeDeleted ? { includeDeleted: true } : {}),
         ...(scope === "internal" ? { scope: "internal" } : {}),
       },
-    });
+    }).then((rows) => rows.map(normalizeAccount));
   },
 
   get(id: string) {
-    return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}`);
+    return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}`).then(normalizeAccount);
   },
 
   create(input: AccountCreateInput) {
     return coreApiRequest<CoreAccount>("/api/admin/accounts", {
       method: "POST",
       body: input as Record<string, unknown>,
-    });
+    }).then(normalizeAccount);
   },
 
   update(id: string, input: AccountUpdateInput) {
     return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: input as Record<string, unknown>,
-    });
+    }).then(normalizeAccount);
   },
 
   disable(id: string) {
     return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}/disable`, {
       method: "POST",
-    });
+    }).then(normalizeAccount);
   },
 
   restore(id: string) {
     return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}/restore`, {
       method: "POST",
-    });
+    }).then(normalizeAccount);
   },
 
   remove(id: string) {
     return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}`, {
       method: "DELETE",
-    });
+    }).then(normalizeAccount);
   },
 
   replacePermissions(id: string, permissions: AppPermission[]) {
     return coreApiRequest<CoreAccount>(`/api/admin/accounts/${encodeURIComponent(id)}/permissions`, {
       method: "PUT",
       body: { permissions },
-    });
+    }).then(normalizeAccount);
   },
 
   roles() {
@@ -153,16 +183,17 @@ export const CoreAccountService = {
   },
 
   linkEmployee(id: string, employeeId: string) {
+    const canonicalEmployeeId = normalizeEmployeeIdentityId(employeeId);
     return coreApiRequest<CoreEmployeeLink>(`/api/admin/accounts/${encodeURIComponent(id)}/employee-link`, {
       method: "PUT",
-      body: { employeeId },
-    });
+      body: { employeeId: canonicalEmployeeId },
+    }).then(normalizeEmployeeLink);
   },
 
   unlinkEmployee(id: string) {
     return coreApiRequest<CoreEmployeeLink>(`/api/admin/accounts/${encodeURIComponent(id)}/employee-link`, {
       method: "DELETE",
-    });
+    }).then(normalizeEmployeeLink);
   },
 
   resetPassword(id: string) {

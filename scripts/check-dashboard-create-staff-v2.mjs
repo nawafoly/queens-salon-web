@@ -10,6 +10,8 @@ const legacyRouterPath = path.join(root, "src/pages/hr/CreateStaffAccount.tsx");
 const legacyRoutePath = path.join(root, "src/pages/hr/CreateStaffAccountV2.tsx");
 const editorPath = path.join(root, "src/pages/dashboardEmployees/EmployeeEditorModal.tsx");
 const coordinatorPath = path.join(root, "src/services/employeeOnboardingCoordinator.ts");
+const accountServicePath = path.join(root, "src/services/CoreAccountService.ts");
+const employeeIdentityIdPath = path.join(root, "src/helpers/employeeIdentityId.ts");
 const settingsPath = path.join(root, "src/pages/settings/SettingsUsersV2.tsx");
 const stylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-create-staff.css");
 const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
@@ -18,6 +20,8 @@ const adminHr = fs.readFileSync(adminHrPath, "utf8");
 const dashboard = fs.readFileSync(dashboardPath, "utf8");
 const editor = fs.readFileSync(editorPath, "utf8");
 const coordinator = fs.readFileSync(coordinatorPath, "utf8");
+const accountService = fs.readFileSync(accountServicePath, "utf8");
+const employeeIdentityId = fs.readFileSync(employeeIdentityIdPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const style = fs.readFileSync(stylePath, "utf8");
 const entry = fs.readFileSync(entryPath, "utf8");
@@ -62,8 +66,8 @@ for (const guard of [
   "CoreHrService.saveEmployee = async",
   "pendingEmployeeOnboarding",
   "existingCoreAccount.employeeLink?.employeeId",
-  "existingLinkedEmployeeId !== requestedEmployeeId",
-  "existingLinkedEmployeeId !== savedEmployeeId",
+  "normalizeEmployeeIdentityId(input.id || input.employeeId)",
+  "await CoreAccountService.linkEmployee(existingCoreAccount.id, savedEmployeeId)",
   "const employeeInput: Record<string, unknown> = { ...input };",
 ]) {
   requireText(coordinator, guard, `Canonical onboarding coordinator guard missing: ${guard}`);
@@ -85,6 +89,25 @@ rejectText(
 );
 rejectText(coordinator, "firebase/firestore", "Canonical onboarding coordinator must remain authentication-only for Firebase.");
 rejectText(coordinator, "staff_public", "Canonical onboarding coordinator must not restore legacy staff_public writes.");
+
+for (const guard of [
+  "normalizeEmployeeIdentityId",
+  "rows.map(normalizeAccount)",
+  "body: { employeeId: canonicalEmployeeId }",
+  ".then(normalizeEmployeeLink)",
+]) {
+  requireText(accountService, guard, `Core account employee-link normalization guard missing: ${guard}`);
+}
+requireText(
+  employeeIdentityId,
+  "decodeURIComponent(id)",
+  "Canonical employee id helper must decode percent-encoded UTF-8 ids."
+);
+requireText(
+  employeeIdentityId,
+  "/%(?:25|[C-Fc-f][0-9A-Fa-f])/",
+  "Canonical employee id helper must recognize double-encoded percent and UTF-8 route ids."
+);
 
 requireText(settings, "الحسابات والصلاحيات", "Account settings must be labelled as management-only.");
 requireText(settings, 'navigate("/dashboard/employees")', "Account settings must direct employee creation to the canonical employee page.");
