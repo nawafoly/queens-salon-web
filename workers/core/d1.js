@@ -59,6 +59,73 @@ export function normalizeId(value) {
   return id;
 }
 
+function legacyEncodedIdCandidates(value) {
+  const canonical = normalizeId(value);
+  if (!canonical) return [];
+  const once = encodeURIComponent(canonical);
+  const twice = encodeURIComponent(once);
+  return Array.from(new Set([canonical, once, twice].filter(Boolean)));
+}
+
+export function canonicalizeEmployeeProfileRows(rows) {
+  const grouped = new Map();
+
+  for (const rawRow of Array.isArray(rows) ? rows : []) {
+    const rawId = cleanText(rawRow?.id);
+    const canonicalId = normalizeId(rawId);
+    if (!canonicalId) continue;
+
+    const candidate = {
+      ...rawRow,
+      id: canonicalId,
+    };
+    const current = grouped.get(canonicalId);
+
+    if (!current) {
+      grouped.set(canonicalId, {
+        row: candidate,
+        rawId,
+        canonical: rawId === canonicalId,
+      });
+      continue;
+    }
+
+    // Prefer the physically canonical row over an older encoded alias. If both
+    // are legacy aliases, keep the one closest to the canonical form.
+    const candidateCanonical = rawId === canonicalId;
+    const candidateScore = candidateCanonical ? 0 : rawId.length;
+    const currentScore = current.canonical ? 0 : current.rawId.length;
+    if (candidateScore < currentScore) {
+      grouped.set(canonicalId, {
+        row: candidate,
+        rawId,
+        canonical: candidateCanonical,
+      });
+    }
+  }
+
+  return Array.from(grouped.values()).map((item) => item.row);
+}
+
+function isEmployeeProfileListQuery(sql) {
+  return /SELECT\s+\*\s+FROM\s+employee_profiles\s+WHERE\s+salon_id\s*=\s*\?\s+ORDER\s+BY\s+status,\s*name\s+LIMIT\s+1000/i.test(
+    String(sql || "")
+  );
+}
+
+function isCanonicalEmployeePointLookup(sql) {
+  const text = String(sql || "");
+  return (
+    /FROM\s+employee_profiles\b/i.test(text) ||
+    /FROM\s+employee_employment\b/i.test(text)
+  ) && /\b(?:id|employee_id)\s*=\s*\?/i.test(text);
+}
+
+async function runFirst(db, sql, params) {
+  if (db.__fakeD1) return db.first(sql, params);
+  return db.prepare(sql).bind(...params).first();
+}
+
 export function requiredId(value, field = "id") {
   const id = normalizeId(value);
   if (!id || id.length > 128 || id.includes("/") || id === "." || id === "..") {
@@ -107,14 +174,39 @@ export function placeholders(count) {
 }
 
 export async function dbFirst(db, sql, params = []) {
-  if (db.__fakeD1) return db.first(sql, params);
-  return db.prepare(sql).bind(...params).first();
+  let row = await runFirst(db, sql, params);
+  if (row || !isCanonicalEmployeePointLookup(sql) || params.length < 2) return row;
+
+  const idIndex = params.length - 1;
+  const originalId = cleanText(params[idIndex]);
+  for (const candidate of legacyEncodedIdCandidates(originalId)) {
+    if (!candidate || candidate === originalId) continue;
+    const nextParams = [...params];
+    nextParams[idIndex] = candidate;
+    row = await runFirst(db, sql, nextParams);
+    if (row) {
+      const canonicalId = normalizeId(originalId || candidate);
+      if (Object.prototype.hasOwnProperty.call(row, "id")) {
+        row = { ...row, id: canonicalId };
+      }
+      if (Object.prototype.hasOwnProperty.call(row, "employee_id")) {
+        row = { ...row, employee_id: canonicalId };
+      }
+      return row;
+    }
+  }
+
+  return null;
 }
 
 export async function dbAll(db, sql, params = []) {
-  if (db.__fakeD1) return db.all(sql, params);
-  const result = await db.prepare(sql).bind(...params).all();
-  return result?.results || [];
+  const rows = db.__fakeD1
+    ? await db.all(sql, params)
+    : ((await db.prepare(sql).bind(...params).all())?.results || []);
+
+  return isEmployeeProfileListQuery(sql)
+    ? canonicalizeEmployeeProfileRows(rows)
+    : rows;
 }
 
 export async function dbRun(db, sql, params = []) {
