@@ -31,6 +31,28 @@ export function normalizeError(error) {
   if (embeddedInvariantCode) {
     return new AppError(409, embeddedInvariantCode, embeddedInvariantCode);
   }
+
+  // D1 approval guards use RAISE(ABORT, 'payroll_*'). Cloudflare wraps those
+  // in D1/SQLite constraint errors. They are domain conflicts, not service
+  // outages, so preserve the payroll code instead of returning HTTP 500.
+  if (
+    /D1_ERROR|SQLITE_CONSTRAINT|constraint failed/i.test(message)
+  ) {
+    const payrollTrigger =
+      message.match(/\b(payroll_[a-z0-9_]+)\b/i)?.[1];
+
+    if (payrollTrigger) {
+      return new AppError(
+        409,
+        `core_payroll:${payrollTrigger.replace(
+          /^payroll_/i,
+          ""
+        )}`,
+        payrollTrigger
+      );
+    }
+  }
+
   console.error("core-worker unhandled error", { message });
   return new AppError(500, "core_api:internal", "Internal core worker error");
 }
