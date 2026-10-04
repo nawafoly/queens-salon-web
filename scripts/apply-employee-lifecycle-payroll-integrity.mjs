@@ -281,11 +281,30 @@ function assertCanonicalSalaryAdvanceCap(row) {
     employeeId: normalizeId(row.employee_id),`,
     "salary advance alias lookup",
   );
+  write(file, source);
+}
+
+// Generic payroll deduction deferrals use the same canonical employee identity.
+{
+  const file = "workers/core/repositories/payroll-deduction-deferrals.js";
+  let source = read(file);
   source = replaceOnce(
     source,
-    "  const employeeId = cleanText(query.employeeId || query.employee_id);\n  const sourcePayrollMonth = cleanText(",
-    "  const employeeId = normalizeId(query.employeeId || query.employee_id);\n  const sourcePayrollMonth = cleanText(",
+    "  nowIso,\n  optionalText,",
+    "  nowIso,\n  normalizeId,\n  optionalText,",
+    "payroll deferral normalizeId import",
+  );
+  source = replaceOnce(
+    source,
+    "  const employeeId = cleanText(query.employeeId || query.employee_id);",
+    "  const employeeId = normalizeId(query.employeeId || query.employee_id);",
     "canonical partial deferral list employee id",
+  );
+  source = replaceOnce(
+    source,
+    "      .filter((row) => !employeeId || row.employee_id === employeeId)",
+    "      .filter((row) => !employeeId || normalizeId(row.employee_id) === employeeId)",
+    "canonical fake partial deferral filter",
   );
   write(file, source);
 }
