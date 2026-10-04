@@ -49,6 +49,9 @@ jobs:
       - name: Core Dashboard V2 style and internal booking contracts
         run: npm run check:dashboard-v2
 
+      - name: Dashboard action feedback guard
+        run: node scripts/check-dashboard-action-feedback.mjs
+
       - name: HR overview V2
         run: npm run check:dashboard-hr-v2
 
