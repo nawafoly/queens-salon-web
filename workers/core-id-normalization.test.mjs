@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   canonicalizeEmployeeProfileRows,
+  dbAll,
   dbFirst,
   normalizeId,
   requiredId,
@@ -91,4 +92,26 @@ test("canonical employee row wins regardless of list order", () => {
     assert.equal(collapsed[0].id, arabicEmployeeId);
     assert.equal(collapsed[0].marker, "canonical");
   }
+});
+
+test("Core HR list query collapses Samira aliases before payroll sees them", async () => {
+  const db = {
+    __fakeD1: true,
+    async all() {
+      return [
+        { id: encodedOnce, name: "سميرة دينار", status: "active", marker: "legacy" },
+        { id: arabicEmployeeId, name: "سميرة دينار", status: "active", marker: "canonical" },
+      ];
+    },
+  };
+
+  const rows = await dbAll(
+    db,
+    "SELECT * FROM employee_profiles WHERE salon_id = ? ORDER BY status, name LIMIT 1000",
+    ["main"],
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, arabicEmployeeId);
+  assert.equal(rows[0].marker, "canonical");
 });
