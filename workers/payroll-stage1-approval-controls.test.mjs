@@ -258,11 +258,27 @@ test("late approval snapshot is bound to the winning historical transition", () 
   assert.match(fn, /lateApprovalAuditLog/);
   assert.match(
     fn,
-    /cleanText\(current\.approved_at\) === approvalDate/
+    /payrollApprovalDateKey\(current\.approved_at\) === approvalDate/
   );
   assert.match(
     fn,
-    /latestSnapshot\?\.approved_net_halalas/
+    /getPayrollApprovalSnapshot/
+  );
+  assert.match(
+    fn,
+    /transitionSnapshot\?\.approved_net_halalas/
+  );
+  assert.match(
+    fn,
+    /idempotent: true/
+  );
+  assert.match(
+    fn,
+    /assertPayrollApprovalReady/
+  );
+  assert.match(
+    fn,
+    /assertPayrollObligationSnapshotCurrent/
   );
   assert.match(
     fn,

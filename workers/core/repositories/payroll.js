@@ -1518,6 +1518,29 @@ async function latestPayrollApprovalSnapshot(db, salonId, payrollEntryId) {
   }
 }
 
+async function getPayrollApprovalSnapshot(db, salonId, snapshotId) {
+  try {
+    return await dbFirst(
+      db,
+      `SELECT *
+         FROM payroll_approval_snapshots
+        WHERE salon_id = ?
+          AND id = ?
+        LIMIT 1`,
+      [salonId, snapshotId]
+    );
+  } catch (error) {
+    if (carryoverSchemaUnavailable(error)) return null;
+    throw error;
+  }
+}
+
+function payrollApprovalDateKey(value) {
+  const text = cleanText(value);
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(text);
+  return match ? match[1] : text;
+}
+
 async function nextApprovalSnapshotVersion(db, salonId, payrollEntryId) {
   const row = await dbFirst(
     db,
@@ -3911,12 +3934,6 @@ export async function recordLatePayrollApproval(
   if (currentStatus === 'paid') {
     throw new AppError(409, 'core_payroll:already_paid');
   }
-  if (currentStatus === 'approved') {
-    throw new AppError(409, 'core_payroll:already_approved');
-  }
-  if (!['draft', 'reviewed'].includes(currentStatus)) {
-    throw new AppError(409, 'core_payroll:late_approval_invalid_status');
-  }
 
   const approvalDate = validDate(
     data.approvalDate || data.approval_date,
@@ -3945,6 +3962,28 @@ export async function recordLatePayrollApproval(
   const reason = optionalText(data.reason);
   if (!reason) {
     throw new AppError(400, 'core_payroll:late_approval_reason_required');
+  }
+
+  if (currentStatus === 'approved') {
+    const existingSnapshot = await latestPayrollApprovalSnapshot(
+      db,
+      salonId,
+      existing.id
+    );
+    const matchesExistingHistoricalApproval =
+      payrollApprovalDateKey(existing.approved_at) === approvalDate &&
+      payrollApprovalDateKey(existingSnapshot?.approved_at) === approvalDate &&
+      Number(existingSnapshot?.approved_net_halalas ?? -1) ===
+        approvedNetHalalas;
+
+    if (matchesExistingHistoricalApproval) {
+      return { ...existing, idempotent: true };
+    }
+
+    throw new AppError(409, 'core_payroll:already_approved');
+  }
+  if (!['draft', 'reviewed'].includes(currentStatus)) {
+    throw new AppError(409, 'core_payroll:late_approval_invalid_status');
   }
 
   // Late approval records a historical decision, but the live mutable payroll
@@ -3987,6 +4026,15 @@ export async function recordLatePayrollApproval(
       'core_payroll:late_approval_concurrent_mutation'
     );
   }
+  await assertPayrollApprovalReady(
+    db,
+    salonId,
+    existing,
+    {
+      validateCanonicalPolicy: true,
+    }
+  );
+  await assertPayrollObligationSnapshotCurrent(db, salonId, existing);
 
   const now = nowIso();
   const auditEntry = {
@@ -4097,17 +4145,18 @@ export async function recordLatePayrollApproval(
   await dbBatch(db, statements);
 
   const current = await getPayrollEntry(db, salonId, existing.id);
-  const latestSnapshot = await latestPayrollApprovalSnapshot(
+  const transitionSnapshot = await getPayrollApprovalSnapshot(
     db,
     salonId,
-    existing.id
+    snapshotStatement.id
   );
   const matchesRequestedHistoricalApproval =
     cleanText(current.status) === 'approved' &&
-    cleanText(current.approved_at) === approvalDate &&
-    Number(latestSnapshot?.approved_net_halalas ?? -1) ===
+    payrollApprovalDateKey(current.approved_at) === approvalDate &&
+    Number(transitionSnapshot?.approved_net_halalas ?? -1) ===
       approvedNetHalalas &&
-    cleanText(latestSnapshot?.approved_at) === approvalDate;
+    payrollApprovalDateKey(transitionSnapshot?.approved_at) ===
+      approvalDate;
 
   if (!matchesRequestedHistoricalApproval) {
     throw new AppError(

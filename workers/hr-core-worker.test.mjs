@@ -30,6 +30,8 @@ import {
   markPayrollEntryPaid,
   previewPayrollEntry,
   reconcilePayrollCarryoversBatch,
+  reopenPayrollEntry,
+  reversePayrollEntryPayment,
   upsertPayrollEntry,
   upsertPayrollPeriod,
 } from './core/repositories/payroll.js';
@@ -167,6 +169,7 @@ async function setup() {
     '0057_leave_rest_workflows.sql',
     '0059_payroll_carryover_compliance_authority.sql',
     '0068_file_metadata_document_type.sql',
+    '0077_payroll_historical_settlements.sql',
     '0078_staff_services_specialties_backfill.sql',
     '0079_client_cashback_wallet.sql',
     '0083_internal_booking_price_adjustments.sql',
@@ -302,6 +305,195 @@ async function seedNonSaudiPayrollEmployment(db, employeeId, baseSalaryHalalas) 
     .bind(employeeId, baseSalaryHalalas, now, now)
     .run();
 }
+
+test('late payroll approval refreshes canonical state and keeps the historical snapshot authoritative', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await upsertPayrollPeriod(db, 'main', {
+    id: 'period-late-runtime-2026-08',
+    payrollMonth: '2026-08',
+    monthStart: '2026-08-01',
+    monthEnd: '2026-08-31',
+  }, actor);
+
+  await seedNonSaudiPayrollEmployment(db, 'emp-late-draft', 400000);
+  const staleDraft = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-late-draft',
+    employeeId: 'emp-late-draft',
+    payrollMonth: '2026-08',
+    skipTargetBonus: true,
+  }, actor);
+  assert.equal(staleDraft.status, 'draft');
+  assert.equal(Number(staleDraft.net_salary_halalas), 400000);
+
+  await seedNonSaudiPayrollEmployment(db, 'emp-late-draft', 500000);
+  const approvedDraft = await withFixedRiyadhDate(t, () =>
+    recordLatePayrollApproval(
+      db,
+      'main',
+      staleDraft.id,
+      {
+        approvalDate: '2026-08-31',
+        approvedNetHalalas: 333333,
+        reason: 'Historical approval amount from signed payroll',
+      },
+      actor
+    ),
+    '2026-09-10'
+  );
+
+  assert.equal(approvedDraft.status, 'approved');
+  assert.equal(approvedDraft.approved_at, '2026-08-31');
+  assert.equal(Number(approvedDraft.net_salary_halalas), 500000);
+
+  const draftSnapshots = (await db.prepare(
+    `SELECT *
+       FROM payroll_approval_snapshots
+      WHERE salon_id = 'main'
+        AND payroll_entry_id = ?
+      ORDER BY approval_version`
+  ).bind(staleDraft.id).all()).results;
+  assert.equal(draftSnapshots.length, 1);
+  assert.equal(draftSnapshots[0].approved_at, '2026-08-31');
+  assert.equal(Number(draftSnapshots[0].approved_net_halalas), 333333);
+  assert.equal(
+    JSON.parse(draftSnapshots[0].entry_snapshot_json).late_approval_record
+      .approved_net_halalas,
+    333333
+  );
+
+  const retry = await withFixedRiyadhDate(t, () =>
+    recordLatePayrollApproval(
+      db,
+      'main',
+      staleDraft.id,
+      {
+        approvalDate: '2026-08-31',
+        approvedNetHalalas: 333333,
+        reason: 'Historical approval amount from signed payroll',
+      },
+      actor
+    ),
+    '2026-09-10'
+  );
+  assert.equal(retry.status, 'approved');
+  assert.equal(retry.idempotent, true);
+  assert.equal(
+    Number((await db.prepare(
+      `SELECT COUNT(*) AS count
+         FROM payroll_approval_snapshots
+        WHERE salon_id = 'main'
+          AND payroll_entry_id = ?`
+    ).bind(staleDraft.id).first()).count),
+    1
+  );
+
+  await seedNonSaudiPayrollEmployment(db, 'emp-late-reviewed', 410000);
+  const reviewed = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-late-reviewed',
+    employeeId: 'emp-late-reviewed',
+    payrollMonth: '2026-08',
+    status: 'reviewed',
+    skipTargetBonus: true,
+  }, actor);
+  assert.equal(reviewed.status, 'reviewed');
+  const approvedReviewed = await withFixedRiyadhDate(t, () =>
+    recordLatePayrollApproval(
+      db,
+      'main',
+      reviewed.id,
+      {
+        approvalDate: '2026-08-30',
+        approvedNetHalalas: 410000,
+        reason: 'Reviewed row was approved outside the system',
+      },
+      actor
+    ),
+    '2026-09-10'
+  );
+  assert.equal(approvedReviewed.status, 'approved');
+
+  await seedNonSaudiPayrollEmployment(db, 'emp-late-invalid', 420000);
+  const invalid = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-late-invalid',
+    employeeId: 'emp-late-invalid',
+    payrollMonth: '2026-08',
+    deductions: [{ label: 'Manual deduction without legal class', amountHalalas: 1000 }],
+    skipTargetBonus: true,
+  }, actor);
+
+  await assert.rejects(
+    withFixedRiyadhDate(t, () =>
+      recordLatePayrollApproval(
+        db,
+        'main',
+        invalid.id,
+        {
+          approvalDate: '2026-08-29',
+          approvedNetHalalas: 419000,
+          reason: 'Should fail D1 legal deduction guard',
+        },
+        actor
+      ),
+      '2026-09-10'
+    ).catch((error) => {
+      throw normalizeError(error);
+    }),
+    { code: 'core_payroll:deduction_legal_class_required' }
+  );
+
+  const invalidAfter = await db.prepare(
+    `SELECT status, approved_at
+       FROM payroll_entries
+      WHERE salon_id = 'main'
+        AND id = ?`
+  ).bind(invalid.id).first();
+  assert.equal(invalidAfter.status, 'draft');
+  assert.equal(invalidAfter.approved_at, null);
+  assert.equal(
+    Number((await db.prepare(
+      `SELECT COUNT(*) AS count
+         FROM payroll_approval_snapshots
+        WHERE salon_id = 'main'
+          AND payroll_entry_id = ?`
+    ).bind(invalid.id).first()).count),
+    0
+  );
+
+  await seedNonSaudiPayrollEmployment(db, 'emp-standard-approval', 430000);
+  const standard = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-standard-approval',
+    employeeId: 'emp-standard-approval',
+    payrollMonth: '2026-08',
+    skipTargetBonus: true,
+  }, actor);
+  const standardApproved = await approvePayrollEntry(
+    db,
+    'main',
+    standard.id,
+    actor
+  );
+  assert.equal(standardApproved.status, 'approved');
+  const paid = await markPayrollEntryPaid(db, 'main', standard.id, actor);
+  assert.equal(paid.status, 'paid');
+  const unpaid = await reversePayrollEntryPayment(
+    db,
+    'main',
+    standard.id,
+    { reason: 'Runtime regression reversal' },
+    actor
+  );
+  assert.equal(unpaid.status, 'approved');
+  const reopened = await reopenPayrollEntry(
+    db,
+    'main',
+    standard.id,
+    { reason: 'Runtime regression reopen', status: 'draft' },
+    actor
+  );
+  assert.equal(reopened.status, 'draft');
+});
 
 test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', async (t) => {
   const { mf, db } = await setup();
