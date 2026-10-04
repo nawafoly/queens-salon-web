@@ -11,6 +11,7 @@ on:
       - "scripts/apply-employee-request-feedback.mjs"
       - "scripts/prepatch-dashboard-refresh.mjs"
       - "scripts/prepatch-feedback-codemod-script.mjs"
+      - "scripts/prepatch-bookings-feedback.mjs"
 
 permissions:
   contents: write
@@ -36,6 +37,7 @@ jobs:
           node scripts/prepatch-feedback-codemod-script.mjs
           node scripts/apply-dashboard-action-feedback-system.mjs
           node scripts/apply-employee-request-feedback.mjs
+          node scripts/prepatch-bookings-feedback.mjs
           node scripts/apply-contextual-feedback-bookings.mjs
 
       - name: Commit generated source changes
