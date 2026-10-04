@@ -20,6 +20,12 @@ function walk(relative) {
   });
 }
 
+function executableSource(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 const dashboardFiles = [
   ...fs.readdirSync(path.join(root, "src/pages"))
     .filter((name) => /^Dashboard.*\.(ts|tsx)$/.test(name))
@@ -33,7 +39,7 @@ const dashboardFiles = [
 ].filter((file) => /\.(ts|tsx)$/.test(file) && fs.existsSync(path.join(root, file)));
 
 for (const file of [...new Set(dashboardFiles)]) {
-  const source = read(file);
+  const source = executableSource(read(file));
   if (/\b(?:window\.)?alert\s*\(/.test(source)) {
     failures.push(`${file}: native alert() is forbidden in dashboard workflows; use contextual feedback.`);
   }
