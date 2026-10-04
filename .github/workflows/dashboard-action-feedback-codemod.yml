@@ -8,6 +8,7 @@ on:
       - ".github/workflows/dashboard-action-feedback-codemod.yml"
       - "scripts/apply-dashboard-action-feedback-system.mjs"
       - "scripts/apply-contextual-feedback-bookings.mjs"
+      - "scripts/prepatch-dashboard-refresh.mjs"
 
 permissions:
   contents: write
@@ -29,6 +30,7 @@ jobs:
 
       - name: Apply dashboard feedback patches
         run: |
+          node scripts/prepatch-dashboard-refresh.mjs
           node scripts/apply-dashboard-action-feedback-system.mjs
           node scripts/apply-contextual-feedback-bookings.mjs
 
