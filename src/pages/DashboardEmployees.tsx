@@ -1896,6 +1896,7 @@ function DashboardEmployeesContent() {
     setConfirmDialog(null);
     resolve?.(confirmed);
   }, []);
+  const [isOpen, setIsOpen] = useState(false);
   const busy = loading || saving;
 
   useEffect(() => {
@@ -1945,8 +1946,6 @@ function DashboardEmployeesContent() {
     useState<"visible" | "hidden" | "all">("visible");
 
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
-
-  const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<EmployeeModalTab>("basic");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
