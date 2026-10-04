@@ -20,6 +20,8 @@ function walk(relative) {
   });
 }
 
+// Ignore comment-only mentions such as documentation saying "بديل alert()";
+// the guard is intended to reject executable browser alerts, not prose.
 function executableSource(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
