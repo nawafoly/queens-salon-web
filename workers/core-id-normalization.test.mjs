@@ -74,3 +74,21 @@ test("employee point lookup falls back to a legacy encoded id and returns canoni
   assert.equal(row.id, arabicEmployeeId);
   assert.equal(row.name, "سميرة دينار");
 });
+
+test("canonical employee row wins regardless of list order", () => {
+  for (const rows of [
+    [
+      { id: arabicEmployeeId, marker: "canonical" },
+      { id: encodedOnce, marker: "legacy" },
+    ],
+    [
+      { id: encodedOnce, marker: "legacy" },
+      { id: arabicEmployeeId, marker: "canonical" },
+    ],
+  ]) {
+    const collapsed = canonicalizeEmployeeProfileRows(rows);
+    assert.equal(collapsed.length, 1);
+    assert.equal(collapsed[0].id, arabicEmployeeId);
+    assert.equal(collapsed[0].marker, "canonical");
+  }
+});
