@@ -20,6 +20,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import {
+  DashboardActionFeedbackV2,
   DashboardDatePickerV2,
   DashboardSelectV2,
 } from "../components/dashboard-v2";
@@ -130,6 +131,20 @@ type PayrollLateApprovalDraft = {
   approvedAmountRiyals: string;
   reason: string;
 };
+
+type PayrollLateApprovalErrors = {
+  approvalDate?: string;
+  approvedAmountRiyals?: string;
+  reason?: string;
+  form?: string;
+};
+
+type PayrollRowFeedback = {
+  employeeId: string;
+  payrollMonth: string;
+  tone: "success" | "danger";
+  message: string;
+} | null;
 
 type PayrollPaymentControlDraft = {
   mode: "pay-batch" | "unpay-batch" | "unpay-one";
@@ -705,6 +720,12 @@ export default function DashboardPayroll() {
     useState<PayrollApprovalConfirmationDraft | null>(null);
   const [lateApproval, setLateApproval] =
     useState<PayrollLateApprovalDraft | null>(null);
+  const [lateApprovalErrors, setLateApprovalErrors] =
+    useState<PayrollLateApprovalErrors>({});
+  const [lateApprovalLauncherFeedback, setLateApprovalLauncherFeedback] =
+    useState("");
+  const [payrollRowFeedback, setPayrollRowFeedback] =
+    useState<PayrollRowFeedback>(null);
   const [reopenDraft, setReopenDraft] = useState<ReopenPayrollDraft | null>(null);
   const [paymentControl, setPaymentControl] =
     useState<PayrollPaymentControlDraft | null>(null);
@@ -1307,13 +1328,14 @@ export default function DashboardPayroll() {
         : lateApprovalCandidates[0];
 
     if (!preferred) {
-      setError(
+      setLateApprovalLauncherFeedback(
         "لا توجد مسيرة غير معتمدة لهذه الفترة."
       );
       return;
     }
 
-    setError("");
+    setLateApprovalLauncherFeedback("");
+    setLateApprovalErrors({});
     setLateApproval({
       employeeId: preferred.employeeId,
       approvalDate: "",
@@ -1329,25 +1351,28 @@ export default function DashboardPayroll() {
       return;
     }
 
+    const nextErrors: PayrollLateApprovalErrors = {};
     if (!lateApproval.approvalDate) {
-      setError("اختر تاريخ الاعتماد الفعلي.");
-      return;
+      nextErrors.approvalDate = "اختر تاريخ الاعتماد الفعلي.";
     }
 
     const amountRiyals = Number(lateApproval.approvedAmountRiyals);
     if (!Number.isFinite(amountRiyals) || amountRiyals < 0) {
-      setError("أدخل المبلغ الذي تم اعتماده فعليًا.");
-      return;
+      nextErrors.approvedAmountRiyals = "أدخل المبلغ الذي تم اعتماده فعليًا.";
     }
 
     const reason = lateApproval.reason.trim();
     if (!reason) {
-      setError("سبب التسجيل المتأخر مطلوب.");
+      nextErrors.reason = "سبب التسجيل المتأخر مطلوب.";
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setLateApprovalErrors(nextErrors);
       return;
     }
 
     setBusy(`late-approve:${selectedLateApprovalEntry.employeeId}`);
-    setError("");
+    setLateApprovalErrors({});
     try {
       let approvalEntry = selectedLateApprovalEntry;
 
@@ -1378,17 +1403,21 @@ export default function DashboardPayroll() {
       setSelectedEntry((current) =>
         current?.employeeId === saved.employeeId ? saved : current
       );
+      setPayrollRowFeedback({
+        employeeId: saved.employeeId,
+        payrollMonth: saved.payrollMonth,
+        tone: "success",
+        message: `تم تسجيل اعتماد ${saved.employeeName} بأثر فعلي بتاريخ ${lateApproval.approvalDate}. وقت تسجيل العملية الحالي محفوظ في سجل التدقيق.`,
+      });
+      setLateApprovalErrors({});
       setLateApproval(null);
-      setMessage(
-        `تم تسجيل اعتماد ${saved.employeeName} بأثر فعلي بتاريخ ${lateApproval.approvalDate}. وقت تسجيل العملية الحالي محفوظ في سجل التدقيق.`
-      );
     } catch (actionError: any) {
-      setError(
-        payrollActionErrorMessage(
+      setLateApprovalErrors({
+        form: payrollActionErrorMessage(
           actionError,
           "تعذر تسجيل الاعتماد المتأخر."
-        )
-      );
+        ),
+      });
     } finally {
       setBusy("");
     }
@@ -2089,6 +2118,16 @@ export default function DashboardPayroll() {
             </button>
           </div>
 
+          {lateApprovalLauncherFeedback ? (
+            <DashboardActionFeedbackV2
+              compact
+              revealOnMount
+              tone="danger"
+              title="تعذر فتح الاعتماد المتأخر"
+              description={lateApprovalLauncherFeedback}
+            />
+          ) : null}
+
           <div className="payroll-actions-group payroll-actions-group--exports">
             <button
               type="button"
@@ -2343,6 +2382,16 @@ export default function DashboardPayroll() {
                       </span>
                       {manualAdjustments ? <span className="payroll-mini-badge is-manual">بنود يدوية</span> : null}
                     </div>
+                    {payrollRowFeedback?.employeeId === entry.employeeId &&
+                    payrollRowFeedback.payrollMonth === entry.payrollMonth ? (
+                      <DashboardActionFeedbackV2
+                        compact
+                        tone={payrollRowFeedback.tone}
+                        title="تم تسجيل الاعتماد المتأخر"
+                        description={payrollRowFeedback.message}
+                        className="payroll-row-feedback"
+                      />
+                    ) : null}
                   </td>
                   <td className="payroll-readiness-cell">
                     <span
@@ -3063,7 +3112,9 @@ export default function DashboardPayroll() {
         <div
           className="dashboard-v2 payroll-modal-backdrop"
           role="presentation"
-          onMouseDown={() => setLateApproval(null)}
+          onMouseDown={() => {
+            if (!busy.startsWith("late-approve:")) setLateApproval(null);
+          }}
         >
           <aside
             className="payroll-modal payroll-late-approval-modal dsv2-workflow-reference"
@@ -3082,6 +3133,7 @@ export default function DashboardPayroll() {
                 type="button"
                 className="payroll-late-approval-close"
                 onClick={() => setLateApproval(null)}
+                disabled={busy.startsWith("late-approve:")}
                 aria-label="إغلاق"
               >
                 <FiX />
@@ -3108,10 +3160,12 @@ export default function DashboardPayroll() {
                     value: entry.employeeId,
                     label: entry.employeeName || entry.employeeId,
                   }))}
+                  disabled={busy.startsWith("late-approve:")}
                   onChange={(employeeId) => {
                     const nextEntry = lateApprovalCandidates.find(
                       (entry) => entry.employeeId === employeeId
                     );
+                    setLateApprovalErrors({});
                     setLateApproval({
                       ...lateApproval,
                       employeeId,
@@ -3140,11 +3194,20 @@ export default function DashboardPayroll() {
                   min={payrollBounds.monthStart}
                   max={lateApprovalMaxDate}
                   clearable={false}
+                  disabled={busy.startsWith("late-approve:")}
                   placeholder="اختر التاريخ"
-                  onChange={(approvalDate) =>
-                    setLateApproval({ ...lateApproval, approvalDate })
-                  }
+                  aria-invalid={Boolean(lateApprovalErrors.approvalDate)}
+                  aria-describedby={lateApprovalErrors.approvalDate ? "payroll-late-approval-date-error" : undefined}
+                  onChange={(approvalDate) => {
+                    setLateApprovalErrors((current) => ({ ...current, approvalDate: undefined, form: undefined }));
+                    setLateApproval({ ...lateApproval, approvalDate });
+                  }}
                 />
+                {lateApprovalErrors.approvalDate ? (
+                  <small id="payroll-late-approval-date-error" className="dsv2-field__error" role="alert">
+                    {lateApprovalErrors.approvalDate}
+                  </small>
+                ) : null}
               </label>
 
               <label>
@@ -3156,16 +3219,25 @@ export default function DashboardPayroll() {
                     step="0.01"
                     inputMode="decimal"
                     value={lateApproval.approvedAmountRiyals}
-                    onChange={(event) =>
+                    disabled={busy.startsWith("late-approve:")}
+                    aria-invalid={Boolean(lateApprovalErrors.approvedAmountRiyals)}
+                    aria-describedby={lateApprovalErrors.approvedAmountRiyals ? "payroll-late-approval-amount-error" : undefined}
+                    onChange={(event) => {
+                      setLateApprovalErrors((current) => ({ ...current, approvedAmountRiyals: undefined, form: undefined }));
                       setLateApproval({
                         ...lateApproval,
                         approvedAmountRiyals: event.target.value,
-                      })
-                    }
+                      });
+                    }}
                     placeholder="3610.00"
                   />
                   <span className="payroll-late-approval-currency">SAR</span>
                 </div>
+                {lateApprovalErrors.approvedAmountRiyals ? (
+                  <small id="payroll-late-approval-amount-error" className="dsv2-field__error" role="alert">
+                    {lateApprovalErrors.approvedAmountRiyals}
+                  </small>
+                ) : null}
                 {selectedLateApprovalEntry ? (
                   <small>
                     تم تعبئة المبلغ تلقائيًا من حساب النظام. عدله فقط إذا كان
@@ -3180,13 +3252,22 @@ export default function DashboardPayroll() {
                   className="dsv2-textarea"
                   rows={2}
                   value={lateApproval.reason}
-                  onChange={(event) =>
+                  disabled={busy.startsWith("late-approve:")}
+                  aria-invalid={Boolean(lateApprovalErrors.reason)}
+                  aria-describedby={lateApprovalErrors.reason ? "payroll-late-approval-reason-error" : undefined}
+                  onChange={(event) => {
+                    setLateApprovalErrors((current) => ({ ...current, reason: undefined, form: undefined }));
                     setLateApproval({
                       ...lateApproval,
                       reason: event.target.value,
-                    })
-                  }
+                    });
+                  }}
                 />
+                {lateApprovalErrors.reason ? (
+                  <small id="payroll-late-approval-reason-error" className="dsv2-field__error" role="alert">
+                    {lateApprovalErrors.reason}
+                  </small>
+                ) : null}
               </label>
             </div>
 
@@ -3204,8 +3285,22 @@ export default function DashboardPayroll() {
               </div>
             </div>
 
+            {lateApprovalErrors.form ? (
+              <DashboardActionFeedbackV2
+                revealOnMount
+                focusOnMount
+                tone="danger"
+                title="تعذر تسجيل الاعتماد المتأخر"
+                description={lateApprovalErrors.form}
+              />
+            ) : null}
+
             <footer>
-              <button type="button" onClick={() => setLateApproval(null)}>
+              <button
+                type="button"
+                disabled={busy.startsWith("late-approve:")}
+                onClick={() => setLateApproval(null)}
+              >
                 إلغاء
               </button>
               <button

@@ -10,6 +10,11 @@ export type {
 } from "./DashboardDrawerV2";
 export { default as DashboardFieldV2 } from "./DashboardFieldV2";
 export type { DashboardFieldV2Props } from "./DashboardFieldV2";
+export { default as DashboardActionFeedbackV2 } from "./DashboardActionFeedbackV2";
+export type {
+  DashboardActionFeedbackToneV2,
+  DashboardActionFeedbackV2Props,
+} from "./DashboardActionFeedbackV2";
 export { default as DashboardModalV2 } from "./DashboardModalV2";
 export type {
   DashboardDialogToneV2,

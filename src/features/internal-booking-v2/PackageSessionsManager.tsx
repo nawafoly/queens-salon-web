@@ -14,6 +14,8 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import {
+  DashboardActionFeedbackV2,
+  DashboardConfirmV2,
   DashboardDatePickerV2,
   DashboardDrawerV2,
   DashboardModalV2,
@@ -150,6 +152,13 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
   const [detailsPackage, setDetailsPackage] = useState<PackageSessionDashboardPackage | null>(null);
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [deletePackageDraft, setDeletePackageDraft] =
+    useState<PackageSessionDashboardPackage | null>(null);
+  const [deletePackageError, setDeletePackageError] = useState("");
+  const [packageListFeedback, setPackageListFeedback] = useState<{
+    tone: "success" | "danger";
+    message: string;
+  } | null>(null);
   const [detailsForm, setDetailsForm] = useState({
     packageName: "",
     expiresAt: "",
@@ -336,18 +345,32 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
     }
   };
 
-  const deletePackage = async (pkg: PackageSessionDashboardPackage) => {
+  const openDeletePackageDialog = (pkg: PackageSessionDashboardPackage) => {
     if (mutationLoading) return;
-    const ok = window.confirm(language === "en"
-      ? `Permanently delete package ${pkg.packageName} from Cloudflare D1 along with its movement history?`
-      : `حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
-    if (!ok) return;
+    setDeletePackageError("");
+    setPackageListFeedback(null);
+    setDeletePackageDraft(pkg);
+  };
+
+  const confirmDeletePackage = async () => {
+    if (!deletePackageDraft || mutationLoading) return;
+    const target = deletePackageDraft;
     try {
       setMutationLoading(true);
-      await PackageOperationsService.deleteClientPackage(pkg.id);
+      setDeletePackageError("");
+      await PackageOperationsService.deleteClientPackage(target.id);
+      setDeletePackageDraft(null);
+      setPackageListFeedback({
+        tone: "success",
+        message: language === "en"
+          ? `Package ${target.packageName} was permanently deleted.`
+          : `تم حذف باقة ${target.packageName} نهائيًا.`,
+      });
       await load();
     } catch (error: any) {
-      window.alert(String(error?.message || t("تعذر حذف الباقة.")));
+      setDeletePackageError(
+        String(error?.message || (language === "en" ? "Unable to delete the package." : "تعذر حذف الباقة."))
+      );
     } finally {
       setMutationLoading(false);
     }
@@ -577,6 +600,17 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
 
       {!error && activeTab === "packages" ? (
         <div className="bk2-session-table-wrap">
+          {packageListFeedback ? (
+            <DashboardActionFeedbackV2
+              revealOnMount
+              tone={packageListFeedback.tone}
+              title={packageListFeedback.tone === "success"
+                ? (language === "en" ? "Package deleted" : "تم حذف الباقة")
+                : (language === "en" ? "Package action failed" : "تعذر تنفيذ إجراء الباقة")}
+              description={packageListFeedback.message}
+              className="bk2-session-list-feedback"
+            />
+          ) : null}
           <table className="bk2-session-table">
             <thead><tr><th>{t("العميلة")}</th><th>{t("الباقة")}</th><th>{t("الإجمالي")}</th><th>{t("المستخدم")}</th><th>{t("المتبقي")}</th><th>{t("المحجوز")}</th><th>{t("الانتهاء")}</th><th>{t("الحالة")}</th><th>{t("الإجراء")}</th></tr></thead>
             <tbody>{visiblePackages.map((pkg) => (
@@ -593,7 +627,7 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
                     <button type="button" onClick={() => openPackageDetailsDialog(pkg)} disabled={mutationLoading || detailsSaving}>
                       <FiEdit3 /> {t("بيانات الباقة")}
                     </button>
-                    <button type="button" className="is-delete" onClick={() => void deletePackage(pkg)} disabled={mutationLoading}>
+                    <button type="button" className="is-delete" onClick={() => openDeletePackageDialog(pkg)} disabled={mutationLoading}>
                       <FiTrash2 /> {t("حذف")}
                     </button>
                   </div>
@@ -633,6 +667,37 @@ export default function PackageSessionsManager({ language = "ar" }: { language?:
           {!loading && !attentionPackages.length ? <p className="bk2-session-empty">{t("لا توجد باقات تحتاج متابعة.")}</p> : null}
         </div>
       ) : null}
+
+      <DashboardConfirmV2
+        open={Boolean(deletePackageDraft)}
+        onClose={() => {
+          if (!mutationLoading) {
+            setDeletePackageDraft(null);
+            setDeletePackageError("");
+          }
+        }}
+        onConfirm={confirmDeletePackage}
+        title={language === "en" ? "Permanently delete package?" : "حذف الباقة نهائيًا؟"}
+        description={deletePackageDraft
+          ? (language === "en"
+              ? `This will permanently delete ${deletePackageDraft.packageName} and its movement history.`
+              : `سيتم حذف باقة ${deletePackageDraft.packageName} وسجل حركاتها نهائيًا.`)
+          : undefined}
+        tone="danger"
+        confirmLabel={language === "en" ? "Delete permanently" : "حذف نهائي"}
+        cancelLabel={language === "en" ? "Cancel" : "إلغاء"}
+        pendingLabel={language === "en" ? "Deleting..." : "جاري الحذف..."}
+      >
+        {deletePackageError ? (
+          <DashboardActionFeedbackV2
+            revealOnMount
+            focusOnMount
+            tone="danger"
+            title={language === "en" ? "Delete failed" : "تعذر حذف الباقة"}
+            description={deletePackageError}
+          />
+        ) : null}
+      </DashboardConfirmV2>
 
       <DashboardDrawerV2
         open={Boolean(selectedClientId)}

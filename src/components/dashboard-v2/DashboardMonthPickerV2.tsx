@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { AriaAttributes } from "react";
 import useDashboardFloatingPositionV2 from "./useDashboardFloatingPositionV2";
 
 export type DashboardMonthPickerV2Props = {
@@ -14,6 +15,8 @@ export type DashboardMonthPickerV2Props = {
   required?: boolean;
   clearable?: boolean;
   className?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: AriaAttributes["aria-invalid"];
   onChange?: (value: string) => void;
 };
 
@@ -64,6 +67,8 @@ export default function DashboardMonthPickerV2({
   required = false,
   clearable = true,
   className = "",
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   onChange,
 }: DashboardMonthPickerV2Props) {
   const generatedId = useId();
@@ -223,6 +228,8 @@ export default function DashboardMonthPickerV2({
         className="dsv2-month-v2__trigger"
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         aria-required={required}
         disabled={disabled}
         onClick={() => {

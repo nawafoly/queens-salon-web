@@ -2424,3 +2424,17 @@ body > .dashboard-v2.payroll-modal-backdrop
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Contextual action feedback — payroll */
+.dashboard-v2 .dsv2-payroll-page .payroll-row-feedback {
+  margin-block-start: var(--dsv2-space-2);
+  min-width: min(260px, 42vw);
+}
+
+body > .dashboard-v2.payroll-modal-backdrop
+  .payroll-late-approval-modal
+  .dsv2-field__error {
+  display: block;
+  margin-block-start: var(--dsv2-space-1);
+}
