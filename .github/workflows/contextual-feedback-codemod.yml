@@ -24,8 +24,13 @@ jobs:
           fetch-depth: 0
 
       - name: Apply guarded codemods
+        shell: bash
         run: |
-          node scripts/apply-contextual-feedback-payroll.mjs
+          if ! grep -q "type PayrollLateApprovalErrors" src/pages/DashboardPayroll.tsx; then
+            node scripts/apply-contextual-feedback-payroll.mjs
+          else
+            echo "Payroll contextual feedback already applied."
+          fi
           node scripts/apply-contextual-feedback-aria.mjs
           node scripts/apply-contextual-feedback-packages.mjs
 
