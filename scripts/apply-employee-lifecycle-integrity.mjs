@@ -105,12 +105,12 @@ export function normalizeEmployeeIdentityIds(values: readonly unknown[]) {
     `    const employeeId = normalizeEmployeeIdentityId(id);\n    const row = await coreApiRequest<Record<string, unknown>>(\`/api/core/hr/employees/\${encodeURIComponent(employeeId)}\`);\n    return normalizeCoreEmployee(row);\n`,
     "CoreHrService getEmployee mapping",
   );
-  source = replaceRegexOnce(
-    source,
-    /    return \{\n      \.\.\.camel<CoreHrEmployee>\(row\),\n      schedules: Array\.isArray\(row\.schedules\)\n        \? row\.schedules\.map\(\(item\) => camel<CoreHrSchedule>\(item as Record<string, unknown>\)\)\n        : \[\],\n    \};/,
-    `    return normalizeCoreEmployee(row);`,
-    "CoreHrService my profile mapping",
-  );
+  const profileMappingPattern = /    return \{\n      \.\.\.camel<CoreHrEmployee>\(row\),\n      schedules: Array\.isArray\(row\.schedules\)\n        \? row\.schedules\.map\(\(item\) => camel<CoreHrSchedule>\(item as Record<string, unknown>\)\)\n        : \[\],\n    \};/g;
+  const profileMappingMatches = [...source.matchAll(profileMappingPattern)];
+  if (profileMappingMatches.length !== 2) {
+    throw new Error("CoreHrService profile mappings: expected 2 matches, found " + profileMappingMatches.length);
+  }
+  source = source.replace(profileMappingPattern, \`    return normalizeCoreEmployee(row);\`);
   write(file, source);
 }
 
