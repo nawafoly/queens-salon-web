@@ -141,11 +141,11 @@ if (!service[coordinatorFlag]) {
     // employee workflow continue through the original Core HR service.
     pendingEmployeeOnboarding = null;
 
-    const employeeInput: Record<string, unknown> = {
-      ...input,
-      ...(onboarding.email ? { email: onboarding.email } : {}),
-      ...(onboarding.phone ? { phone: onboarding.phone } : {}),
-    };
+    // Account contact data belongs to the account workflow. Do not silently
+    // mutate Employee Master email/phone here: DashboardEmployees verifies the
+    // exact Employee Master command it issued, and hidden contact injection can
+    // make a successful Core write look like a failed/partial save.
+    const employeeInput: Record<string, unknown> = { ...input };
 
     if (!onboarding.createLogin) {
       return originalSaveEmployee(employeeInput);
@@ -160,9 +160,73 @@ if (!service[coordinatorFlag]) {
 
     await waitForPrimaryFirebaseSession();
 
+    const requestedEmployeeId = cleanText(input.id || input.employeeId);
     const existingCoreAccount = await findCoreAccountByEmail(onboarding.email);
+
+    // A retry can legitimately arrive here after the previous attempt already
+    // created/linked the account but the outer Employee Master verification
+    // failed later. Reuse only when the account is unlinked or already points
+    // to this exact deterministic employee id. Never hijack another employee's
+    // account merely because the email matches.
     if (existingCoreAccount) {
-      throw new Error("يوجد حساب في النظام بنفس البريد. اربط الحساب الموجود بدل إنشاء حساب جديد.");
+      const existingLinkedEmployeeId = cleanText(
+        existingCoreAccount.employeeLink?.employeeId,
+      );
+      const existingFirebaseUid = cleanText(
+        existingCoreAccount.firebaseUid || existingCoreAccount.uid,
+      );
+
+      if (existingCoreAccount.status === "disabled") {
+        throw new Error("يوجد حساب غير نشط بنفس البريد. فعّل الحساب أو راجعه قبل ربطه بملف الموظفة.");
+      }
+
+      if (
+        existingLinkedEmployeeId &&
+        requestedEmployeeId &&
+        existingLinkedEmployeeId !== requestedEmployeeId
+      ) {
+        throw new Error("يوجد حساب في النظام بنفس البريد وهو مرتبط بملف موظفة آخر. استخدم بريدًا آخر أو راجع الربط الحالي.");
+      }
+
+      if (!existingFirebaseUid) {
+        throw new Error("يوجد حساب في النظام بنفس البريد لكنه لا يملك هوية دخول صالحة للربط. راجع الحساب من إدارة الحسابات.");
+      }
+
+      const employeeId =
+        requestedEmployeeId || existingLinkedEmployeeId || existingFirebaseUid;
+
+      try {
+        const employee = await originalSaveEmployee({
+          ...employeeInput,
+          id: employeeId,
+          employeeId,
+          firebaseUid: existingFirebaseUid,
+          status: cleanText(input.status) || "active",
+          employmentStatus: cleanText(input.employmentStatus) || "active",
+          employmentSource: cleanText(input.employmentSource) || "salon",
+          includeInEmployeeManagement: input.includeInEmployeeManagement ?? true,
+        });
+        const savedEmployeeId = cleanText((employee as any)?.id) || employeeId;
+
+        if (existingLinkedEmployeeId !== savedEmployeeId) {
+          await CoreAccountService.linkEmployee(existingCoreAccount.id, savedEmployeeId);
+        }
+
+        await CoreWorkforceService.createNotification({
+          targetUid: existingFirebaseUid,
+          targetEmployeeId: savedEmployeeId,
+          type: "system",
+          title: existingLinkedEmployeeId
+            ? "تم تأكيد ربط حساب الموظفة"
+            : "تم ربط حساب الموظفة",
+          body: "تم ربط حساب الدخول بملفك الوظيفي.",
+          route: "/employee/overview",
+        }).catch(() => {});
+
+        return employee;
+      } catch (error) {
+        throw friendlyProvisioningError(error);
+      }
     }
 
     let secondary: Auth | null = null;
@@ -185,7 +249,6 @@ if (!service[coordinatorFlag]) {
       }).catch(() => {});
 
       const firebaseUid = cleanText(firebaseUser.uid);
-      const requestedEmployeeId = cleanText(input.id || input.employeeId);
       const employeeId = requestedEmployeeId || firebaseUid;
 
       const employee = await originalSaveEmployee({
