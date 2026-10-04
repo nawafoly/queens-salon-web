@@ -143,6 +143,7 @@ type PayrollRowFeedback = {
   employeeId: string;
   payrollMonth: string;
   tone: "success" | "danger";
+  title: string;
   message: string;
 } | null;
 
@@ -515,12 +516,14 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   ) {
     return "بيانات العمل الإضافي تغيرت أو لا تطابق المصدر المعتمد. أعد حساب المسيرة ثم حاول مرة أخرى.";
   }
-  if (
-    message === "core_payroll:aggregate_deduction_cap_exceeded" ||
-    message === "core_payroll:employer_loan_deduction_cap_exceeded" ||
-    message === "core_payroll:judicial_deduction_cap_exceeded"
-  ) {
-    return "الخصومات تتجاوز الحد النظامي المسموح لهذه المسيرة. راجع تفاصيل الخصومات قبل الاعتماد.";
+  if (message === "core_payroll:employer_loan_deduction_cap_exceeded") {
+    return "تعذر الاعتماد: قسط أو استقطاع سلفة جهة العمل يتجاوز الحد النظامي البالغ 10% من أجر الاستحقاق لهذه المسيرة. راجع أقساط السلفة أو أجّل القسط ثم أعد الاعتماد.";
+  }
+  if (message === "core_payroll:aggregate_deduction_cap_exceeded") {
+    return "تعذر الاعتماد: إجمالي الخصومات المحمية يتجاوز الحد النظامي الإجمالي المسموح لهذه المسيرة. راجع تفاصيل الخصومات قبل الاعتماد.";
+  }
+  if (message === "core_payroll:judicial_deduction_cap_exceeded") {
+    return "تعذر الاعتماد: يوجد استقطاع قضائي يتجاوز الحد المسموح حسب أمر التنفيذ المسجل. راجع مبلغ الاستقطاع ومرجع الأمر القضائي.";
   }
   if (
     message ===
@@ -718,6 +721,7 @@ export default function DashboardPayroll() {
   const [attendanceDeferral, setAttendanceDeferral] = useState<AttendanceDeferralDraft | null>(null);
   const [approvalConfirmation, setApprovalConfirmation] =
     useState<PayrollApprovalConfirmationDraft | null>(null);
+  const [approvalConfirmationError, setApprovalConfirmationError] = useState("");
   const [lateApproval, setLateApproval] =
     useState<PayrollLateApprovalDraft | null>(null);
   const [lateApprovalErrors, setLateApprovalErrors] =
@@ -1407,6 +1411,7 @@ export default function DashboardPayroll() {
         employeeId: saved.employeeId,
         payrollMonth: saved.payrollMonth,
         tone: "success",
+        title: "تم تسجيل الاعتماد المتأخر",
         message: `تم تسجيل اعتماد ${saved.employeeName} بأثر فعلي بتاريخ ${lateApproval.approvalDate}. وقت تسجيل العملية الحالي محفوظ في سجل التدقيق.`,
       });
       setLateApprovalErrors({});
@@ -1743,10 +1748,21 @@ export default function DashboardPayroll() {
       entry as unknown as Record<string, unknown>
     );
     if (!approvalReadiness.ready) {
-      setError(approvalReadiness.message);
+      setPayrollRowFeedback({
+        employeeId: entry.employeeId,
+        payrollMonth: entry.payrollMonth,
+        tone: "danger",
+        title: "تعذر اعتماد الراتب",
+        message: approvalReadiness.message,
+      });
       return;
     }
 
+    setPayrollRowFeedback((current) =>
+      current?.employeeId === entry.employeeId && current.payrollMonth === entry.payrollMonth
+        ? null
+        : current
+    );
     setBusy(`approve:${entry.employeeId}`);
     try {
       await reconcilePreviousPayrollCarryovers({
@@ -1763,6 +1779,7 @@ export default function DashboardPayroll() {
       const approvalEntry = regenerated[0] || entry;
       const payrollMoney = calculatePayrollAccrualView(approvalEntry);
       if (payrollMoney.isPartial) {
+        setApprovalConfirmationError("");
         setApprovalConfirmation({
           entry: approvalEntry,
           expectedNetHalalas: payrollMoney.expectedNetHalalas,
@@ -1771,9 +1788,21 @@ export default function DashboardPayroll() {
       }
       const saved = await approvePayrollEntry(approvalEntry);
       setEntries((current) => replaceEntry(current, saved));
-      setMessage("تم اعتماد الراتب.");
+      setPayrollRowFeedback({
+        employeeId: saved.employeeId,
+        payrollMonth: saved.payrollMonth,
+        tone: "success",
+        title: "تم اعتماد الراتب",
+        message: `تم اعتماد مسيرة ${saved.employeeName} بنجاح.`,
+      });
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
+      setPayrollRowFeedback({
+        employeeId: entry.employeeId,
+        payrollMonth: entry.payrollMonth,
+        tone: "danger",
+        title: "تعذر اعتماد الراتب",
+        message: payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."),
+      });
     } finally {
       setBusy("");
     }
@@ -1783,7 +1812,7 @@ export default function DashboardPayroll() {
     if (!approvalConfirmation || !canManage) return;
     const entry = approvalConfirmation.entry;
     setBusy(`approve:${entry.employeeId}`);
-    setError("");
+    setApprovalConfirmationError("");
     try {
       const saved = await approvePayrollEntry(entry);
       setEntries((current) => replaceEntry(current, saved));
@@ -1791,9 +1820,18 @@ export default function DashboardPayroll() {
         current?.employeeId === saved.employeeId ? saved : current
       );
       setApprovalConfirmation(null);
-      setMessage("تم اعتماد الراتب.");
+      setApprovalConfirmationError("");
+      setPayrollRowFeedback({
+        employeeId: saved.employeeId,
+        payrollMonth: saved.payrollMonth,
+        tone: "success",
+        title: "تم اعتماد الراتب",
+        message: `تم اعتماد مسيرة ${saved.employeeName} بنجاح.`,
+      });
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
+      setApprovalConfirmationError(
+        payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب.")
+      );
     } finally {
       setBusy("");
     }
@@ -2387,7 +2425,7 @@ export default function DashboardPayroll() {
                       <DashboardActionFeedbackV2
                         compact
                         tone={payrollRowFeedback.tone}
-                        title="تم تسجيل الاعتماد المتأخر"
+                        title={payrollRowFeedback.title}
                         description={payrollRowFeedback.message}
                         className="payroll-row-feedback"
                       />
@@ -3377,8 +3415,18 @@ export default function DashboardPayroll() {
               أول مسيرة لاحقة قبل اعتمادها.
             </p>
 
+            {approvalConfirmationError ? (
+              <DashboardActionFeedbackV2
+                revealOnMount
+                focusOnMount
+                tone="danger"
+                title="تعذر اعتماد الراتب"
+                description={approvalConfirmationError}
+              />
+            ) : null}
+
             <footer>
-              <button type="button" onClick={() => setApprovalConfirmation(null)}>
+              <button type="button" onClick={() => { setApprovalConfirmation(null); setApprovalConfirmationError(""); }}>
                 إلغاء
               </button>
               <button

@@ -1899,7 +1899,7 @@ function DashboardEmployeesContent() {
   const busy = loading || saving;
 
   useEffect(() => {
-    if (!errorMsg) return;
+    if (!errorMsg || isOpen) return;
 
     pushToast({
       title: t("تعذر إكمال العملية"),
@@ -1908,7 +1908,7 @@ function DashboardEmployeesContent() {
     });
 
     setErrorMsg("");
-  }, [errorMsg, pushToast, t]);
+  }, [errorMsg, isOpen, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
@@ -10240,6 +10240,7 @@ const canonicalSchedules =
               canManage={editId ? canUpdateEmployees : canCreateEmployees}
               busy={busy}
               saving={saving}
+              actionError={isOpen ? errorMsg : ""}
               editId={editId}
               editingStaff={editingStaff}
               name={name}

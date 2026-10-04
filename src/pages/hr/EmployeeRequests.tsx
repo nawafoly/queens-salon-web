@@ -274,7 +274,7 @@ function RequestForm({ type, employeeId, employeeName, language, onCreated, onCl
   employeeId: string;
   employeeName: string;
   language: EmployeePortalLanguage;
-  onCreated: (request: EmployeeRequest) => void;
+  onCreated: (request: EmployeeRequest, warning?: string) => void;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(() => initialForm(type));
@@ -364,6 +364,7 @@ function RequestForm({ type, employeeId, employeeName, language, onCreated, onCl
       }
       if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error(pick(language, "حجم المرفق يتجاوز 10 ميجابايت.", "The attachment exceeds 10 MB."));
       const request = await createEmployeeRequest({ requestType: type, payload: form });
+      let creationWarning = "";
       if (attachment) {
         try {
           const safeName = attachment.name.replace(/[^A-Za-z0-9._-]+/g, "-") || "attachment";
@@ -388,10 +389,15 @@ function RequestForm({ type, employeeId, employeeName, language, onCreated, onCl
             storageKey: metadata.storageKey,
           });
         } catch (uploadError) {
-          window.alert(`${pick(language, "تم إنشاء الطلب", "Request created")} ${request.request_number}, ${pick(language, "لكن تعذر رفع المرفق", "but the attachment could not be uploaded")}: ${language === "ar" ? String((uploadError as Error)?.message || "خطأ غير معروف") : "Unknown error"}`);
+          const reason = String((uploadError as Error)?.message || pick(language, "خطأ غير معروف", "Unknown error"));
+          creationWarning =
+            pick(language, "تم إنشاء الطلب", "Request created") +
+            " " + request.request_number + "، " +
+            pick(language, "لكن لم يكتمل رفع المرفق", "but the attachment upload did not complete") +
+            ": " + reason;
         }
       }
-      onCreated(request);
+      onCreated(request, creationWarning || undefined);
     } catch (cause) {
       setError(language === "ar" ? employeeRequestErrorMessage(cause, String((cause as Error)?.message || "تعذر إرسال الطلب.")) : "Could not submit the request.");
     } finally {
@@ -662,6 +668,7 @@ export default function EmployeeRequestsPage({ session, onPortalChange, onNewReq
   const [typeFilter, setTypeFilter] = useState<EmployeeRequestType | "">("");
   const [statusFilter, setStatusFilter] = useState<EmployeeRequestStatus | "">("");
   const [success, setSuccess] = useState<EmployeeRequest | null>(null);
+  const [successWarning, setSuccessWarning] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -682,8 +689,8 @@ export default function EmployeeRequestsPage({ session, onPortalChange, onNewReq
       <div className="employee-requests-filters"><span><FontAwesomeIcon icon={faFilter} /> {pick(language, "تصفية", "Filter")}</span><DashboardSelectBridgeV2 value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as EmployeeRequestType | "")}><option value="">{pick(language, "كل الأنواع", "All types")}</option>{REQUEST_TYPES.map((type) => <option value={type} key={type}>{requestTypeLabel(type, language)}</option>)}</DashboardSelectBridgeV2><DashboardSelectBridgeV2 value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as EmployeeRequestStatus | "")}><option value="">{pick(language, "كل الحالات", "All statuses")}</option>{STATUS_OPTIONS.map((status) => <option value={status} key={status}>{requestStatusLabel(status, language)}</option>)}</DashboardSelectBridgeV2><button type="button" onClick={() => void load()} aria-label={pick(language, "تحديث", "Refresh")}><FontAwesomeIcon icon={faRotate} /></button></div>
       {error ? <div className="employee-request-error">{error}</div> : null}
       {loading ? <div className="employee-requests-loading">{pick(language, "جاري تحميل الطلبات...", "Loading requests...")}</div> : rows.length ? <div className="employee-requests-list">{rows.map((request) => <button type="button" className={`employee-request-card ${request.status === "cancelled" ? "is-closed" : ""}`} key={request.id} onClick={() => navigate(`/employee/requests/${request.id}`)}><span className="employee-request-card__icon"><FontAwesomeIcon icon={request.status === "completed" ? faCheckCircle : request.status === "cancelled" ? faXmark : faFileCircleCheck} /></span><div><small>{request.request_number}</small><strong>{requestTypeLabel(request.request_type, language)}</strong><p>{request.status === "cancelled" ? `${pick(language, "تم إغلاق الطلب", "Request closed")} • ${formatDateTime(request.cancelled_at || request.updated_at, language)}` : `${formatDateTime(request.submitted_at, language)} • ${pick(language, "آخر تحديث", "Last updated")} ${formatDateTime(request.updated_at, language)}`}</p></div><span className={`employee-request-status is-${statusTone(request.status)}`}>{requestStatusLabel(request.status, language)}</span></button>)}</div> : <div className="employee-requests-empty"><FontAwesomeIcon icon={faCalendarDays} /><h2>{pick(language, "لا توجد طلبات", "No requests")}</h2><p>{pick(language, "أنشئ أول طلب ليصل مباشرة إلى إدارة الموارد البشرية.", "Create your first request and send it directly to HR.")}</p></div>}
-      {newType ? <RequestForm type={newType} employeeId={String(session.employeeId || session.uid)} employeeName={String(session.displayName || session.email || pick(language, "الموظفة", "Employee"))} language={language} onClose={closeForm} onCreated={(request) => { setSuccess(request); closeForm(); void load(); void onPortalChange?.(); }} /> : null}
-      {success ? <div className="employee-request-modal" role="dialog" aria-modal="true"><div className="employee-request-success"><FontAwesomeIcon icon={faCheckCircle} /><small>{pick(language, "تم استلام الطلب", "Request received")}</small><h2>{success.request_number}</h2><p>{requestTypeLabel(success.request_type, language)}</p><span>{requestStatusLabel(success.status, language)} • {formatDateTime(success.submitted_at, language)}</span><div><button type="button" onClick={() => setSuccess(null)}>{pick(language, "إغلاق", "Close")}</button><button type="button" onClick={() => navigate(`/employee/requests/${success.id}`)}>{pick(language, "عرض التفاصيل", "View details")}</button></div></div></div> : null}
+      {newType ? <RequestForm type={newType} employeeId={String(session.employeeId || session.uid)} employeeName={String(session.displayName || session.email || pick(language, "الموظفة", "Employee"))} language={language} onClose={closeForm} onCreated={(request, warning) => { setSuccess(request); setSuccessWarning(warning || ""); closeForm(); void load(); void onPortalChange?.(); }} /> : null}
+      {success ? <div className="employee-request-modal" role="dialog" aria-modal="true"><div className="employee-request-success"><FontAwesomeIcon icon={faCheckCircle} /><small>{pick(language, "تم استلام الطلب", "Request received")}</small><h2>{success.request_number}</h2><p>{requestTypeLabel(success.request_type, language)}</p><span>{requestStatusLabel(success.status, language)} • {formatDateTime(success.submitted_at, language)}</span>{successWarning ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> {successWarning}</div> : null}<div><button type="button" onClick={() => { setSuccess(null); setSuccessWarning(""); }}>{pick(language, "إغلاق", "Close")}</button><button type="button" onClick={() => navigate(`/employee/requests/${success.id}`)}>{pick(language, "عرض التفاصيل", "View details")}</button></div></div></div> : null}
     </div>
   );
 }

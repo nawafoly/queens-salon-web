@@ -1,5 +1,6 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
+import { DashboardActionFeedbackV2 } from "../components/dashboard-v2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -4455,6 +4456,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const [lastUpdateMap, setLastUpdateMap] = useState<Record<string, BookingLastUpdate>>({});
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [bookingActionFeedback, setBookingActionFeedback] = useState<{
+    bookingId: string;
+    tone: "success" | "danger";
+    message: string;
+  } | null>(null);
+  const [bookingListFeedback, setBookingListFeedback] = useState<{
+    tone: "success" | "danger" | "warning";
+    message: string;
+  } | null>(null);
   const [refundBusyId, setRefundBusyId] = useState("");
   const [printInvoiceBusyId, setPrintInvoiceBusyId] = useState("");
   const printInvoiceLockRef = useRef(false);
@@ -4614,7 +4625,10 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     }));
   }, [authUser.displayName, authUser.email, userNamesByUid]);
   const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
-  const closeCancelModal = useCallback(() => setCancelTarget(null), []);
+  const closeCancelModal = useCallback(() => {
+    setCancelTarget(null);
+    setCancelError("");
+  }, []);
   const closeRefundModal = useCallback(() => {
     if (refundSaving) return;
     setRefundTarget(null);
@@ -5493,10 +5507,16 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
     if (!allowed.includes(newStatus)) {
-      alert("غير مسموح لك بهذا التغيير.");
+      setBookingActionFeedback({
+        bookingId: id,
+        tone: "danger",
+        message: language === "en" ? "You are not allowed to make this status change." : "غير مسموح لك بهذا التغيير.",
+      });
       return;
     }
     if (newStatus === "cancelled") {
+      setCancelError("");
+      setBookingActionFeedback((current) => current?.bookingId === id ? null : current);
       setCancelTarget(target);
       return;
     }
@@ -5517,6 +5537,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         mixedCardAmount: String(readPaymentBreakdown(target).card || ""),
       });
       setConfirmError("");
+      setBookingActionFeedback((current) => current?.bookingId === id ? null : current);
       setConfirmTarget(target);
       return;
     }
@@ -5544,8 +5565,21 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
       setBookings((prev) => prev.map((row) => (row.id === id ? { ...row, ...localPatch } : row)));
       setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, ...localPatch } : prev));
       touchLastUpdate(id, localAuditPatch.atMs);
+      setBookingActionFeedback({
+        bookingId: id,
+        tone: "success",
+        message: language === "en"
+          ? `Booking status updated to ${statusLabel[newStatus]}.`
+          : `تم تحديث حالة الحجز إلى ${statusLabel[newStatus]}.`,
+      });
     } catch (e) {
-      alert("فشل تحديث الحالة");
+      setBookingActionFeedback({
+        bookingId: id,
+        tone: "danger",
+        message: e instanceof Error && e.message
+          ? e.message
+          : (language === "en" ? "Unable to update the booking status." : "فشل تحديث الحالة."),
+      });
     }
   };
 
@@ -5554,9 +5588,14 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
     if (!allowed.includes(newStatus)) {
-      alert("غير مسموح لك بهذا التغيير.");
+      setBookingActionFeedback({
+        bookingId: id,
+        tone: "danger",
+        message: language === "en" ? "You are not allowed to make this status change." : "غير مسموح لك بهذا التغيير.",
+      });
       return;
     }
+    setBookingActionFeedback((current) => current?.bookingId === id ? null : current);
     requestSensitiveAction({
       kind: "status",
       bookingId: id,
@@ -5657,6 +5696,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         prev && prev.id === confirmTarget.id ? { ...prev, ...localPatch } : prev
       );
       touchLastUpdate(confirmTarget.id, localAuditPatch.atMs);
+      setBookingActionFeedback({
+        bookingId: confirmTarget.id,
+        tone: "success",
+        message: language === "en" ? "Booking confirmed successfully." : "تم تأكيد الحجز بنجاح.",
+      });
 
       setConfirmTarget(null);
     } catch {
@@ -5668,24 +5712,36 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
   const confirmCancelBooking = async () => {
     if (!cancelTarget?.id) return;
+    const targetId = cancelTarget.id;
     setCancelBusy(true);
+    setCancelError("");
     try {
-      await updateCoreBookingStatus(cancelTarget.id, "cancelled");
+      await updateCoreBookingStatus(targetId, "cancelled");
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
         status: "cancelled" as BookingStatus,
         ...localAuditPatch,
       };
       setBookings((prev) =>
-        prev.map((row) => (row.id === cancelTarget.id ? { ...row, ...localPatch } : row))
+        prev.map((row) => (row.id === targetId ? { ...row, ...localPatch } : row))
       );
       setSelectedBooking((prev) =>
-        prev && prev.id === cancelTarget.id ? { ...prev, ...localPatch } : prev
+        prev && prev.id === targetId ? { ...prev, ...localPatch } : prev
       );
-      touchLastUpdate(cancelTarget.id, localAuditPatch.atMs);
+      touchLastUpdate(targetId, localAuditPatch.atMs);
+      setBookingActionFeedback({
+        bookingId: targetId,
+        tone: "success",
+        message: language === "en" ? "Booking cancelled successfully." : "تم إلغاء الحجز بنجاح.",
+      });
       setCancelTarget(null);
-    } catch {
-      alert("فشل إلغاء الحجز");
+      setCancelError("");
+    } catch (error) {
+      setCancelError(
+        error instanceof Error && error.message
+          ? error.message
+          : (language === "en" ? "Unable to cancel the booking." : "فشل إلغاء الحجز.")
+      );
     } finally {
       setCancelBusy(false);
     }
@@ -5693,7 +5749,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
   const executeDeleteBooking = async (b: Booking) => {
     if (uiRole !== "owner") {
-      alert("حذف الحجز متاح للمالك فقط");
+      setBookingActionFeedback({
+        bookingId: String(b.id || "").trim(),
+        tone: "danger",
+        message: language === "en" ? "Only the owner can delete a booking." : "حذف الحجز متاح للمالك فقط.",
+      });
       return;
     }
 
@@ -5718,6 +5778,12 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         delete next[bookingId];
         return next;
       });
+      setBookingListFeedback({
+        tone: "success",
+        message: language === "en"
+          ? `Booking ${bookingRef(b)} was removed from the bookings list.`
+          : `تم حذف الحجز ${bookingRef(b)} من قائمة الحجوزات.`,
+      });
     } catch (error) {
       console.error("[DashboardBookings] booking delete failed", error);
       if (error instanceof Error) throw error;
@@ -5727,7 +5793,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
   const handleDeleteBooking = useCallback((b: Booking) => {
     if (uiRole !== "owner") {
-      alert("حذف الحجز متاح للمالك فقط");
+      setBookingActionFeedback({
+        bookingId: String(b.id || "").trim(),
+        tone: "danger",
+        message: language === "en" ? "Only the owner can delete a booking." : "حذف الحجز متاح للمالك فقط.",
+      });
       return;
     }
     requestSensitiveAction({ kind: "delete", booking: b });
@@ -5739,17 +5809,26 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         b.status === "completed" &&
         !canManageCompletedBooking
       ) {
-        alert(
-          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
-        );
+        setBookingActionFeedback({
+          bookingId: String(b.id || "").trim(),
+          tone: "danger",
+          message: language === "en"
+            ? "Completed bookings are protected and cannot be edited from this account."
+            : "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب.",
+        });
         return;
       }
 
-      alert("التعديل متاح فقط للمالك أو الأدمن.");
+      setBookingActionFeedback({
+        bookingId: String(b.id || "").trim(),
+        tone: "danger",
+        message: language === "en" ? "Editing is available only to the owner or an admin." : "التعديل متاح فقط للمالك أو الأدمن.",
+      });
       return;
     }
 
-    setEditTarget(b);
+      setBookingActionFeedback((current) => current?.bookingId === String(b.id || "").trim() ? null : current);
+      setEditTarget(b);
   }, [
     canEditBooking,
     canManageCompletedBooking,
@@ -5761,13 +5840,21 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         b.status === "completed" &&
         !canManageCompletedBooking
       ) {
-        alert(
-          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
-        );
+        setBookingActionFeedback({
+          bookingId: String(b.id || "").trim(),
+          tone: "danger",
+          message: language === "en"
+            ? "Completed bookings are protected and cannot be edited from this account."
+            : "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب.",
+        });
         return;
       }
 
-      alert("التعديل متاح فقط للمالك أو الأدمن.");
+      setBookingActionFeedback({
+        bookingId: String(b.id || "").trim(),
+        tone: "danger",
+        message: language === "en" ? "Editing is available only to the owner or an admin." : "التعديل متاح فقط للمالك أو الأدمن.",
+      });
       return;
     }
 
@@ -6968,6 +7055,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                               </>
                             ) : null}
                           </div>
+                          {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
+                            <DashboardActionFeedbackV2
+                              compact
+                              tone={bookingActionFeedback.tone}
+                              title={bookingActionFeedback.tone === "success"
+                                ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
+                                : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
+                              description={bookingActionFeedback.message}
+                              className="bk-row-action-feedback"
+                            />
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -7141,6 +7239,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           </>
                         )}
                       </div>
+                      {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
+                        <DashboardActionFeedbackV2
+                          compact
+                          tone={bookingActionFeedback.tone}
+                          title={bookingActionFeedback.tone === "success"
+                            ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
+                            : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
+                          description={bookingActionFeedback.message}
+                          className="bk-mobile-action-feedback"
+                        />
+                      ) : null}
                     </div>
                   );
                 })}
@@ -7197,6 +7306,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     uiRole,
     unseenNewBookingIds,
     language,
+    bookingActionFeedback,
   ]);
 
   const bookingSectionsView = useMemo(
@@ -7750,6 +7860,17 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
             {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
             {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
           </section>
+        ) : null}
+
+        {bookingListFeedback ? (
+          <DashboardActionFeedbackV2
+            revealOnMount
+            tone={bookingListFeedback.tone}
+            title={bookingListFeedback.tone === "success"
+              ? (language === "en" ? "Bookings updated" : "تم تحديث الحجوزات")
+              : (language === "en" ? "Booking action needs attention" : "إجراء الحجز يحتاج متابعة")}
+            description={bookingListFeedback.message}
+          />
         ) : null}
 
         <div className="bookings-v2-sections">
@@ -9079,6 +9200,15 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
               <span>{t("العميلة")}: {cancelTarget?.customerName || "—"}</span>
               <span>{t("التاريخ")}: {cancelTarget?.date || "—"} - {bookingClockText(cancelTarget?.time || "", language)}</span>
             </div>
+            {cancelError ? (
+              <DashboardActionFeedbackV2
+                revealOnMount
+                focusOnMount
+                tone="danger"
+                title={language === "en" ? "Cancellation failed" : "تعذر إلغاء الحجز"}
+                description={cancelError}
+              />
+            ) : null}
           </div>
           <div className="bk-cancel-foot">
             <button

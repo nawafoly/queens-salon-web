@@ -2,6 +2,7 @@ import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
 import { useMemo, useState } from "react";
 import EmployeeAvatar from "../../../EmployeeAvatar";
 import {
+  DashboardActionFeedbackV2,
   DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
@@ -54,6 +55,7 @@ export function EmployeeBasicTabLiveV2({
 }: EmployeeBasicTabLiveV2Props) {
   const { t, tr } = useEmployeeLanguage();
   const completeness = [name.trim(), weeklyOffLabel.trim()].filter(Boolean).length === 2 ? 100 : 75;
+  const [bookingVisibilityError, setBookingVisibilityError] = useState("");
 
   return (
     <div className="dsv2-ew-tab-panel">
@@ -124,13 +126,24 @@ export function EmployeeBasicTabLiveV2({
               onChange={(value) => {
                 const status = String(accountStatus || "").toLowerCase();
                 if (value && ["inactive","disabled","offboarded","archived","suspended"].includes(status)) {
-                  window.alert(t("الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز."));
+                  setBookingVisibilityError(t("الحساب غير نشط. فعّل حالة الحساب أولاً ثم أعد تفعيل الظهور في صفحة الحجز."));
                   return;
                 }
+                setBookingVisibilityError("");
                 onShowOnBookingChange(value);
               }}
             />
           </div>
+
+          {bookingVisibilityError ? (
+            <DashboardActionFeedbackV2
+              compact
+              revealOnMount
+              tone="danger"
+              title={t("تعذر تفعيل الظهور في الحجز")}
+              description={bookingVisibilityError}
+            />
+          ) : null}
 
           {!showOnBooking ? (
             <WorkspaceNoticeV2

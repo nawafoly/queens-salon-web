@@ -44,6 +44,14 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_api:write_outcome_unknown": "انقطع الاتصال أثناء الحفظ. نتيجة آخر عملية غير مؤكدة؛ لا تعد الحفظ قبل إعادة مزامنة البيانات.",
   "core_payroll:deduction_reason_required": "اكتب سبب الخصم أو قرار التأجيل قبل المتابعة.",
   "core_payroll:deduction_amount_required": "اكتب مبلغًا أكبر من صفر.",
+  "core_payroll:employer_loan_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن قسط أو استقطاع سلفة جهة العمل يتجاوز الحد النظامي البالغ 10% من أجر الاستحقاق لهذه المسيرة. راجع أقساط السلفة أو أجّل القسط ثم أعد الاعتماد.",
+  "core_payroll:aggregate_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن إجمالي الخصومات المحمية يتجاوز الحد النظامي الإجمالي المسموح لهذه المسيرة. راجع تفاصيل الخصومات قبل الاعتماد.",
+  "core_payroll:judicial_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن استقطاعًا قضائيًا يتجاوز الحد المسموح له حسب أمر التنفيذ المسجل. راجع مبلغ الاستقطاع ومرجع الأمر القضائي.",
+  "core_payroll:deduction_legal_class_required": "يوجد خصم غير مصنف نظاميًا. حدّد نوع الخصم قبل اعتماد المسيرة.",
+  "core_payroll:deduction_evidence_reference_required": "يوجد خصم يحتاج مستندًا أو مرجع إثبات قبل اعتماد المسيرة.",
+  "core_payroll:written_consent_reference_required": "يوجد خصم يتطلب مرجع موافقة خطية قبل اعتماد المسيرة.",
+  "core_payroll:employee_not_active": "لا يمكن اعتماد المسيرة لأن الموظفة غير نشطة في Core لهذه الفترة.",
+  "core_payroll:employee_not_payroll_eligible": "لا يمكن اعتماد المسيرة لأن إعداد الراتب الأساسي للموظفة غير مكتمل أو غير صالح.",
   "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
   "core_payroll:obligation_snapshot_stale": "تغيّر جدول الخصومات والالتزامات بعد حساب المسودة. أعد حساب المسيرة.",
   "core_payroll:attendance_deferral_target_must_be_future": "شهر تحصيل خصم الحضور يجب أن يكون بعد شهر الخصم الأصلي.",
@@ -129,18 +137,23 @@ function localizedMessage(status: number, code: string, fallback: string): strin
   if (specific) return specific;
   if (status === 401) return "انتهت جلسة الدخول. سجّل الدخول مرة أخرى.";
   if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
+
+  // Domain services often return a human-readable reason alongside a stable
+  // code. Preserve that reason before falling back to a generic HTTP message.
+  const safeFallback = String(fallback || "").trim();
+  if (safeFallback && !safeFallback.startsWith("core_") && !/^HTTP\s+\d+/i.test(safeFallback)) {
+    return safeFallback;
+  }
+
   if (status === 409) {
     return code.includes("slot")
       ? "الموعد محجوز بالفعل. اختاري وقتًا آخر."
-      : "يوجد تعارض في البيانات. حدّث الصفحة وحاول مرة أخرى.";
+      : "تعذر تنفيذ الإجراء بسبب تعارض في البيانات. راجع حالة العنصر وحدّثه ثم أعد المحاولة.";
   }
-  if (status === 400 || status === 422) return "بعض البيانات غير صحيحة. راجع الحقول المطلوبة.";
+  if (status === 400 || status === 422) return "تعذر تنفيذ الإجراء لأن بعض البيانات غير صحيحة أو ناقصة. راجع الحقول المطلوبة.";
   if (status === 408) return "انتهت مهلة الاتصال بالخدمة الأساسية.";
   if (status >= 500) return "الخدمة الأساسية غير متاحة مؤقتًا.";
-  const safeFallback = String(fallback || "").trim();
-  return safeFallback && !safeFallback.startsWith("core_")
-    ? safeFallback
-    : "تعذر تنفيذ الطلب.";
+  return "تعذر تنفيذ الطلب لسبب غير محدد من الخدمة الأساسية.";
 }
 
 // CORE_REQUEST_TRACE_V1
