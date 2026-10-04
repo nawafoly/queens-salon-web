@@ -30,8 +30,37 @@ export function normalizePhone(value) {
   return "";
 }
 
+// Dynamic route parameters arrive from URL.pathname still percent-encoded in
+// the Worker runtime. Employee ids can legitimately contain Arabic text, so a
+// raw id such as "سميرة_دينار" reaches the route matcher as "%D8%B3...".
+// Older UI flows could then pass that encoded value back through
+// encodeURIComponent, producing "%25D8...". Normalize only URI-looking ids,
+// up to two layers, before validation/storage/lookup. Encoded path separators
+// are deliberately not decoded by this detector, preserving the id boundary.
+export function normalizeId(value) {
+  let id = cleanText(value);
+  if (!id) return "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!/%(?:25|[C-Fc-f][0-9A-Fa-f])/.test(id)) break;
+
+    let decoded = id;
+    try {
+      decoded = decodeURIComponent(id);
+    } catch {
+      break;
+    }
+
+    decoded = cleanText(decoded);
+    if (!decoded || decoded === id) break;
+    id = decoded;
+  }
+
+  return id;
+}
+
 export function requiredId(value, field = "id") {
-  const id = cleanText(value);
+  const id = normalizeId(value);
   if (!id || id.length > 128 || id.includes("/") || id === "." || id === "..") {
     throw new AppError(400, "core_validation:invalid_id", `${field} is invalid`);
   }
