@@ -1,0 +1,82 @@
+name: Apply Employee Lifecycle Payroll Integrity
+
+on:
+  push:
+    branches:
+      - fix/employee-lifecycle-integrity-20261004
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-employee-lifecycle-payroll-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/employee-lifecycle-integrity-20261004
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Apply payroll lifecycle integrity transform
+        run: node scripts/apply-employee-lifecycle-payroll-integrity.mjs
+
+      - name: Install
+        run: npm ci
+
+      - name: Employee lifecycle identity guard
+        run: node scripts/check-employee-lifecycle-identity.mjs
+
+      - name: Employee lifecycle payroll integrity guard
+        run: node scripts/check-employee-lifecycle-payroll-integrity.mjs
+
+      - name: Core id normalization
+        run: node --test workers/core-id-normalization.test.mjs
+
+      - name: Payroll deduction compliance
+        run: node --test workers/payroll-deduction-compliance.test.mjs
+
+      - name: Salary advance contracts
+        run: node --test workers/salary-advance-core-only.test.mjs
+
+      - name: Partial deduction deferral contract
+        run: node --test workers/payroll-partial-deduction-deferral-contract.test.mjs
+
+      - name: HR Core runtime
+        run: node --test workers/hr-core-worker.test.mjs
+
+      - name: Dashboard create staff guard
+        run: node scripts/check-dashboard-create-staff-v2.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Remove temporary applicator
+        run: |
+          rm scripts/apply-employee-lifecycle-payroll-integrity.mjs
+          rm .github/workflows/apply-employee-lifecycle-payroll-integrity.yml
+
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(payroll): unify employee and salary advance integrity"
+          git push origin HEAD:fix/employee-lifecycle-integrity-20261004
