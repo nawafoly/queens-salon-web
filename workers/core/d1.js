@@ -107,8 +107,84 @@ export function canonicalizeEmployeeProfileRows(rows) {
   return Array.from(grouped.values()).map((item) => item.row);
 }
 
+function payrollEntryStatusRank(value) {
+  const status = cleanText(value).toLowerCase();
+  if (status === 'paid') return 4;
+  if (status === 'approved') return 3;
+  if (status === 'reviewed') return 2;
+  if (status === 'draft') return 1;
+  return 0;
+}
+
+function payrollAliasCandidate(row, rawEmployeeId) {
+  return {
+    row,
+    rawEmployeeId: cleanText(rawEmployeeId || row?.employee_id),
+  };
+}
+
+function payrollAliasWinner(current, candidate, canonicalEmployeeId) {
+  if (!current) return candidate;
+
+  const currentRank = payrollEntryStatusRank(current.row?.status);
+  const candidateRank = payrollEntryStatusRank(candidate.row?.status);
+  if (candidateRank !== currentRank) {
+    return candidateRank > currentRank ? candidate : current;
+  }
+
+  const currentCanonical = current.rawEmployeeId === canonicalEmployeeId;
+  const candidateCanonical = candidate.rawEmployeeId === canonicalEmployeeId;
+  if (candidateCanonical !== currentCanonical) {
+    return candidateCanonical ? candidate : current;
+  }
+
+  const currentUpdated = cleanText(current.row?.updated_at || current.row?.created_at);
+  const candidateUpdated = cleanText(candidate.row?.updated_at || candidate.row?.created_at);
+  if (candidateUpdated !== currentUpdated) {
+    return candidateUpdated > currentUpdated ? candidate : current;
+  }
+
+  return cleanText(candidate.row?.id) < cleanText(current.row?.id)
+    ? candidate
+    : current;
+}
+
+// Historical releases could persist a payroll row under a percent-encoded
+// employee id and later create another row under the decoded id. Financial
+// finality wins first (paid > approved > reviewed > draft); for equal states,
+// the physically canonical id wins. This hides legacy aliases without deleting
+// financial history and prevents the same payroll month from being processed
+// twice through list-based workflows.
+export function canonicalizePayrollEntryRows(rows) {
+  const grouped = new Map();
+
+  for (const rawRow of Array.isArray(rows) ? rows : []) {
+    const canonicalEmployeeId = normalizeId(rawRow?.employee_id);
+    const payrollMonth = cleanText(rawRow?.payroll_month);
+    if (!canonicalEmployeeId || !payrollMonth) continue;
+
+    const key = `${canonicalEmployeeId}|${payrollMonth}`;
+    const candidate = payrollAliasCandidate(rawRow, rawRow?.employee_id);
+    grouped.set(
+      key,
+      payrollAliasWinner(grouped.get(key), candidate, canonicalEmployeeId)
+    );
+  }
+
+  return Array.from(grouped.values()).map(({ row }) => ({
+    ...row,
+    employee_id: normalizeId(row.employee_id),
+  }));
+}
+
 function isEmployeeProfileListQuery(sql) {
   return /SELECT\s+\*\s+FROM\s+employee_profiles\s+WHERE\s+salon_id\s*=\s*\?\s+ORDER\s+BY\s+status,\s*name\s+LIMIT\s+1000/i.test(
+    String(sql || "")
+  );
+}
+
+function isPayrollEntryListQuery(sql) {
+  return /SELECT\s+\*\s+FROM\s+payroll_entries\s+WHERE\s+salon_id\s*=\s*\?\s+ORDER\s+BY\s+payroll_month\s+DESC,\s*employee_id\s+LIMIT\s+2000/i.test(
     String(sql || "")
   );
 }
@@ -121,9 +197,118 @@ function isCanonicalEmployeePointLookup(sql) {
   ) && /\b(?:id|employee_id)\s*=\s*\?/i.test(text);
 }
 
+function isCanonicalPayrollEntryPointLookup(sql) {
+  const text = String(sql || "");
+  return (
+    /FROM\s+payroll_entries\b/i.test(text) &&
+    /\bemployee_id\s*=\s*\?/i.test(text) &&
+    /\bpayroll_month\s*=\s*\?/i.test(text) &&
+    /\bLIMIT\s+1\b/i.test(text)
+  );
+}
+
+function placeholderIndexBefore(sql, offset) {
+  return (String(sql || '').slice(0, offset).match(/\?/g) || []).length;
+}
+
+function payrollEmployeeParamIndex(sql) {
+  const match = /\bemployee_id\s*=\s*\?/i.exec(String(sql || ''));
+  return match ? placeholderIndexBefore(sql, match.index) : -1;
+}
+
 async function runFirst(db, sql, params) {
   if (db.__fakeD1) return db.first(sql, params);
   return db.prepare(sql).bind(...params).first();
+}
+
+async function runAllRaw(db, sql, params) {
+  if (db.__fakeD1) return db.all(sql, params);
+  return (await db.prepare(sql).bind(...params).all())?.results || [];
+}
+
+async function canonicalPayrollPointLookup(db, sql, params) {
+  const employeeParamIndex = payrollEmployeeParamIndex(sql);
+  if (employeeParamIndex < 0 || employeeParamIndex >= params.length) {
+    return runFirst(db, sql, params);
+  }
+
+  const requestedEmployeeId = normalizeId(params[employeeParamIndex]);
+  let winner = null;
+
+  for (const candidateId of canonicalIdCandidates(requestedEmployeeId)) {
+    const nextParams = [...params];
+    nextParams[employeeParamIndex] = candidateId;
+    const row = await runFirst(db, sql, nextParams);
+    if (!row) continue;
+    winner = payrollAliasWinner(
+      winner,
+      payrollAliasCandidate(row, candidateId),
+      requestedEmployeeId
+    );
+  }
+
+  return winner?.row || null;
+}
+
+function payrollMutationColumnIndexes(sql) {
+  const text = String(sql || '');
+  if (!/^\s*INSERT\s+INTO\s+payroll_entries\b/i.test(text)) return null;
+  const match = /INSERT\s+INTO\s+payroll_entries\s*\(([\s\S]*?)\)\s*VALUES\s*\(/i.exec(text);
+  if (!match) return null;
+  const columns = match[1].split(',').map((item) => cleanText(item).toLowerCase());
+  const indexOf = (name) => columns.indexOf(name);
+  const indexes = {
+    id: indexOf('id'),
+    salonId: indexOf('salon_id'),
+    employeeId: indexOf('employee_id'),
+    payrollMonth: indexOf('payroll_month'),
+  };
+  return Object.values(indexes).every((value) => value >= 0) ? indexes : null;
+}
+
+async function existingPayrollAliasForMutation(db, salonId, employeeIdValue, payrollMonth) {
+  const employeeId = normalizeId(employeeIdValue);
+  let winner = null;
+  for (const candidateId of canonicalIdCandidates(employeeId)) {
+    const row = await runFirst(
+      db,
+      `SELECT * FROM payroll_entries
+        WHERE salon_id = ? AND employee_id = ? AND payroll_month = ? LIMIT 1`,
+      [salonId, candidateId, payrollMonth]
+    );
+    if (!row) continue;
+    winner = payrollAliasWinner(
+      winner,
+      payrollAliasCandidate(row, candidateId),
+      employeeId
+    );
+  }
+  return winner?.row || null;
+}
+
+async function canonicalPayrollMutationParams(db, sql, params) {
+  const indexes = payrollMutationColumnIndexes(sql);
+  if (!indexes || params.length <= Math.max(...Object.values(indexes))) return params;
+
+  const nextParams = [...params];
+  const salonId = cleanText(nextParams[indexes.salonId]);
+  const employeeId = normalizeId(nextParams[indexes.employeeId]);
+  const payrollMonth = cleanText(nextParams[indexes.payrollMonth]);
+  if (!salonId || !employeeId || !payrollMonth) return params;
+
+  const existing = await existingPayrollAliasForMutation(
+    db,
+    salonId,
+    employeeId,
+    payrollMonth
+  );
+  if (!existing?.id) return params;
+
+  // Reuse the physical historical row rather than creating a second composite
+  // identity. The public/read side still exposes the canonical employee id.
+  nextParams[indexes.id] = existing.id;
+  nextParams[indexes.employeeId] = cleanText(existing.employee_id) || employeeId;
+  return nextParams;
 }
 
 export function requiredId(value, field = "id") {
@@ -174,6 +359,10 @@ export function placeholders(count) {
 }
 
 export async function dbFirst(db, sql, params = []) {
+  if (isCanonicalPayrollEntryPointLookup(sql)) {
+    return canonicalPayrollPointLookup(db, sql, params);
+  }
+
   let row = await runFirst(db, sql, params);
   if (row || !isCanonicalEmployeePointLookup(sql) || params.length < 2) return row;
 
@@ -200,23 +389,33 @@ export async function dbFirst(db, sql, params = []) {
 }
 
 export async function dbAll(db, sql, params = []) {
-  const rows = db.__fakeD1
-    ? await db.all(sql, params)
-    : ((await db.prepare(sql).bind(...params).all())?.results || []);
+  const rows = await runAllRaw(db, sql, params);
 
-  return isEmployeeProfileListQuery(sql)
-    ? canonicalizeEmployeeProfileRows(rows)
-    : rows;
+  if (isEmployeeProfileListQuery(sql)) {
+    return canonicalizeEmployeeProfileRows(rows);
+  }
+  if (isPayrollEntryListQuery(sql)) {
+    return canonicalizePayrollEntryRows(rows);
+  }
+  return rows;
 }
 
 export async function dbRun(db, sql, params = []) {
-  if (db.__fakeD1) return db.run(sql, params);
-  return db.prepare(sql).bind(...params).run();
+  const nextParams = await canonicalPayrollMutationParams(db, sql, params);
+  if (db.__fakeD1) return db.run(sql, nextParams);
+  return db.prepare(sql).bind(...nextParams).run();
 }
 
 export async function dbBatch(db, statements) {
-  if (db.__fakeD1) return db.batch(statements);
-  return db.batch(statements.map(({ sql, params = [] }) => db.prepare(sql).bind(...params)));
+  const normalized = [];
+  for (const { sql, params = [] } of statements) {
+    normalized.push({
+      sql,
+      params: await canonicalPayrollMutationParams(db, sql, params),
+    });
+  }
+  if (db.__fakeD1) return db.batch(normalized);
+  return db.batch(normalized.map(({ sql, params }) => db.prepare(sql).bind(...params)));
 }
 
 export function changes(result) {
