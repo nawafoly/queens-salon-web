@@ -1181,6 +1181,12 @@ export const CoreHrService = {
   async listPayrollAdvanceDeductions(
     query: { employeeId?: string; payrollMonth?: string } = {}
   ) {
+    query = {
+      ...query,
+      ...(query.employeeId
+        ? { employeeId: normalizeEmployeeIdentityId(query.employeeId) }
+        : {}),
+    };
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/hr/payroll-advance-deductions",
       { query }
@@ -1196,6 +1202,10 @@ export const CoreHrService = {
   async listSalaryAdvanceInstallments(
     query: { employeeId: string; payrollMonth?: string }
   ) {
+    query = {
+      ...query,
+      employeeId: normalizeEmployeeIdentityId(query.employeeId),
+    };
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/hr/salary-advance-installments",
       { query }

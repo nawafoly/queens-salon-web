@@ -59,7 +59,7 @@ export function normalizeId(value) {
   return id;
 }
 
-function legacyEncodedIdCandidates(value) {
+export function canonicalIdCandidates(value) {
   const canonical = normalizeId(value);
   if (!canonical) return [];
   const once = encodeURIComponent(canonical);
@@ -179,7 +179,7 @@ export async function dbFirst(db, sql, params = []) {
 
   const idIndex = params.length - 1;
   const originalId = cleanText(params[idIndex]);
-  for (const candidate of legacyEncodedIdCandidates(originalId)) {
+  for (const candidate of canonicalIdCandidates(originalId)) {
     if (!candidate || candidate === originalId) continue;
     const nextParams = [...params];
     nextParams[idIndex] = candidate;

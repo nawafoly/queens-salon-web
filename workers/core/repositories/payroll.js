@@ -10,6 +10,7 @@ import {
   generatedId,
   nowIso,
   optionalText,
+  normalizeId,
   requiredId,
   validDate,
 } from '../d1.js';
@@ -18,6 +19,7 @@ import { calculateGosi } from '../../../src/helpers/hr/gosiPolicy.js';
 import {
   SA_LABOR_POLICY_VERSION,
   calculateFixedActualWageHalalas,
+  employerLoanDeductionCapHalalas,
   calculateMonthlyDailyWageHalalas,
   calculateStatutoryHourlyRates,
   calculateStatutoryOvertimeHalalas,
@@ -1056,6 +1058,32 @@ function assertPayrollSetupComplete(row, attendancePayrollMode = 'required') {
   }
 }
 
+function assertCanonicalSalaryAdvanceCap(row) {
+  const capBaseHalalas = Math.max(
+    0,
+    Number(row?.gross_salary_halalas || 0) -
+      Number(row?.absence_deduction_halalas || 0) -
+      Number(row?.missing_hours_deduction_halalas || 0)
+  );
+  const advanceHalalas = Math.max(0, Number(row?.advances_halalas || 0));
+  const capHalalas = employerLoanDeductionCapHalalas(capBaseHalalas);
+  if (advanceHalalas > capHalalas) {
+    throw new AppError(
+      409,
+      'core_payroll:employer_loan_deduction_cap_exceeded',
+      'core_payroll:employer_loan_deduction_cap_exceeded',
+      {
+        employeeId: normalizeId(row?.employee_id),
+        payrollMonth: cleanText(row?.payroll_month),
+        advanceHalalas,
+        capBaseHalalas,
+        capHalalas,
+        excessHalalas: advanceHalalas - capHalalas,
+      }
+    );
+  }
+}
+
 async function assertPayrollApprovalReady(
   db,
   salonId,
@@ -1236,6 +1264,7 @@ async function assertPayrollApprovalReady(
   }
 
   assertPayrollSetupComplete(row, effectiveMode);
+  assertCanonicalSalaryAdvanceCap(row);
 
   const attendanceReadiness =
     payrollAttendanceReadiness(snapshot);
@@ -1287,13 +1316,13 @@ export async function upsertPayrollPeriod(db, salonId, data, actor = {}) {
 
 export async function listPayrollEntries(db, salonId, query = {}) {
   let rows = await dbAll(db, 'SELECT * FROM payroll_entries WHERE salon_id = ? ORDER BY payroll_month DESC, employee_id LIMIT 2000', [salonId]);
-  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const employeeId = normalizeId(query.employeeId || query.employee_id);
   const payrollMonth = cleanText(query.payrollMonth || query.payroll_month);
   const status = cleanText(query.status);
-  if (employeeId) rows = rows.filter((row) => row.employee_id === employeeId);
+  if (employeeId) rows = rows.filter((row) => normalizeId(row.employee_id) === employeeId);
   if (payrollMonth) rows = rows.filter((row) => row.payroll_month === payrollMonth);
   if (status) rows = rows.filter((row) => cleanText(row.status || 'draft') === status);
-  return rows;
+  return rows.map((row) => ({ ...row, employee_id: normalizeId(row.employee_id) }));
 }
 
 export async function getPayrollEntry(db, salonId, id) {
@@ -1304,7 +1333,7 @@ export async function getPayrollEntry(db, salonId, id) {
 }
 
 export async function listPayrollAdvanceDeductions(db, salonId, query = {}) {
-  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const employeeId = normalizeId(query.employeeId || query.employee_id);
   const payrollMonth = cleanText(query.payrollMonth || query.payroll_month);
   const rows = await dbAll(
     db,
@@ -1320,9 +1349,25 @@ export async function listPayrollAdvanceDeductions(db, salonId, query = {}) {
       ORDER BY sai.payroll_month, sa.employee_id`,
     [salonId]
   );
-  return rows.filter((row) =>
-    (!employeeId || cleanText(row.employee_id) === employeeId) &&
-    (!payrollMonth || cleanText(row.payroll_month) === payrollMonth)
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const canonicalEmployeeId = normalizeId(row.employee_id);
+    const canonicalPayrollMonth = cleanText(row.payroll_month);
+    if (!canonicalEmployeeId || !canonicalPayrollMonth) continue;
+    const key = `${canonicalEmployeeId}|${canonicalPayrollMonth}`;
+    const current = grouped.get(key) || {
+      employee_id: canonicalEmployeeId,
+      payroll_month: canonicalPayrollMonth,
+      amount_halalas: 0,
+    };
+    current.amount_halalas += Math.max(0, Number(row.amount_halalas || 0) || 0);
+    grouped.set(key, current);
+  }
+
+  return Array.from(grouped.values()).filter((row) =>
+    (!employeeId || row.employee_id === employeeId) &&
+    (!payrollMonth || row.payroll_month === payrollMonth)
   );
 }
 
@@ -2996,11 +3041,13 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   // Partial payroll deferral is a collection-timing adjustment only.
   // Statutory deductions (including GOSI/social insurance) are never part of
   // the amount available for deferral.
+  // Salary-advance installments own their own immutable rescheduling ledger.
+  // A generic payroll deduction deferral must never pretend to defer an advance
+  // while leaving salary_advance_installments unchanged.
   const canonicalDeferrableDeductionsHalalas =
     authority.absenceDeductionHalalas +
     authority.missingHoursDeductionHalalas +
-    canonicalDeferrableManualDeductionsHalalas +
-    canonicalAdvanceHalalas;
+    canonicalDeferrableManualDeductionsHalalas;
 
   const canonicalDeferredDeductionsHalalas =
     await getActivePayrollDeductionDeferralTotal(
