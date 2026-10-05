@@ -253,7 +253,11 @@ function assertCanonicalSalaryAdvanceCap(row) {
     ...installmentDto(row),
     employeeId: row.employee_id,`,
     `  const employeeIds = canonicalIdCandidates(employeeId);
-  const params = [salonId, ...employeeIds];
+  const aliasEmployeeIds = employeeIds.filter((candidate) => candidate !== employeeId);
+  const employeeAliasClause = aliasEmployeeIds.length
+    ? ' OR sa.employee_id IN (' + placeholders(aliasEmployeeIds.length) + ')'
+    : '';
+  const params = [salonId, employeeId, ...aliasEmployeeIds];
   let payrollMonthClause = '';
   if (payrollMonth) {
     payrollMonthClause = ' AND sai.payroll_month = ?';
@@ -271,7 +275,7 @@ function assertCanonicalSalaryAdvanceCap(row) {
          ON sa.salon_id = sai.salon_id
         AND sa.id = sai.advance_id
       WHERE sai.salon_id = ?
-        AND sa.employee_id IN (${'${placeholders(employeeIds.length)}'})${'${payrollMonthClause}'}
+        AND (sa.employee_id = ?${'${employeeAliasClause}'})${'${payrollMonthClause}'}
       ORDER BY sai.payroll_month, sai.installment_number, sai.id\`,
     params
   );
