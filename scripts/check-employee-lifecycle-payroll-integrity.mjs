@@ -39,10 +39,12 @@ rejectText(
 
 for (const guard of [
   "canonicalIdCandidates(employeeId)",
-  "sa.employee_id IN (${placeholders(employeeIds.length)})",
+  "aliasEmployeeIds = employeeIds.filter",
+  "placeholders(aliasEmployeeIds.length)",
+  "sa.employee_id = ?${employeeAliasClause}",
   "employeeId: normalizeId(row.employee_id)",
 ]) {
-  requireText("workers/core/repositories/salary-advance-deferrals.js", guard, `Salary-advance alias guard missing: ${guard}`);
+  requireText("workers/core/repositories/salary-advance-deferrals.js", guard, `Salary-advance scoped alias guard missing: ${guard}`);
 }
 
 for (const guard of [
