@@ -1,0 +1,63 @@
+name: Repair Salary Advance Alias Query
+
+on:
+  push:
+    branches: [fix/employee-lifecycle-integrity-20261004]
+    paths:
+      - ".github/workflows/repair-salary-advance-alias-query.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/employee-lifecycle-integrity-20261004
+          fetch-depth: 0
+
+      - name: Repair canonical scoped salary-advance query
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/apply-employee-lifecycle-payroll-integrity.mjs')
+          source = path.read_text()
+
+          old_params = """  const employeeIds = canonicalIdCandidates(employeeId);
+          const params = [salonId, ...employeeIds];
+          let payrollMonthClause = '';"""
+          new_params = """  const employeeIds = canonicalIdCandidates(employeeId);
+          const aliasEmployeeIds = employeeIds.filter((candidate) => candidate !== employeeId);
+          const employeeAliasClause = aliasEmployeeIds.length
+            ? ' OR sa.employee_id IN (' + placeholders(aliasEmployeeIds.length) + ')'
+            : '';
+          const params = [salonId, employeeId, ...aliasEmployeeIds];
+          let payrollMonthClause = '';"""
+          if source.count(old_params) != 1:
+              raise SystemExit('salary advance params anchor must occur exactly once')
+          source = source.replace(old_params, new_params, 1)
+
+          old_sql = "        AND sa.employee_id IN (${'${placeholders(employeeIds.length)}'})${'${payrollMonthClause}'}"
+          new_sql = "        AND (sa.employee_id = ?${'${employeeAliasClause}'})${'${payrollMonthClause}'}"
+          if source.count(old_sql) != 1:
+              raise SystemExit('salary advance SQL anchor must occur exactly once')
+          source = source.replace(old_sql, new_sql, 1)
+
+          path.write_text(source)
+          PY
+
+      - name: Remove temporary workflow
+        run: rm .github/workflows/repair-salary-advance-alias-query.yml
+
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(payroll): preserve scoped salary advance lookup"
+          git push origin HEAD:fix/employee-lifecycle-integrity-20261004
