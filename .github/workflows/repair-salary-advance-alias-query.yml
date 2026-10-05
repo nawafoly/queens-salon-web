@@ -24,28 +24,33 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('scripts/apply-employee-lifecycle-payroll-integrity.mjs')
           source = path.read_text()
 
-          old_params = """  const employeeIds = canonicalIdCandidates(employeeId);
-          const params = [salonId, ...employeeIds];
-          let payrollMonthClause = '';"""
-          new_params = """  const employeeIds = canonicalIdCandidates(employeeId);
-          const aliasEmployeeIds = employeeIds.filter((candidate) => candidate !== employeeId);
-          const employeeAliasClause = aliasEmployeeIds.length
-            ? ' OR sa.employee_id IN (' + placeholders(aliasEmployeeIds.length) + ')'
-            : '';
-          const params = [salonId, employeeId, ...aliasEmployeeIds];
-          let payrollMonthClause = '';"""
-          if source.count(old_params) != 1:
-              raise SystemExit('salary advance params anchor must occur exactly once')
-          source = source.replace(old_params, new_params, 1)
+          params_pattern = re.compile(
+              r"  const employeeIds = canonicalIdCandidates\(employeeId\);\n"
+              r"  const params = \[salonId, \.\.\.employeeIds\];\n"
+              r"  let payrollMonthClause = '';"
+          )
+          new_params = (
+              "  const employeeIds = canonicalIdCandidates(employeeId);\n"
+              "  const aliasEmployeeIds = employeeIds.filter((candidate) => candidate !== employeeId);\n"
+              "  const employeeAliasClause = aliasEmployeeIds.length\n"
+              "    ? ' OR sa.employee_id IN (' + placeholders(aliasEmployeeIds.length) + ')'\n"
+              "    : '';\n"
+              "  const params = [salonId, employeeId, ...aliasEmployeeIds];\n"
+              "  let payrollMonthClause = '';"
+          )
+          source, count = params_pattern.subn(new_params, source, count=1)
+          if count != 1:
+              raise SystemExit(f'salary advance params anchor count={count}')
 
           old_sql = "        AND sa.employee_id IN (${'${placeholders(employeeIds.length)}'})${'${payrollMonthClause}'}"
           new_sql = "        AND (sa.employee_id = ?${'${employeeAliasClause}'})${'${payrollMonthClause}'}"
           if source.count(old_sql) != 1:
-              raise SystemExit('salary advance SQL anchor must occur exactly once')
+              raise SystemExit(f'salary advance SQL anchor count={source.count(old_sql)}')
           source = source.replace(old_sql, new_sql, 1)
 
           path.write_text(source)
