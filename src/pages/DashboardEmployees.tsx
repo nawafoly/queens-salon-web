@@ -218,6 +218,7 @@ import {
   type WorkingHourOverrideQuickMode,
 } from "./dashboardEmployees/shared";
 import { resolveEmployeeSaveCommandPlan } from "./dashboardEmployees/employeeSaveCommandOwnership";
+import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -815,9 +816,9 @@ function employeeSourceDocIdOf(staff: Partial<StaffPublicUi>, rawDocId = "") {
 }
 
 function employeeCanonicalDocIdOf(staff: Partial<StaffPublicUi> | Record<string, unknown>, rawDocId = "") {
-  const sourceDocId = cleanText(rawDocId || (staff as any)?.sourceDocId || (staff as any)?.id);
-  const linkedUidSet = new Set(employeeLinkedUidValues(staff));
-  const explicitDocIds = employeeExplicitDocIdValues(staff);
+  const sourceDocId = normalizeEmployeeIdentityId(rawDocId || (staff as any)?.sourceDocId || (staff as any)?.id);
+  const linkedUidSet = new Set(employeeLinkedUidValues(staff).map(normalizeEmployeeIdentityId));
+  const explicitDocIds = employeeExplicitDocIdValues(staff).map(normalizeEmployeeIdentityId);
   const explicitCanonicalDocId =
     explicitDocIds.find((value) => !linkedUidSet.has(value)) ||
     explicitDocIds[0] ||
@@ -4380,14 +4381,14 @@ function DashboardEmployeesContent() {
             },
             rawDocId
           );
-          const employeeId = cleanText(canonicalEmployeeId);
+          const employeeId = normalizeEmployeeIdentityId(canonicalEmployeeId);
           const legacyEmployeeIds = uniqueCleanTexts([
             combined?.staffPublicDocId,
             combined?.employeeDocId,
             combined?.linkedEmployeeDocId,
             combined?.employeeId,
-            rawDocId,
-          ]).filter((value) => value !== employeeId);
+            normalizeEmployeeIdentityId(rawDocId),
+          ].map(normalizeEmployeeIdentityId)).filter((value) => value !== employeeId);
 
           // حساب الدخول لا يتحول تلقائيًا إلى موظفة. تفضيل users هو مصدر الحقيقة،
           // ثم نرجع لعلامة السجل، وبعدها فقط نحافظ على الموظفات التشغيليات القديمة.

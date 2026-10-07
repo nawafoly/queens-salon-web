@@ -9,6 +9,7 @@ import {
   dbRun,
   generatedId,
   nowIso,
+  normalizeId,
   optionalText,
   requiredId,
   requiredText,
@@ -293,15 +294,23 @@ function validatePayload(type, rawPayload) {
 }
 
 async function resolveEmployee(db, salonId, actor, data = {}) {
-  const requestedEmployeeId = cleanText(data.employeeId || data.employee_id || actor.employeeId);
+  const requestedEmployeeId = normalizeId(data.employeeId || data.employee_id || actor.employeeId);
   const requestedUid = cleanText(data.employeeUid || data.employee_uid || actor.uid);
-  const row = await dbFirst(
-    db,
-    `SELECT id, firebase_uid, name, email FROM employee_profiles
-      WHERE salon_id = ? AND (id = ? OR firebase_uid = ? OR firebase_uid = ?) LIMIT 1`,
-    [salonId, requestedEmployeeId, requestedEmployeeId, requestedUid]
-  );
-  const employeeId = cleanText(row?.id || requestedEmployeeId);
+  let row = requestedEmployeeId
+    ? await dbFirst(
+        db,
+        'SELECT id, firebase_uid, name, email FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
+        [salonId, requestedEmployeeId]
+      )
+    : null;
+  if (!row && (requestedUid || requestedEmployeeId)) {
+    row = await dbFirst(
+      db,
+      'SELECT id, firebase_uid, name, email FROM employee_profiles WHERE salon_id = ? AND firebase_uid IN (?, ?) LIMIT 1',
+      [salonId, requestedUid || '', requestedEmployeeId || '']
+    );
+  }
+  const employeeId = normalizeId(row?.id || requestedEmployeeId);
   if (!employeeId) throw new AppError(409, 'core_employee_request:employee_link_required');
   return {
     employeeId: requiredId(employeeId, 'employeeId'),
@@ -337,7 +346,7 @@ async function getRow(db, salonId, idValue) {
 
 function assertOwner(row, actor) {
   const sameUid = cleanText(row.employee_uid) && cleanText(row.employee_uid) === cleanText(actor.uid);
-  const sameEmployee = cleanText(row.employee_id) && cleanText(row.employee_id) === cleanText(actor.employeeId);
+  const sameEmployee = normalizeId(row.employee_id) && normalizeId(row.employee_id) === normalizeId(actor.employeeId);
   if (!sameUid && !sameEmployee) throw new AppError(403, 'core_employee_request:not_owner');
 }
 
@@ -454,7 +463,7 @@ export async function listEmployeeRequests(db, salonId, query = {}, actor = {}, 
     clauses.push('(employee_id = ? OR employee_uid = ?)');
     params.push(employeeId, uid);
   } else {
-    const employeeId = cleanText(query.employeeId || query.employee_id);
+    const employeeId = normalizeId(query.employeeId || query.employee_id);
     if (employeeId) { clauses.push('employee_id = ?'); params.push(employeeId); }
     const assignee = cleanText(query.assignedToUid || query.assigned_to_uid);
     if (assignee) { clauses.push('assigned_to_uid = ?'); params.push(assignee); }

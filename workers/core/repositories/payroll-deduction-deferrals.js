@@ -11,6 +11,7 @@ import {
   dbFirst,
   generatedId,
   nowIso,
+  normalizeId,
   optionalText,
   requiredId,
   requiredText,
@@ -106,7 +107,7 @@ export async function listPayrollDeductionDeferrals(
   salonId,
   query = {}
 ) {
-  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const employeeId = normalizeId(query.employeeId || query.employee_id);
   const sourcePayrollMonth = cleanText(
     query.sourcePayrollMonth || query.source_payroll_month
   );
@@ -116,7 +117,7 @@ export async function listPayrollDeductionDeferrals(
   if (fakeRows) {
     return fakeRows
       .filter((row) => row.salon_id === salonId)
-      .filter((row) => !employeeId || row.employee_id === employeeId)
+      .filter((row) => !employeeId || normalizeId(row.employee_id) === employeeId)
       .filter(
         (row) =>
           !sourcePayrollMonth ||

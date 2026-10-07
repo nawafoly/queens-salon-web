@@ -7,6 +7,7 @@ import {
   dbFirst,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import { calculateFixedActualWageHalalas, employerLoanDeductionCapHalalas } from '../../../src/helpers/hr/saLaborPolicy.js';
 import {
   leaveDecisionRuntime,
   requireExplicitSaLeaveType,
@@ -101,6 +102,54 @@ function normalizeSalaryAdvanceExecution(payload, input = {}) {
     approvedHalalas,
     firstDeductionMonth,
   };
+}
+
+async function assertSalaryAdvanceSchedulePossible(db, salonId, employeeId, payload, input) {
+  const employment = await dbFirst(
+    db,
+    `SELECT base_salary_halalas, housing_allowance_halalas,
+            transportation_allowance_halalas, other_allowances_halalas
+       FROM employee_employment
+      WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, employeeId]
+  );
+  if (!employment) {
+    throw new AppError(409, 'core_employee_request:employee_salary_required');
+  }
+
+  const fixedActualWageHalalas = calculateFixedActualWageHalalas({
+    baseSalaryHalalas: employment.base_salary_halalas,
+    housingAllowanceHalalas: employment.housing_allowance_halalas,
+    transportationAllowanceHalalas: employment.transportation_allowance_halalas,
+    otherAllowancesHalalas: employment.other_allowances_halalas,
+  });
+  const capHalalas = employerLoanDeductionCapHalalas(fixedActualWageHalalas);
+  const installmentCount = payload.repaymentMethod === 'installments'
+    ? Number(payload.installmentCount || 0)
+    : 1;
+  const approvedHalalas = Number(input.approvedHalalas || 0);
+  const largestInstallmentHalalas = installmentCount > 0
+    ? Math.ceil(approvedHalalas / installmentCount)
+    : approvedHalalas;
+
+  if (capHalalas <= 0 || largestInstallmentHalalas > capHalalas) {
+    const minimumInstallmentCount = capHalalas > 0
+      ? Math.ceil(approvedHalalas / capHalalas)
+      : null;
+    throw new AppError(
+      409,
+      'core_employee_request:salary_advance_installment_cap_exceeded',
+      'core_employee_request:salary_advance_installment_cap_exceeded',
+      {
+        approvedHalalas,
+        installmentCount,
+        largestInstallmentHalalas,
+        fixedActualWageHalalas,
+        capHalalas,
+        minimumInstallmentCount,
+      }
+    );
+  }
 }
 
 function assertSalaryCertificateApproval(input = {}) {
@@ -247,7 +296,7 @@ export async function transitionEmployeeRequest(
 ) {
   const row = await dbFirst(
     db,
-    `SELECT request_type, status, source_reference_id, payload_json
+    `SELECT request_type, status, source_reference_id, payload_json, employee_id
        FROM employee_requests
       WHERE salon_id = ?
         AND id = ?
@@ -330,8 +379,16 @@ export async function transitionEmployeeRequest(
         'core_employee_request:employee_action_forbidden'
       );
     }
+    const salaryAdvancePayload = parsePayload(row.payload_json);
     input = normalizeSalaryAdvanceExecution(
-      parsePayload(row.payload_json),
+      salaryAdvancePayload,
+      input
+    );
+    await assertSalaryAdvanceSchedulePossible(
+      db,
+      salonId,
+      row.employee_id,
+      salaryAdvancePayload,
       input
     );
   }

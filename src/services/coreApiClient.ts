@@ -44,6 +44,8 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_api:write_outcome_unknown": "انقطع الاتصال أثناء الحفظ. نتيجة آخر عملية غير مؤكدة؛ لا تعد الحفظ قبل إعادة مزامنة البيانات.",
   "core_payroll:deduction_reason_required": "اكتب سبب الخصم أو قرار التأجيل قبل المتابعة.",
   "core_payroll:deduction_amount_required": "اكتب مبلغًا أكبر من صفر.",
+  "core_payroll:employer_loan_deduction_cap_exceeded": "قسط أو استقطاع سلفة جهة العمل يتجاوز الحد النظامي البالغ 10% من الأجر المستحق لهذا الشهر. أجّل قسط السلفة أو عدّل جدول السلفة قبل الاعتماد.",
+  "core_employee_request:salary_advance_installment_cap_exceeded": "جدول أقساط السلفة يتجاوز حد الاستقطاع النظامي 10%. زِد عدد الأقساط أو خفّض المبلغ المعتمد.",
   "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
   "core_payroll:obligation_snapshot_stale": "تغيّر جدول الخصومات والالتزامات بعد حساب المسودة. أعد حساب المسيرة.",
   "core_payroll:attendance_deferral_target_must_be_future": "شهر تحصيل خصم الحضور يجب أن يكون بعد شهر الخصم الأصلي.",

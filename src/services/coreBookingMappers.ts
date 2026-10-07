@@ -13,6 +13,7 @@ import type {
 import type { BookingDoc, BookingDocWithId } from "./firestoreBookings";
 import type { SectionDoc, ServiceDoc } from "./firestoreCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
+import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
@@ -86,7 +87,11 @@ function mapCoreStaffSchedule(
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
-  return { ...mapped, active: Number(row.active) === 1 };
+  return {
+    ...mapped,
+    staffId: normalizeEmployeeIdentityId(mapped.staffId),
+    active: Number(row.active) === 1,
+  };
 }
 
 export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
@@ -117,6 +122,7 @@ export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
 
   return {
     ...mapped,
+    id: normalizeEmployeeIdentityId(mapped.id),
     active: Number(row.active) === 1,
     showOnBooking:
       row.show_on_booking === undefined
