@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowsRotate, faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
+  DashboardActionFeedbackV2,
   DashboardFieldV2,
   DashboardModalV2,
   DashboardSelectV2,
@@ -31,6 +32,7 @@ export type EmployeeEditorModalProps = {
   canManage: boolean;
   busy: boolean;
   saving: boolean;
+  actionError?: string;
   editId: string | null;
   editingStaff: StaffPublicUi | null;
   name: string;
@@ -64,6 +66,7 @@ export default function EmployeeEditorModal({
   canManage,
   busy,
   saving,
+  actionError = "",
   editId,
   editingStaff,
   name,
@@ -369,6 +372,17 @@ export default function EmployeeEditorModal({
 
             {accountError ? <p className="employee-onboarding-account__error">{accountError}</p> : null}
           </section>
+        ) : null}
+
+        {actionError ? (
+          <DashboardActionFeedbackV2
+            revealOnMount
+            focusOnMount
+            tone="danger"
+            title={t("تعذر إكمال العملية")}
+            description={t(actionError)}
+            className="employees-v2-editor__action-feedback"
+          />
         ) : null}
       </fieldset>
     </DashboardModalV2>

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { AriaAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
 import useDashboardFloatingPositionV2 from "./useDashboardFloatingPositionV2";
 
 export type DashboardDatePickerV2Props = {
@@ -23,6 +23,7 @@ export type DashboardDatePickerV2Props = {
   clearable?: boolean;
   className?: string;
   "aria-describedby"?: string;
+  "aria-invalid"?: AriaAttributes["aria-invalid"];
   onChange?: (value: string) => void;
 };
 
@@ -143,6 +144,7 @@ export default function DashboardDatePickerV2({
   clearable = true,
   className = "",
   "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   onChange,
 }: DashboardDatePickerV2Props) {
   const displayPlaceholder = placeholder || (language === "en" ? "Select date" : "اختر التاريخ");
@@ -448,6 +450,7 @@ export default function DashboardDatePickerV2({
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         aria-required={required}
         disabled={disabled}
         data-open={open ? "true" : "false"}

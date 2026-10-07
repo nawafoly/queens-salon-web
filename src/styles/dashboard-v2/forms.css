@@ -21,6 +21,14 @@
   line-height: 1.55;
 }
 
+.dashboard-v2 .dsv2-field__error {
+  margin: 0;
+  color: var(--dsv2-burgundy);
+  font-size: 0.67rem;
+  font-weight: 850;
+  line-height: 1.55;
+}
+
 .dashboard-v2 .dsv2-input,
 .dashboard-v2 .dsv2-select,
 .dashboard-v2 .dsv2-textarea {
@@ -62,6 +70,44 @@
   outline: none;
   border-color: var(--dsv2-gold);
   box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-field[data-invalid="true"] :is(
+  .dsv2-input,
+  .dsv2-select,
+  .dsv2-textarea,
+  .dsv2-select-v2__trigger,
+  .dsv2-date-v2__trigger,
+  .dsv2-month-v2__trigger,
+  .dsv2-time-v2__trigger,
+  input:not([type="hidden"]),
+  textarea,
+  select
+) {
+  border-color: var(--dsv2-burgundy-border);
+}
+
+.dashboard-v2 .dsv2-field[data-invalid="true"] :is(
+  .dsv2-input,
+  .dsv2-select,
+  .dsv2-textarea,
+  .dsv2-select-v2__trigger,
+  .dsv2-date-v2__trigger,
+  .dsv2-month-v2__trigger,
+  .dsv2-time-v2__trigger,
+  input:not([type="hidden"]),
+  textarea,
+  select
+):focus,
+.dashboard-v2 .dsv2-field[data-invalid="true"] :is(
+  .dsv2-select-v2__trigger,
+  .dsv2-date-v2__trigger,
+  .dsv2-month-v2__trigger,
+  .dsv2-time-v2__trigger
+):focus-visible {
+  outline: none;
+  border-color: var(--dsv2-burgundy);
+  box-shadow: 0 0 0 3px rgba(var(--dsv2-burgundy-rgb), 0.14);
 }
 
 .dashboard-v2 .dsv2-filter-bar {

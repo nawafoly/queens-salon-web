@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { AriaAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
 import useDashboardFloatingPositionV2 from "./useDashboardFloatingPositionV2";
 
 export type DashboardSelectOptionV2 = {
@@ -26,6 +26,7 @@ export type DashboardSelectV2Props = {
   required?: boolean;
   className?: string;
   "aria-describedby"?: string;
+  "aria-invalid"?: AriaAttributes["aria-invalid"];
   onChange?: (value: string, option: DashboardSelectOptionV2) => void;
 };
 
@@ -59,6 +60,7 @@ export default function DashboardSelectV2({
   required = false,
   className = "",
   "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   onChange,
 }: DashboardSelectV2Props) {
   const generatedId = useId();
@@ -301,6 +303,7 @@ export default function DashboardSelectV2({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         aria-required={required}
         aria-activedescendant={
           open && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined

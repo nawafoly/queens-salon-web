@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
+  DashboardActionFeedbackV2,
   DashboardEmptyStateV2,
   DashboardErrorStateV2,
   DashboardFieldV2,
@@ -38,6 +39,7 @@ type DraftLine = {
   quantity: string;
   unit: string;
 };
+type ActionFeedback = { tone: "success" | "danger"; message: string } | null;
 
 export default function DashboardInventoryConsumption() {
   const { hasPermission } = usePermissions();
@@ -49,10 +51,12 @@ export default function DashboardInventoryConsumption() {
   const [bookingItemId, setBookingItemId] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
+  const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [recipeError, setRecipeError] = useState("");
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback>(null);
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [overdueRows, setOverdueRows] = useState<PendingServiceConsumption[]>([]);
 
@@ -63,9 +67,17 @@ export default function DashboardInventoryConsumption() {
   const items = selectedBooking?.items || [];
 
   useEffect(() => {
+    let cancelled = false;
+
     void (async () => {
       setLoading(true);
-      setError("");
+      setLoadError("");
+      setBookingId("");
+      setBookingItemId("");
+      setLines([]);
+      setLineErrors({});
+      setRecipeError("");
+      setActionFeedback(null);
       try {
         const [bookingRows, employeeRows, overdue] = await Promise.all([
           CoreBookingService.list({ date }),
@@ -79,9 +91,11 @@ export default function DashboardInventoryConsumption() {
             limit: 50,
           }).catch(() => []),
         ]);
+        if (cancelled) return;
         setBookings(bookingRows || []);
         setOverdueRows(overdue || []);
         const inventoryItems = await CoreInventoryService.listItems({ active: "1" });
+        if (cancelled) return;
         const names: Record<string, string> = {};
         for (const item of inventoryItems || []) names[item.id] = item.name;
         setItemNames(names);
@@ -92,29 +106,43 @@ export default function DashboardInventoryConsumption() {
           })).filter((row) => row.id)
         );
       } catch (err) {
-        setError(errorMessage(err));
+        if (!cancelled) setLoadError(errorMessage(err));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [date]);
 
   useEffect(() => {
     setBookingItemId("");
     setLines([]);
-    setNotice("");
+    setLineErrors({});
+    setRecipeError("");
+    setActionFeedback(null);
   }, [bookingId]);
 
   useEffect(() => {
+    let cancelled = false;
+    setLineErrors({});
+    setRecipeError("");
+    setActionFeedback(null);
+
     const item = items.find((row) => row.id === bookingItemId);
     if (!item) {
       setLines([]);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
+
     void (async () => {
-      setError("");
       try {
         const recipe = await CoreInventoryService.getRecipeByService(item.serviceId);
+        if (cancelled) return;
         const recipeLines = ((recipe as { lines?: ServiceRecipeLine[] } | null)?.lines || []).filter(
           (line) => line.line_type === "SPECIFIC_ITEM" && line.inventory_item_id
         );
@@ -128,16 +156,34 @@ export default function DashboardInventoryConsumption() {
           }))
         );
       } catch (err) {
-        setError(errorMessage(err));
+        if (!cancelled) setRecipeError(errorMessage(err));
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [bookingItemId]);
 
   async function confirm() {
     if (!canConfirm || !bookingItemId || !employeeId || !lines.length) return;
+
+    const nextLineErrors: Record<string, string> = {};
+    for (const line of lines) {
+      const quantity = Number(line.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        nextLineErrors[line.inventoryItemId] = "الكمية الفعلية يجب أن تكون أكبر من صفر.";
+      }
+    }
+    if (Object.keys(nextLineErrors).length) {
+      setLineErrors(nextLineErrors);
+      setActionFeedback({ tone: "danger", message: "راجع كميات الاستهلاك المميزة ثم أعد التأكيد." });
+      return;
+    }
+
     setSaving(true);
-    setError("");
-    setNotice("");
+    setLineErrors({});
+    setActionFeedback(null);
     try {
       await CoreInventoryService.confirmConsumption({
         bookingItemId,
@@ -149,21 +195,22 @@ export default function DashboardInventoryConsumption() {
           recipeLineId: line.recipeLineId,
         })),
       });
-      setNotice("تم تأكيد الاستهلاك وخصم المخزون من الدفتر.");
+      setActionFeedback({ tone: "success", message: "تم تأكيد الاستهلاك وخصم المخزون من الدفتر." });
     } catch (err) {
-      setError(errorMessage(err));
+      setActionFeedback({ tone: "danger", message: errorMessage(err) });
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) return <DashboardSkeletonV2 lines={6} />;
+  if (loadError) {
+    return <DashboardErrorStateV2 title="تعذر تحميل استهلاك الخدمات" description={loadError} />;
+  }
 
   return (
     <div>
       <p className="text-muted">التأكيد هنا يخصم المخزون فعلياً. لا تستخدمه عند إنشاء الحجز.</p>
-      {error ? <DashboardErrorStateV2 title="تعذر تأكيد الاستهلاك" description={error} /> : null}
-      {notice ? <p className="text-success">{notice}</p> : null}
 
       {overdueRows.length ? (
         <div className="border rounded p-3 mb-3" style={{ borderColor: "#fecaca", background: "#fef2f2" }}>
@@ -214,12 +261,24 @@ export default function DashboardInventoryConsumption() {
           onChange={setBookingItemId}
         />
       </DashboardFieldV2>
+      {recipeError ? (
+        <DashboardActionFeedbackV2
+          compact
+          revealOnMount
+          tone="danger"
+          title="تعذر تحميل وصفة الخدمة"
+          description={recipeError}
+        />
+      ) : null}
       <DashboardFieldV2 id="inv-cons-emp" label="الموظفة المنفذة">
         <DashboardSelectV2
           value={employeeId}
           placeholder="اختاري الموظفة"
           options={employees.map((row) => ({ value: row.id, label: row.name }))}
-          onChange={setEmployeeId}
+          onChange={(value) => {
+            setEmployeeId(value);
+            setActionFeedback(null);
+          }}
         />
       </DashboardFieldV2>
 
@@ -229,21 +288,41 @@ export default function DashboardInventoryConsumption() {
         lines.map((line) => (
           <div key={line.inventoryItemId} className="border rounded p-3 mb-3">
             <div className="mb-2">{line.itemName}</div>
-            <DashboardFieldV2 id={`${line.inventoryItemId}-qty`} label={`الكمية الفعلية (${line.unit})`}>
+            <DashboardFieldV2
+              id={`${line.inventoryItemId}-qty`}
+              label={`الكمية الفعلية (${line.unit})`}
+              error={lineErrors[line.inventoryItemId]}
+            >
               <DashboardNumberInputV2
                 value={line.quantity}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setLineErrors((current) => {
+                    if (!current[line.inventoryItemId]) return current;
+                    const next = { ...current };
+                    delete next[line.inventoryItemId];
+                    return next;
+                  });
+                  setActionFeedback(null);
                   setLines((prev) =>
                     prev.map((row) =>
                       row.inventoryItemId === line.inventoryItemId ? { ...row, quantity: e.target.value } : row
                     )
-                  )
-                }
+                  );
+                }}
               />
             </DashboardFieldV2>
           </div>
         ))
       )}
+
+      {actionFeedback ? (
+        <DashboardActionFeedbackV2
+          revealOnMount
+          tone={actionFeedback.tone}
+          title={actionFeedback.tone === "success" ? "تم تأكيد الاستهلاك" : "تعذر تأكيد الاستهلاك"}
+          description={actionFeedback.message}
+        />
+      ) : null}
 
       {canConfirm ? (
         <button

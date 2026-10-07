@@ -1494,9 +1494,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           `تعذر تحديث بيانات لوحة التحكم من المصدر التشغيلي. البيانات المعروضة هي آخر نسخة محلية صالحة. step: ${step} — ${msg || code}`
         );
       }
-      if (!options?.silent && !hasDashboardDataRef.current) {
-        alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
-      }
+      // refreshWarning above is the contextual user-facing failure.
+      // Do not duplicate it with a native browser alert.
     }
   };
 

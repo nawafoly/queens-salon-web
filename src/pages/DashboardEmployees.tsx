@@ -1897,10 +1897,11 @@ function DashboardEmployeesContent() {
     setConfirmDialog(null);
     resolve?.(confirmed);
   }, []);
+  const [isOpen, setIsOpen] = useState(false);
   const busy = loading || saving;
 
   useEffect(() => {
-    if (!errorMsg) return;
+    if (!errorMsg || isOpen) return;
 
     pushToast({
       title: t("تعذر إكمال العملية"),
@@ -1909,7 +1910,7 @@ function DashboardEmployeesContent() {
     });
 
     setErrorMsg("");
-  }, [errorMsg, pushToast, t]);
+  }, [errorMsg, isOpen, pushToast, t]);
 
   useEffect(() => {
     if (!saveMessage) return;
@@ -1946,8 +1947,6 @@ function DashboardEmployeesContent() {
     useState<"visible" | "hidden" | "all">("visible");
 
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
-
-  const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<EmployeeModalTab>("basic");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
@@ -10241,6 +10240,7 @@ const canonicalSchedules =
               canManage={editId ? canUpdateEmployees : canCreateEmployees}
               busy={busy}
               saving={saving}
+              actionError={isOpen ? errorMsg : ""}
               editId={editId}
               editingStaff={editingStaff}
               name={name}
