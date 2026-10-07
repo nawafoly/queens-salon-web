@@ -129,23 +129,62 @@ export default function Install() {
                 ? platform.safari
                   ? "التثبيت على iPhone أو iPad"
                   : "افتح الصفحة في Safari أولًا"
-                : "إذا لم تظهر نافذة التثبيت"}
+                : platform.android
+                  ? "التثبيت على Android"
+                  : "إذا لم تظهر نافذة التثبيت"}
             </h2>
+
             {platform.ios ? (
-              <ol>
-                {!platform.safari ? <li>افتح هذا الرابط باستخدام Safari.</li> : null}
-                <li>اضغط زر «مشاركة» في Safari.</li>
-                <li>اختر «إضافة إلى الشاشة الرئيسية».</li>
-                <li>اضغط «إضافة» وستظهر أيقونة MALIKAT.</li>
-              </ol>
+              <div className="malikat-install__instruction-group">
+                <strong>على iPhone أو iPad</strong>
+                <ol>
+                  <li>افتح هذا الرابط باستخدام Safari.</li>
+                  <li>اضغط زر «مشاركة» في Safari.</li>
+                  <li>اختر «إضافة إلى الشاشة الرئيسية».</li>
+                  <li>اضغط «إضافة» وستظهر أيقونة MALIKAT.</li>
+                </ol>
+              </div>
+            ) : platform.android ? (
+              <div className="malikat-install__instruction-group">
+                <strong>على Android</strong>
+                <ol>
+                  <li>افتح هذا الرابط باستخدام Chrome.</li>
+                  <li>افتح قائمة المتصفح «⋮».</li>
+                  <li>اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</li>
+                  <li>وافق على التثبيت لتظهر أيقونة MALIKAT على جوالك.</li>
+                </ol>
+              </div>
             ) : (
-              <ol>
-                <li>افتح قائمة المتصفح.</li>
-                <li>
-                  اختر {platform.android ? "«تثبيت التطبيق»" : "«تثبيت MALIKAT»"}.
-                </li>
-                <li>وافق على التثبيت لتظهر أيقونة MALIKAT على جهازك.</li>
-              </ol>
+              <>
+                <div className="malikat-install__instruction-group">
+                  <strong>على iPhone أو iPad</strong>
+                  <ol>
+                    <li>افتح هذا الرابط باستخدام Safari.</li>
+                    <li>اضغط زر «مشاركة» في Safari.</li>
+                    <li>اختر «إضافة إلى الشاشة الرئيسية».</li>
+                    <li>اضغط «إضافة» وستظهر أيقونة MALIKAT.</li>
+                  </ol>
+                </div>
+
+                <div className="malikat-install__instruction-group">
+                  <strong>على Android</strong>
+                  <ol>
+                    <li>افتح هذا الرابط باستخدام Chrome.</li>
+                    <li>افتح قائمة المتصفح «⋮».</li>
+                    <li>اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</li>
+                    <li>وافق على التثبيت لتظهر أيقونة MALIKAT على جوالك.</li>
+                  </ol>
+                </div>
+
+                <div className="malikat-install__instruction-group">
+                  <strong>على الكمبيوتر</strong>
+                  <ol>
+                    <li>افتح قائمة المتصفح.</li>
+                    <li>اختر «تثبيت MALIKAT».</li>
+                    <li>وافق على التثبيت لتظهر أيقونة MALIKAT على جهازك.</li>
+                  </ol>
+                </div>
+              </>
             )}
           </div>
         ) : null}
