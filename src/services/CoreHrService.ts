@@ -1,6 +1,7 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 import { coreApiRequest } from "./coreApiClient";
 import { buildDateKeysInRange } from "../helpers/hr/workSchedule";
+import { normalizeEmployeeIdentityId, normalizeEmployeeIdentityIds } from "../helpers/employeeIdentityId";
 import type {
   CoreAbsence,
   CoreAttendanceRecord,
@@ -36,8 +37,35 @@ function camel<T>(row: Record<string, unknown>): T {
 }
 
 function employeeReconciliation(employeeId: unknown) {
-  const value = String(employeeId || "").trim();
+  const value = normalizeEmployeeIdentityId(employeeId);
   return value ? { employeeId: value } : undefined;
+}
+
+function normalizeCoreSchedule(row: Record<string, unknown>) {
+  const mapped = camel<CoreHrSchedule>(row);
+  return {
+    ...mapped,
+    employeeId: normalizeEmployeeIdentityId(mapped.employeeId),
+  };
+}
+
+function normalizeCoreEmployee(row: Record<string, unknown>) {
+  const mapped = camel<CoreHrEmployee>(row);
+  const employment = mapped.employment && typeof mapped.employment === "object"
+    ? {
+        ...(mapped.employment as Record<string, unknown>),
+        employeeId: normalizeEmployeeIdentityId((mapped.employment as Record<string, unknown>).employeeId),
+      }
+    : mapped.employment;
+  return {
+    ...mapped,
+    id: normalizeEmployeeIdentityId(mapped.id),
+    employeeId: normalizeEmployeeIdentityId((mapped as any).employeeId || mapped.id),
+    employment,
+    schedules: Array.isArray(row.schedules)
+      ? row.schedules.map((item) => normalizeCoreSchedule(item as Record<string, unknown>))
+      : [],
+  };
 }
 
 type CoreResolvedShiftRangeResult = {
@@ -67,13 +95,7 @@ const resolvedShiftRangeInFlight = new Map<string, ResolvedShiftRangeInFlightEnt
 let resolvedShiftRangeCacheEpoch = 0;
 
 function normalizeResolvedShiftEmployeeIds(values: readonly unknown[]) {
-  return Array.from(
-    new Set(
-      values
-        .map((value) => String(value || "").trim())
-        .filter(Boolean)
-    )
-  );
+  return normalizeEmployeeIdentityIds(values);
 }
 
 function resolvedShiftRangeCacheKey(
@@ -98,7 +120,7 @@ function pruneResolvedShiftRangeCache(now = Date.now()) {
 
 function invalidateResolvedShiftRangeCache(employeeId?: string) {
   resolvedShiftRangeCacheEpoch += 1;
-  const targetEmployeeId = String(employeeId || "").trim();
+  const targetEmployeeId = normalizeEmployeeIdentityId(employeeId);
 
   if (!targetEmployeeId) {
     resolvedShiftRangeCache.clear();
@@ -197,34 +219,25 @@ function camelRecord(
 export const CoreHrService = {
   async listEmployees(query: { search?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/employees", { query });
-    return rows.map((row) => ({ ...camel<CoreHrEmployee>(row), schedules: Array.isArray(row.schedules) ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>)) : [] }));
+    return rows.map(normalizeCoreEmployee);
   },
   async getEmployee(id: string) {
-    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(id)}`);
-    return { ...camel<CoreHrEmployee>(row), schedules: Array.isArray(row.schedules) ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>)) : [] };
+    const employeeId = normalizeEmployeeIdentityId(id);
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}`);
+    return normalizeCoreEmployee(row);
   },
   async getMyEmployeeProfile() {
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/hr/employee-profile/mine"
     );
-    return {
-      ...camel<CoreHrEmployee>(row),
-      schedules: Array.isArray(row.schedules)
-        ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>))
-        : [],
-    };
+    return normalizeCoreEmployee(row);
   },
   async saveMyEmployeeProfile(input: CoreMyEmployeeProfileUpdate) {
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/hr/employee-profile/mine",
       { method: "PATCH", body: input as Record<string, unknown> }
     );
-    return {
-      ...camel<CoreHrEmployee>(row),
-      schedules: Array.isArray(row.schedules)
-        ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>))
-        : [],
-    };
+    return normalizeCoreEmployee(row);
   },
   async saveEmployee(input: Record<string, unknown>) {
     const id = String(input.id || "").trim();
@@ -1168,6 +1181,12 @@ export const CoreHrService = {
   async listPayrollAdvanceDeductions(
     query: { employeeId?: string; payrollMonth?: string } = {}
   ) {
+    query = {
+      ...query,
+      ...(query.employeeId
+        ? { employeeId: normalizeEmployeeIdentityId(query.employeeId) }
+        : {}),
+    };
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/hr/payroll-advance-deductions",
       { query }
@@ -1183,6 +1202,10 @@ export const CoreHrService = {
   async listSalaryAdvanceInstallments(
     query: { employeeId: string; payrollMonth?: string }
   ) {
+    query = {
+      ...query,
+      employeeId: normalizeEmployeeIdentityId(query.employeeId),
+    };
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/hr/salary-advance-installments",
       { query }

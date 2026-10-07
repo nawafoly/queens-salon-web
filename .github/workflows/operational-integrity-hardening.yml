@@ -14,7 +14,7 @@ concurrency:
 jobs:
   integrity:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -40,6 +40,21 @@ jobs:
 
       - name: Core route id normalization
         run: node --test workers/core-id-normalization.test.mjs
+
+      - name: Employee lifecycle payroll integrity guard
+        run: node scripts/check-employee-lifecycle-payroll-integrity.mjs
+
+      - name: Payroll deduction compliance
+        run: node --test workers/payroll-deduction-compliance.test.mjs
+
+      - name: Salary advance contracts
+        run: node --test workers/salary-advance-core-only.test.mjs
+
+      - name: Partial deduction deferral contract
+        run: node --test workers/payroll-partial-deduction-deferral-contract.test.mjs
+
+      - name: HR Core runtime
+        run: node --test workers/hr-core-worker.test.mjs
 
       - name: Operational integrity final gate
         run: npm run verify:operational-integrity

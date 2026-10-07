@@ -44,6 +44,7 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_api:write_outcome_unknown": "انقطع الاتصال أثناء الحفظ. نتيجة آخر عملية غير مؤكدة؛ لا تعد الحفظ قبل إعادة مزامنة البيانات.",
   "core_payroll:deduction_reason_required": "اكتب سبب الخصم أو قرار التأجيل قبل المتابعة.",
   "core_payroll:deduction_amount_required": "اكتب مبلغًا أكبر من صفر.",
+<<<<<<< HEAD
   "core_payroll:employer_loan_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن قسط أو استقطاع سلفة جهة العمل يتجاوز الحد النظامي البالغ 10% من أجر الاستحقاق لهذه المسيرة. راجع أقساط السلفة أو أجّل القسط ثم أعد الاعتماد.",
   "core_payroll:aggregate_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن إجمالي الخصومات المحمية يتجاوز الحد النظامي الإجمالي المسموح لهذه المسيرة. راجع تفاصيل الخصومات قبل الاعتماد.",
   "core_payroll:judicial_deduction_cap_exceeded": "تعذر اعتماد المسيرة لأن استقطاعًا قضائيًا يتجاوز الحد المسموح له حسب أمر التنفيذ المسجل. راجع مبلغ الاستقطاع ومرجع الأمر القضائي.",
@@ -52,6 +53,10 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_payroll:written_consent_reference_required": "يوجد خصم يتطلب مرجع موافقة خطية قبل اعتماد المسيرة.",
   "core_payroll:employee_not_active": "لا يمكن اعتماد المسيرة لأن الموظفة غير نشطة في Core لهذه الفترة.",
   "core_payroll:employee_not_payroll_eligible": "لا يمكن اعتماد المسيرة لأن إعداد الراتب الأساسي للموظفة غير مكتمل أو غير صالح.",
+=======
+  "core_payroll:employer_loan_deduction_cap_exceeded": "قسط أو استقطاع سلفة جهة العمل يتجاوز الحد النظامي البالغ 10% من الأجر المستحق لهذا الشهر. أجّل قسط السلفة أو عدّل جدول السلفة قبل الاعتماد.",
+  "core_employee_request:salary_advance_installment_cap_exceeded": "جدول أقساط السلفة يتجاوز حد الاستقطاع النظامي 10%. زِد عدد الأقساط أو خفّض المبلغ المعتمد.",
+>>>>>>> origin/main
   "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
   "core_payroll:obligation_snapshot_stale": "تغيّر جدول الخصومات والالتزامات بعد حساب المسودة. أعد حساب المسيرة.",
   "core_payroll:attendance_deferral_target_must_be_future": "شهر تحصيل خصم الحضور يجب أن يكون بعد شهر الخصم الأصلي.",

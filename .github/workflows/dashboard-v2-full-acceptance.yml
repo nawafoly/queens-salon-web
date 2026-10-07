@@ -9,7 +9,15 @@ on:
       - "src/features/internal-booking-v2/**"
       - "src/components/dashboard-v2/**"
       - "src/components/EmployeeNotificationBellMenu.tsx"
+      - "src/helpers/employeeIdentityId.ts"
+      - "src/services/CoreAccountService.ts"
+      - "src/services/CoreHrService.ts"
+      - "src/services/CoreStaffService.ts"
+      - "src/services/coreBookingMappers.ts"
+      - "src/services/employeeDirectory.ts"
       - "src/styles/dashboard-v2/**"
+      - "workers/core/d1.js"
+      - "scripts/check-employee-lifecycle-identity.mjs"
       - "scripts/check-dashboard-*.mjs"
       - "scripts/check-booking-internal-*.mjs"
   push:
@@ -20,7 +28,15 @@ on:
       - "src/features/internal-booking-v2/**"
       - "src/components/dashboard-v2/**"
       - "src/components/EmployeeNotificationBellMenu.tsx"
+      - "src/helpers/employeeIdentityId.ts"
+      - "src/services/CoreAccountService.ts"
+      - "src/services/CoreHrService.ts"
+      - "src/services/CoreStaffService.ts"
+      - "src/services/coreBookingMappers.ts"
+      - "src/services/employeeDirectory.ts"
       - "src/styles/dashboard-v2/**"
+      - "workers/core/d1.js"
+      - "scripts/check-employee-lifecycle-identity.mjs"
       - "scripts/check-dashboard-*.mjs"
       - "scripts/check-booking-internal-*.mjs"
   workflow_dispatch:
@@ -72,6 +88,9 @@ jobs:
 
       - name: Create staff V2
         run: node scripts/check-dashboard-create-staff-v2.mjs
+
+      - name: Employee lifecycle identity
+        run: node scripts/check-employee-lifecycle-identity.mjs
 
       - name: Build
         run: npm run build

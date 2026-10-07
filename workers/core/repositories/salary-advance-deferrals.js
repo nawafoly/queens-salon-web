@@ -10,6 +10,7 @@
 // remain owned exclusively by payroll.js and are precomputed via preview mode.
 
 import {
+  canonicalIdCandidates,
   cleanText,
   dbAll,
   dbBatch,
@@ -17,7 +18,9 @@ import {
   generatedId,
   nowIso,
   optionalText,
+  placeholders,
   requiredId,
+  normalizeId,
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import {
@@ -502,7 +505,12 @@ export async function listSalaryAdvanceInstallments(
     ? payrollMonthValue(rawPayrollMonth, 'payroll_month')
     : null;
 
-  const params = [salonId, employeeId];
+  const employeeIds = canonicalIdCandidates(employeeId);
+  const aliasEmployeeIds = employeeIds.filter((candidate) => candidate !== employeeId);
+  const employeeAliasClause = aliasEmployeeIds.length
+    ? ' OR sa.employee_id IN (' + placeholders(aliasEmployeeIds.length) + ')'
+    : '';
+  const params = [salonId, employeeId, ...aliasEmployeeIds];
   let payrollMonthClause = '';
   if (payrollMonth) {
     payrollMonthClause = ' AND sai.payroll_month = ?';
@@ -520,14 +528,14 @@ export async function listSalaryAdvanceInstallments(
          ON sa.salon_id = sai.salon_id
         AND sa.id = sai.advance_id
       WHERE sai.salon_id = ?
-        AND sa.employee_id = ?${payrollMonthClause}
+        AND (sa.employee_id = ?${employeeAliasClause})${payrollMonthClause}
       ORDER BY sai.payroll_month, sai.installment_number, sai.id`,
     params
   );
 
   return rows.map((row) => ({
     ...installmentDto(row),
-    employeeId: row.employee_id,
+    employeeId: normalizeId(row.employee_id),
     paymentStatus: row.payment_status || null,
     firstDeductionMonth: row.first_deduction_month || null,
   }));

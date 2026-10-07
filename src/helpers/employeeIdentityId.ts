@@ -3,9 +3,6 @@ export function normalizeEmployeeIdentityId(value: unknown) {
   if (!id) return "";
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    // Decode only values that look like percent-encoded UTF-8 or another
-    // encoded percent layer. This avoids changing ordinary ids that happen to
-    // contain a literal percent sign.
     if (!/%(?:25|[C-Fc-f][0-9A-Fa-f])/.test(id)) break;
 
     let decoded = id;
@@ -20,4 +17,28 @@ export function normalizeEmployeeIdentityId(value: unknown) {
   }
 
   return id;
+}
+
+export function isCanonicalEmployeeIdentityId(value: unknown) {
+  const id = normalizeEmployeeIdentityId(value);
+  return Boolean(
+    id &&
+      id.length <= 128 &&
+      id !== "." &&
+      id !== ".." &&
+      !id.includes("/") &&
+      !id.startsWith("app_user_")
+  );
+}
+
+export function employeeIdentityEquals(left: unknown, right: unknown) {
+  const leftId = normalizeEmployeeIdentityId(left);
+  const rightId = normalizeEmployeeIdentityId(right);
+  return Boolean(leftId && rightId && leftId === rightId);
+}
+
+export function normalizeEmployeeIdentityIds(values: readonly unknown[]) {
+  return Array.from(
+    new Set(values.map(normalizeEmployeeIdentityId).filter(Boolean))
+  );
 }

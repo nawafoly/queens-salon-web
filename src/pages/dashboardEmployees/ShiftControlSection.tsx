@@ -19,6 +19,7 @@ import {
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { CoreHrService } from "../../services/CoreHrService";
+import { isCanonicalEmployeeIdentityId } from "../../helpers/employeeIdentityId";
 import {
   SCHEDULE_EXCEPTION_CHANGED_EVENT,
   buildScheduleExceptionRestorePayload,
@@ -261,14 +262,7 @@ function uniqueCleanTexts(values: unknown[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
-function isCoreEmployeeIdentifier(value: unknown) {
-  const id = cleanText(value);
-  return Boolean(
-    id &&
-      !id.startsWith("app_user_") &&
-      /^[A-Za-z0-9_-]+$/.test(id)
-  );
-}
+const isCoreEmployeeIdentifier = isCanonicalEmployeeIdentityId;
 
 
 function parseSnapshot(value: unknown) {

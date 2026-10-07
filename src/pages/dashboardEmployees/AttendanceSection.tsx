@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
 import { CoreHrService } from "../../services/CoreHrService";
+import { isCanonicalEmployeeIdentityId } from "../../helpers/employeeIdentityId";
 import { clearAttendancePunchTimeFromWorker } from "../../services/attendancePunchAdminService";
 import type { CoreResolvedShift } from "../../types/hrCoreApi";
 import {
@@ -73,14 +74,7 @@ function uniqueCleanTexts(values: unknown[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
-function isCoreEmployeeIdentifier(value: unknown) {
-  const id = cleanText(value);
-  return Boolean(
-    id &&
-      !id.startsWith("app_user_") &&
-      /^[A-Za-z0-9_-]+$/.test(id)
-  );
-}
+const isCoreEmployeeIdentifier = isCanonicalEmployeeIdentityId;
 
 function resolvedShiftRank(row?: CoreResolvedShift | null) {
   const source = cleanText(row?.source).toLowerCase();
