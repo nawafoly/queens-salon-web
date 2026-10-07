@@ -1,6 +1,16 @@
 name: Payroll Late Approval Targeted Verification
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/payroll-late-approval-targeted.yml"
+      - "workers/core/errors.js"
+      - "workers/core/index.js"
+      - "workers/core/repositories/payroll.js"
+      - "workers/hr-core-worker.test.mjs"
+      - "workers/payroll-stage1-approval-controls.test.mjs"
+      - "src/pages/DashboardPayroll.tsx"
   push:
     branches:
       - fix/payroll-late-approval-500
