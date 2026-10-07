@@ -1,0 +1,52 @@
+name: Payroll Late Approval Targeted Verification
+
+on:
+  push:
+    branches:
+      - fix/payroll-late-approval-500
+    paths:
+      - ".github/workflows/payroll-late-approval-targeted.yml"
+      - "workers/core/errors.js"
+      - "workers/core/index.js"
+      - "workers/core/repositories/payroll.js"
+      - "workers/hr-core-worker.test.mjs"
+      - "workers/payroll-stage1-approval-controls.test.mjs"
+      - "src/pages/DashboardPayroll.tsx"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Isolated HR runtime test containing late approval regression
+        run: node --test --test-name-pattern="Phase 6 HR employee, attendance, leave, absence and payroll use Core D1" workers/hr-core-worker.test.mjs
+
+      - name: Payroll approval guard normalization tests
+        run: node --test workers/payroll-stage1-approval-controls.test.mjs
+
+      - name: Dashboard V2 contract
+        run: npm run check:dashboard-v2
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check HEAD^ HEAD
