@@ -958,43 +958,231 @@ export async function deferPayrollObligationInstallment(db, salonId, installment
   return obligations.find((item) => item.id === row.obligation_id);
 }
 
-export async function cancelPayrollObligation(db, salonId, obligationIdValue, data = {}, actor = {}) {
-  const obligationId = requiredId(obligationIdValue, 'obligationId');
+export async function cancelPayrollObligation(
+  db,
+  salonId,
+  obligationIdValue,
+  data = {},
+  actor = {}
+) {
+  const obligationId = requiredId(
+    obligationIdValue,
+    'obligationId'
+  );
+
   const row = await dbFirst(
     db,
-    'SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND id = ? LIMIT 1',
+    `SELECT *
+       FROM employee_payroll_obligations
+      WHERE salon_id = ?
+        AND id = ?
+      LIMIT 1`,
     [salonId, obligationId]
   );
-  if (!row) throw new AppError(404, 'core_payroll:obligation_not_found');
-  if (['settled', 'cancelled'].includes(cleanText(row.status))) return obligationDto(row, []);
-  const reason = requiredReason(data.reason || data.cancellationReason || data.cancellation_reason);
+
+  if (!row) {
+    throw new AppError(
+      404,
+      'core_payroll:obligation_not_found'
+    );
+  }
+
+  const obligationStatus =
+    cleanText(row.status).toLowerCase();
+
+  const sourceType =
+    cleanText(row.source_type).toLowerCase();
+
+  let canonicalDeferral = null;
+
+  if (sourceType === 'payroll_deduction_deferral') {
+    canonicalDeferral = await dbFirst(
+      db,
+      `SELECT *
+         FROM payroll_deduction_deferrals
+        WHERE salon_id = ?
+          AND obligation_id = ?
+        LIMIT 1`,
+      [salonId, obligationId]
+    );
+
+    if (!canonicalDeferral) {
+      throw new AppError(
+        409,
+        'core_payroll:deduction_deferral_canonical_record_missing'
+      );
+    }
+
+    const deferralStatus =
+      cleanText(canonicalDeferral.status).toLowerCase();
+
+    if (
+      obligationStatus === 'cancelled' &&
+      deferralStatus === 'cancelled'
+    ) {
+      return obligationDto(row, []);
+    }
+
+    if (obligationStatus === 'settled') {
+      throw new AppError(
+        409,
+        'core_payroll:deduction_deferral_already_settled'
+      );
+    }
+
+    if (!['active', 'cancelled'].includes(deferralStatus)) {
+      throw new AppError(
+        409,
+        'core_payroll:deduction_deferral_invalid_state'
+      );
+    }
+
+    if (
+      cleanText(canonicalDeferral.source_payroll_month) !==
+      cleanText(row.original_payroll_month)
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:deduction_deferral_source_mismatch'
+      );
+    }
+
+    await assertTargetMonthMutable(
+      db,
+      salonId,
+      row.employee_id,
+      canonicalDeferral.source_payroll_month
+    );
+  } else if (
+    ['settled', 'cancelled'].includes(obligationStatus)
+  ) {
+    return obligationDto(row, []);
+  }
+
+  const reason = requiredReason(
+    data.reason ||
+      data.cancellationReason ||
+      data.cancellation_reason
+  );
+
   const scheduled = await dbAll(
     db,
-    `SELECT * FROM employee_payroll_obligation_installments
-      WHERE salon_id = ? AND obligation_id = ? AND status = 'scheduled'`,
+    `SELECT *
+       FROM employee_payroll_obligation_installments
+      WHERE salon_id = ?
+        AND obligation_id = ?
+        AND status = 'scheduled'`,
     [salonId, obligationId]
   );
+
   for (const installment of scheduled) {
-    await assertTargetMonthMutable(db, salonId, row.employee_id, installment.target_payroll_month);
+    await assertTargetMonthMutable(
+      db,
+      salonId,
+      row.employee_id,
+      installment.target_payroll_month
+    );
   }
+
   const actorInfo = requiredActorInfo(actor);
   const now = nowIso();
-  await dbBatch(db, [
+  const statements = [];
+
+  if (
+    canonicalDeferral &&
+    cleanText(canonicalDeferral.status).toLowerCase() ===
+      'active'
+  ) {
+    statements.push({
+      sql: `UPDATE payroll_deduction_deferrals
+               SET status = 'cancelled',
+                   cancelled_by_uid = ?,
+                   cancelled_by_email = ?,
+                   cancelled_at = ?,
+                   cancellation_reason = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status = 'active'`,
+      params: [
+        actorInfo.uid,
+        actorInfo.email,
+        now,
+        reason,
+        now,
+        salonId,
+        canonicalDeferral.id,
+      ],
+    });
+  }
+
+  statements.push(
     {
       sql: `UPDATE employee_payroll_obligation_installments
-               SET status = 'cancelled', updated_at = ?
-             WHERE salon_id = ? AND obligation_id = ? AND status = 'scheduled'`,
-      params: [now, salonId, obligationId],
+               SET status = 'cancelled',
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND obligation_id = ?
+               AND status = 'scheduled'`,
+      params: [
+        now,
+        salonId,
+        obligationId,
+      ],
     },
     {
       sql: `UPDATE employee_payroll_obligations
-               SET status = 'cancelled', cancelled_by_uid = ?, cancelled_by_email = ?,
-                   cancelled_at = ?, cancellation_reason = ?, updated_at = ?
-             WHERE salon_id = ? AND id = ?`,
-      params: [actorInfo.uid, actorInfo.email, now, reason, now, salonId, obligationId],
-    },
-  ]);
-  return (await listPayrollObligations(db, salonId, { employeeId: row.employee_id })).find((item) => item.id === obligationId);
+               SET status = 'cancelled',
+                   cancelled_by_uid = ?,
+                   cancelled_by_email = ?,
+                   cancelled_at = ?,
+                   cancellation_reason = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?`,
+      params: [
+        actorInfo.uid,
+        actorInfo.email,
+        now,
+        reason,
+        now,
+        salonId,
+        obligationId,
+      ],
+    }
+  );
+
+  await dbBatch(db, statements);
+
+  if (canonicalDeferral) {
+    const persisted = await dbFirst(
+      db,
+      `SELECT status
+         FROM payroll_deduction_deferrals
+        WHERE salon_id = ?
+          AND id = ?
+        LIMIT 1`,
+      [salonId, canonicalDeferral.id]
+    );
+
+    if (
+      cleanText(persisted?.status).toLowerCase() !==
+      'cancelled'
+    ) {
+      throw new AppError(
+        500,
+        'core_payroll:deduction_deferral_cancel_failed'
+      );
+    }
+  }
+
+  return (
+    await listPayrollObligations(
+      db,
+      salonId,
+      { employeeId: row.employee_id }
+    )
+  ).find((item) => item.id === obligationId);
 }
 
 async function activeRecurringForMonth(db, salonId, employeeId, payrollMonth) {

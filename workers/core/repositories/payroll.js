@@ -3520,28 +3520,14 @@ export async function deferPayrollDeductions(
       canonicalManualDeductions
     );
 
-  const canonicalAdvanceRows =
-    await listPayrollAdvanceDeductions(
-      db,
-      salonId,
-      {
-        employeeId,
-        payrollMonth: originalPayrollMonth,
-      }
-    );
-
-  const advanceHalalas = Math.max(
-    0,
-    Number(
-      canonicalAdvanceRows[0]?.amount_halalas || 0
-    )
-  );
+  // Generic payroll deduction deferral owns only attendance/manual
+  // collection timing. Salary-advance installments have their own
+  // canonical rescheduling ledger and must use that dedicated path.
 
   const eligibleHalalas =
     Number(authority.absenceDeductionHalalas || 0) +
     Number(authority.missingHoursDeductionHalalas || 0) +
-    deferrableManualHalalas +
-    advanceHalalas;
+    deferrableManualHalalas;
 
   const alreadyDeferredHalalas =
     await getActivePayrollDeductionDeferralTotal(
