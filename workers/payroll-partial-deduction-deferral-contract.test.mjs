@@ -46,6 +46,26 @@ test('partial payroll deduction deferral is canonical, atomic, and excluded from
   );
   assert.match(payroll, /partial_deduction_deferral_exceeds_available_deductions/);
 
+  assert.match(
+    payroll,
+    /Generic payroll deduction deferral owns only attendance\/manual/
+  );
+
+  assert.doesNotMatch(
+    payroll,
+    /deferrableManualHalalas\s*\+\s*advanceHalalas/
+  );
+
+  assert.match(
+    obligations,
+    /UPDATE payroll_deduction_deferrals[\s\S]*status = 'cancelled'/
+  );
+
+  assert.match(
+    obligations,
+    /deduction_deferral_canonical_record_missing/
+  );
+
   assert.match(service, /async deferPayrollDeductions/);
   assert.match(
     service,
