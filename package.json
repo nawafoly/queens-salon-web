@@ -133,6 +133,9 @@
     "vite": "npm:rolldown-vite@7.3.1",
     "sharp": "0.35.5",
     "@grpc/grpc-js": "1.14.5",
-    "source-map-js": "1.2.2"
+    "source-map-js": "1.2.2",
+    "xcode": {
+      "uuid": "11.1.1"
+    }
   }
 }
