@@ -776,13 +776,7 @@ export function buildPayrollPayslipDataV2(
   const derivedCanonicalNetHalalas =
     Math.max(
       0,
-      Number(entry.grossSalaryHalalas || 0) +
-        Number(
-          entry.manualAdditionsHalalas || 0
-        ) +
-        Number(
-          entry.overtimeValueHalalas || 0
-        ) -
+      Number(entry.grossSalaryHalalas || 0) -
         Number(
           entry.totalDeductionsHalalas || 0
         )

@@ -133,3 +133,35 @@ test('payroll approval and next-period reconciliation are explicit source-of-tru
   assert.match(migration, /CREATE TABLE IF NOT EXISTS payroll_approval_snapshots/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS payroll_carryover_adjustments/);
 });
+
+test('payslip canonical fallback never double counts additions already included in gross', () => {
+  const report = read('src/helpers/reports/exportPayrollReportV2.ts');
+
+  const start = report.indexOf(
+    '  const derivedCanonicalNetHalalas ='
+  );
+  const end = report.indexOf(
+    '  const canonicalNetHalalas =',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const block = report.slice(start, end);
+
+  assert.match(
+    block,
+    /Number\(entry\.grossSalaryHalalas \|\| 0\)/
+  );
+
+  assert.match(
+    block,
+    /entry\.totalDeductionsHalalas/
+  );
+
+  assert.doesNotMatch(
+    block,
+    /manualAdditionsHalalas|overtimeValueHalalas/
+  );
+});
