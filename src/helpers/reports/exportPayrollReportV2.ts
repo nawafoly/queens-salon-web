@@ -5,7 +5,10 @@ import {
   type PayrollEntryView,
 } from "../../services/CorePayrollService";
 import { formatAttendanceHours } from "../hr/attendanceDiscipline";
-import { isPayrollCarryoverItem } from "../hr/payrollCarryoverPolicy.js";
+import {
+  isPayrollCarryoverItem,
+  nextPayrollMonth,
+} from "../hr/payrollCarryoverPolicy.js";
 import {
   payrollAttendanceObligationDeductionTotal,
   payrollObligationDeductionTotal,
@@ -47,6 +50,7 @@ export type PayrollReportV2Input = {
 export type PayrollPayslipV2Input = {
   entry: PayrollEntryView;
   isForecast?: boolean;
+  sourceCarryovers?: NonNullable<PayrollEntryView["carryoverAdjustments"]>;
   payrollBounds?: {
     monthStart?: string;
     monthEnd?: string;
@@ -636,124 +640,710 @@ export function buildPayrollPayslipDataV2(
 ): ExportV2Report<PayslipExportRow> {
   const entry = input.entry;
   const accrual = calculatePayrollAccrualView(entry);
+  const isLocked =
+    entry.status === "approved" ||
+    entry.status === "paid";
+
+  const absenceDeductionHalalas =
+    Math.max(
+      0,
+      Number(entry.absenceDeductionHalalas || 0)
+    );
+
+  const missingHoursDeductionHalalas =
+    input.isForecast ||
+    entry.attendanceSummary.attendanceDeductionEligible === false
+      ? 0
+      : Math.max(
+          0,
+          Number(entry.missingHoursDeductionHalalas || 0)
+        );
+
+  const insuranceDeductionHalalas =
+    Math.max(
+      0,
+      Number(entry.insuranceDeductionHalalas || 0)
+    );
+
+  const advanceDeductionsHalalas =
+    Math.max(
+      0,
+      Number(entry.advancesHalalas || 0)
+    );
+
+  const carriedAttendanceDeductionHalalas =
+    payrollAttendanceObligationDeductionTotal(
+      entry.deductions || []
+    );
+
+  const otherScheduledDeductionsHalalas =
+    payrollOtherObligationDeductionTotal(
+      entry.deductions || []
+    );
+
+  const manualDeductionsHalalas =
+    payrollOrdinaryManualDeductionsHalalas(entry);
+
+  const unclassifiedDeductionsHalalas =
+    payrollUnclassifiedDeductionsHalalas(entry);
+
+  const countedDeductionsHalalas =
+    payrollOrdinaryDeductionsHalalas(entry);
+
+  /*
+   * The persisted payroll total is canonical. Individual source rows can
+   * still describe amounts that were valid before a partial deferral.
+   * Their excess over the canonical current-period total is disclosure-only
+   * deferred deduction, not another deduction in the current payroll.
+   */
+  const displayedDeductionComponentsHalalas =
+    absenceDeductionHalalas +
+    missingHoursDeductionHalalas +
+    insuranceDeductionHalalas +
+    advanceDeductionsHalalas +
+    carriedAttendanceDeductionHalalas +
+    otherScheduledDeductionsHalalas +
+    manualDeductionsHalalas +
+    unclassifiedDeductionsHalalas;
+
+  const deferredDeductionHalalas =
+    Math.max(
+      0,
+      displayedDeductionComponentsHalalas -
+        countedDeductionsHalalas
+    );
+
+  const deductionsBeforeDeferralHalalas =
+    countedDeductionsHalalas +
+    deferredDeductionHalalas;
+
+  const finiteHalalas = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+      ? Math.round(parsed)
+      : null;
+  };
+
+  const lateApprovalAudit =
+    [...(entry.auditLog || [])]
+      .reverse()
+      .find(
+        (event) =>
+          String(event.action || "").trim() ===
+          "late_approval_recorded"
+      );
+
+  const sourceCarryover =
+    [...(input.sourceCarryovers || [])]
+      .filter(
+        (row) =>
+          row.sourcePayrollEntryId === entry.id &&
+          row.sourcePayrollMonth === entry.payrollMonth &&
+          row.status !== "void"
+      )
+      .sort((a, b) =>
+        String(
+          b.updatedAt ||
+            b.createdAt ||
+            ""
+        ).localeCompare(
+          String(
+            a.updatedAt ||
+              a.createdAt ||
+              ""
+          )
+        )
+      )[0];
+
+  const historicalApprovedNetHalalas =
+    finiteHalalas(
+      sourceCarryover?.approvedNetHalalas
+    ) ??
+    finiteHalalas(
+      lateApprovalAudit?.approvedNetHalalas
+    ) ??
+    (
+      isLocked
+        ? Math.max(
+            0,
+            Number(
+              accrual.expectedNetHalalas || 0
+            )
+          )
+        : null
+    );
+
+  const derivedCanonicalNetHalalas =
+    Math.max(
+      0,
+      Number(entry.grossSalaryHalalas || 0) +
+        Number(
+          entry.manualAdditionsHalalas || 0
+        ) +
+        Number(
+          entry.overtimeValueHalalas || 0
+        ) -
+        Number(
+          entry.totalDeductionsHalalas || 0
+        )
+    );
+
+  const canonicalNetHalalas =
+    finiteHalalas(
+      sourceCarryover?.recalculatedNetHalalas
+    ) ??
+    finiteHalalas(
+      lateApprovalAudit
+        ?.systemCalculatedNetHalalasAtRecording
+    ) ??
+    derivedCanonicalNetHalalas;
+
+  const carryoverAmountHalalas =
+    Math.max(
+      0,
+      Number(
+        sourceCarryover?.amountHalalas || 0
+      )
+    );
+
+  const settlementDifferenceHalalas =
+    sourceCarryover
+      ? sourceCarryover.direction === "deduction"
+        ? -carryoverAmountHalalas
+        : carryoverAmountHalalas
+      : isLocked &&
+          historicalApprovedNetHalalas != null
+        ? canonicalNetHalalas -
+          historicalApprovedNetHalalas
+        : 0;
+
+  const settlementTargetMonth =
+    String(
+      sourceCarryover?.targetPayrollMonth ||
+        ""
+    ).trim() ||
+    nextPayrollMonth(entry.payrollMonth) ||
+    "الفترة التالية";
+
+  const leaveCompensationHalalas =
+    payrollLeaveCompensationHalalas(entry);
+
+  const previousPeriodAdjustmentHalalas =
+    payrollEntryCarryoverNetHalalas(entry);
+
   const rows: PayslipExportRow[] = [
-    { item: "الراتب الأساسي", value: halalasToRiyals(entry.baseSalaryHalalas), note: "" },
-    { item: "البدلات التعاقدية", value: halalasToRiyals(entry.allowancesHalalas), note: "بدلات العقد الثابتة؛ لا تعد مكافآت أو إضافات." },
-    { item: "الإضافات والمكافآت", value: halalasToRiyals(payrollOrdinaryManualAdditionsHalalas(entry)), note: "لا يشمل تعويض رصيد الإجازات." },
     {
-      item: "تعويض رصيد الإجازات",
-      value: halalasToRiyals(payrollLeaveCompensationHalalas(entry)),
-      note: payrollLeaveCompensationHalalas(entry) > 0 ? "تعويض مالي مستقل عن المكافآت والإضافات، مرتبط بطلب التعويض المعتمد." : "لا يوجد",
-    },
-    {
-      item: "الأوفر تايم",
-      value: halalasToRiyals(entry.overtimeValueHalalas),
-      note: entry.overtimeEnabled ? "محتسب" : "غير محتسب",
-    },
-    {
-      item: "خصم الغياب",
-      value: halalasToRiyals(entry.absenceDeductionHalalas),
+      item: "الراتب الأساسي",
+      value: halalasToRiyals(
+        entry.baseSalaryHalalas
+      ),
       note: "",
     },
     {
-      item: "خصم نقص الساعات / التأخير / الخروج المبكر",
-      value: input.isForecast
-        ? 0
-        : entry.attendanceSummary.attendanceDeductionEligible === false
-          ? 0
-          : halalasToRiyals(entry.missingHoursDeductionHalalas),
+      item: "البدلات التعاقدية",
+      value: halalasToRiyals(
+        entry.allowancesHalalas
+      ),
+      note:
+        "بدلات العقد الثابتة؛ لا تعد مكافآت أو إضافات.",
+    },
+    {
+      item: "الإضافات والمكافآت",
+      value: halalasToRiyals(
+        payrollOrdinaryManualAdditionsHalalas(
+          entry
+        )
+      ),
+      note:
+        "لا يشمل تعويض رصيد الإجازات.",
+    },
+    {
+      item: "تعويض رصيد الإجازات",
+      value: halalasToRiyals(
+        leaveCompensationHalalas
+      ),
+      note:
+        leaveCompensationHalalas > 0
+          ? "تعويض مالي مستقل عن المكافآت والإضافات، مرتبط بطلب التعويض المعتمد."
+          : "لا يوجد",
+    },
+    {
+      item: "الأوفر تايم",
+      value: halalasToRiyals(
+        entry.overtimeValueHalalas
+      ),
+      note:
+        entry.overtimeEnabled
+          ? "محتسب"
+          : "غير محتسب",
+    },
+    {
+      item: "خصم الغياب",
+      value: halalasToRiyals(
+        absenceDeductionHalalas
+      ),
+      note: "",
+    },
+    {
+      item:
+        "خصم نقص الساعات / التأخير / الخروج المبكر",
+      value: halalasToRiyals(
+        missingHoursDeductionHalalas
+      ),
       note: input.isForecast
         ? "فترة مستقبلية؛ لم يبدأ احتساب الحضور بعد."
-        : entry.attendanceSummary.attendanceDeductionEligible === false
-          ? (entry.attendanceSummary.attendancePayrollMode === "exempt"
-              ? "معفى من الحضور والانصراف"
-              : "لم يطبق")
+        : entry.attendanceSummary
+              .attendanceDeductionEligible === false
+          ? entry.attendanceSummary
+                .attendancePayrollMode === "exempt"
+            ? "معفى من الحضور والانصراف"
+            : "لم يطبق"
           : "",
     },
-    { item: "خصم التأمينات الاجتماعية (GOSI)", value: halalasToRiyals(entry.insuranceDeductionHalalas), note: entry.gosiSnapshot ? `السياسة: ${entry.gosiSnapshot.policyVersion}` : "لا يوجد Snapshot تأمينات محفوظ" },
-    { item: "السلف", value: halalasToRiyals(entry.advancesHalalas), note: "" },
     {
-      item: "خصم حضور (لم يخصم في الفترة السابقة)",
+      item:
+        "خصم التأمينات الاجتماعية (GOSI)",
       value: halalasToRiyals(
-        payrollAttendanceObligationDeductionTotal(entry.deductions || [])
+        insuranceDeductionHalalas
       ),
-      note: "خصم حضور مستحق في هذه الفترة لأنه لم يخصم في الفترة السابقة.",
+      note: entry.gosiSnapshot
+        ? `السياسة: ${entry.gosiSnapshot.policyVersion}`
+        : "لا يوجد Snapshot تأمينات محفوظ",
+    },
+    {
+      item: "السلف",
+      value: halalasToRiyals(
+        advanceDeductionsHalalas
+      ),
+      note: "",
+    },
+    {
+      item:
+        "خصم حضور (لم يخصم في الفترة السابقة)",
+      value: halalasToRiyals(
+        carriedAttendanceDeductionHalalas
+      ),
+      note:
+        "خصم حضور مستحق في هذه الفترة لأنه لم يخصم في الفترة السابقة.",
     },
     {
       item: "استقطاعات مجدولة أخرى",
       value: halalasToRiyals(
-        payrollOtherObligationDeductionTotal(entry.deductions || [])
+        otherScheduledDeductionsHalalas
       ),
-      note: "استقطاعات مجدولة لا تشمل خصم الحضور المرحّل.",
+      note:
+        "استقطاعات مجدولة لا تشمل خصم الحضور المرحّل.",
     },
-    { item: "الخصومات اليدوية والجزاءات الأخرى", value: halalasToRiyals(payrollOrdinaryManualDeductionsHalalas(entry)), note: "لا تشمل GOSI أو الالتزامات المجدولة أو تسويات الفترات السابقة." },
+    {
+      item:
+        "الخصومات اليدوية والجزاءات الأخرى",
+      value: halalasToRiyals(
+        manualDeductionsHalalas
+      ),
+      note:
+        "لا تشمل GOSI أو الالتزامات المجدولة أو تسويات الفترات السابقة.",
+    },
+    {
+      item: "خصومات أخرى غير مصنفة",
+      value: halalasToRiyals(
+        unclassifiedDeductionsHalalas
+      ),
+      note:
+        unclassifiedDeductionsHalalas > 0
+          ? "فرق خصومات قائم داخل المسيرة ويحتاج تصنيفًا واضحًا."
+          : "لا توجد",
+    },
+    {
+      item:
+        "إجمالي الخصومات المستحقة قبل التأجيل",
+      value: halalasToRiyals(
+        deductionsBeforeDeferralHalalas
+      ),
+      note:
+        deferredDeductionHalalas > 0
+          ? "يشمل المبلغ الذي تقرر تأجيل خصمه إلى فترة لاحقة."
+          : "لا توجد خصومات مؤجلة.",
+    },
+    {
+      item: "خصومات مؤجلة لفترة لاحقة",
+      value: halalasToRiyals(
+        deferredDeductionHalalas
+      ),
+      note:
+        deferredDeductionHalalas > 0
+          ? `لا تدخل في خصومات هذه الفترة؛ تم ترحيلها إلى ${settlementTargetMonth}.`
+          : "لا يوجد",
+    },
     {
       item: "تسويات فترات سابقة",
-      value: halalasToRiyals(payrollEntryCarryoverNetHalalas(entry)),
-      note: payrollEntryCarryoverNetHalalas(entry) === 0 ? "لا توجد" : "تسوية موثقة من مسيرة سابقة؛ الموجب إضافة والسالب خصم.",
+      value: halalasToRiyals(
+        previousPeriodAdjustmentHalalas
+      ),
+      note:
+        previousPeriodAdjustmentHalalas === 0
+          ? "لا توجد"
+          : "تسوية موثقة من مسيرة سابقة؛ الموجب إضافة والسالب خصم.",
     },
-    { item: "إجمالي الخصومات قبل تسوية الفترات", value: halalasToRiyals(payrollOrdinaryDeductionsHalalas(entry)), note: "التسوية السابقة تظهر كبند مستقل لتجنب احتسابها مرتين." },
-    { item: "مساهمة المنشأة في GOSI", value: halalasToRiyals(entry.employerGosiContributionHalalas), note: "تكلفة على المنشأة ولا تخصم من صافي الموظفة." },
     {
-      item: entry.status === "approved" || entry.status === "paid" ? "الصافي المعتمد للصرف" : "الصافي المتوقع نهاية الفترة",
-      value: halalasToRiyals(accrual.expectedNetHalalas),
-      note: entry.status === "approved" || entry.status === "paid"
-        ? "مبلغ الصرف المثبت عند الاعتماد؛ الفروقات اللاحقة تُرحّل كتسوية لفترة لاحقة."
-        : "قيمة متوقعة حتى اعتماد المسيرة.",
+      item:
+        "إجمالي الخصومات المحتسبة لهذه الفترة",
+      value: halalasToRiyals(
+        countedDeductionsHalalas
+      ),
+      note:
+        deferredDeductionHalalas > 0
+          ? "هذا هو المبلغ الذي دخل فعليًا في حساب صافي هذه الفترة بعد استبعاد الخصومات المؤجلة."
+          : "إجمالي الخصومات الفعلي في هذه الفترة.",
     },
+    {
+      item: "مساهمة المنشأة في GOSI",
+      value: halalasToRiyals(
+        entry.employerGosiContributionHalalas
+      ),
+      note:
+        "تكلفة على المنشأة ولا تخصم من صافي الموظفة.",
+    },
+    ...(
+      isLocked
+        ? [
+            {
+              item:
+                "الصافي النظامي بعد إعادة الاحتساب",
+              value: halalasToRiyals(
+                canonicalNetHalalas
+              ),
+              note:
+                "القيمة الحالية المحسوبة Canonically داخل Core بعد جميع التصحيحات.",
+            },
+            {
+              item:
+                "فرق التسوية للفترة التالية",
+              value: halalasToRiyals(
+                settlementDifferenceHalalas
+              ),
+              note:
+                settlementDifferenceHalalas > 0
+                  ? `إضافة مستحقة للموظفة تُرحّل إلى ${settlementTargetMonth}.`
+                  : settlementDifferenceHalalas < 0
+                    ? `خصم تسوية يُرحّل إلى ${settlementTargetMonth}.`
+                    : "لا يوجد فرق بين الاعتماد التاريخي والحساب النظامي الحالي.",
+            },
+            {
+              item:
+                "الصافي المعتمد تاريخيًا للصرف",
+              value: halalasToRiyals(
+                historicalApprovedNetHalalas
+              ),
+              note:
+                "المبلغ المثبت فعليًا عند الاعتماد التاريخي؛ لا يعاد تغيير الشهر المعتمد بسبب تصحيحات لاحقة.",
+            },
+          ]
+        : [
+            {
+              item:
+                "الصافي المتوقع نهاية الفترة",
+              value: halalasToRiyals(
+                accrual.expectedNetHalalas
+              ),
+              note:
+                "قيمة متوقعة حتى اعتماد المسيرة.",
+            },
+          ]
+    ),
   ];
 
-  const periodFrom = input.payrollBounds?.monthStart;
-  const periodTo = input.payrollBounds?.monthEnd;
+  const periodFrom =
+    input.payrollBounds?.monthStart;
+
+  const periodTo =
+    input.payrollBounds?.monthEnd;
+
+  const approvalOrPayDate =
+    isLocked
+      ? entry.approvedAt || "غير محدد"
+      : input.payrollBounds?.payDate ||
+        "غير محدد";
+
+  const reconciliationTone: "danger" | "success" | "neutral" =
+    settlementDifferenceHalalas < 0
+      ? "danger"
+      : settlementDifferenceHalalas > 0
+        ? "success"
+        : "neutral";
 
   return {
-    slug: `payroll-payslip-${entry.employeeId}`,
+    slug:
+      `payroll-payslip-${entry.employeeId}`,
+
     reportCode: "HR-PAYSLIP",
+
     title: input.isForecast
       ? "كشف راتب تقديري"
       : "كشف راتب موظفة",
-    subtitle: `${exportV2SafeText(entry.employeeName)} — ${exportV2SafeText(entry.jobTitle, "موظفة")}`,
-    summarySheetName: "ملخص كشف الراتب",
-    detailsSheetName: "بنود كشف الراتب",
-    period: exportV2FormatPeriod(periodFrom, periodTo),
-    dateRange: { from: periodFrom, to: periodTo },
-    generatedAt: new Date().toISOString(),
-    generatedBy: generatedBy(),
+
+    subtitle:
+      `${exportV2SafeText(
+        entry.employeeName
+      )} — ${exportV2SafeText(
+        entry.jobTitle,
+        "موظفة"
+      )}`,
+
+    summarySheetName:
+      "ملخص كشف الراتب",
+
+    detailsSheetName:
+      "بنود كشف الراتب",
+
+    period: exportV2FormatPeriod(
+      periodFrom,
+      periodTo
+    ),
+
+    dateRange: {
+      from: periodFrom,
+      to: periodTo,
+    },
+
+    generatedAt:
+      new Date().toISOString(),
+
+    generatedBy:
+      generatedBy(),
+
     branding: {
       salonName: "مَلِكات",
       brandName: "Malikat Salon",
       logoUrl: malikatLogo,
     },
+
     filters: [
-      { label: "الشهر", value: entry.payrollMonth },
-      { label: "حالة الراتب", value: statusLabel(entry.status) },
-      { label: "تاريخ الصرف المتوقع", value: input.payrollBounds?.payDate || "غير محدد" },
+      {
+        label: "الشهر",
+        value: entry.payrollMonth,
+      },
+      {
+        label: "حالة الراتب",
+        value: statusLabel(entry.status),
+      },
+      {
+        label: isLocked
+          ? "تاريخ الاعتماد الفعلي"
+          : "تاريخ الصرف المتوقع",
+        value: approvalOrPayDate,
+      },
     ],
+
     summary: [
-      { label: "الموظفة", value: entry.employeeName, tone: "dark" },
-      { label: "الراتب الأساسي", value: halalasToRiyals(entry.baseSalaryHalalas), type: "currency", tone: "gold" },
-      { label: "البدلات التعاقدية", value: halalasToRiyals(entry.allowancesHalalas), type: "currency", tone: "neutral" },
-      { label: "الإضافات والمكافآت", value: halalasToRiyals(payrollOrdinaryAdditionsHalalas(entry)), type: "currency", tone: "success" },
-      { label: "الأوفر تايم", value: halalasToRiyals(entry.overtimeValueHalalas), type: "currency", tone: entry.overtimeValueHalalas > 0 ? "success" : "neutral" },
-      { label: "تعويض رصيد الإجازات", value: halalasToRiyals(payrollLeaveCompensationHalalas(entry)), type: "currency", tone: payrollLeaveCompensationHalalas(entry) > 0 ? "gold" : "neutral" },
-      { label: "إجمالي الخصومات قبل التسويات", value: halalasToRiyals(payrollOrdinaryDeductionsHalalas(entry)), type: "currency", tone: "danger" },
-      { label: "خصم GOSI للموظفة", value: halalasToRiyals(entry.insuranceDeductionHalalas), type: "currency", tone: entry.insuranceDeductionHalalas > 0 ? "danger" : "neutral" },
-      { label: "مساهمة المنشأة GOSI", value: halalasToRiyals(entry.employerGosiContributionHalalas), type: "currency", tone: entry.employerGosiContributionHalalas > 0 ? "gold" : "neutral" },
-      { label: entry.status === "approved" || entry.status === "paid" ? "الصافي المعتمد للصرف" : "الصافي المتوقع للصرف", value: halalasToRiyals(accrual.expectedNetHalalas), type: "currency", tone: "dark" },
+      {
+        label: "الموظفة",
+        value: entry.employeeName,
+        tone: "dark",
+      },
+      {
+        label: "الراتب الأساسي",
+        value: halalasToRiyals(
+          entry.baseSalaryHalalas
+        ),
+        type: "currency",
+        tone: "gold",
+      },
+      {
+        label:
+          "البدلات التعاقدية",
+        value: halalasToRiyals(
+          entry.allowancesHalalas
+        ),
+        type: "currency",
+        tone: "neutral",
+      },
+      {
+        label:
+          "الإضافات والمكافآت",
+        value: halalasToRiyals(
+          payrollOrdinaryAdditionsHalalas(
+            entry
+          )
+        ),
+        type: "currency",
+        tone: "success",
+      },
+      {
+        label: "الأوفر تايم",
+        value: halalasToRiyals(
+          entry.overtimeValueHalalas
+        ),
+        type: "currency",
+        tone:
+          entry.overtimeValueHalalas > 0
+            ? "success"
+            : "neutral",
+      },
+      {
+        label:
+          "تعويض رصيد الإجازات",
+        value: halalasToRiyals(
+          leaveCompensationHalalas
+        ),
+        type: "currency",
+        tone:
+          leaveCompensationHalalas > 0
+            ? "gold"
+            : "neutral",
+      },
+      {
+        label:
+          "إجمالي الخصومات المحتسبة لهذه الفترة",
+        value: halalasToRiyals(
+          countedDeductionsHalalas
+        ),
+        type: "currency",
+        tone: "danger",
+      },
+      {
+        label:
+          "خصومات مؤجلة لفترة لاحقة",
+        value: halalasToRiyals(
+          deferredDeductionHalalas
+        ),
+        type: "currency",
+        tone:
+          deferredDeductionHalalas > 0
+            ? "gold"
+            : "neutral",
+      },
+      {
+        label:
+          "خصم GOSI للموظفة",
+        value: halalasToRiyals(
+          insuranceDeductionHalalas
+        ),
+        type: "currency",
+        tone:
+          insuranceDeductionHalalas > 0
+            ? "danger"
+            : "neutral",
+      },
+      {
+        label:
+          "مساهمة المنشأة GOSI",
+        value: halalasToRiyals(
+          entry.employerGosiContributionHalalas
+        ),
+        type: "currency",
+        tone:
+          entry.employerGosiContributionHalalas >
+          0
+            ? "gold"
+            : "neutral",
+      },
+      ...(
+        isLocked
+          ? [
+              {
+                label:
+                  "الصافي المعتمد تاريخيًا للصرف",
+                value: halalasToRiyals(
+                  historicalApprovedNetHalalas
+                ),
+                type: "currency" as const,
+                tone: "dark" as const,
+              },
+              {
+                label:
+                  "الصافي النظامي بعد إعادة الاحتساب",
+                value: halalasToRiyals(
+                  canonicalNetHalalas
+                ),
+                type: "currency" as const,
+                tone: "success" as const,
+              },
+              {
+                label:
+                  "فرق التسوية للفترة التالية",
+                value: halalasToRiyals(
+                  settlementDifferenceHalalas
+                ),
+                type: "currency" as const,
+                tone: reconciliationTone,
+              },
+            ]
+          : [
+              {
+                label:
+                  "الصافي المتوقع للصرف",
+                value: halalasToRiyals(
+                  accrual.expectedNetHalalas
+                ),
+                type: "currency" as const,
+                tone: "dark" as const,
+              },
+            ]
+      ),
     ],
+
     columns: [
-      { key: "item", header: "البند", width: 28 },
-      { key: "value", header: "القيمة", type: "currency", width: 20, align: "center" },
-      { key: "note", header: "ملاحظة", width: 34 },
+      {
+        key: "item",
+        header: "البند",
+        width: 30,
+      },
+      {
+        key: "value",
+        header: "القيمة",
+        type: "currency",
+        width: 20,
+        align: "center",
+      },
+      {
+        key: "note",
+        header: "ملاحظة",
+        width: 42,
+      },
     ],
+
     rows,
+
     totals: {},
-    emptyMessage: "لا توجد بنود في كشف الراتب.",
+
+    emptyMessage:
+      "لا توجد بنود في كشف الراتب.",
+
     notes: [
       `الحضور: ${entry.attendanceSummary.attendanceDays} يوم، الغياب: ${entry.attendanceSummary.absentDays} يوم، البصمات الناقصة: ${entry.attendanceSummary.incompleteDays} يوم.`,
-      `الساعات المطلوبة: ${formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}، الساعات الفعلية: ${formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}.`,
+
+      `الساعات المطلوبة: ${formatAttendanceHours(
+        entry.attendanceSummary
+          .totalScheduledHours
+      )}، الساعات الفعلية: ${formatAttendanceHours(
+        entry.attendanceSummary
+          .totalActualWorkedHours
+      )}.`,
+
+      deferredDeductionHalalas > 0
+        ? `تم تأجيل ${halalasToRiyals(
+            deferredDeductionHalalas
+          ).toFixed(2)} ر.س من خصومات ${entry.payrollMonth} إلى ${settlementTargetMonth}، لذلك لا تدخل في إجمالي خصومات الفترة الحالية.`
+        : "",
+
+      isLocked &&
+      settlementDifferenceHalalas !== 0
+        ? `الصافي المعتمد تاريخيًا ${halalasToRiyals(
+            historicalApprovedNetHalalas
+          ).toFixed(2)} ر.س، بينما الصافي النظامي بعد إعادة الاحتساب ${halalasToRiyals(
+            canonicalNetHalalas
+          ).toFixed(2)} ر.س؛ فرق التسوية ${halalasToRiyals(
+            settlementDifferenceHalalas
+          ).toFixed(2)} ر.س يُرحّل إلى ${settlementTargetMonth}.`
+        : "",
+
       rowNotes(entry),
-    ].filter((note) => note && note !== "—"),
+    ].filter(
+      (note) =>
+        note &&
+        note !== "—"
+    ),
+
     pdfOrientation: "portrait",
   };
 }

@@ -95,6 +95,16 @@ function filterValue(report: AnyReport, token: string, fallback = "—") {
   return clean(report.filters?.find((item) => item.label.includes(token))?.value, fallback);
 }
 
+function payrollDateValue(report: AnyReport) {
+  const item = report.filters?.find(
+    (filter) =>
+      filter.label.includes("تاريخ الاعتماد") ||
+      filter.label.includes("تاريخ الصرف")
+  );
+
+  return clean(item?.value, "—");
+}
+
 function rowValue(report: AnyReport, token: string) {
   const row = report.rows.find((item) => clean(item.item, "").includes(token));
   return num(row?.value);
@@ -302,7 +312,7 @@ function buildDesktopSheet(report: AnyReport) {
   addMergedToRow(meta1, merges, 4, 5, "حالة الراتب", S.metaLabel);
   addMergedToRow(meta1, merges, 6, 7, filterValue(report, "حالة الراتب"), statusStyle(filterValue(report, "حالة الراتب")));
   addMergedToRow(meta1, merges, 8, 9, "تاريخ الصرف", S.metaLabel);
-  addMergedToRow(meta1, merges, 10, 11, filterValue(report, "تاريخ الصرف"), S.metaValue);
+  addMergedToRow(meta1, merges, 10, 11, payrollDateValue(report), S.metaValue);
   rows.push(meta1);
 
   const meta2: Row = { index: 6, height: 24, cells: [] };
@@ -347,7 +357,7 @@ function buildDesktopSheet(report: AnyReport) {
     let moneyStyle: number = index % 2 ? S.currencyAlt : S.currency;
     if (label.includes("خصم") || label.includes("الخصومات") || value < 0) moneyStyle = S.currencyRed;
     else if (label.includes("تعويض رصيد") || label.includes("الصافي")) moneyStyle = S.currencyGold;
-    else if (label.includes("إضاف") || label.includes("مكاف") || label.includes("أوفر") || label.includes("تسويات")) moneyStyle = value < 0 ? S.currencyRed : S.currencyGreen;
+    else if (label.includes("إضاف") || label.includes("مكاف") || label.includes("أوفر") || label.includes("تسوية")) moneyStyle = value < 0 ? S.currencyRed : S.currencyGreen;
 
     const body: Row = { index: cursor, height: note.length > 52 ? 38 : 30, cells: [] };
     addMergedToRow(body, merges, 0, 3, label, index % 2 ? S.textAlt : S.text);
@@ -360,7 +370,7 @@ function buildDesktopSheet(report: AnyReport) {
   cursor += 1;
   addMerged(rows, merges, cursor, 0, 11, "الملاحظات التشغيلية والمحاسبية", S.section, 28);
   cursor += 1;
-  const accountingNote = "تعويض رصيد الإجازات بند مستقل عن الإضافات والمكافآت. بعد اعتماد الراتب يثبت مبلغ الصرف، وأي فرق لاحق يرحّل كتسوية موثقة للفترة التالية.";
+  const accountingNote = "تعويض رصيد الإجازات مستقل، والخصومات المؤجلة لا تدخل في خصومات الفترة الحالية. بعد الاعتماد يثبت مبلغ الصرف التاريخي ويظهر الحساب النظامي وفرق التسوية للفترة التالية بشكل مستقل.";
   addMerged(rows, merges, cursor, 0, 11, accountingNote, S.note, 42);
   cursor += 1;
   (report.notes || []).forEach((note) => {
@@ -406,7 +416,7 @@ function buildMobileSheet(report: AnyReport) {
   const metaRows = [
     ["الفترة", clean(report.period)],
     ["الحالة", filterValue(report, "حالة الراتب")],
-    ["تاريخ الصرف", filterValue(report, "تاريخ الصرف")],
+    ["تاريخ الصرف", payrollDateValue(report)],
   ];
   let cursor = 5;
   metaRows.forEach(([label, value]) => {
@@ -445,7 +455,7 @@ function buildMobileSheet(report: AnyReport) {
     let valueStyle: number = S.mobileValue;
     if (label.includes("خصم") || label.includes("الخصومات") || value < 0) valueStyle = S.currencyRed;
     else if (label.includes("تعويض رصيد") || label.includes("الصافي")) valueStyle = S.currencyGold;
-    else if (label.includes("إضاف") || label.includes("مكاف") || label.includes("أوفر") || label.includes("تسويات")) valueStyle = value < 0 ? S.currencyRed : S.currencyGreen;
+    else if (label.includes("إضاف") || label.includes("مكاف") || label.includes("أوفر") || label.includes("تسوية")) valueStyle = value < 0 ? S.currencyRed : S.currencyGreen;
 
     const itemRow: Row = { index: cursor, height: 32, cells: [] };
     addMergedToRow(itemRow, merges, 0, 1, label, S.mobileLabel);
