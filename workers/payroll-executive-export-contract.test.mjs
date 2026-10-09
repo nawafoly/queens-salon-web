@@ -59,6 +59,23 @@ test('official payroll exports are unified, professional and keep leave compensa
   assert.match(payslipExcel, /تعويض رصيد الإجازات/);
   assert.match(payslipPdf, /كشف راتب موظفة/);
   assert.match(payslipPdf, /تعويض رصيد الإجازات/);
+  assert.match(report, /sourceCarryovers/);
+  assert.match(report, /recalculatedNetHalalas/);
+  assert.match(report, /approvedNetHalalas/);
+  assert.match(report, /systemCalculatedNetHalalasAtRecording/);
+  assert.match(report, /إجمالي الخصومات المستحقة قبل التأجيل/);
+  assert.match(report, /خصومات مؤجلة لفترة لاحقة/);
+  assert.match(report, /إجمالي الخصومات المحتسبة لهذه الفترة/);
+  assert.match(report, /الصافي النظامي بعد إعادة الاحتساب/);
+  assert.match(report, /الصافي المعتمد تاريخيًا للصرف/);
+  assert.match(report, /فرق التسوية للفترة التالية/);
+  assert.match(report, /تاريخ الاعتماد الفعلي/);
+  assert.match(payslipPdf, /الخصومات المؤجلة لا تدخل/);
+  assert.match(payslipExcel, /payrollDateValue/);
+  assert.match(dashboard, /sourceCarryovers/);
+  assert.match(dashboard, /<span>PDF<\/span>/);
+  assert.match(dashboard, /<span>Excel<\/span>/);
+  assert.match(dashboard, /<span>Excel جوال<\/span>/);
   assert.match(dashboard, /تصدير كشف راتب PDF/);
   assert.match(dashboard, /تصدير كشف راتب Excel/);
   assert.match(dashboard, /تصدير كشف راتب Excel جوال/);
@@ -115,4 +132,36 @@ test('payroll approval and next-period reconciliation are explicit source-of-tru
   assert.match(repository, /reconcilePayrollCarryoversBatch/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS payroll_approval_snapshots/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS payroll_carryover_adjustments/);
+});
+
+test('payslip canonical fallback never double counts additions already included in gross', () => {
+  const report = read('src/helpers/reports/exportPayrollReportV2.ts');
+
+  const start = report.indexOf(
+    '  const derivedCanonicalNetHalalas ='
+  );
+  const end = report.indexOf(
+    '  const canonicalNetHalalas =',
+    start
+  );
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const block = report.slice(start, end);
+
+  assert.match(
+    block,
+    /Number\(entry\.grossSalaryHalalas \|\| 0\)/
+  );
+
+  assert.match(
+    block,
+    /entry\.totalDeductionsHalalas/
+  );
+
+  assert.doesNotMatch(
+    block,
+    /manualAdditionsHalalas|overtimeValueHalalas/
+  );
 });

@@ -2765,6 +2765,7 @@ export default function DashboardPayroll() {
             }
             exportPayrollPayslipPdfV2({
               entry: selectedEntry,
+              sourceCarryovers,
               payrollBounds,
               isForecast: isFuturePayrollPeriod,
             });
@@ -2783,6 +2784,7 @@ export default function DashboardPayroll() {
             }
             exportPayrollPayslipExcelV2({
               entry: selectedEntry,
+              sourceCarryovers,
               payrollBounds,
               isForecast: isFuturePayrollPeriod,
             });
@@ -2801,6 +2803,7 @@ export default function DashboardPayroll() {
             }
             exportPayrollPayslipMobileExcelV2({
               entry: selectedEntry,
+              sourceCarryovers,
               payrollBounds,
               isForecast: isFuturePayrollPeriod,
             });
@@ -3831,9 +3834,9 @@ function PayrollDetailsModal({
           </div>
           <div className="payroll-modal-actions">
             <a className="payroll-action-link" href={employeeTargetPath(entry)}><FiTarget />تارقت الموظفة</a>
-            <button type="button" onClick={onExportPayslipPdf}><FiFileText /> تصدير كشف راتب PDF</button>
-            <button type="button" onClick={onExportPayslipExcel}><FiDownload /> تصدير كشف راتب Excel</button>
-            <button type="button" onClick={onExportPayslipMobileExcel}><FiDownload /> تصدير كشف راتب Excel جوال</button>
+            <button type="button" onClick={onExportPayslipPdf} aria-label="تصدير كشف راتب PDF" title="تصدير كشف راتب PDF"><FiFileText aria-hidden="true" /><span>PDF</span></button>
+            <button type="button" onClick={onExportPayslipExcel} aria-label="تصدير كشف راتب Excel" title="تصدير كشف راتب Excel"><FiDownload aria-hidden="true" /><span>Excel</span></button>
+            <button type="button" onClick={onExportPayslipMobileExcel} aria-label="تصدير كشف راتب Excel جوال" title="تصدير كشف راتب Excel جوال"><FiDownload aria-hidden="true" /><span>Excel جوال</span></button>
             <button type="button" onClick={onClose} aria-label="إغلاق"><FiX /></button>
           </div>
         </header>
