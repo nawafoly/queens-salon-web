@@ -2453,10 +2453,10 @@ body > .dashboard-v2.payroll-modal-backdrop
   .payroll-late-approval-modal {
   width: min(720px, 100%);
   max-width: 100%;
-  min-width: 0 !important;
+  min-width: 0;
   max-height: calc(100dvh - 36px);
   box-sizing: border-box;
-  overflow-x: hidden !important;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: 22px;
@@ -2476,7 +2476,7 @@ body > .dashboard-v2.payroll-modal-backdrop
   z-index: 6;
   width: 100%;
   min-width: 0;
-  background: var(--dsv2-surface, #fff);
+  background: var(--dsv2-surface);
 }
 
 body > .dashboard-v2.payroll-modal-backdrop
@@ -2538,9 +2538,9 @@ body > .dashboard-v2.payroll-modal-backdrop
 body > .dashboard-v2.payroll-modal-backdrop
   .payroll-late-approval-modal
   [aria-invalid="true"] {
-  border-color: #b42318 !important;
+  border-color: var(--dsv2-burgundy);
   box-shadow:
-    0 0 0 3px rgba(180, 35, 24, 0.12) !important;
+    0 0 0 3px rgba(var(--dsv2-burgundy-rgb), 0.12);
 }
 
 body > .dashboard-v2.payroll-modal-backdrop
@@ -2548,7 +2548,7 @@ body > .dashboard-v2.payroll-modal-backdrop
   .dsv2-field__error {
   display: block;
   margin-top: 2px;
-  color: #b42318;
+  color: var(--dsv2-burgundy);
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.5;
@@ -2558,10 +2558,10 @@ body > .dashboard-v2.payroll-modal-backdrop
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid rgba(180, 35, 24, 0.26);
+  border: 1px solid rgba(var(--dsv2-burgundy-rgb), 0.26);
   border-radius: 16px;
-  background: rgba(180, 35, 24, 0.045);
-  color: #5f1720;
+  background: rgba(var(--dsv2-burgundy-rgb), 0.045);
+  color: var(--dsv2-burgundy);
 }
 
 .payroll-late-approval-compliance-head {
@@ -2570,7 +2570,7 @@ body > .dashboard-v2.payroll-modal-backdrop
 }
 
 .payroll-late-approval-compliance-head small {
-  color: #7a2931;
+  color: var(--dsv2-burgundy);
 }
 
 .payroll-late-approval-compliance-items {
@@ -2585,9 +2585,9 @@ body > .dashboard-v2.payroll-modal-backdrop
   justify-content: space-between;
   gap: 14px;
   padding: 10px 12px;
-  border: 1px solid rgba(180, 35, 24, 0.15);
+  border: 1px solid rgba(var(--dsv2-burgundy-rgb), 0.15);
   border-radius: 12px;
-  background: var(--dsv2-surface, #fff);
+  background: var(--dsv2-surface);
 }
 
 .payroll-late-approval-compliance-item > div {
@@ -2597,7 +2597,7 @@ body > .dashboard-v2.payroll-modal-backdrop
 }
 
 .payroll-late-approval-compliance-item small {
-  color: #7a2931;
+  color: var(--dsv2-burgundy);
   line-height: 1.5;
 }
 
@@ -2618,8 +2618,8 @@ body > .dashboard-v2.payroll-modal-backdrop
   gap: 12px;
   margin-top: 18px;
   padding: 16px 24px 20px;
-  border-top: 1px solid var(--dsv2-border, #e5e7eb);
-  background: var(--dsv2-surface, #fff);
+  border-top: 1px solid var(--dsv2-border);
+  background: var(--dsv2-surface);
 }
 
 body > .dashboard-v2.payroll-modal-backdrop
