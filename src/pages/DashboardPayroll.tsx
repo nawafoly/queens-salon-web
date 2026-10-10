@@ -1565,8 +1565,9 @@ export default function DashboardPayroll() {
       nextErrors.approvalDate = "اختر تاريخ الاعتماد الفعلي.";
     }
 
-    const amountRiyals = Number(lateApproval.approvedAmountRiyals);
-    if (!Number.isFinite(amountRiyals) || amountRiyals < 0) {
+    const amountRaw = lateApproval.approvedAmountRiyals.trim();
+    const amountRiyals = Number(amountRaw);
+    if (!amountRaw || !Number.isFinite(amountRiyals) || amountRiyals < 0) {
       nextErrors.approvedAmountRiyals = "أدخل المبلغ الذي تم اعتماده فعليًا.";
     }
 

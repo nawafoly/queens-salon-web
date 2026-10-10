@@ -43,6 +43,14 @@ test("late payroll approval is explicit, audited and Core-authoritative", () => 
   assert.match(page, /aria-invalid/);
   assert.match(page, /المبلغ المعتمد فعليًا/);
 
+  assert.match(
+    page,
+    /const amountRaw = lateApproval\.approvedAmountRiyals\.trim\(\)/
+  );
+  assert.match(
+    page,
+    /!amountRaw \|\| !Number\.isFinite\(amountRiyals\) \|\| amountRiyals < 0/
+  );
   const lateApprovalCss = read(
     "src/styles/dashboard-v2/pages/payroll.css"
   );
