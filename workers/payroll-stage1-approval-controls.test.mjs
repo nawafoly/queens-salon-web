@@ -36,7 +36,32 @@ test("late payroll approval is explicit, audited and Core-authoritative", () => 
   assert.match(page, /DashboardDatePickerV2/);
   assert.match(page, /DashboardSelectV2/);
   assert.match(page, /payroll-late-approval-modal/);
+  assert.match(page, /lateApprovalComplianceItems/);
+  assert.match(page, /focusFirstLateApprovalError/);
+  assert.match(page, /الخصومات التي تمنع الاعتماد/);
+  assert.match(page, /complianceItems/);
+  assert.match(page, /aria-invalid/);
   assert.match(page, /المبلغ المعتمد فعليًا/);
+
+  assert.match(
+    page,
+    /const amountRaw = lateApproval\.approvedAmountRiyals\.trim\(\)/
+  );
+  assert.match(
+    page,
+    /!amountRaw \|\| !Number\.isFinite\(amountRiyals\) \|\| amountRiyals < 0/
+  );
+  const lateApprovalCss = read(
+    "src/styles/dashboard-v2/pages/payroll.css"
+  );
+  assert.match(
+    lateApprovalCss,
+    /MALIKAT_LATE_APPROVAL_MODAL_V3_20261010_START/
+  );
+  assert.match(
+    lateApprovalCss,
+    /overflow-x:\s*hidden/
+  );
   assert.match(page, /تاريخ إدخال السجل في النظام يبقى وقت اليوم الحقيقي/);
   assert.doesNotMatch(
     repo.match(/export async function recordLatePayrollApproval[\s\S]*?export async function reopenPayrollEntry/)?.[0] || "",
