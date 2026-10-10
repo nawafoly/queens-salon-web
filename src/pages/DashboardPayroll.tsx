@@ -132,12 +132,209 @@ type PayrollLateApprovalDraft = {
   reason: string;
 };
 
+type PayrollLateApprovalComplianceItem = {
+  label: string;
+  amount: string;
+  issue: string;
+};
+
 type PayrollLateApprovalErrors = {
   approvalDate?: string;
   approvedAmountRiyals?: string;
   reason?: string;
   form?: string;
+  complianceItems?: PayrollLateApprovalComplianceItem[];
 };
+
+function lateApprovalCoreErrorCode(error: unknown) {
+  return String(
+    (error as { code?: unknown })?.code ||
+      (error as { message?: unknown })?.message ||
+      error ||
+      ""
+  ).trim();
+}
+
+function lateApprovalComplianceItems(
+  entry: PayrollEntryView,
+  error: unknown
+): PayrollLateApprovalComplianceItem[] {
+  const code = lateApprovalCoreErrorCode(error);
+
+  const validClasses = new Set([
+    "employer_loan",
+    "judicial_debt",
+    "thrift_fund",
+    "housing_or_benefit_installment",
+    "disciplinary_fine",
+    "damage_recovery",
+    "other_with_written_consent",
+    "deferred_time_not_worked_adjustment",
+  ]);
+
+  const evidenceClasses = new Set([
+    "employer_loan",
+    "thrift_fund",
+    "housing_or_benefit_installment",
+    "disciplinary_fine",
+    "damage_recovery",
+  ]);
+
+  return (entry.deductions || [])
+    .filter((item) => !isPayrollCarryoverItem(item))
+    .map((item) => {
+      const raw =
+        item as unknown as Record<string, unknown>;
+
+      const text = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = String(raw[key] ?? "").trim();
+          if (value) return value;
+        }
+        return "";
+      };
+
+      const sourceType =
+        text("sourceType", "source_type");
+
+      const kind =
+        text("kind");
+
+      const isObligation =
+        sourceType === "payroll_obligation" ||
+        kind === "payroll_obligation";
+
+      const amountHalalas = Math.max(
+        0,
+        Number(
+          raw["amountHalalas"] ??
+            raw["amount_halalas"] ??
+            raw["amount"] ??
+            0
+        )
+      );
+
+      if (amountHalalas <= 0) {
+        return null;
+      }
+
+      const laborClass =
+        text(
+          "laborDeductionClass",
+          "labor_deduction_class"
+        );
+
+      const evidenceReference =
+        text(
+          "evidenceReference",
+          "evidence_reference",
+          "sourceRef",
+          "source_ref"
+        );
+
+      const writtenConsentReference =
+        text(
+          "writtenConsentReference",
+          "written_consent_reference"
+        );
+
+      const label =
+        text(
+          "label",
+          "reason",
+          "note",
+          "obligationKind",
+          "obligation_kind"
+        ) || "خصم مالي";
+
+      let issue = "";
+
+      if (
+        code ===
+          "core_payroll:deduction_legal_class_required" &&
+        !isObligation &&
+        !validClasses.has(laborClass)
+      ) {
+        issue =
+          "التصنيف النظامي لهذا الخصم غير مكتمل.";
+      }
+
+      if (
+        code ===
+          "core_payroll:deduction_evidence_reference_required" &&
+        !isObligation &&
+        evidenceClasses.has(laborClass) &&
+        !evidenceReference
+      ) {
+        issue =
+          "المستند أو مرجع الإثبات لهذا الخصم غير مكتمل.";
+      }
+
+      if (
+        code ===
+          "core_payroll:written_consent_reference_required" &&
+        !isObligation &&
+        laborClass ===
+          "other_with_written_consent" &&
+        !writtenConsentReference
+      ) {
+        issue =
+          "مرجع الموافقة الخطية لهذا الخصم غير مكتمل.";
+      }
+
+      if (
+        code ===
+          "core_payroll:obligation_deduction_class_required" &&
+        isObligation
+      ) {
+        issue =
+          "تصنيف هذا الالتزام المالي غير مكتمل.";
+      }
+
+      if (
+        code ===
+          "core_payroll:obligation_deduction_evidence_required" &&
+        isObligation
+      ) {
+        issue =
+          "هذا الالتزام يحتاج استكمال المستند أو المرجع النظامي.";
+      }
+
+      if (!issue) {
+        return null;
+      }
+
+      return {
+        label,
+        amount: formatPayrollMoney(amountHalalas),
+        issue,
+      };
+    })
+    .filter(
+      (
+        item
+      ): item is PayrollLateApprovalComplianceItem =>
+        Boolean(item)
+    );
+}
+
+function focusFirstLateApprovalError() {
+  window.requestAnimationFrame(() => {
+    const field =
+      document.querySelector<HTMLElement>(
+        '.payroll-late-approval-modal [aria-invalid="true"]'
+      );
+
+    if (!field) return;
+
+    field.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    field.focus?.();
+  });
+}
 
 type PayrollRowFeedback = {
   employeeId: string;
@@ -502,12 +699,20 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   }
   if (
     message === "core_payroll:deduction_legal_class_required" ||
+    message === "core_payroll:obligation_deduction_class_required"
+  ) {
+    return "يوجد خصم غير مصنف نظاميًا. أكمل تصنيف الخصم قبل اعتماد المسيرة.";
+  }
+  if (
     message === "core_payroll:deduction_evidence_reference_required" ||
-    message === "core_payroll:written_consent_reference_required" ||
-    message === "core_payroll:obligation_deduction_class_required" ||
     message === "core_payroll:obligation_deduction_evidence_required"
   ) {
-    return "يوجد خصم يحتاج استكمال التصنيف أو المستند النظامي قبل اعتماد المسيرة.";
+    return "يوجد خصم يحتاج مستندًا أو مرجع إثبات. أكمل بيانات الإثبات قبل اعتماد المسيرة.";
+  }
+  if (
+    message === "core_payroll:written_consent_reference_required"
+  ) {
+    return "يوجد خصم يتطلب موافقة خطية. سجّل مرجع الموافقة قبل اعتماد المسيرة.";
   }
   if (
     message === "core_payroll:reconciled_overtime_snapshot_stale" ||
@@ -1371,7 +1576,10 @@ export default function DashboardPayroll() {
     }
 
     if (Object.keys(nextErrors).length) {
+      nextErrors.form =
+        "أكمل الحقول المطلوبة الموضحة باللون الأحمر ثم أعد المحاولة.";
       setLateApprovalErrors(nextErrors);
+      focusFirstLateApprovalError();
       return;
     }
 
@@ -1417,11 +1625,21 @@ export default function DashboardPayroll() {
       setLateApprovalErrors({});
       setLateApproval(null);
     } catch (actionError: any) {
+      const complianceItems =
+        lateApprovalComplianceItems(
+          selectedLateApprovalEntry,
+          actionError
+        );
+
       setLateApprovalErrors({
         form: payrollActionErrorMessage(
           actionError,
           "تعذر تسجيل الاعتماد المتأخر."
         ),
+        complianceItems:
+          complianceItems.length > 0
+            ? complianceItems
+            : undefined,
       });
     } finally {
       setBusy("");
@@ -3240,7 +3458,7 @@ export default function DashboardPayroll() {
                   aria-invalid={Boolean(lateApprovalErrors.approvalDate)}
                   aria-describedby={lateApprovalErrors.approvalDate ? "payroll-late-approval-date-error" : undefined}
                   onChange={(approvalDate) => {
-                    setLateApprovalErrors((current) => ({ ...current, approvalDate: undefined, form: undefined }));
+                    setLateApprovalErrors((current) => ({ ...current, approvalDate: undefined, form: undefined, complianceItems: undefined }));
                     setLateApproval({ ...lateApproval, approvalDate });
                   }}
                 />
@@ -3264,7 +3482,7 @@ export default function DashboardPayroll() {
                     aria-invalid={Boolean(lateApprovalErrors.approvedAmountRiyals)}
                     aria-describedby={lateApprovalErrors.approvedAmountRiyals ? "payroll-late-approval-amount-error" : undefined}
                     onChange={(event) => {
-                      setLateApprovalErrors((current) => ({ ...current, approvedAmountRiyals: undefined, form: undefined }));
+                      setLateApprovalErrors((current) => ({ ...current, approvedAmountRiyals: undefined, form: undefined, complianceItems: undefined }));
                       setLateApproval({
                         ...lateApproval,
                         approvedAmountRiyals: event.target.value,
@@ -3297,7 +3515,7 @@ export default function DashboardPayroll() {
                   aria-invalid={Boolean(lateApprovalErrors.reason)}
                   aria-describedby={lateApprovalErrors.reason ? "payroll-late-approval-reason-error" : undefined}
                   onChange={(event) => {
-                    setLateApprovalErrors((current) => ({ ...current, reason: undefined, form: undefined }));
+                    setLateApprovalErrors((current) => ({ ...current, reason: undefined, form: undefined, complianceItems: undefined }));
                     setLateApproval({
                       ...lateApproval,
                       reason: event.target.value,
@@ -3336,6 +3554,38 @@ export default function DashboardPayroll() {
               />
             ) : null}
 
+            {lateApprovalErrors.complianceItems?.length ? (
+              <section
+                className="payroll-late-approval-compliance-list"
+                aria-label="الخصومات التي تحتاج استكمال"
+              >
+                <div className="payroll-late-approval-compliance-head">
+                  <strong>الخصومات التي تمنع الاعتماد</strong>
+                  <small>
+                    أكمل بيانات هذه الخصومات ثم أعد المحاولة.
+                  </small>
+                </div>
+
+                <div className="payroll-late-approval-compliance-items">
+                  {lateApprovalErrors.complianceItems.map(
+                    (item, index) => (
+                      <article
+                        className="payroll-late-approval-compliance-item"
+                        key={`${item.label}:${item.amount}:${index}`}
+                      >
+                        <div>
+                          <strong>{item.label}</strong>
+                          <small>{item.issue}</small>
+                        </div>
+
+                        <b>{item.amount}</b>
+                      </article>
+                    )
+                  )}
+                </div>
+              </section>
+            ) : null}
+
             <footer>
               <button
                 type="button"
@@ -3349,10 +3599,7 @@ export default function DashboardPayroll() {
                 className="is-primary"
                 disabled={
                   busy.startsWith("late-approve:") ||
-                  !selectedLateApprovalEntry ||
-                  !lateApproval.approvalDate ||
-                  lateApproval.approvedAmountRiyals === "" ||
-                  !lateApproval.reason.trim()
+                  !selectedLateApprovalEntry
                 }
                 onClick={() => void submitLateApproval()}
               >
