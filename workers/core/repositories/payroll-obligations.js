@@ -884,13 +884,11 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
     );
   }
 
-  const compliance = allowedCanonicalSourceType
-    ? null
-    : creationComplianceInput(
-        data,
-        reason,
-        'core_payroll:obligation_deduction_class_required'
-      );
+  const requestedDeductionClass = cleanText(
+    data.laborDeductionClass ??
+      data.labor_deduction_class ??
+      data.deductionClass
+  );
 
   if (sourceRef) {
     const idempotentExisting = await dbFirst(
@@ -901,24 +899,33 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
       [salonId, employeeId, sourceType, sourceRef]
     );
     if (idempotentExisting && !(sourceType === 'attendance' && cleanText(idempotentExisting.status).toLowerCase() === 'cancelled')) {
+      const retryCompliance =
+        !allowedCanonicalSourceType && requestedDeductionClass
+          ? creationComplianceInput(
+              data,
+              reason,
+              'core_payroll:obligation_deduction_class_required'
+            )
+          : null;
+
       const matchesExisting =
         cleanText(idempotentExisting.obligation_kind) === kind &&
         cleanText(idempotentExisting.original_payroll_month) === originalPayrollMonth &&
         Number(idempotentExisting.original_amount_halalas || 0) === amountHalalas &&
         cleanText(idempotentExisting.reason) === reason &&
         (
-          !compliance ||
+          !retryCompliance ||
           (
             cleanText(idempotentExisting.labor_deduction_class) ===
-              compliance.deductionClass &&
+              retryCompliance.deductionClass &&
             cleanText(idempotentExisting.written_consent_reference) ===
-              cleanText(compliance.writtenConsentReference) &&
+              cleanText(retryCompliance.writtenConsentReference) &&
             cleanText(idempotentExisting.court_order_reference) ===
-              cleanText(compliance.courtOrderReference) &&
+              cleanText(retryCompliance.courtOrderReference) &&
             cleanText(idempotentExisting.evidence_reference) ===
-              cleanText(compliance.evidenceReference) &&
+              cleanText(retryCompliance.evidenceReference) &&
             Number(idempotentExisting.judicial_monthly_cap_bps || 0) ===
-              Number(compliance.judicialMonthlyCapBps || 0)
+              Number(retryCompliance.judicialMonthlyCapBps || 0)
           )
         );
       if (!matchesExisting) {
@@ -929,6 +936,14 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
       );
     }
   }
+
+  const compliance = allowedCanonicalSourceType
+    ? null
+    : creationComplianceInput(
+        data,
+        reason,
+        'core_payroll:obligation_deduction_class_required'
+      );
 
   const installments = initialInstallmentRows({
     kind,

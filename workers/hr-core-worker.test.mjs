@@ -3127,6 +3127,66 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     }
   );
 
+  await db.prepare(
+    `INSERT INTO employee_payroll_obligations (
+       id, salon_id, employee_id, recurring_deduction_id,
+       obligation_kind, source_type, source_ref,
+       original_payroll_month, original_amount_halalas,
+       remaining_amount_halalas, status, reason, note,
+       created_by_uid, created_by_email, created_at, updated_at
+     ) VALUES (
+       ?, 'main', 'emp-obligation', NULL,
+       'loan', 'employee_request', 'legacy-request-obligation-1',
+       '2026-09', 25000,
+       25000, 'scheduled', 'Legacy request retry', NULL,
+       'legacy-admin', 'legacy@example.com',
+       '2026-09-01T00:00:00.000Z',
+       '2026-09-01T00:00:00.000Z'
+     )`
+  )
+    .bind('legacy-obligation-retry')
+    .run();
+
+  const legacyRetry = await createPayrollObligation(
+    db,
+    'main',
+    {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-09',
+      amountHalalas: 25000,
+      reason: 'Legacy request retry',
+      sourceType: 'employee_request',
+      sourceRef: 'legacy-request-obligation-1',
+    },
+    actor
+  );
+
+  assert.equal(
+    legacyRetry.id,
+    'legacy-obligation-retry'
+  );
+  assert.equal(
+    legacyRetry.laborDeductionClass,
+    null
+  );
+
+  const legacyRetryRow = await db.prepare(
+    `SELECT labor_deduction_class, updated_at
+       FROM employee_payroll_obligations
+      WHERE salon_id = 'main'
+        AND id = 'legacy-obligation-retry'`
+  ).first();
+
+  assert.equal(
+    legacyRetryRow.labor_deduction_class,
+    null
+  );
+  assert.equal(
+    legacyRetryRow.updated_at,
+    '2026-09-01T00:00:00.000Z'
+  );
+
   const idempotent = await createPayrollObligation(db, 'main', {
     employeeId: 'emp-obligation',
     kind: 'loan',
