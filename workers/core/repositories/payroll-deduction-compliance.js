@@ -28,7 +28,7 @@ function requiredReason(value) {
   return reason;
 }
 
-function classificationInput(data = {}) {
+export function payrollDeductionClassificationInput(data = {}) {
   const deductionClass = normalizeSaPayrollDeductionClass(
     data.laborDeductionClass ??
       data.labor_deduction_class ??
@@ -139,7 +139,7 @@ async function assertRecurringClassificationMutable(db, salonId, recurring) {
   }
 }
 
-function eventStatement({ salonId, employeeId, entityType, entityId, previousClass, next, actor, now }) {
+export function payrollDeductionClassificationEventStatement({ salonId, employeeId, entityType, entityId, previousClass, next, actor, now }) {
   return {
     sql: `INSERT INTO employee_payroll_deduction_classification_events (
       id, salon_id, employee_id, entity_type, entity_id,
@@ -191,7 +191,7 @@ export async function classifyPayrollObligationDeduction(
   }
 
   await assertObligationClassificationMutable(db, salonId, row);
-  const next = classificationInput(data);
+  const next = payrollDeductionClassificationInput(data);
   const now = nowIso();
 
   await dbBatch(db, [
@@ -223,7 +223,7 @@ export async function classifyPayrollObligationDeduction(
         id,
       ],
     },
-    eventStatement({
+    payrollDeductionClassificationEventStatement({
       salonId,
       employeeId: row.employee_id,
       entityType: 'payroll_obligation',
@@ -260,7 +260,7 @@ export async function classifyRecurringPayrollDeduction(
   if (!row) throw new AppError(404, 'core_payroll:recurring_deduction_not_found');
 
   await assertRecurringClassificationMutable(db, salonId, row);
-  const next = classificationInput(data);
+  const next = payrollDeductionClassificationInput(data);
   const now = nowIso();
 
   await dbBatch(db, [
@@ -322,7 +322,7 @@ export async function classifyRecurringPayrollDeduction(
         id,
       ],
     },
-    eventStatement({
+    payrollDeductionClassificationEventStatement({
       salonId,
       employeeId: row.employee_id,
       entityType: 'recurring_deduction',

@@ -15,6 +15,10 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import {
+  payrollDeductionClassificationEventStatement,
+  payrollDeductionClassificationInput,
+} from './payroll-deduction-compliance.js';
+import {
   assertDeferrableDeductionKind,
   buildDeferredDeduction,
   buildInstallmentPlan,
@@ -84,6 +88,31 @@ function requiredActorInfo(actor = {}) {
   return info;
 }
 
+function creationComplianceInput(
+  data = {},
+  fallbackReason = '',
+  missingClassCode = 'core_payroll:deduction_legal_class_required'
+) {
+  const deductionClass = cleanText(
+    data.laborDeductionClass ??
+      data.labor_deduction_class ??
+      data.deductionClass
+  );
+
+  if (!deductionClass) {
+    throw new AppError(409, missingClassCode);
+  }
+
+  return payrollDeductionClassificationInput({
+    ...data,
+    laborDeductionClass: deductionClass,
+    reason:
+      data.complianceClassificationReason ??
+      data.compliance_classification_reason ??
+      fallbackReason,
+  });
+}
+
 function recurringStatus(value, fallback = 'active') {
   const status = cleanText(value || fallback).toLowerCase();
   if (!RECURRING_STATUSES.has(status)) {
@@ -108,6 +137,22 @@ function recurringDto(row) {
     note: row.note || null,
     sourceType: row.source_type,
     sourceRef: row.source_ref || null,
+    laborDeductionClass: row.labor_deduction_class || null,
+    writtenConsentReference: row.written_consent_reference || null,
+    courtOrderReference: row.court_order_reference || null,
+    judicialMonthlyCapBps:
+      row.judicial_monthly_cap_bps == null
+        ? null
+        : Number(row.judicial_monthly_cap_bps),
+    evidenceReference: row.evidence_reference || null,
+    complianceClassificationReason:
+      row.compliance_classification_reason || null,
+    complianceClassifiedByUid:
+      row.compliance_classified_by_uid || null,
+    complianceClassifiedByEmail:
+      row.compliance_classified_by_email || null,
+    complianceClassifiedAt:
+      row.compliance_classified_at || null,
     createdByUid: row.created_by_uid || null,
     createdByEmail: row.created_by_email || null,
     updatedByUid: row.updated_by_uid || null,
@@ -147,6 +192,22 @@ function obligationDto(row, installments = []) {
     obligationKind: row.obligation_kind,
     sourceType: row.source_type,
     sourceRef: row.source_ref || null,
+    laborDeductionClass: row.labor_deduction_class || null,
+    writtenConsentReference: row.written_consent_reference || null,
+    courtOrderReference: row.court_order_reference || null,
+    judicialMonthlyCapBps:
+      row.judicial_monthly_cap_bps == null
+        ? null
+        : Number(row.judicial_monthly_cap_bps),
+    evidenceReference: row.evidence_reference || null,
+    complianceClassificationReason:
+      row.compliance_classification_reason || null,
+    complianceClassifiedByUid:
+      row.compliance_classified_by_uid || null,
+    complianceClassifiedByEmail:
+      row.compliance_classified_by_email || null,
+    complianceClassifiedAt:
+      row.compliance_classified_at || null,
     originalPayrollMonth: row.original_payroll_month,
     originalAmountHalalas: Number(row.original_amount_halalas || 0),
     remainingAmountHalalas: Number(row.remaining_amount_halalas || 0),
@@ -273,51 +334,106 @@ export async function savePayrollRecurringDeduction(db, salonId, data = {}, acto
     : optionalText(data.sourceRef ?? data.source_ref) || null;
   const now = nowIso();
   const actorInfo = requiredActorInfo(actor);
-  const rowId = existing?.id || requiredId(generatedId('payroll_recurring_deduction'));
 
-  await dbRun(
-    db,
-    `INSERT INTO employee_recurring_deductions
-      (id, salon_id, employee_id, title, deduction_kind, amount_halalas, cadence,
-       start_payroll_month, end_payroll_month, status, reason, note, source_type, source_ref,
-       created_by_uid, created_by_email, updated_by_uid, updated_by_email, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       title = excluded.title,
-       deduction_kind = excluded.deduction_kind,
-       amount_halalas = excluded.amount_halalas,
-       start_payroll_month = excluded.start_payroll_month,
-       end_payroll_month = excluded.end_payroll_month,
-       status = excluded.status,
-       reason = excluded.reason,
-       note = excluded.note,
-       source_type = excluded.source_type,
-       source_ref = excluded.source_ref,
-       updated_by_uid = excluded.updated_by_uid,
-       updated_by_email = excluded.updated_by_email,
-       updated_at = excluded.updated_at`,
-    [
-      rowId,
-      salonId,
-      employeeId,
-      title,
-      deductionKind,
-      amountHalalas,
-      startPayrollMonth,
-      endPayrollMonth,
-      status,
-      reason,
-      note,
-      sourceType,
-      sourceRef,
-      existing?.created_by_uid || actorInfo.uid,
-      existing?.created_by_email || actorInfo.email,
-      actorInfo.uid,
-      actorInfo.email,
-      existing?.created_at || now,
-      now,
-    ]
-  );
+  const compliance = existing
+    ? null
+    : creationComplianceInput(
+        data,
+        reason,
+        'core_payroll:deduction_legal_class_required'
+      );
+  const rowId =
+    existing?.id ||
+    requiredId(generatedId('payroll_recurring_deduction'));
+
+  const recurringStatements = [
+    {
+      sql: `INSERT INTO employee_recurring_deductions
+        (id, salon_id, employee_id, title, deduction_kind, amount_halalas, cadence,
+         start_payroll_month, end_payroll_month, status, reason, note, source_type, source_ref,
+         labor_deduction_class, written_consent_reference, court_order_reference,
+         judicial_monthly_cap_bps, evidence_reference, compliance_classification_reason,
+         compliance_classified_by_uid, compliance_classified_by_email, compliance_classified_at,
+         created_by_uid, created_by_email, updated_by_uid, updated_by_email, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         deduction_kind = excluded.deduction_kind,
+         amount_halalas = excluded.amount_halalas,
+         start_payroll_month = excluded.start_payroll_month,
+         end_payroll_month = excluded.end_payroll_month,
+         status = excluded.status,
+         reason = excluded.reason,
+         note = excluded.note,
+         source_type = excluded.source_type,
+         source_ref = excluded.source_ref,
+         updated_by_uid = excluded.updated_by_uid,
+         updated_by_email = excluded.updated_by_email,
+         updated_at = excluded.updated_at`,
+      params: [
+        rowId,
+        salonId,
+        employeeId,
+        title,
+        deductionKind,
+        amountHalalas,
+        startPayrollMonth,
+        endPayrollMonth,
+        status,
+        reason,
+        note,
+        sourceType,
+        sourceRef,
+        existing?.labor_deduction_class ||
+          compliance?.deductionClass ||
+          null,
+        existing?.written_consent_reference ||
+          compliance?.writtenConsentReference ||
+          null,
+        existing?.court_order_reference ||
+          compliance?.courtOrderReference ||
+          null,
+        existing?.judicial_monthly_cap_bps ??
+          compliance?.judicialMonthlyCapBps ??
+          null,
+        existing?.evidence_reference ||
+          compliance?.evidenceReference ||
+          null,
+        existing?.compliance_classification_reason ||
+          compliance?.reason ||
+          null,
+        existing?.compliance_classified_by_uid ||
+          (compliance ? actorInfo.uid : null),
+        existing?.compliance_classified_by_email ||
+          (compliance ? actorInfo.email : null),
+        existing?.compliance_classified_at ||
+          (compliance ? now : null),
+        existing?.created_by_uid || actorInfo.uid,
+        existing?.created_by_email || actorInfo.email,
+        actorInfo.uid,
+        actorInfo.email,
+        existing?.created_at || now,
+        now,
+      ],
+    },
+  ];
+
+  if (!existing && compliance) {
+    recurringStatements.push(
+      payrollDeductionClassificationEventStatement({
+        salonId,
+        employeeId,
+        entityType: 'recurring_deduction',
+        entityId: rowId,
+        previousClass: null,
+        next: compliance,
+        actor,
+        now,
+      })
+    );
+  }
+
+  await dbBatch(db, recurringStatements);
 
   const saved = await dbFirst(
     db,
@@ -751,7 +867,10 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
   const sourceRef = optionalText(data.sourceRef || data.source_ref) || null;
 
   const normalizedSourceType = cleanText(sourceType).toLowerCase();
-  const allowedCanonicalSourceType = cleanText(options.canonicalSourceType).toLowerCase();
+  const allowedCanonicalSourceType =
+    cleanText(options.canonicalSourceType).toLowerCase();
+
+  const actorInfo = requiredActorInfo(actor);
 
   if (
     RESERVED_CANONICAL_OBLIGATION_SOURCE_TYPES.has(normalizedSourceType) &&
@@ -764,6 +883,14 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
         : 'core_payroll:deduction_deferral_obligation_requires_canonical_path'
     );
   }
+
+  const compliance = allowedCanonicalSourceType
+    ? null
+    : creationComplianceInput(
+        data,
+        reason,
+        'core_payroll:obligation_deduction_class_required'
+      );
 
   if (sourceRef) {
     const idempotentExisting = await dbFirst(
@@ -778,7 +905,22 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
         cleanText(idempotentExisting.obligation_kind) === kind &&
         cleanText(idempotentExisting.original_payroll_month) === originalPayrollMonth &&
         Number(idempotentExisting.original_amount_halalas || 0) === amountHalalas &&
-        cleanText(idempotentExisting.reason) === reason;
+        cleanText(idempotentExisting.reason) === reason &&
+        (
+          !compliance ||
+          (
+            cleanText(idempotentExisting.labor_deduction_class) ===
+              compliance.deductionClass &&
+            cleanText(idempotentExisting.written_consent_reference) ===
+              cleanText(compliance.writtenConsentReference) &&
+            cleanText(idempotentExisting.court_order_reference) ===
+              cleanText(compliance.courtOrderReference) &&
+            cleanText(idempotentExisting.evidence_reference) ===
+              cleanText(compliance.evidenceReference) &&
+            Number(idempotentExisting.judicial_monthly_cap_bps || 0) ===
+              Number(compliance.judicialMonthlyCapBps || 0)
+          )
+        );
       if (!matchesExisting) {
         throw new AppError(409, 'core_payroll:obligation_idempotency_conflict');
       }
@@ -787,7 +929,7 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
       );
     }
   }
-  const actorInfo = requiredActorInfo(actor);
+
   const installments = initialInstallmentRows({
     kind,
     originalPayrollMonth,
@@ -811,8 +953,11 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
       sql: `INSERT INTO employee_payroll_obligations
         (id, salon_id, employee_id, recurring_deduction_id, obligation_kind, source_type, source_ref,
          original_payroll_month, original_amount_halalas, remaining_amount_halalas, status, reason, note,
+         labor_deduction_class, written_consent_reference, court_order_reference,
+         judicial_monthly_cap_bps, evidence_reference, compliance_classification_reason,
+         compliance_classified_by_uid, compliance_classified_by_email, compliance_classified_at,
          created_by_uid, created_by_email, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         obligationId,
         salonId,
@@ -825,6 +970,15 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
         amountHalalas,
         reason,
         note,
+        compliance?.deductionClass || null,
+        compliance?.writtenConsentReference || null,
+        compliance?.courtOrderReference || null,
+        compliance?.judicialMonthlyCapBps ?? null,
+        compliance?.evidenceReference || null,
+        compliance?.reason || null,
+        compliance ? actorInfo.uid : null,
+        compliance ? actorInfo.email : null,
+        compliance ? now : null,
         actorInfo.uid,
         actorInfo.email,
         now,
@@ -854,8 +1008,31 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
       ],
     });
   });
+
+  if (compliance) {
+    statements.push(
+      payrollDeductionClassificationEventStatement({
+        salonId,
+        employeeId,
+        entityType: 'payroll_obligation',
+        entityId: obligationId,
+        previousClass: null,
+        next: compliance,
+        actor,
+        now,
+      })
+    );
+  }
+
   await dbBatch(db, statements);
-  return (await listPayrollObligations(db, salonId, { employeeId })).find((row) => row.id === obligationId);
+
+  return (
+    await listPayrollObligations(
+      db,
+      salonId,
+      { employeeId }
+    )
+  ).find((row) => row.id === obligationId);
 }
 
 export async function deferPayrollObligationInstallment(db, salonId, installmentIdValue, data = {}, actor = {}) {
