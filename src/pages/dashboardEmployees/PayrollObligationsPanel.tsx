@@ -30,6 +30,149 @@ type Props = {
 type CollectionMode = "current" | "defer" | "installments";
 type InstallmentDraft = { targetPayrollMonth: string; amount: string };
 
+type DeductionComplianceDraft = {
+  laborDeductionClass: string;
+  evidenceReference: string;
+  writtenConsentReference: string;
+  courtOrderReference: string;
+};
+
+type CreationFormErrors = Record<string, string>;
+
+const DEDUCTION_CLASS_OPTIONS = [
+  {
+    value: "employer_loan",
+    label: "سلفة من صاحب العمل",
+    labelEn: "Employer loan / salary advance",
+  },
+  {
+    value: "judicial_debt",
+    label: "دين قضائي",
+    labelEn: "Judicial debt",
+  },
+  {
+    value: "thrift_fund",
+    label: "صندوق ادخار",
+    labelEn: "Thrift fund",
+  },
+  {
+    value: "housing_or_benefit_installment",
+    label: "قسط سكن / ميزة",
+    labelEn: "Housing or benefit installment",
+  },
+  {
+    value: "disciplinary_fine",
+    label: "غرامة تأديبية",
+    labelEn: "Disciplinary fine",
+  },
+  {
+    value: "damage_recovery",
+    label: "استرداد ضرر",
+    labelEn: "Damage recovery",
+  },
+  {
+    value: "other_with_written_consent",
+    label: "خصم بموافقة خطية",
+    labelEn: "Deduction with written consent",
+  },
+] as const;
+
+const EVIDENCE_REQUIRED_CLASSES = new Set([
+  "employer_loan",
+  "thrift_fund",
+  "housing_or_benefit_installment",
+  "disciplinary_fine",
+  "damage_recovery",
+]);
+
+function emptyDeductionComplianceDraft(): DeductionComplianceDraft {
+  return {
+    laborDeductionClass: "",
+    evidenceReference: "",
+    writtenConsentReference: "",
+    courtOrderReference: "",
+  };
+}
+
+function requiresEvidenceReference(value: unknown) {
+  return EVIDENCE_REQUIRED_CLASSES.has(String(value || "").trim());
+}
+
+function complianceValidationErrors(
+  draft: DeductionComplianceDraft
+): CreationFormErrors {
+  const errors: CreationFormErrors = {};
+  const deductionClass = String(
+    draft.laborDeductionClass || ""
+  ).trim();
+
+  if (!deductionClass) {
+    errors.laborDeductionClass =
+      "اختر التصنيف النظامي للخصم.";
+    return errors;
+  }
+
+  if (
+    requiresEvidenceReference(deductionClass) &&
+    !String(draft.evidenceReference || "").trim()
+  ) {
+    errors.evidenceReference =
+      "أدخل رقم أو مرجع المستند المؤيد لهذا الخصم.";
+  }
+
+  if (
+    deductionClass === "other_with_written_consent" &&
+    !String(draft.writtenConsentReference || "").trim()
+  ) {
+    errors.writtenConsentReference =
+      "أدخل مرجع الموافقة الخطية.";
+  }
+
+  if (
+    deductionClass === "judicial_debt" &&
+    !String(draft.courtOrderReference || "").trim()
+  ) {
+    errors.courtOrderReference =
+      "أدخل مرجع الأمر أو الحكم القضائي.";
+  }
+
+  return errors;
+}
+
+function compliancePayload(
+  draft: DeductionComplianceDraft,
+  reason: string
+) {
+  return {
+    laborDeductionClass:
+      String(draft.laborDeductionClass || "").trim(),
+    evidenceReference:
+      String(draft.evidenceReference || "").trim() || null,
+    writtenConsentReference:
+      String(draft.writtenConsentReference || "").trim() || null,
+    courtOrderReference:
+      String(draft.courtOrderReference || "").trim() || null,
+    complianceClassificationReason:
+      String(reason || "").trim(),
+  };
+}
+
+function focusFirstInvalidForm(selector: string) {
+  window.requestAnimationFrame(() => {
+    const field = document.querySelector<HTMLElement>(
+      `${selector} [aria-invalid="true"]`
+    );
+
+    if (!field) return;
+
+    field.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    field.focus?.();
+  });
+}
+
 const DEDUCTION_KIND_OPTIONS = [
   { value: "fixed_agreed", label: "خصم ثابت متفق عليه" },
   { value: "loan", label: "قرض / سلفة خارجية موثقة" },
@@ -123,6 +266,14 @@ function errorMessage(error: unknown) {
     deferred_deduction_target_must_be_later: "شهر التأجيل يجب أن يكون بعد شهر التحصيل الحالي.",
     obligation_target_payroll_locked: "لا يمكن تعديل تحصيل شهر له مسير Approved/Paid.",
     obligation_snapshot_stale: "تغيرت الالتزامات بعد إنشاء المسير. أعد توليد المسير قبل الاعتماد.",
+    deduction_legal_class_required: "اختر التصنيف النظامي للخصم قبل الحفظ.",
+    obligation_deduction_class_required: "اختر التصنيف النظامي للالتزام قبل الحفظ.",
+    deduction_class_not_user_assignable: "التصنيف المختار غير مسموح للإدخال اليدوي.",
+    deduction_evidence_reference_required: "هذا التصنيف يحتاج مستندًا أو مرجع إثبات.",
+    written_consent_reference_required: "هذا الخصم يحتاج مرجع الموافقة الخطية.",
+    court_order_reference_required: "الدين القضائي يحتاج مرجع الأمر أو الحكم القضائي.",
+    deduction_classification_reason_required: "سبب الخصم مطلوب لتسجيل التصنيف النظامي.",
+    judicial_monthly_cap_invalid: "حد الخصم القضائي غير صالح.",
   };
   return labels[code] || raw || "تعذر تنفيذ العملية.";
 }
@@ -171,6 +322,12 @@ export default function PayrollObligationsPanel({
   const [recurringEndMonth, setRecurringEndMonth] = useState("");
   const [recurringReason, setRecurringReason] = useState("");
   const [recurringNote, setRecurringNote] = useState("");
+  const [recurringCompliance, setRecurringCompliance] =
+    useState<DeductionComplianceDraft>(
+      emptyDeductionComplianceDraft
+    );
+  const [recurringErrors, setRecurringErrors] =
+    useState<CreationFormErrors>({});
 
   const [obligationKind, setObligationKind] = useState("manual");
   const [obligationAmount, setObligationAmount] = useState("");
@@ -180,6 +337,12 @@ export default function PayrollObligationsPanel({
   const [obligationReason, setObligationReason] = useState("");
   const [obligationNote, setObligationNote] = useState("");
   const [obligationSourceRef, setObligationSourceRef] = useState(() => newOperationId());
+  const [obligationCompliance, setObligationCompliance] =
+    useState<DeductionComplianceDraft>(
+      emptyDeductionComplianceDraft
+    );
+  const [obligationErrors, setObligationErrors] =
+    useState<CreationFormErrors>({});
   const [installmentDrafts, setInstallmentDrafts] = useState<InstallmentDraft[]>(() =>
     buildEvenInstallments(month, 0, 3)
   );
@@ -268,6 +431,10 @@ export default function PayrollObligationsPanel({
     setRecurringEndMonth("");
     setRecurringReason("");
     setRecurringNote("");
+    setRecurringCompliance(
+      emptyDeductionComplianceDraft()
+    );
+    setRecurringErrors({});
     setObligationKind("manual");
     setObligationAmount("");
     setObligationOriginalMonth(month);
@@ -276,6 +443,10 @@ export default function PayrollObligationsPanel({
     setObligationReason("");
     setObligationNote("");
     setObligationSourceRef(newOperationId());
+    setObligationCompliance(
+      emptyDeductionComplianceDraft()
+    );
+    setObligationErrors({});
     setInstallmentDrafts(buildEvenInstallments(month, 0, 3));
     setSelectedInstallmentId("");
     setDeferToMonth(shiftMonth(month, 1));
@@ -309,6 +480,10 @@ export default function PayrollObligationsPanel({
     setRecurringEndMonth("");
     setRecurringReason("");
     setRecurringNote("");
+    setRecurringCompliance(
+      emptyDeductionComplianceDraft()
+    );
+    setRecurringErrors({});
   }
 
   function resetObligationForm() {
@@ -318,7 +493,216 @@ export default function PayrollObligationsPanel({
     setCollectionMode("current");
     setDeferredTargetMonth(shiftMonth(month, 1));
     setObligationSourceRef(newOperationId());
+    setObligationCompliance(
+      emptyDeductionComplianceDraft()
+    );
+    setObligationErrors({});
     setInstallmentDrafts(buildEvenInstallments(month, 0, 3));
+  }
+
+  async function submitRecurringDeduction() {
+    if (readOnly || working) return;
+
+    const nextErrors: CreationFormErrors = {};
+
+    if (!cleanText(recurringTitle)) {
+      nextErrors.title = "اكتب اسم الخصم.";
+    }
+
+    if (toHalalas(recurringAmount) <= 0) {
+      nextErrors.amount =
+        "أدخل مبلغًا شهريًا أكبر من صفر.";
+    }
+
+    if (!validMonth(recurringStartMonth)) {
+      nextErrors.startMonth =
+        "اختر شهر بداية صحيحًا.";
+    }
+
+    if (
+      cleanText(recurringEndMonth) &&
+      (
+        !validMonth(recurringEndMonth) ||
+        recurringEndMonth < recurringStartMonth
+      )
+    ) {
+      nextErrors.endMonth =
+        "شهر النهاية يجب ألا يكون قبل شهر البداية.";
+    }
+
+    if (!cleanText(recurringReason)) {
+      nextErrors.reason =
+        "اكتب سبب الخصم أو أساسه المالي.";
+    }
+
+    Object.assign(
+      nextErrors,
+      complianceValidationErrors(recurringCompliance)
+    );
+
+    if (Object.keys(nextErrors).length > 0) {
+      nextErrors.form =
+        "أكمل الحقول المطلوبة الموضحة باللون الأحمر ثم أعد المحاولة.";
+      setRecurringErrors(nextErrors);
+      setError("");
+      setMessage("");
+      focusFirstInvalidForm(
+        '[data-payroll-recurring-form="true"]'
+      );
+      return;
+    }
+
+    setRecurringErrors({});
+
+    await run(
+      async () => {
+        await CoreHrService.savePayrollRecurringDeduction({
+          employeeId,
+          title: recurringTitle.trim(),
+          deductionKind: recurringKind,
+          amountHalalas: toHalalas(recurringAmount),
+          startPayrollMonth: recurringStartMonth,
+          endPayrollMonth: recurringEndMonth || null,
+          reason: recurringReason.trim(),
+          note: recurringNote.trim() || null,
+          status: "active",
+          ...compliancePayload(
+            recurringCompliance,
+            recurringReason
+          ),
+        });
+
+        resetRecurringForm();
+      },
+      tr(
+        "تم حفظ الخصم الثابت.",
+        "Recurring deduction saved."
+      )
+    );
+  }
+
+  async function submitOneTimeObligation() {
+    if (readOnly || working) return;
+
+    const nextErrors: CreationFormErrors = {};
+
+    if (toHalalas(obligationAmount) <= 0) {
+      nextErrors.amount =
+        "أدخل إجمالي مبلغ أكبر من صفر.";
+    }
+
+    if (!validMonth(obligationOriginalMonth)) {
+      nextErrors.originalMonth =
+        "اختر شهر نشوء صحيحًا.";
+    }
+
+    if (!cleanText(obligationReason)) {
+      nextErrors.reason =
+        "اكتب سبب الخصم أو أساسه المالي.";
+    }
+
+    if (
+      collectionMode === "defer" &&
+      (
+        !validMonth(deferredTargetMonth) ||
+        deferredTargetMonth <= obligationOriginalMonth
+      )
+    ) {
+      nextErrors.targetMonth =
+        "شهر التحصيل الجديد يجب أن يكون بعد شهر نشوء الالتزام.";
+    }
+
+    if (collectionMode === "installments") {
+      const invalidInstallment = installmentDrafts.find(
+        (draft) =>
+          !validMonth(draft.targetPayrollMonth) ||
+          draft.targetPayrollMonth <= obligationOriginalMonth ||
+          toHalalas(draft.amount) <= 0
+      );
+
+      if (invalidInstallment) {
+        nextErrors.amount =
+          "راجع جدول الأقساط: كل قسط يحتاج شهرًا لاحقًا ومبلغًا أكبر من صفر.";
+      } else if (
+        installmentTotalHalalas !== obligationTotalHalalas
+      ) {
+        nextErrors.amount =
+          "مجموع الأقساط يجب أن يساوي إجمالي الالتزام تمامًا.";
+      }
+    }
+
+    Object.assign(
+      nextErrors,
+      complianceValidationErrors(obligationCompliance)
+    );
+
+    if (Object.keys(nextErrors).length > 0) {
+      nextErrors.form =
+        "أكمل الحقول المطلوبة الموضحة باللون الأحمر ثم أعد المحاولة.";
+      setObligationErrors(nextErrors);
+      setError("");
+      setMessage("");
+      focusFirstInvalidForm(
+        '[data-payroll-obligation-form="true"]'
+      );
+      return;
+    }
+
+    setObligationErrors({});
+
+    await run(
+      async () => {
+        const payload: Record<string, unknown> = {
+          employeeId,
+          kind: obligationKind,
+          amountHalalas: toHalalas(obligationAmount),
+          originalPayrollMonth: obligationOriginalMonth,
+          reason: obligationReason.trim(),
+          note: obligationNote.trim() || null,
+          sourceType: "employee_profile",
+          sourceRef: obligationSourceRef,
+          ...compliancePayload(
+            obligationCompliance,
+            obligationReason
+          ),
+        };
+
+        if (collectionMode === "defer") {
+          payload.targetPayrollMonth =
+            deferredTargetMonth;
+        }
+
+        if (collectionMode === "installments") {
+          payload.installments = installmentDrafts.map(
+            (draft) => ({
+              targetPayrollMonth:
+                draft.targetPayrollMonth,
+              amountHalalas: toHalalas(draft.amount),
+            })
+          );
+        }
+
+        await CoreHrService.createPayrollObligation(
+          payload
+        );
+
+        resetObligationForm();
+      },
+      collectionMode === "current"
+        ? tr(
+            "تم إنشاء الخصم لهذا الشهر.",
+            "Deduction created for this month."
+          )
+        : collectionMode === "defer"
+          ? tr(
+              "تم إنشاء الالتزام وتأجيل تحصيله.",
+              "Obligation created and collection deferred."
+            )
+          : tr(
+              "تم إنشاء الالتزام وجدول الأقساط.",
+              "Obligation and installment schedule created."
+            )
+    );
   }
 
   return (
@@ -377,52 +761,198 @@ export default function PayrollObligationsPanel({
         title="خصم ثابت متكرر"
         description="ينشئ بندًا شهريًا متوقعًا من شهر البداية إلى شهر النهاية إن وجد. لا يتم إنشاء حركة تحصيل فعلية إلا عند بناء/حفظ مسير الشهر."
       >
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="payroll-recurring-title" label={t("اسم الخصم")}>
+        <div
+          className="dsv2-ew-form-grid dsv2-ew-form-grid--3"
+          data-payroll-recurring-form="true"
+        >
+          <DashboardFieldV2
+            id="payroll-recurring-title"
+            label={t("اسم الخصم")}
+            required
+            error={recurringErrors.title}
+          >
             <input id="payroll-recurring-title" className="dsv2-input" value={recurringTitle} disabled={readOnly} onChange={(event) => setRecurringTitle(event.target.value)} placeholder={t("مثال: خصم اشتراك شهري")} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-recurring-kind" label={t("نوع الخصم")}>
             <DashboardSelectV2 id="payroll-recurring-kind" value={recurringKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} onChange={setRecurringKind} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-amount" label={t("المبلغ الشهري (ر.س)")}>
+          <DashboardFieldV2
+            id="payroll-recurring-amount"
+            label={t("المبلغ الشهري (ر.س)")}
+            required
+            error={recurringErrors.amount}
+          >
             <DashboardNumberInputV2 id="payroll-recurring-amount" className="dsv2-input" min="0" step="0.01" value={recurringAmount} disabled={readOnly} onChange={(event) => setRecurringAmount(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-start" label={t("شهر البداية")}>
+          <DashboardFieldV2
+            id="payroll-recurring-start"
+            label={t("شهر البداية")}
+            required
+            error={recurringErrors.startMonth}
+          >
             <DashboardMonthInputV2 id="payroll-recurring-start" className="dsv2-input" value={recurringStartMonth} disabled={readOnly} onChange={(event) => setRecurringStartMonth(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-end" label={t("شهر النهاية — اختياري")}>
+          <DashboardFieldV2
+            id="payroll-recurring-end"
+            label={t("شهر النهاية — اختياري")}
+            error={recurringErrors.endMonth}
+          >
             <DashboardMonthInputV2 id="payroll-recurring-end" className="dsv2-input" value={recurringEndMonth} disabled={readOnly} onChange={(event) => setRecurringEndMonth(event.target.value)} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-recurring-reason" label={t("السبب / الأساس")}>
+          <DashboardFieldV2
+            id="payroll-recurring-reason"
+            label={t("السبب / الأساس")}
+            required
+            error={recurringErrors.reason}
+          >
             <input id="payroll-recurring-reason" className="dsv2-input" value={recurringReason} disabled={readOnly} onChange={(event) => setRecurringReason(event.target.value)} placeholder={t("لماذا يوجد هذا الخصم؟")} />
           </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="payroll-recurring-legal-class"
+            label={tr("التصنيف النظامي", "Legal classification")}
+            required
+            error={recurringErrors.laborDeductionClass}
+            hint={tr(
+              "حدد الأساس النظامي الحقيقي للخصم.",
+              "Select the actual legal basis for the deduction."
+            )}
+          >
+            <DashboardSelectV2
+              id="payroll-recurring-legal-class"
+              value={recurringCompliance.laborDeductionClass}
+              disabled={readOnly}
+              options={[
+                {
+                  value: "",
+                  label: tr(
+                    "اختر التصنيف النظامي",
+                    "Choose legal classification"
+                  ),
+                },
+                ...DEDUCTION_CLASS_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label:
+                    language === "en"
+                      ? option.labelEn
+                      : option.label,
+                })),
+              ]}
+              onChange={(value) =>
+                setRecurringCompliance((current) => ({
+                  ...current,
+                  laborDeductionClass: value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          {requiresEvidenceReference(
+            recurringCompliance.laborDeductionClass
+          ) ? (
+            <DashboardFieldV2
+              id="payroll-recurring-evidence"
+              label={tr(
+                "مرجع المستند / الإثبات",
+                "Evidence reference"
+              )}
+              required
+              error={recurringErrors.evidenceReference}
+            >
+              <input
+                id="payroll-recurring-evidence"
+                className="dsv2-input"
+                value={recurringCompliance.evidenceReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setRecurringCompliance((current) => ({
+                    ...current,
+                    evidenceReference: event.target.value,
+                  }))
+                }
+                placeholder={tr(
+                  "مثال: رقم السلفة أو المستند",
+                  "Example: loan or document reference"
+                )}
+              />
+            </DashboardFieldV2>
+          ) : null}
+
+          {recurringCompliance.laborDeductionClass ===
+          "other_with_written_consent" ? (
+            <DashboardFieldV2
+              id="payroll-recurring-consent"
+              label={tr(
+                "مرجع الموافقة الخطية",
+                "Written consent reference"
+              )}
+              required
+              error={recurringErrors.writtenConsentReference}
+            >
+              <input
+                id="payroll-recurring-consent"
+                className="dsv2-input"
+                value={recurringCompliance.writtenConsentReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setRecurringCompliance((current) => ({
+                    ...current,
+                    writtenConsentReference: event.target.value,
+                  }))
+                }
+              />
+            </DashboardFieldV2>
+          ) : null}
+
+          {recurringCompliance.laborDeductionClass ===
+          "judicial_debt" ? (
+            <DashboardFieldV2
+              id="payroll-recurring-court-order"
+              label={tr(
+                "مرجع الأمر / الحكم القضائي",
+                "Court order reference"
+              )}
+              required
+              error={recurringErrors.courtOrderReference}
+            >
+              <input
+                id="payroll-recurring-court-order"
+                className="dsv2-input"
+                value={recurringCompliance.courtOrderReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setRecurringCompliance((current) => ({
+                    ...current,
+                    courtOrderReference: event.target.value,
+                  }))
+                }
+              />
+            </DashboardFieldV2>
+          ) : null}
+
           <DashboardFieldV2 id="payroll-recurring-note" label={t("ملاحظة — اختياري")}>
             <input id="payroll-recurring-note" className="dsv2-input" value={recurringNote} disabled={readOnly} onChange={(event) => setRecurringNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
+
+        {recurringErrors.form ? (
+          <WorkspaceNoticeV2
+            title={tr(
+              "بيانات الخصم غير مكتملة",
+              "Deduction details are incomplete"
+            )}
+            description={recurringErrors.form}
+            tone="danger"
+          />
+        ) : null}
+
         <div className="dsv2-cluster">
           <button
             type="button"
             className="dsv2-btn dsv2-btn--primary"
             disabled={readOnly || working}
             onClick={() =>
-              void run(
-                async () => {
-                  await CoreHrService.savePayrollRecurringDeduction({
-                    employeeId,
-                    title: recurringTitle,
-                    deductionKind: recurringKind,
-                    amountHalalas: toHalalas(recurringAmount),
-                    startPayrollMonth: recurringStartMonth,
-                    endPayrollMonth: recurringEndMonth || null,
-                    reason: recurringReason,
-                    note: recurringNote || null,
-                    status: "active",
-                  });
-                  resetRecurringForm();
-                },
-                tr("تم حفظ الخصم الثابت.", "Recurring deduction saved.")
-              )
+              void submitRecurringDeduction()
             }
           >
             حفظ الخصم الثابت
@@ -465,11 +995,19 @@ export default function PayrollObligationsPanel({
         title="التزام أو خصم لمرة واحدة"
         description="سجّل أصل المبلغ أولًا، ثم اختر تحصيله في شهر الأصل أو تأجيله إلى شهر لاحق أو تقسيمه على عدة أشهر."
       >
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
+        <div
+          className="dsv2-ew-form-grid dsv2-ew-form-grid--3"
+          data-payroll-obligation-form="true"
+        >
           <DashboardFieldV2 id="payroll-obligation-kind" label={t("نوع الالتزام")}>
             <DashboardSelectV2 id="payroll-obligation-kind" value={obligationKind} disabled={readOnly} options={DEDUCTION_KIND_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))} onChange={setObligationKind} />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-amount" label={t("إجمالي المبلغ (ر.س)")}>
+          <DashboardFieldV2
+            id="payroll-obligation-amount"
+            label={t("إجمالي المبلغ (ر.س)")}
+            required
+            error={obligationErrors.amount}
+          >
             <DashboardNumberInputV2
               id="payroll-obligation-amount"
               className="dsv2-input"
@@ -492,7 +1030,12 @@ export default function PayrollObligationsPanel({
               }}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="payroll-obligation-original-month" label={t("شهر نشوء الالتزام")}>
+          <DashboardFieldV2
+            id="payroll-obligation-original-month"
+            label={t("شهر نشوء الالتزام")}
+            required
+            error={obligationErrors.originalMonth}
+          >
             <DashboardMonthInputV2 id="payroll-obligation-original-month" className="dsv2-input" value={obligationOriginalMonth} disabled={readOnly} onChange={(event) => { const nextMonth = event.target.value; setObligationOriginalMonth(nextMonth); if (collectionMode === "installments") { setInstallmentDrafts((rows) => buildEvenInstallments( nextMonth || month, toHalalas(obligationAmount), rows.length || 1 ) ); } }} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="payroll-obligation-mode" label={t("طريقة التحصيل")}>
@@ -521,20 +1064,161 @@ export default function PayrollObligationsPanel({
             />
           </DashboardFieldV2>
           {collectionMode === "defer" ? (
-            <DashboardFieldV2 id="payroll-obligation-target-month" label={t("شهر التحصيل الجديد")}>
+            <DashboardFieldV2
+              id="payroll-obligation-target-month"
+              label={t("شهر التحصيل الجديد")}
+              required
+              error={obligationErrors.targetMonth}
+            >
               <DashboardMonthInputV2 id="payroll-obligation-target-month" className="dsv2-input" value={deferredTargetMonth} disabled={readOnly} onChange={(event) => setDeferredTargetMonth(event.target.value)} />
             </DashboardFieldV2>
           ) : null}
           <DashboardFieldV2
             id="payroll-obligation-reason"
             label={collectionMode === "defer" ? t("سبب الخصم / قرار التأجيل") : collectionMode === "installments" ? t("سبب الخصم / قرار التقسيط") : t("السبب / الأساس")}
+            required
+            error={obligationErrors.reason}
           >
             <input id="payroll-obligation-reason" className="dsv2-input" value={obligationReason} disabled={readOnly} onChange={(event) => setObligationReason(event.target.value)} placeholder={t("سبب مالي واضح وقابل للمراجعة")} />
           </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="payroll-obligation-legal-class"
+            label={tr("التصنيف النظامي", "Legal classification")}
+            required
+            error={obligationErrors.laborDeductionClass}
+            hint={tr(
+              "حدد الأساس النظامي الحقيقي للخصم.",
+              "Select the actual legal basis for the deduction."
+            )}
+          >
+            <DashboardSelectV2
+              id="payroll-obligation-legal-class"
+              value={obligationCompliance.laborDeductionClass}
+              disabled={readOnly}
+              options={[
+                {
+                  value: "",
+                  label: tr(
+                    "اختر التصنيف النظامي",
+                    "Choose legal classification"
+                  ),
+                },
+                ...DEDUCTION_CLASS_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label:
+                    language === "en"
+                      ? option.labelEn
+                      : option.label,
+                })),
+              ]}
+              onChange={(value) =>
+                setObligationCompliance((current) => ({
+                  ...current,
+                  laborDeductionClass: value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          {requiresEvidenceReference(
+            obligationCompliance.laborDeductionClass
+          ) ? (
+            <DashboardFieldV2
+              id="payroll-obligation-evidence"
+              label={tr(
+                "مرجع المستند / الإثبات",
+                "Evidence reference"
+              )}
+              required
+              error={obligationErrors.evidenceReference}
+            >
+              <input
+                id="payroll-obligation-evidence"
+                className="dsv2-input"
+                value={obligationCompliance.evidenceReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setObligationCompliance((current) => ({
+                    ...current,
+                    evidenceReference: event.target.value,
+                  }))
+                }
+                placeholder={tr(
+                  "مثال: رقم السلفة أو المستند",
+                  "Example: loan or document reference"
+                )}
+              />
+            </DashboardFieldV2>
+          ) : null}
+
+          {obligationCompliance.laborDeductionClass ===
+          "other_with_written_consent" ? (
+            <DashboardFieldV2
+              id="payroll-obligation-consent"
+              label={tr(
+                "مرجع الموافقة الخطية",
+                "Written consent reference"
+              )}
+              required
+              error={obligationErrors.writtenConsentReference}
+            >
+              <input
+                id="payroll-obligation-consent"
+                className="dsv2-input"
+                value={obligationCompliance.writtenConsentReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setObligationCompliance((current) => ({
+                    ...current,
+                    writtenConsentReference: event.target.value,
+                  }))
+                }
+              />
+            </DashboardFieldV2>
+          ) : null}
+
+          {obligationCompliance.laborDeductionClass ===
+          "judicial_debt" ? (
+            <DashboardFieldV2
+              id="payroll-obligation-court-order"
+              label={tr(
+                "مرجع الأمر / الحكم القضائي",
+                "Court order reference"
+              )}
+              required
+              error={obligationErrors.courtOrderReference}
+            >
+              <input
+                id="payroll-obligation-court-order"
+                className="dsv2-input"
+                value={obligationCompliance.courtOrderReference}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setObligationCompliance((current) => ({
+                    ...current,
+                    courtOrderReference: event.target.value,
+                  }))
+                }
+              />
+            </DashboardFieldV2>
+          ) : null}
+
           <DashboardFieldV2 id="payroll-obligation-note" label={t("ملاحظة — اختياري")}>
             <input id="payroll-obligation-note" className="dsv2-input" value={obligationNote} disabled={readOnly} onChange={(event) => setObligationNote(event.target.value)} />
           </DashboardFieldV2>
         </div>
+
+        {obligationErrors.form ? (
+          <WorkspaceNoticeV2
+            title={tr(
+              "بيانات الالتزام غير مكتملة",
+              "Obligation details are incomplete"
+            )}
+            description={obligationErrors.form}
+            tone="danger"
+          />
+        ) : null}
 
         {collectionMode === "installments" ? (
           <div className="dsv2-ew-stack">
@@ -616,30 +1300,7 @@ export default function PayrollObligationsPanel({
             className="dsv2-btn dsv2-btn--primary"
             disabled={readOnly || working}
             onClick={() =>
-              void run(
-                async () => {
-                  const payload: Record<string, unknown> = {
-                    employeeId,
-                    kind: obligationKind,
-                    amountHalalas: toHalalas(obligationAmount),
-                    originalPayrollMonth: obligationOriginalMonth,
-                    reason: obligationReason,
-                    note: obligationNote || null,
-                    sourceType: "employee_profile",
-                    sourceRef: obligationSourceRef,
-                  };
-                  if (collectionMode === "defer") payload.targetPayrollMonth = deferredTargetMonth;
-                  if (collectionMode === "installments") {
-                    payload.installments = installmentDrafts.map((draft) => ({
-                      targetPayrollMonth: draft.targetPayrollMonth,
-                      amountHalalas: toHalalas(draft.amount),
-                    }));
-                  }
-                  await CoreHrService.createPayrollObligation(payload);
-                  resetObligationForm();
-                },
-                collectionMode === "current" ? tr("تم إنشاء الخصم لهذا الشهر.", "Deduction created for this month.") : collectionMode === "defer" ? tr("تم إنشاء الالتزام وتأجيل تحصيله.", "Obligation created and collection deferred.") : tr("تم إنشاء الالتزام وجدول الأقساط.", "Obligation and installment schedule created.")
-              )
+              void submitOneTimeObligation()
             }
           >
             إنشاء الالتزام

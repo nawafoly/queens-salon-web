@@ -2847,6 +2847,31 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     { code: 'core_payroll:deduction_actor_required' }
   );
 
+  await assert.rejects(
+    () => savePayrollRecurringDeduction(db, 'main', {
+      employeeId: 'emp-obligation',
+      title: 'Missing legal classification',
+      deductionKind: 'loan',
+      amountHalalas: 10000,
+      startPayrollMonth: '2026-09',
+      reason: 'Creation must fail closed without classification',
+    }, actor),
+    { code: 'core_payroll:deduction_legal_class_required' }
+  );
+
+  await assert.rejects(
+    () => savePayrollRecurringDeduction(db, 'main', {
+      employeeId: 'emp-obligation',
+      title: 'Missing evidence',
+      deductionKind: 'loan',
+      amountHalalas: 10000,
+      startPayrollMonth: '2026-09',
+      reason: 'Employer loan must carry evidence at creation',
+      laborDeductionClass: 'employer_loan',
+    }, actor),
+    { code: 'core_payroll:deduction_evidence_reference_required' }
+  );
+
   const recurring = await savePayrollRecurringDeduction(db, 'main', {
     employeeId: 'emp-obligation',
     title: 'Fixed monthly deduction',
@@ -2855,13 +2880,19 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     startPayrollMonth: '2026-09',
     reason: 'Approved fixed monthly obligation',
     sourceType: 'manual',
-  }, actor);
-  assert.equal(recurring.amountHalalas, 60000);
-  await classifyRecurringPayrollDeduction(db, 'main', recurring.id, {
     laborDeductionClass: 'other_with_written_consent',
     writtenConsentReference: 'consent-recurring-obligation',
-    reason: 'Regression fixture written consent for recurring deduction',
   }, actor);
+  assert.equal(recurring.amountHalalas, 60000);
+  assert.equal(
+    recurring.laborDeductionClass,
+    'other_with_written_consent'
+  );
+  assert.equal(
+    recurring.writtenConsentReference,
+    'consent-recurring-obligation'
+  );
+
   assert.equal((await listPayrollRecurringDeductions(db, 'main', {
     employeeId: 'emp-obligation',
   })).length, 1);
@@ -2874,6 +2905,31 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
   assert.equal(septemberDeductions[0].synthetic, true);
   assert.equal(septemberDeductions[0].amountHalalas, 60000);
 
+  await assert.rejects(
+    () => createPayrollObligation(db, 'main', {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-08',
+      amountHalalas: 10000,
+      reason: 'Manual obligation without classification',
+      sourceType: 'manual',
+    }, actor),
+    { code: 'core_payroll:obligation_deduction_class_required' }
+  );
+
+  await assert.rejects(
+    () => createPayrollObligation(db, 'main', {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-08',
+      amountHalalas: 10000,
+      reason: 'Employer loan obligation without evidence',
+      sourceType: 'manual',
+      laborDeductionClass: 'employer_loan',
+    }, actor),
+    { code: 'core_payroll:deduction_evidence_reference_required' }
+  );
+
   const installmentPlan = await createPayrollObligation(db, 'main', {
     employeeId: 'emp-obligation',
     kind: 'loan',
@@ -2881,6 +2937,8 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     amountHalalas: 120000,
     reason: 'Three-month installment plan',
     sourceType: 'manual',
+    laborDeductionClass: 'other_with_written_consent',
+    writtenConsentReference: 'consent-installment-obligation',
     installments: [
       { targetPayrollMonth: '2026-09', amountHalalas: 40000 },
       { targetPayrollMonth: '2026-10', amountHalalas: 40000 },
@@ -2891,11 +2949,49 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     installmentPlan.installments.map((item) => item.amountHalalas),
     [40000, 40000, 40000]
   );
-  await classifyPayrollObligationDeduction(db, 'main', installmentPlan.id, {
-    laborDeductionClass: 'other_with_written_consent',
-    writtenConsentReference: 'consent-installment-obligation',
-    reason: 'Regression fixture written consent for installment deduction',
-  }, actor);
+  assert.equal(
+    installmentPlan.laborDeductionClass,
+    'other_with_written_consent'
+  );
+  assert.equal(
+    installmentPlan.writtenConsentReference,
+    'consent-installment-obligation'
+  );
+
+  const creationClassificationEvents = (
+    await db.prepare(
+      `SELECT entity_type, entity_id, next_class
+         FROM employee_payroll_deduction_classification_events
+        WHERE salon_id = 'main'
+          AND entity_id IN (?, ?)
+        ORDER BY entity_type, entity_id`
+    )
+      .bind(recurring.id, installmentPlan.id)
+      .all()
+  ).results;
+
+  assert.equal(
+    creationClassificationEvents.length,
+    2
+  );
+  assert.deepEqual(
+    new Set(
+      creationClassificationEvents.map(
+        (row) => row.entity_type
+      )
+    ),
+    new Set([
+      'payroll_obligation',
+      'recurring_deduction',
+    ])
+  );
+  assert.ok(
+    creationClassificationEvents.every(
+      (row) =>
+        row.next_class ===
+        'other_with_written_consent'
+    )
+  );
 
   const septemberInstallment = installmentPlan.installments.find(
     (item) => item.targetPayrollMonth === '2026-09'
@@ -3031,6 +3127,66 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     }
   );
 
+  await db.prepare(
+    `INSERT INTO employee_payroll_obligations (
+       id, salon_id, employee_id, recurring_deduction_id,
+       obligation_kind, source_type, source_ref,
+       original_payroll_month, original_amount_halalas,
+       remaining_amount_halalas, status, reason, note,
+       created_by_uid, created_by_email, created_at, updated_at
+     ) VALUES (
+       ?, 'main', 'emp-obligation', NULL,
+       'loan', 'employee_request', 'legacy-request-obligation-1',
+       '2026-09', 25000,
+       25000, 'scheduled', 'Legacy request retry', NULL,
+       'legacy-admin', 'legacy@example.com',
+       '2026-09-01T00:00:00.000Z',
+       '2026-09-01T00:00:00.000Z'
+     )`
+  )
+    .bind('legacy-obligation-retry')
+    .run();
+
+  const legacyRetry = await createPayrollObligation(
+    db,
+    'main',
+    {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-09',
+      amountHalalas: 25000,
+      reason: 'Legacy request retry',
+      sourceType: 'employee_request',
+      sourceRef: 'legacy-request-obligation-1',
+    },
+    actor
+  );
+
+  assert.equal(
+    legacyRetry.id,
+    'legacy-obligation-retry'
+  );
+  assert.equal(
+    legacyRetry.laborDeductionClass,
+    null
+  );
+
+  const legacyRetryRow = await db.prepare(
+    `SELECT labor_deduction_class, updated_at
+       FROM employee_payroll_obligations
+      WHERE salon_id = 'main'
+        AND id = 'legacy-obligation-retry'`
+  ).first();
+
+  assert.equal(
+    legacyRetryRow.labor_deduction_class,
+    null
+  );
+  assert.equal(
+    legacyRetryRow.updated_at,
+    '2026-09-01T00:00:00.000Z'
+  );
+
   const idempotent = await createPayrollObligation(db, 'main', {
     employeeId: 'emp-obligation',
     kind: 'loan',
@@ -3039,6 +3195,8 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     reason: 'One-time request deduction',
     sourceType: 'employee_request',
     sourceRef: 'request-obligation-1',
+    laborDeductionClass: 'other_with_written_consent',
+    writtenConsentReference: 'consent-idempotent-obligation',
   }, actor);
   const idempotentRetry = await createPayrollObligation(db, 'main', {
     employeeId: 'emp-obligation',
@@ -3048,13 +3206,10 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     reason: 'One-time request deduction',
     sourceType: 'employee_request',
     sourceRef: 'request-obligation-1',
-  }, actor);
-  assert.equal(idempotentRetry.id, idempotent.id);
-  await classifyPayrollObligationDeduction(db, 'main', idempotent.id, {
     laborDeductionClass: 'other_with_written_consent',
     writtenConsentReference: 'consent-idempotent-obligation',
-    reason: 'Regression fixture written consent for idempotent deduction',
   }, actor);
+  assert.equal(idempotentRetry.id, idempotent.id);
   await assert.rejects(
     () => createPayrollObligation(db, 'main', {
       employeeId: 'emp-obligation',
@@ -3064,6 +3219,8 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
       reason: 'One-time request deduction',
       sourceType: 'employee_request',
       sourceRef: 'request-obligation-1',
+      laborDeductionClass: 'other_with_written_consent',
+      writtenConsentReference: 'consent-idempotent-obligation',
     }, actor),
     { code: 'core_payroll:obligation_idempotency_conflict' }
   );
