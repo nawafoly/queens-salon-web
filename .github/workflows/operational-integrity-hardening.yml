@@ -53,6 +53,9 @@ jobs:
       - name: Partial deduction deferral contract
         run: node --test workers/payroll-partial-deduction-deferral-contract.test.mjs
 
+      - name: Day audit Core and UI contracts
+        run: node --test workers/day-audit-core.test.mjs workers/day-audit-ui.test.mjs
+
       - name: HR Core runtime
         run: node --test workers/hr-core-worker.test.mjs
 
