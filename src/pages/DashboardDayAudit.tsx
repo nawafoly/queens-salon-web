@@ -4,58 +4,39 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
   faCashRegister,
+  faClockRotateLeft,
   faCreditCard,
+  faEye,
   faFileInvoiceDollar,
   faLock,
   faPrint,
   faScaleBalanced,
+  faTriangleExclamation,
   faUnlockKeyhole,
 } from "@fortawesome/free-solid-svg-icons";
 import { DashboardDatePickerV2, DashboardSkeletonV2 } from "../components/dashboard-v2";
-import { CoreBookingService } from "../services/CoreBookingService";
-import { listIncomeForDateCore } from "../services/CoreIncomeService";
+import {
+  CoreDayAuditService,
+  type CoreDayAuditClosing,
+  type CoreDayAuditSnapshot,
+  type CoreDayAuditView,
+} from "../services/CoreDayAuditService";
+import { CoreApiError } from "../services/coreApiClient";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { dayAuditText, type DashboardLanguage } from "../helpers/dashboardDayAuditLanguage";
 
-const LOCK_KEY = "dashboard_day_audit_lock_v1";
-
-type LockSnapshot = {
-  date: string;
-  manualCash: number;
-  bookingsRevenue: number;
-  cashRevenue?: number;
-  cardRevenue?: number;
-  transferRevenue?: number;
-  diff: number;
-  lockedAt: number;
-};
-
-type PaymentChannel = "cash" | "card" | "transfer";
-
-type RevenueBreakdown = {
-  total: number;
-  cash: number;
-  card: number;
-  transfer: number;
-};
-
-type AuditRevenueSnapshot = {
-  bookingDates: Record<string, string>;
-  revenue: RevenueBreakdown;
-};
-
-type BookingPaymentType = "full" | "partial";
-
 type DayAuditPrintPayload = {
   dateLabel: string;
-  totalRevenue: number;
-  cashRevenue: number;
-  cardRevenue: number;
-  transferRevenue: number;
-  manualCash: number;
-  diff: number;
+  totalHalalas: number;
+  cashHalalas: number;
+  cardHalalas: number;
+  transferHalalas: number;
+  unclassifiedHalalas: number;
+  manualCashHalalas: number;
+  diffHalalas: number;
   isLocked: boolean;
   lockTimeLabel: string;
+  closedByName: string;
   printedAtLabel: string;
 };
 
@@ -80,25 +61,30 @@ function todayISO(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-function toNum(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatAmount(v: unknown, language: DashboardLanguage): string {
+function formatHalalas(value: unknown, language: DashboardLanguage): string {
+  const n = Number(value);
   const currency = language === "en" ? "SAR" : "ر.س";
-  return `${moneyFormatter(language).format(toNum(v))} ${currency}`;
+  const amount = Number.isFinite(n) ? n / 100 : 0;
+  return `${moneyFormatter(language).format(amount)} ${currency}`;
 }
 
-function formatLockedAt(ms: unknown, language: DashboardLanguage): string {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  return dateTimeFormatter(language).format(new Date(n));
+function formatDateKey(dateKey: string, language: DashboardLanguage) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateKey;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return new Intl.DateTimeFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", {
+    dateStyle: "short",
+  }).format(date);
+}
+
+function formatDateTime(value: string | null | undefined, language: DashboardLanguage) {
+  const parsed = Date.parse(String(value || ""));
+  if (!Number.isFinite(parsed)) return "—";
+  return dateTimeFormatter(language).format(new Date(parsed));
 }
 
 function escapeHtml(value: unknown): string {
-  const text = String(value ?? "");
-  return text
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -106,246 +92,26 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-function normalizeAuditPaymentMethod(rawMethod: unknown, rawNote: unknown): PaymentChannel {
-  const method = String(rawMethod ?? "").toLowerCase().trim();
-
-  if (method === "cash" || method === "\u0646\u0642\u062f" || method === "\u0643\u0627\u0634") return "cash";
-
-  if (
-    method === "card" ||
-    method === "pos_card" ||
-    method === "mada_online" ||
-    method === "network" ||
-    method === "mada" ||
-    method === "visa" ||
-    method === "mastercard" ||
-    method === "master_card" ||
-    method === "credit_card" ||
-    method === "debit_card" ||
-    method === "apple_pay" ||
-    method === "applepay" ||
-    method === "tap" ||
-    method === "\u0634\u0628\u0643\u0629" ||
-    method === "\u0645\u062f\u0649"
-  ) {
-    return "card";
-  }
-
-  if (/(card|network|mada|visa|master|pos|apple|credit|debit)/.test(method)) return "card";
-
-  if (
-    method === "transfer" ||
-    method === "bank_transfer" ||
-    method === "\u062a\u062d\u0648\u064a\u0644" ||
-    method === "\u0628\u0646\u0643\u064a"
-  ) {
-    return "transfer";
-  }
-
-  const note = String(rawNote ?? "").toLowerCase();
-  if (note.includes("payment_method:cash") || note.includes("invoice_from_reception:cash")) return "cash";
-  if (note.includes("payment_method:card") || note.includes("invoice_from_reception:card")) return "card";
-  if (note.includes("payment_method:transfer") || note.includes("invoice_from_reception:transfer")) {
-    return "transfer";
-  }
-
-  if (/(network|mada|visa|mastercard|master|credit|debit|pos|apple ?pay|card|\u0634\u0628\u0643\u0629|\u0645\u062f\u0649|\u0628\u0637\u0627\u0642\u0629)/.test(note)) {
-    return "card";
-  }
-  if (/(cash|\u0646\u0642\u062f|\u0643\u0627\u0634)/.test(note)) return "cash";
-  if (/(transfer|bank|\u062a\u062d\u0648\u064a\u0644|\u0628\u0646\u0643\u064a)/.test(note)) return "transfer";
-
-  return "transfer";
+function parseManualCashHalalas(raw: string): number | null {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  const halalas = Math.round(amount * 100);
+  return Number.isSafeInteger(halalas) ? halalas : null;
 }
 
-function normalizePaymentType(raw: unknown): BookingPaymentType | null {
-  const s = String(raw ?? "").trim().toLowerCase();
-  if (!s) return null;
-  if (s === "full" || s === "complete" || s === "كامل") return "full";
-  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
-  return null;
-}
-
-function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
-  const totalAmount = Math.max(
-    0,
-    toNum(
-      raw?.finalPrice ??
-        raw?.total ??
-        (raw as any)?.serviceSnapshot?.priceAtBooking ??
-        (raw as any)?.packageSnapshot?.finalPriceAtBooking ??
-        0
-    )
-  );
-  const normalizedType = normalizePaymentType(raw?.paymentType);
-  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
-  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
-  const hasExplicitRemaining = Number.isFinite(Number(raw?.remainingAmount));
-  const explicitRemaining = hasExplicitRemaining ? Number(raw?.remainingAmount) : NaN;
-  const status = String(raw?.status || "").trim().toLowerCase();
-  const isRevenueStatus = status === "confirmed" || status === "completed";
-
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
-  let paidAmount: number;
-  if (hasExplicitPaid) {
-    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
-  } else if (hasExplicitRemaining) {
-    paidAmount = Math.max(0, Math.min(totalAmount, totalAmount - explicitRemaining));
-  } else if (paymentType === "partial") {
-    paidAmount = 0;
-  } else {
-    paidAmount = isRevenueStatus ? totalAmount : 0;
-  }
-
-  if (paymentType === "full") {
-    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
-  } else {
-    paymentType = paidAmount >= totalAmount ? "full" : "partial";
-  }
-  return Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100;
-}
-
-function toMillisSafe(v: unknown): number {
-  if (typeof v === "number") return v;
-  if (v && typeof (v as any).toMillis === "function") return (v as any).toMillis();
-  if (v && typeof (v as any).seconds === "number") return Number((v as any).seconds) * 1000;
-  const parsed = Date.parse(String(v || ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeIsoDateLoose(value: unknown): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const strict = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (strict) return `${strict[1]}-${strict[2]}-${strict[3]}`;
-  const withPrefix = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-  if (withPrefix?.[1]) return withPrefix[1];
-  const parsed = Date.parse(raw);
-  if (!Number.isFinite(parsed)) return "";
-  return todayISO(new Date(parsed));
-}
-
-function normalizeIncomeSource(rawSource: unknown): string {
-  return String(rawSource || "").trim().toLowerCase();
-}
-
-function isSystemBookingSource(source: string): boolean {
-  return (
-    source === "booking" ||
-    source === "invoice" ||
-    source === "\u062d\u062c\u0632" ||
-    source === "\u0641\u0627\u062a\u0648\u0631\u0629"
-  );
-}
-
-function resolveIncomeBookingId(raw: Record<string, unknown>, docId: string): string {
-  const explicitBookingId = String(raw?.bookingId || "").trim();
-  if (explicitBookingId) return explicitBookingId;
-
-  const source = normalizeIncomeSource(raw?.source);
-  if (!isSystemBookingSource(source)) return "";
-  return String(docId || "").trim();
-}
-
-function resolveIncomeDateForAudit(raw: Record<string, unknown>, bookingDateOverride?: string): string {
-  const bookingDate = normalizeIsoDateLoose(bookingDateOverride);
-  if (bookingDate) return bookingDate;
-
-  const explicit = normalizeIsoDateLoose(raw?.date);
-  if (explicit) return explicit;
-
-  const createdAtMs = toMillisSafe(raw?.createdAt ?? raw?.updatedAt);
-  const createdISO = createdAtMs > 0 ? todayISO(new Date(createdAtMs)) : "";
-  return createdISO;
-}
-
-function isBookingIncomeRow(raw: Record<string, unknown>): boolean {
-  const source = normalizeIncomeSource(raw?.source);
-  if (
-    isSystemBookingSource(source) ||
-    source === "refund" ||
-    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639"
-  ) {
-    return true;
-  }
-  return !!String(raw?.bookingId || "").trim();
-}
-
-function isVoidedIncomeStatus(rawStatus: unknown): boolean {
-  const status = String(rawStatus || "").trim().toLowerCase();
-  return status === "voided" || status === "void" || status === "cancelled" || status === "canceled";
-}
-
-function resolveIncomeAuditIdentity(raw: Record<string, unknown>, docId: string, amount: number): string {
-  const source = normalizeIncomeSource(raw?.source);
-  const bookingId = resolveIncomeBookingId(raw, docId);
-  const isRefund =
-    source === "refund" ||
-    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639" ||
-    String(docId || "").startsWith("refund_") ||
-    amount < 0;
-
-  if (bookingId) return `${isRefund ? "refund" : "booking"}:${bookingId}`;
-  return `doc:${String(docId || "").trim() || "unknown"}`;
-}
-
-function loadLockMap(): Record<string, LockSnapshot> {
-  try {
-    const raw = localStorage.getItem(LOCK_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLockMap(next: Record<string, LockSnapshot>) {
-  localStorage.setItem(LOCK_KEY, JSON.stringify(next));
-}
-
-async function fetchAuditRevenueSnapshot(dateKey: string): Promise<AuditRevenueSnapshot> {
-  const [bookings, incomeRows] = await Promise.all([
-    CoreBookingService.list({ date: dateKey }),
-    listIncomeForDateCore(dateKey),
-  ]);
-
-  const bookingDates: Record<string, string> = {};
-  for (const booking of bookings) {
-    const date = String(booking.bookingDate || "").slice(0, 10);
-    if (booking.id && date) bookingDates[booking.id] = date;
-  }
-
-  let total = 0;
-  let cash = 0;
-  let card = 0;
-  let transfer = 0;
-  const dedupRows = new Map<string, { amount: number; method: PaymentChannel; sortMs: number }>();
-  for (const x of incomeRows as any[]) {
-    if (!isBookingIncomeRow(x)) continue;
-    if (isVoidedIncomeStatus(x?.status)) continue;
-    const docId = String(x?.id || "").trim();
-    const source = normalizeIncomeSource(x?.source);
-    const bookingId = resolveIncomeBookingId(x, docId);
-    const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDates[bookingId] : "";
-    if (resolveIncomeDateForAudit(x, bookingDate) !== dateKey) continue;
-    const amount = Math.round(toNum(x?.amount) * 100) / 100;
-    if (!Number.isFinite(amount) || amount === 0) continue;
-    const method = normalizeAuditPaymentMethod(x?.method ?? x?.paymentMethod, x?.note);
-    const identity = resolveIncomeAuditIdentity(x, docId, amount);
-    const sortMs = Math.max(toMillisSafe(x?.updatedAt), toMillisSafe(x?.createdAt));
-    const previous = dedupRows.get(identity);
-    if (!previous || sortMs >= previous.sortMs) dedupRows.set(identity, { amount, method, sortMs });
-  }
-  dedupRows.forEach((row) => {
-    if (row.method === "cash") { cash += row.amount; total += row.amount; }
-    else if (row.method === "card") { card += row.amount; total += row.amount; }
-    else transfer += row.amount;
-  });
-
+function emptySnapshot(date: string): CoreDayAuditSnapshot {
   return {
-    bookingDates,
-    revenue: { total, cash, card, transfer },
+    date,
+    totalHalalas: 0,
+    cashHalalas: 0,
+    cardHalalas: 0,
+    transferHalalas: 0,
+    unclassifiedHalalas: 0,
+    unclassifiedRows: [],
+    rowCount: 0,
+    sourceVersion: "day-audit-v1",
   };
 }
 
@@ -353,111 +119,106 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
   const t = (arabic: string) => dayAuditText(language, arabic);
   const [todayKey, setTodayKey] = useState(() => todayISO());
   const [todayLimitKey, setTodayLimitKey] = useState(() => todayISO());
-  const [bookingDateById, setBookingDateById] = useState<Record<string, string>>({});
-  const [revenueLive, setRevenueLive] = useState<RevenueBreakdown>({
-    total: 0,
-    cash: 0,
-    card: 0,
-    transfer: 0,
-  });
+  const [view, setView] = useState<CoreDayAuditView | null>(null);
+  const [history, setHistory] = useState<CoreDayAuditClosing[]>([]);
   const [loadedDateKey, setLoadedDateKey] = useState("");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [manualCashInput, setManualCashInput] = useState("");
+  const [manualCashError, setManualCashError] = useState("");
   const [errorText, setErrorText] = useState("");
-  const [lockMap, setLockMap] = useState<Record<string, LockSnapshot>>(() => loadLockMap());
+  const [closingInFlight, setClosingInFlight] = useState(false);
   const pendingPrintPopupRef = useRef<Window | null>(null);
-  const lockInFlightRef = useRef(false);
+  const manualCashRef = useRef<HTMLInputElement | null>(null);
+  const unclassifiedNoticeRef = useRef<HTMLDivElement | null>(null);
 
-  const lock = lockMap[todayKey] || null;
-  const bookingsRevenue = lock ? lock.bookingsRevenue : revenueLive.total;
-  const cashRevenue = lock ? toNum(lock.cashRevenue ?? lock.bookingsRevenue) : revenueLive.cash;
-  const cardRevenue = lock ? toNum(lock.cardRevenue ?? 0) : revenueLive.card;
-  const transferRevenue = lock ? toNum(lock.transferRevenue ?? 0) : revenueLive.transfer;
-  const manualCash = lock ? lock.manualCash : toNum(manualCashInput || 0);
-  const diff = lock ? lock.diff : manualCash - cashRevenue;
-  const lockTimeLabel = lock ? formatLockedAt(lock.lockedAt, language) : "";
+  const snapshot = view?.snapshot || emptySnapshot(todayKey);
+  const closing = view?.closing || null;
+  const totalHalalas = closing?.totalHalalas ?? snapshot.totalHalalas;
+  const cashHalalas = closing?.cashHalalas ?? snapshot.cashHalalas;
+  const cardHalalas = closing?.cardHalalas ?? snapshot.cardHalalas;
+  const transferHalalas = closing?.transferHalalas ?? snapshot.transferHalalas;
+  const unclassifiedHalalas = closing?.unclassifiedHalalas ?? snapshot.unclassifiedHalalas;
+  const manualCashHalalas = closing?.manualCashHalalas ?? parseManualCashHalalas(manualCashInput) ?? 0;
+  const diffHalalas = closing?.cashDiffHalalas ?? manualCashHalalas - cashHalalas;
   const loading = loadedDateKey !== todayKey;
+  const hasUnclassified = !closing && snapshot.unclassifiedRows.length > 0;
+
+  const dateLabel = useMemo(() => formatDateKey(todayKey, language), [todayKey, language]);
+
+  const loadHistory = async () => {
+    try {
+      const rows = await CoreDayAuditService.listClosings(50, 0);
+      setHistory(rows);
+      setHistoryLoaded(true);
+    } catch (error) {
+      console.error("Core day audit history load failed:", error);
+      setHistoryLoaded(true);
+      setErrorText(t("تعذر تحميل سجل الإغلاقات من Core."));
+    }
+  };
+
+  const loadSelectedDate = async (options: { preserveManual?: boolean } = {}) => {
+    try {
+      const next = await CoreDayAuditService.get(todayKey);
+      setView(next);
+      setLoadedDateKey(todayKey);
+      if (next.closing) {
+        setManualCashInput((next.closing.manualCashHalalas / 100).toFixed(2));
+      } else if (!options.preserveManual) {
+        setManualCashInput("");
+      }
+    } catch (error) {
+      console.error("Core day audit load failed:", error);
+      setView({ snapshot: emptySnapshot(todayKey), closing: null });
+      setLoadedDateKey(todayKey);
+      setErrorText(t("تعذر تحميل جرد اليوم من Core."));
+    }
+  };
 
   useEffect(() => {
-    const t = window.setInterval(() => {
-      setTodayLimitKey(todayISO());
-    }, 60_000);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(() => setTodayLimitKey(todayISO()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    let active = true;
-    let inFlight: Promise<void> | null = null;
+    setErrorText("");
+    setManualCashError("");
+    setLoadedDateKey("");
+    void loadSelectedDate();
+  }, [todayKey]);
 
-    const loadCoreAuditData = async () => {
-      try {
-        const snapshot = await fetchAuditRevenueSnapshot(todayKey);
-        if (!active) return;
-        setBookingDateById(snapshot.bookingDates);
-        setRevenueLive(snapshot.revenue);
-        setLoadedDateKey(todayKey);
-      } catch (error) {
-        console.error("Core day audit load failed:", error);
-        if (active) {
-          setErrorText(t("تعذر تحميل جرد اليوم من Core."));
-          setLoadedDateKey(todayKey);
-        }
-      }
+  useEffect(() => {
+    void loadHistory();
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadSelectedDate({ preserveManual: true });
     };
-
-    const refreshWhenActive = () => {
-      if (!active || document.visibilityState === "hidden" || inFlight) return;
-      inFlight = loadCoreAuditData().finally(() => {
-        inFlight = null;
-      });
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") refreshWhenActive();
-    };
-
-    refreshWhenActive();
-    window.addEventListener("focus", refreshWhenActive);
-    window.addEventListener("online", refreshWhenActive);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     return () => {
-      active = false;
-      window.removeEventListener("focus", refreshWhenActive);
-      window.removeEventListener("online", refreshWhenActive);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
     };
-  }, [todayKey, language]);
-
-  const dateLabel = useMemo(() => {
-    const m = todayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return todayKey;
-    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return new Intl.DateTimeFormat(language === "en" ? "en-US" : "ar-SA-u-nu-latn", { dateStyle: "short" }).format(dt);
   }, [todayKey]);
 
   const applyDateSelection = (rawDate: string) => {
     const raw = String(rawDate || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
     const bounded = raw > todayLimitKey ? todayLimitKey : raw;
-    setErrorText("");
-    setManualCashInput("");
     setTodayKey(bounded);
   };
 
   const closePendingAuditPrintPopup = () => {
     const popup = pendingPrintPopupRef.current;
     if (popup && !popup.closed) {
-      try {
-        popup.close();
-      } catch {
-        // ignore popup close errors
-      }
+      try { popup.close(); } catch { /* ignore */ }
     }
     pendingPrintPopupRef.current = null;
   };
 
-  useEffect(() => {
-    return () => closePendingAuditPrintPopup();
-  }, []);
+  useEffect(() => () => closePendingAuditPrintPopup(), []);
 
   const primeAuditPrintPopup = () => {
     const current = pendingPrintPopupRef.current;
@@ -472,176 +233,49 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
     );
     if (!popup) return false;
     pendingPrintPopupRef.current = popup;
-    try {
-      popup.document.title = t("جاري تجهيز جرد اليوم");
-    } catch {
-      // ignore popup access errors
-    }
+    try { popup.document.title = t("جاري تجهيز جرد اليوم"); } catch { /* ignore */ }
     popup.focus();
     return true;
   };
 
   const buildAuditPrintHtml = (payload: DayAuditPrintPayload) => {
     const statusLabel = payload.isLocked ? t("مقفل") : t("مفتوح");
-    const diffClass = payload.diff < 0 ? "neg" : payload.diff > 0 ? "pos" : "zero";
-    const lockedRow = payload.isLocked
-      ? `<tr><td>${escapeHtml(t("وقت الإغلاق"))}</td><td>${escapeHtml(payload.lockTimeLabel)}</td></tr>`
+    const diffClass = payload.diffHalalas < 0 ? "neg" : payload.diffHalalas > 0 ? "pos" : "zero";
+    const lockedRows = payload.isLocked
+      ? `<tr><td>${escapeHtml(t("وقت الإغلاق"))}</td><td>${escapeHtml(payload.lockTimeLabel)}</td></tr>
+         <tr><td>${escapeHtml(t("مغلق بواسطة"))}</td><td>${escapeHtml(payload.closedByName || "—")}</td></tr>`
       : "";
-    const cardRow = `<div class="summary-row"><span>${escapeHtml(t("إيراد الشبكة"))}</span><strong>${escapeHtml(
-      formatAmount(payload.cardRevenue, language)
-    )}</strong></div>`;
-    const transferRow = `<div class="summary-row"><span>${escapeHtml(t("إيراد التحويل (خارج القفل)"))}</span><strong>${escapeHtml(
-      formatAmount(payload.transferRevenue, language)
-    )}</strong></div>`;
-
     return `<!doctype html>
 <html lang="${language}" dir="${language === "en" ? "ltr" : "rtl"}">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(t("جرد اليوم"))}</title>
-  <style>
-    @page { size: 80mm auto; margin: 0; }
-    html, body {
-      width: 80mm;
-      margin: 0;
-      padding: 0;
-      background: #fff;
-      color: #000;
-      font-family: "Lucida Console", "Courier New", monospace;
-      font-size: 11px;
-      line-height: 1.35;
-    }
-    .receipt {
-      width: 72mm;
-      margin: 0 auto;
-      padding: 2mm 1.5mm 4mm;
-      box-sizing: border-box;
-    }
-    .title {
-      margin: 0;
-      text-align: center;
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .meta {
-      margin-top: 1mm;
-      text-align: center;
-      font-size: 10px;
-      color: #000;
-    }
-    .line {
-      margin: 2mm 0;
-      border-top: 1px dashed #000;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    td {
-      padding: 1mm 0;
-      vertical-align: top;
-    }
-    td:first-child {
-      width: 50%;
-      color: #000;
-    }
-    td:last-child {
-      width: 50%;
-      text-align: left;
-      font-weight: 700;
-    }
-    .summary {
-      margin-top: 1.5mm;
-      border-top: 1px dashed #000;
-      border-bottom: 1px dashed #000;
-      padding: 1.2mm 0;
-    }
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-      padding: 0.8mm 0;
-    }
-    .summary-row strong {
-      font-size: 13px;
-    }
-    .summary-row.neg strong { color: #b42318; }
-    .summary-row.pos strong { color: #067647; }
-    .summary-row.zero strong { color: #000; }
-    .footer {
-      margin-top: 2mm;
-      text-align: center;
-      font-size: 10px;
-    }
-  </style>
+<meta charset="utf-8" />
+<title>${escapeHtml(t("جرد اليوم"))}</title>
+<style>
+@page { size: 80mm auto; margin: 0; }
+html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"Lucida Console","Courier New",monospace;font-size:11px;line-height:1.35}
+.receipt{width:72mm;margin:0 auto;padding:2mm 1.5mm 4mm;box-sizing:border-box}.title{text-align:center;font-size:16px}.meta{text-align:center;font-size:10px}.line{margin:2mm 0;border-top:1px dashed #000}table{width:100%;border-collapse:collapse}td{padding:1mm 0}td:last-child{text-align:left;font-weight:700}.summary{margin-top:1.5mm;border-top:1px dashed #000;border-bottom:1px dashed #000;padding:1.2mm 0}.row{display:flex;justify-content:space-between;gap:6px;padding:.8mm 0}.row strong{font-size:13px}.neg strong{color:#b42318}.pos strong{color:#067647}.footer{margin-top:2mm;text-align:center;font-size:10px}
+</style>
 </head>
-<body>
-  <main class="receipt">
-    <h1 class="title">${escapeHtml(t("جرد اليوم"))}</h1>
-    <div class="meta">${escapeHtml(payload.printedAtLabel)}</div>
-    <div class="line"></div>
-    <table>
-      <tr><td>${escapeHtml(t("تاريخ الجرد"))}</td><td>${escapeHtml(payload.dateLabel)}</td></tr>
-      <tr><td>${escapeHtml(t("الحالة"))}</td><td>${statusLabel}</td></tr>
-      ${lockedRow}
-    </table>
-    <div class="summary">
-      <div class="summary-row">
-        <span>${escapeHtml(t("إيراد الجرد (الكاش + الشبكة)"))}</span>
-        <strong>${escapeHtml(formatAmount(payload.totalRevenue, language))}</strong>
-      </div>
-      <div class="summary-row">
-        <span>${escapeHtml(t("إيراد الكاش"))}</span>
-        <strong>${escapeHtml(formatAmount(payload.cashRevenue, language))}</strong>
-      </div>
-      ${cardRow}
-      ${transferRow}
-      <div class="summary-row">
-        <span>${escapeHtml(t("الكاش اليدوي"))}</span>
-        <strong>${escapeHtml(formatAmount(payload.manualCash, language))}</strong>
-      </div>
-      <div class="summary-row ${diffClass}">
-        <span>${escapeHtml(t("فرق الكاش (الكاش اليدوي - إيراد الكاش)"))}</span>
-        <strong>${escapeHtml(formatAmount(payload.diff, language))}</strong>
-      </div>
-    </div>
-    <div class="footer">${escapeHtml(t("تم إعداد الجرد آليًا من لوحة التحكم"))}</div>
-  </main>
-  <script>
-    (function () {
-      var printed = false;
-      function runPrint() {
-        if (printed) return;
-        printed = true;
-        window.focus();
-        window.print();
-      }
-      window.addEventListener("load", function () {
-        setTimeout(runPrint, 120);
-      });
-      window.onafterprint = function () {
-        setTimeout(function () {
-          window.close();
-        }, 80);
-      };
-    })();
-  </script>
-</body>
-</html>`;
+<body><main class="receipt">
+<h1 class="title">${escapeHtml(t("جرد اليوم"))}</h1><div class="meta">${escapeHtml(payload.printedAtLabel)}</div><div class="line"></div>
+<table><tr><td>${escapeHtml(t("تاريخ الجرد"))}</td><td>${escapeHtml(payload.dateLabel)}</td></tr><tr><td>${escapeHtml(t("الحالة"))}</td><td>${escapeHtml(statusLabel)}</td></tr>${lockedRows}</table>
+<div class="summary">
+<div class="row"><span>${escapeHtml(t("إجمالي التحصيل"))}</span><strong>${escapeHtml(formatHalalas(payload.totalHalalas, language))}</strong></div>
+<div class="row"><span>${escapeHtml(t("إيراد الكاش"))}</span><strong>${escapeHtml(formatHalalas(payload.cashHalalas, language))}</strong></div>
+<div class="row"><span>${escapeHtml(t("إيراد الشبكة"))}</span><strong>${escapeHtml(formatHalalas(payload.cardHalalas, language))}</strong></div>
+<div class="row"><span>${escapeHtml(t("إيراد التحويل (خارج مطابقة الكاش)"))}</span><strong>${escapeHtml(formatHalalas(payload.transferHalalas, language))}</strong></div>
+<div class="row"><span>${escapeHtml(t("إيراد غير مصنف"))}</span><strong>${escapeHtml(formatHalalas(payload.unclassifiedHalalas, language))}</strong></div>
+<div class="row"><span>${escapeHtml(t("الكاش اليدوي"))}</span><strong>${escapeHtml(formatHalalas(payload.manualCashHalalas, language))}</strong></div>
+<div class="row ${diffClass}"><span>${escapeHtml(t("فرق الكاش (الكاش اليدوي - إيراد الكاش)"))}</span><strong>${escapeHtml(formatHalalas(payload.diffHalalas, language))}</strong></div>
+</div><div class="footer">${escapeHtml(t("تم إعداد الجرد آليًا من لوحة التحكم"))}</div>
+</main><script>(function(){var done=false;function p(){if(done)return;done=true;window.focus();window.print()}window.addEventListener('load',function(){setTimeout(p,120)});window.onafterprint=function(){setTimeout(function(){window.close()},80)}})();</script></body></html>`;
   };
 
   const openAuditPrintPopup = (payload: DayAuditPrintPayload) => {
     const pending = pendingPrintPopupRef.current;
-    const popup =
-      pending && !pending.closed
-        ? pending
-        : window.open(
-            "about:blank",
-            "day_audit_print_popup",
-            "width=720,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
-          );
+    const popup = pending && !pending.closed
+      ? pending
+      : window.open("about:blank", "day_audit_print_popup", "width=720,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes");
     if (!popup) {
       closePendingAuditPrintPopup();
       return false;
@@ -660,84 +294,104 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
     }
   };
 
+  const payloadFromCurrent = (): DayAuditPrintPayload => ({
+    dateLabel,
+    totalHalalas,
+    cashHalalas,
+    cardHalalas,
+    transferHalalas,
+    unclassifiedHalalas,
+    manualCashHalalas,
+    diffHalalas,
+    isLocked: !!closing,
+    lockTimeLabel: closing ? formatDateTime(closing.closedAt, language) : "—",
+    closedByName: closing?.closedByName || "",
+    printedAtLabel: dateTimeFormatter(language).format(new Date()),
+  });
+
+  const payloadFromClosing = (row: CoreDayAuditClosing): DayAuditPrintPayload => ({
+    dateLabel: formatDateKey(row.auditDate, language),
+    totalHalalas: row.totalHalalas,
+    cashHalalas: row.cashHalalas,
+    cardHalalas: row.cardHalalas,
+    transferHalalas: row.transferHalalas,
+    unclassifiedHalalas: row.unclassifiedHalalas,
+    manualCashHalalas: row.manualCashHalalas,
+    diffHalalas: row.cashDiffHalalas,
+    isLocked: true,
+    lockTimeLabel: formatDateTime(row.closedAt, language),
+    closedByName: row.closedByName || "",
+    printedAtLabel: dateTimeFormatter(language).format(new Date()),
+  });
+
   const printAudit = () => {
     setErrorText("");
-    const payload: DayAuditPrintPayload = {
-      dateLabel,
-      totalRevenue: bookingsRevenue,
-      cashRevenue,
-      cardRevenue,
-      transferRevenue,
-      manualCash,
-      diff,
-      isLocked: !!lock,
-      lockTimeLabel: lock ? formatLockedAt(lock.lockedAt, language) : "—",
-      printedAtLabel: dateTimeFormatter(language).format(new Date()),
-    };
-    if (!openAuditPrintPopup(payload)) {
+    if (!openAuditPrintPopup(payloadFromCurrent())) {
       setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
     }
   };
 
-  const printAndLock = async () => {
-    if (lock || lockInFlightRef.current) return;
-
-    const manual = toNum(manualCashInput || 0);
-    if (manual < 0) {
-      setErrorText(t("الكاش اليدوي لا يمكن أن يكون رقمًا سالبًا."));
-      return;
-    }
-
-    lockInFlightRef.current = true;
+  const printHistoricalClosing = (row: CoreDayAuditClosing) => {
     setErrorText("");
-    try {
-      const snapshot = await fetchAuditRevenueSnapshot(todayKey);
-      setBookingDateById(snapshot.bookingDates);
-      setRevenueLive(snapshot.revenue);
-      setLoadedDateKey(todayKey);
-
-      const nextLock: LockSnapshot = {
-        date: todayKey,
-        manualCash: manual,
-        bookingsRevenue: snapshot.revenue.total,
-        cashRevenue: snapshot.revenue.cash,
-        cardRevenue: snapshot.revenue.card,
-        transferRevenue: snapshot.revenue.transfer,
-        diff: manual - snapshot.revenue.cash,
-        lockedAt: Date.now(),
-      };
-      const nextMap = { ...lockMap, [todayKey]: nextLock };
-      setLockMap(nextMap);
-      saveLockMap(nextMap);
-
-      const payload: DayAuditPrintPayload = {
-        dateLabel,
-        totalRevenue: nextLock.bookingsRevenue,
-        cashRevenue: toNum(nextLock.cashRevenue),
-        cardRevenue: toNum(nextLock.cardRevenue),
-        transferRevenue: toNum(nextLock.transferRevenue),
-        manualCash: nextLock.manualCash,
-        diff: nextLock.diff,
-        isLocked: true,
-        lockTimeLabel: formatLockedAt(nextLock.lockedAt, language),
-        printedAtLabel: dateTimeFormatter(language).format(new Date()),
-      };
-      if (!openAuditPrintPopup(payload)) {
-        setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
-      }
-    } catch (error) {
-      console.error("Core day audit pre-lock refresh failed:", error);
-      closePendingAuditPrintPopup();
-      setErrorText(t("تعذر تحديث بيانات الجرد قبل الإقفال. لم يتم إقفال اليوم."));
-    } finally {
-      lockInFlightRef.current = false;
+    if (!openAuditPrintPopup(payloadFromClosing(row))) {
+      setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
     }
   };
 
-  const diffTone = diff < 0 ? "negative" : diff > 0 ? "positive" : "zero";
-  const diffMetricClass = diff < 0
+  const printAndClose = async () => {
+    if (closing || closingInFlight) return;
+    setErrorText("");
+    setManualCashError("");
+
+    const parsedManual = parseManualCashHalalas(manualCashInput);
+    if (parsedManual == null) {
+      const message = String(manualCashInput || "").trim()
+        ? t("الكاش اليدوي لا يمكن أن يكون رقمًا سالبًا.")
+        : t("أدخل مبلغ الكاش الموجود فعليًا في الصندوق.");
+      setManualCashError(message);
+      setErrorText(message);
+      window.setTimeout(() => manualCashRef.current?.focus(), 0);
+      closePendingAuditPrintPopup();
+      return;
+    }
+
+    if (hasUnclassified) {
+      const message = t("لا يمكن إقفال اليوم مع وجود مبالغ غير مصنفة.");
+      setErrorText(message);
+      window.setTimeout(() => unclassifiedNoticeRef.current?.focus(), 0);
+      closePendingAuditPrintPopup();
+      return;
+    }
+
+    setClosingInFlight(true);
+    try {
+      const created = await CoreDayAuditService.close(todayKey, parsedManual);
+      const nextView = await CoreDayAuditService.get(todayKey);
+      setView({ ...nextView, closing: created });
+      setLoadedDateKey(todayKey);
+      setManualCashInput((created.manualCashHalalas / 100).toFixed(2));
+      await loadHistory();
+      if (!openAuditPrintPopup(payloadFromClosing(created))) {
+        setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
+      }
+    } catch (error) {
+      console.error("Core day audit close failed:", error);
+      closePendingAuditPrintPopup();
+      if (error instanceof CoreApiError && error.code === "core_day_audit:unclassified_payments") {
+        setErrorText(t("لا يمكن إقفال اليوم مع وجود مبالغ غير مصنفة."));
+        window.setTimeout(() => unclassifiedNoticeRef.current?.focus(), 0);
+      } else {
+        setErrorText(t("تعذر إقفال اليوم. أعد تحميل البيانات وحاول مرة أخرى."));
+      }
+    } finally {
+      setClosingInFlight(false);
+    }
+  };
+
+  const diffTone = diffHalalas < 0 ? "negative" : diffHalalas > 0 ? "positive" : "zero";
+  const diffMetricClass = diffHalalas < 0
     ? "dsv2-metric-card--danger"
-    : diff > 0
+    : diffHalalas > 0
       ? "dsv2-metric-card--gold"
       : "dsv2-metric-card--success";
 
@@ -747,49 +401,38 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
         <div className="day-audit-v2-hero__content">
           <span className="dsv2-badge dsv2-badge--gold">{t("الجرد اليومي")}</span>
           <h1 className="dsv2-page-title">{t("الجرد والإقفال اليومي")}</h1>
-          <p className="dsv2-page-subtitle">
-            {t("مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.")}
-          </p>
+          <p className="dsv2-page-subtitle">{t("مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.")}</p>
         </div>
-
         <div className="day-audit-v2-hero__controls no-print">
           <div className="day-audit-v2-date-card">
-            <span className="day-audit-v2-date-card__icon" aria-hidden="true">
-              <FontAwesomeIcon icon={faCalendarDay} />
-            </span>
+            <span className="day-audit-v2-date-card__icon" aria-hidden="true"><FontAwesomeIcon icon={faCalendarDay} /></span>
             <label className="day-audit-v2-date-card__field" htmlFor="day-audit-date">
               <span>{t("تاريخ الجرد")}</span>
-              <DashboardDatePickerV2
-                id="day-audit-date"
-                value={todayKey}
-                max={todayLimitKey}
-                clearable={false}
-                onChange={applyDateSelection}
-              />
+              <DashboardDatePickerV2 id="day-audit-date" value={todayKey} max={todayLimitKey} clearable={false} onChange={applyDateSelection} />
             </label>
-            <button
-              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
-              type="button"
-              onClick={() => applyDateSelection(todayLimitKey)}
-              disabled={todayKey === todayLimitKey}
-            >
-              {t("اليوم")}
-            </button>
+            <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => applyDateSelection(todayLimitKey)} disabled={todayKey === todayLimitKey}>{t("اليوم")}</button>
           </div>
-
-          <div className="day-audit-v2-status" data-state={lock ? "locked" : "open"}>
-            <FontAwesomeIcon icon={lock ? faLock : faUnlockKeyhole} />
-            <span>{lock ? t("اليوم مقفل") : t("اليوم مفتوح")}</span>
+          <div className="day-audit-v2-status" data-state={closing ? "locked" : "open"}>
+            <FontAwesomeIcon icon={closing ? faLock : faUnlockKeyhole} />
+            <span>{closing ? t("اليوم مقفل") : t("اليوم مفتوح")}</span>
           </div>
         </div>
       </section>
 
-      {lock ? (
+      {closing ? (
         <div className="day-audit-v2-notice day-audit-v2-notice--success" role="status">
           <FontAwesomeIcon icon={faLock} />
-          <span>
-            {t("تم إقفال هذا اليوم في")} <strong>{lockTimeLabel}</strong>. {t("القيم محفوظة وغير قابلة للتعديل.")}
-          </span>
+          <span>{t("تم إقفال هذا اليوم في")} <strong>{formatDateTime(closing.closedAt, language)}</strong>. {t("القيم محفوظة في Core وغير قابلة للتعديل.")}</span>
+        </div>
+      ) : null}
+
+      {hasUnclassified ? (
+        <div ref={unclassifiedNoticeRef} tabIndex={-1} className="day-audit-v2-notice day-audit-v2-notice--danger" role="alert">
+          <FontAwesomeIcon icon={faTriangleExclamation} />
+          <div>
+            <strong>{t("يوجد تحصيل غير مصنف. حدّد طريقة الدفع الصحيحة قبل إقفال اليوم.")}</strong>
+            <div>{t("مبالغ غير مصنفة")}: {formatHalalas(snapshot.unclassifiedHalalas, language)}</div>
+          </div>
         </div>
       ) : null}
 
@@ -797,35 +440,58 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
         <article className="dsv2-metric-card dsv2-metric-card--dark">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faFileInvoiceDollar} /></span>
           <p className="dsv2-metric-card__label">{t("إجمالي التحصيل")}</p>
-          <div className="dsv2-metric-card__value">
-            {loading ? <DashboardSkeletonV2 width="72%" height={22} /> : formatAmount(bookingsRevenue, language)}
-          </div>
+          <div className="dsv2-metric-card__value">{loading ? <DashboardSkeletonV2 width="72%" height={22} /> : formatHalalas(totalHalalas, language)}</div>
           <p className="dsv2-metric-card__meta">{dateLabel}</p>
         </article>
-
         <article className="dsv2-metric-card dsv2-metric-card--success">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCashRegister} /></span>
           <p className="dsv2-metric-card__label">{t("تحصيل الكاش")}</p>
-          <p className="dsv2-metric-card__value">{formatAmount(cashRevenue, language)}</p>
+          <p className="dsv2-metric-card__value">{formatHalalas(cashHalalas, language)}</p>
           <p className="dsv2-metric-card__meta">{t("حسب المدفوعات المسجلة")}</p>
         </article>
-
         <article className="dsv2-metric-card dsv2-metric-card--gold">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCreditCard} /></span>
           <p className="dsv2-metric-card__label">{t("الشبكة والتحويل")}</p>
-          <p className="dsv2-metric-card__value">{formatAmount(cardRevenue + transferRevenue, language)}</p>
-          <p className="dsv2-metric-card__meta">
-            {t("شبكة")} {formatAmount(cardRevenue, language)} · {t("تحويل")} {formatAmount(transferRevenue, language)}
-          </p>
+          <p className="dsv2-metric-card__value">{formatHalalas(cardHalalas + transferHalalas, language)}</p>
+          <p className="dsv2-metric-card__meta">{t("شبكة")} {formatHalalas(cardHalalas, language)} · {t("تحويل")} {formatHalalas(transferHalalas, language)}</p>
         </article>
-
+        <article className={`dsv2-metric-card ${unclassifiedHalalas !== 0 ? "dsv2-metric-card--danger" : "dsv2-metric-card--success"}`}>
+          <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+          <p className="dsv2-metric-card__label">{t("غير مصنف")}</p>
+          <p className="dsv2-metric-card__value">{formatHalalas(unclassifiedHalalas, language)}</p>
+          <p className="dsv2-metric-card__meta">{hasUnclassified ? t("لا يمكن إقفال اليوم مع وجود مبالغ غير مصنفة.") : t("حسب المدفوعات المسجلة")}</p>
+        </article>
         <article className={`dsv2-metric-card ${diffMetricClass}`}>
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faScaleBalanced} /></span>
           <p className="dsv2-metric-card__label">{t("فرق الكاش")}</p>
-          <p className="dsv2-metric-card__value">{formatAmount(diff, language)}</p>
+          <p className="dsv2-metric-card__value">{formatHalalas(diffHalalas, language)}</p>
           <p className="dsv2-metric-card__meta">{t("الكاش الفعلي ناقص تحصيل الكاش")}</p>
         </article>
       </section>
+
+      {hasUnclassified ? (
+        <section className="dsv2-card day-audit-v2-panel" aria-label={t("مبالغ غير مصنفة")}>
+          <header className="day-audit-v2-panel__head">
+            <div className="day-audit-v2-panel__head-copy">
+              <span className="dsv2-badge dsv2-badge--gold">{t("مبالغ غير مصنفة")}</span>
+              <h2>{t("يوجد تحصيل غير مصنف. حدّد طريقة الدفع الصحيحة قبل إقفال اليوم.")}</h2>
+            </div>
+          </header>
+          <div className="day-audit-v2-summary">
+            {snapshot.unclassifiedRows.map((row) => (
+              <div className="day-audit-v2-summary-row" key={row.id}>
+                <span>
+                  <strong>{row.bookingId ? `${t("الحجز")}: ${row.bookingId}` : row.id}</strong>
+                  {row.bookingDate ? ` · ${t("تاريخ الحجز")}: ${row.bookingDate}` : ""}
+                  {` · ${t("طريقة الدفع الحالية")}: ${row.method || t("غير معروف")}`}
+                  {row.occurredAt ? ` · ${t("وقت التسجيل")}: ${formatDateTime(row.occurredAt, language)}` : ""}
+                </span>
+                <strong>{formatHalalas(row.amountHalalas, language)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="day-audit-v2-layout" id="day-audit-print">
         <article className="dsv2-card day-audit-v2-panel day-audit-v2-entry">
@@ -837,65 +503,43 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
             </div>
             <span className="day-audit-v2-panel__index">01</span>
           </header>
-
           <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
             <span>{t("مبلغ الكاش الموجود")}</span>
             <div className="day-audit-v2-amount-control">
               <DashboardNumberInputV2
+                ref={manualCashRef}
                 id="day-audit-manual-cash"
                 inputMode="decimal"
                 min={0}
+                step="0.01"
                 placeholder="0.00"
-                value={lock ? String(lock.manualCash) : manualCashInput}
-                onChange={(e) => {
+                value={closing ? (closing.manualCashHalalas / 100).toFixed(2) : manualCashInput}
+                onChange={(event) => {
                   setErrorText("");
-                  setManualCashInput(String(e.target.value || ""));
+                  setManualCashError("");
+                  setManualCashInput(String(event.target.value || ""));
                 }}
-                disabled={!!lock}
+                disabled={!!closing}
+                aria-invalid={manualCashError ? true : undefined}
+                aria-describedby={manualCashError ? "day-audit-manual-cash-error" : undefined}
+                style={manualCashError ? { borderColor: "#b42318", boxShadow: "0 0 0 1px #b42318" } : undefined}
               />
               <b>{language === "en" ? "SAR" : "ر.س"}</b>
             </div>
-            <small>
-              {lock ? t("تم تثبيت المبلغ عند إقفال اليوم.") : t("استخدم المبلغ المحسوب فعليًا من الصندوق.")}
-            </small>
+            {manualCashError ? <small id="day-audit-manual-cash-error" role="alert" style={{ color: "#b42318" }}>{manualCashError}</small> : null}
+            <small>{closing ? t("تم تثبيت المبلغ عند إقفال اليوم.") : t("استخدم المبلغ المحسوب فعليًا من الصندوق.")}</small>
           </label>
-
           <div className="day-audit-v2-difference">
             <span>{t("نتيجة المطابقة الحالية")}</span>
-            <strong data-diff={diffTone}>
-              {diff === 0
-                ? t("متطابق")
-                : diff < 0
-                  ? `${t("عجز")} ${formatAmount(Math.abs(diff), language)}`
-                  : `${t("زيادة")} ${formatAmount(diff, language)}`}
-            </strong>
+            <strong data-diff={diffTone}>{diffHalalas === 0 ? t("متطابق") : diffHalalas < 0 ? `${t("عجز")} ${formatHalalas(Math.abs(diffHalalas), language)}` : `${t("زيادة")} ${formatHalalas(diffHalalas, language)}`}</strong>
           </div>
-
-          {errorText ? (
-            <div className="day-audit-v2-notice day-audit-v2-notice--danger no-print" role="alert">
-              {errorText}
-            </div>
-          ) : null}
-
+          {errorText ? <div className="day-audit-v2-notice day-audit-v2-notice--danger no-print" role="alert">{errorText}</div> : null}
           <div className="day-audit-v2-actions no-print">
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--secondary"
-              onPointerDown={primeAuditPrintPopup}
-              onClick={printAudit}
-            >
-              <FontAwesomeIcon icon={faPrint} />
-              {t("طباعة مسودة الجرد")}
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onPointerDown={primeAuditPrintPopup} onClick={printAudit}>
+              <FontAwesomeIcon icon={faPrint} />{t("طباعة مسودة الجرد")}
             </button>
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--primary"
-              onPointerDown={primeAuditPrintPopup}
-              onClick={printAndLock}
-              disabled={!!lock}
-            >
-              <FontAwesomeIcon icon={faLock} />
-              {lock ? t("تم إقفال اليوم") : t("طباعة وإقفال اليوم")}
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onPointerDown={primeAuditPrintPopup} onClick={printAndClose} disabled={!!closing || closingInFlight}>
+              <FontAwesomeIcon icon={faLock} />{closing ? t("تم إقفال اليوم") : t("طباعة وإقفال اليوم")}
             </button>
           </div>
         </article>
@@ -909,41 +553,52 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
             </div>
             <span className="day-audit-v2-panel__index">02</span>
           </header>
-
           <div className="day-audit-v2-summary">
-            <div className="day-audit-v2-summary-row">
-              <span>{t("إجمالي التحصيل")}</span>
-              <strong>{formatAmount(bookingsRevenue, language)}</strong>
-            </div>
-            <div className="day-audit-v2-summary-row">
-              <span>{t("تحصيل الكاش بالنظام")}</span>
-              <strong>{formatAmount(cashRevenue, language)}</strong>
-            </div>
-            <div className="day-audit-v2-summary-row">
-              <span>{t("تحصيل الشبكة")}</span>
-              <strong>{formatAmount(cardRevenue, language)}</strong>
-            </div>
-            <div className="day-audit-v2-summary-row">
-              <span>{t("التحويل البنكي")}</span>
-              <strong>{formatAmount(transferRevenue, language)}</strong>
-            </div>
-            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--highlight">
-              <span>{t("الكاش الفعلي")}</span>
-              <strong>{formatAmount(manualCash, language)}</strong>
-            </div>
-            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--total">
-              <span>{t("فرق الكاش النهائي")}</span>
-              <strong className="day-audit-v2-value" data-diff={diffTone}>{formatAmount(diff, language)}</strong>
-            </div>
+            <div className="day-audit-v2-summary-row"><span>{t("إجمالي التحصيل")}</span><strong>{formatHalalas(totalHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row"><span>{t("تحصيل الكاش بالنظام")}</span><strong>{formatHalalas(cashHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row"><span>{t("تحصيل الشبكة")}</span><strong>{formatHalalas(cardHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row"><span>{t("التحويل البنكي")}</span><strong>{formatHalalas(transferHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row"><span>{t("مبالغ غير مصنفة")}</span><strong>{formatHalalas(unclassifiedHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--highlight"><span>{t("الكاش الفعلي")}</span><strong>{formatHalalas(manualCashHalalas, language)}</strong></div>
+            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--total"><span>{t("فرق الكاش النهائي")}</span><strong className="day-audit-v2-value" data-diff={diffTone}>{formatHalalas(diffHalalas, language)}</strong></div>
           </div>
-
-          <div className="day-audit-v2-policy">
-            <strong>{t("قاعدة الإقفال")}</strong>
-            <p>
-              {t("التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.")}
-            </p>
-          </div>
+          <div className="day-audit-v2-policy"><strong>{t("قاعدة الإقفال")}</strong><p>{t("التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.")}</p></div>
         </aside>
+      </section>
+
+      <section className="dsv2-card day-audit-v2-panel" aria-label={t("الإغلاقات السابقة")}>
+        <header className="day-audit-v2-panel__head">
+          <div className="day-audit-v2-panel__head-copy">
+            <span className="dsv2-badge dsv2-badge--gold"><FontAwesomeIcon icon={faClockRotateLeft} /> {t("الإغلاقات السابقة")}</span>
+            <h2>{t("الإغلاقات السابقة")}</h2>
+            <p>{t("سجل الإغلاقات محفوظ مركزيًا في Core ويظهر على جميع الأجهزة.")}</p>
+          </div>
+        </header>
+        {!historyLoaded ? <DashboardSkeletonV2 width="100%" height={90} /> : history.length === 0 ? (
+          <p className="dsv2-page-subtitle">{t("لا توجد إغلاقات سابقة حتى الآن.")}</p>
+        ) : (
+          <div className="day-audit-v2-summary">
+            {history.map((row) => (
+              <div className="day-audit-v2-summary-row" key={row.id}>
+                <span>
+                  <strong>{formatDateKey(row.auditDate, language)}</strong>
+                  {` · ${formatDateTime(row.closedAt, language)}`}
+                  {row.closedByName ? ` · ${t("مغلق بواسطة")}: ${row.closedByName}` : ""}
+                  <br />
+                  {t("إجمالي")}: {formatHalalas(row.totalHalalas, language)} · {t("الكاش")}: {formatHalalas(row.cashHalalas, language)} · {t("الشبكة")}: {formatHalalas(row.cardHalalas, language)} · {t("تحويل")}: {formatHalalas(row.transferHalalas, language)}
+                </span>
+                <span className="day-audit-v2-actions no-print">
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setTodayKey(row.auditDate); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                    <FontAwesomeIcon icon={faEye} /> {t("عرض")}
+                  </button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onPointerDown={primeAuditPrintPopup} onClick={() => printHistoricalClosing(row)}>
+                    <FontAwesomeIcon icon={faPrint} /> {t("طباعة")}
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
