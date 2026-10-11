@@ -33,6 +33,7 @@ const dayAuditEnglish: Record<string, string> = {
   "اليوم مفتوح": "Day open",
   "تم إقفال هذا اليوم في": "This day was closed at",
   "القيم محفوظة في Core وغير قابلة للتعديل.": "Values are stored in Core and cannot be edited.",
+  "هذا إغلاق قديم محفوظ على هذا الجهاز للعرض فقط.": "This is a legacy closing stored on this device for read-only viewing.",
   "ملخص الجرد": "Audit summary",
   "تحصيل الكاش": "Cash collected",
   "حسب المدفوعات المسجلة": "Based on recorded payments",
