@@ -483,6 +483,9 @@ export const coreD1BookingDataSource: BookingDataSource = {
   async updateBooking(id, patch) {
     const current = await CoreBookingService.get(id);
     const paidSar = Number(patch.paidAmount);
+    const bookingItemPriceSar = Number(
+      patch.bookingPrice
+    );
     const rawBreakdown = patch.paymentBreakdown as Record<string, unknown> | null | undefined;
     const paymentBreakdown = rawBreakdown
       ? Object.fromEntries(
@@ -528,6 +531,28 @@ export const coreD1BookingDataSource: BookingDataSource = {
         patch.durationMin === undefined
           ? undefined
           : Math.max(1, Math.round(Number(patch.durationMin || 0))),
+      bookingItemId:
+        patch.bookingItemId === undefined
+          ? undefined
+          : String(patch.bookingItemId || "").trim(),
+      bookingItemPriceHalalas:
+        patch.bookingPrice === undefined ||
+        !Number.isFinite(bookingItemPriceSar)
+          ? undefined
+          : Math.max(
+              0,
+              Math.round(bookingItemPriceSar * 100)
+            ),
+      priceAdjustmentReason:
+        patch.priceAdjustmentReason === undefined
+          ? undefined
+          : patch.priceAdjustmentReason || null,
+      priceAdjustmentNote:
+        patch.priceAdjustmentNote === undefined
+          ? undefined
+          : String(
+              patch.priceAdjustmentNote || ""
+            ).trim() || null,
       paidHalalas:
         Number.isFinite(paidSar)
           ? Math.max(0, Math.round(paidSar * 100))

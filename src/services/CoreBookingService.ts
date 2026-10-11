@@ -124,6 +124,15 @@ export const CoreBookingService = {
       clientPhone: string | null;
       serviceId: string;
       durationMinutes: number;
+      bookingItemId: string;
+      bookingItemPriceHalalas: number;
+      priceAdjustmentReason:
+        | "catalog_pending_update"
+        | "management_approved"
+        | "special_price"
+        | "other"
+        | null;
+      priceAdjustmentNote: string | null;
       paidHalalas: number;
       paymentMethod: string | null;
       paymentBreakdown: Record<string, number> | null;
