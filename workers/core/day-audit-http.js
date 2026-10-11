@@ -11,6 +11,7 @@ import {
 } from './repositories/day-audit-closings.js';
 
 const DAY_AUDIT_ROOT = '/api/core/day-audit';
+const DAY_AUDIT_PERMISSION = 'bookings.day_audit.manage';
 
 export function isDayAuditRequest(request) {
   const path = new URL(request.url).pathname;
@@ -80,7 +81,7 @@ export async function handleDayAuditRequest(request, env) {
     const method = String(request.method || 'GET').toUpperCase();
 
     if (path === DAY_AUDIT_ROOT && method === 'GET') {
-      requirePermission(ctx, 'income.view');
+      requirePermission(ctx, DAY_AUDIT_PERMISSION);
       const date = url.searchParams.get('date') || '';
       const [snapshot, closing] = await Promise.all([
         computeDayAuditSnapshot(ctx.coreDb, ctx.salonId, date),
@@ -90,7 +91,7 @@ export async function handleDayAuditRequest(request, env) {
     }
 
     if (path === `${DAY_AUDIT_ROOT}/closings` && method === 'GET') {
-      requirePermission(ctx, 'income.view');
+      requirePermission(ctx, DAY_AUDIT_PERMISSION);
       const closings = await listDayAuditClosings(ctx.coreDb, ctx.salonId, {
         limit: url.searchParams.get('limit') || 30,
         offset: url.searchParams.get('offset') || 0,
@@ -99,14 +100,14 @@ export async function handleDayAuditRequest(request, env) {
     }
 
     if (path === `${DAY_AUDIT_ROOT}/close` && method === 'POST') {
-      requirePermission(ctx, 'income.manage');
+      requirePermission(ctx, DAY_AUDIT_PERMISSION);
       const body = await readBody(request);
       const closing = await closeDayAudit(ctx.coreDb, ctx.salonId, body, actorInfo(ctx));
       return json(request, env, 200, { ok: true, data: closing }, requestId);
     }
 
     if (path === `${DAY_AUDIT_ROOT}/import-legacy` && method === 'POST') {
-      requirePermission(ctx, 'income.manage');
+      requirePermission(ctx, DAY_AUDIT_PERMISSION);
       const body = await readBody(request);
       const result = await importLegacyDayAuditClosings(ctx.coreDb, ctx.salonId, body, actorInfo(ctx));
       return json(request, env, 200, { ok: true, data: result }, requestId);
