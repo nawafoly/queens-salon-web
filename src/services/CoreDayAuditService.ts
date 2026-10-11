@@ -90,7 +90,7 @@ function readLegacyLocalClosings(): CoreDayAuditClosing[] {
     if (!parsed || typeof parsed !== "object") return [];
 
     return Object.entries(parsed)
-      .map(([key, value]) => {
+      .map<CoreDayAuditClosing | null>(([key, value]) => {
         const date = String(value?.date || key || "").slice(0, 10);
         const lockedAt = Number(value?.lockedAt || 0);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(lockedAt) || lockedAt <= 0) return null;
@@ -117,9 +117,9 @@ function readLegacyLocalClosings(): CoreDayAuditClosing[] {
           origin: "legacy_local_readonly",
           sourceSnapshot: { sourceVersion: "legacy-localStorage-v1" },
           createdAt: closedAt,
-        } satisfies CoreDayAuditClosing;
+        };
       })
-      .filter((row): row is CoreDayAuditClosing => Boolean(row))
+      .filter((row): row is CoreDayAuditClosing => row !== null)
       .sort((a, b) => b.auditDate.localeCompare(a.auditDate));
   } catch {
     return [];
