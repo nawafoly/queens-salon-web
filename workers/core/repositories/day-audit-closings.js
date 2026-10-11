@@ -42,6 +42,23 @@ function requireAuditDate(value) {
   return date;
 }
 
+function signedHalalas(value, field) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || Math.abs(number) > 100_000_000) {
+    throw new AppError(400, `core_day_audit:${field}_invalid`);
+  }
+  return number;
+}
+
+function validLegacyClosedAt(value) {
+  const raw = cleanText(value);
+  const parsed = Date.parse(raw);
+  if (!raw || !Number.isFinite(parsed) || parsed > Date.now() + 300_000) {
+    throw new AppError(400, 'core_day_audit:legacy_closed_at_invalid');
+  }
+  return new Date(parsed).toISOString();
+}
+
 export function normalizeDayAuditPaymentMethod(rawMethod, rawNote) {
   const method = cleanText(rawMethod).toLowerCase();
 
@@ -114,7 +131,16 @@ function rowIdentity(row, amountHalalas) {
 }
 
 function rowSortMs(row) {
-  const candidates = [row?.updated_at, row?.updatedAt, row?.refunded_at, row?.refundedAt, row?.occurred_at, row?.occurredAt, row?.created_at, row?.createdAt];
+  const candidates = [
+    row?.updated_at,
+    row?.updatedAt,
+    row?.refunded_at,
+    row?.refundedAt,
+    row?.occurred_at,
+    row?.occurredAt,
+    row?.created_at,
+    row?.createdAt,
+  ];
   let best = 0;
   for (const value of candidates) {
     const parsed = Date.parse(cleanText(value));
@@ -252,6 +278,7 @@ function mapClosing(row) {
     closedAt: cleanText(row.closed_at),
     closedByUid: cleanText(row.closed_by_uid) || null,
     closedByName: cleanText(row.closed_by_name) || null,
+    origin: cleanText(row.origin) || 'core',
     sourceSnapshot,
     createdAt: cleanText(row.created_at),
   };
@@ -287,6 +314,35 @@ function actorName(actor = {}) {
   return cleanText(
     actor.displayName || actor.display_name || actor.name || actor.email || actor.uid
   ) || null;
+}
+
+async function insertClosingRow(db, row) {
+  await dbRun(
+    db,
+    `INSERT INTO day_audit_closings
+      (id, salon_id, audit_date, total_halalas, cash_halalas, card_halalas,
+       transfer_halalas, unclassified_halalas, manual_cash_halalas, cash_diff_halalas,
+       closed_at, closed_by_uid, closed_by_name, origin, source_snapshot_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      row.id,
+      row.salon_id,
+      row.audit_date,
+      row.total_halalas,
+      row.cash_halalas,
+      row.card_halalas,
+      row.transfer_halalas,
+      row.unclassified_halalas,
+      row.manual_cash_halalas,
+      row.cash_diff_halalas,
+      row.closed_at,
+      row.closed_by_uid,
+      row.closed_by_name,
+      row.origin,
+      row.source_snapshot_json,
+      row.created_at,
+    ]
+  );
 }
 
 export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
@@ -331,6 +387,7 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
     closed_at: now,
     closed_by_uid: cleanText(actor.uid) || null,
     closed_by_name: actorName(actor),
+    origin: 'core',
     source_snapshot_json: JSON.stringify({
       sourceVersion: snapshot.sourceVersion,
       rowCount: snapshot.rowCount,
@@ -340,31 +397,7 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
   };
 
   try {
-    await dbRun(
-      db,
-      `INSERT INTO day_audit_closings
-        (id, salon_id, audit_date, total_halalas, cash_halalas, card_halalas,
-         transfer_halalas, unclassified_halalas, manual_cash_halalas, cash_diff_halalas,
-         closed_at, closed_by_uid, closed_by_name, source_snapshot_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        row.id,
-        row.salon_id,
-        row.audit_date,
-        row.total_halalas,
-        row.cash_halalas,
-        row.card_halalas,
-        row.transfer_halalas,
-        row.unclassified_halalas,
-        row.manual_cash_halalas,
-        row.cash_diff_halalas,
-        row.closed_at,
-        row.closed_by_uid,
-        row.closed_by_name,
-        row.source_snapshot_json,
-        row.created_at,
-      ]
-    );
+    await insertClosingRow(db, row);
   } catch (error) {
     if (/UNIQUE|constraint/i.test(cleanText(error?.message))) {
       const raced = await getDayAuditClosing(db, salonId, date);
@@ -389,4 +422,88 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
     actor
   );
   return created;
+}
+
+export async function importLegacyDayAuditClosings(db, salonId, data = {}, actor = {}) {
+  const rows = Array.isArray(data.closings) ? data.closings : [];
+  if (!rows.length || rows.length > 100) {
+    throw new AppError(400, 'core_day_audit:legacy_import_invalid');
+  }
+
+  const imported = [];
+  const skipped = [];
+  for (const item of rows) {
+    const date = requireAuditDate(item?.date || item?.auditDate || item?.audit_date);
+    const existing = await getDayAuditClosing(db, salonId, date);
+    if (existing) {
+      skipped.push({ date, reason: 'already_exists' });
+      continue;
+    }
+
+    const totalHalalas = signedHalalas(item?.totalHalalas, 'legacy_total');
+    const cashHalalas = signedHalalas(item?.cashHalalas, 'legacy_cash');
+    const cardHalalas = signedHalalas(item?.cardHalalas, 'legacy_card');
+    const transferHalalas = signedHalalas(item?.transferHalalas, 'legacy_transfer');
+    const manualCashHalalas = integer(item?.manualCashHalalas, 'manualCashHalalas', {
+      min: 0,
+      max: 100_000_000,
+    });
+    const cashDiffHalalas = signedHalalas(item?.cashDiffHalalas, 'legacy_cash_diff');
+    if (cashDiffHalalas !== manualCashHalalas - cashHalalas) {
+      throw new AppError(400, 'core_day_audit:legacy_cash_diff_mismatch', 'Legacy cash difference does not match', { date });
+    }
+
+    const now = nowIso();
+    const closedAt = validLegacyClosedAt(item?.closedAt);
+    const row = {
+      id: generatedId('day_audit_legacy'),
+      salon_id: salonId,
+      audit_date: date,
+      total_halalas: totalHalalas,
+      cash_halalas: cashHalalas,
+      card_halalas: cardHalalas,
+      transfer_halalas: transferHalalas,
+      unclassified_halalas: 0,
+      manual_cash_halalas: manualCashHalalas,
+      cash_diff_halalas: cashDiffHalalas,
+      closed_at: closedAt,
+      closed_by_uid: cleanText(actor.uid) || null,
+      closed_by_name: actorName(actor),
+      origin: 'legacy_local_import',
+      source_snapshot_json: JSON.stringify({
+        sourceVersion: 'legacy-localStorage-v1',
+        importedAt: now,
+        importedByUid: cleanText(actor.uid) || null,
+      }),
+      created_at: now,
+    };
+
+    try {
+      await insertClosingRow(db, row);
+    } catch (error) {
+      if (/UNIQUE|constraint/i.test(cleanText(error?.message))) {
+        skipped.push({ date, reason: 'already_exists' });
+        continue;
+      }
+      throw error;
+    }
+
+    const created = mapClosing(row);
+    imported.push(created);
+    await recordAudit(
+      db,
+      salonId,
+      {
+        action: 'day_audit_legacy_imported',
+        entityType: 'day_audit_closing',
+        entityId: row.id,
+        description: 'Legacy local day-audit closing imported into Core D1',
+        after: created,
+        source: 'dashboard',
+      },
+      actor
+    );
+  }
+
+  return { imported, skipped };
 }
