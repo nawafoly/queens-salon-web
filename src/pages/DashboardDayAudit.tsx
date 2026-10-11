@@ -130,6 +130,7 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
   const pendingPrintPopupRef = useRef<Window | null>(null);
   const manualCashRef = useRef<HTMLInputElement | null>(null);
   const unclassifiedNoticeRef = useRef<HTMLDivElement | null>(null);
+  const selectedDateRef = useRef(todayKey);
 
   const snapshot = view?.snapshot || emptySnapshot(todayKey);
   const closing = view?.closing || null;
@@ -158,19 +159,22 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
   };
 
   const loadSelectedDate = async (options: { preserveManual?: boolean } = {}) => {
+    const requestedDate = todayKey;
     try {
-      const next = await CoreDayAuditService.get(todayKey);
+      const next = await CoreDayAuditService.get(requestedDate);
+      if (selectedDateRef.current !== requestedDate) return;
       setView(next);
-      setLoadedDateKey(todayKey);
+      setLoadedDateKey(requestedDate);
       if (next.closing) {
         setManualCashInput((next.closing.manualCashHalalas / 100).toFixed(2));
       } else if (!options.preserveManual) {
         setManualCashInput("");
       }
     } catch (error) {
+      if (selectedDateRef.current !== requestedDate) return;
       console.error("Core day audit load failed:", error);
-      setView({ snapshot: emptySnapshot(todayKey), closing: null });
-      setLoadedDateKey(todayKey);
+      setView({ snapshot: emptySnapshot(requestedDate), closing: null });
+      setLoadedDateKey(requestedDate);
       setErrorText(t("تعذر تحميل جرد اليوم من Core."));
     }
   };
@@ -181,6 +185,7 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
   }, []);
 
   useEffect(() => {
+    selectedDateRef.current = todayKey;
     setErrorText("");
     setManualCashError("");
     setLoadedDateKey("");
@@ -207,6 +212,7 @@ export default function DashboardDayAudit({ language = "ar" }: { language?: Dash
     const raw = String(rawDate || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
     const bounded = raw > todayLimitKey ? todayLimitKey : raw;
+    selectedDateRef.current = bounded;
     setTodayKey(bounded);
   };
 
@@ -363,17 +369,11 @@ html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"
       return;
     }
 
+    const closingDate = todayKey;
     setClosingInFlight(true);
+    let created: CoreDayAuditClosing;
     try {
-      const created = await CoreDayAuditService.close(todayKey, parsedManual);
-      const nextView = await CoreDayAuditService.get(todayKey);
-      setView({ ...nextView, closing: created });
-      setLoadedDateKey(todayKey);
-      setManualCashInput((created.manualCashHalalas / 100).toFixed(2));
-      await loadHistory();
-      if (!openAuditPrintPopup(payloadFromClosing(created))) {
-        setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
-      }
+      created = await CoreDayAuditService.close(closingDate, parsedManual);
     } catch (error) {
       console.error("Core day audit close failed:", error);
       closePendingAuditPrintPopup();
@@ -383,9 +383,40 @@ html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"
       } else {
         setErrorText(t("تعذر إقفال اليوم. أعد تحميل البيانات وحاول مرة أخرى."));
       }
-    } finally {
       setClosingInFlight(false);
+      return;
     }
+
+    // The POST is authoritative. Reflect the immutable closing immediately so a
+    // failed follow-up refresh can never make a successfully closed day look open.
+    if (selectedDateRef.current === closingDate) {
+      setView((current) => ({
+        snapshot: current?.snapshot?.date === closingDate ? current.snapshot : emptySnapshot(closingDate),
+        closing: created,
+      }));
+      setLoadedDateKey(closingDate);
+      setManualCashInput((created.manualCashHalalas / 100).toFixed(2));
+    }
+    setClosingInFlight(false);
+
+    if (!openAuditPrintPopup(payloadFromClosing(created))) {
+      setErrorText(t("تعذر فتح نافذة الطباعة. فعّل النوافذ المنبثقة للموقع ثم أعد المحاولة."));
+    }
+    void loadHistory();
+
+    // Best effort only: enrich the local snapshot after success, but never roll
+    // the UI back to open if this GET is unavailable.
+    void (async () => {
+      try {
+        const refreshed = await CoreDayAuditService.get(closingDate);
+        if (selectedDateRef.current === closingDate) {
+          setView({ ...refreshed, closing: refreshed.closing || created });
+          setLoadedDateKey(closingDate);
+        }
+      } catch (error) {
+        console.error("Core day audit post-close refresh failed:", error);
+      }
+    })();
   };
 
   const diffTone = diffHalalas < 0 ? "negative" : diffHalalas > 0 ? "positive" : "zero";
@@ -394,6 +425,8 @@ html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"
     : diffHalalas > 0
       ? "dsv2-metric-card--gold"
       : "dsv2-metric-card--success";
+
+  const closingStoredInCore = closing?.origin !== "legacy_local_readonly";
 
   return (
     <main className="dsv2-page day-audit-v2-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
@@ -422,7 +455,10 @@ html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"
       {closing ? (
         <div className="day-audit-v2-notice day-audit-v2-notice--success" role="status">
           <FontAwesomeIcon icon={faLock} />
-          <span>{t("تم إقفال هذا اليوم في")} <strong>{formatDateTime(closing.closedAt, language)}</strong>. {t("القيم محفوظة في Core وغير قابلة للتعديل.")}</span>
+          <span>
+            {t("تم إقفال هذا اليوم في")} <strong>{formatDateTime(closing.closedAt, language)}</strong>.{" "}
+            {closingStoredInCore ? t("القيم محفوظة في Core وغير قابلة للتعديل.") : t("هذا إغلاق قديم محفوظ على هذا الجهاز للعرض فقط.")}
+          </span>
         </div>
       ) : null}
 
@@ -588,7 +624,7 @@ html,body{width:80mm;margin:0;padding:0;background:#fff;color:#000;font-family:"
                   {t("إجمالي")}: {formatHalalas(row.totalHalalas, language)} · {t("الكاش")}: {formatHalalas(row.cashHalalas, language)} · {t("الشبكة")}: {formatHalalas(row.cardHalalas, language)} · {t("تحويل")}: {formatHalalas(row.transferHalalas, language)}
                 </span>
                 <span className="day-audit-v2-actions no-print">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setTodayKey(row.auditDate); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { selectedDateRef.current = row.auditDate; setTodayKey(row.auditDate); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
                     <FontAwesomeIcon icon={faEye} /> {t("عرض")}
                   </button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onPointerDown={primeAuditPrintPopup} onClick={() => printHistoricalClosing(row)}>
