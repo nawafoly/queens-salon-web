@@ -23,6 +23,15 @@ test('day audit Core owns immutable closing persistence and blocks unclassified 
   assert.doesNotMatch(source, /window\.localStorage|\.getItem\(|\.setItem\(/);
 });
 
+test('day audit keeps every distinct payment row instead of collapsing a booking', () => {
+  const source = readFileSync('workers/core/repositories/day-audit-closings.js', 'utf8');
+  assert.match(source, /const mergedById = new Map\(\)/);
+  assert.match(source, /for \(const row of mergedById\.values\(\)\)/);
+  assert.match(source, /rowCount \+= 1/);
+  assert.doesNotMatch(source, /function rowIdentity/);
+  assert.doesNotMatch(source, /booking:\$\{bookingId\}/);
+});
+
 test('day audit migration enforces one immutable closing per salon and date', () => {
   const migration = readFileSync('migrations/core/0094_day_audit_closings.sql', 'utf8');
   assert.match(migration, /CREATE TABLE IF NOT EXISTS day_audit_closings/);
@@ -33,14 +42,15 @@ test('day audit migration enforces one immutable closing per salon and date', ()
   assert.match(migration, /origin TEXT NOT NULL DEFAULT 'core'/);
 });
 
-test('Core worker intercepts day audit API while preserving the canonical worker', () => {
+test('Core worker intercepts day audit API and uses the dedicated audit permission', () => {
   const worker = readFileSync('workers/core/worker.js', 'utf8');
   const http = readFileSync('workers/core/day-audit-http.js', 'utf8');
   assert.match(worker, /isDayAuditRequest\(request\)/);
   assert.match(worker, /coreWorker\.fetch\(request, env, executionCtx\)/);
   assert.match(worker, /coreWorker\.scheduled\(event, env, ctx\)/);
-  assert.match(http, /requirePermission\(ctx, 'income\.view'\)/);
-  assert.match(http, /requirePermission\(ctx, 'income\.manage'\)/);
+  assert.match(http, /DAY_AUDIT_PERMISSION = 'bookings\.day_audit\.manage'/);
+  assert.match(http, /requirePermission\(ctx, DAY_AUDIT_PERMISSION\)/);
+  assert.doesNotMatch(http, /requirePermission\(ctx, 'income\.(?:view|manage)'\)/);
   assert.match(http, /DAY_AUDIT_ROOT = '\/api\/core\/day-audit'/);
   assert.match(http, /\$\{DAY_AUDIT_ROOT\}\/closings/);
   assert.match(http, /\$\{DAY_AUDIT_ROOT\}\/close/);
