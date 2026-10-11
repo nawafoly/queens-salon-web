@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS day_audit_closings (
   closed_at TEXT NOT NULL,
   closed_by_uid TEXT,
   closed_by_name TEXT,
+  origin TEXT NOT NULL DEFAULT 'core',
   source_snapshot_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   UNIQUE (salon_id, audit_date)
