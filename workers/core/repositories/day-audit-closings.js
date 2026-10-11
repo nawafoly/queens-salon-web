@@ -124,31 +124,6 @@ function isRefundLike(row, amountHalalas) {
   );
 }
 
-function rowIdentity(row, amountHalalas) {
-  const bookingId = cleanText(row?.booking_id || row?.bookingId);
-  if (bookingId) return `${isRefundLike(row, amountHalalas) ? 'refund' : 'booking'}:${bookingId}`;
-  return `doc:${cleanText(row?.id) || 'unknown'}`;
-}
-
-function rowSortMs(row) {
-  const candidates = [
-    row?.updated_at,
-    row?.updatedAt,
-    row?.refunded_at,
-    row?.refundedAt,
-    row?.occurred_at,
-    row?.occurredAt,
-    row?.created_at,
-    row?.createdAt,
-  ];
-  let best = 0;
-  for (const value of candidates) {
-    const parsed = Date.parse(cleanText(value));
-    if (Number.isFinite(parsed)) best = Math.max(best, parsed);
-  }
-  return best;
-}
-
 function isVoidedStatus(value) {
   const status = cleanText(value).toLowerCase();
   return status === 'voided' || status === 'void' || status === 'cancelled' || status === 'canceled';
@@ -191,6 +166,10 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     listRefunds(db, salonId, { date }),
   ]);
 
+  // Keep every distinct financial row. A single booking may legitimately have
+  // several cash/card/transfer payments, and each must contribute to the audit.
+  // listIncome already removes SQL-union duplicates by row ID. Refund rows are
+  // added only when the same refund ID was not already materialized as income.
   const mergedById = new Map();
   for (const raw of incomeRows || []) {
     const row = normalizeIncomeRow(raw);
@@ -204,26 +183,19 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     mergedById.set(row.id, row);
   }
 
-  const dedupRows = new Map();
-  for (const row of mergedById.values()) {
-    const amountHalalas = Number(row.amount_halalas || 0);
-    if (!Number.isSafeInteger(amountHalalas) || amountHalalas === 0) continue;
-    if (!isBookingSource(row.source) && !isRefundLike(row, amountHalalas) && !cleanText(row.booking_id)) continue;
-    const identity = rowIdentity(row, amountHalalas);
-    const sortMs = rowSortMs(row);
-    const previous = dedupRows.get(identity);
-    if (!previous || sortMs >= previous.sortMs) {
-      dedupRows.set(identity, { row, amountHalalas, sortMs });
-    }
-  }
-
   let cashHalalas = 0;
   let cardHalalas = 0;
   let transferHalalas = 0;
   let unclassifiedHalalas = 0;
+  let rowCount = 0;
   const unclassifiedRows = [];
 
-  for (const { row, amountHalalas } of dedupRows.values()) {
+  for (const row of mergedById.values()) {
+    const amountHalalas = Number(row.amount_halalas || 0);
+    if (!Number.isSafeInteger(amountHalalas) || amountHalalas === 0) continue;
+    if (!isBookingSource(row.source) && !isRefundLike(row, amountHalalas) && !cleanText(row.booking_id)) continue;
+
+    rowCount += 1;
     const channel = normalizeDayAuditPaymentMethod(row.method, row.note);
     if (channel === 'cash') cashHalalas += amountHalalas;
     else if (channel === 'card') cardHalalas += amountHalalas;
@@ -252,7 +224,7 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     transferHalalas,
     unclassifiedHalalas,
     unclassifiedRows,
-    rowCount: dedupRows.size,
+    rowCount,
     sourceVersion: DAY_AUDIT_SOURCE_VERSION,
   };
 }
