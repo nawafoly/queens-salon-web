@@ -4314,7 +4314,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     const statusAfterEdit: BookingStatus = draft.status;
 
     const completionPaymentPatch: Partial<Booking> | null =
-      statusAfterEdit === "completed"
+      statusAfterEdit === "completed" &&
+      target.status !== "completed"
         ? completedBookingPaymentPatch({
             ...target,
             finalPrice: price,

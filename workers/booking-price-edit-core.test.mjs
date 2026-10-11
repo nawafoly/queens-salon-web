@@ -71,3 +71,16 @@ test("parent total remains derived from item pricing", () => {
     /direct_price_mutation_forbidden/
   );
 });
+
+
+test("price edits cannot reduce total below already collected money", () => {
+  assert.match(
+    repo,
+    /existingPaidHalalas > requestedTotal/
+  );
+
+  assert.match(
+    repo,
+    /core_booking:price_below_paid_amount/
+  );
+});

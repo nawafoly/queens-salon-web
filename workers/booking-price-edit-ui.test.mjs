@@ -65,3 +65,11 @@ test("frontend sends audited item price to Core", () => {
   assert.match(source, /bookingItemPriceHalalas/);
   assert.match(source, /priceAdjustmentReason/);
 });
+
+
+test("editing an already completed booking does not synthesize payment", () => {
+  assert.match(
+    page,
+    /statusAfterEdit === "completed"[\s\S]{0,100}target\.status !== "completed"/
+  );
+});

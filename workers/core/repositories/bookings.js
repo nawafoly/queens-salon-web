@@ -2113,6 +2113,23 @@ export async function patchBooking(
     "SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1",
     [salonId, bookingId]
   );
+
+  const existingPaidHalalas = Number(
+    invoice?.paid_halalas ||
+      before.paid_halalas ||
+      0
+  );
+
+  if (
+    priceChanged &&
+    existingPaidHalalas > requestedTotal
+  ) {
+    throw new AppError(
+      409,
+      "core_booking:price_below_paid_amount"
+    );
+  }
+
   const shouldReconcilePayment =
     data.reconcilePayment === true ||
     data.paidHalalas !== undefined ||
@@ -2126,7 +2143,7 @@ export async function patchBooking(
         min: 0,
         max: requestedTotal,
       })
-    : Number(invoice?.paid_halalas || before.paid_halalas || 0);
+    : existingPaidHalalas;
   if (
     !shouldReconcilePayment &&
     paidHalalas > requestedTotal

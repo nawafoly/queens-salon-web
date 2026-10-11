@@ -7333,3 +7333,123 @@ test("booking edit changes item price through audited Core path", async () => {
     )
   );
 });
+
+
+test("booking price edit cannot rewrite collected payment downward", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(
+    request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-price-paid-floor",
+        invoiceId: "invoice-price-paid-floor",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-04-16",
+        startTime: "10:00",
+        source: "internal",
+        items: [
+          {
+            id: "booking-item-price-paid-floor",
+            serviceId: "svc-a",
+            staffId: "staff-a",
+            bookingDate: "2027-04-16",
+            startTime: "10:00",
+          },
+        ],
+      },
+    }),
+    env(fake)
+  );
+
+  let body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-price-paid-floor",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-price-paid-floor",
+          bookingItemPriceHalalas: 9000,
+          priceAdjustmentReason:
+            "catalog_pending_update",
+          paidHalalas: 9000,
+          paymentMethod: "cash",
+          paymentBreakdown: { cash: 90 },
+          reconcilePayment: true,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-price-paid-floor",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-price-paid-floor",
+          bookingItemPriceHalalas: 8000,
+          priceAdjustmentReason:
+            "management_approved",
+          paidHalalas: 8000,
+          paymentMethod: "cash",
+          paymentBreakdown: { cash: 80 },
+          reconcilePayment: true,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(response.status, 409);
+  assert.equal(
+    body.error,
+    "core_booking:price_below_paid_amount"
+  );
+
+  const item = fake.find(
+    "booking_items",
+    "main",
+    "booking-item-price-paid-floor"
+  );
+
+  assert.equal(
+    item.unit_price_halalas,
+    9000
+  );
+
+  const invoice = fake.find(
+    "invoices",
+    "main",
+    "invoice-price-paid-floor"
+  );
+
+  assert.equal(invoice.total_halalas, 9000);
+  assert.equal(invoice.paid_halalas, 9000);
+});
