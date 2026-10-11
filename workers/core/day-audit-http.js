@@ -6,6 +6,7 @@ import {
   closeDayAudit,
   computeDayAuditSnapshot,
   getDayAuditClosing,
+  importLegacyDayAuditClosings,
   listDayAuditClosings,
 } from './repositories/day-audit-closings.js';
 
@@ -102,6 +103,13 @@ export async function handleDayAuditRequest(request, env) {
       const body = await readBody(request);
       const closing = await closeDayAudit(ctx.coreDb, ctx.salonId, body, actorInfo(ctx));
       return json(request, env, 200, { ok: true, data: closing }, requestId);
+    }
+
+    if (path === `${DAY_AUDIT_ROOT}/import-legacy` && method === 'POST') {
+      requirePermission(ctx, 'income.manage');
+      const body = await readBody(request);
+      const result = await importLegacyDayAuditClosings(ctx.coreDb, ctx.salonId, body, actorInfo(ctx));
+      return json(request, env, 200, { ok: true, data: result }, requestId);
     }
 
     return json(
