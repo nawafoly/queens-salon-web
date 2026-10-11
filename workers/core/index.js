@@ -1789,8 +1789,22 @@ async function dispatch(ctx, route, method, body, query, env) {
             );
           }
 
+          const priceAdjustmentFields = new Set([
+            "bookingItemId",
+            "booking_item_id",
+            "bookingItemPriceHalalas",
+            "booking_item_price_halalas",
+            "priceAdjustmentReason",
+            "price_adjustment_reason",
+            "priceAdjustmentNote",
+            "price_adjustment_note",
+          ]);
+
           const hasPaymentMutation = patchKeys.some((key) =>
             paymentFields.has(key)
+          );
+          const hasPriceAdjustment = patchKeys.some((key) =>
+            priceAdjustmentFields.has(key)
           );
           const hasOperationalMutation =
             patchKeys.length === 0 ||
@@ -1799,12 +1813,30 @@ async function dispatch(ctx, route, method, body, query, env) {
           if (hasOperationalMutation) {
             requirePermission(ctx, "bookings.update");
           }
+          if (hasPriceAdjustment) {
+            requirePermission(
+              ctx,
+              "bookings.price.adjust"
+            );
+          }
           if (hasPaymentMutation) {
             requirePermission(ctx, "bookings.payment.manage");
           }
         }
 
-        return patchBooking(db, ctx.salonId, route.id, patchBody, actorInfo);
+        return patchBooking(
+          db,
+          ctx.salonId,
+          route.id,
+          patchBody,
+          actorInfo,
+          {
+            allowPriceAdjustment: hasPermission(
+              ctx,
+              "bookings.price.adjust"
+            ),
+          }
+        );
       }
       if (method === "DELETE" && route.id) {
         requirePermission(ctx, "bookings.delete");

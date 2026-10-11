@@ -2229,6 +2229,10 @@ class FakeD1 {
           unit_price_halalas,
           total_halalas,
           final_total_halalas,
+          price_adjustment_reason,
+          price_adjustment_note,
+          price_adjusted_by_uid,
+          price_adjusted_at,
           salonId,
           bookingId,
           id,
@@ -2249,6 +2253,10 @@ class FakeD1 {
                 unit_price_halalas,
                 total_halalas,
                 final_total_halalas,
+                price_adjustment_reason,
+                price_adjustment_note,
+                price_adjusted_by_uid,
+                price_adjusted_at,
               })
             : { meta: { changes: 0 } }
         );
@@ -7185,4 +7193,143 @@ test("Stage11 booking lifecycle fails closed for partial HR projections while al
   assert.equal((await resolveCase({ id: "inactive-employment", profileStatus: "active", employmentStatus: "inactive", endDate: null })).available, false);
   assert.equal((await resolveCase({ id: "offboarded-employee", profileStatus: "inactive", employmentStatus: "inactive", endDate: "2027-01-03" })).available, false);
   assert.equal((await resolveCase({ id: "ended-employee", profileStatus: "active", employmentStatus: "active", endDate: "2027-01-03" })).available, false);
+});
+
+
+test("booking edit changes item price through audited Core path", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(
+    request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-price-edit-runtime",
+        invoiceId: "invoice-price-edit-runtime",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-04-15",
+        startTime: "10:00",
+        source: "internal",
+        items: [
+          {
+            id: "booking-item-price-edit-runtime",
+            serviceId: "svc-a",
+            staffId: "staff-a",
+            bookingDate: "2027-04-15",
+            startTime: "10:00",
+          },
+        ],
+      },
+    }),
+    env(fake)
+  );
+
+  let body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-price-edit-runtime",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-price-edit-runtime",
+          bookingItemPriceHalalas: 9000,
+          paidHalalas: 9000,
+          paymentMethod: "cash",
+          paymentBreakdown: { cash: 90 },
+          reconcilePayment: true,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(response.status, 400);
+  assert.equal(
+    body.error,
+    "core_booking:price_adjustment_reason_required"
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-price-edit-runtime",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-price-edit-runtime",
+          bookingItemPriceHalalas: 9000,
+          priceAdjustmentReason:
+            "catalog_pending_update",
+          priceAdjustmentNote:
+            "Current salon price",
+          paidHalalas: 9000,
+          paymentMethod: "cash",
+          paymentBreakdown: { cash: 90 },
+          reconcilePayment: true,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  assert.equal(body.data.total_halalas, 9000);
+  assert.equal(body.data.payment_status, "paid");
+
+  const item = fake.find(
+    "booking_items",
+    "main",
+    "booking-item-price-edit-runtime"
+  );
+
+  assert.equal(item.unit_price_halalas, 9000);
+  assert.equal(item.total_halalas, 9000);
+  assert.equal(
+    item.price_adjustment_reason,
+    "catalog_pending_update"
+  );
+  assert.equal(
+    item.price_adjustment_note,
+    "Current salon price"
+  );
+
+  const invoice = fake.find(
+    "invoices",
+    "main",
+    "invoice-price-edit-runtime"
+  );
+
+  assert.equal(invoice.total_halalas, 9000);
+  assert.equal(invoice.paid_halalas, 9000);
+
+  assert.ok(
+    fake.rows("audit_logs").some(
+      (row) =>
+        row.action ===
+          "booking_price_adjusted" &&
+        row.entity_id ===
+          "booking-item-price-edit-runtime"
+    )
+  );
 });

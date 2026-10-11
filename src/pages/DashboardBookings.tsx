@@ -55,6 +55,7 @@ import { resolveServiceName } from "../services/serviceResolver";
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 import { SALON_ID } from "../helpers/bookingSharedConstants";
 import { bookingsText, translateBookingCatalogLabel, type DashboardLanguage } from "../helpers/dashboardBookingsLanguage";
+import { usePermissions } from "../security/PermissionContext";
 
 import {
   formatTime12,
@@ -797,6 +798,12 @@ type EditEmployeeOption = {
   active?: boolean;
 };
 
+type BookingPriceAdjustmentReason =
+  | "catalog_pending_update"
+  | "management_approved"
+  | "special_price"
+  | "other";
+
 type EditBookingDraft = {
   status: BookingStatus;
   customerName: string;
@@ -809,6 +816,10 @@ type EditBookingDraft = {
   categoryId: string;
   serviceId: string;
   price: string;
+  bookingItemId: string;
+  bookingItemPrice: string;
+  priceAdjustmentReason: BookingPriceAdjustmentReason | "";
+  priceAdjustmentNote: string;
   paymentMethod: EditPaymentMethodOption;
   paymentType: BookingPaymentType;
   paidAmount: string;
@@ -853,6 +864,19 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
     categoryId: primaryService.categoryId,
     serviceId: primaryService.serviceId,
     price: String(readBookingTotalAmount(b)),
+    bookingItemId: String(b.bookingItemId || "").trim(),
+    bookingItemPrice: String(
+      Number.isFinite(Number(b.bookingPrice))
+        ? Number(b.bookingPrice)
+        : readBookingTotalAmount(b)
+    ),
+    priceAdjustmentReason:
+      (b.priceAdjustmentReason || "") as
+        | BookingPriceAdjustmentReason
+        | "",
+    priceAdjustmentNote: String(
+      b.priceAdjustmentNote || ""
+    ),
     paymentMethod: (hasNoPayment ? "none" : paymentMethod) as EditPaymentMethodOption,
     paymentType: hasNoPayment ? "partial" : payment.paymentType,
     paidAmount: String(payment.paidAmount || 0),
@@ -967,6 +991,13 @@ type Booking = {
   remainingAmount?: number;
   total?: number;
   finalPrice?: number;
+  catalogPrice?: number;
+  bookingPrice?: number;
+  bookingItemId?: string;
+  bookingItemQuantity?: number;
+  priceAdjustmentReason?: BookingPriceAdjustmentReason;
+  priceAdjustmentNote?: string;
+  discountAmount?: number;
   pendingAt?: number;
   pendingByUid?: string | null;
   pendingByEmail?: string | null;
@@ -3585,6 +3616,10 @@ type EditBookingModalProps = {
 
 const EditBookingModal = memo(function EditBookingModal({ target, language, onClose, onSaved }: EditBookingModalProps) {
   const t = (arabic: string) => bookingsText(language, arabic);
+  const { hasPermission } = usePermissions();
+  const canAdjustBookingPrice = hasPermission(
+    "bookings.price.adjust"
+  );
   const open = !!target;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -3610,6 +3645,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           categoryId: "",
           serviceId: "",
           price: "",
+          bookingItemId: "",
+          bookingItemPrice: "",
+          priceAdjustmentReason: "",
+          priceAdjustmentNote: "",
           paymentMethod: "transfer",
           paymentType: "full",
           paidAmount: "",
@@ -3953,6 +3992,84 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const onMixedCardAmountChange = useCallback((value: string) => {
     setDraft((prev) => (prev.mixedCardAmount === value ? prev : { ...prev, mixedCardAmount: value }));
   }, []);
+  const onBookingItemPriceChange = useCallback(
+    (value: string) => {
+      setDraft((prev) => {
+        if (!target) {
+          return {
+            ...prev,
+            bookingItemPrice: value,
+          };
+        }
+
+        const nextUnitPrice = Number(value);
+
+        if (
+          !Number.isFinite(nextUnitPrice) ||
+          nextUnitPrice < 0
+        ) {
+          return {
+            ...prev,
+            bookingItemPrice: value,
+          };
+        }
+
+        const originalUnitPrice = Math.max(
+          0,
+          Number(
+            target.bookingPrice ??
+              readBookingTotalAmount(target)
+          )
+        );
+
+        const quantity = Math.max(
+          1,
+          Number(target.bookingItemQuantity || 1)
+        );
+
+        const originalTotal =
+          readBookingTotalAmount(target);
+
+        const nextTotal = round2(
+          Math.max(
+            0,
+            originalTotal +
+              (nextUnitPrice - originalUnitPrice) *
+                quantity
+          )
+        );
+
+        const alreadyPaid = round2(
+          Math.max(
+            0,
+            Number(target.paidAmount || 0)
+          )
+        );
+
+        // Increasing the booking price must not silently invent
+        // an additional payment. Preserve what was actually paid.
+        const mustBecomePartial =
+          prev.paymentMethod !== "none" &&
+          prev.paymentMethod !== "mixed" &&
+          prev.paymentType === "full" &&
+          alreadyPaid + 0.005 < nextTotal;
+
+        return {
+          ...prev,
+          bookingItemPrice: value,
+          price: String(nextTotal),
+          ...(mustBecomePartial
+            ? {
+                paymentType: "partial" as const,
+                paidAmount: String(alreadyPaid),
+              }
+            : {}),
+        };
+      });
+    },
+    [target]
+  );
+
   const onNoteChange = useCallback((value: string) => {
     setDraft((prev) => (prev.note === value ? prev : { ...prev, note: value }));
   }, []);
@@ -3971,7 +4088,54 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     const serviceId = String(draft.serviceId || "").trim();
     const priceInput = String(draft.price || "").trim();
     const fallbackPrice = readBookingTotalAmount(target);
-    const price = priceInput === "" ? fallbackPrice : Number(priceInput);
+    const price =
+      priceInput === ""
+        ? fallbackPrice
+        : Number(priceInput);
+
+    const originalBookingItemPrice = Math.max(
+      0,
+      Number(
+        target.bookingPrice ?? fallbackPrice
+      )
+    );
+
+    const bookingItemPriceInput = String(
+      draft.bookingItemPrice || ""
+    ).trim();
+
+    const bookingItemPrice =
+      bookingItemPriceInput === ""
+        ? originalBookingItemPrice
+        : Number(bookingItemPriceInput);
+
+    const bookingItemPriceChanged =
+      Number.isFinite(bookingItemPrice) &&
+      Math.abs(
+        bookingItemPrice -
+          originalBookingItemPrice
+      ) > 0.005;
+
+    const bookingItemQuantity = Math.max(
+      1,
+      Number(target.bookingItemQuantity || 1)
+    );
+
+    const bookingItemLineTotal = round2(
+      Math.max(
+        0,
+        bookingItemPrice * bookingItemQuantity
+      )
+    );
+
+    const priceAdjustmentReason = String(
+      draft.priceAdjustmentReason || ""
+    ).trim() as BookingPriceAdjustmentReason;
+
+    const priceAdjustmentNote = String(
+      draft.priceAdjustmentNote || ""
+    ).trim();
+
     const paymentType = draft.paymentType === "partial" ? "partial" : "full";
     const hasNoPaymentMethod = draft.paymentMethod === "none";
     const isMixedPayment = draft.paymentMethod === "mixed";
@@ -4035,6 +4199,39 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       setError("السعر غير صحيح.");
       return;
     }
+
+    if (
+      !Number.isFinite(bookingItemPrice) ||
+      bookingItemPrice < 0
+    ) {
+      setError("سعر الخدمة في هذا الحجز غير صحيح.");
+      return;
+    }
+
+    if (
+      bookingItemPriceChanged &&
+      !draft.bookingItemId
+    ) {
+      setError("تعذر تحديد بند الخدمة داخل الحجز. حدّثي الصفحة ثم حاولي مرة أخرى.");
+      return;
+    }
+
+    if (
+      bookingItemPriceChanged &&
+      !canAdjustBookingPrice
+    ) {
+      setError("ليس لديك صلاحية تعديل سعر الحجز.");
+      return;
+    }
+
+    if (
+      bookingItemPriceChanged &&
+      !priceAdjustmentReason
+    ) {
+      setError("اختاري سبب تعديل السعر.");
+      return;
+    }
+
     if (isMixedPayment) {
       if (
         !Number.isFinite(mixedCashAmount) ||
@@ -4081,7 +4278,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     const categoryName = selectedCategory?.name || "";
     const serviceSnapshot = {
       serviceNameAtBooking: serviceName,
-      priceAtBooking: price,
+      priceAtBooking: bookingItemLineTotal,
       durationAtBooking: durationMin,
       sectionIdAtBooking: sectionId || undefined,
       sectionTitleAtBooking: sectionName || undefined,
@@ -4092,7 +4289,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       {
         serviceId,
         serviceName,
-        price,
+        price: bookingItemLineTotal,
         durationMin,
         sectionId,
         sectionTitle: sectionName || undefined,
@@ -4147,6 +4344,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         durationMin,
         packageId: null,
         packageSnapshot: null,
+        ...(bookingItemPriceChanged
+          ? {
+              bookingItemId:
+                draft.bookingItemId,
+              bookingPrice:
+                bookingItemPrice,
+              priceAdjustmentReason,
+              priceAdjustmentNote:
+                priceAdjustmentNote || undefined,
+            }
+          : {}),
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
@@ -4183,6 +4391,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         durationMin,
         packageId: undefined,
         packageSnapshot: undefined,
+        ...(bookingItemPriceChanged
+          ? {
+              bookingItemId:
+                draft.bookingItemId || undefined,
+              bookingPrice:
+                bookingItemPrice,
+              priceAdjustmentReason,
+              priceAdjustmentNote:
+                priceAdjustmentNote || undefined,
+            }
+          : {}),
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
@@ -4214,18 +4433,41 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           error: e,
         });
         const code = String(e?.code || "").trim();
-        setError(
-          code
-            ? `تعذر حفظ تعديل الحجز (${code}).`
-            : "تعذر حفظ تعديل الحجز. راجعي Console لمعرفة الخطأ التفصيلي."
-        );
+
+        if (code === "core_booking:price_adjustment_forbidden") {
+          setError("ليس لديك صلاحية تعديل سعر الحجز.");
+        } else if (code === "core_booking:price_adjustment_reason_required") {
+          setError("اختاري سبب تعديل السعر.");
+        } else if (code === "core_booking:booking_item_id_required") {
+          setError("تعذر تحديد بند الخدمة داخل الحجز. حدّثي الصفحة ثم حاولي مرة أخرى.");
+        } else if (code === "core_booking:price_below_item_discount") {
+          setError("السعر الجديد أقل من الخصم المسجل على الخدمة.");
+        } else if (code === "core_booking:price_below_paid_amount") {
+          setError("السعر الجديد أقل من المبلغ المحصل على الحجز.");
+        } else {
+          setError(
+            code
+              ? `تعذر حفظ تعديل الحجز (${code}).`
+              : "تعذر حفظ تعديل الحجز. راجعي Console لمعرفة الخطأ التفصيلي."
+          );
+        }
       }
     } finally {
       setSaving(false);
     }
 
     if (shouldClose) onClose();
-  }, [categories, draft, onClose, onSaved, sections, services, staffOptions, target]);
+  }, [
+    canAdjustBookingPrice,
+    categories,
+    draft,
+    onClose,
+    onSaved,
+    sections,
+    services,
+    staffOptions,
+    target,
+  ]);
 
   return (
     <Modal
@@ -4295,6 +4537,110 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
             onTimeChange={onTimeChange}
           />
 
+
+          <div className="bk-edit-grid">
+            <label>
+              <div className="bk-field-label">
+                {t("سعر الخدمة في هذا الحجز")}
+              </div>
+
+              <DashboardNumberInputV2
+                min={0}
+                step="0.01"
+                className="bk-input"
+                value={draft.bookingItemPrice}
+                onChange={(event) =>
+                  onBookingItemPriceChange(
+                    event.target.value
+                  )
+                }
+                disabled={
+                  saving ||
+                  !canAdjustBookingPrice
+                }
+              />
+
+              <small className="bk-helper-text">
+                {canAdjustBookingPrice
+                  ? t("هذا يغير سعر هذا الحجز فقط ولا يغير سعر الخدمة في الكتالوج.")
+                  : t("ليس لديك صلاحية تعديل سعر الحجز.")}
+              </small>
+            </label>
+          </div>
+
+          {target &&
+          Number.isFinite(
+            Number(draft.bookingItemPrice)
+          ) &&
+          Math.abs(
+            Number(draft.bookingItemPrice) -
+              Math.max(
+                0,
+                Number(
+                  target.bookingPrice ??
+                    readBookingTotalAmount(target)
+                )
+              )
+          ) > 0.005 ? (
+            <div className="bk-edit-grid">
+              <BookingSelectField
+                label={t("سبب تعديل السعر")}
+                value={
+                  draft.priceAdjustmentReason
+                }
+                options={[
+                  {
+                    value: "catalog_pending_update",
+                    label: t("سعر الكتالوج لم يُحدّث بعد"),
+                  },
+                  {
+                    value: "management_approved",
+                    label: t("معتمد من الإدارة"),
+                  },
+                  {
+                    value: "special_price",
+                    label: t("سعر خاص"),
+                  },
+                  {
+                    value: "other",
+                    label: t("سبب آخر"),
+                  },
+                ]}
+                placeholder={t("اختاري سبب تعديل السعر")}
+                disabled={saving}
+                language={language}
+                onChange={(value) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    priceAdjustmentReason:
+                      value as BookingPriceAdjustmentReason,
+                  }))
+                }
+              />
+
+              <label>
+                <div className="bk-field-label">
+                  {t("ملاحظة تعديل السعر — اختياري")}
+                </div>
+
+                <input
+                  className="bk-input"
+                  value={
+                    draft.priceAdjustmentNote
+                  }
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      priceAdjustmentNote:
+                        event.target.value,
+                    }))
+                  }
+                  placeholder={t("مثال: السعر الحالي لم يُحدّث في الكتالوج")}
+                  disabled={saving}
+                />
+              </label>
+            </div>
+          ) : null}
 
           {/* BOOKING_EDIT_STATUS_FIELD_V2 */}
           <BookingSelectField

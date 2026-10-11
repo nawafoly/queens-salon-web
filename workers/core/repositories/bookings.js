@@ -1767,7 +1767,14 @@ function normalizeEditPaymentRows(data, paidHalalas) {
   return [{ method, amountHalalas: paidHalalas }];
 }
 
-export async function patchBooking(db, salonId, id, data, actor = {}) {
+export async function patchBooking(
+  db,
+  salonId,
+  id,
+  data,
+  actor = {},
+  options = {}
+) {
   const directPriceMutation = [
     data.subtotalHalalas,
     data.subtotal_halalas,
@@ -1816,6 +1823,14 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     data.paymentBreakdown,
     data.payment_breakdown,
     data.reconcilePayment,
+    data.bookingItemId,
+    data.booking_item_id,
+    data.bookingItemPriceHalalas,
+    data.booking_item_price_halalas,
+    data.priceAdjustmentReason,
+    data.price_adjustment_reason,
+    data.priceAdjustmentNote,
+    data.price_adjustment_note,
   ].some((value) => value !== undefined);
 
   if (!hasOperationalEdit) {
@@ -1837,8 +1852,37 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     });
   }
 
-  const currentItem = before.items?.[0];
-  if (!currentItem) throw new AppError(409, "core_booking:item_missing");
+  const requestedBookingItemId = optionalText(
+    data.bookingItemId || data.booking_item_id
+  );
+  const hasBookingItemPriceMutation =
+    data.bookingItemPriceHalalas !== undefined ||
+    data.booking_item_price_halalas !== undefined;
+
+  if (
+    hasBookingItemPriceMutation &&
+    !requestedBookingItemId
+  ) {
+    throw new AppError(
+      400,
+      "core_booking:booking_item_id_required"
+    );
+  }
+
+  const currentItem = requestedBookingItemId
+    ? before.items?.find(
+        (item) =>
+          cleanText(item.id) ===
+          requestedBookingItemId
+      )
+    : before.items?.[0];
+
+  if (!currentItem) {
+    throw new AppError(
+      409,
+      "core_booking:item_missing"
+    );
+  }
 
   const serviceId = requiredId(
     data.serviceId || data.service_id || currentItem.service_id,
@@ -1912,23 +1956,158 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     );
   }
 
-  const requestedTotal = Number(before.total_halalas || 0);
-  const discountHalalas = Number(before.discount_halalas || 0);
-  const subtotalHalalas = Number(
-    before.subtotal_halalas ?? requestedTotal + discountHalalas
+  const previousTotalHalalas = Number(
+    before.total_halalas || 0
   );
-  const currentItemUnitHalalas = Number(currentItem.unit_price_halalas || 0);
+  const discountHalalas = Number(
+    before.discount_halalas || 0
+  );
+  const previousSubtotalHalalas = Number(
+    before.subtotal_halalas ??
+      previousTotalHalalas + discountHalalas
+  );
+
+  const quantity = Math.max(
+    1,
+    Number(currentItem.quantity || 1)
+  );
+
+  const currentItemUnitHalalas = Number(
+    currentItem.unit_price_halalas || 0
+  );
+
   const currentItemTotalHalalas = Number(
     currentItem.total_halalas ??
-      currentItemUnitHalalas * Math.max(1, Number(currentItem.quantity || 1))
+      currentItemUnitHalalas * quantity
   );
-  const currentItemFinalHalalas = Number(
-    currentItem.final_total_halalas ??
-      Math.max(
-        0,
-        currentItemTotalHalalas - Number(currentItem.discount_halalas || 0)
-      )
+
+  const currentItemDiscountHalalas = Number(
+    currentItem.discount_halalas || 0
   );
+
+  const nextItemUnitHalalas =
+    hasBookingItemPriceMutation
+      ? integer(
+          data.bookingItemPriceHalalas ??
+            data.booking_item_price_halalas,
+          "bookingItemPriceHalalas",
+          { min: 0, max: 10_000_000 }
+        )
+      : currentItemUnitHalalas;
+
+  const priceChanged =
+    nextItemUnitHalalas !==
+    currentItemUnitHalalas;
+
+  const catalogUnitHalalas = Number(
+    cleanText(currentItem.service_id) ===
+      cleanText(service.id)
+      ? currentItem.catalog_unit_price_halalas ??
+          service.price_halalas ??
+          nextItemUnitHalalas
+      : service.price_halalas ??
+          nextItemUnitHalalas
+  );
+
+  const backToCatalog =
+    nextItemUnitHalalas ===
+    catalogUnitHalalas;
+
+  const requestedAdjustmentReason = cleanText(
+    data.priceAdjustmentReason ??
+      data.price_adjustment_reason
+  ).toLowerCase();
+
+  const requestedAdjustmentNote =
+    optionalText(
+      data.priceAdjustmentNote ??
+        data.price_adjustment_note
+    ) || null;
+
+  if (
+    priceChanged &&
+    options?.allowPriceAdjustment !== true
+  ) {
+    throw new AppError(
+      403,
+      "core_booking:price_adjustment_forbidden",
+      "Booking item price adjustment requires bookings.price.adjust"
+    );
+  }
+
+  if (
+    priceChanged &&
+    !backToCatalog &&
+    !PRICE_ADJUSTMENT_REASONS.has(
+      requestedAdjustmentReason
+    )
+  ) {
+    throw new AppError(
+      400,
+      "core_booking:price_adjustment_reason_required"
+    );
+  }
+
+  const nextItemTotalHalalas =
+    nextItemUnitHalalas * quantity;
+
+  if (
+    nextItemTotalHalalas <
+    currentItemDiscountHalalas
+  ) {
+    throw new AppError(
+      409,
+      "core_booking:price_below_item_discount"
+    );
+  }
+
+  const currentItemFinalHalalas = Math.max(
+    0,
+    nextItemTotalHalalas -
+      currentItemDiscountHalalas
+  );
+
+  const subtotalHalalas = Math.max(
+    0,
+    previousSubtotalHalalas +
+      nextItemTotalHalalas -
+      currentItemTotalHalalas
+  );
+
+  const requestedTotal = Math.max(
+    0,
+    subtotalHalalas - discountHalalas
+  );
+
+  const actorUid = cleanText(
+    typeof actor === "string"
+      ? actor
+      : actor?.uid
+  );
+
+  const storedAdjustmentReason = priceChanged
+    ? backToCatalog
+      ? null
+      : requestedAdjustmentReason
+    : currentItem.price_adjustment_reason || null;
+
+  const storedAdjustmentNote = priceChanged
+    ? backToCatalog
+      ? null
+      : requestedAdjustmentNote
+    : currentItem.price_adjustment_note || null;
+
+  const storedAdjustedByUid = priceChanged
+    ? backToCatalog
+      ? null
+      : actorUid || null
+    : currentItem.price_adjusted_by_uid || null;
+
+  const storedAdjustedAt = priceChanged
+    ? backToCatalog
+      ? null
+      : nowIso()
+    : currentItem.price_adjusted_at || null;
   const invoice = await dbFirst(
     db,
     "SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1",
@@ -1948,7 +2127,20 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         max: requestedTotal,
       })
     : Number(invoice?.paid_halalas || before.paid_halalas || 0);
-  const paymentStatus = bookingPaymentStatus(requestedTotal, paidHalalas);
+  if (
+    !shouldReconcilePayment &&
+    paidHalalas > requestedTotal
+  ) {
+    throw new AppError(
+      409,
+      "core_booking:price_below_paid_amount"
+    );
+  }
+
+  const paymentStatus = bookingPaymentStatus(
+    requestedTotal,
+    paidHalalas
+  );
   const clientName =
     data.clientName === undefined && data.client_name === undefined
       ? undefined
@@ -1977,7 +2169,9 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
       sql: `UPDATE booking_items
                SET service_id = ?, service_name_snapshot = ?, staff_id = ?, duration_minutes = ?,
                    booking_date = ?, start_time = ?, end_time = ?, unit_price_halalas = ?,
-                   total_halalas = ?, final_total_halalas = ?
+                   total_halalas = ?, final_total_halalas = ?,
+                   price_adjustment_reason = ?, price_adjustment_note = ?,
+                   price_adjusted_by_uid = ?, price_adjusted_at = ?
              WHERE salon_id = ? AND booking_id = ? AND id = ?`,
       params: [
         service.id,
@@ -1987,9 +2181,13 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         bookingDate,
         startTime,
         endTime,
-        currentItemUnitHalalas,
-        currentItemTotalHalalas,
+        nextItemUnitHalalas,
+        nextItemTotalHalalas,
         currentItemFinalHalalas,
+        storedAdjustmentReason,
+        storedAdjustmentNote,
+        storedAdjustedByUid,
+        storedAdjustedAt,
         salonId,
         bookingId,
         currentItem.id,
@@ -2140,6 +2338,50 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
         ],
       });
     }
+  }
+
+  if (priceChanged) {
+    statements.push(
+      auditInsertStatement(
+        salonId,
+        {
+          action: "booking_price_adjusted",
+          entityType: "booking_item",
+          entityId: currentItem.id,
+          description:
+            "Booking item price adjusted from dashboard",
+          source: "dashboard",
+          before: {
+            bookingId,
+            bookingItemId: currentItem.id,
+            catalogUnitPriceHalalas:
+              catalogUnitHalalas,
+            bookingUnitPriceHalalas:
+              currentItemUnitHalalas,
+            totalHalalas:
+              currentItemTotalHalalas,
+          },
+          after: {
+            bookingId,
+            bookingItemId: currentItem.id,
+            catalogUnitPriceHalalas:
+              catalogUnitHalalas,
+            bookingUnitPriceHalalas:
+              nextItemUnitHalalas,
+            totalHalalas:
+              nextItemTotalHalalas,
+            adjustmentDeltaHalalas:
+              nextItemUnitHalalas -
+              currentItemUnitHalalas,
+            reason: backToCatalog
+              ? "catalog_restored"
+              : requestedAdjustmentReason,
+            note: requestedAdjustmentNote,
+          },
+        },
+        actor
+      ).statement
+    );
   }
 
   statements.push(

@@ -2507,6 +2507,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       );
       bookingClients.filter((client) => !isBookingGuest(client)).forEach(markQuickClientUsage);
 
+      let financialPostingSucceeded = true;
+
       if (effectivePaidAmount > 0 && createdParty.length) {
         const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
           const amountHalalas = Math.round(amount * 100);
@@ -2556,11 +2558,70 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             } as any);
           }
         } catch (financialError) {
+          financialPostingSucceeded = false;
           console.error("[BookingInternalV2] party financial posting failed after booking creation", financialError);
           setPostSaveWarning(
             language === "en"
               ? "The party bookings were saved, but payment synchronization was not completed for every member after automatic retry. Do not recreate the bookings; review them in Bookings and retry collection only where needed."
               : "تم حفظ حجوزات المجموعة، لكن لم تكتمل مزامنة الدفعات لكل العميلات بعد المحاولة التلقائية. لا تعيدي إنشاء الحجوزات؛ راجعي صفحة الحجوزات وأعيدي التحصيل فقط للحجز الذي يحتاج ذلك."
+          );
+        }
+      }
+
+      // INTERNAL_BOOKING_FULL_PAYMENT_COMPLETION_V1
+      // Full payment is the completion boundary for administrative internal
+      // bookings. Completion happens only after financial synchronization has
+      // succeeded, so a failed payment write cannot leave a booking falsely
+      // marked completed.
+      if (
+        paymentType === "full" &&
+        financialPostingSucceeded &&
+        createdParty.length
+      ) {
+        try {
+          for (
+            let index = 0;
+            index < createdParty.length;
+            index += 1
+          ) {
+            const bookingId =
+              createdParty[index].parentId;
+            const plan = memberPlans[index];
+            const memberPaid =
+              paidByMember[index] || 0;
+            const memberRemaining = roundMoney(
+              Math.max(
+                0,
+                plan.memberTotal - memberPaid
+              )
+            );
+
+            if (memberRemaining > 0.005) {
+              throw new Error(
+                "internal_full_payment_remaining:" + bookingId
+              );
+            }
+
+            await bookingDataSource.updateBookingStatus(
+              bookingId,
+              "completed"
+            );
+          }
+        } catch (completionError) {
+          console.error(
+            "[BookingInternalV2] full-payment auto completion failed",
+            completionError
+          );
+
+          setPostSaveWarning((current) =>
+            [
+              current,
+              language === "en"
+                ? "Full payment was saved, but one or more bookings could not be marked completed automatically. Review the saved bookings before retrying."
+                : "تم حفظ الدفع الكامل، لكن تعذر تحويل حجز أو أكثر إلى مكتمل تلقائيًا. راجعي الحجوزات المحفوظة قبل إعادة المحاولة.",
+            ]
+              .filter(Boolean)
+              .join(" ")
           );
         }
       }

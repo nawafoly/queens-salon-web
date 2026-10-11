@@ -445,6 +445,10 @@ export function coreBookingToLegacy(
     bookingPrice: firstItem?.unitPriceHalalas == null
       ? undefined
       : sarFromHalalas(firstItem.unitPriceHalalas),
+    bookingItemId: firstItem?.id || undefined,
+    bookingItemQuantity: firstItem
+      ? Math.max(1, Number(firstItem.quantity || 1))
+      : undefined,
     priceAdjustmentReason: firstItem?.priceAdjustmentReason || undefined,
     priceAdjustmentNote: firstItem?.priceAdjustmentNote || undefined,
     discountAmount,

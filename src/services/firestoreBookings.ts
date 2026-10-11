@@ -178,6 +178,10 @@ export type BookingDoc = {
   catalogPrice?: number;
   /** Agreed price for this booking item before discounts. */
   bookingPrice?: number;
+  /** Canonical Core booking-item id used by audited price edits. */
+  bookingItemId?: string;
+  /** Quantity represented by the primary booking item. */
+  bookingItemQuantity?: number;
   priceAdjustmentReason?: "catalog_pending_update" | "management_approved" | "special_price" | "other";
   priceAdjustmentNote?: string;
   discountAmount?: number;
