@@ -64,7 +64,11 @@ test("parent total remains derived from item pricing", () => {
   );
   assert.match(
     repo,
-    /subtotalHalalas - discountHalalas/
+    /nextDiscountHalalas/
+  );
+  assert.match(
+    repo,
+    /subtotalHalalas - nextDiscountHalalas/
   );
   assert.match(
     repo,

@@ -1827,6 +1827,8 @@ export async function patchBooking(
     data.booking_item_id,
     data.bookingItemPriceHalalas,
     data.booking_item_price_halalas,
+    data.bookingItemDiscountHalalas,
+    data.booking_item_discount_halalas,
     data.priceAdjustmentReason,
     data.price_adjustment_reason,
     data.priceAdjustmentNote,
@@ -1859,8 +1861,15 @@ export async function patchBooking(
     data.bookingItemPriceHalalas !== undefined ||
     data.booking_item_price_halalas !== undefined;
 
+  const hasBookingItemDiscountMutation =
+    data.bookingItemDiscountHalalas !== undefined ||
+    data.booking_item_discount_halalas !== undefined;
+
   if (
-    hasBookingItemPriceMutation &&
+    (
+      hasBookingItemPriceMutation ||
+      hasBookingItemDiscountMutation
+    ) &&
     !requestedBookingItemId
   ) {
     throw new AppError(
@@ -2051,20 +2060,45 @@ export async function patchBooking(
   const nextItemTotalHalalas =
     nextItemUnitHalalas * quantity;
 
+  const nextItemDiscountHalalas =
+    hasBookingItemDiscountMutation
+      ? integer(
+          data.bookingItemDiscountHalalas ??
+            data.booking_item_discount_halalas,
+          "bookingItemDiscountHalalas",
+          { min: 0, max: 10_000_000 }
+        )
+      : currentItemDiscountHalalas;
+
+  const discountChanged =
+    nextItemDiscountHalalas !==
+    currentItemDiscountHalalas;
+
   if (
-    nextItemTotalHalalas <
-    currentItemDiscountHalalas
+    discountChanged &&
+    options?.allowDiscountAdjustment !== true
   ) {
     throw new AppError(
-      409,
-      "core_booking:price_below_item_discount"
+      403,
+      "core_booking:discount_adjustment_forbidden",
+      "Booking item discount adjustment requires bookings.discount.apply"
     );
   }
 
-  const currentItemFinalHalalas = Math.max(
+  if (
+    nextItemDiscountHalalas >
+    nextItemTotalHalalas
+  ) {
+    throw new AppError(
+      409,
+      "core_booking:discount_exceeds_item_total"
+    );
+  }
+
+  const nextItemFinalHalalas = Math.max(
     0,
     nextItemTotalHalalas -
-      currentItemDiscountHalalas
+      nextItemDiscountHalalas
   );
 
   const subtotalHalalas = Math.max(
@@ -2074,10 +2108,20 @@ export async function patchBooking(
       currentItemTotalHalalas
   );
 
+  const nextDiscountHalalas = Math.max(
+    0,
+    discountHalalas +
+      nextItemDiscountHalalas -
+      currentItemDiscountHalalas
+  );
+
   const requestedTotal = Math.max(
     0,
-    subtotalHalalas - discountHalalas
+    subtotalHalalas - nextDiscountHalalas
   );
+
+  const financialTotalChanged =
+    priceChanged || discountChanged;
 
   const actorUid = cleanText(
     typeof actor === "string"
@@ -2121,7 +2165,7 @@ export async function patchBooking(
   );
 
   if (
-    priceChanged &&
+    financialTotalChanged &&
     existingPaidHalalas > requestedTotal
   ) {
     throw new AppError(
@@ -2186,7 +2230,7 @@ export async function patchBooking(
       sql: `UPDATE booking_items
                SET service_id = ?, service_name_snapshot = ?, staff_id = ?, duration_minutes = ?,
                    booking_date = ?, start_time = ?, end_time = ?, unit_price_halalas = ?,
-                   total_halalas = ?, final_total_halalas = ?,
+                   total_halalas = ?, discount_halalas = ?, final_total_halalas = ?,
                    price_adjustment_reason = ?, price_adjustment_note = ?,
                    price_adjusted_by_uid = ?, price_adjusted_at = ?
              WHERE salon_id = ? AND booking_id = ? AND id = ?`,
@@ -2200,7 +2244,8 @@ export async function patchBooking(
         endTime,
         nextItemUnitHalalas,
         nextItemTotalHalalas,
-        currentItemFinalHalalas,
+        nextItemDiscountHalalas,
+        nextItemFinalHalalas,
         storedAdjustmentReason,
         storedAdjustmentNote,
         storedAdjustedByUid,
@@ -2213,7 +2258,7 @@ export async function patchBooking(
     {
       sql: `UPDATE bookings
                SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?,
-                   notes = ?, admin_notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
+                   notes = ?, admin_notes = ?, subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?, payment_status = ?,
                    slot_step_min = ?, buffer_min = ?, updated_at = ?
              WHERE salon_id = ? AND id = ?`,
       params: [
@@ -2226,6 +2271,7 @@ export async function patchBooking(
           ? before.admin_notes || null
           : optionalText(data.adminNotes ?? data.admin_notes) || null,
         subtotalHalalas,
+        nextDiscountHalalas,
         requestedTotal,
         paymentStatus,
         slotStepMin,
@@ -2260,7 +2306,7 @@ export async function patchBooking(
              WHERE salon_id = ? AND id = ?`,
       params: [
         subtotalHalalas,
-        discountHalalas,
+        nextDiscountHalalas,
         requestedTotal,
         paidHalalas,
         paymentStatus,
@@ -2401,6 +2447,46 @@ export async function patchBooking(
     );
   }
 
+  if (discountChanged) {
+    statements.push(
+      auditInsertStatement(
+        salonId,
+        {
+          action: "booking_discount_adjusted",
+          entityType: "booking_item",
+          entityId: currentItem.id,
+          description:
+            "Booking item discount adjusted from dashboard",
+          source: "dashboard",
+          before: {
+            bookingId,
+            bookingItemId: currentItem.id,
+            discountHalalas:
+              currentItemDiscountHalalas,
+            finalTotalHalalas:
+              Math.max(
+                0,
+                currentItemTotalHalalas -
+                  currentItemDiscountHalalas
+              ),
+          },
+          after: {
+            bookingId,
+            bookingItemId: currentItem.id,
+            discountHalalas:
+              nextItemDiscountHalalas,
+            finalTotalHalalas:
+              nextItemFinalHalalas,
+            adjustmentDeltaHalalas:
+              nextItemDiscountHalalas -
+              currentItemDiscountHalalas,
+          },
+        },
+        actor
+      ).statement
+    );
+  }
+
   statements.push(
     auditInsertStatement(
       salonId,
@@ -2422,7 +2508,8 @@ export async function patchBooking(
           serviceName: service.name,
           durationMinutes,
           subtotalHalalas,
-          discountHalalas,
+          discountHalalas:
+            nextDiscountHalalas,
           totalHalalas: requestedTotal,
           paidHalalas,
           paymentStatus,

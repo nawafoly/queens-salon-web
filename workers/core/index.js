@@ -1790,8 +1790,6 @@ async function dispatch(ctx, route, method, body, query, env) {
           }
 
           const priceAdjustmentFields = new Set([
-            "bookingItemId",
-            "booking_item_id",
             "bookingItemPriceHalalas",
             "booking_item_price_halalas",
             "priceAdjustmentReason",
@@ -1800,11 +1798,19 @@ async function dispatch(ctx, route, method, body, query, env) {
             "price_adjustment_note",
           ]);
 
+          const discountAdjustmentFields = new Set([
+            "bookingItemDiscountHalalas",
+            "booking_item_discount_halalas",
+          ]);
+
           const hasPaymentMutation = patchKeys.some((key) =>
             paymentFields.has(key)
           );
           const hasPriceAdjustment = patchKeys.some((key) =>
             priceAdjustmentFields.has(key)
+          );
+          const hasDiscountAdjustment = patchKeys.some((key) =>
+            discountAdjustmentFields.has(key)
           );
           const hasOperationalMutation =
             patchKeys.length === 0 ||
@@ -1817,6 +1823,12 @@ async function dispatch(ctx, route, method, body, query, env) {
             requirePermission(
               ctx,
               "bookings.price.adjust"
+            );
+          }
+          if (hasDiscountAdjustment) {
+            requirePermission(
+              ctx,
+              "bookings.discount.apply"
             );
           }
           if (hasPaymentMutation) {
@@ -1834,6 +1846,10 @@ async function dispatch(ctx, route, method, body, query, env) {
             allowPriceAdjustment: hasPermission(
               ctx,
               "bookings.price.adjust"
+            ),
+            allowDiscountAdjustment: hasPermission(
+              ctx,
+              "bookings.discount.apply"
             ),
           }
         );
