@@ -182,6 +182,8 @@ export type BookingDoc = {
   bookingItemId?: string;
   /** Quantity represented by the primary booking item. */
   bookingItemQuantity?: number;
+  /** Discount applied to the primary booking item, in SAR. */
+  bookingItemDiscount?: number;
   priceAdjustmentReason?: "catalog_pending_update" | "management_approved" | "special_price" | "other";
   priceAdjustmentNote?: string;
   discountAmount?: number;

@@ -818,6 +818,7 @@ type EditBookingDraft = {
   price: string;
   bookingItemId: string;
   bookingItemPrice: string;
+  bookingItemDiscount: string;
   priceAdjustmentReason: BookingPriceAdjustmentReason | "";
   priceAdjustmentNote: string;
   paymentMethod: EditPaymentMethodOption;
@@ -868,7 +869,13 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
     bookingItemPrice: String(
       Number.isFinite(Number(b.bookingPrice))
         ? Number(b.bookingPrice)
-        : readBookingTotalAmount(b)
+        : readBookingTotalAmount(b) +
+          Math.max(0, Number(b.discountAmount || 0))
+    ),
+    bookingItemDiscount: String(
+      Number.isFinite(Number(b.bookingItemDiscount))
+        ? Number(b.bookingItemDiscount)
+        : Math.max(0, Number(b.discountAmount || 0))
     ),
     priceAdjustmentReason:
       (b.priceAdjustmentReason || "") as
@@ -995,6 +1002,7 @@ type Booking = {
   bookingPrice?: number;
   bookingItemId?: string;
   bookingItemQuantity?: number;
+  bookingItemDiscount?: number;
   priceAdjustmentReason?: BookingPriceAdjustmentReason;
   priceAdjustmentNote?: string;
   discountAmount?: number;
@@ -3620,6 +3628,9 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const canAdjustBookingPrice = hasPermission(
     "bookings.price.adjust"
   );
+  const canAdjustBookingDiscount = hasPermission(
+    "bookings.discount.apply"
+  );
   const open = !!target;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -3647,6 +3658,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           price: "",
           bookingItemId: "",
           bookingItemPrice: "",
+          bookingItemDiscount: "",
           priceAdjustmentReason: "",
           priceAdjustmentNote: "",
           paymentMethod: "transfer",
@@ -4003,10 +4015,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         }
 
         const nextUnitPrice = Number(value);
+        const nextItemDiscount = Number(
+          prev.bookingItemDiscount || 0
+        );
 
         if (
           !Number.isFinite(nextUnitPrice) ||
-          nextUnitPrice < 0
+          nextUnitPrice < 0 ||
+          !Number.isFinite(nextItemDiscount) ||
+          nextItemDiscount < 0
         ) {
           return {
             ...prev,
@@ -4014,28 +4031,49 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           };
         }
 
-        const originalUnitPrice = Math.max(
-          0,
-          Number(
-            target.bookingPrice ??
-              readBookingTotalAmount(target)
-          )
-        );
-
         const quantity = Math.max(
           1,
           Number(target.bookingItemQuantity || 1)
         );
 
-        const originalTotal =
-          readBookingTotalAmount(target);
+        const originalItemDiscount = Math.max(
+          0,
+          Number(
+            target.bookingItemDiscount ??
+              target.discountAmount ??
+              0
+          )
+        );
+
+        const originalUnitPrice = Math.max(
+          0,
+          Number(
+            target.bookingPrice ??
+              (
+                readBookingTotalAmount(target) +
+                originalItemDiscount
+              ) / quantity
+          )
+        );
+
+        const originalItemFinal = Math.max(
+          0,
+          originalUnitPrice * quantity -
+            originalItemDiscount
+        );
+
+        const otherItemsFinal = Math.max(
+          0,
+          readBookingTotalAmount(target) -
+            originalItemFinal
+        );
 
         const nextTotal = round2(
           Math.max(
             0,
-            originalTotal +
-              (nextUnitPrice - originalUnitPrice) *
-                quantity
+            otherItemsFinal +
+              nextUnitPrice * quantity -
+              nextItemDiscount
           )
         );
 
@@ -4046,8 +4084,6 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           )
         );
 
-        // Increasing the booking price must not silently invent
-        // an additional payment. Preserve what was actually paid.
         const mustBecomePartial =
           prev.paymentMethod !== "none" &&
           prev.paymentMethod !== "mixed" &&
@@ -4057,6 +4093,108 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         return {
           ...prev,
           bookingItemPrice: value,
+          price: String(nextTotal),
+          ...(mustBecomePartial
+            ? {
+                paymentType: "partial" as const,
+                paidAmount: String(alreadyPaid),
+              }
+            : {}),
+        };
+      });
+    },
+    [target]
+  );
+
+  const onBookingItemDiscountChange = useCallback(
+    (value: string) => {
+      setDraft((prev) => {
+        if (!target) {
+          return {
+            ...prev,
+            bookingItemDiscount: value,
+          };
+        }
+
+        const nextItemDiscount = Number(value);
+        const nextUnitPrice = Number(
+          prev.bookingItemPrice || 0
+        );
+
+        if (
+          !Number.isFinite(nextItemDiscount) ||
+          nextItemDiscount < 0 ||
+          !Number.isFinite(nextUnitPrice) ||
+          nextUnitPrice < 0
+        ) {
+          return {
+            ...prev,
+            bookingItemDiscount: value,
+          };
+        }
+
+        const quantity = Math.max(
+          1,
+          Number(target.bookingItemQuantity || 1)
+        );
+
+        const originalItemDiscount = Math.max(
+          0,
+          Number(
+            target.bookingItemDiscount ??
+              target.discountAmount ??
+              0
+          )
+        );
+
+        const originalUnitPrice = Math.max(
+          0,
+          Number(
+            target.bookingPrice ??
+              (
+                readBookingTotalAmount(target) +
+                originalItemDiscount
+              ) / quantity
+          )
+        );
+
+        const originalItemFinal = Math.max(
+          0,
+          originalUnitPrice * quantity -
+            originalItemDiscount
+        );
+
+        const otherItemsFinal = Math.max(
+          0,
+          readBookingTotalAmount(target) -
+            originalItemFinal
+        );
+
+        const nextTotal = round2(
+          Math.max(
+            0,
+            otherItemsFinal +
+              nextUnitPrice * quantity -
+              nextItemDiscount
+          )
+        );
+
+        const alreadyPaid = round2(
+          Math.max(
+            0,
+            Number(target.paidAmount || 0)
+          )
+        );
+
+        const mustBecomePartial =
+          prev.paymentMethod !== "none" &&
+          prev.paymentMethod !== "mixed" &&
+          prev.paymentType === "full" &&
+          alreadyPaid + 0.005 < nextTotal;
+
+        return {
+          ...prev,
+          bookingItemDiscount: value,
           price: String(nextTotal),
           ...(mustBecomePartial
             ? {
@@ -4125,6 +4263,40 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       Math.max(
         0,
         bookingItemPrice * bookingItemQuantity
+      )
+    );
+
+    const originalBookingItemDiscount = Math.max(
+      0,
+      Number(
+        target.bookingItemDiscount ??
+          target.discountAmount ??
+          0
+      )
+    );
+
+    const bookingItemDiscountInput = String(
+      draft.bookingItemDiscount || ""
+    ).trim();
+
+    const bookingItemDiscount =
+      bookingItemDiscountInput === ""
+        ? originalBookingItemDiscount
+        : Number(bookingItemDiscountInput);
+
+    const bookingItemDiscountChanged =
+      Number.isFinite(bookingItemDiscount) &&
+      Math.abs(
+        bookingItemDiscount -
+          originalBookingItemDiscount
+      ) > 0.005;
+
+    const nextBookingDiscountAmount = round2(
+      Math.max(
+        0,
+        Number(target.discountAmount || 0) +
+          bookingItemDiscount -
+          originalBookingItemDiscount
       )
     );
 
@@ -4209,7 +4381,26 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     }
 
     if (
-      bookingItemPriceChanged &&
+      !Number.isFinite(bookingItemDiscount) ||
+      bookingItemDiscount < 0
+    ) {
+      setError("خصم هذا الحجز غير صحيح.");
+      return;
+    }
+
+    if (
+      bookingItemDiscount >
+      bookingItemLineTotal + 0.005
+    ) {
+      setError("الخصم لا يمكن أن يتجاوز سعر الخدمة في هذا الحجز.");
+      return;
+    }
+
+    if (
+      (
+        bookingItemPriceChanged ||
+        bookingItemDiscountChanged
+      ) &&
       !draft.bookingItemId
     ) {
       setError("تعذر تحديد بند الخدمة داخل الحجز. حدّثي الصفحة ثم حاولي مرة أخرى.");
@@ -4229,6 +4420,34 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       !priceAdjustmentReason
     ) {
       setError("اختاري سبب تعديل السعر.");
+      return;
+    }
+
+    if (
+      bookingItemDiscountChanged &&
+      !canAdjustBookingDiscount
+    ) {
+      setError("ليس لديك صلاحية تعديل خصم الحجز.");
+      return;
+    }
+
+    const alreadyCollected = round2(
+      Math.max(
+        0,
+        Number(target.paidAmount || 0)
+      )
+    );
+
+    if (
+      (
+        bookingItemPriceChanged ||
+        bookingItemDiscountChanged
+      ) &&
+      alreadyCollected > price + 0.005
+    ) {
+      setError(
+        "الإجمالي بعد تعديل السعر أو الخصم أقل من المبلغ المحصل. استخدمي مسار الاسترجاع أولًا."
+      );
       return;
     }
 
@@ -4345,17 +4564,29 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         durationMin,
         packageId: null,
         packageSnapshot: null,
-        ...(bookingItemPriceChanged
-          ? {
-              bookingItemId:
-                draft.bookingItemId,
-              bookingPrice:
-                bookingItemPrice,
-              priceAdjustmentReason,
-              priceAdjustmentNote:
-                priceAdjustmentNote || undefined,
-            }
-          : {}),
+        ...(
+          bookingItemPriceChanged ||
+          bookingItemDiscountChanged
+            ? {
+                bookingItemId:
+                  draft.bookingItemId,
+                ...(bookingItemPriceChanged
+                  ? {
+                      bookingPrice:
+                        bookingItemPrice,
+                      priceAdjustmentReason,
+                      priceAdjustmentNote:
+                        priceAdjustmentNote || undefined,
+                    }
+                  : {}),
+                ...(bookingItemDiscountChanged
+                  ? {
+                      bookingItemDiscount,
+                    }
+                  : {}),
+              }
+            : {}
+        ),
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
@@ -4392,17 +4623,31 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         durationMin,
         packageId: undefined,
         packageSnapshot: undefined,
-        ...(bookingItemPriceChanged
-          ? {
-              bookingItemId:
-                draft.bookingItemId || undefined,
-              bookingPrice:
-                bookingItemPrice,
-              priceAdjustmentReason,
-              priceAdjustmentNote:
-                priceAdjustmentNote || undefined,
-            }
-          : {}),
+        ...(
+          bookingItemPriceChanged ||
+          bookingItemDiscountChanged
+            ? {
+                bookingItemId:
+                  draft.bookingItemId || undefined,
+                ...(bookingItemPriceChanged
+                  ? {
+                      bookingPrice:
+                        bookingItemPrice,
+                      priceAdjustmentReason,
+                      priceAdjustmentNote:
+                        priceAdjustmentNote || undefined,
+                    }
+                  : {}),
+                ...(bookingItemDiscountChanged
+                  ? {
+                      bookingItemDiscount,
+                      discountAmount:
+                        nextBookingDiscountAmount,
+                    }
+                  : {}),
+              }
+            : {}
+        ),
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
@@ -4437,6 +4682,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
 
         if (code === "core_booking:price_adjustment_forbidden") {
           setError("ليس لديك صلاحية تعديل سعر الحجز.");
+        } else if (code === "core_booking:discount_adjustment_forbidden") {
+          setError("ليس لديك صلاحية تعديل خصم الحجز.");
+        } else if (code === "core_booking:discount_exceeds_item_total") {
+          setError("الخصم لا يمكن أن يتجاوز سعر الخدمة في هذا الحجز.");
         } else if (code === "core_booking:price_adjustment_reason_required") {
           setError("اختاري سبب تعديل السعر.");
         } else if (code === "core_booking:booking_item_id_required") {
@@ -4459,6 +4708,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
 
     if (shouldClose) onClose();
   }, [
+    canAdjustBookingDiscount,
     canAdjustBookingPrice,
     categories,
     draft,
@@ -4565,6 +4815,34 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
                 {canAdjustBookingPrice
                   ? t("هذا يغير سعر هذا الحجز فقط ولا يغير سعر الخدمة في الكتالوج.")
                   : t("ليس لديك صلاحية تعديل سعر الحجز.")}
+              </small>
+            </label>
+
+            <label>
+              <div className="bk-field-label">
+                {t("خصم هذا الحجز")}
+              </div>
+
+              <DashboardNumberInputV2
+                min={0}
+                step="0.01"
+                className="bk-input"
+                value={draft.bookingItemDiscount}
+                onChange={(event) =>
+                  onBookingItemDiscountChange(
+                    event.target.value
+                  )
+                }
+                disabled={
+                  saving ||
+                  !canAdjustBookingDiscount
+                }
+              />
+
+              <small className="bk-helper-text">
+                {canAdjustBookingDiscount
+                  ? t("يمكن تعديل أو إزالة الخصم لهذا الحجز فقط.")
+                  : t("ليس لديك صلاحية تعديل خصم الحجز.")}
               </small>
             </label>
           </div>

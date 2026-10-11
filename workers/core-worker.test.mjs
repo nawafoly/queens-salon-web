@@ -2228,6 +2228,7 @@ class FakeD1 {
           end_time,
           unit_price_halalas,
           total_halalas,
+          discount_halalas,
           final_total_halalas,
           price_adjustment_reason,
           price_adjustment_note,
@@ -2252,6 +2253,7 @@ class FakeD1 {
                 end_time,
                 unit_price_halalas,
                 total_halalas,
+                discount_halalas,
                 final_total_halalas,
                 price_adjustment_reason,
                 price_adjustment_note,
@@ -7452,4 +7454,260 @@ test("booking price edit cannot rewrite collected payment downward", async () =>
 
   assert.equal(invoice.total_halalas, 9000);
   assert.equal(invoice.paid_halalas, 9000);
+});
+
+
+/* BOOKING_DISCOUNT_EDIT_RUNTIME_V1 */
+
+test("booking discount edit updates item parent invoice and audit through Core", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(
+    request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-discount-edit-runtime",
+        invoiceId: "invoice-discount-edit-runtime",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-04-17",
+        startTime: "10:00",
+        source: "internal",
+        items: [
+          {
+            id: "booking-item-discount-edit-runtime",
+            serviceId: "svc-a",
+            staffId: "staff-a",
+            bookingDate: "2027-04-17",
+            startTime: "10:00",
+          },
+        ],
+      },
+    }),
+    env(fake)
+  );
+
+  let body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-discount-edit-runtime",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-discount-edit-runtime",
+          bookingItemDiscountHalalas: 1500,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  assert.equal(
+    body.data.subtotal_halalas,
+    7500
+  );
+  assert.equal(
+    body.data.discount_halalas,
+    1500
+  );
+  assert.equal(
+    body.data.total_halalas,
+    6000
+  );
+
+  const item = fake.find(
+    "booking_items",
+    "main",
+    "booking-item-discount-edit-runtime"
+  );
+
+  assert.equal(
+    item.unit_price_halalas,
+    7500
+  );
+  assert.equal(
+    item.total_halalas,
+    7500
+  );
+  assert.equal(
+    item.discount_halalas,
+    1500
+  );
+  assert.equal(
+    item.final_total_halalas,
+    6000
+  );
+
+  const invoice = fake.find(
+    "invoices",
+    "main",
+    "invoice-discount-edit-runtime"
+  );
+
+  assert.equal(
+    invoice.subtotal_halalas,
+    7500
+  );
+  assert.equal(
+    invoice.discount_halalas,
+    1500
+  );
+  assert.equal(
+    invoice.total_halalas,
+    6000
+  );
+
+  assert.ok(
+    fake.rows("audit_logs").some(
+      (row) =>
+        row.action ===
+          "booking_discount_adjusted" &&
+        row.entity_id ===
+          "booking-item-discount-edit-runtime"
+    )
+  );
+});
+
+
+test("booking discount edit cannot reduce total below collected money", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(
+    request("/api/core/internal/bookings", {
+      method: "POST",
+      token: "test:reception1:reception",
+      body: {
+        id: "booking-discount-paid-floor",
+        invoiceId: "invoice-discount-paid-floor",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-04-18",
+        startTime: "10:00",
+        source: "internal",
+        items: [
+          {
+            id: "booking-item-discount-paid-floor",
+            serviceId: "svc-a",
+            staffId: "staff-a",
+            bookingDate: "2027-04-18",
+            startTime: "10:00",
+          },
+        ],
+      },
+    }),
+    env(fake)
+  );
+
+  let body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-discount-paid-floor",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          paidHalalas: 7500,
+          paymentMethod: "cash",
+          paymentBreakdown: {
+            cash: 75,
+          },
+          reconcilePayment: true,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  response = await worker.fetch(
+    request(
+      "/api/core/bookings/booking-discount-paid-floor",
+      {
+        method: "PATCH",
+        token: "test:reception1:reception",
+        body: {
+          bookingItemId:
+            "booking-item-discount-paid-floor",
+          bookingItemDiscountHalalas: 1000,
+        },
+      }
+    ),
+    env(fake)
+  );
+
+  body = await json(response);
+
+  assert.equal(
+    response.status,
+    409,
+    JSON.stringify(body)
+  );
+  assert.equal(
+    body.error,
+    "core_booking:price_below_paid_amount"
+  );
+
+  const item = fake.find(
+    "booking_items",
+    "main",
+    "booking-item-discount-paid-floor"
+  );
+
+  assert.equal(
+    item.discount_halalas,
+    0
+  );
+  assert.equal(
+    item.final_total_halalas,
+    7500
+  );
+
+  const invoice = fake.find(
+    "invoices",
+    "main",
+    "invoice-discount-paid-floor"
+  );
+
+  assert.equal(
+    invoice.total_halalas,
+    7500
+  );
+  assert.equal(
+    invoice.paid_halalas,
+    7500
+  );
 });

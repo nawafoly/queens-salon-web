@@ -486,6 +486,9 @@ export const coreD1BookingDataSource: BookingDataSource = {
     const bookingItemPriceSar = Number(
       patch.bookingPrice
     );
+    const bookingItemDiscountSar = Number(
+      patch.bookingItemDiscount
+    );
     const rawBreakdown = patch.paymentBreakdown as Record<string, unknown> | null | undefined;
     const paymentBreakdown = rawBreakdown
       ? Object.fromEntries(
@@ -542,6 +545,14 @@ export const coreD1BookingDataSource: BookingDataSource = {
           : Math.max(
               0,
               Math.round(bookingItemPriceSar * 100)
+            ),
+      bookingItemDiscountHalalas:
+        patch.bookingItemDiscount === undefined ||
+        !Number.isFinite(bookingItemDiscountSar)
+          ? undefined
+          : Math.max(
+              0,
+              Math.round(bookingItemDiscountSar * 100)
             ),
       priceAdjustmentReason:
         patch.priceAdjustmentReason === undefined

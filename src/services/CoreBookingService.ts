@@ -126,6 +126,7 @@ export const CoreBookingService = {
       durationMinutes: number;
       bookingItemId: string;
       bookingItemPriceHalalas: number;
+      bookingItemDiscountHalalas: number;
       priceAdjustmentReason:
         | "catalog_pending_update"
         | "management_approved"

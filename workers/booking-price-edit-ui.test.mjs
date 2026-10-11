@@ -38,10 +38,6 @@ test("price validation occurs before Core write", () => {
 test("price increase does not invent payment", () => {
   assert.match(
     page,
-    /Increasing the booking price must not silently invent/
-  );
-  assert.match(
-    page,
     /alreadyPaid \+ 0\.005 < nextTotal/
   );
   assert.match(
