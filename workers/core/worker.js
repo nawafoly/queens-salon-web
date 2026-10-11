@@ -1,22 +1,26 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-
 import coreWorker from "./index.js";
-import {
-  resolvePartnerOperationalDays,
-} from "./repositories/partner-operational-days.js";
+import { resolvePartnerOperationalDays } from "./repositories/partner-operational-days.js";
+import { handleDayAuditRequest, isDayAuditRequest } from "./day-audit-http.js";
 
-// Capability-scoped Worker-to-Worker API.
-// It exposes only Partner Portal operational-day reads.
-// It does not expose generic HR administration.
 export class PartnerSchedulingEntrypoint extends WorkerEntrypoint {
-  async resolveOperationalDays(input = {}) {
+  async resolveOperationalDays(payload = {}) {
     return resolvePartnerOperationalDays(
       this.env.CORE_DB,
-      this.env.SALON_ID || "main",
-      input
+      String(payload.salonId || this.env.SALON_ID || "main").trim() || "main",
+      payload
     );
   }
 }
 
-// Keep the existing HTTP + scheduled Core worker behavior unchanged.
-export default coreWorker;
+export default {
+  async fetch(request, env, executionCtx) {
+    if (isDayAuditRequest(request)) {
+      return handleDayAuditRequest(request, env);
+    }
+    return coreWorker.fetch(request, env, executionCtx);
+  },
+  async scheduled(event, env, ctx) {
+    return coreWorker.scheduled(event, env, ctx);
+  },
+};
