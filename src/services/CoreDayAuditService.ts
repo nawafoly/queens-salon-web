@@ -36,6 +36,7 @@ export type CoreDayAuditClosing = {
   closedAt: string;
   closedByUid?: string | null;
   closedByName?: string | null;
+  origin?: string;
   sourceSnapshot?: Record<string, unknown>;
   createdAt: string;
   idempotent?: boolean;
@@ -44,6 +45,22 @@ export type CoreDayAuditClosing = {
 export type CoreDayAuditView = {
   snapshot: CoreDayAuditSnapshot;
   closing: CoreDayAuditClosing | null;
+};
+
+export type LegacyDayAuditImportRow = {
+  date: string;
+  totalHalalas: number;
+  cashHalalas: number;
+  cardHalalas: number;
+  transferHalalas: number;
+  manualCashHalalas: number;
+  cashDiffHalalas: number;
+  closedAt: string;
+};
+
+export type LegacyDayAuditImportResult = {
+  imported: CoreDayAuditClosing[];
+  skipped: Array<{ date: string; reason: string }>;
 };
 
 export const CoreDayAuditService = {
@@ -63,6 +80,13 @@ export const CoreDayAuditService = {
     return coreApiRequest<CoreDayAuditClosing>("/api/core/day-audit/close", {
       method: "POST",
       body: { date, manualCashHalalas },
+    });
+  },
+
+  importLegacy(closings: LegacyDayAuditImportRow[]) {
+    return coreApiRequest<LegacyDayAuditImportResult>("/api/core/day-audit/import-legacy", {
+      method: "POST",
+      body: { closings },
     });
   },
 };
