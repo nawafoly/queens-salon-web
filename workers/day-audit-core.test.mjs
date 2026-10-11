@@ -20,7 +20,7 @@ test('day audit Core owns immutable closing persistence and blocks unclassified 
   assert.match(source, /snapshot\.unclassifiedRows\.length > 0/);
   assert.match(source, /manualCashHalalas - snapshot\.cashHalalas/);
   assert.match(source, /day_audit_closed/);
-  assert.doesNotMatch(source, /localStorage/);
+  assert.doesNotMatch(source, /window\.localStorage|\.getItem\(|\.setItem\(/);
 });
 
 test('day audit migration enforces one immutable closing per salon and date', () => {
@@ -30,6 +30,7 @@ test('day audit migration enforces one immutable closing per salon and date', ()
   assert.match(migration, /unclassified_halalas/);
   assert.match(migration, /manual_cash_halalas/);
   assert.match(migration, /closed_by_uid/);
+  assert.match(migration, /origin TEXT NOT NULL DEFAULT 'core'/);
 });
 
 test('Core worker intercepts day audit API while preserving the canonical worker', () => {
@@ -40,6 +41,8 @@ test('Core worker intercepts day audit API while preserving the canonical worker
   assert.match(worker, /coreWorker\.scheduled\(event, env, ctx\)/);
   assert.match(http, /requirePermission\(ctx, 'income\.view'\)/);
   assert.match(http, /requirePermission\(ctx, 'income\.manage'\)/);
-  assert.match(http, /\/api\/core\/day-audit\/closings/);
-  assert.match(http, /\/api\/core\/day-audit\/close/);
+  assert.match(http, /DAY_AUDIT_ROOT = '\/api\/core\/day-audit'/);
+  assert.match(http, /\$\{DAY_AUDIT_ROOT\}\/closings/);
+  assert.match(http, /\$\{DAY_AUDIT_ROOT\}\/close/);
+  assert.match(http, /\$\{DAY_AUDIT_ROOT\}\/import-legacy/);
 });
