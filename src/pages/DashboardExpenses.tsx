@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEye,
@@ -19,11 +19,9 @@ import {
 import {
   generatePayrollEntriesForMonths,
 } from "../services/CorePayrollService";
-import { CoreHrService } from "../services/CoreHrService";
 import {
   projectCorePayrollEntriesToFinancialRows,
 } from "../helpers/corePayrollFinancialRows";
-import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
 import { usePermissions } from "../security/PermissionContext";
@@ -263,6 +261,7 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
   const t = (text: string) => expensesText(language, text);
   const { hasPermission } = usePermissions();
   const [authReady, setAuthReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const allowed = hasPermission("expenses.view");
 
   // ✅ settings
@@ -401,127 +400,26 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ دالة تحميل Firestore
+  const loadRequestRef = useRef(0);
+
   const loadExpenses = async () => {
+    const requestId = ++loadRequestRef.current;
+
     try {
       setLoading(true);
+
       const data = await listAllExpensesCore();
+      if (requestId !== loadRequestRef.current) return;
+
       const manualItems = Array.isArray(data) ? data : [];
       setItems(manualItems);
 
       try {
-        const savedPayrollEntries =
-          await CoreHrService.listPayrollEntries();
+        const payrollEntries = await generatePayrollEntriesForMonths({
+          monthKeys: [selectedMonthKey],
+        });
 
-        const monthKeysSet =
-          new Set<string>();
-
-        manualItems.forEach(
-          (item) => {
-            const monthKey =
-              monthKeyFromIsoDate(
-                String(
-                  item?.date ||
-                  ""
-                )
-              );
-
-            if (monthKey) {
-              monthKeysSet.add(
-                monthKey
-              );
-            }
-          }
-        );
-
-        (
-          Array.isArray(
-            savedPayrollEntries
-          )
-            ? savedPayrollEntries
-            : []
-        ).forEach(
-          (entry: any) => {
-            const monthKey =
-              String(
-                entry?.payrollMonth ??
-                entry?.payroll_month ??
-                ""
-              ).trim();
-
-            if (
-              /^\\d{4}-\\d{2}$/.test(
-                monthKey
-              )
-            ) {
-              monthKeysSet.add(
-                monthKey
-              );
-            }
-          }
-        );
-
-        if (
-          /^\\d{4}-\\d{2}$/.test(
-            selectedMonthKey
-          )
-        ) {
-          monthKeysSet.add(
-            selectedMonthKey
-          );
-        }
-
-        monthKeysSet.add(
-          todayISO().slice(0, 7)
-        );
-
-        const expandedMonthKeys =
-          new Set<string>();
-
-        monthKeysSet.forEach(
-          (monthKey) => {
-            expandedMonthKeys.add(
-              monthKey
-            );
-
-            const previous =
-              shiftMonthKey(
-                monthKey,
-                -1
-              );
-
-            const next =
-              shiftMonthKey(
-                monthKey,
-                1
-              );
-
-            if (previous) {
-              expandedMonthKeys.add(
-                previous
-              );
-            }
-
-            if (next) {
-              expandedMonthKeys.add(
-                next
-              );
-            }
-          }
-        );
-
-        const payrollEntries =
-          await generatePayrollEntriesForMonths({
-            monthKeys:
-              Array.from(
-                expandedMonthKeys
-              ).sort(
-                (left, right) =>
-                  left.localeCompare(
-                    right
-                  )
-              ),
-          });
+        if (requestId !== loadRequestRef.current) return;
 
         const payrollItems: Expense[] =
           projectCorePayrollEntriesToFinancialRows(
@@ -533,132 +431,114 @@ const DashboardExpenses: React.FC<{ language?: DashboardLanguage }> = ({ languag
             category: row.category,
             amount: row.amount,
             date: row.date,
-            paymentMethod:
-              "transfer" as PaymentMethod,
-            note:
-              row.note ||
-              undefined,
-            createdAt:
-              row.createdAtMs,
-            addedBy:
-              row.addedBy,
-            createdByName:
-              row.addedBy,
-            sourceKind:
-              "auto_payroll",
-            sourceType:
-              "payroll",
+            paymentMethod: "transfer" as PaymentMethod,
+            note: row.note || undefined,
+            createdAt: row.createdAtMs,
+            addedBy: row.addedBy,
+            createdByName: row.addedBy,
+            sourceKind: "auto_payroll",
+            sourceType: "payroll",
             sourceRefId:
               "payroll|" +
-              String(
-                row.employeeId ||
-                ""
-              ) +
+              String(row.employeeId || "") +
               "|" +
-              String(
-                row.payrollMonth ||
-                ""
-              ) +
+              String(row.payrollMonth || "") +
               "|" +
               row.payrollKind,
-            staffId:
-              row.employeeId,
-            staffName:
-              row.employeeName,
-            monthKey:
-              row.payrollMonth,
-            payrollKind:
-              row.payrollKind,
+            staffId: row.employeeId,
+            staffName: row.employeeName,
+            monthKey: row.payrollMonth,
+            payrollKind: row.payrollKind,
           }));
 
-        setAutoPayrollItems(
-          payrollItems
-        );
+        setAutoPayrollItems(payrollItems);
         setPayrollLoadWarning("");
       } catch (payrollErr) {
+        if (requestId !== loadRequestRef.current) return;
+
         console.warn(
           "Malikat Core payroll expenses load error:",
           payrollErr
         );
 
         setPayrollLoadWarning(
-          t("تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح.")
+          t(
+            "تعذر تحديث بيانات الرواتب من المصدر التشغيلي. قد تكون أرقام المصروفات المعروضة غير مكتملة أو تعتمد على آخر بيانات رواتب تم تحميلها بنجاح."
+          )
         );
       }
 
       try {
         const n = await countMonthlyExpensesMissingNotesCore();
-        setMissingNotesCountFS(Number(n || 0));
+        if (requestId === loadRequestRef.current) {
+          setMissingNotesCountFS(Number(n || 0));
+        }
       } catch {
-        setMissingNotesCountFS(0);
+        if (requestId === loadRequestRef.current) {
+          setMissingNotesCountFS(0);
+        }
       }
     } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
+
       console.error("listAllExpensesCore error:", e);
       setModalMsg(firebaseMsg(e, language));
       setItems([]);
       setAutoPayrollItems([]);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+      }
     }
   };
 
-  // ✅ تحميل Firestore بعد ثبات تسجيل الدخول (مرة وحدة)
   useEffect(() => {
     let mounted = true;
 
-    const run = async () => {
-      try {
-        if (mounted) setAuthReady(false);
-        const user = await new Promise<User | null>(
-          (resolve) => {
-            const unsub = onAuthStateChanged(auth, (u) => {
-              unsub();
-              resolve(u);
-            });
-          }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!mounted) return;
+
+      setAuthReady(true);
+      setAuthenticated(Boolean(user));
+
+      if (!user) {
+        loadRequestRef.current += 1;
+        setItems([]);
+        setAutoPayrollItems([]);
+        setLoading(false);
+        setModalMsg(
+          t("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب.")
         );
-
-        if (!user) {
-          if (mounted) {
-            setItems([]);
-            setAutoPayrollItems([]);
-            setLoading(false);
-            setModalMsg(t("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب."));
-            setAuthReady(true);
-          }
-          return;
-        }
-
-
-        if (mounted) await loadExpenses();
-
-        try {
-          const legacy = loadLegacyExpenses();
-          const already = localStorage.getItem(EXPENSES_MIGRATED_KEY) === "1";
-          if (mounted) {
-            setLegacyCount(legacy.length);
-            setHasLegacy(legacy.length > 0);
-            setMigrated(already);
-          }
-        } catch {
-          // ignore
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-          setAuthReady(true);
-        }
+        return;
       }
-    };
 
-    run();
+      try {
+        const legacy = loadLegacyExpenses();
+        const already =
+          localStorage.getItem(EXPENSES_MIGRATED_KEY) === "1";
+
+        setLegacyCount(legacy.length);
+        setHasLegacy(legacy.length > 0);
+        setMigrated(already);
+      } catch {
+        // Legacy compatibility is best-effort only.
+      }
+    });
 
     return () => {
       mounted = false;
+      loadRequestRef.current += 1;
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!authReady || !authenticated || !allowed) return;
+
+    void loadExpenses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, authenticated, allowed, selectedMonthKey]);
   const allItems = useMemo(() => {
     const merged = new Map<string, Expense>();
     [...items, ...autoPayrollItems].forEach((x) => {
