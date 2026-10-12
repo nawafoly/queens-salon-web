@@ -644,9 +644,6 @@ function match(url, method) {
     return { name: "client-connect:assign", id: connectAssignment[1] };
   }
 
-  if (path === "/api/core/clients/directory-summary" && method === "GET") {
-    return { name: "client:directory-summary" };
-  }
 
   if (path === "/api/core/clients/loyalty-summary" && method === "GET") {
     return { name: "client:loyalty-summary" };
@@ -1525,11 +1522,6 @@ async function dispatch(ctx, route, method, body, query, env) {
       }, actorInfo);
       return wallet;
     }
-
-    case "client:directory-summary":
-      requireRole(ctx.role, OPERATIONS_ROLES);
-      if (method === "GET") return getClientDirectorySummary(db, ctx.salonId);
-      break;
 
     case "client:loyalty-summary":
       requireRole(ctx.role, OPERATIONS_ROLES);
