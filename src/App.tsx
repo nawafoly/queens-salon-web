@@ -68,7 +68,6 @@ const DASHBOARD_HR_SECTIONS = new Set([
   "recruitment-applications",
   "messages",
   "files",
-  "create-staff",
 ]);
 
 function isDashboardHrPath(pathname: string) {
@@ -1063,4 +1062,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
