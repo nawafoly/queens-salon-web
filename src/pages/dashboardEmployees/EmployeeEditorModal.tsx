@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowsRotate, faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
@@ -16,6 +17,10 @@ import {
   queueEmployeeOnboarding,
   type EmployeeOnboardingRole,
 } from "../../services/employeeOnboardingCoordinator";
+import {
+  clearEmployeeOnboardingDraft,
+  readEmployeeOnboardingDraft,
+} from "../../services/employeeOnboardingDraft";
 import {
   normalizeSpecialties,
   type EmployeeModalTab,
@@ -86,6 +91,8 @@ export default function EmployeeEditorModal({
 }: EmployeeEditorModalProps) {
   const { t } = useEmployeeLanguage();
   const { hasAnyPermission } = usePermissions();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isCreateMode = !editId;
   const employeeName = String(editingStaff?.name || name || "").trim();
   const specialtiesCount = normalizeSpecialties(editingStaff?.specialties).length;
@@ -101,13 +108,30 @@ export default function EmployeeEditorModal({
   useEffect(() => {
     if (!isOpen || !isCreateMode) return;
     clearEmployeeOnboardingQueue();
+    const params = new URLSearchParams(location.search);
+    const recruitmentDraft =
+      params.get("create") === "1"
+        ? readEmployeeOnboardingDraft(String(params.get("applicationId") || "").trim())
+        : null;
     setCreateLogin(canProvisionAccount);
-    setAccountEmail("");
-    setAccountPhone("");
-    setAccountRole("staff");
+    setAccountEmail(recruitmentDraft?.email || "");
+    setAccountPhone(recruitmentDraft?.phone || "");
+    setAccountRole(recruitmentDraft?.role || "staff");
     setTemporaryPassword(makeEmployeeTempPassword());
     setAccountError("");
-  }, [canProvisionAccount, isCreateMode, isOpen]);
+  }, [canProvisionAccount, isCreateMode, isOpen, location.search]);
+
+  const finishRecruitmentHandoff = () => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") !== "1") return;
+    clearEmployeeOnboardingDraft();
+    navigate("/dashboard/employees", { replace: true });
+  };
+
+  const handleClose = () => {
+    finishRecruitmentHandoff();
+    onClose();
+  };
 
   const tabs = useMemo(
     () =>
@@ -166,6 +190,7 @@ export default function EmployeeEditorModal({
 
     try {
       await onSave({ createLogin });
+      finishRecruitmentHandoff();
     } finally {
       clearEmployeeOnboardingQueue();
     }
@@ -187,7 +212,7 @@ export default function EmployeeEditorModal({
             {t("إلغاء التعديلات")}
           </button>
         ) : (
-          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={onClose} disabled={saving}>
+          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={handleClose} disabled={saving}>
             {t("إلغاء")}
           </button>
         )}
@@ -216,7 +241,7 @@ export default function EmployeeEditorModal({
   return (
     <DashboardModalV2
       open={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title={isCreateMode ? t("إضافة موظفة") : employeeName || t("ملف الموظفة")}
       eyebrow={isCreateMode ? t("إدارة الموظفات") : t("الملف الحالي")}
       description={

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
@@ -24,6 +24,11 @@ import {
   type StaffPublicUi,
 } from "./shared";
 import { useEmployeeLanguage } from "./employeeLanguage";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  clearEmployeeOnboardingDraft,
+  readEmployeeOnboardingDraft,
+} from "../../services/employeeOnboardingDraft";
 
 type EmployeeListPanelProps = {
   qText: string;
@@ -131,6 +136,28 @@ export default function EmployeeListPanel({
   onOpenEmployee,
 }: EmployeeListPanelProps) {
   const { language, direction, t, tr } = useEmployeeLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const recruitmentHandoffRef = useRef("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") !== "1") return;
+
+    const applicationId = cleanText(params.get("applicationId"));
+    if (!applicationId || recruitmentHandoffRef.current === applicationId) return;
+
+    const draft = readEmployeeOnboardingDraft(applicationId);
+    if (!draft || !canManage) {
+      clearEmployeeOnboardingDraft();
+      navigate("/dashboard/employees", { replace: true });
+      return;
+    }
+
+    recruitmentHandoffRef.current = applicationId;
+    onCreateEmployee();
+  }, [canManage, location.search, navigate, onCreateEmployee]);
+
   const hasActiveFilters =
     qText.trim().length > 0 ||
     onlyActive !== "all" ||
