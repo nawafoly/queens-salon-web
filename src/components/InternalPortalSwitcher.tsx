@@ -17,7 +17,6 @@ const DASHBOARD_HR_SECTIONS = [
   "recruitment-applications",
   "messages",
   "files",
-  "create-staff",
 ];
 
 type InternalPortalSwitcherProps = {

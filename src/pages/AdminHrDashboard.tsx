@@ -1398,11 +1398,6 @@ export default function AdminHrDashboard({
         title: "ملفات الموظفات",
         subtitle: "إدارة الملفات والمرفقات الإدارية في صفحة مستقلة عن بيانات الموظفات التشغيلية.",
       },
-      "create-staff": {
-        kicker: "الحسابات",
-        title: "إنشاء حساب موظفة",
-        subtitle: "إنشاء وربط حساب الموظفة مع الحفاظ على الأدوار والصلاحيات الحالية.",
-      },
     };
     return meta[adminSection] || meta.overview;
   }, [adminSection]);

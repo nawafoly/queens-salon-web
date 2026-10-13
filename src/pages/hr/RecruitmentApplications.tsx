@@ -32,14 +32,13 @@ import {
 } from "../../services/employeeHub";
 import { cleanText, type HrSession } from "./shared";
 import { usePermissions } from "../../security/PermissionContext";
+import { writeEmployeeOnboardingDraft, type EmployeeOnboardingDraft } from "../../services/employeeOnboardingDraft";
 
 type Props = {
   session: HrSession;
 };
 
 type ApplicationFilter = "all" | "new" | "reviewing" | "accepted" | "rejected" | "hired";
-
-const STAFF_DRAFT_STORAGE_KEY = "queens.hr.createStaffDraft";
 
 const ROLE_OPTIONS = [
   { value: "staff", label: "موظف" },
@@ -240,10 +239,12 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
 
   const openCreateAccount = () => {
     if (!selected) return;
-    const role = ["hr", "admin", "reception"].includes(cleanText(selected.roleApplied).toLowerCase())
-      ? cleanText(selected.roleApplied).toLowerCase()
+    const role: EmployeeOnboardingDraft["role"] = ["hr", "admin", "reception"].includes(
+      cleanText(selected.roleApplied).toLowerCase()
+    )
+      ? (cleanText(selected.roleApplied).toLowerCase() as EmployeeOnboardingDraft["role"])
       : "staff";
-    const draft = {
+    const draft: EmployeeOnboardingDraft = {
       applicationId: selected.id,
       displayName: selected.fullName,
       email: selected.email,
@@ -252,12 +253,8 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
       bio: selected.notes || selected.message || "",
       source: "recruitment",
     };
-    try {
-      window.sessionStorage.setItem(STAFF_DRAFT_STORAGE_KEY, JSON.stringify(draft));
-    } catch {
-      // Navigation still works; the query id is retained as a fallback.
-    }
-    navigate(`/dashboard/create-staff?applicationId=${encodeURIComponent(selected.id)}`);
+    writeEmployeeOnboardingDraft(draft);
+    navigate(`/dashboard/employees?create=1&applicationId=${encodeURIComponent(selected.id)}`);
   };
 
   const filterItems = [

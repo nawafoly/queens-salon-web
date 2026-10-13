@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
+import { readEmployeeOnboardingDraft } from "../../services/employeeOnboardingDraft";
 import { EmployeeBasicTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
 
 type BasicInfoSectionProps = {
@@ -33,6 +36,21 @@ export default function BasicInfoSection({
   onIncludeInEmployeeManagementChange,
   onEmploymentStartDateChange,
 }: BasicInfoSectionProps) {
+  const location = useLocation();
+  const recruitmentDraftRef = useRef("");
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") !== "1") return;
+    const applicationId = String(params.get("applicationId") || "").trim();
+    if (!applicationId || recruitmentDraftRef.current === applicationId) return;
+    const draft = readEmployeeOnboardingDraft(applicationId);
+    if (!draft) return;
+    recruitmentDraftRef.current = applicationId;
+    onNameChange(draft.displayName);
+  }, [isVisible, location.search, onNameChange]);
+
   if (!isVisible) return null;
 
   return (

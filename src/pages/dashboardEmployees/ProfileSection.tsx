@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
+import { readEmployeeOnboardingDraft } from "../../services/employeeOnboardingDraft";
 import { EmployeeProfileTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
 import type { CoreEmployeeProfilePhoto } from "../../services/employeeProfilePhotoCore";
 
@@ -40,6 +43,21 @@ export default function ProfileSection({
   onRatingChange,
   onReviewsCountChange,
 }: ProfileSectionProps) {
+  const location = useLocation();
+  const recruitmentDraftRef = useRef("");
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") !== "1") return;
+    const applicationId = String(params.get("applicationId") || "").trim();
+    if (!applicationId || recruitmentDraftRef.current === applicationId) return;
+    const draft = readEmployeeOnboardingDraft(applicationId);
+    if (!draft) return;
+    recruitmentDraftRef.current = applicationId;
+    onBioChange(draft.bio);
+  }, [isVisible, location.search, onBioChange]);
+
   if (!isVisible) return null;
 
   return (
