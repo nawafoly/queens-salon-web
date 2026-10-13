@@ -12,6 +12,7 @@ const recruitmentPath = path.join(root, "src/pages/hr/RecruitmentApplications.ts
 const mobileNavPath = path.join(root, "src/components/DashboardMobileNav.tsx");
 const legacyRouterPath = path.join(root, "src/pages/hr/CreateStaffAccount.tsx");
 const legacyRoutePath = path.join(root, "src/pages/hr/CreateStaffAccountV2.tsx");
+const legacyComponentPath = path.join(root, "src/pages/hr/CreateStaffAccountLegacy.tsx");
 const editorPath = path.join(root, "src/pages/dashboardEmployees/EmployeeEditorModal.tsx");
 const coordinatorPath = path.join(root, "src/services/employeeOnboardingCoordinator.ts");
 const accountServicePath = path.join(root, "src/services/CoreAccountService.ts");
@@ -55,6 +56,7 @@ rejectText(mobileNav, "/dashboard/create-staff", "Mobile navigation must not exp
 rejectText(adminHr, "/dashboard/create-staff", "HR navigation must not expose the retired create-staff navigation.");
 if (fs.existsSync(legacyRouterPath)) failures.push("CreateStaffAccount.tsx must be removed after the unified cutover.");
 if (fs.existsSync(legacyRoutePath)) failures.push("CreateStaffAccountV2.tsx must be removed after the unified cutover.");
+if (fs.existsSync(legacyComponentPath)) failures.push("CreateStaffAccountLegacy.tsx must be removed after the unified cutover.");
 
 for (const guard of [
   "queueEmployeeOnboarding",
