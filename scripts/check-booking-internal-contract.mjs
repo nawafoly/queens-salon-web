@@ -30,6 +30,9 @@ requireMatch(
 if (dashboard.includes("booking-internal-legacy")) {
   errors.push("Legacy /dashboard/booking-internal-legacy route must not exist.");
 }
+if (/path=["']booking-internal-v2["']/.test(dashboard)) {
+  errors.push("Retired /dashboard/booking-internal-v2 duplicate route must not exist.");
+}
 if (dashboard.includes("../pages/BookingInternal")) {
   errors.push("Dashboard must not import the historical BookingInternal compatibility wrapper.");
 }

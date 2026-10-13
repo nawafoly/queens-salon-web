@@ -2903,14 +2903,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   }
                 />
 
-                <Route
-                  path="booking-internal-v2"
-                  element={
-                    <PermissionRoute permission="bookings.create">
-                      <BookingInternalV2 language={dashboardLanguage} />
-                    </PermissionRoute>
-                  }
-                />
 
                 <Route
                   path="bookings"
