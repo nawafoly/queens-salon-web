@@ -482,11 +482,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               }
             />
 
-            <Route path="advanced" element={<Navigate to={SETTINGS_ROOT_PATH} replace />} />
-            <Route path="advanced/bookings" element={<Navigate to={`${SETTINGS_ROOT_PATH}/bookings`} replace />} />
-            <Route path="advanced/catalog" element={<Navigate to={`${SETTINGS_ROOT_PATH}/catalog`} replace />} />
-            <Route path="advanced/users" element={<Navigate to={`${SETTINGS_ROOT_PATH}/users`} replace />} />
-            <Route path="advanced/contact" element={<Navigate to={`${SETTINGS_ROOT_PATH}/contact`} replace />} />
             <Route path="*" element={<Navigate to="." replace />} />
           </Routes>
         </section>
