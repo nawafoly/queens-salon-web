@@ -7,7 +7,6 @@ on:
       - ".github/workflows/dashboard-create-staff-final-acceptance.yml"
       - "src/pages/hr/CreateStaffAccount.tsx"
       - "src/pages/hr/CreateStaffAccountV2.tsx"
-      - "src/pages/hr/CreateStaffAccountLegacy.tsx"
       - "src/styles/dashboard-v2/pages/admin-create-staff.css"
       - "src/styles/dashboard-v2/dashboard-v2.css"
       - "scripts/check-dashboard-create-staff-v2.mjs"
