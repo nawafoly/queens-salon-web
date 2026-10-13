@@ -6,6 +6,7 @@ import process from "node:process";
 const root = process.cwd();
 const adminHrPath = path.join(root, "src/pages/AdminHrDashboard.tsx");
 const dashboardPath = path.join(root, "src/pages/Dashboard.tsx");
+const appPath = path.join(root, "src/App.tsx");
 const mobileNavPath = path.join(root, "src/components/DashboardMobileNav.tsx");
 const legacyRouterPath = path.join(root, "src/pages/hr/CreateStaffAccount.tsx");
 const legacyRoutePath = path.join(root, "src/pages/hr/CreateStaffAccountV2.tsx");
@@ -19,6 +20,7 @@ const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
 
 const adminHr = fs.readFileSync(adminHrPath, "utf8");
 const dashboard = fs.readFileSync(dashboardPath, "utf8");
+const app = fs.readFileSync(appPath, "utf8");
 const mobileNav = fs.readFileSync(mobileNavPath, "utf8");
 const editor = fs.readFileSync(editorPath, "utf8");
 const coordinator = fs.readFileSync(coordinatorPath, "utf8");
@@ -40,6 +42,7 @@ rejectText(adminHr, "CreateStaffAccountPage", "Admin HR must not import the reti
 rejectText(adminHr, 'path="create-staff"', "Admin HR must not register a create-staff route.");
 rejectText(adminHr, 'onNavigate("/dashboard/create-staff")', "HR overview must not expose the retired create-staff entry.");
 rejectText(dashboard, '"create-staff"', "Dashboard workspace metadata must not retain the retired create-staff route.");
+rejectText(app, '"create-staff"', "App runtime routing must not classify the retired create-staff path.");
 rejectText(dashboard, "/dashboard/create-staff", "Dashboard sidebar must not expose the retired create-staff navigation.");
 rejectText(mobileNav, "/dashboard/create-staff", "Mobile navigation must not expose the retired create-staff navigation.");
 rejectText(adminHr, "/dashboard/create-staff", "HR navigation must not expose the retired create-staff navigation.");
