@@ -233,14 +233,6 @@ export default function DashboardMobileNav({
         group: "hr",
       },
       {
-        to: "/dashboard/create-staff",
-        label: "إنشاء حساب موظفة",
-        description: "إضافة حساب موظفة جديد",
-        icon: faUserShield,
-        allOf: ["admin_accounts.manage", "employees.create"],
-        group: "hr",
-      },
-      {
         to: "/dashboard/payroll",
         label: "إدارة الرواتب",
         description: "مسيرات الرواتب الشهرية والاعتماد والدفع",

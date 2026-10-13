@@ -1,4 +1,4 @@
-﻿import "../styles/AdminDashboardShell.css";
+import "../styles/AdminDashboardShell.css";
 import "../styles/dashboard-v2/dashboard-v2.css";
 // ✅ src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -2625,14 +2625,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
-                {hasPermission("admin_accounts.manage") && hasPermission("employees.create") ? (
-                  <li>
-                    <NavLink to="/dashboard/create-staff" className="nav-link" data-sidebar-tooltip={t("إنشاء حساب موظفة")} onClick={() => setIsSidebarOpen(false)}>
-                      <FontAwesomeIcon icon={faUserShield} />
-                      {t("إنشاء حساب موظفة")}
-                    </NavLink>
-                  </li>
-                ) : null}
                 {hasPermission("payroll.view") ? (
                   <li>
                     <NavLink to="/dashboard/payroll" className="nav-link" data-sidebar-tooltip={t("إدارة الرواتب")} onClick={() => setIsSidebarOpen(false)}>

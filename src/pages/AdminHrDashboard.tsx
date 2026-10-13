@@ -1171,7 +1171,7 @@ export default function AdminHrDashboard({
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission, hasAnyPermission, hasAllPermissions } = usePermissions();
+  const { hasPermission, hasAnyPermission } = usePermissions();
   const [pendingPermissionCount, setPendingPermissionCount] = useState(0);
   const [requestNotifications, setRequestNotifications] = useState<CoreEmployeeRequestNotification[]>([]);
   const [requestNotificationCount, setRequestNotificationCount] = useState(0);
@@ -1308,17 +1308,8 @@ export default function AdminHrDashboard({
         { to: "/dashboard/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
         { to: "/dashboard/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
         { to: "/dashboard/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
-        {
-          to: "/dashboard/create-staff",
-          label: "إنشاء حساب موظف",
-          icon: faUserShield,
-          permission: "admin_accounts.manage" as AppPermission,
-          allOf: ["admin_accounts.manage", "employees.create"] as AppPermission[],
-        },
-      ].filter((item) =>
-        item.allOf ? hasAllPermissions(item.allOf) : hasPermission(item.permission)
-      ),
-    [hasAllPermissions, hasPermission, pendingPermissionCount, requestNotificationCount]
+      ].filter((item) => hasPermission(item.permission)),
+    [hasPermission, pendingPermissionCount, requestNotificationCount]
   );
   const adminLandingPath = adminNavItems[0]?.to || "/employee/overview";
   const canOpenDashboard = hasPermission("workspace.dashboard.view");

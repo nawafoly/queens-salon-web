@@ -6,6 +6,7 @@ import process from "node:process";
 const root = process.cwd();
 const adminHrPath = path.join(root, "src/pages/AdminHrDashboard.tsx");
 const dashboardPath = path.join(root, "src/pages/Dashboard.tsx");
+const mobileNavPath = path.join(root, "src/components/DashboardMobileNav.tsx");
 const legacyRouterPath = path.join(root, "src/pages/hr/CreateStaffAccount.tsx");
 const legacyRoutePath = path.join(root, "src/pages/hr/CreateStaffAccountV2.tsx");
 const editorPath = path.join(root, "src/pages/dashboardEmployees/EmployeeEditorModal.tsx");
@@ -18,6 +19,7 @@ const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
 
 const adminHr = fs.readFileSync(adminHrPath, "utf8");
 const dashboard = fs.readFileSync(dashboardPath, "utf8");
+const mobileNav = fs.readFileSync(mobileNavPath, "utf8");
 const editor = fs.readFileSync(editorPath, "utf8");
 const coordinator = fs.readFileSync(coordinatorPath, "utf8");
 const accountService = fs.readFileSync(accountServicePath, "utf8");
@@ -38,6 +40,9 @@ rejectText(adminHr, "CreateStaffAccountPage", "Admin HR must not import the reti
 rejectText(adminHr, 'path="create-staff"', "Admin HR must not register a create-staff route.");
 rejectText(adminHr, 'onNavigate("/dashboard/create-staff")', "HR overview must not expose the retired create-staff entry.");
 rejectText(dashboard, '"create-staff"', "Dashboard workspace metadata must not retain the retired create-staff route.");
+rejectText(dashboard, "/dashboard/create-staff", "Dashboard sidebar must not expose the retired create-staff navigation.");
+rejectText(mobileNav, "/dashboard/create-staff", "Mobile navigation must not expose the retired create-staff navigation.");
+rejectText(adminHr, "/dashboard/create-staff", "HR navigation must not expose the retired create-staff navigation.");
 if (fs.existsSync(legacyRouterPath)) failures.push("CreateStaffAccount.tsx must be removed after the unified cutover.");
 if (fs.existsSync(legacyRoutePath)) failures.push("CreateStaffAccountV2.tsx must be removed after the unified cutover.");
 
