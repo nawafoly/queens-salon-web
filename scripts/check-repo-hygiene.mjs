@@ -105,6 +105,22 @@ for (const name of retiredOneTimeScripts) {
   if (exists("scripts", name)) failures.push(`retired one-time mutation script must not return: ${name}`);
 }
 
+const retiredSettingsRoutes = [
+  "advanced",
+  "advanced/bookings",
+  "advanced/catalog",
+  "advanced/users",
+  "advanced/contact",
+];
+const dashboardSettingsPath = path.join(root, "src", "pages", "DashboardSettings.tsx");
+if (fs.existsSync(dashboardSettingsPath)) {
+  const dashboardSettings = fs.readFileSync(dashboardSettingsPath, "utf8");
+  for (const route of retiredSettingsRoutes) {
+    if (dashboardSettings.includes(`path="${route}"`)) {
+      failures.push(`retired settings compatibility route must not return: ${route}`);
+    }
+  }
+}
 function assertReadOnlyWorkflow(filename, label, forbiddenScriptPattern = null) {
   const workflowPath = path.join(root, ".github", "workflows", filename);
   if (!fs.existsSync(workflowPath)) {
