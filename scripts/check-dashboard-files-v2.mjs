@@ -7,6 +7,7 @@ const adminDashboardPath = path.join(root, "src/pages/AdminHrDashboard.tsx");
 const employeePortalPath = path.join(root, "src/pages/EmployeePortal.tsx");
 const adminPath = path.join(root, "src/pages/hr/AdminFilesV2.tsx");
 const employeePath = path.join(root, "src/pages/hr/EmployeeFiles.tsx");
+const legacyEmployeePath = path.join(root, "src/pages/hr/EmployeeFilesLegacy.tsx");
 const coreServicePath = path.join(root, "src/services/employeeFilesCore.ts");
 const workerPath = path.join(root, "workers/core/index.js");
 const stylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-files.css");
@@ -52,6 +53,7 @@ requireText(
   '<EmployeeFilesPage session={session} onPortalChange={loadNotifications} />',
   "Employee portal files route must preserve notification refresh behavior."
 );
+if (fs.existsSync(legacyEmployeePath)) failures.push("EmployeeFilesLegacy.tsx must be removed after the Core files cutover.");
 
 // Admin V2 presentation and Core-only business logic.
 requireText(admin, 'className="dashboard-v2 dsv2-page admin-files-v2-page"', "Admin files must use the Dashboard V2 page root.");

@@ -7,7 +7,6 @@ on:
       - ".github/workflows/dashboard-files-final-acceptance.yml"
       - "src/pages/hr/AdminFilesV2.tsx"
       - "src/pages/hr/EmployeeFiles.tsx"
-      - "src/pages/hr/EmployeeFilesLegacy.tsx"
       - "src/styles/dashboard-v2/pages/admin-files.css"
       - "src/styles/dashboard-v2/dashboard-v2.css"
       - "scripts/check-dashboard-files-v2.mjs"
