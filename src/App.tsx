@@ -804,17 +804,6 @@ const App: React.FC = () => {
           element={IS_STAFF_APP ? <Navigate to="/hr" replace /> : <Booking />}
         />
 
-        {/* Old path compatibility */}
-        <Route
-          path="/booking/internal"
-          element={
-            <Navigate
-              to={IS_STAFF_APP ? "/hr" : "/dashboard/booking-internal"}
-              replace
-            />
-          }
-        />
-
         {/* Checkout */}
         <Route
           path="/checkout"
