@@ -53,9 +53,6 @@ export function requireCoreWorkerUrl(): string {
   return flags.coreWorkerUrl;
 }
 
-// Retired alias guard: requirePackagesWorkerUrl must not be reintroduced.
-// Packages are served by Core and must use requireCoreWorkerUrl directly.
-
 export function getDataSourceDiagnostics(): DataSourceDiagnostics {
   const flags = getDataSourceFlags();
   return {
