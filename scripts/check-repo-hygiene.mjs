@@ -4,6 +4,21 @@ import path from "node:path";
 const root = process.cwd();
 const failures = [];
 const exists = (...parts) => fs.existsSync(path.join(root, ...parts));
+const appPath = path.join(root, "src", "App.tsx");
+if (!fs.existsSync(appPath)) {
+  failures.push("src/App.tsx is missing");
+} else {
+  const app = fs.readFileSync(appPath, "utf8");
+  if (/function\s+LegacyAdminRedirect\b/.test(app)) {
+    failures.push("retired LegacyAdminRedirect must not return");
+  }
+  if (/path=["']\/admin\/\*["']/.test(app)) {
+    failures.push("retired /admin/* compatibility route must not return");
+  }
+  if (/pathname\.startsWith\(["']\/admin["']\)/.test(app)) {
+    failures.push("retired /admin pathname shell residue must not return");
+  }
+}
 
 const rootEntries = fs.readdirSync(root, { withFileTypes: true });
 for (const entry of rootEntries) {
