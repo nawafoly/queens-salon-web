@@ -1789,7 +1789,6 @@ export default function AdminHrDashboard({
             />
             <Route path="messages" element={<PermissionRoute permission="messages.manage"><EmployeeMessagesPage session={session} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="employees.files.view"><AdminFilesV2 session={session} /></PermissionRoute>} />
-            <Route path="users" element={<Navigate to="/dashboard/settings/users" replace />} />
             <Route path="*" element={<Navigate to={adminLandingPath} replace />} />
           </Routes>
         </section>
