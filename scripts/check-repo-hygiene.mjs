@@ -20,6 +20,13 @@ if (!fs.existsSync(appPath)) {
   }
 }
 
+const adminHrDashboardPath = path.join(root, "src", "pages", "AdminHrDashboard.tsx");
+if (fs.existsSync(adminHrDashboardPath)) {
+  const adminHrDashboard = fs.readFileSync(adminHrDashboardPath, "utf8");
+  if (/<Route\s+path=["']users["'][\s\S]*?Navigate\s+to=["']\/dashboard\/settings\/users["']/.test(adminHrDashboard)) {
+    failures.push("retired /hr/users compatibility route must not return");
+  }
+}
 const employeeRequestsGuidePath = path.join(root, "docs", "EMPLOYEE-REQUESTS-IMPLEMENTATION-AR.md");
 if (fs.existsSync(employeeRequestsGuidePath)) {
   const employeeRequestsGuide = fs.readFileSync(employeeRequestsGuidePath, "utf8");
