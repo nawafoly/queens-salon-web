@@ -5,10 +5,12 @@ const root = resolve(process.cwd());
 const bookingPath = resolve(root, "src/features/internal-booking-v2/BookingInternalV2.tsx");
 const packagesPath = resolve(root, "src/features/internal-booking-v2/PackageSessionsManager.tsx");
 const dashboardPath = resolve(root, "src/pages/Dashboard.tsx");
+const appPath = resolve(root, "src/App.tsx");
 
 const booking = readFileSync(bookingPath, "utf8");
 const packages = readFileSync(packagesPath, "utf8");
 const dashboard = readFileSync(dashboardPath, "utf8");
+const app = readFileSync(appPath, "utf8");
 const errors = [];
 
 function requireMatch(source, pattern, message) {
@@ -32,6 +34,9 @@ if (dashboard.includes("booking-internal-legacy")) {
 }
 if (/path=["']booking-internal-v2["']/.test(dashboard)) {
   errors.push("Retired /dashboard/booking-internal-v2 duplicate route must not exist.");
+}
+if (/path=["']\/booking\/internal["']/.test(app)) {
+  errors.push("Retired /booking/internal compatibility route must not exist.");
 }
 if (dashboard.includes("../pages/BookingInternal")) {
   errors.push("Dashboard must not import the historical BookingInternal compatibility wrapper.");
