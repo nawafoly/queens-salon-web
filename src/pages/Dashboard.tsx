@@ -94,7 +94,6 @@ import { readStoredAuthSession } from "../services/localAuthSession";
 import { logoutFirebase } from "../services/authService";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
-import { DashboardService } from "../helpers/dashboardService";
 
 import type { BookingDocWithId } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
@@ -1304,13 +1303,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     const canReadExpensesNow = hasPermission("expenses.view");
 
     try {
-      step = "migrateBookingsIfNeeded";
-      try {
-        DashboardService.migrateBookingsIfNeeded?.();
-      } catch (err) {
-        console.warn("REFRESH -> migrateBookingsIfNeeded skipped:", err);
-      }
-
       step = "bookings:CoreBookingService.list";
       const docs = (await CoreBookingService.list()).map(coreBookingToLegacy);
       if (requestId !== refreshRequestIdRef.current) return;
