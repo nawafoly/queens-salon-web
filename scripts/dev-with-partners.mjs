@@ -83,7 +83,6 @@ const processes = [
     args: ["vite", "--mode", "web"],
     env: {
       VITE_CORE_WORKER_URL: LOCAL_CORE_URL,
-      VITE_PACKAGES_WORKER_URL: LOCAL_CORE_URL,
       VITE_PARTNERS_WORKER_URL: LOCAL_PARTNERS_URL,
     },
   },
