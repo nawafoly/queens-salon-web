@@ -20,7 +20,7 @@ test("feature flags default to explicit false checks", () => {
   );
   assert.match(source, /toLowerCase\(\) === "true"/);
   assert.match(source, /requireCoreWorkerUrl/);
-  assert.match(source, /requirePackagesWorkerUrl/);
+  assert.doesNotMatch(source, /requirePackagesWorkerUrl/);
 });
 
 test("booking resolver is pinned to Core D1 without Firestore fallback", () => {

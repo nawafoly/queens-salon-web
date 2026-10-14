@@ -53,11 +53,6 @@ export function requireCoreWorkerUrl(): string {
   return flags.coreWorkerUrl;
 }
 
-/** @deprecated Packages are served by the unified Core Worker. */
-export function requirePackagesWorkerUrl(): string {
-  return requireCoreWorkerUrl();
-}
-
 export function getDataSourceDiagnostics(): DataSourceDiagnostics {
   const flags = getDataSourceFlags();
   return {
