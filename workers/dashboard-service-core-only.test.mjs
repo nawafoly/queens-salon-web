@@ -34,10 +34,10 @@ test("legacy dashboard Firestore methods stay removed", () => {
   }
 });
 
-test("dashboard service retains only the required compatibility surface", () => {
+test("dashboard service retains only shared dashboard booking types", () => {
   const source = read("src/helpers/dashboardService.ts");
 
   assert.match(source, /export type BookingStatus/);
   assert.match(source, /export type Booking/);
-  assert.match(source, /migrateBookingsIfNeeded\s*\(\)/);
+  assert.doesNotMatch(source, /migrateBookingsIfNeeded/);
 });

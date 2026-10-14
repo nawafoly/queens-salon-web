@@ -19,9 +19,3 @@ export type Booking = {
   note?: string;
   createdAt: number;
 };
-
-export const DashboardService = {
-  migrateBookingsIfNeeded() {
-    // Legacy compatibility no-op. Canonical dashboard data comes from Core.
-  },
-};
