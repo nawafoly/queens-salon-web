@@ -53,10 +53,8 @@ export function requireCoreWorkerUrl(): string {
   return flags.coreWorkerUrl;
 }
 
-/** @deprecated Packages are served by the unified Core Worker. */
-export function requirePackagesWorkerUrl(): string {
-  return requireCoreWorkerUrl();
-}
+// Retired alias guard: requirePackagesWorkerUrl must not be reintroduced.
+// Packages are served by Core and must use requireCoreWorkerUrl directly.
 
 export function getDataSourceDiagnostics(): DataSourceDiagnostics {
   const flags = getDataSourceFlags();
