@@ -40,6 +40,7 @@ test("Frontend sends all package operations to unified Core routes", () => {
   const flags = readFileSync("src/config/dataSourceFlags.ts", "utf8");
 
   assert.match(service, /requireCoreWorkerUrl/);
+  assert.doesNotMatch(service, /requirePackagesWorkerUrl/);
   assert.match(service, /path\.replace\(\/\^\\\/api\\\/packages\//);
   assert.match(service, /"\/api\/core\/packages"/);
 
@@ -51,10 +52,11 @@ test("Frontend sends all package operations to unified Core routes", () => {
     flags,
     /packagesWorkerUrl|usePackagesD1|VITE_PACKAGES_WORKER_URL|VITE_USE_PACKAGES_D1/
   );
-  assert.match(
+  assert.doesNotMatch(
     flags,
-    /requirePackagesWorkerUrl[\s\S]*return requireCoreWorkerUrl\(\)/
+    /export\s+function\s+requirePackagesWorkerUrl/
   );
+  assert.match(flags, /requireCoreWorkerUrl/);
   assert.match(env, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api/);
 });
 
