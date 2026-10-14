@@ -75,22 +75,6 @@ function isDashboardHrPath(pathname: string) {
   return DASHBOARD_HR_SECTIONS.has(section);
 }
 
-function LegacyAdminRedirect() {
-  const { pathname, search, hash } = useLocation();
-  const suffix = pathname
-    .replace(/^\/admin\/?/, "")
-    .replace(/^\/+|\/+$/g, "");
-
-  let targetPath = "/dashboard/hr";
-
-  if (suffix === "users" || suffix.startsWith("users/")) {
-    targetPath = `/dashboard/settings/${suffix}`;
-  } else if (suffix && suffix !== "overview" && !suffix.startsWith("overview/")) {
-    targetPath = `/dashboard/${suffix}`;
-  }
-
-  return <Navigate to={{ pathname: targetPath, search, hash }} replace />;
-}
 
 /* ================================
    Types & Helpers
@@ -405,7 +389,6 @@ const App: React.FC = () => {
     location.pathname.startsWith("/dashboard-pending") ||
     location.pathname.startsWith("/account-disabled") ||
     location.pathname.startsWith("/hr") ||
-    location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/employee") ||
     location.pathname.startsWith("/partner");
 
@@ -931,18 +914,6 @@ const App: React.FC = () => {
                   authReady={authReady}
                 />
               )
-            )
-          }
-        />
-
-        {/* Admin Dashboard - محمي بتسجيل دخول Firebase فعلي */}
-        <Route
-          path="/admin/*"
-          element={
-            IS_CUSTOMER_APP ? (
-              <Navigate to="/login" replace />
-            ) : (
-              <LegacyAdminRedirect />
             )
           }
         />
