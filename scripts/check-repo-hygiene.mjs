@@ -20,6 +20,13 @@ if (!fs.existsSync(appPath)) {
   }
 }
 
+const employeeRequestsGuidePath = path.join(root, "docs", "EMPLOYEE-REQUESTS-IMPLEMENTATION-AR.md");
+if (fs.existsSync(employeeRequestsGuidePath)) {
+  const employeeRequestsGuide = fs.readFileSync(employeeRequestsGuidePath, "utf8");
+  if (employeeRequestsGuide.includes("/admin/requests")) {
+    failures.push("retired /admin/requests documentation reference must not return");
+  }
+}
 const rootEntries = fs.readdirSync(root, { withFileTypes: true });
 for (const entry of rootEntries) {
   if (!entry.isFile()) continue;
