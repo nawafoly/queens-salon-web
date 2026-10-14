@@ -125,10 +125,12 @@ test("active attendance and staff performance reports use Export V2", () => {
 });
 
 test("legacy report runtimes stay retired", () => {
-  const common = read("src/helpers/reports/common.ts");
   const payrollLegacySurface = read("src/helpers/reports/exportPayrollReport.ts");
-  assert.match(common, /Legacy report export runtime was removed/);
-  assert.doesNotMatch(common, /window\.print|exportReportToPdf|exportReportToExcel|XLSX/);
+  assert.throws(
+    () => read("src/helpers/reports/common.ts"),
+    /ENOENT/,
+    "retired report common tombstone must not return"
+  );
   assert.match(payrollLegacySurface, /isPayrollExportEligible/);
   assert.match(payrollLegacySurface, /payrollExportExclusionReason/);
   assert.doesNotMatch(payrollLegacySurface, /exportPayrollReportPdf|exportPayrollReportExcel|window\.print/);
