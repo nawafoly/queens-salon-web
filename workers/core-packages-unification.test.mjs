@@ -35,11 +35,26 @@ test("Package repository supports Core clients without a second client table", (
 test("Frontend sends all package operations to unified Core routes", () => {
   const service = readFileSync("src/services/PackageOperationsService.ts", "utf8");
   const env = readFileSync(".env.web", "utf8");
+  const staffEnv = readFileSync(".env.staff", "utf8");
+  const dev = readFileSync("scripts/dev-with-partners.mjs", "utf8");
+  const flags = readFileSync("src/config/dataSourceFlags.ts", "utf8");
+
   assert.match(service, /requireCoreWorkerUrl/);
   assert.match(service, /path\.replace\(\/\^\\\/api\\\/packages\//);
   assert.match(service, /"\/api\/core\/packages"/);
-  assert.doesNotMatch(env, /queens-salon-packages-api/);
-  assert.doesNotMatch(env, /VITE_PACKAGES_WORKER_URL/);
+
+  for (const activeConfig of [env, staffEnv, dev]) {
+    assert.doesNotMatch(activeConfig, /VITE_PACKAGES_WORKER_URL/);
+    assert.doesNotMatch(activeConfig, /VITE_USE_PACKAGES_D1/);
+  }
+  assert.doesNotMatch(
+    flags,
+    /packagesWorkerUrl|usePackagesD1|VITE_PACKAGES_WORKER_URL|VITE_USE_PACKAGES_D1/
+  );
+  assert.match(
+    flags,
+    /requirePackagesWorkerUrl[\s\S]*return requireCoreWorkerUrl\(\)/
+  );
   assert.match(env, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api/);
 });
 
