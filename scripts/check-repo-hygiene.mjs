@@ -14,7 +14,8 @@ if (!fs.existsSync(appPath)) {
   }
   if (/path=["']\/settings["']/.test(app)) {
     failures.push("retired /settings compatibility route must not return");
-  }  if (/path=["']\/admin\/\*["']/.test(app)) {
+  }
+  if (/path=["']\/admin\/\*["']/.test(app)) {
     failures.push("retired /admin/* compatibility route must not return");
   }
   if (/pathname\.startsWith\(["']\/admin["']\)/.test(app)) {
