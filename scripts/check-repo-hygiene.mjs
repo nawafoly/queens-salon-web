@@ -12,6 +12,9 @@ if (!fs.existsSync(appPath)) {
   if (/function\s+LegacyAdminRedirect\b/.test(app)) {
     failures.push("retired LegacyAdminRedirect must not return");
   }
+  if (/path=["']\/settings["']/.test(app)) {
+    failures.push("retired /settings compatibility route must not return");
+  }
   if (/path=["']\/admin\/\*["']/.test(app)) {
     failures.push("retired /admin/* compatibility route must not return");
   }

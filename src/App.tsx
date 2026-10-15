@@ -952,11 +952,6 @@ const App: React.FC = () => {
 
         <Route path="/forgot-password" element={<ForgotPassword />} />
 
-        <Route
-          path="/settings"
-          element={<Navigate to="/dashboard/settings" replace />}
-        />
-
         {/* Payments */}
         <Route
           path="/pay"
