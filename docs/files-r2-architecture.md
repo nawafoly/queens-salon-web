@@ -17,13 +17,7 @@ The Core Worker has the active R2 binding in `wrangler.core.jsonc`:
 ]
 ```
 
-The web and staff app modes currently enable the R2 file gate:
-
-```env
-VITE_USE_R2_FILES=true
-```
-
-This flag does not select an alternate storage backend. `CoreFilesService` is R2-only and fails explicitly if the gate is disabled; it never falls back to Firebase Storage.
+There is no runtime file source-selection flag. `CoreFilesService` is R2-only and always targets the Core Worker file routes; it never falls back to Firebase Storage.
 
 ## Metadata
 
@@ -44,8 +38,7 @@ The Worker validates the Firebase ID token, resolves role metadata from D1 and r
 ## Current operational state
 
 - `FILES_BUCKET` is bound to `queens-salon-files` in the Core Worker configuration.
-- web/staff builds set `VITE_USE_R2_FILES=true`.
-- frontend file metadata/content operations use `CoreFilesService` and Core Worker routes.
+- frontend file metadata/content operations use `CoreFilesService` and Core Worker routes without a storage source-selection flag.
 - Firebase Storage is not a runtime file backend.
 
 ## Legacy migration
