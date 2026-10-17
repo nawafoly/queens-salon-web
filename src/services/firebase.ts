@@ -3,7 +3,6 @@ import { getApps, initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
-import { getStorage } from "firebase/storage";
 
 function readEnv(name: string, value: unknown, fallback = "") {
   const normalized = String(value ?? "").trim();
@@ -35,11 +34,6 @@ const firebaseConfig = {
     import.meta.env.VITE_FIREBASE_PROJECT_ID,
     "dev-project",
   ),
-  storageBucket: readEnv(
-    "VITE_FIREBASE_STORAGE_BUCKET",
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    "dev-project.appspot.com",
-  ),
   messagingSenderId: readEnv(
     "VITE_FIREBASE_MESSAGING_SENDER_ID",
     import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -54,8 +48,6 @@ export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfi
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
-
 export const functions = getFunctions(app, "us-central1");
 
 if (import.meta.env.DEV) {
@@ -66,5 +58,5 @@ if (import.meta.env.DEV) {
     connectFunctionsEmulator(functions, "127.0.0.1", 5001);
     (window as any).__firebaseEmulatorsConnected = true;
   }
-  (window as any).__fb = { app, auth, db, storage, functions, firebaseConfig };
+  (window as any).__fb = { app, auth, db, functions, firebaseConfig };
 }
