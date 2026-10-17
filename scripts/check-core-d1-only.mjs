@@ -93,6 +93,21 @@ for (const file of walk(CORE_DIR)) {
   });
 }
 
+const retiredCoreFlagFiles = [
+  "src/config/dataSourceFlags.ts",
+  ".env.web",
+  ".env.staff",
+  "docs/frontend-core-cutover.md",
+  "docs/admin-core-cutover.md",
+  "docs/final-firestore-removal-plan.md",
+];
+for (const file of retiredCoreFlagFiles) {
+  const source = readFileSync(join(ROOT, file), "utf8");
+  if (/\bVITE_USE_CORE_D1\b|\buseCoreD1\b|\bcoreSource\b|\bBookingDataSourceKind\b|\bcoreWorkerUrlConfigured\b|\bgetDataSourceDiagnostics\b/.test(source)) {
+    failures.push(`${file}: retired Core data-source flag or diagnostic found`);
+  }
+}
+
 if (failures.length) {
   console.error("Core D1-only guard failed.");
   for (const failure of failures) console.error(`- ${failure}`);
