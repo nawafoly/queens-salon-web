@@ -478,7 +478,8 @@ const requiredChecks = [
   {
     file: "src/services/CoreFilesService.ts",
     required: [
-      /getDataSourceFlags\(\)\.useR2Files/,
+      /R2 ONLY/,
+      /requireCoreWorkerUrl/,
       /\/api\/core\/files/,
       /async updateMetadata\(/,
       /method: "PATCH"/,
