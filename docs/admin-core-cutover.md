@@ -18,7 +18,7 @@ The operational path is:
 Admin UI → queens-salon-core-api → CORE_DB
 ```
 
-Firebase remains only in explicitly selected legacy branches while `VITE_USE_CORE_D1=false`. A Core D1 request failure never triggers an automatic Firestore fallback.
+Admin operational data is Core D1-only. Historical Firebase branches may remain outside active runtime for migration or audit compatibility, but no Core source-selection flag is permitted and a Core request failure never triggers an automatic Firestore fallback.
 
 ## Refund ledger
 
@@ -48,4 +48,4 @@ The following are not part of Phase 5:
 npm run verify:phase5
 ```
 
-Do not deploy the new cutover or enable D1 feature flags until production data migration and reconciliation are complete.
+Any future migration or cleanup must preserve the Core D1-only admin runtime and fail closed when Core configuration is missing; do not reintroduce a source-selection flag or Firestore fallback.
