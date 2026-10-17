@@ -12,12 +12,12 @@ The repository still contains legacy Firebase branches. Their presence does not 
 |---|---|---|---|
 | `src/services/firebase.ts`, `authService.ts`, `authAccess.ts`, login entry pages | Sign-in, ID token and temporary profile bootstrap | Authentication / temporary role bootstrap | Keep Firebase Auth initially; move operational roles to D1 and later evaluate another identity provider. |
 | `bookingDataSources/firestoreBookingDataSource.ts`, `firestoreBookings.ts`, `firestoreCatalog.ts`, `firestoreStaffPublic.ts`, `firestoreOffers.ts` | Explicit legacy adapter when Core D1 flags are false | Legacy operational branch | Remove after Core migration, Worker deploy, smoke tests and production flag cutover. |
-| `Booking.tsx`, `BookingInternal.tsx`, public service/offers pages | Some settings, display content or upload paths still use selected legacy adapters | Mixed cutover | Route settings through Core D1 and files through R2; then remove imports after production verification. |
+| `Booking.tsx`, `BookingInternal.tsx`, public service/offers pages | Core settings are D1-only; some display content or upload paths may still use selected legacy adapters | Mixed cleanup | Keep settings Core-backed, route files through R2, then remove legacy imports after production verification. |
 | `employeeHub.ts`, `hrCollections.ts`, `firestoreAttendance.ts`, `firestoreLeaveBalance.ts`, HR pages/components | Historical HR helpers remain for migration, audit, or compatibility; the Core HR operational path is D1-only | Legacy HR residue | Verify each remaining callsite, then delete legacy helpers only after proving they are outside the operational runtime. |
 | `attendanceSettingsService.ts`, `attendanceWorkerService.ts`, attendance Workers | Existing attendance worker/settings model | Separate operational subsystem | Decide whether to merge into Core attendance endpoints or retain as a dedicated Cloudflare subsystem backed by D1; eliminate Firestore settings reads. |
 | `DashboardEmployees.tsx`, `AdminHrDashboard.tsx`, employee subpages | Large UI surfaces with direct helper/service dependencies | HR UI audit surface | Keep runtime HR operations Core-backed; audit remaining direct helper dependencies without reintroducing a source-selection flag. |
 | `SettingsUsers.tsx`, `DashboardAdminProfile.tsx`, `userProfile.ts`, `staffAccountLinkService.ts` | Account/profile creation and role data | Auth plus legacy operational metadata | Keep Auth account creation; store admin profile, employee link and roles in D1. Remove Firestore metadata writes after parity tests. |
-| `AppSettingsService.ts`, settings pages, `FinanceSettingsService.ts` | Explicit legacy branch while settings flag is false | Legacy settings branch | Enable `VITE_USE_SETTINGS_D1`, migrate setting keys and remove Firestore branch after comparison. |
+| `AppSettingsService.ts`, settings pages, `FinanceSettingsService.ts` | Settings reads and writes are Core D1-only and fail closed; historical compatibility references may remain outside runtime | Settings D1-only / legacy residue | Audit and remove remaining non-runtime residue; never reintroduce a settings source-selection flag or Firestore fallback. |
 | File pages and employee file helpers | Firebase Storage and Firestore metadata | Legacy file branch | Create R2 bucket, copy binaries, import metadata, enable `VITE_USE_R2_FILES`, then remove Firebase Storage calls. |
 | `ClientPackageService.ts`, `PackageService.ts`, `firestorePackages.ts` and old package transaction modules | Compatibility and one-time migration/audit paths | Legacy package / migration | Keep isolated only until package data is migrated and reconciled; operational package endpoints remain D1-only. |
 | Dashboard reports, loyalty, pending, TV queue, logs and day audit pages | Some direct reads remain for reporting compatibility | Legacy reporting branch | Add Core reporting endpoints or derive from D1 tables; remove Firestore reads after totals match. |
@@ -44,8 +44,7 @@ The repository still contains legacy Firebase branches. Their presence does not 
 ```env
 VITE_USE_CORE_D1=false
 VITE_USE_PACKAGES_D1=false
-VITE_USE_SETTINGS_D1=false
 VITE_USE_R2_FILES=false
 ```
 
-Core HR is D1-only and no runtime HR data-source flag remains. A flag set to `true` without a configured Worker/binding must fail explicitly. Runtime errors must never trigger an automatic Firebase fallback.
+Core HR and settings are D1-only and no runtime HR/settings data-source flags remain. A remaining flag set to `true` without a configured Worker/binding must fail explicitly. Runtime errors must never trigger an automatic Firebase fallback.
