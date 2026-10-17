@@ -1,4 +1,4 @@
-# Queens Salon files on Cloudflare R2
+# MALIKAT files on Cloudflare R2
 
 ## Storage split
 
@@ -9,7 +9,7 @@ Frontend -> Core Worker -> FILES_BUCKET (binary)
                         -> CORE_DB.file_metadata (metadata)
 ```
 
-The binding is intentionally commented in `wrangler.core.jsonc` until the bucket is created:
+The Core Worker has the active R2 binding in `wrangler.core.jsonc`:
 
 ```jsonc
 "r2_buckets": [
@@ -17,11 +17,13 @@ The binding is intentionally commented in `wrangler.core.jsonc` until the bucket
 ]
 ```
 
-The frontend flag remains disabled:
+The web and staff app modes currently enable the R2 file gate:
 
 ```env
-VITE_USE_R2_FILES=false
+VITE_USE_R2_FILES=true
 ```
+
+This flag does not select an alternate storage backend. `CoreFilesService` is R2-only and fails explicitly if the gate is disabled; it never falls back to Firebase Storage.
 
 ## Metadata
 
@@ -35,23 +37,17 @@ VITE_USE_R2_FILES=false
 - upload object content to `/api/core/files/:id/content`
 - download object content from the same protected route
 
-The Worker validates the Firebase ID token, resolves role metadata from D1 and requires `FILES_BUCKET`. If the binding is absent it returns a clear configuration error. It never falls back to Firebase Storage.
+The Worker validates the Firebase ID token, resolves role metadata from D1 and requires `FILES_BUCKET`. If the binding is absent it returns a clear configuration error. Binary file operations never fall back to Firebase Storage.
 
-## Creation commands for later
+`src/services/firebase.ts` remains available for Firebase authentication and other explicitly audited Firebase compatibility surfaces, but it must not initialize or export a Firebase Storage client.
 
-```powershell
-npx wrangler r2 bucket create queens-salon-files
-```
+## Current operational state
 
-After creation, uncomment the `FILES_BUCKET` binding in `wrangler.core.jsonc`, run the file integration checks, deploy the Core Worker, then enable `VITE_USE_R2_FILES=true` only after metadata and object migration have been validated.
+- `FILES_BUCKET` is bound to `queens-salon-files` in the Core Worker configuration.
+- web/staff builds set `VITE_USE_R2_FILES=true`.
+- frontend file metadata/content operations use `CoreFilesService` and Core Worker routes.
+- Firebase Storage is not a runtime file backend.
 
 ## Legacy migration
 
-The Core migration script imports file metadata only. Actual Firebase Storage objects require a separate one-time copy job that:
-
-1. enumerates approved legacy objects;
-2. preserves a stable storage key;
-3. writes the object to R2;
-4. verifies byte size/content type;
-5. upserts `file_metadata`;
-6. does not delete the legacy object until a later audited cleanup.
+Any remaining legacy Firebase Storage objects are migration or cleanup artifacts, not a runtime source of truth. Their deletion must remain a separate audited operation: verify the matching R2 object, byte size/content type and `file_metadata` row before removing any legacy object.

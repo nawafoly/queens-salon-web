@@ -46,7 +46,7 @@ Clients, sections/categories, offers/coupons, income, expenses, refunds, audit l
 
 ## Temporary Firebase exceptions
 
-Firebase Authentication and role/profile lookup, uploads/Storage and remaining explicitly audited compatibility paths may still use Firebase. Active booking, HR and settings operations are Core D1-backed; historical helpers or adapters must not become a runtime source-selection path. Core booking rescheduling uses its dedicated Core endpoint.
+Firebase Authentication and role/profile lookup plus remaining explicitly audited compatibility paths may still use Firebase. Binary file uploads/downloads are Core R2-only and `src/services/firebase.ts` must not initialize a Firebase Storage client. Active booking, HR and settings operations are Core D1-backed; historical helpers or adapters must not become a runtime source-selection path. Core booking rescheduling uses its dedicated Core endpoint.
 
 Direct slot-availability reads from `Booking.tsx` and `BookingInternal.tsx` have
 been removed. The legacy Firestore implementation is isolated inside
