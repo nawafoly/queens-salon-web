@@ -10,13 +10,7 @@ Frontend HR adapter -> queens-salon-core-api -> CORE_DB
 
 Firebase is permitted only to authenticate the user and supply an ID token. The Core Worker verifies that token, then resolves the operational role from `role_assignments` in D1. No HR endpoint may fall back to Firestore.
 
-The frontend flag remains disabled until production data has been migrated:
-
-```env
-VITE_USE_HR_D1=false
-```
-
-When enabled, missing Worker configuration is a hard configuration error rather than a reason to read Firestore.
+The HR frontend no longer selects an operational data source through a feature flag. Core HR is D1-only; missing Core Worker configuration or a D1 failure is an explicit error rather than a reason to read Firestore.
 
 ## D1 schema
 
@@ -53,7 +47,7 @@ Attendance writes use idempotency keys. A duplicate retry does not create an add
 
 ## Frontend adapter
 
-`src/services/CoreHrService.ts` is the typed frontend client. Existing HR pages are not silently redirected. They must explicitly choose the D1 adapter through `VITE_USE_HR_D1=true`; legacy branches remain temporary until each page is cut over and production data is present.
+`src/services/CoreHrService.ts` is the typed frontend client for Core-backed HR operations. Runtime HR source selection is not feature-flagged. Any legacy HR helpers retained for migration, audit, or history must not be selected as an operational fallback.
 
 ## Migration
 
