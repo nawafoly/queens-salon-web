@@ -5,8 +5,12 @@ const failures = [];
 const worker = readFileSync('workers/core/repositories/files.js', 'utf8');
 const client = readFileSync('src/services/CoreFilesService.ts', 'utf8');
 const firebaseBootstrap = readFileSync('src/services/firebase.ts', 'utf8');
+const dataSourceConfig = readFileSync('src/config/dataSourceFlags.ts', 'utf8');
+const envWeb = readFileSync('.env.web', 'utf8');
+const envStaff = readFileSync('.env.staff', 'utf8');
 const wrangler = readFileSync('wrangler.core.jsonc', 'utf8');
 const architecture = readFileSync('docs/files-r2-architecture.md', 'utf8');
+const finalRemovalPlan = readFileSync('docs/final-firestore-removal-plan.md', 'utf8');
 const migration = readFileSync('migrations/core/0005_hr_settings_files.sql', 'utf8');
 
 function stripJsoncComments(source) {
@@ -86,6 +90,18 @@ for (const [file, source] of [['workers/core/repositories/files.js', worker], ['
 if (/firebase\/storage|getStorage\s*\(|\bstorageBucket\s*:|VITE_FIREBASE_STORAGE_BUCKET|\bexport\s+const\s+storage\b/i.test(firebaseBootstrap)) {
   failures.push('src/services/firebase.ts: retired Firebase Storage bootstrap dependency found');
 }
+if (/VITE_USE_R2_FILES|\buseR2Files\b|\bgetDataSourceFlags\b/.test(dataSourceConfig)) {
+  failures.push('src/config/dataSourceFlags.ts: retired R2 source-selection residue found');
+}
+if (/VITE_USE_R2_FILES|\buseR2Files\b|\bgetDataSourceFlags\b/.test(client)) {
+  failures.push('src/services/CoreFilesService.ts: retired R2 source-selection gate found');
+}
+for (const [file, source] of [['.env.web', envWeb], ['.env.staff', envStaff]]) {
+  if (/VITE_USE_R2_FILES/.test(source)) failures.push(`${file}: retired VITE_USE_R2_FILES flag found`);
+}
+for (const [file, source] of [['docs/files-r2-architecture.md', architecture], ['docs/final-firestore-removal-plan.md', finalRemovalPlan]]) {
+  if (/VITE_USE_R2_FILES/.test(source)) failures.push(`${file}: retired VITE_USE_R2_FILES documentation found`);
+}
 if (!worker.includes('FILES_BUCKET')) failures.push('files repository: missing FILES_BUCKET binding');
 
 let wranglerConfig = null;
@@ -103,7 +119,8 @@ if (wranglerConfig) {
 }
 
 if (!worker.includes('R2 ONLY')) failures.push('files repository: missing R2-only comment');
-if (/intentionally commented|VITE_USE_R2_FILES=false|Creation commands for later/i.test(architecture)) {
+if (!client.includes('R2 ONLY')) failures.push('CoreFilesService: missing R2-only comment');
+if (/intentionally commented|Creation commands for later/i.test(architecture)) {
   failures.push('files R2 architecture doc: retired pre-cutover state found');
 }
 if (!migration.includes('file_metadata')) failures.push('0005 migration: missing file_metadata table');

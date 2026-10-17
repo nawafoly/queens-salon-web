@@ -1,14 +1,8 @@
 // R2 ONLY — binary files must not be stored in D1 or Firestore.
 import { auth } from "./firebase";
-import { getDataSourceFlags, requireCoreWorkerUrl } from "../config/dataSourceFlags";
+import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 import { coreApiRequest, CoreApiError } from "./coreApiClient";
 import type { CoreFileMetadata } from "../types/hrCoreApi";
-
-function assertR2FilesEnabled(): void {
-  if (!getDataSourceFlags().useR2Files) {
-    throw new Error("R2_FILES_CONFIG_ERROR: VITE_USE_R2_FILES=true is required for CoreFilesService.");
-  }
-}
 
 function mapMetadata(row: Record<string, unknown>): CoreFileMetadata {
   const value = (name: string, snake: string) => row[name] ?? row[snake];
@@ -35,7 +29,6 @@ function mapMetadata(row: Record<string, unknown>): CoreFileMetadata {
 }
 
 async function authorizedBinary(path: string, init: RequestInit) {
-  assertR2FilesEnabled();
   const user = auth.currentUser;
   if (!user) throw new CoreApiError(401, "core_auth:login_required", "يجب تسجيل الدخول.");
   const token = await user.getIdToken();
@@ -52,20 +45,16 @@ async function authorizedBinary(path: string, init: RequestInit) {
 
 export const CoreFilesService = {
   async list(query: { employeeId?: string; category?: string } = {}) {
-    assertR2FilesEnabled();
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/files", { query });
     return rows.map(mapMetadata);
   },
   async get(fileId: string) {
-    assertR2FilesEnabled();
     return mapMetadata(await coreApiRequest<Record<string, unknown>>(`/api/core/files/${encodeURIComponent(fileId)}`));
   },
   async createMetadata(input: Record<string, unknown>) {
-    assertR2FilesEnabled();
     return mapMetadata(await coreApiRequest<Record<string, unknown>>("/api/core/files", { method: "POST", body: input }));
   },
   async updateMetadata(fileId: string, input: Record<string, unknown>) {
-    assertR2FilesEnabled();
     return mapMetadata(await coreApiRequest<Record<string, unknown>>(`/api/core/files/${encodeURIComponent(fileId)}`, { method: "PATCH", body: input }));
   },
   async upload(fileId: string, file: Blob) {

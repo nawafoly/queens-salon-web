@@ -18,7 +18,7 @@ The repository still contains legacy Firebase branches. Their presence does not 
 | `DashboardEmployees.tsx`, `AdminHrDashboard.tsx`, employee subpages | Large UI surfaces with direct helper/service dependencies | HR UI audit surface | Keep runtime HR operations Core-backed; audit remaining direct helper dependencies without reintroducing a source-selection flag. |
 | `SettingsUsers.tsx`, `DashboardAdminProfile.tsx`, `userProfile.ts`, `staffAccountLinkService.ts` | Account/profile creation and role data | Auth plus legacy operational metadata | Keep Auth account creation; store admin profile, employee link and roles in D1. Remove Firestore metadata writes after parity tests. |
 | `AppSettingsService.ts`, settings pages, `FinanceSettingsService.ts` | Settings reads and writes are Core D1-only and fail closed; historical compatibility references may remain outside runtime | Settings D1-only / legacy residue | Audit and remove remaining non-runtime residue; never reintroduce a settings source-selection flag or Firestore fallback. |
-| File pages and employee file helpers | Firebase Storage and Firestore metadata | Legacy file branch | Create R2 bucket, copy binaries, import metadata, enable `VITE_USE_R2_FILES`, then remove Firebase Storage calls. |
+| File pages and employee file helpers | File runtime is Core D1/R2-only; remaining Firebase Storage objects are migration/cleanup artifacts | R2-only / legacy file objects | Keep `CoreFilesService` and Core R2 routes as the sole runtime file path; remove legacy objects only after R2 object and `file_metadata` reconciliation. |
 | `ClientPackageService.ts`, `PackageService.ts`, `firestorePackages.ts` and old package transaction modules | Compatibility and one-time migration/audit paths | Legacy package / migration | Keep isolated only until package data is migrated and reconciled; operational package endpoints remain D1-only. |
 | Dashboard reports, loyalty, pending, TV queue, logs and day audit pages | Some direct reads remain for reporting compatibility | Legacy reporting branch | Add Core reporting endpoints or derive from D1 tables; remove Firestore reads after totals match. |
 | Partner frontend services | Partner subsystem already uses a Cloudflare Worker/D1, but some auth/profile helpers import Firebase | Authentication / separate D1 subsystem | Keep Worker/D1 data; narrow Firebase use to token acquisition only. |
@@ -32,10 +32,10 @@ The repository still contains legacy Firebase branches. Their presence does not 
 3. Review counts, conflicts, skipped rows and identity mappings.
 4. Run idempotent `--apply` migrations only after preflight and backup requirements are satisfied.
 5. Compare D1 counts and financial/package samples with the legacy source where reconciliation is still pending.
-6. Create or verify R2 storage and migrate binaries separately where file cutover is incomplete.
+6. Verify R2 storage and reconcile any remaining legacy binaries separately where cleanup is incomplete.
 7. Deploy the required Workers with D1/R2 bindings.
 8. Test only remaining active subsystem flags in a controlled environment.
-9. Enable remaining source flags one subsystem at a time; Core booking/admin, HR and settings have no runtime source-selection flag.
+9. Enable remaining source flags one subsystem at a time; Core booking/admin, HR, settings and files have no runtime source-selection flag.
 10. Monitor Workers, bookings, slot locks, package balances, attendance and payments.
 11. Remove legacy branches only after a documented rollback window.
 
@@ -43,7 +43,6 @@ The repository still contains legacy Firebase branches. Their presence does not 
 
 ```env
 VITE_USE_PACKAGES_D1=false
-VITE_USE_R2_FILES=false
 ```
 
-Core booking/admin, HR and settings are D1-only and no runtime source-selection flags remain for those domains. A remaining flag set to `true` without its required Worker/binding must fail explicitly. Runtime errors must never trigger an automatic Firebase fallback.
+Core booking/admin, HR and settings are D1-only, and files are R2-only; no runtime source-selection flags remain for those domains. A remaining flag set to `true` without its required Worker/binding must fail explicitly. Runtime errors must never trigger an automatic Firebase fallback.
