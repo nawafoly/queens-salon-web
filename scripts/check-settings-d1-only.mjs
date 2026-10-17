@@ -12,6 +12,18 @@ if (!legacy.includes('CoreSettingsService.get')) failures.push('AppSettingsServi
 if (!legacy.includes('CoreSettingsService.save')) failures.push('AppSettingsService.ts: missing Core D1 settings write');
 if (/firebase\/firestore|getDataSourceFlags|useSettingsD1|useCoreD1/.test(legacy)) failures.push('AppSettingsService.ts: runtime data-source flag or Firestore dependency found');
 if (!legacy.includes('SETTINGS_D1_NOT_FOUND')) failures.push('AppSettingsService.ts: missing explicit no-fallback failure');
+
+const retiredFlagFiles = [
+  'src/config/dataSourceFlags.ts',
+  '.env.web',
+  '.env.staff',
+  'docs/final-firestore-removal-plan.md',
+];
+for (const file of retiredFlagFiles) {
+  const source = readFileSync(file, 'utf8');
+  if (/\bVITE_USE_SETTINGS_D1\b|\buseSettingsD1\b|\bsettingsSource\b/.test(source)) failures.push(`${file}: retired settings data-source flag found`);
+}
+
 if (!readFileSync('workers/core/index.js', 'utf8').includes('/api/core/settings')) failures.push('workers/core/index.js: missing settings route');
 if (failures.length) {
   console.error('Settings D1-only guard failed');
