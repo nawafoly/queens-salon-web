@@ -16,6 +16,19 @@ for (const file of files) {
   for (const pattern of forbidden) if (pattern.test(source)) failures.push(`${file}: forbidden ${pattern}`);
   if (!/D1 ONLY/i.test(source)) failures.push(`${file}: missing D1-only architecture comment`);
 }
+
+const retiredFlagFiles = [
+  'src/config/dataSourceFlags.ts',
+  '.env.web',
+  '.env.staff',
+  'docs/hr-d1-architecture.md',
+  'docs/final-firestore-removal-plan.md',
+];
+for (const file of retiredFlagFiles) {
+  const source = readFileSync(file, 'utf8');
+  if (/\bVITE_USE_HR_D1\b|\buseHrD1\b/.test(source)) failures.push(`${file}: retired HR data-source flag found`);
+}
+
 const index = readFileSync('workers/core/index.js', 'utf8');
 for (const route of ['/api/core/hr/employees', '/api/core/hr/attendance', '/api/core/hr/leaves', '/api/core/hr/absences', '/api/core/hr/payroll-periods']) {
   if (!index.includes(route)) failures.push(`workers/core/index.js: missing ${route}`);

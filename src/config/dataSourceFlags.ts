@@ -2,7 +2,6 @@ export type BookingDataSourceKind = "firestore" | "d1";
 
 export type DataSourceFlags = {
   useCoreD1: boolean;
-  useHrD1: boolean;
   useSettingsD1: boolean;
   useR2Files: boolean;
   coreWorkerUrl: string;
@@ -12,7 +11,6 @@ export type DataSourceFlags = {
 export type DataSourceDiagnostics = {
   coreSource: BookingDataSourceKind;
   coreWorkerUrlConfigured: boolean;
-  hrSource: BookingDataSourceKind;
   settingsSource: BookingDataSourceKind;
   filesSource: "firebase" | "r2";
 };
@@ -35,7 +33,6 @@ export function getDataSourceFlags(): DataSourceFlags {
 
   return {
     useCoreD1: envFlag("VITE_USE_CORE_D1"),
-    useHrD1: envFlag("VITE_USE_HR_D1"),
     useSettingsD1: envFlag("VITE_USE_SETTINGS_D1"),
     useR2Files: envFlag("VITE_USE_R2_FILES"),
     coreWorkerUrl,
@@ -58,7 +55,6 @@ export function getDataSourceDiagnostics(): DataSourceDiagnostics {
   return {
     coreSource: flags.useCoreD1 ? "d1" : "firestore",
     coreWorkerUrlConfigured: flags.coreWorkerUrlConfigured,
-    hrSource: flags.useHrD1 ? "d1" : "firestore",
     settingsSource: flags.useSettingsD1 ? "d1" : "firestore",
     filesSource: flags.useR2Files ? "r2" : "firebase",
   };
