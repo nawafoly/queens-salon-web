@@ -227,7 +227,7 @@ import type {
   SectionDoc,
   CategoryDoc,
   ServiceDoc,
-} from "../services/firestoreCatalog";
+} from "../types/bookingCatalog";
 
 import {
   PackageService,
