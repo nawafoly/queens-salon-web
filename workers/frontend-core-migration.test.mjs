@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { listCatalogRows } from "./core/repositories/catalog-admin.js";
@@ -160,6 +160,41 @@ test("booking DTOs and reports are decoupled from legacy Firestore bookings", ()
     assert.ok(!source.includes('from "../firestoreBookings"'), path);
     assert.ok(!source.includes('from "../services/firestoreBookings"'), path);
     assert.ok(!source.includes('from "../../services/firestoreBookings"'), path);
+  }
+});
+
+test("employee monthly booking statistics use Core-only reader with the original scope contract", () => {
+  const employee = readFileSync("src/pages/DashboardEmployees.tsx", "utf8");
+  const service = readFileSync("src/services/coreBookingReadService.ts", "utf8");
+  assert.ok(employee.includes('from "../services/coreBookingReadService"'));
+  assert.ok(employee.includes('from "../types/bookingRecord"'));
+  assert.ok(employee.includes("await listCoreBookings({"));
+  assert.ok(!employee.includes('from "../services/firestoreBookings"'));
+  for (const token of [
+    "dateFrom?: string",
+    "dateTo?: string",
+    "statuses?: BookingStatus[]",
+    "scope?.dateFrom",
+    "scope?.dateTo",
+    "scope?.statuses",
+  ]) {
+    assert.ok(service.includes(token), `Missing scoped Core booking read: ${token}`);
+  }
+  assert.ok(service.includes("CoreBookingService.list()"));
+  assert.ok(service.includes("coreBookingToLegacy"));
+  assert.ok(!service.includes("firebase/firestore"));
+});
+
+test("frontend runtime has no remaining import of the retired Firestore bookings module", () => {
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      return entry.isDirectory() ? walk(path) : /\\.(?:tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+    });
+  const importRule = /\\b(?:from\\s*["']|import\\s*\\(\\s*["']|require\\s*\\(\\s*["'])[^"']*\\/firestoreBookings["']/;
+  for (const path of walk("src")) {
+    const source = readFileSync(path, "utf8");
+    assert.doesNotMatch(source, importRule, `Unexpected runtime import in ${path}`);
   }
 });
 

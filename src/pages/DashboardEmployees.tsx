@@ -108,11 +108,8 @@ import {
 import LeaveRequestModal from "../components/LeaveRequestModal";
 
 // ✅ Bookings stats (Owner only)
-import {
-  listBookings,
-  type BookingDocWithId,
-  type BookingStatus,
-} from "../services/firestoreBookings";
+import { listCoreBookings } from "../services/coreBookingReadService";
+import type { BookingDocWithId, BookingStatus } from "../types/bookingRecord";
 import {
   buildApprovedLeaveDateKeys,
   leaveRequestMatchesProfile,
@@ -5010,7 +5007,7 @@ function DashboardEmployeesContent() {
 
         const [statsYear, statsMonth] = thisMonth.split("-").map(Number);
         const monthEndDay = new Date(statsYear, statsMonth, 0).getDate();
-        const rows: BookingDocWithId[] = await listBookings({
+        const rows: BookingDocWithId[] = await listCoreBookings({
           dateFrom: `${thisMonth}-01`,
           dateTo: `${thisMonth}-${String(monthEndDay).padStart(2, "0")}`,
         });
