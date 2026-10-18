@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (path) =>
@@ -38,6 +38,35 @@ test("authenticated account and employee-link authority stays tenant scoped", ()
   assert.match(auth, /getEffectivePermissions\(db, salonId, account\)/);
   assert.match(auth, /getActiveEmployeeLink\(db, salonId, account\.id\)/);
   assert.match(auth, /salonId,/);
+});
+
+test("administrative account deletion has one Core authority and no destructive Firebase fallback", () => {
+  const legacyFacade = resolve(
+    process.cwd(),
+    "src/services/adminAccountDeletionService.ts"
+  );
+  assert.equal(
+    existsSync(legacyFacade),
+    false,
+    "retired frontend facade must not be restored"
+  );
+
+  const functions = read("functions/src/index.ts");
+  const start = functions.indexOf("export const adminDeleteUserAccount");
+  const end = functions.indexOf("/**\n * ✅ Callable: whoAmI", start);
+  assert.ok(start >= 0 && end > start, "retired callable tombstone must remain explicit");
+
+  const callable = functions.slice(start, end);
+  assert.match(functions, /LEGACY_ADMIN_DELETE_RETIRED_V1/);
+  assert.match(callable, /failed-precondition/);
+  assert.doesNotMatch(callable, /deleteUser\s*\(/);
+  assert.doesNotMatch(callable, /batch\.delete\s*\(/);
+  assert.doesNotMatch(callable, /admin_users/);
+  assert.doesNotMatch(callable, /collection\("users"\)/);
+
+  const packageAuth = read("workers/packages/auth.js");
+  assert.match(packageAuth, /AUTHORIZATION_CONTEXT_NO_CACHE_V1/);
+  assert.doesNotMatch(packageAuth, /actorContextCache/);
 });
 
 test("employee offboarding requires reason/date and records an auditable lifecycle operation", () => {

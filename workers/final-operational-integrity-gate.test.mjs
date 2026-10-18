@@ -122,6 +122,16 @@ test("final aggregate remains cumulative through P7 and critical journeys", () =
 
   assert.match(
     pkg.scripts["verify:operational-integrity:p8"],
+    /account-permissions-worker\.test\.mjs/
+  );
+
+  assert.match(
+    pkg.scripts["verify:operational-integrity:p8"],
+    /packages-d1-worker\.test\.mjs/
+  );
+
+  assert.match(
+    pkg.scripts["verify:operational-integrity:p8"],
     /test:critical-journeys/
   );
 
@@ -137,6 +147,8 @@ test("GitHub release gate runs the final aggregate after dependency audit", () =
   );
 
   assert.match(workflow, /npm audit --audit-level=high/);
+  assert.match(workflow, /npm --prefix functions ci/);
+  assert.match(workflow, /npm --prefix functions run build/);
   assert.match(workflow, /npm run verify:operational-integrity/);
   assert.match(workflow, /git diff --check/);
 });

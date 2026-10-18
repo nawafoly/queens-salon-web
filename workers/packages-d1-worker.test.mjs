@@ -400,6 +400,31 @@ test("actor role is loaded from Core D1 and ignores token role claims", async ()
   assert.equal(role, "admin");
 });
 
+test("package authorization re-reads Core D1 so account revocation is immediate", async () => {
+  __test.clearActorRoleCache();
+  const account = activeAccount("live-admin", "admin");
+  const CORE_DB = coreAuthDb({ accounts: [account] });
+  const identity = {
+    uid: "live-admin",
+    email: "live-admin@example.com",
+    claims: { role: "owner" },
+    idToken: "verified-id-token",
+  };
+
+  assert.equal(
+    await __test.resolveActorRole({ CORE_DB }, "main", identity),
+    "admin"
+  );
+
+  account.status = "deleted";
+  account.deleted_at = "2026-10-18T20:00:00.000Z";
+
+  await assert.rejects(
+    () => __test.resolveActorRole({ CORE_DB }, "main", identity),
+    (error) => error?.status === 403 && error?.code === "ACCOUNT_DELETED"
+  );
+});
+
 test("bootstrap owner emails no longer bypass Core D1 authorization", async () => {
   __test.clearActorRoleCache();
   const CORE_DB = coreAuthDb({ accounts: [activeAccount("known-client", "client")] });

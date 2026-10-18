@@ -134,6 +134,50 @@ test("/api/auth/me is D1-authoritative and rejects non-active app_users", async 
   }
 });
 
+test("account deletion is Core-authorized, soft, immediately blocking, and cannot target self", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+
+  let response = await worker.fetch(req("/api/admin/accounts/user-owner-a", {
+    method: "DELETE",
+  }), testEnv);
+  let body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "ACCOUNT_SELF_DELETE_FORBIDDEN");
+  assert.equal(
+    (await db.prepare("SELECT status FROM app_users WHERE id='user-owner-a'").first()).status,
+    "active"
+  );
+
+  response = await worker.fetch(req("/api/admin/accounts/user-staff", {
+    method: "DELETE",
+    uid: "uid-admin",
+  }), testEnv);
+  body = await json(response);
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(body.error, "core_auth:missing_permission");
+
+  response = await worker.fetch(req("/api/admin/accounts/user-staff", {
+    method: "DELETE",
+  }), testEnv);
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.status, "deleted");
+  assert.equal(body.data.firebaseUid, "uid-staff");
+  assert.ok(body.data.deletedAt);
+
+  const stored = await db.prepare(
+    "SELECT status, firebase_uid, deleted_at FROM app_users WHERE id='user-staff'"
+  ).first();
+  assert.equal(stored.status, "deleted");
+  assert.equal(stored.firebase_uid, "uid-staff");
+  assert.ok(stored.deleted_at, "soft delete must retain the D1 identity row with a deletion timestamp");
+
+  response = await worker.fetch(req("/api/auth/me", { uid: "uid-staff" }), testEnv);
+  body = await json(response);
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(body.error, "ACCOUNT_DELETED");
+});
+
 test("internal account scope excludes client identities from account management", async (t) => {
   const { env: testEnv } = await setup(t);
 
