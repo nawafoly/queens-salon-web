@@ -80,6 +80,20 @@ test("orphan Firestore staff facades stay absent without changing Core onboardin
   assert.match(coordinator, /CoreHrService\.saveEmployee/);
 });
 
+test("retired Firestore package CRUD has no frontend runtime or type consumers", () => {
+  assert.equal(
+    existsSync("src/services/firestorePackages.ts"),
+    false,
+    "Unconsumed Firebase package CRUD implementation must not return"
+  );
+  const shared = readFileSync("src/types/bookingShared.ts", "utf8");
+  const cart = readFileSync("src/helpers/bookingCartUtils.ts", "utf8");
+  assert.match(shared, /export type PackageServiceItem = \\{/);
+  assert.match(shared, /services: PackageServiceItem\\[\\]/);
+  assert.match(cart, /import type \\{ CartItem, PackageServiceItem \\} from "\\.\\.\\/types\\/bookingShared"/);
+  assert.doesNotMatch(shared + cart, /services\\/firestorePackages/);
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
