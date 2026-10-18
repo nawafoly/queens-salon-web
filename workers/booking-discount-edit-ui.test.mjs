@@ -11,7 +11,7 @@ const mapper = fs.readFileSync(
   "utf8"
 );
 const types = fs.readFileSync(
-  "src/services/firestoreBookings.ts",
+  "src/types/bookingRecord.ts",
   "utf8"
 );
 

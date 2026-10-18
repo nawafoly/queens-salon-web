@@ -62,17 +62,22 @@ forbidPatterns("src/pages/DashboardAttendanceSecurity.tsx", [/listActiveStaffAll
 requirePatterns("src/services/AppSettingsService.ts", [/CoreSettingsService\.get/, /CoreSettingsService\.save/]);
 forbidPatterns("src/services/AppSettingsService.ts", [/firebase\/firestore/, /getDataSourceFlags/, /useSettingsD1/, /useCoreD1/]);
 
-// Active booking facade exports are Core-only. Historical backfill functions may remain below them.
-const bookingFacade = read("src/services/firestoreBookings.ts");
-for (const name of [
-  "getBookingById", "markBookingViewed", "listAllBookings", "listBookings", "watchAllBookings",
-  "listUserBookings", "listEmployeeBookings", "watchEmployeeBookings", "updateBookingDetails",
-  "getTrackById", "getTrackByPublicId", "deleteBooking",
-]) {
-  const match = new RegExp(`export (?:async )?function ${name}\\b`);
-  if (!match.test(bookingFacade)) failures.push(`src/services/firestoreBookings.ts: active export missing ${name}`);
+// The old Firestore booking runtime has no reachable frontend consumer.
+// Keep booking operations, reporting, availability and audit Core-owned.
+if (existsSync("src/services/firestoreBookings.ts")) {
+  failures.push("src/services/firestoreBookings.ts: retired runtime unexpectedly exists");
 }
-requirePatterns("src/services/firestoreBookings.ts", [/CoreBookingService\.trackPublic/, /CoreBookingService\.remove/, /CoreAuditService\.record/]);
+requirePatterns("src/services/bookingDataSource.ts", [/return resolveCoreBookingDataSource\(\)/]);
+requirePatterns("src/services/CoreBookingService.ts", [
+  /async list\(/, /async get\(/, /async trackPublic\(/, /async patch\(/,
+]);
+requirePatterns("src/services/coreBookingReadService.ts", [
+  /CoreBookingService\.list\(\)/, /scopeAllowsBooking/,
+]);
+requirePatterns("src/services/bookingDataSources/coreD1BookingDataSource.ts", [
+  /async updateBooking\(/, /CoreBookingService\.patch/,
+]);
+requirePatterns("src/services/logService.ts", [/CoreAuditService\.record/]);
 
 // Success/Track booking state must come from Core. Track may still read public contact settings.
 requirePatterns("src/pages/Success.tsx", [/CoreBookingService\.trackPublic/, /ClientPortalService\.snapshot/]);
@@ -87,7 +92,7 @@ forbidPatterns("src/pages/Checkout.tsx", [
 ]);
 
 // Active booking/settings/audit facades cannot switch source-of-truth by feature flag.
-forbidPatterns("src/services/firestoreBookings.ts", [/getDataSourceFlags/, /useCoreD1/, /useBookingsD1/]);
+forbidPatterns("src/services/bookingDataSource.ts", [/getDataSourceFlags/, /useCoreD1/, /useBookingsD1/, /firestoreBookingDataSource/]);
 
 // Public tracking is code-scoped and sanitized: no client PII or finance totals returned.
 const publicTrackBlock = block("workers/core/repositories/bookings.js", /export async function getPublicBookingTrack/, /export async function getBooking/);

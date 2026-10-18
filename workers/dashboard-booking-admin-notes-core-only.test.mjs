@@ -21,7 +21,7 @@ test("dashboard private booking notes use canonical Core D1 authority", () => {
   const dataSource = read(
     "src/services/bookingDataSources/coreD1BookingDataSource.ts"
   );
-  const bookingTypes = read("src/services/firestoreBookings.ts");
+  const bookingTypes = read("src/types/bookingRecord.ts");
   const coreTypes = read("src/types/coreApi.ts");
 
   assert.match(

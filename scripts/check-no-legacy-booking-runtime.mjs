@@ -99,16 +99,18 @@ forbid(
   'bookingDateUtils must not infer employee leave/off state'
 );
 
-forbid(
-  'src/services/firestoreBookings.ts',
-  'isStaffAvailableForDate',
-  'legacy Firestore booking validator must not decide employee availability locally'
-);
-
+if (fs.existsSync(path.join(root, 'src/services/firestoreBookings.ts'))) {
+  failures.push('src/services/firestoreBookings.ts: retired Firestore booking runtime must stay absent');
+}
 requireText(
-  'src/services/firestoreBookings.ts',
-  'CoreAvailabilityService.getStaffDay',
-  'any retained Firestore booking validator must delegate dated employee availability to Malikat Core'
+  'src/services/bookingDataSource.ts',
+  'return resolveCoreBookingDataSource();',
+  'active booking data source must resolve to Core only'
+);
+requireText(
+  'src/pages/Booking.tsx',
+  'getStaffAvailability',
+  'public booking must load staff-day availability through Core'
 );
 
 forbidRegex(
@@ -147,11 +149,6 @@ forbid(
   'firestoreBookingDataSource',
   'booking data source selector must not import or choose Firestore'
 );
-
-const legacyBookings = read('src/services/firestoreBookings.ts');
-if (/\bALLOW_OVERTIME_MIN\s*=\s*(?!0\b)\d+/.test(legacyBookings)) {
-  failures.push('src/services/firestoreBookings.ts: legacy booking validator must not retain non-zero overtime');
-}
 
 const constants = read('src/helpers/bookingSharedConstants.ts');
 if (!/export const ALLOW_OVERTIME_MIN\s*=\s*0\s*;/.test(constants)) {

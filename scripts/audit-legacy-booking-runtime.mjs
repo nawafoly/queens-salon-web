@@ -54,7 +54,6 @@ const bookingFallbackDecisionFiles = new Set([
   'src/services/bookingDataSourceCompat.ts',
   'src/services/bookingDataSources/coreD1BookingDataSource.ts',
   'src/services/checkoutCoreBookingService.ts',
-  'src/services/firestoreBookings.ts',
   'src/services/firestoreAvailabilityBackfill.ts',
   'src/services/firestoreAvailabilityDays.ts',
   'src/services/firestoreBookingSlots.ts',
