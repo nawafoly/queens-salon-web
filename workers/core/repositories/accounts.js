@@ -623,6 +623,7 @@ export async function restoreAccount(db, salonId, id, actor = {}) {
 export async function deleteAccount(db, salonId, id, actor = {}) {
   const target = await getAccountById(db, salonId, id);
   assertSameSalon(salonId, target);
+  if (actor?.user?.id === target.id) throw new AppError(409, 'ACCOUNT_SELF_DELETE_FORBIDDEN');
   protectOwnerTarget(actor, target, 'delete');
   await assertNotLastOwner(db, salonId, target, 'deleted', target.primary_role);
   return updateAccount(db, salonId, id, { status: 'deleted' }, actor);
