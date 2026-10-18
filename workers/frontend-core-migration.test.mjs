@@ -88,10 +88,11 @@ test("retired Firestore package CRUD has no frontend runtime or type consumers",
   );
   const shared = readFileSync("src/types/bookingShared.ts", "utf8");
   const cart = readFileSync("src/helpers/bookingCartUtils.ts", "utf8");
-  assert.match(shared, /export type PackageServiceItem = \\{/);
-  assert.match(shared, /services: PackageServiceItem\\[\\]/);
-  assert.match(cart, /import type \\{ CartItem, PackageServiceItem \\} from "\\.\\.\\/types\\/bookingShared"/);
-  assert.doesNotMatch(shared + cart, /services\\/firestorePackages/);
+  assert.ok(shared.includes("export type PackageServiceItem = {"));
+  assert.ok(shared.includes("services: PackageServiceItem[]"));
+  assert.ok(cart.includes('import type { CartItem, PackageServiceItem } from "../types/bookingShared"'));
+  assert.ok(!shared.includes("services/firestorePackages"));
+  assert.ok(!cart.includes("services/firestorePackages"));
 });
 
 test("core API client sends a bearer token without logging it", () => {
