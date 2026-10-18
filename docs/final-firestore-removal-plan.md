@@ -2,7 +2,7 @@
 
 ## Current position
 
-Phases 1–6 establish D1/R2 operational paths for packages, booking/core operations, availability, admin finance, HR, settings, role metadata and file metadata. Firebase Authentication remains temporary. Core booking/admin, HR and settings operational paths are D1-only; remaining migration and feature-flag work is limited to subsystems that still have an active compatibility path.
+Phases 1–6 establish D1/R2 operational paths for packages, booking/core operations, availability, admin finance, HR, settings, role metadata and file metadata. Active frontend packages now route through `/api/core/packages/*` on the Core Worker and `CORE_DB`; the legacy standalone Packages Worker files remain in the repository for separate audit. Firebase Authentication remains temporary. Core booking/admin, HR and settings operational paths are D1-only; remaining migration and feature-flag work is limited to subsystems that still have an active compatibility path.
 
 The repository still contains legacy Firebase branches. Their presence does not mean D1 mode falls back automatically: selection is explicit through feature flags only where a subsystem still has an active flag.
 
@@ -19,7 +19,7 @@ The repository still contains legacy Firebase branches. Their presence does not 
 | `SettingsUsers.tsx`, `DashboardAdminProfile.tsx`, `userProfile.ts`, `staffAccountLinkService.ts` | Account/profile creation and role data | Auth plus legacy operational metadata | Keep Auth account creation; store admin profile, employee link and roles in D1. Remove Firestore metadata writes after parity tests. |
 | `AppSettingsService.ts`, settings pages, `FinanceSettingsService.ts` | Settings reads and writes are Core D1-only and fail closed; historical compatibility references may remain outside runtime | Settings D1-only / legacy residue | Audit and remove remaining non-runtime residue; never reintroduce a settings source-selection flag or Firestore fallback. |
 | File pages and employee file helpers | File runtime is Core D1/R2-only; remaining Firebase Storage objects are migration/cleanup artifacts | R2-only / legacy file objects | Keep `CoreFilesService` and Core R2 routes as the sole runtime file path; remove legacy objects only after R2 object and `file_metadata` reconciliation. |
-| `ClientPackageService.ts`, `PackageService.ts`, `firestorePackages.ts` and old package transaction modules | Compatibility and one-time migration/audit paths | Legacy package / migration | Keep isolated only until package data is migrated and reconciled; operational package endpoints remain D1-only. |
+| `ClientPackageService.ts`, `PackageService.ts`, `firestorePackages.ts` and old package transaction modules | Compatibility and one-time migration/audit paths | Legacy package / migration | Keep isolated only until package data is migrated and reconciled; operational package endpoints use Core D1-only routes. |
 | Dashboard reports, loyalty, pending, TV queue, logs and day audit pages | Some direct reads remain for reporting compatibility | Legacy reporting branch | Add Core reporting endpoints or derive from D1 tables; remove Firestore reads after totals match. |
 | Partner frontend services | Partner subsystem already uses a Cloudflare Worker/D1, but some auth/profile helpers import Firebase | Authentication / separate D1 subsystem | Keep Worker/D1 data; narrow Firebase use to token acquisition only. |
 | `scripts/migrate-*-firestore-to-d1.mjs` and audit/repair scripts | One-time source extraction and reconciliation | Migration-only | Retain outside runtime bundles until cutover sign-off, then archive securely. |
@@ -34,15 +34,11 @@ The repository still contains legacy Firebase branches. Their presence does not 
 5. Compare D1 counts and financial/package samples with the legacy source where reconciliation is still pending.
 6. Verify R2 storage and reconcile any remaining legacy binaries separately where cleanup is incomplete.
 7. Deploy the required Workers with D1/R2 bindings.
-8. Test only remaining active subsystem flags in a controlled environment.
-9. Enable remaining source flags one subsystem at a time; Core booking/admin, HR, settings and files have no runtime source-selection flag.
+8. Verify remaining operational subsystem configuration without restoring retired source-selection flags.
+9. Confirm the frontend routes package operations through the Core Worker and no longer configures a separate Packages Worker.
 10. Monitor Workers, bookings, slot locks, package balances, attendance and payments.
 11. Remove legacy branches only after a documented rollback window.
 
-## Flags
+## Active runtime configuration
 
-```env
-VITE_USE_PACKAGES_D1=false
-```
-
-Core booking/admin, HR and settings are D1-only, and files are R2-only; no runtime source-selection flags remain for those domains. A remaining flag set to `true` without its required Worker/binding must fail explicitly. Runtime errors must never trigger an automatic Firebase fallback.
+`VITE_CORE_WORKER_URL` is the frontend endpoint for Core booking/admin, HR, settings and unified package operations. Files use Core R2 routes. These migrated domains have no runtime data-source selection flags. Runtime errors must never trigger an automatic Firebase fallback.

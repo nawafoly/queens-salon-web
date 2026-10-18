@@ -2,17 +2,17 @@
 
 ## Contract
 
-Session packages have one operational data path:
+Session packages have one active frontend operational data path:
 
 ```text
-Frontend -> Packages Worker -> Cloudflare D1
+Frontend -> Core Worker (/api/core/packages/*) -> CORE_DB (Cloudflare D1)
 ```
 
-The Packages Worker is `queens-salon-packages-api`, configured by `wrangler.packages.jsonc`.
+The Core Worker is `queens-salon-core-api`, configured by `wrangler.core.jsonc`. It reuses the package D1 route/repository modules under `workers/packages/` with unified Core client identities. The historical standalone Packages Worker configuration (`wrangler.packages.jsonc`) remains in the repository but is not the active frontend destination.
 
 ## Operational Source Of Truth
 
-Cloudflare D1 is the only operational database for session packages.
+`CORE_DB` (Cloudflare D1) is the operational database for session packages.
 
 This includes:
 
@@ -29,7 +29,7 @@ This includes:
 
 Firebase is allowed only for authentication and a bounded read of the signed-in user's own role profile when the verified ID token does not carry the current role. Package balances, wallets, purchases, redemptions, and reports remain D1-only.
 
-The package system may verify a Firebase ID token to identify the requester and read role claims. It must not use Firestore to resolve wallet balances, package ownership, package catalog entries, package transactions, admin reports, or package mutations.
+The Core package routes may verify a Firebase ID token to identify the requester and resolve permitted role metadata. It must not use Firestore to resolve wallet balances, package ownership, package catalog entries, package transactions, admin reports, or package mutations.
 
 ## Firestore Scope
 
@@ -51,16 +51,16 @@ Not allowed:
 
 Do not add a silent fallback from D1 to Firestore.
 
-If `PACKAGES_DB` is missing or unavailable, the Worker must return a clear D1 configuration/storage error. It must not continue by reading from Firebase or Firestore.
+If the Core Worker cannot access `CORE_DB`, package requests must fail explicitly with a configuration/storage error; they must not fall back to Firebase, Firestore or another Worker.
 
-Do not use `VITE_PARTNERS_WORKER_URL` as a fallback for packages. The frontend must call the packages worker through `VITE_PACKAGES_WORKER_URL` or the package worker default.
+The frontend uses `VITE_CORE_WORKER_URL` and Core package routes. Do not restore the retired standalone Packages Worker URL or use the Partners Worker as a fallback.
 
 ## Future Changes
 
 Any future package change must preserve this path:
 
 ```text
-Frontend -> Packages Worker -> D1
+Frontend -> Core Worker -> CORE_DB
 ```
 
 Before merging package changes, run:
@@ -68,5 +68,6 @@ Before merging package changes, run:
 ```bash
 npm run check:packages:d1-only
 npm run test:packages:worker
+node --test workers/core-packages-unification.test.mjs
 npm run build
 ```
