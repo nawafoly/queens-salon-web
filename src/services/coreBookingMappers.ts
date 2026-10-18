@@ -12,7 +12,7 @@ import type {
 } from "../types/coreApi";
 import type { BookingDoc, BookingDocWithId } from "./firestoreBookings";
 import type { SectionDoc, ServiceDoc } from "../types/bookingCatalog";
-import type { StaffPublicWithId } from "./firestoreStaffPublic";
+import type { StaffPublicWithId } from "../types/bookingStaff";
 import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 function text(value: unknown): string {

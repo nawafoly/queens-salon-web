@@ -1,6 +1,6 @@
 import { getCoreStaffScheduleWindows } from "../helpers/coreBookingAvailability";
 import type { CoreStaffAvailability } from "../types/coreApi";
-import type { StaffPublicWithId } from "./firestoreStaffPublic";
+import type { StaffPublicWithId } from "../types/bookingStaff";
 import { resolveBookingDataSource } from "./bookingDataSource";
 
 export type CoreBookableStaffRow = {

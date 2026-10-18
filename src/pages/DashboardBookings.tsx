@@ -33,7 +33,7 @@ import type {
   BookingPaymentType,
   BookingStatus,
 } from "../services/firestoreBookings";
-import type { StaffPublicWithId } from "../services/firestoreStaffPublic";
+import type { StaffPublicWithId } from "../types/bookingStaff";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { coreD1BookingDataSource } from "../services/bookingDataSources/coreD1BookingDataSource";
 import { CoreBookingService } from "../services/CoreBookingService";

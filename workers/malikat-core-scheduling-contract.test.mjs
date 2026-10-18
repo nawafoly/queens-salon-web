@@ -1615,28 +1615,23 @@ test("Stage 2 residual scheduling legacy is removed from active runtime", () => 
     "Dashboard must not preserve/write legacy exceptional leave-date mirrors"
   );
 
-  const firestoreStaff =
-    read(
-      "src/services/firestoreStaffPublic.ts"
-    );
-
-  for (
-    const token
-    of [
-      "customWorkingHours",
-      "customWorkingHourOverrides",
-      "exceptionalLeaveWeekdays",
-      "exceptionalLeaveDates",
-      "useCustomWorkingHours",
-    ]
-  ) {
+  assert.equal(
+    existsSync("src/services/firestoreStaffPublic.ts"),
+    false,
+    "Retired Firestore staff runtime must stay absent"
+  );
+  const publicStaffDto = read("src/types/bookingStaff.ts");
+  for (const token of [
+    "customWorkingHours",
+    "customWorkingHourOverrides",
+    "exceptionalLeaveWeekdays",
+    "exceptionalLeaveDates",
+    "useCustomWorkingHours",
+  ]) {
     assert.equal(
-      firestoreStaff.includes(
-        token
-      ),
+      publicStaffDto.includes(token),
       false,
-      "Firestore staff DTO still transports schedule Legacy: " +
-        token
+      "Public staff DTO still transports schedule Legacy: " + token
     );
   }
 

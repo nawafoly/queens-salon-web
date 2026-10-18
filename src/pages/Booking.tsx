@@ -212,7 +212,7 @@ import {
 } from "../services/firestoreOffers";
 
 // Core staff shape compatibility type
-import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
+import { type StaffPublicWithId } from "../types/bookingStaff";
 import {
   listActiveSections,
   listActiveCategoriesBySection,
