@@ -246,6 +246,17 @@ test("orphan Firestore availability index and read profiler stay out of runtime"
   assert.ok(readFileSync("src/main.tsx", "utf8").includes('import("./services/firestoreDebug")'));
 });
 
+test("admin account deletion UI remains Core logical-only; retired permanent frontend shim stays absent", () => {
+  assert.equal(existsSync("src/services/adminAccountDeletionService.ts"), false);
+  const users = readFileSync("src/pages/settings/SettingsUsers.tsx", "utf8");
+  assert.ok(users.includes('CoreAccountService.remove(account.id)'));
+  assert.ok(users.includes('description={t("سيتم تغيير حالة الحساب في D1 بدون حذف سجل الهوية من Firebase.")}'));
+  assert.ok(!users.includes("adminDeleteUserAccount"));
+  assert.ok(!users.includes("deleteAdminAccountPermanently"));
+  const callable = readFileSync("functions/src/index.ts", "utf8");
+  assert.ok(callable.includes("export const adminDeleteUserAccount = onCall"));
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
