@@ -6,7 +6,7 @@ import type {
   CategoryDoc,
   SectionDoc,
   ServiceDoc,
-} from "./firestoreCatalog";
+} from "../types/bookingCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
 import { resolveCoreBookingDataSource } from "./bookingDataSource";
 import type { BookingStaffAvailabilityQuery } from "./bookingDataSource";
