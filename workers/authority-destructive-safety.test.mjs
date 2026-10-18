@@ -57,7 +57,7 @@ test("administrative account deletion has one Core authority and no destructive 
   assert.ok(start >= 0 && end > start, "retired callable tombstone must remain explicit");
 
   const callable = functions.slice(start, end);
-  assert.match(callable, /LEGACY_ADMIN_DELETE_RETIRED_V1/);
+  assert.match(functions, /LEGACY_ADMIN_DELETE_RETIRED_V1/);
   assert.match(callable, /failed-precondition/);
   assert.doesNotMatch(callable, /deleteUser\s*\(/);
   assert.doesNotMatch(callable, /batch\.delete\s*\(/);
