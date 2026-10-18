@@ -62,6 +62,24 @@ test("retired strict-Firebase catalog fallback shim stays absent", () => {
   assert.match(pricing, /CoreCatalogService\.listSections\(true\)/);
 });
 
+test("orphan Firestore staff facades stay absent without changing Core onboarding", () => {
+  assert.equal(
+    existsSync("src/helpers/EmployeeService.ts"),
+    false,
+    "Unconsumed direct-Firestore staff helper must not return"
+  );
+  assert.equal(
+    existsSync("src/services/adminStaffService.ts"),
+    false,
+    "Unconsumed Firebase callable staff-create frontend wrapper must not return"
+  );
+  const editor = readFileSync("src/pages/dashboardEmployees/EmployeeEditorModal.tsx", "utf8");
+  const coordinator = readFileSync("src/services/employeeOnboardingCoordinator.ts", "utf8");
+  assert.match(editor, /queueEmployeeOnboarding/);
+  assert.match(coordinator, /CoreAccountService\.create/);
+  assert.match(coordinator, /CoreHrService\.saveEmployee/);
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
