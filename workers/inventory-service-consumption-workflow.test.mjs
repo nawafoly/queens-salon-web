@@ -61,11 +61,11 @@ test("Guard: pending worklist is booking-item grain with derived lifecycle", () 
   assert.match(ui, /can_confirm|selectedConfirmable/);
 });
 
-test("Guard: employee portal wires consumption confirm route", () => {
+test("Guard: employee portal wires the canonical bookings consumption workspace", () => {
   const portal = read("src/pages/EmployeePortal.tsx");
-  assert.match(portal, /EmployeeServiceConsumption/);
-  assert.match(portal, /\/employee\/consumption/);
+  assert.match(portal, /path="bookings"[^\n]*EmployeeServiceConsumption/);
   assert.match(portal, /inventory\.consume\.confirm/);
+  assert.doesNotMatch(portal, /path="consumption"/);
 });
 
 test("Guard: recipe default qty shown and product\/qty editable before confirm", () => {
