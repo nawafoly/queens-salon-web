@@ -188,13 +188,19 @@ test("employee monthly booking statistics use Core-only reader with the original
 test("frontend runtime has no remaining import of the retired Firestore bookings module", () => {
   const walk = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = `${dir}/${entry.name}`;
-      return entry.isDirectory() ? walk(path) : /\\.(?:tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+      const path = dir + "/" + entry.name;
+      return entry.isDirectory()
+        ? walk(path)
+        : /\.(?:tsx?|jsx?)$/.test(entry.name)
+          ? [path]
+          : [];
     });
-  const importRule = /\\b(?:from\\s*["']|import\\s*\\(\\s*["']|require\\s*\\(\\s*["'])[^"']*\\/firestoreBookings["']/;
-  for (const path of walk("src")) {
+  const importRule = /(?:from\s*["']|import\s*\(\s*["']|require\s*\(\s*["'])[^"']*\/firestoreBookings["']/;
+  const files = walk("src");
+  assert.ok(files.length > 100, "Expected to scan the complete source tree");
+  for (const path of files) {
     const source = readFileSync(path, "utf8");
-    assert.doesNotMatch(source, importRule, `Unexpected runtime import in ${path}`);
+    assert.doesNotMatch(source, importRule, "Unexpected legacy booking import in " + path);
   }
 });
 
