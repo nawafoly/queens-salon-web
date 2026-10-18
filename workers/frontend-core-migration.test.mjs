@@ -214,6 +214,38 @@ test("Firestore bookings module remains retired while migration history remains 
   assert.match(source, /CoreBookingService\.list\(\)/);
 });
 
+test("orphan Firestore availability index and read profiler stay out of runtime", () => {
+  const retired = [
+    "src/services/firestoreAvailabilityDays.ts",
+    "src/services/firestoreReadStats.ts",
+  ];
+  for (const file of retired) {
+    assert.equal(existsSync(file), false, "Retired module returned: " + file);
+  }
+
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = dir + "/" + entry.name;
+      return entry.isDirectory()
+        ? walk(path)
+        : /\.(?:tsx?|jsx?)$/.test(entry.name)
+          ? [path]
+          : [];
+    });
+  const importRule = /(?:from\s*["']|import\s*\(\s*["']|require\s*\(\s*["'])[^"']*\/(?:firestoreAvailabilityDays|firestoreReadStats)["']/;
+  const files = walk("src");
+  assert.ok(files.length > 100, "Expected complete src source scan");
+  for (const file of files) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), importRule, file);
+  }
+
+  // The separate one-time backfill is intentionally preserved in DEV tooling.
+  assert.equal(existsSync("src/services/firestoreAvailabilityBackfill.ts"), true);
+  const debug = readFileSync("src/services/firestoreDebug.ts", "utf8");
+  assert.ok(debug.includes('from "./firestoreAvailabilityBackfill"'));
+  assert.ok(readFileSync("src/main.tsx", "utf8").includes('import("./services/firestoreDebug")'));
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
