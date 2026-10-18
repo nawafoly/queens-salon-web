@@ -3,19 +3,17 @@
 ## Architecture
 
 - Operational booking data: `Frontend → queens-salon-core-api → CORE_DB`
-- Session packages: `Frontend → queens-salon-packages-api → PACKAGES_DB`
+- Session packages: `Frontend → queens-salon-core-api (/api/core/packages/*) → CORE_DB`
 - Firebase remains temporarily for authentication and ID-token issuance.
-- Core and Packages Workers must never fall back to Firestore.
+- Core booking and package routes must never fall back to Firestore; the standalone Packages Worker configuration is retained in the repository but is not the active frontend package destination.
 
 ## Runtime configuration
 
 ```env
 VITE_CORE_WORKER_URL=http://127.0.0.1:8807
-VITE_PACKAGES_WORKER_URL=http://127.0.0.1:8797
-VITE_USE_PACKAGES_D1=false
 ```
 
-Core booking/admin operations no longer select a source of truth through a Core feature flag. `VITE_CORE_WORKER_URL` is required for Core requests, and a failed D1 request never triggers an automatic Firestore fallback. Any remaining subsystem flag must fail explicitly when its required Worker configuration is missing.
+Core booking, admin and package operations have no runtime source-selection flag. `VITE_CORE_WORKER_URL` is required for these requests; active web/staff builds do not configure a separate Packages Worker. A failed D1 request never triggers an automatic Firestore fallback.
 
 ## Migrated frontend operations
 
@@ -24,9 +22,10 @@ Core booking/admin operations no longer select a source of truth through a Core 
 - Internal booking: the same catalog, staff and availability operations,
   client search, booking search, update, complete and cancel through the
   Core D1 data-source adapter.
-- Package wallet and package mutations remain isolated in the Packages Worker.
-- D1 mode stores the package reservation transaction reference on the matching
-  Core booking item.
+- Package wallet and mutations use `/api/core/packages/*` in the Core Worker,
+  which reuses the package D1 repository against `CORE_DB`.
+- Package reservation transaction references are stored on the matching
+  Core booking items.
 
 ## Availability and slot locking
 
@@ -55,7 +54,7 @@ Core D1.
 
 ## Package booking saga
 
-Cross-database atomicity is not claimed.
+Packages and bookings are routed through the same Core Worker and `CORE_DB`. This document does not assert end-to-end transaction atomicity for the steps below.
 
 1. Reserve package sessions with a deterministic idempotency key.
 2. Create the Core booking and store each reservation transaction reference on
@@ -64,12 +63,11 @@ Cross-database atomicity is not claimed.
 4. Consume the reservation when the booking is completed.
 5. Release the reservation when the booking is cancelled before consumption.
 
-## Cutover prerequisites
+## Current cutover verification
 
-1. Apply all Core D1 migrations through `0004_admin_operations.sql`.
-2. Migrate and reconcile Core and Packages data.
-3. Deploy both Workers.
-4. Test against staging URLs.
-5. Set the Worker URLs in Vercel.
-6. Enable only subsystem feature flags that still exist; Core booking/admin has no runtime source-selection flag.
-7. Roll back through the relevant deployment/configuration path; do not add automatic code fallback.
+1. Verify the applied Core migrations, including the package unification schema, before any new migration.
+2. Confirm package catalog, wallets, transactions and client identity mappings are reconciled in `CORE_DB` before any data cleanup.
+3. Verify Core Worker package routes and the active `CORE_DB` binding in staging and Production.
+4. Run `npm run check:packages:d1-only`, `node --test workers/core-packages-unification.test.mjs` and `npm run build`.
+5. Keep `VITE_CORE_WORKER_URL` pointing at the Core Worker; do not restore package source flags or standalone package URLs in active frontend modes.
+6. Roll back through a controlled deployment/configuration procedure, never an automatic Firestore fallback.

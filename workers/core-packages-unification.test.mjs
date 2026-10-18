@@ -65,3 +65,18 @@ test("Core deployment owns the hourly package expiry cron", () => {
   assert.match(config, /"crons"/);
   assert.match(config, /"0 \* \* \* \*"/);
 });
+
+
+test("Maintained package architecture docs describe unified Core routes without retired frontend flags", () => {
+  const cutover = readFileSync("docs/frontend-core-cutover.md", "utf8");
+  const packages = readFileSync("docs/packages-d1-architecture.md", "utf8");
+  const plan = readFileSync("docs/final-firestore-removal-plan.md", "utf8");
+
+  for (const document of [cutover, packages, plan]) {
+    assert.doesNotMatch(document, /VITE_USE_PACKAGES_D1|VITE_PACKAGES_WORKER_URL/);
+  }
+
+  assert.match(cutover, /Session packages:[^\n]*queens-salon-core-api/);
+  assert.match(packages, /Frontend -> Core Worker -> CORE_DB/);
+  assert.match(plan, /\/api\/core\/packages/);
+});
