@@ -32,7 +32,6 @@ on:
       - "src/helpers/timeSlots.ts"
       - "src/helpers/bookingSharedConstants.ts"
       - "src/services/bookingDataSource.ts"
-      - "src/services/bookingDataSourceCompat.ts"
       - "src/services/bookingDataSources/**"
       - "src/services/coreBookableStaffService.ts"
       - "src/services/checkoutCoreBookingService.ts"

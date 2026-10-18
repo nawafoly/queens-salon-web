@@ -38,6 +38,14 @@ test("booking resolver is pinned to Core D1 without Firestore fallback", () => {
   assert.doesNotMatch(source, /readonly kind: "firestore"/);
 });
 
+test("retired booking compatibility adapter stays absent", () => {
+  assert.equal(
+    existsSync("src/services/bookingDataSourceCompat.ts"),
+    false,
+    "Core-only booking flows must not recreate a redundant source-mode adapter"
+  );
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
