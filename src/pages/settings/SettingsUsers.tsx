@@ -210,6 +210,11 @@ function errorMessage(error: unknown, language: DashboardLanguage = "ar") {
       ? "لا يمكنك تعيين هذا الدور. صلاحيتك تسمح فقط بأدوار أقل من دورك."
       : "You cannot assign this role. You may only assign roles below yours.";
   }
+  if (code.includes("ACCOUNT_SELF_DELETE_FORBIDDEN")) {
+    return ar
+      ? "لا يمكنك حذف حسابك الحالي."
+      : "You cannot delete your current account.";
+  }
   if (code.includes("ACCOUNT_OWNER_PROTECTED")) {
     return ar
       ? "حساب المالك محمي. لا يمكن تعديله من هذا الحساب."
@@ -227,6 +232,7 @@ function errorMessage(error: unknown, language: DashboardLanguage = "ar") {
   }
 
   if (error instanceof CoreApiError) {
+    if (error.code === "ACCOUNT_SELF_DELETE_FORBIDDEN") return language === "en" ? "You cannot delete your current account." : "لا يمكنك حذف حسابك الحالي.";
     if (error.code === "ACCOUNT_OWNER_PROTECTED") return settingsText(language, "لا يمكن تعديل حساب المالك من دور أقل.");
     if (error.code === "ACCOUNT_LAST_OWNER_PROTECTED") return settingsText(language, "لا يمكن تعطيل أو حذف آخر مالك نشط.");
     if (error.code === "ACCOUNT_PERMISSION_GRANT_FORBIDDEN") return settingsText(language, "لا يمكنك منح صلاحية لا تملكها.");
