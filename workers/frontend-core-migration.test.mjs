@@ -1211,6 +1211,32 @@ test("front-end operational identity comes from Core app_users and permissions",
   assert.doesNotMatch(authAccess, /firebase\/firestore|FirestoreRestClient|batchGet|runQuery/);
 });
 
+test("retired permanent-admin-delete frontend shim stays absent while Core account actions remain", () => {
+  assert.equal(existsSync("src/services/adminAccountDeletionService.ts"), false);
+  const settingsUsers = readFileSync("src/pages/settings/SettingsUsers.tsx", "utf8");
+  const coreAccounts = readFileSync("src/services/CoreAccountService.ts", "utf8");
+  const functions = readFileSync("functions/src/index.ts", "utf8");
+  assert.match(settingsUsers, /CoreAccountService\.remove\(account\.id\)/);
+  assert.match(settingsUsers, /CoreAccountService\.disable\(account\.id\)/);
+  assert.match(settingsUsers, /CoreAccountService\.restore\(account\.id\)/);
+  assert.match(coreAccounts, /remove\(id: string\)/);
+  assert.match(coreAccounts, /method: "DELETE"/);
+  assert.match(functions, /export const adminDeleteUserAccount = onCall/);
+
+  // Search all shipped frontend source, not only GitHub's index of small files.
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = dir + "/" + entry.name;
+      return entry.isDirectory() ? walk(path) : /\.(?:tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+    });
+  const sourceFiles = walk("src");
+  assert.ok(sourceFiles.length > 100, "Complete frontend import scan required");
+  const forbidden = /(?:from\s*["']|import\s*\(\s*["']|require\s*\(\s*["'])[^"']*\/adminAccountDeletionService["']/;
+  for (const path of sourceFiles) {
+    assert.doesNotMatch(readFileSync(path, "utf8"), forbidden, path);
+  }
+});
+
 test("Core auth path does not read Firestore role profiles", () => {
   const coreAuth = readFileSync("workers/core/auth-context.js", "utf8");
   const packageAuth = readFileSync("workers/packages/auth.js", "utf8");
