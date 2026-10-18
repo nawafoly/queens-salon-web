@@ -48,9 +48,10 @@ Clients, sections/categories, offers/coupons, income, expenses, refunds, audit l
 Firebase Authentication and role/profile lookup plus remaining explicitly audited compatibility paths may still use Firebase. Binary file uploads/downloads are Core R2-only and `src/services/firebase.ts` must not initialize a Firebase Storage client. Active booking, HR and settings operations are Core D1-backed; historical helpers or adapters must not become a runtime source-selection path. Core booking rescheduling uses its dedicated Core endpoint.
 
 Direct slot-availability reads from `Booking.tsx` and `BookingInternal.tsx` have
-been removed. The legacy Firestore implementation is isolated inside
-`firestoreBookingDataSource.ts` and is never used as an automatic fallback from
-Core D1.
+been removed. `src/services/bookingDataSource.ts` always selects
+`coreD1BookingDataSource`, which has a D1-only source contract.
+The retired `firestoreBookingDataSource.ts` adapter no longer exists.
+Legacy-named DTO and migration helpers must never become a runtime booking source.
 
 ## Package booking saga
 

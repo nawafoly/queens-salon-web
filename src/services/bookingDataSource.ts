@@ -47,7 +47,7 @@ export type BookingSearchQuery = {
 };
 
 export interface BookingDataSource {
-  readonly kind: "firestore" | "d1";
+  readonly kind: "d1";
   getServices(
     sectionId?: string,
     categoryId?: string | null
