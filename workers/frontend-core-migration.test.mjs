@@ -47,6 +47,21 @@ test("live booking compatibility facade never selects a legacy data source", () 
   assert.match(facade, /export type BookingDataSourceMode = "auto" \| "core";/);
 });
 
+test("retired strict-Firebase catalog fallback shim stays absent", () => {
+  assert.equal(
+    existsSync("src/data/catalogFallback.ts"),
+    false,
+    "Unused static catalog fallback facade must not return"
+  );
+  assert.equal(
+    existsSync("src/config/strictFirebase.ts"),
+    false,
+    "Retired VITE_STRICT_FIREBASE source gate must not return"
+  );
+  const pricing = readFileSync("src/pages/Pricing.tsx", "utf8");
+  assert.match(pricing, /CoreCatalogService\.listSections\(true\)/);
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
