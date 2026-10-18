@@ -60,6 +60,10 @@ on:
       - ".github/workflows/booking-runtime-cutover.yml"
   pull_request:
     paths:
+      - "src/pages/Booking.tsx"
+      - "src/services/bookingDataSource.ts"
+      - "src/services/bookingDataSourceCompat.ts"
+      - "workers/frontend-core-migration.test.mjs"
       - "src/features/internal-booking-v2/**"
       - "src/helpers/dashboardBookingsLanguage.ts"
       - "src/services/CoreBookingService.ts"

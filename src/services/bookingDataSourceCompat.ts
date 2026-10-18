@@ -8,13 +8,15 @@ import type {
   ServiceDoc,
 } from "./firestoreCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
-import { resolveBookingDataSource, resolveCoreBookingDataSource } from "./bookingDataSource";
+import { resolveCoreBookingDataSource } from "./bookingDataSource";
 import type { BookingStaffAvailabilityQuery } from "./bookingDataSource";
 
 export type BookingDataSourceMode = "auto" | "core";
 
-function resolveCompatDataSource(mode: BookingDataSourceMode = "auto") {
-  return mode === "core" ? resolveCoreBookingDataSource() : resolveBookingDataSource();
+// The public booking page still uses this facade. Both legacy mode values are
+// accepted for call-site compatibility, but source selection is retired.
+function resolveCompatDataSource(_mode: BookingDataSourceMode = "auto") {
+  return resolveCoreBookingDataSource();
 }
 
 export function listActiveSections(
