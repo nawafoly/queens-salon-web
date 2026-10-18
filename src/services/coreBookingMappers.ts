@@ -11,7 +11,7 @@ import type {
   CoreStaffSchedule,
 } from "../types/coreApi";
 import type { BookingDoc, BookingDocWithId } from "./firestoreBookings";
-import type { SectionDoc, ServiceDoc } from "./firestoreCatalog";
+import type { SectionDoc, ServiceDoc } from "../types/bookingCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
 import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 

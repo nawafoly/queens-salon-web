@@ -95,6 +95,24 @@ test("retired Firestore package CRUD has no frontend runtime or type consumers",
   assert.ok(!cart.includes("services/firestorePackages"));
 });
 
+test("unconsumed Firestore catalog CRUD stays retired while Core booking DTOs remain", () => {
+  assert.equal(existsSync("src/services/firestoreCatalog.ts"), false);
+  const dto = readFileSync("src/types/bookingCatalog.ts", "utf8");
+  const dataSource = readFileSync("src/services/bookingDataSource.ts", "utf8");
+  const facade = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
+  const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
+  for (const name of ["SectionDoc", "CategoryDoc", "ServiceDoc"]) {
+    assert.ok(dto.includes(`export type ${name} = {`));
+  }
+  assert.ok(dto.includes("السعر: number;"));
+  assert.ok(dto.includes("المدة: number;"));
+  for (const source of [dataSource, facade, mapper]) {
+    assert.ok(source.includes('from "../types/bookingCatalog"'));
+    assert.ok(!source.includes('from "./firestoreCatalog"'));
+  }
+  assert.ok(dataSource.includes("resolveCoreBookingDataSource"));
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",

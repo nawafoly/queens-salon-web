@@ -7,7 +7,7 @@ import type {
   CategoryDoc,
   SectionDoc,
   ServiceDoc,
-} from "./firestoreCatalog";
+} from "../types/bookingCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
 import type {
   CoreClient,
