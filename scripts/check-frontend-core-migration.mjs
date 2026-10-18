@@ -269,8 +269,8 @@ const requiredChecks = [
     ],
   },
   {
-    file: "src/services/firestoreBookings.ts",
-    required: [/CoreBookingService/, /CoreAuditService/],
+    file: "src/services/coreBookingReadService.ts",
+    required: [/CoreBookingService\.list\(\)/, /coreBookingToLegacy/, /scopeAllowsBooking/],
   },
   {
     file: "src/services/logService.ts",

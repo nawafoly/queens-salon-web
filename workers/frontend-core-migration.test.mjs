@@ -204,6 +204,16 @@ test("frontend runtime has no remaining import of the retired Firestore bookings
   }
 });
 
+test("Firestore bookings module remains retired while migration history remains available", () => {
+  assert.equal(existsSync("src/services/firestoreBookings.ts"), false);
+  const audit = readFileSync("scripts/audit-legacy-booking-runtime.mjs", "utf8");
+  const migration = readFileSync("scripts/migrate-core-firestore-to-d1.mjs", "utf8");
+  assert.match(audit, /Firestore bookings module import/);
+  assert.match(migration, /firestore|migration/i);
+  const source = readFileSync("src/services/coreBookingReadService.ts", "utf8");
+  assert.match(source, /CoreBookingService\.list\(\)/);
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
@@ -297,7 +307,7 @@ test("Phase 5 facades use the correct Core source strategy", () => {
   }
 
   const coreOnlyChecks = [
-    ["src/services/firestoreBookings.ts", /CoreBookingService/],
+    ["src/services/coreBookingReadService.ts", /CoreBookingService/],
     ["src/services/logService.ts", /CoreAuditService/],
   ];
 
@@ -362,27 +372,16 @@ test("Core and package migrations share client canonicalization policy", () => {
   assert.match(shared, /client_alias_conflict/);
 });
 
-test("dashboard bookings uses Core D1 without an operational Firestore switch", () => {
-  const service = readFileSync("src/services/firestoreBookings.ts", "utf8");
+test("dashboard bookings refresh from Core D1 without a Firestore source switch", () => {
+  const service = readFileSync("src/services/coreBookingReadService.ts", "utf8");
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  const contract = readFileSync("src/types/bookingRecord.ts", "utf8");
 
-  const listStart = service.indexOf("export async function listBookings");
-  const listEnd = service.indexOf("export function watchAllBookings", listStart);
-  const listBlock = service.slice(listStart, listEnd);
-  assert.match(listBlock, /return listCoreBookings\(scope\)/);
-  assert.doesNotMatch(listBlock, /getDataSourceFlags|readFirestoreBookings/);
-
-  const watchStart = service.indexOf("export function watchAllBookings");
-  const watchEnd = service.indexOf("export async function listUserBookings", watchStart);
-  const watchBlock = service.slice(watchStart, watchEnd);
-  assert.match(watchBlock, /const rows = await listCoreBookings\(scope\)/);
-  assert.match(watchBlock, /visibilitychange/);
-  assert.match(watchBlock, /addEventListener\("focus", refreshWhenActive\)/);
-  assert.match(watchBlock, /addEventListener\("online", refreshWhenActive\)/);
-  assert.doesNotMatch(watchBlock, /setInterval\(/);
-  assert.doesNotMatch(watchBlock, /getDataSourceFlags|watchFirestoreBookings/);
-
-
+  assert.equal(existsSync("src/services/firestoreBookings.ts"), false);
+  assert.match(service, /CoreBookingService\.list\(\)/);
+  assert.match(service, /scopeAllowsBooking/);
+  assert.match(contract, /export type BookingDocWithId/);
+  assert.doesNotMatch(service, /firebase\/firestore|getDataSourceFlags|readFirestoreBookings/);
   assert.match(dashboard, /CoreBookingService\.list\(\)/);
   assert.match(dashboard, /requestInFlight/);
   assert.match(dashboard, /visibilitychange/);
@@ -690,7 +689,6 @@ test("internal booking V2 is direct Core-only and cannot read Firestore operatio
 
 test("dashboard booking edit uses Core D1, owner bypasses password, and admins reauthenticate", () => {
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
-  const service = readFileSync("src/services/firestoreBookings.ts", "utf8");
   const coreDataSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
   const coreService = readFileSync("src/services/CoreBookingService.ts", "utf8");
   const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
@@ -730,11 +728,10 @@ test("dashboard booking edit uses Core D1, owner bypasses password, and admins r
   }
   assert.doesNotMatch(dashboard, /const BOOKING_ACTION_PIN/);
 
-  assert.match(
-    service,
-    /export async function updateBookingDetails[\s\S]*?coreD1BookingDataSource\.updateBooking/
-  );
-  assert.doesNotMatch(service, /CORE_D1_BOOKING_RESCHEDULE_REQUIRES_PHASE6/);
+  assert.match(dashboard, /coreD1BookingDataSource\.updateBooking\(/);
+  assert.match(coreDataSource, /async updateBooking\(/);
+  assert.match(coreDataSource, /CoreBookingService\.patch/);
+  assert.doesNotMatch(coreDataSource, /CORE_D1_BOOKING_RESCHEDULE_REQUIRES_PHASE6/);
 
   assert.match(coreDataSource, /reconcilePayment/);
   assert.match(coreDataSource, /clientName/);
