@@ -29,6 +29,12 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Install Firebase Functions
+        run: npm --prefix functions ci
+
+      - name: Firebase Functions TypeScript build
+        run: npm --prefix functions run build
+
       - name: Fixed interval polling guard
         run: node scripts/check-fixed-interval-polling.mjs
 
