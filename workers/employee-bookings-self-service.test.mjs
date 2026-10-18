@@ -135,8 +135,6 @@ test("employee booking workspace follows receive-confirm-materials-complete sequ
 
   assert.match(portal, /to: "\/employee\/bookings"/);
   assert.match(portal, /path="bookings"/);
-  assert.match(
-    portal,
-    /path="consumption"[\s\S]*Navigate to="\/employee\/bookings"/
-  );
+  assert.doesNotMatch(portal, /path="consumption"/);
+  assert.doesNotMatch(portal, /consumption:\s*"title\.consumption"/);
 });

@@ -159,7 +159,6 @@ function getEmployeePortalTitle(pathname: string, t: EmployeePortalTranslate) {
     payroll: "title.payroll",
     targets: "title.targets",
     bookings: "title.consumption",
-    consumption: "title.consumption",
   };
 
   return t(titleKeys[section] || "title.overview");
@@ -790,7 +789,6 @@ function EmployeePortalContent() {
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="targets" element={<PermissionRoute permission="targets.view_own"><EmployeeTargetsPage /></PermissionRoute>} />
             <Route path="bookings" element={<PermissionRoute permission="inventory.consume.confirm"><EmployeeServiceConsumption session={session} /></PermissionRoute>} />
-            <Route path="consumption" element={<Navigate to="/employee/bookings" replace />} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
           </div>
