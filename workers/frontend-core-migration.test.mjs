@@ -38,12 +38,13 @@ test("booking resolver is pinned to Core D1 without Firestore fallback", () => {
   assert.doesNotMatch(source, /readonly kind: "firestore"/);
 });
 
-test("retired booking compatibility adapter stays absent", () => {
-  assert.equal(
-    existsSync("src/services/bookingDataSourceCompat.ts"),
-    false,
-    "Core-only booking flows must not recreate a redundant source-mode adapter"
-  );
+test("live booking compatibility facade never selects a legacy data source", () => {
+  const facade = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
+  const publicBooking = readFileSync("src/pages/Booking.tsx", "utf8");
+  assert.match(publicBooking, /from "\.\.\/services\/bookingDataSourceCompat"/);
+  assert.match(facade, /return resolveCoreBookingDataSource\(\);/);
+  assert.doesNotMatch(facade, /\bresolveBookingDataSource\b|mode\s*===/);
+  assert.match(facade, /export type BookingDataSourceMode = "auto" \| "core";/);
 });
 
 test("core API client sends a bearer token without logging it", () => {
