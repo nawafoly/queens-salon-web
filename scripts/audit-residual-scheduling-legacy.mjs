@@ -195,7 +195,6 @@ const runtimeRoots = [
   "src/services/StaffPerformanceService.ts",
   "src/services/employeeDirectory.ts",
   "src/services/employeeHub.ts",
-  "src/services/firestoreStaffPublic.ts",
   "src/services/coreBookingMappers.ts",
   "src/helpers/hr/attendanceShiftResolver.ts",
   "src/helpers/hr/attendanceCalendarData.ts",

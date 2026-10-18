@@ -116,6 +116,29 @@ test("unconsumed Firestore catalog CRUD stays retired while Core booking DTOs re
   assert.ok(dataSource.includes("resolveCoreBookingDataSource"));
 });
 
+test("retired Firestore staff public reader stays absent while Core booking staff DTOs remain", () => {
+  assert.equal(existsSync("src/services/firestoreStaffPublic.ts"), false);
+  const dto = readFileSync("src/types/bookingStaff.ts", "utf8");
+  assert.ok(dto.includes("export type StaffPublicDoc = {"));
+  assert.ok(dto.includes("export type StaffPublicWithId = StaffPublicDoc & { id: string };"));
+  const sources = [
+    "src/services/bookingDataSource.ts",
+    "src/services/bookingDataSourceCompat.ts",
+    "src/services/coreBookableStaffService.ts",
+    "src/services/coreBookingMappers.ts",
+    "src/pages/DashboardBookings.tsx",
+    "src/pages/Booking.tsx",
+  ];
+  for (const path of sources) {
+    const source = readFileSync(path, "utf8");
+    assert.ok(source.includes('from "../types/bookingStaff"'), path);
+    assert.ok(!source.includes("services/firestoreStaffPublic"), path);
+    assert.ok(!source.includes('from "./firestoreStaffPublic"'), path);
+  }
+  const dataSource = readFileSync("src/services/bookingDataSource.ts", "utf8");
+  assert.ok(dataSource.includes("resolveCoreBookingDataSource"));
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
