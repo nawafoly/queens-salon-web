@@ -13,14 +13,14 @@ test("frontend migration guard passes", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
-test("feature flags default to explicit false checks", () => {
+test("Core Worker URL is mandatory without retired source-selection flags", () => {
   const source = readFileSync(
     "src/config/dataSourceFlags.ts",
     "utf8"
   );
-  assert.match(source, /toLowerCase\(\) === "true"/);
-  assert.match(source, /requireCoreWorkerUrl/);
-  assert.doesNotMatch(source, /requirePackagesWorkerUrl/);
+  assert.match(source, /export function requireCoreWorkerUrl/);
+  assert.match(source, /CORE_D1_CONFIG_ERROR: VITE_CORE_WORKER_URL is required/);
+  assert.doesNotMatch(source, /getDataSourceFlags|VITE_USE_CORE_D1|VITE_USE_PACKAGES_D1|VITE_USE_R2_FILES|requirePackagesWorkerUrl/);
 });
 
 test("booking resolver is pinned to Core D1 without Firestore fallback", () => {
@@ -34,6 +34,8 @@ test("booking resolver is pinned to Core D1 without Firestore fallback", () => {
   );
   assert.doesNotMatch(source, /firestoreBookingDataSource/);
   assert.doesNotMatch(source, /if \(flags\.useCoreD1\)/);
+  assert.match(source, /readonly kind: "d1";/);
+  assert.doesNotMatch(source, /readonly kind: "firestore"/);
 });
 
 test("core API client sends a bearer token without logging it", () => {
