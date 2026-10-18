@@ -101,6 +101,7 @@ test("unconsumed Firestore catalog CRUD stays retired while Core booking DTOs re
   const dataSource = readFileSync("src/services/bookingDataSource.ts", "utf8");
   const facade = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
   const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
+  const bookingPage = readFileSync("src/pages/Booking.tsx", "utf8");
   for (const name of ["SectionDoc", "CategoryDoc", "ServiceDoc"]) {
     assert.ok(dto.includes(`export type ${name} = {`));
   }
@@ -110,6 +111,8 @@ test("unconsumed Firestore catalog CRUD stays retired while Core booking DTOs re
     assert.ok(source.includes('from "../types/bookingCatalog"'));
     assert.ok(!source.includes('from "./firestoreCatalog"'));
   }
+  assert.ok(bookingPage.includes('from "../types/bookingCatalog"'));
+  assert.ok(!bookingPage.includes('from "../services/firestoreCatalog"'));
   assert.ok(dataSource.includes("resolveCoreBookingDataSource"));
 });
 
