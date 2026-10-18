@@ -1,5 +1,4 @@
-import type { PackageServiceItem } from "../services/firestorePackages";
-import type { CartItem } from "../types/bookingShared";
+import type { CartItem, PackageServiceItem } from "../types/bookingShared";
 
 type FlatServiceLike = {
   id: string;

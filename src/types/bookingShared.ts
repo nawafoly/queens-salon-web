@@ -1,4 +1,11 @@
-import type { PackageServiceItem } from "../services/firestorePackages";
+export type PackageServiceItem = {
+  serviceId: string;
+  serviceName: string;
+  sectionId?: string;
+  categoryId?: string;
+  price: number;
+  durationMin: number;
+};
 
 export type CartItem = {
   id: string; // local id
