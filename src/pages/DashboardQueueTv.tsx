@@ -6,7 +6,7 @@ import {
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
-import type { BookingDocWithId } from "../services/firestoreBookings";
+import type { BookingDocWithId } from "../types/bookingRecord";
 import defaultLogo from "../assets/images/ssunnamed.png";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { queueTvText, type DashboardLanguage } from "../helpers/dashboardQueueTvLanguage";

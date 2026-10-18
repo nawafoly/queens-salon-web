@@ -34,7 +34,7 @@ import {
 } from "../../services/firestoreAttendance";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { CoreHrService } from "../../services/CoreHrService";
-import { type BookingDocWithId } from "../../services/firestoreBookings";
+import { type BookingDocWithId } from "../../types/bookingRecord";
 import { CoreBookingService } from "../../services/CoreBookingService";
 import { coreBookingToLegacy } from "../../services/coreBookingMappers";
 import {

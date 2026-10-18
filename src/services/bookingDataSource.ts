@@ -2,7 +2,7 @@ import type {
   BookingDoc,
   BookingDocWithId,
   BookingStatus,
-} from "./firestoreBookings";
+} from "../types/bookingRecord";
 import type {
   CategoryDoc,
   SectionDoc,
@@ -18,7 +18,7 @@ import type {
 import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 import { coreD1BookingDataSource } from "./bookingDataSources/coreD1BookingDataSource";
 
-export type { BookingStatus } from "./firestoreBookings";
+export type { BookingStatus } from "../types/bookingRecord";
 
 export type BookingClientCandidate = CoreClient & {
   phone?: string;

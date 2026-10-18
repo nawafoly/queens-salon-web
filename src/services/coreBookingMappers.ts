@@ -10,7 +10,7 @@ import type {
   CoreStaff,
   CoreStaffSchedule,
 } from "../types/coreApi";
-import type { BookingDoc, BookingDocWithId } from "./firestoreBookings";
+import type { BookingDoc, BookingDocWithId } from "../types/bookingRecord";
 import type { SectionDoc, ServiceDoc } from "../types/bookingCatalog";
 import type { StaffPublicWithId } from "../types/bookingStaff";
 import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";

@@ -1,7 +1,7 @@
 import type {
   BookingDoc,
   BookingStatus,
-} from "./firestoreBookings";
+} from "../types/bookingRecord";
 import type {
   CategoryDoc,
   SectionDoc,

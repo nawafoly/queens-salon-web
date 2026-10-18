@@ -32,7 +32,7 @@ import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import type {
   BookingPaymentType,
   BookingStatus,
-} from "../services/firestoreBookings";
+} from "../types/bookingRecord";
 import type { StaffPublicWithId } from "../types/bookingStaff";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { coreD1BookingDataSource } from "../services/bookingDataSources/coreD1BookingDataSource";

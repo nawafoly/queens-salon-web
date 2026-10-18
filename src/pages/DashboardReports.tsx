@@ -14,7 +14,7 @@ import {
   generatePayrollEntriesForMonths,
   type PayrollEntryView,
 } from "../services/CorePayrollService";
-import { listCoreBookings } from "../services/firestoreBookings";
+import { listCoreBookings } from "../services/coreBookingReadService";
 import { listAllIncomeCore } from "../services/CoreIncomeService";
 import { listAllExpensesCore } from "../services/CoreExpenseService";
 import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";

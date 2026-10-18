@@ -1,4 +1,4 @@
-import type { BookingPaymentType, BookingStatus } from "../services/firestoreBookings";
+import type { BookingPaymentType, BookingStatus } from "../types/bookingRecord";
 import {
   formatTime12,
   round2,

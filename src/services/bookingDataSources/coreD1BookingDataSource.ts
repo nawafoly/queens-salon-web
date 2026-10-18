@@ -22,7 +22,7 @@ import type { BookingClientCandidate, BookingDataSource } from "../bookingDataSo
 import type {
   BookingDoc,
   BookingStatus,
-} from "../firestoreBookings";
+} from "../../types/bookingRecord";
 
 function normalizePhone(value: unknown): string {
   const digits = String(value ?? "").replace(/\D/g, "");
