@@ -1,8 +1,8 @@
 import { resolveBookingDataSource } from "./bookingDataSource";
 import { CoreSettingsService } from "./CoreSettingsService";
-import type { BookingDoc, BookingStatus } from "./firestoreBookings";
+import type { BookingDoc, BookingStatus } from "../types/bookingRecord";
 
-export type { BookingStatus } from "./firestoreBookings";
+export type { BookingStatus } from "../types/bookingRecord";
 
 type BookingRuntimeSettings = {
   booking?: {

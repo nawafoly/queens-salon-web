@@ -95,7 +95,7 @@ import { logoutFirebase } from "../services/authService";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 
-import type { BookingDocWithId } from "../services/firestoreBookings";
+import type { BookingDocWithId } from "../types/bookingRecord";
 import { CoreBookingService } from "../services/CoreBookingService";
 import { coreBookingToLegacy } from "../services/coreBookingMappers";
 

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { type BookingStatus } from "../../services/firestoreBookings";
+import { type BookingStatus } from "../../types/bookingRecord";
 import {
   type StaffOvertimeHoursBasis,
   type StaffPayrollMethod,

@@ -139,6 +139,30 @@ test("retired Firestore staff public reader stays absent while Core booking staf
   assert.ok(dataSource.includes("resolveCoreBookingDataSource"));
 });
 
+test("booking DTOs and reports are decoupled from legacy Firestore bookings", () => {
+  const dto = readFileSync("src/types/bookingRecord.ts", "utf8");
+  const reportService = readFileSync("src/services/coreBookingReadService.ts", "utf8");
+  const reportPage = readFileSync("src/pages/DashboardReports.tsx", "utf8");
+  assert.ok(dto.includes("export type BookingDoc = {"));
+  assert.ok(dto.includes("export type BookingDocWithId = BookingDoc & { id: string };"));
+  assert.ok(dto.includes('import type { Timestamp } from "firebase/firestore";'));
+  assert.ok(!dto.includes("getDocs("));
+  assert.ok(!dto.includes("setDoc("));
+  assert.ok(reportService.includes("CoreBookingService.list()"));
+  assert.ok(reportService.includes("coreBookingToLegacy"));
+  assert.ok(reportPage.includes('from "../services/coreBookingReadService"'));
+  assert.ok(!reportPage.includes('from "../services/firestoreBookings"'));
+  const paths = ["src/services/bookingDataSource.ts","src/services/checkoutCoreBookingService.ts","src/services/bookingDataSourceCompat.ts","src/pages/Dashboard.tsx","src/pages/DashboardQueueTv.tsx","src/services/coreBookingMappers.ts","src/pages/hr/EmployeeOverview.tsx","src/pages/dashboardEmployees/shared.ts","src/pages/DashboardBookings.tsx","src/pages/DashboardBookings.helpers.ts","src/services/bookingDataSources/coreD1BookingDataSource.ts"];
+  for (const path of paths) {
+    const source = readFileSync(path, "utf8");
+    assert.ok(source.includes("types/bookingRecord"), path);
+    assert.ok(!source.includes('from "./firestoreBookings"'), path);
+    assert.ok(!source.includes('from "../firestoreBookings"'), path);
+    assert.ok(!source.includes('from "../services/firestoreBookings"'), path);
+    assert.ok(!source.includes('from "../../services/firestoreBookings"'), path);
+  }
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
