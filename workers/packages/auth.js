@@ -8,7 +8,7 @@ const FIREBASE_CERTS_URL =
 const VALID_ROLES = new Set(["owner", "admin", "hr", "accountant", "reception", "staff", "client"]);
 
 let firebaseCertificateCache = { certificates: null, expiresAt: 0 };
-const actorContextCache = new Map();
+// Authorization is never cached: Core D1 must be checked on every request.
 
 function normalizeRole(value) {
   const role = cleanText(value).toLowerCase();
@@ -62,7 +62,7 @@ async function loadEffectivePermissions(db, salonId, account) {
 }
 
 export function clearActorRoleCache() {
-  actorContextCache.clear();
+  // Compatibility no-op: only public Firebase signing certificates remain cached.
 }
 
 /**
@@ -86,10 +86,6 @@ export async function resolveActorContext(env, salonId, identity) {
       employeeId: "",
     };
   }
-
-  const cacheKey = `${salonId}\u0000${uid}`;
-  const cached = actorContextCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.context;
 
   const db = requireCoreDb(env);
   const account = await dbFirst(
@@ -115,7 +111,6 @@ export async function resolveActorContext(env, salonId, identity) {
     employeeLink: employeeLink || null,
     employeeId: cleanText(employeeLink?.employee_id),
   };
-  actorContextCache.set(cacheKey, { context, expiresAt: Date.now() + 30_000 });
   return context;
 }
 
