@@ -342,7 +342,7 @@ test("concurrent owner removals keep at least one active owner at the SQL write 
     disableAccount(racingDb, "main", "user-owner-a", { role: "owner", user: { id: "user-owner-b" } }),
     disableAccount(racingDb, "main", "user-owner-b", { role: "owner", user: { id: "user-owner-a" } }),
   ]);
-  assert.equal(queued, 2, "both removals must reach the write to reproduce the race");
+  assert.equal(queued, 2, `both removals must reach the write: ${JSON.stringify(results.map((item) => ({ status: item.status, message: item.reason?.message, code: item.reason?.code })))}`);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1, JSON.stringify(results));
   const failed = results.find((result) => result.status === "rejected");
   assert.ok(["ACCOUNT_LAST_OWNER_PROTECTED", "ACCOUNT_CONCURRENT_MODIFICATION"].includes(failed?.reason?.code));
