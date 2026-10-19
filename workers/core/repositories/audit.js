@@ -108,6 +108,23 @@ export function auditInsertStatement(salonId, data = {}, actor = {}) {
   };
 }
 
+/**
+ * Must immediately follow one D1 UPDATE inside the same db.batch transaction.
+ * SQLite changes() reflects the preceding UPDATE, so a stale CAS result writes
+ * no audit row. If audit insertion fails, D1 rolls back the account UPDATE.
+ * Do not insert any other SQL statement between the update and this insert.
+ */
+export function auditInsertWhenPreviousUpdateChanged(salonId, data = {}, actor = {}) {
+  const { row, statement } = auditInsertStatement(salonId, data, actor);
+  const placeholderList = statement.params.map(() => '?').join(', ');
+  const sql = statement.sql.replace(
+    /VALUES\s*\([\s\S]*?\)\s*$/,
+    `SELECT ${placeholderList} WHERE changes() = 1`
+  );
+  if (sql === statement.sql) throw new Error('AUDIT_CONDITIONAL_INSERT_INVALID');
+  return { row, statement: { sql, params: statement.params } };
+}
+
 export async function recordAudit(db, salonId, data = {}, actor = {}) {
   const { row, statement } = auditInsertStatement(salonId, data, actor);
   try {
