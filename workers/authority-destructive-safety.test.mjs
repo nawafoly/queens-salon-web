@@ -47,9 +47,9 @@ test("legacy Firebase hard delete remains a fail-closed compatibility callable",
   assert.ok(start >= 0 && end > start);
   const callable = functions.slice(start, end);
   assert.match(callable, /failed-precondition/);
-  assert.doesNotMatch(callable, /deleteUser\\s*\\(/);
-  assert.doesNotMatch(callable, /batch\\.delete\\s*\\(/);
-  assert.doesNotMatch(callable, /collection\\(/);
+  assert.ok(!callable.includes("deleteUser("));
+  assert.ok(!callable.includes("batch.delete("));
+  assert.ok(!callable.includes("collection("));
   assert.match(functions, /LEGACY_ADMIN_DELETE_RETIRED_V1/);
 
   const accounts = read("workers/core/repositories/accounts.js");
