@@ -45,3 +45,24 @@ Before retaining, hardening or retiring this deployed callable:
 
 No production accounts, Firebase users, Firestore documents, or D1 rows
 are mutated by this source-only cleanup.
+
+## Security hardening after the initial PR #230
+
+- A generic Core account PATCH previously accepted `status=deleted` with
+  `accounts.update` (or compatibility `admin_accounts.manage`), bypassing
+  the separate `accounts.delete` permission. The repository now reserves
+  transitions into deleted state for the dedicated DELETE service operation.
+- Self-delete is refused by canonical Core logic.
+- Package authorization contexts are re-read from D1 for each request, so
+  disabled/deleted accounts cannot reuse a 30-second in-memory role cache.
+- The historical Firebase callable keeps its symbol but rejects irreversible
+  identity deletion; its Firestore/custom-claim checks were insufficient to
+  establish current Core authority. External consumers (if any) must migrate
+  to the Core soft-delete lifecycle. This is a compatibility change requiring
+  an explicit Firebase Functions deployment; code merge alone does not secure
+  an already deployed Firebase callable.
+- Permanent Firebase identity erasure remains intentionally unimplemented:
+  introduce it only with a Core-authorized idempotent job, tenant fencing,
+  retry tracking, security logs and a reconciliation plan.
+
+These tests use isolated D1 fixtures; no production records are modified.
