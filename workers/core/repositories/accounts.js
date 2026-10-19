@@ -12,7 +12,7 @@ import {
   requiredId,
 } from '../d1.js';
 import { AppError } from '../errors.js';
-import { auditInsertStatement, recordAudit } from './audit.js';
+import { auditInsertStatement, auditInsertWhenPreviousUpdateChanged, recordAudit } from './audit.js';
 
 const VALID_ROLES = new Set([
   'owner',
@@ -499,39 +499,27 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
     legacy_id: optionalText(data.legacyId || data.legacy_id) || null,
   };
 
-  await dbRun(
-    db,
-    `INSERT INTO app_users
+  const insertAccount = {
+    sql: `INSERT INTO app_users
       (id, firebase_uid, salon_id, email, phone, display_name, photo_url, primary_role, status,
        email_verified, last_login_at, created_at, updated_at, deleted_at, legacy_source, legacy_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      row.id,
-      row.firebase_uid,
-      row.salon_id,
-      row.email,
-      row.phone,
-      row.display_name,
-      row.photo_url,
-      row.primary_role,
-      row.status,
-      row.email_verified,
-      row.last_login_at,
-      row.created_at,
-      row.updated_at,
-      row.deleted_at,
-      row.legacy_source,
-      row.legacy_id,
-    ]
-  );
-  const created = await getAccountById(db, salonId, row.id);
-  await recordAudit(db, salonId, {
+    params: [
+      row.id, row.firebase_uid, row.salon_id, row.email, row.phone, row.display_name,
+      row.photo_url, row.primary_role, row.status, row.email_verified, row.last_login_at,
+      row.created_at, row.updated_at, row.deleted_at, row.legacy_source, row.legacy_id,
+    ],
+  };
+  const audit = auditInsertStatement(salonId, {
     action: 'account_created',
     entityType: 'app_user',
-    entityId: created.id,
-    targetUserId: created.id,
-    after: serializeAccount(created),
+    entityId: row.id,
+    targetUserId: row.id,
+    after: serializeAccount(row),
   }, actorInfo(actor));
+  // D1 batch is transactional: an audit failure must roll back account creation.
+  await dbBatch(db, [insertAccount, audit.statement]);
+  const created = await getAccountById(db, salonId, row.id);
   return accountBeforeBundle(db, salonId, created);
 }
 
@@ -565,9 +553,11 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
 
   const fields = [];
   const params = [];
+  const projected = { ...target };
   const add = (column, value) => {
     fields.push(`${column} = ?`);
     params.push(value);
+    projected[column] = value;
   };
   if (data.firebaseUid !== undefined || data.firebase_uid !== undefined || data.uid !== undefined) {
     const uid = optionalText(data.firebaseUid || data.firebase_uid || data.uid) || null;
@@ -595,8 +585,8 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
   }
 
   if (fields.length) {
-    // This CAS condition prevents stale updates from reviving or altering an account
-    // after another request changed its role or lifecycle state.
+    // This CAS condition prevents stale account writes, including login/session
+    // writes that updated the same account after the initial snapshot.
     const ownerFence = removingActiveOwner
       ? ` AND EXISTS (
           SELECT 1 FROM app_users AS other
@@ -605,32 +595,48 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
              AND other.deleted_at IS NULL
         )`
       : '';
-    params.push(nowIso(), salonId, target.id, target.primary_role, target.status, target.deleted_at);
+    const updatedAt = nowIso();
+    projected.updated_at = updatedAt;
+    const afterSnapshot = await accountBeforeBundle(db, salonId, projected);
+    params.push(updatedAt, salonId, target.id, target.primary_role, target.status, target.deleted_at, target.updated_at);
     if (removingActiveOwner) params.push(salonId, target.id);
-    const result = await dbRun(
-      db,
-      `UPDATE app_users SET ${fields.join(', ')}, updated_at = ?
+    const mutation = {
+      sql: `UPDATE app_users SET ${fields.join(', ')}, updated_at = ?
          WHERE salon_id = ? AND id = ? AND primary_role = ? AND status = ?
-           AND deleted_at IS ?${ownerFence}`,
-      params
-    );
-    if (changes(result) !== 1) {
-      // The last-owner invariant must also hold AT the write, not just during
-      // the earlier application-level validation (TOCTOU race).
+           AND deleted_at IS ? AND updated_at IS ?${ownerFence}`,
+      params,
+    };
+    const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
+      action: 'account_updated',
+      entityType: 'app_user',
+      entityId: target.id,
+      targetUserId: target.id,
+      before,
+      after: afterSnapshot,
+    }, actorInfo(actor));
+    // SQLite changes() in the second statement means a failed CAS cannot
+    // produce a fictitious audit event; SQL audit failure rolls back the UPDATE.
+    const results = await dbBatch(db, [mutation, audit.statement]);
+    if (changes(results[0]) !== 1) {
       await assertNotLastOwner(db, salonId, target, nextStatus, nextRole);
       throw new AppError(409, 'ACCOUNT_CONCURRENT_MODIFICATION');
     }
+    if (changes(results[1]) !== 1) {
+      throw new AppError(500, 'ACCOUNT_AUDIT_TRANSACTION_INVARIANT');
+    }
+  } else {
+    // Preserve the historical no-field PATCH audit behavior without a mutation.
+    await recordAudit(db, salonId, {
+      action: 'account_updated',
+      entityType: 'app_user',
+      entityId: target.id,
+      targetUserId: target.id,
+      before,
+      after: before,
+    }, actorInfo(actor));
   }
   const updated = await getAccountById(db, salonId, target.id);
   const after = await accountBeforeBundle(db, salonId, updated);
-  await recordAudit(db, salonId, {
-    action: 'account_updated',
-    entityType: 'app_user',
-    entityId: updated.id,
-    targetUserId: updated.id,
-    before,
-    after,
-  }, actorInfo(actor));
   return after;
 }
 
