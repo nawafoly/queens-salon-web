@@ -169,6 +169,7 @@ test("admin account deletion rejects self, unprivileged callers, and PATCH delet
     { path: "/api/admin/accounts/user-staff", method: "DELETE", uid: "uid-admin", expected: "core_auth:missing_permission", status: 403 },
     { path: "/api/admin/accounts/user-staff", method: "PATCH", uid: "uid-admin", body: { status: "deleted" }, expected: "ACCOUNT_DELETE_ENDPOINT_REQUIRED", status: 403 },
     { path: "/api/admin/accounts/user-staff", method: "PATCH", uid: "uid-owner-a", body: { status: "deleted" }, expected: "ACCOUNT_DELETE_ENDPOINT_REQUIRED", status: 403 },
+    { path: "/api/admin/accounts/user-deleted", method: "PATCH", uid: "uid-admin", body: { status: "active" }, expected: "ACCOUNT_RESTORE_ENDPOINT_REQUIRED", status: 403 },
   ];
   for (const item of cases) {
     const response = await worker.fetch(req(item.path, { method: item.method, uid: item.uid, body: item.body }), testEnv);
@@ -183,6 +184,13 @@ test("admin account deletion rejects self, unprivileged callers, and PATCH delet
   assert.equal(staff.status, "active");
   assert.equal(owner.deleted_at, null);
   assert.equal(staff.deleted_at, null);
+  const restored = await worker.fetch(req("/api/admin/accounts/user-deleted/restore", { method: "POST", uid: "uid-owner-a" }), testEnv);
+  const restoredBody = await json(restored);
+  assert.equal(restored.status, 200, JSON.stringify(restoredBody));
+  assert.equal(restoredBody.data.status, "active");
+  const restoredRow = await db.prepare("SELECT status, deleted_at FROM app_users WHERE id='user-deleted'").first();
+  assert.equal(restoredRow.status, "active");
+  assert.equal(restoredRow.deleted_at, null);
 });
 
 test("internal account scope excludes client identities from account management", async (t) => {
