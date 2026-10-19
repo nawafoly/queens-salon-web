@@ -259,7 +259,7 @@ test("account deletion remains Core-only without resurrecting orphan Firebase ha
 
   assert.ok(ui.includes("CoreAccountService.remove(account.id)"));
   assert.ok(ui.includes("بدون حذف سجل الهوية من Firebase"));
-  assert.ok(facade.includes("/api/admin/accounts/\${encodeURIComponent(id)}"));
+  assert.ok(facade.includes("/api/admin/accounts/${encodeURIComponent(id)}"));
   assert.match(core, /export async function deleteAccount\(/);
   assert.match(core, /return updateAccount\(db, salonId, id, \{ status: 'deleted' \}, actor\)/);
   assert.match(core, /if \(status === 'deleted' \|\| account\.deleted_at\) throw new AppError\(403, 'ACCOUNT_DELETED'\)/);
