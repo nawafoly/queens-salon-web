@@ -246,6 +246,25 @@ test("orphan Firestore availability index and read profiler stay out of runtime"
   assert.ok(readFileSync("src/main.tsx", "utf8").includes('import("./services/firestoreDebug")'));
 });
 
+test("admin account deletion uses the Core audited soft-delete workflow", () => {
+  assert.equal(existsSync("src/services/adminAccountDeletionService.ts"), false);
+  const ui = readFileSync("src/pages/settings/SettingsUsers.tsx", "utf8");
+  const service = readFileSync("src/services/CoreAccountService.ts", "utf8");
+  const repo = readFileSync("workers/core/repositories/accounts.js", "utf8");
+  const callable = readFileSync("functions/src/index.ts", "utf8");
+
+  assert.ok(ui.includes('if (action === "delete") await CoreAccountService.remove(account.id)'));
+  assert.ok(service.includes('remove(id: string)'));
+  assert.ok(repo.includes("export async function deleteAccount("));
+  assert.ok(repo.includes("return updateAccount(db, salonId, id, { status: 'deleted' }, actor);"));
+  assert.ok(callable.includes("export const adminDeleteUserAccount = onCall"));
+  const files = readdirSync("src/services").filter((name) => /\.(?:ts|tsx|js)$/.test(name));
+  for (const file of files) {
+    const source = readFileSync("src/services/" + file, "utf8");
+    assert.doesNotMatch(source, /from ["']\.\/adminAccountDeletionService["']/);
+  }
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
