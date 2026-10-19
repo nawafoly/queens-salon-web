@@ -325,7 +325,7 @@ test("concurrent owner removals keep at least one active owner at the SQL write 
             first: () => bound.first(),
             all: () => bound.all(),
             async run() {
-              if (/^\\s*UPDATE app_users SET/.test(sql) && /status = \\?/.test(sql)) {
+              if (/^\s*UPDATE app_users SET/.test(sql) && /status = \?/.test(sql)) {
                 queued += 1;
                 if (queued === 2) release();
                 await gate;
