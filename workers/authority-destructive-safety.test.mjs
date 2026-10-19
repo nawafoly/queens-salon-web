@@ -57,6 +57,9 @@ test("legacy Firebase hard delete remains a fail-closed compatibility callable",
   assert.match(accounts, /ACCOUNT_SELF_DELETE_FORBIDDEN/);
   assert.match(accounts, /ACCOUNT_DELETE_ENDPOINT_REQUIRED/);
   assert.match(accounts, /ACCOUNT_RESTORE_ENDPOINT_REQUIRED/);
+  const editor = read("src/pages/settings/SettingsUsers.tsx");
+  assert.match(editor, /options=\{editDraft\.status === "deleted"/);
+  assert.match(editor, /CoreAccountService\.restore\(account\.id\)/);
   assert.doesNotMatch(packagesAuth, /actorContextCache/);
 });
 
