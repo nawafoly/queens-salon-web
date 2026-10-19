@@ -534,7 +534,7 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
   return accountBeforeBundle(db, salonId, created);
 }
 
-export async function updateAccount(db, salonId, id, data = {}, actor = {}) {
+export async function updateAccount(db, salonId, id, data = {}, actor = {}, options = {}) {
   const target = await getAccountById(db, salonId, id);
   assertSameSalon(salonId, target);
   protectOwnerTarget(actor, target, 'modify');
@@ -546,6 +546,10 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}) {
   if (nextRole !== target.primary_role) assertActorCanAssignRole(actor, target, nextRole);
 
   const nextStatus = data.status !== undefined ? normalizeStatus(data.status, target.status) : target.status;
+  // A generic accounts.update PATCH must never grant the separate accounts.delete authority.
+  if (data.status !== undefined && nextStatus === 'deleted' && target.status !== 'deleted' && options.allowDeletion !== true) {
+    throw new AppError(403, 'ACCOUNT_DELETE_ENDPOINT_REQUIRED');
+  }
   const nextFirebaseUid =
     data.firebaseUid !== undefined || data.firebase_uid !== undefined || data.uid !== undefined
       ? optionalText(data.firebaseUid || data.firebase_uid || data.uid) || null
@@ -623,9 +627,10 @@ export async function restoreAccount(db, salonId, id, actor = {}) {
 export async function deleteAccount(db, salonId, id, actor = {}) {
   const target = await getAccountById(db, salonId, id);
   assertSameSalon(salonId, target);
+  if (actor?.user?.id === target.id) throw new AppError(409, 'ACCOUNT_SELF_DELETE_FORBIDDEN');
   protectOwnerTarget(actor, target, 'delete');
   await assertNotLastOwner(db, salonId, target, 'deleted', target.primary_role);
-  return updateAccount(db, salonId, id, { status: 'deleted' }, actor);
+  return updateAccount(db, salonId, id, { status: 'deleted' }, actor, { allowDeletion: true });
 }
 
 async function validatePermissions(db, permissions) {
