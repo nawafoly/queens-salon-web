@@ -134,6 +134,33 @@ test("/api/auth/me is D1-authoritative and rejects non-active app_users", async 
   }
 });
 
+test("Core account deletion preserves Firebase UID, records deleted state, and denies subsequent Core access", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const response = await worker.fetch(req("/api/admin/accounts/user-staff", {
+    method: "DELETE",
+    uid: "uid-owner-a",
+    role: "owner",
+  }), testEnv);
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.status, "deleted");
+
+  const row = await db.prepare(
+    "SELECT firebase_uid, status, deleted_at FROM app_users WHERE salon_id = 'main' AND id = 'user-staff'"
+  ).first();
+  assert.equal(row.firebase_uid, "uid-staff", "A soft delete must never destroy the Firebase identity association");
+  assert.equal(row.status, "deleted");
+  assert.ok(row.deleted_at);
+
+  const blocked = await worker.fetch(req("/api/auth/me", {
+    uid: "uid-staff",
+    role: "admin",
+  }), testEnv);
+  const blockedBody = await json(blocked);
+  assert.equal(blocked.status, 403, JSON.stringify(blockedBody));
+  assert.equal(blockedBody.error, "ACCOUNT_DELETED");
+});
+
 test("internal account scope excludes client identities from account management", async (t) => {
   const { env: testEnv } = await setup(t);
 
