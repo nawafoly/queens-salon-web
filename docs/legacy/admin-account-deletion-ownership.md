@@ -52,6 +52,8 @@ are mutated by this source-only cleanup.
   `accounts.update` (or compatibility `admin_accounts.manage`), bypassing
   the separate `accounts.delete` permission. The repository now reserves
   transitions into deleted state for the dedicated DELETE service operation.
+- Deleted-account reactivation is restricted to the dedicated Core restore route;
+  an ordinary PATCH cannot bypass the separate restore authorization.
 - Self-delete is refused by canonical Core logic.
 - Package authorization contexts are re-read from D1 for each request, so
   disabled/deleted accounts cannot reuse a 30-second in-memory role cache.
