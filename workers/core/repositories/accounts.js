@@ -550,6 +550,9 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
   if (data.status !== undefined && nextStatus === 'deleted' && target.status !== 'deleted' && options.allowDeletion !== true) {
     throw new AppError(403, 'ACCOUNT_DELETE_ENDPOINT_REQUIRED');
   }
+  if (data.status !== undefined && target.status === 'deleted' && nextStatus !== 'deleted' && options.allowRestore !== true) {
+    throw new AppError(403, 'ACCOUNT_RESTORE_ENDPOINT_REQUIRED');
+  }
   const nextFirebaseUid =
     data.firebaseUid !== undefined || data.firebase_uid !== undefined || data.uid !== undefined
       ? optionalText(data.firebaseUid || data.firebase_uid || data.uid) || null
@@ -621,7 +624,7 @@ export async function restoreAccount(db, salonId, id, actor = {}) {
   const target = await getAccountById(db, salonId, id);
   assertSameSalon(salonId, target);
   protectOwnerTarget(actor, target, 'restore');
-  return updateAccount(db, salonId, id, { status: 'active' }, actor);
+  return updateAccount(db, salonId, id, { status: 'active' }, actor, { allowRestore: true });
 }
 
 export async function deleteAccount(db, salonId, id, actor = {}) {
