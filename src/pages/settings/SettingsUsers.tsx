@@ -1330,7 +1330,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                     { value: "active", label: t("نشط") },
                     { value: "pending", label: t("قيد المراجعة") },
                     { value: "disabled", label: t("معطل") },
-                    { value: "deleted", label: t("محذوف") },
+                    ...(editDraft.status === "deleted" ? [{ value: "deleted", label: t("محذوف") }] : []),
                   ]}
                   onChange={(value) =>
                     setEditDraft((draft) =>
