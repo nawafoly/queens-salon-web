@@ -161,6 +161,38 @@ test("Core account deletion preserves Firebase UID, records deleted state, and d
   assert.equal(blockedBody.error, "ACCOUNT_DELETED");
 });
 
+test("admin account deletion rejects self, unprivileged callers, and PATCH deletion bypass", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+
+  const cases = [
+    { path: "/api/admin/accounts/user-owner-a", method: "DELETE", uid: "uid-owner-a", expected: "ACCOUNT_SELF_DELETE_FORBIDDEN", status: 409 },
+    { path: "/api/admin/accounts/user-staff", method: "DELETE", uid: "uid-admin", expected: "core_auth:missing_permission", status: 403 },
+    { path: "/api/admin/accounts/user-staff", method: "PATCH", uid: "uid-admin", body: { status: "deleted" }, expected: "ACCOUNT_DELETE_ENDPOINT_REQUIRED", status: 403 },
+    { path: "/api/admin/accounts/user-staff", method: "PATCH", uid: "uid-owner-a", body: { status: "deleted" }, expected: "ACCOUNT_DELETE_ENDPOINT_REQUIRED", status: 403 },
+    { path: "/api/admin/accounts/user-deleted", method: "PATCH", uid: "uid-admin", body: { status: "active" }, expected: "ACCOUNT_RESTORE_ENDPOINT_REQUIRED", status: 403 },
+  ];
+  for (const item of cases) {
+    const response = await worker.fetch(req(item.path, { method: item.method, uid: item.uid, body: item.body }), testEnv);
+    const body = await json(response);
+    assert.equal(response.status, item.status, JSON.stringify(body));
+    assert.equal(body.error, item.expected);
+  }
+
+  const owner = await db.prepare("SELECT status, deleted_at FROM app_users WHERE id='user-owner-a'").first();
+  const staff = await db.prepare("SELECT status, deleted_at FROM app_users WHERE id='user-staff'").first();
+  assert.equal(owner.status, "active");
+  assert.equal(staff.status, "active");
+  assert.equal(owner.deleted_at, null);
+  assert.equal(staff.deleted_at, null);
+  const restored = await worker.fetch(req("/api/admin/accounts/user-deleted/restore", { method: "POST", uid: "uid-owner-a" }), testEnv);
+  const restoredBody = await json(restored);
+  assert.equal(restored.status, 200, JSON.stringify(restoredBody));
+  assert.equal(restoredBody.data.status, "active");
+  const restoredRow = await db.prepare("SELECT status, deleted_at FROM app_users WHERE id='user-deleted'").first();
+  assert.equal(restoredRow.status, "active");
+  assert.equal(restoredRow.deleted_at, null);
+});
+
 test("internal account scope excludes client identities from account management", async (t) => {
   const { env: testEnv } = await setup(t);
 

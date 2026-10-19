@@ -40,6 +40,29 @@ test("authenticated account and employee-link authority stays tenant scoped", ()
   assert.match(auth, /salonId,/);
 });
 
+test("legacy Firebase hard delete remains a fail-closed compatibility callable", () => {
+  const functions = read("functions/src/index.ts");
+  const start = functions.indexOf("export const adminDeleteUserAccount = onCall(");
+  const end = functions.indexOf("Callable: whoAmI", start);
+  assert.ok(start >= 0 && end > start);
+  const callable = functions.slice(start, end);
+  assert.match(callable, /failed-precondition/);
+  assert.ok(!callable.includes("deleteUser("));
+  assert.ok(!callable.includes("batch.delete("));
+  assert.ok(!callable.includes("collection("));
+  assert.match(functions, /LEGACY_ADMIN_DELETE_RETIRED_V1/);
+
+  const accounts = read("workers/core/repositories/accounts.js");
+  const packagesAuth = read("workers/packages/auth.js");
+  assert.match(accounts, /ACCOUNT_SELF_DELETE_FORBIDDEN/);
+  assert.match(accounts, /ACCOUNT_DELETE_ENDPOINT_REQUIRED/);
+  assert.match(accounts, /ACCOUNT_RESTORE_ENDPOINT_REQUIRED/);
+  const editor = read("src/pages/settings/SettingsUsers.tsx");
+  assert.match(editor, /options=\{editDraft\.status === "deleted"/);
+  assert.match(editor, /CoreAccountService\.restore\(account\.id\)/);
+  assert.doesNotMatch(packagesAuth, /actorContextCache/);
+});
+
 test("employee offboarding requires reason/date and records an auditable lifecycle operation", () => {
   const offboarding = read("workers/core/repositories/employee-offboarding.js");
 

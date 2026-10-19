@@ -1326,12 +1326,13 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 <DashboardSelectV2
                   id="edit-status"
                   value={editDraft.status}
-                  options={[
-                    { value: "active", label: t("نشط") },
-                    { value: "pending", label: t("قيد المراجعة") },
-                    { value: "disabled", label: t("معطل") },
-                    { value: "deleted", label: t("محذوف") },
-                  ]}
+                  options={editDraft.status === "deleted"
+                    ? [{ value: "deleted", label: t("محذوف") }]
+                    : [
+                        { value: "active", label: t("نشط") },
+                        { value: "pending", label: t("قيد المراجعة") },
+                        { value: "disabled", label: t("معطل") },
+                      ]}
                   onChange={(value) =>
                     setEditDraft((draft) =>
                       draft

@@ -261,7 +261,9 @@ test("account deletion remains Core-only without resurrecting orphan Firebase ha
   assert.ok(ui.includes("بدون حذف سجل الهوية من Firebase"));
   assert.ok(facade.includes("/api/admin/accounts/${encodeURIComponent(id)}"));
   assert.match(core, /export async function deleteAccount\(/);
-  assert.match(core, /return updateAccount\(db, salonId, id, \{ status: 'deleted' \}, actor\)/);
+  assert.ok(core.includes("return updateAccount(db, salonId, id, { status: 'deleted' }, actor, { allowDeletion: true })"));
+  assert.ok(core.includes("ACCOUNT_DELETE_ENDPOINT_REQUIRED"));
+  assert.ok(core.includes("ACCOUNT_SELF_DELETE_FORBIDDEN"));
   assert.match(core, /if \(status === 'deleted' \|\| account\.deleted_at\) throw new AppError\(403, 'ACCOUNT_DELETED'\)/);
   assert.ok(worker.includes('requirePermission(ctx, "accounts.delete")'));
 
