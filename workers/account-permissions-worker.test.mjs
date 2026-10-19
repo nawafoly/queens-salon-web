@@ -324,19 +324,22 @@ test("concurrent owner removals keep at least one active owner at the SQL write 
           return {
             first: () => bound.first(),
             all: () => bound.all(),
-            async run() {
-              if (/^\s*UPDATE app_users SET/.test(sql) && /status = \?/.test(sql)) {
-                queued += 1;
-                if (queued === 2) release();
-                await gate;
-              }
-              return bound.run();
-            },
+            run: () => bound.run(),
+            __bound: bound,
+            __sql: sql,
           };
         },
       };
     },
-    batch: (...statements) => db.batch(statements),
+    async batch(statements) {
+      const racingUpdate = statements.some((statement) => /^\s*UPDATE app_users SET/.test(statement.__sql || '') && /status = \?/.test(statement.__sql || ''));
+      if (racingUpdate) {
+        queued += 1;
+        if (queued === 2) release();
+        await gate;
+      }
+      return db.batch(statements.map((statement) => statement.__bound ?? statement));
+    },
   };
   const results = await Promise.allSettled([
     disableAccount(racingDb, "main", "user-owner-a", { role: "owner", user: { id: "user-owner-b" } }),
@@ -355,6 +358,52 @@ test("concurrent owner removals keep at least one active owner at the SQL write 
     "SELECT COUNT(*) AS count FROM audit_logs WHERE salon_id='main' AND action='account_updated'"
   ).first();
   assert.equal(Number(audits.count), 1, "failed competing removal must not create a false audit");
+});
+
+test("account creation and account update roll back if audit insertion fails", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const original = await db.prepare("SELECT display_name FROM app_users WHERE id='user-staff'").first();
+  await db.prepare(`
+    CREATE TRIGGER fail_account_audit BEFORE INSERT ON audit_logs
+    WHEN NEW.action IN ('account_created', 'account_updated')
+    BEGIN SELECT RAISE(ABORT, 'INJECTED_AUDIT_FAILURE'); END
+  `).run();
+
+  const updated = await worker.fetch(req("/api/admin/accounts/user-staff", {
+    method: "PATCH",
+    uid: "uid-owner-a",
+    body: { displayName: "Should Roll Back" },
+  }), testEnv);
+  assert.ok(updated.status >= 400, "an audit failure must reject account update");
+  assert.equal(
+    (await db.prepare("SELECT display_name FROM app_users WHERE id='user-staff'").first()).display_name,
+    original.display_name,
+    "account update must be rolled back if audit is rejected"
+  );
+
+  const created = await worker.fetch(req("/api/admin/accounts", {
+    method: "POST",
+    uid: "uid-owner-a",
+    body: { id: "audit-create-failure", firebaseUid: "audit-create-failure-uid", role: "staff", status: "active" },
+  }), testEnv);
+  assert.ok(created.status >= 400, "an audit failure must reject account creation");
+  const row = await db.prepare("SELECT id FROM app_users WHERE id='audit-create-failure'").first();
+  assert.equal(row, null, "account INSERT must be rolled back with its rejected audit");
+});
+
+test("successful account mutations preserve matching before/after audit snapshots", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const response = await worker.fetch(req("/api/admin/accounts/user-staff", {
+    method: "PATCH", uid: "uid-owner-a", body: { displayName: "Audited Rename" },
+  }), testEnv);
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  const audit = await db.prepare(
+    "SELECT before_json, after_json FROM audit_logs WHERE action='account_updated' AND entity_id='user-staff' ORDER BY created_at DESC LIMIT 1"
+  ).first();
+  assert.ok(audit, "account UPDATE must create a transactionally coupled audit record");
+  assert.equal(JSON.parse(audit.before_json).displayName, "Staff");
+  assert.equal(JSON.parse(audit.after_json).displayName, "Audited Rename");
+  assert.equal((await db.prepare("SELECT display_name FROM app_users WHERE id='user-staff'").first()).display_name, "Audited Rename");
 });
 
 test("admin can reduce a lower-role account without re-granting retained legacy permissions", async (t) => {
