@@ -246,6 +246,40 @@ test("orphan Firestore availability index and read profiler stay out of runtime"
   assert.ok(readFileSync("src/main.tsx", "utf8").includes('import("./services/firestoreDebug")'));
 });
 
+test("account deletion remains Core-only without resurrecting orphan Firebase hard-delete frontend", () => {
+  assert.equal(
+    existsSync("src/services/adminAccountDeletionService.ts"),
+    false,
+    "Retired two-step D1/Firebase Auth hard-delete wrapper must not return"
+  );
+  const ui = readFileSync("src/pages/settings/SettingsUsers.tsx", "utf8");
+  const facade = readFileSync("src/services/CoreAccountService.ts", "utf8");
+  const core = readFileSync("workers/core/repositories/accounts.js", "utf8");
+  const worker = readFileSync("workers/core/index.js", "utf8");
+
+  assert.ok(ui.includes("CoreAccountService.remove(account.id)"));
+  assert.ok(ui.includes("بدون حذف سجل الهوية من Firebase"));
+  assert.ok(facade.includes("/api/admin/accounts/\${encodeURIComponent(id)}"));
+  assert.match(core, /export async function deleteAccount\(/);
+  assert.match(core, /return updateAccount\(db, salonId, id, \{ status: 'deleted' \}, actor\)/);
+  assert.match(core, /if \(status === 'deleted' \|\| account\.deleted_at\) throw new AppError\(403, 'ACCOUNT_DELETED'\)/);
+  assert.ok(worker.includes('requirePermission(ctx, "accounts.delete")'));
+
+  const scan = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((item) => {
+    const child = directory + "/" + item.name;
+    return item.isDirectory()
+      ? scan(child)
+      : /\.(?:ts|tsx|js|jsx)$/.test(item.name) ? [child] : [];
+  });
+  const files = scan("src");
+  assert.ok(files.length > 100);
+  for (const file of files) {
+    const code = readFileSync(file, "utf8");
+    assert.ok(!code.includes("adminAccountDeletionService"), file);
+    assert.ok(!code.includes("adminDeleteUserAccount"), file);
+  }
+});
+
 test("core API client sends a bearer token without logging it", () => {
   const source = readFileSync(
     "src/services/coreApiClient.ts",
