@@ -2,6 +2,7 @@ import {
   cleanText,
   dbAll,
   dbBatch,
+  changes,
   dbFirst,
   dbRun,
   generatedId,
@@ -559,6 +560,8 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
       : target.firebase_uid;
   if (nextStatus === 'active' && !nextFirebaseUid) throw new AppError(400, 'ACCOUNT_FIREBASE_UID_REQUIRED');
   await assertNotLastOwner(db, salonId, target, nextStatus, nextRole);
+  const removingActiveOwner = isOwner(target) &&
+    (nextRole !== 'owner' || nextStatus !== 'active' || Boolean(target.deleted_at));
 
   const fields = [];
   const params = [];
@@ -592,12 +595,31 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}, opti
   }
 
   if (fields.length) {
-    params.push(nowIso(), salonId, target.id);
-    await dbRun(
+    // This CAS condition prevents stale updates from reviving or altering an account
+    // after another request changed its role or lifecycle state.
+    const ownerFence = removingActiveOwner
+      ? ` AND EXISTS (
+          SELECT 1 FROM app_users AS other
+           WHERE other.salon_id = ? AND other.id <> ?
+             AND other.primary_role = 'owner' AND other.status = 'active'
+             AND other.deleted_at IS NULL
+        )`
+      : '';
+    params.push(nowIso(), salonId, target.id, target.primary_role, target.status, target.deleted_at);
+    if (removingActiveOwner) params.push(salonId, target.id);
+    const result = await dbRun(
       db,
-      `UPDATE app_users SET ${fields.join(', ')}, updated_at = ? WHERE salon_id = ? AND id = ?`,
+      `UPDATE app_users SET ${fields.join(', ')}, updated_at = ?
+         WHERE salon_id = ? AND id = ? AND primary_role = ? AND status = ?
+           AND deleted_at IS ?${ownerFence}`,
       params
     );
+    if (changes(result) !== 1) {
+      // The last-owner invariant must also hold AT the write, not just during
+      // the earlier application-level validation (TOCTOU race).
+      await assertNotLastOwner(db, salonId, target, nextStatus, nextRole);
+      throw new AppError(409, 'ACCOUNT_CONCURRENT_MODIFICATION');
+    }
   }
   const updated = await getAccountById(db, salonId, target.id);
   const after = await accountBeforeBundle(db, salonId, updated);

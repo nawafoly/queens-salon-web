@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { Miniflare } from "miniflare";
 
 import worker from "./core/index.js";
+import { disableAccount } from "./core/repositories/accounts.js";
 
 const MIGRATIONS = [
   "0001_core_schema.sql",
@@ -296,6 +297,64 @@ test("account APIs enforce owner protection, last-owner safety and permission-gr
   assert.equal(audit.target_user_id, "user-created");
   assert.equal(audit.ip, "203.0.113.9");
   assert.equal(audit.user_agent, "account-test");
+});
+
+test("concurrent owner removals keep at least one active owner at the SQL write boundary", async (t) => {
+  const { db } = await setup(t);
+
+  // Force both operations past the preliminary owner-count reads before either
+  // UPDATE executes. This reproduces a formerly vulnerable check-then-write race.
+  let queued = 0;
+  let release;
+  let rejectGate;
+  const gate = new Promise((resolve, reject) => {
+    release = resolve;
+    rejectGate = reject;
+  });
+  const timeout = setTimeout(() => rejectGate(new Error("concurrent owner removal gate timeout")), 10_000);
+  timeout.unref?.();
+  t.after(() => clearTimeout(timeout));
+
+  const racingDb = {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        bind(...params) {
+          const bound = statement.bind(...params);
+          return {
+            first: () => bound.first(),
+            all: () => bound.all(),
+            async run() {
+              if (/^\s*UPDATE app_users SET/.test(sql) && /status = \?/.test(sql)) {
+                queued += 1;
+                if (queued === 2) release();
+                await gate;
+              }
+              return bound.run();
+            },
+          };
+        },
+      };
+    },
+    batch: (...statements) => db.batch(statements),
+  };
+  const results = await Promise.allSettled([
+    disableAccount(racingDb, "main", "user-owner-a", { role: "owner", user: { id: "user-owner-b" } }),
+    disableAccount(racingDb, "main", "user-owner-b", { role: "owner", user: { id: "user-owner-a" } }),
+  ]);
+  assert.equal(queued, 2, `both removals must reach the write: ${JSON.stringify(results.map((item) => ({ status: item.status, message: item.reason?.message, code: item.reason?.code })))}`);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1, JSON.stringify(results));
+  const failed = results.find((result) => result.status === "rejected");
+  assert.ok(["ACCOUNT_LAST_OWNER_PROTECTED", "ACCOUNT_CONCURRENT_MODIFICATION"].includes(failed?.reason?.code));
+
+  const owners = await db.prepare(
+    "SELECT COUNT(*) AS count FROM app_users WHERE salon_id='main' AND primary_role='owner' AND status='active' AND deleted_at IS NULL"
+  ).first();
+  assert.equal(Number(owners.count), 1, "at least one owner must remain active");
+  const audits = await db.prepare(
+    "SELECT COUNT(*) AS count FROM audit_logs WHERE salon_id='main' AND action='account_updated'"
+  ).first();
+  assert.equal(Number(audits.count), 1, "failed competing removal must not create a false audit");
 });
 
 test("admin can reduce a lower-role account without re-granting retained legacy permissions", async (t) => {
