@@ -484,6 +484,65 @@ test("admin can reduce a lower-role account without re-granting retained legacy 
   assert.deepEqual(body.data.permissions, []);
 });
 
+test("admin direct denies override fallbacks at real Core authorization boundaries", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const adminUid = "uid-admin";
+
+  // No direct permissions are initially needed: the canonical role grants
+  // these admin fallbacks. Denying them must not be silently re-granted.
+  const initial = await worker.fetch(req("/api/admin/roles", { uid: adminUid }), testEnv);
+  assert.equal(initial.status, 200, JSON.stringify(await json(initial)));
+
+  await db.prepare(`
+    INSERT INTO user_permissions
+      (id, salon_id, user_id, permission_key, effect, created_at, updated_at)
+    VALUES
+      ('deny-admin-roles-read', 'main', 'user-admin', 'roles.read', 'deny', '2026-07-20', '2026-07-20'),
+      ('deny-admin-links', 'main', 'user-admin', 'employee_links.manage', 'deny', '2026-07-20', '2026-07-20'),
+      ('deny-admin-update', 'main', 'user-admin', 'accounts.update', 'deny', '2026-07-20', '2026-07-20'),
+      ('deny-admin-manage', 'main', 'user-admin', 'admin_accounts.manage', 'deny', '2026-07-20', '2026-07-20')
+  `).run();
+
+  const me = await worker.fetch(req("/api/auth/me", { uid: adminUid }), testEnv);
+  const self = await json(me);
+  assert.equal(me.status, 200, JSON.stringify(self));
+  for (const denied of ["roles.read", "employee_links.manage", "accounts.update", "admin_accounts.manage"]) {
+    assert.ok(!self.data.permissions.includes(denied), `direct deny must remove ${denied} from effective permissions`);
+  }
+
+  for (const [path, method, body] of [
+    ["/api/admin/roles", "GET", undefined],
+    ["/api/admin/accounts/user-staff/employee-link", "PUT", { employeeId: "staff-linked" }],
+    ["/api/admin/accounts/user-staff", "PATCH", { displayName: "Should Not Save" }],
+  ]) {
+    const response = await worker.fetch(req(path, { method, body, uid: adminUid }), testEnv);
+    const value = await json(response);
+    assert.equal(response.status, 403, JSON.stringify({ path, value }));
+    assert.equal(value.error, "core_auth:missing_permission");
+  }
+  assert.equal((await db.prepare("SELECT display_name FROM app_users WHERE id='user-staff'").first()).display_name, "Staff");
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM user_employee_links WHERE user_id='user-staff'").first()).n, 0);
+
+  // Owner permission authority remains explicit and unaffected by direct deny.
+  await db.prepare(`
+    INSERT INTO user_permissions
+      (id, salon_id, user_id, permission_key, effect, created_at, updated_at)
+    VALUES ('deny-owner-roles-read', 'main', 'user-owner-a', 'roles.read', 'deny', '2026-07-20', '2026-07-20')
+  `).run();
+  const owner = await worker.fetch(req("/api/admin/roles", { uid: "uid-owner-a" }), testEnv);
+  assert.equal(owner.status, 200, JSON.stringify(await json(owner)));
+
+  // Changing the same D1 permission from deny to allow restores access on
+  // the very next verified request, without re-login or cached fallback.
+  await db.prepare("UPDATE user_permissions SET effect='allow' WHERE id='deny-admin-roles-read'").run();
+  const allowed = await worker.fetch(req("/api/admin/roles", { uid: adminUid }), testEnv);
+  assert.equal(allowed.status, 200, JSON.stringify(await json(allowed)));
+  const stillDenied = await worker.fetch(req("/api/admin/accounts/user-staff/employee-link", {
+    method: "PUT", uid: adminUid, body: { employeeId: "staff-linked" },
+  }), testEnv);
+  assert.equal(stillDenied.status, 403, JSON.stringify(await json(stillDenied)));
+});
+
 test("direct deny wins over role permissions and employee links are D1 records", async (t) => {
   const { db, env: testEnv } = await setup(t);
 
