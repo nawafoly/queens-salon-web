@@ -342,6 +342,61 @@ test('legacy mixed-case completed refund is counted against new refund budget', 
   assert.equal(invoice.paid_halalas, 5000);
 });
 
+function forceStaleRefundCas(db, refundId) {
+  let didChange = false;
+  return {
+    prepare(sql) {
+      return { bind(...values) {
+        const bound = db.prepare(sql).bind(...values);
+        return {
+          bound,
+          first: () => bound.first(),
+          all: () => bound.all(),
+          run: () => bound.run(),
+        };
+      }};
+    },
+    async batch(statements) {
+      if (!didChange) {
+        didChange = true;
+        // Simulate a competing successful update after our refund snapshot
+        // but before this caller's optimistic UPDATE executes.
+        await db.prepare("UPDATE refunds SET amount_halalas = 1200 WHERE salon_id = 'main' AND id = ?")
+          .bind(refundId).run();
+      }
+      return db.batch(statements.map((statement) => statement.bound));
+    },
+  };
+}
+
+for (const operation of ['patch', 'void']) {
+  test(`failed refund ${operation} CAS does not erase its linked expense`, async (t) => {
+    const db = await setup(t);
+    await setupRefundInvoice(db);
+    const id = `stale-cleanup-${operation}`;
+    await createRefund(db, 'main', {
+      id, paymentId: 'seed-payment', amountHalalas: 1000,
+    });
+    const when = '2026-10-10T08:00:00.000Z';
+    await db.prepare(`INSERT INTO expense_entries
+      (id,salon_id,amount_halalas,category,occurred_at,created_at,updated_at,source_kind,source_ref_id)
+      VALUES (?, 'main', 1000, 'refund', ?, ?, ?, 'refund', ?)`)
+      .bind(`expense-${operation}`, when, when, when, id).run();
+    const stale = forceStaleRefundCas(db, id);
+    await assert.rejects(
+      operation === 'patch'
+        ? patchRefund(stale, 'main', id, { amountHalalas: 1500 })
+        : voidRefund(stale, 'main', id),
+      (error) => error?.code === 'core_refund:concurrent_modification',
+    );
+    const row = await db.prepare('SELECT id FROM expense_entries WHERE source_kind = ? AND source_ref_id = ?')
+      .bind('refund', id).first();
+    assert.ok(row, 'failed compare-and-swap must retain expense entry');
+    const invoice = await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first();
+    assert.equal(invoice.paid_halalas, 4000, 'failed CAS must not change invoice balance');
+  });
+}
+
 test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
