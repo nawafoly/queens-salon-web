@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 import { createPayment } from './core/repositories/payments.js';
+import { createRefund, patchRefund, voidRefund } from './core/repositories/refunds.js';
 
 async function setup(t) {
   const mf = new Miniflare({ workers: [{ config: {
@@ -103,6 +104,62 @@ test('simultaneous same idempotency key returns one committed payment and no dup
   assert.equal((await table(db, "SELECT id FROM payments WHERE idempotency_key='same-key'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM income_entries WHERE invoice_id='test-invoice'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='invoice_payment_updated'")).length, 1);
+});
+
+async function setupRefundInvoice(db) {
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO invoices
+    (id,salon_id,booking_id,client_id,subtotal_halalas,total_halalas,discount_halalas,paid_halalas,status,issued_at,created_at,updated_at)
+    VALUES ('refund-invoice','main',NULL,'test-client',20000,20000,0,5000,'partial',?,?,?)`)
+    .bind(now, now, now).run();
+  await db.prepare(`INSERT INTO payments
+    (id,salon_id,invoice_id,client_id,method,amount_halalas,status,paid_at,created_at)
+    VALUES ('seed-payment','main','refund-invoice','test-client','cash',5000,'paid',?,?)`)
+    .bind(now, now).run();
+}
+
+test('a refund and a payment raced from the same invoice snapshot preserve both deltas', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  const gate = gateBothInvoiceReads(db);
+  const result = await Promise.all([
+    createPayment(gate, 'main', {
+      id: 'refund-race-payment', invoiceId: 'refund-invoice',
+      amountHalalas: 4000, idempotencyKey: 'refund-race-payment',
+    }),
+    createRefund(gate, 'main', {
+      id: 'refund-race-refund', paymentId: 'seed-payment',
+      amountHalalas: 1000, idempotencyKey: 'refund-race-refund',
+    }),
+  ]);
+  assert.equal(gate.reads, 2);
+  assert.equal(result.length, 2);
+  const invoice = await db.prepare("SELECT paid_halalas,status FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.paid_halalas, 8000, '5,000 + 4,000 - 1,000 must not lose the payment');
+  assert.equal(invoice.status, 'partial');
+  assert.equal((await table(db, "SELECT id FROM payments WHERE invoice_id='refund-invoice'")).length, 2);
+  assert.equal((await table(db, "SELECT id FROM refunds WHERE invoice_id='refund-invoice'")).length, 1);
+  const invoiceAudit = (await table(db, "SELECT before_json,after_json FROM audit_logs WHERE action='invoice_payment_updated' AND entity_id='refund-invoice'"))[0];
+  assert.ok(invoiceAudit, 'payment keeps its own accurate transaction-time audit');
+  const before = JSON.parse(invoiceAudit.before_json).paidHalalas;
+  const after = JSON.parse(invoiceAudit.after_json).paidHalalas;
+  assert.equal(after - before, 4000);
+});
+
+test('refund amount edits and void restore only their delta against the live invoice row', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  const original = await createRefund(db, 'main', {
+    id: 'refund-edit', paymentId: 'seed-payment', amountHalalas: 1000,
+  });
+  assert.equal(original.amount_halalas, 1000);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 4000);
+  const patched = await patchRefund(db, 'main', 'refund-edit', { amountHalalas: 1500 });
+  assert.equal(patched.amount_halalas, 1500);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 3500);
+  const voided = await voidRefund(db, 'main', 'refund-edit');
+  assert.equal(voided.status, 'voided');
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 5000);
 });
 
 test('invoice lookups do not cross salon boundaries', async (t) => {
