@@ -1,0 +1,114 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import { Miniflare } from 'miniflare';
+import { createPayment } from './core/repositories/payments.js';
+
+async function setup(t) {
+  const mf = new Miniflare({ workers: [{ config: {
+    name: 'payments-d1-race', compatibilityDate: '2026-06-24',
+    manifest: { mainModule: 'script-0.mjs', modulesRoot: process.cwd(),
+      modules: { 'script-0.mjs': { type: 'esm', contents: 'export default {fetch(){return new Response("ok")}}' } } },
+    env: { CORE_DB: { type: 'd1', id: 'payments-d1-race' } }, exports: {},
+  }, dev: { rootPath: process.cwd() } }] });
+  t.after(() => mf.dispose());
+  const db = await mf.getD1Database('CORE_DB');
+  for (const name of [
+    '0001_core_schema.sql', '0003_booking_availability.sql',
+    '0004_admin_operations.sql', '0006_booking_discount_snapshots.sql',
+    '0079_client_cashback_wallet.sql', '0081_cashback_expiry_lot_state.sql',
+  ]) {
+    const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
+      .replace(/\r/g, '').split('\n').filter((x) => !x.trim().startsWith('--')).join('\n');
+    for (const statement of sql.split(';').map((x) => x.trim()).filter(Boolean)) await db.prepare(statement).run();
+  }
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare("INSERT INTO clients (id,salon_id,name,status,created_at,updated_at) VALUES ('test-client','main','Test Client','active',?,?)").bind(now,now).run();
+  await db.prepare(`INSERT INTO bookings
+    (id,salon_id,client_id,booking_date,start_time,end_time,status,source,subtotal_halalas,discount_halalas,total_halalas,payment_status,package_sessions_used,created_at,updated_at)
+    VALUES ('test-booking','main','test-client','2026-10-10','09:00','10:00','booked','internal',10000,0,10000,'unpaid',0,?,?)`).bind(now,now).run();
+  await db.prepare(`INSERT INTO invoices
+    (id,salon_id,booking_id,client_id,subtotal_halalas,total_halalas,discount_halalas,paid_halalas,status,issued_at,created_at,updated_at)
+    VALUES ('test-invoice','main','test-booking','test-client',10000,10000,0,0,'unpaid',?,?,?)`).bind(now,now,now).run();
+  return db;
+}
+
+function gateBothInvoiceReads(db) {
+  let reads = 0, open;
+  const release = new Promise((resolve) => { open = resolve; });
+  return {
+    get reads() { return reads; },
+    prepare(sql) {
+      return { bind(...params) {
+        const bound = db.prepare(sql).bind(...params);
+        return {
+          bound,
+          async first() {
+            const row = await bound.first();
+            if (/^SELECT \* FROM invoices WHERE salon_id = \? AND id = \?/.test(sql)) {
+              reads += 1;
+              if (reads === 2) open();
+              await release;
+            }
+            return row;
+          },
+          all: () => bound.all(), run: () => bound.run(),
+        };
+      }};
+    },
+    batch(statements) { return db.batch(statements.map((item) => item.bound)); },
+  };
+}
+
+async function table(db, query) { return (await db.prepare(query).all()).results; }
+
+test('different concurrent payments are summed and audited from the live invoice row', async (t) => {
+  const db = await setup(t), gate = gateBothInvoiceReads(db);
+  const result = await Promise.all([4000, 6000].map((amount, i) =>
+    createPayment(gate, 'main', {
+      id: `payment-${i}`, invoiceId: 'test-invoice',
+      amountHalalas: amount, method: i ? 'card' : 'cash', idempotencyKey: `key-${i}`,
+    })
+  ));
+  assert.equal(gate.reads, 2);
+  assert.equal(result.length, 2);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 10000);
+  assert.equal((await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first()).payment_status, 'paid');
+  const payments = await table(db, "SELECT * FROM payments WHERE invoice_id='test-invoice'");
+  const incomes = await table(db, "SELECT * FROM income_entries WHERE invoice_id='test-invoice'");
+  assert.equal(payments.length, 2);
+  assert.equal(incomes.length, 2);
+  assert.equal(payments.reduce((n, p) => n + p.amount_halalas, 0), 10000);
+  const audits = (await table(db, "SELECT before_json,after_json FROM audit_logs WHERE action='invoice_payment_updated'")).map(a => ({
+    before: JSON.parse(a.before_json), after: JSON.parse(a.after_json),
+  })).sort((a,b) => a.before.paidHalalas - b.before.paidHalalas);
+  assert.equal(audits.length, 2);
+  assert.equal(audits[0].before.paidHalalas, 0);
+  assert.equal(audits[0].after.paidHalalas, audits[1].before.paidHalalas);
+  assert.equal(audits[1].after.paidHalalas, 10000);
+  assert.equal(audits[1].after.status, 'paid');
+});
+
+test('simultaneous same idempotency key returns one committed payment and no duplicate income', async (t) => {
+  const db = await setup(t), gate = gateBothInvoiceReads(db);
+  const results = await Promise.all(['retry-a','retry-b'].map(id =>
+    createPayment(gate, 'main', { id, invoiceId: 'test-invoice',
+      amountHalalas: 4000, idempotencyKey: 'same-key' })
+  ));
+  assert.equal(gate.reads, 2);
+  assert.equal(results[0].id, results[1].id);
+  assert.equal(results.filter(p => p.idempotent).length, 1);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 4000);
+  assert.equal((await table(db, "SELECT id FROM payments WHERE idempotency_key='same-key'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE invoice_id='test-invoice'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='invoice_payment_updated'")).length, 1);
+});
+
+test('invoice lookups do not cross salon boundaries', async (t) => {
+  const db = await setup(t);
+  await assert.rejects(
+    createPayment(db, 'other-salon', { id: 'cross-salon', invoiceId: 'test-invoice', amountHalalas: 100 }),
+    /not_found/
+  );
+  assert.equal((await table(db, 'SELECT id FROM payments')).length, 0);
+});
