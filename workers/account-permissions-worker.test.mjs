@@ -194,6 +194,52 @@ test("admin account deletion rejects self, unprivileged callers, and PATCH delet
   assert.equal(restoredRow.deleted_at, null);
 });
 
+test("legacy admin-profiles route cannot bypass canonical Core account permissions or owner protection", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const path = "/api/core/admin-profiles";
+  const invoke = async (suffix, opts) => {
+    const response = await worker.fetch(req(path + suffix, opts), testEnv);
+    return { response, body: await json(response) };
+  };
+  const deniedDelete = await invoke("/uid-staff", { method: "DELETE", uid: "uid-admin" });
+  assert.equal(deniedDelete.response.status, 403, JSON.stringify(deniedDelete.body));
+  assert.equal(deniedDelete.body.error, "core_auth:missing_permission");
+
+  const ownerGrant = await invoke("", {
+    method: "POST", uid: "uid-admin",
+    body: { firebaseUid: "uid-admin", displayName: "Escalation attempt", roles: ["owner"] },
+  });
+  assert.equal(ownerGrant.response.status, 403, JSON.stringify(ownerGrant.body));
+  assert.equal(ownerGrant.body.error, "core_admin:owner_required_for_legacy_mutation");
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM role_assignments WHERE firebase_uid='uid-admin' AND role='owner'").first()).n, 0);
+
+  await db.prepare(`
+    INSERT INTO admin_profiles
+      (salon_id, firebase_uid, display_name, active, created_at, updated_at)
+    VALUES ('main', 'uid-owner-b', 'Owner B legacy profile', 1, '2026-07-20', '2026-07-20')
+  `).run();
+  for (const [method, body] of [["PATCH", { displayName: "Blocked overwrite" }], ["DELETE", {}]]) {
+    const rejected = await invoke("/uid-owner-b", { method, uid: "uid-admin", body });
+    assert.equal(rejected.response.status, 403, JSON.stringify(rejected.body));
+    assert.ok(["core_admin:owner_required_for_legacy_mutation", "core_auth:missing_permission"].includes(rejected.body.error), JSON.stringify(rejected.body));
+  }
+  assert.equal((await db.prepare("SELECT display_name FROM admin_profiles WHERE firebase_uid='uid-owner-b'").first()).display_name, "Owner B legacy profile");
+  assert.equal((await db.prepare("SELECT status FROM app_users WHERE id='user-owner-b'").first()).status, "active");
+
+  const created = await invoke("", {
+    method: "POST", uid: "uid-owner-a",
+    body: { firebaseUid: "uid-staff", displayName: "Legacy Staff", roles: ["staff"] },
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal((await db.prepare("SELECT role FROM role_assignments WHERE firebase_uid='uid-staff'").first()).role, "staff");
+  const legacyRemoved = await invoke("/uid-staff", { method: "DELETE", uid: "uid-owner-a" });
+  assert.equal(legacyRemoved.response.status, 200, JSON.stringify(legacyRemoved.body));
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM admin_profiles WHERE firebase_uid='uid-staff'").first()).n, 0);
+  assert.equal((await db.prepare("SELECT role FROM role_assignments WHERE firebase_uid='uid-staff'").first()).role, "revoked");
+  // This compatibility endpoint is NOT the canonical app_users account delete.
+  assert.equal((await db.prepare("SELECT status FROM app_users WHERE id='user-staff'").first()).status, "active");
+});
+
 test("internal account scope excludes client identities from account management", async (t) => {
   const { env: testEnv } = await setup(t);
 

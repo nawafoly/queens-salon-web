@@ -3437,10 +3437,24 @@ async function dispatch(ctx, route, method, body, query, env) {
     }
 
     case "admin-profiles":
+      // Compatibility route: preserve consumers but require canonical Core D1
+      // permissions, not just the caller's admin role.
       requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET") return listAdminProfiles(db, ctx.salonId);
-      if (["POST", "PATCH"].includes(method)) return upsertAdminProfile(db, ctx.salonId, route.id ? { ...body, firebaseUid: route.id } : body, actorInfo);
-      if (method === "DELETE" && route.id) return deleteAdminProfile(db, ctx.salonId, route.id, actorInfo);
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["accounts.read", "admin_accounts.view"]);
+        return listAdminProfiles(db, ctx.salonId);
+      }
+      if (method === "POST" || method === "PATCH") {
+        requireAnyPermission(ctx, [method === "POST" ? "accounts.create" : "accounts.update", "admin_accounts.manage"]);
+        if (ctx.role !== "owner") throw new AppError(403, "core_admin:owner_required_for_legacy_mutation");
+        if (Array.isArray(body.roles)) requirePermission(ctx, "roles.assign");
+        return upsertAdminProfile(db, ctx.salonId, route.id ? { ...body, firebaseUid: route.id } : body, actorInfo);
+      }
+      if (method === "DELETE" && route.id) {
+        requirePermission(ctx, "accounts.delete");
+        if (ctx.role !== "owner") throw new AppError(403, "core_admin:owner_required_for_legacy_mutation");
+        return deleteAdminProfile(db, ctx.salonId, route.id, actorInfo);
+      }
       break;
 
     case "files": {
