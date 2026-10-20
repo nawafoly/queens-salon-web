@@ -16,10 +16,20 @@ import { recordAudit } from './audit.js';
 import { safeRefreshTargetsForBooking } from './employee-targets.js';
 import { reconcileCashbackForBooking } from './cashback.js';
 
-function invoiceStatus(total, paid) {
-  if (paid <= 0) return 'unpaid';
-  if (paid >= total) return 'paid';
-  return 'partial';
+// Never derive a new invoice balance from a pre-batch read. Payment and
+// refund batches share this row; arithmetic must use the live D1 value.
+function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { capAtTotal = false } = {}) {
+  const next = capAtTotal
+    ? 'MIN(total_halalas, MAX(0, paid_halalas + ?))'
+    : 'MAX(0, paid_halalas + ?)';
+  return {
+    sql: `UPDATE invoices SET paid_halalas = ${next},
+      status = CASE WHEN ${next} <= 0 THEN 'unpaid'
+                    WHEN ${next} >= total_halalas THEN 'paid'
+                    ELSE 'partial' END,
+      updated_at = ? WHERE salon_id = ? AND id = ?`,
+    params: [delta, delta, delta, updatedAt, salonId, invoiceId],
+  };
 }
 
 function refundDateScope(rawDate) {
@@ -138,11 +148,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
   ];
 
   if (invoice) {
-    const paidAfter = Math.max(0, Number(invoice.paid_halalas || 0) - amount);
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, -amount, now));
   }
 
   await dbBatch(db, statements);
@@ -208,17 +214,8 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   ];
 
   if (invoice) {
-    const paidAfter = Math.max(
-      0,
-      Math.min(
-        Number(invoice.total_halalas || 0),
-        Number(invoice.paid_halalas || 0) + Number(refund.amount_halalas || 0) - amount
-      )
-    );
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+    const delta = Number(refund.amount_halalas || 0) - amount;
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, { capAtTotal: true }));
   }
 
   await dbBatch(db, statements);
@@ -261,14 +258,9 @@ export async function voidRefund(db, salonId, id, actor = {}) {
   ];
 
   if (invoice && cleanText(refund.status).toLowerCase() === 'completed') {
-    const paidAfter = Math.min(
-      Number(invoice.total_halalas || 0),
-      Number(invoice.paid_halalas || 0) + Number(refund.amount_halalas || 0)
-    );
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+    statements.push(invoiceAdjustmentStatement(
+      salonId, invoice.id, Number(refund.amount_halalas || 0), now, { capAtTotal: true }
+    ));
   }
 
   await dbBatch(db, statements);
