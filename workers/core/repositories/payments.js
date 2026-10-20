@@ -15,12 +15,6 @@ import { getInvoice } from './invoices.js';
 import { auditInsertStatement } from './audit.js';
 import { reconcileCashbackForBooking } from './cashback.js';
 
-function paymentStatusForInvoice(total, paid) {
-  if (paid <= 0) return "unpaid";
-  if (paid >= total) return "paid";
-  return "partial";
-}
-
 // Render invoice audit values from the row inside the same D1 transaction.
 // A pre-batch JS invoice snapshot is not safe if two payments run concurrently.
 function invoiceAuditFromLiveRow(salonId, invoiceId, payment, amount, actor) {
