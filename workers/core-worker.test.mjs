@@ -2303,6 +2303,10 @@ class FakeD1 {
         const [voidedAt, voidedByUid, salonId, id] = params;
         results.push(this.update("refunds", salonId, id, { status: "voided", voided_at: voidedAt, voided_by_uid: voidedByUid }));
       } else if (sql.startsWith("DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund'")) {
+        if (sql.includes("AND changes() = 1") && Number(results.at(-1)?.meta?.changes || 0) !== 1) {
+          results.push({ meta: { changes: 0 } });
+          continue;
+        }
         const [salonId, sourceRefId] = params;
         let removed = 0;
         for (const [key, row] of this.tables.expense_entries.entries()) {
