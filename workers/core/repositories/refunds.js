@@ -19,10 +19,10 @@ import { reconcileCashbackForBooking } from './cashback.js';
 
 // Never derive a new invoice balance from a pre-batch read. Payment and
 // refund batches share this row; arithmetic must use the live D1 value.
-function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { capAtTotal = false, requirePriorUpdate = false } = {}) {
-  const next = capAtTotal
-    ? 'MIN(total_halalas, MAX(0, paid_halalas + ?))'
-    : 'MAX(0, paid_halalas + ?)';
+function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { requirePriorUpdate = false } = {}) {
+  // Preserve legitimate overpayments. Capping at total_halalas would silently
+  // erase money if a payment raced with a refund edit or void.
+  const next = 'MAX(0, paid_halalas + ?)';
   return {
     sql: `UPDATE invoices SET paid_halalas = ${next},
       status = CASE WHEN ${next} <= 0 THEN 'unpaid'
@@ -247,7 +247,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   if (invoice) {
     const delta = Number(refund.amount_halalas || 0) - amount;
     statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, {
-      capAtTotal: true, requirePriorUpdate: true,
+      requirePriorUpdate: true,
     }));
   }
   statements.push({
@@ -288,15 +288,15 @@ export async function voidRefund(db, salonId, id, actor = {}) {
   const now = nowIso();
   const statements = [
     {
-      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ? AND status = ?",
-      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id), refund.status],
+      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ? AND status = ? AND amount_halalas = ?",
+      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id), refund.status, refund.amount_halalas],
     },
   ];
 
   if (invoice && cleanText(refund.status).toLowerCase() === 'completed') {
     statements.push(invoiceAdjustmentStatement(
       salonId, invoice.id, Number(refund.amount_halalas || 0), now, {
-        capAtTotal: true, requirePriorUpdate: true,
+        requirePriorUpdate: true,
       }
     ));
   }
