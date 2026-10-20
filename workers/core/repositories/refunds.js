@@ -125,7 +125,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
     amount_halalas: amount,
     method: cleanText(data.method || payment?.method || 'cash'),
     reason: optionalText(data.reason) || null,
-    status: cleanText(data.status || 'completed'),
+    status: cleanText(data.status || 'completed').toLowerCase(),
     idempotency_key: idempotencyKey || null,
     provider_reference: optionalText(data.providerReference || data.provider_reference) || null,
     created_by_uid: optionalText(actor.uid) || null,
