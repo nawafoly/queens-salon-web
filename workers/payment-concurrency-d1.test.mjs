@@ -302,6 +302,25 @@ test('a patch racing a void applies exactly one version of a refund amount', asy
     ? 5000 : 5000 - refund.amount_halalas);
 });
 
+test('case-variant completed refund still consumes the exact live payment budget', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  const result = await createRefund(db, 'main', {
+    id: 'case-refund', paymentId: 'seed-payment', amountHalalas: 3000,
+    status: 'Completed',
+  });
+  assert.equal(result.status, 'completed');
+  await assert.rejects(
+    createRefund(db, 'main', {
+      id: 'case-over-refund', paymentId: 'seed-payment', amountHalalas: 3000,
+      status: 'completed',
+    }),
+    (error) => error?.code === 'core_refund:amount_exceeds_remaining'
+  );
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 2000);
+  assert.equal((await table(db, "SELECT id FROM refunds WHERE payment_id='seed-payment'")).length, 1);
+});
+
 test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
