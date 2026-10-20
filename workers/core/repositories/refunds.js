@@ -1,6 +1,7 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
+  changes,
   cleanText,
   dbAll,
   dbBatch,
@@ -18,7 +19,7 @@ import { reconcileCashbackForBooking } from './cashback.js';
 
 // Never derive a new invoice balance from a pre-batch read. Payment and
 // refund batches share this row; arithmetic must use the live D1 value.
-function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { capAtTotal = false } = {}) {
+function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { capAtTotal = false, requirePriorUpdate = false } = {}) {
   const next = capAtTotal
     ? 'MIN(total_halalas, MAX(0, paid_halalas + ?))'
     : 'MAX(0, paid_halalas + ?)';
@@ -27,7 +28,8 @@ function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { capA
       status = CASE WHEN ${next} <= 0 THEN 'unpaid'
                     WHEN ${next} >= total_halalas THEN 'paid'
                     ELSE 'partial' END,
-      updated_at = ? WHERE salon_id = ? AND id = ?`,
+      updated_at = ? WHERE salon_id = ? AND id = ?
+        ${requirePriorUpdate ? 'AND changes() = 1' : ''}`,
     params: [delta, delta, delta, updatedAt, salonId, invoiceId],
   };
 }
@@ -204,21 +206,26 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   const statements = [
     {
       sql: `UPDATE refunds SET amount_halalas = ?, method = ?, reason = ?, refunded_at = ?
-            WHERE salon_id = ? AND id = ?`,
-      params: [amount, method, reason, refundedAt, salonId, refund.id],
-    },
-    {
-      sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
-      params: [salonId, refund.id],
+            WHERE salon_id = ? AND id = ? AND amount_halalas = ? AND status = ?`,
+      params: [amount, method, reason, refundedAt, salonId, refund.id, refund.amount_halalas, refund.status],
     },
   ];
 
   if (invoice) {
     const delta = Number(refund.amount_halalas || 0) - amount;
-    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, { capAtTotal: true }));
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, {
+      capAtTotal: true, requirePriorUpdate: true,
+    }));
   }
+  statements.push({
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
+    params: [salonId, refund.id],
+  });
 
-  await dbBatch(db, statements);
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    throw new AppError(409, 'core_refund:concurrent_modification');
+  }
   const row = await getRefund(db, salonId, id);
   await recordAudit(db, salonId, {
     action: 'refund_updated', entityType: 'refund', entityId: id,
@@ -248,22 +255,31 @@ export async function voidRefund(db, salonId, id, actor = {}) {
   const now = nowIso();
   const statements = [
     {
-      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ?",
-      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id)],
-    },
-    {
-      sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
-      params: [salonId, id],
+      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ? AND status = ?",
+      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id), refund.status],
     },
   ];
 
   if (invoice && cleanText(refund.status).toLowerCase() === 'completed') {
     statements.push(invoiceAdjustmentStatement(
-      salonId, invoice.id, Number(refund.amount_halalas || 0), now, { capAtTotal: true }
+      salonId, invoice.id, Number(refund.amount_halalas || 0), now, {
+        capAtTotal: true, requirePriorUpdate: true,
+      }
     ));
   }
+  statements.push({
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
+    params: [salonId, id],
+  });
 
-  await dbBatch(db, statements);
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    const current = await getRefund(db, salonId, id);
+    if (cleanText(current.status).toLowerCase() === 'voided') {
+      return { ...current, idempotent: true };
+    }
+    throw new AppError(409, 'core_refund:concurrent_modification');
+  }
   const row = await getRefund(db, salonId, id);
   await recordAudit(db, salonId, {
     action: 'refund_voided', entityType: 'refund', entityId: id,
