@@ -62,6 +62,33 @@ function gateBothInvoiceReads(db) {
   };
 }
 
+function gateBothRefundReads(db) {
+  let reads = 0, open;
+  const release = new Promise((resolve) => { open = resolve; });
+  return {
+    get reads() { return reads; },
+    prepare(sql) {
+      return { bind(...params) {
+        const bound = db.prepare(sql).bind(...params);
+        return {
+          bound,
+          async first() {
+            const row = await bound.first();
+            if (/^SELECT \* FROM refunds WHERE salon_id = \? AND id = \? LIMIT 1/.test(sql) && reads < 2) {
+              reads += 1;
+              if (reads === 2) open();
+              await release;
+            }
+            return row;
+          },
+          all: () => bound.all(), run: () => bound.run(),
+        };
+      }};
+    },
+    batch(statements) { return db.batch(statements.map((item) => item.bound)); },
+  };
+}
+
 async function table(db, query) { return (await db.prepare(query).all()).results; }
 
 test('different concurrent payments are summed and audited from the live invoice row', async (t) => {
@@ -160,6 +187,39 @@ test('refund amount edits and void restore only their delta against the live inv
   const voided = await voidRefund(db, 'main', 'refund-edit');
   assert.equal(voided.status, 'voided');
   assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 5000);
+});
+
+test('two simultaneous voids of one refund credit the invoice only once', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  await createRefund(db, 'main', { id: 'void-race', paymentId: 'seed-payment', amountHalalas: 1000 });
+  const gate = gateBothRefundReads(db);
+  const results = await Promise.all([
+    voidRefund(gate, 'main', 'void-race'), voidRefund(gate, 'main', 'void-race'),
+  ]);
+  assert.equal(gate.reads, 2);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 5000);
+  assert.equal(results.filter(p => p.idempotent).length, 1);
+  assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='refund_voided' AND entity_id='void-race'")).length, 1);
+});
+
+test('raced edits to one refund reject a stale update without double subtracting', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  await createRefund(db, 'main', { id: 'edit-race', paymentId: 'seed-payment', amountHalalas: 1000 });
+  const gate = gateBothRefundReads(db);
+  const result = await Promise.allSettled([
+    patchRefund(gate, 'main', 'edit-race', { amountHalalas: 1500 }),
+    patchRefund(gate, 'main', 'edit-race', { amountHalalas: 2000 }),
+  ]);
+  assert.equal(gate.reads, 2);
+  const accepted = result.filter(p => p.status === 'fulfilled');
+  assert.equal(accepted.length, 1);
+  const rejected = result.find(p => p.status === 'rejected');
+  assert.equal(rejected.reason.code, 'core_refund:concurrent_modification');
+  const refund = await db.prepare("SELECT amount_halalas FROM refunds WHERE id='edit-race'").first();
+  const invoice = await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.paid_halalas, 5000 - refund.amount_halalas);
 });
 
 test('invoice lookups do not cross salon boundaries', async (t) => {
