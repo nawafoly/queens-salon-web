@@ -2446,7 +2446,7 @@ class FakeD1 {
         const [paymentSalon, paymentId, amount] = params.slice(17);
         const payment = this.find("payments", paymentSalon, paymentId);
         const total = this.rows("refunds")
-          .filter((x) => x.salon_id === paymentSalon && x.payment_id === paymentId && x.status === "completed")
+          .filter((x) => x.salon_id === paymentSalon && x.payment_id === paymentId && String(x.status || "").trim().toLowerCase() === "completed")
           .reduce((sum, x) => sum + Number(x.amount_halalas || 0), 0);
         if (!payment || total + amount > Number(payment.amount_halalas || 0)) {
           results.push({ meta: { changes: 0 } });
