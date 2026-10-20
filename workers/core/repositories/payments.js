@@ -21,6 +21,67 @@ function paymentStatusForInvoice(total, paid) {
   return "partial";
 }
 
+// Render invoice audit values from the row inside the same D1 transaction.
+// A pre-batch JS invoice snapshot is not safe if two payments run concurrently.
+function invoiceAuditFromLiveRow(salonId, invoiceId, payment, amount, actor) {
+  const template = auditInsertStatement(salonId, {
+    action: 'invoice_payment_updated',
+    entityType: 'invoice',
+    entityId: invoiceId,
+    description: 'Invoice payment totals updated',
+    source: 'core-payment',
+    before: null,
+    after: null,
+    meta: { paymentId: payment.id, bookingId: payment.booking_id },
+  }, actor).statement;
+  const projections = template.params.map((_, index) => {
+    if (index === 14) return "json_object('paidHalalas', i.paid_halalas, 'status', i.status)";
+    if (index === 15) return `json_object('paidHalalas', i.paid_halalas + ?,
+      'status', CASE WHEN i.paid_halalas + ? <= 0 THEN 'unpaid'
+                     WHEN i.paid_halalas + ? >= i.total_halalas THEN 'paid'
+                     ELSE 'partial' END)`;
+    return '?';
+  });
+  const sql = template.sql.replace(
+    /VALUES\s*\([\s\S]*?\)\s*$/,
+    `SELECT ${projections.join(', ')}
+       FROM invoices AS i WHERE i.salon_id = ? AND i.id = ? /* PAYMENT_INVOICE_AUDIT */`
+  );
+  if (sql === template.sql) throw new Error('PAYMENT_INVOICE_AUDIT_INVALID');
+  return {
+    sql,
+    params: [
+      ...template.params.flatMap((value, i) => i === 14 ? [] : i === 15 ? [amount, amount, amount] : [value]),
+      salonId, invoiceId,
+    ],
+  };
+}
+
+function bookingPaymentAuditFromLiveInvoice(salonId, invoiceId, payment, actor) {
+  const template = auditInsertStatement(salonId, {
+    action: 'booking_payment_status_updated',
+    entityType: 'booking',
+    entityId: payment.booking_id,
+    description: 'Booking payment status updated',
+    source: 'core-payment',
+    after: null,
+    meta: { paymentId: payment.id },
+  }, actor).statement;
+  const fields = template.params.map((_, i) => i === 15
+    ? "json_object('paymentStatus', i.status, 'invoiceId', i.id, 'paidHalalas', i.paid_halalas)"
+    : '?');
+  const sql = template.sql.replace(
+    /VALUES\s*\([\s\S]*?\)\s*$/,
+    `SELECT ${fields.join(', ')}
+       FROM invoices AS i WHERE i.salon_id = ? AND i.id = ? /* PAYMENT_BOOKING_AUDIT */`
+  );
+  if (sql === template.sql) throw new Error('PAYMENT_BOOKING_AUDIT_INVALID');
+  return {
+    sql,
+    params: [...template.params.filter((_, i) => i !== 15), salonId, invoiceId],
+  };
+}
+
 export async function listPayments(db, salonId) {
   return dbAll(db, "SELECT * FROM payments WHERE salon_id = ? ORDER BY created_at DESC LIMIT 500", [salonId]);
 }
@@ -104,19 +165,25 @@ export async function createPayment(db, salonId, data, actor = {}) {
       ],
     },
   ];
-  let paidAfter = null;
-  let invoiceStatus = null;
   if (invoice) {
-    paidAfter = Number(invoice.paid_halalas || 0) + amount;
-    invoiceStatus = paymentStatusForInvoice(Number(invoice.total_halalas || 0), paidAfter);
+    // All invoice-related statements share one D1 batch (transaction).
+    // The audit reads the actual previous row at write time, not a stale
+    // pre-transaction snapshot, and the UPDATE increments it atomically.
+    statements.push(invoiceAuditFromLiveRow(salonId, invoice.id, payment, amount, actor));
     statements.push({
-      sql: "UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?",
-      params: [paidAfter, invoiceStatus, now, salonId, invoice.id],
+      sql: `UPDATE invoices SET paid_halalas = paid_halalas + ?,
+        status = CASE WHEN paid_halalas + ? <= 0 THEN 'unpaid'
+                      WHEN paid_halalas + ? >= total_halalas THEN 'paid'
+                      ELSE 'partial' END,
+        updated_at = ? WHERE salon_id = ? AND id = ?`,
+      params: [amount, amount, amount, now, salonId, invoice.id],
     });
     if (payment.booking_id) {
       statements.push({
-        sql: "UPDATE bookings SET payment_status = ?, updated_at = ? WHERE salon_id = ? AND id = ?",
-        params: [invoiceStatus, now, salonId, payment.booking_id],
+        sql: `UPDATE bookings SET payment_status = (
+          SELECT status FROM invoices WHERE salon_id = ? AND id = ?
+        ), updated_at = ? WHERE salon_id = ? AND id = ?`,
+        params: [salonId, invoice.id, now, salonId, payment.booking_id],
       });
     }
   }
@@ -155,40 +222,23 @@ export async function createPayment(db, salonId, data, actor = {}) {
       meta: { paymentId: payment.id },
     }, actor).statement
   );
-  if (invoice) {
-    statements.push(auditInsertStatement(salonId, {
-      action: "invoice_payment_updated",
-      entityType: "invoice",
-      entityId: invoice.id,
-      description: "Invoice payment totals updated",
-      source: "core-payment",
-      before: {
-        paidHalalas: Number(invoice.paid_halalas || 0),
-        status: invoice.status,
-      },
-      after: {
-        paidHalalas: paidAfter,
-        status: invoiceStatus,
-      },
-      meta: { paymentId: payment.id, bookingId: payment.booking_id },
-    }, actor).statement);
-    if (payment.booking_id) {
-      statements.push(auditInsertStatement(salonId, {
-        action: "booking_payment_status_updated",
-        entityType: "booking",
-        entityId: payment.booking_id,
-        description: "Booking payment status updated",
-        source: "core-payment",
-        after: {
-          paymentStatus: invoiceStatus,
-          invoiceId: invoice.id,
-          paidHalalas: paidAfter,
-        },
-        meta: { paymentId: payment.id },
-      }, actor).statement);
-    }
+  if (invoice && payment.booking_id) {
+    statements.push(bookingPaymentAuditFromLiveInvoice(salonId, invoice.id, payment, actor));
   }
-  await dbBatch(db, statements);
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    // The unique (salon_id, idempotency_key) constraint is the final arbiter
+    // if two callers raced past the initial lookup. Return the winner without
+    // recording another payment, income entry, or audit event.
+    if (idempotencyKey && /UNIQUE|constraint failed|SQLITE_CONSTRAINT/i.test(String(error?.message || ''))) {
+      const winner = await dbFirst(db,
+        'SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
+        [salonId, idempotencyKey]);
+      if (winner) return { ...winner, idempotent: true };
+    }
+    throw error;
+  }
   if (payment.booking_id) {
     await reconcileCashbackForBooking(
       db,
