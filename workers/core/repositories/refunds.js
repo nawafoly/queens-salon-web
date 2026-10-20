@@ -160,7 +160,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
            AND p.amount_halalas >= ? + COALESCE((
              SELECT SUM(r.amount_halalas) FROM refunds AS r
               WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
-                AND r.LOWER(TRIM(status)) = 'completed'
+                AND LOWER(TRIM(r.status)) = 'completed'
            ), 0))`
     );
     statements[0].params.push(salonId, payment.id, amount);
@@ -238,7 +238,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
         AND p.amount_halalas >= ? + COALESCE((
           SELECT SUM(r.amount_halalas) FROM refunds r
            WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
-             AND r.LOWER(TRIM(status)) = 'completed' AND r.id <> ?
+             AND LOWER(TRIM(r.status)) = 'completed' AND r.id <> ?
         ), 0)
     )`;
     statements[0].params.push(salonId, payment.id, amount, refund.id);
