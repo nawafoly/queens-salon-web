@@ -2412,6 +2412,10 @@ class FakeD1 {
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
       } else if (sql.startsWith("UPDATE invoices SET paid_halalas = MAX(") ||
                  sql.startsWith("UPDATE invoices SET paid_halalas = MIN(")) {
+        if (sql.includes("AND changes() = 1") && Number(results.at(-1)?.meta?.changes || 0) !== 1) {
+          results.push({ meta: { changes: 0 } });
+          continue;
+        }
         const [delta, , , updatedAt, salonId, id] = params;
         const row = this.find("invoices", salonId, id);
         const rawPaid = Number(row?.paid_halalas || 0) + delta;
@@ -2436,6 +2440,20 @@ class FakeD1 {
         results.push(this.dynamicUpdate("invoices", sql, params));
       } else if (sql.startsWith("DELETE FROM ")) {
         results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("INSERT INTO refunds") && sql.includes("WHERE EXISTS (SELECT 1 FROM payments AS p")) {
+        const columns = sql.match(/^INSERT INTO refunds \(([^)]+)\) SELECT/)?.[1]
+          ?.split(",").map((x) => x.trim()) || [];
+        const [paymentSalon, paymentId, amount] = params.slice(17);
+        const payment = this.find("payments", paymentSalon, paymentId);
+        const total = this.rows("refunds")
+          .filter((x) => x.salon_id === paymentSalon && x.payment_id === paymentId && x.status === "completed")
+          .reduce((sum, x) => sum + Number(x.amount_halalas || 0), 0);
+        if (!payment || total + amount > Number(payment.amount_halalas || 0)) {
+          results.push({ meta: { changes: 0 } });
+        } else {
+          const row = Object.fromEntries(columns.map((key, i) => [key, params[i]]));
+          results.push(this.insert("refunds", row));
+        }
       } else if (sql.startsWith("INSERT INTO refunds") || sql.startsWith("INSERT INTO expense_entries")) {
         results.push(await this.run(statement.sql, params));
       } else {
