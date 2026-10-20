@@ -108,7 +108,7 @@ test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
     createPayment(db, 'other-salon', { id: 'cross-salon', invoiceId: 'test-invoice', amountHalalas: 100 }),
-    /not_found/
+    (error) => error?.code === 'core_invoice:not_found'
   );
   assert.equal((await table(db, 'SELECT id FROM payments')).length, 0);
 });
