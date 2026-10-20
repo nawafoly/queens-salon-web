@@ -251,7 +251,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
     }));
   }
   statements.push({
-    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
     params: [salonId, refund.id],
   });
 
@@ -301,7 +301,7 @@ export async function voidRefund(db, salonId, id, actor = {}) {
     ));
   }
   statements.push({
-    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
     params: [salonId, id],
   });
 
