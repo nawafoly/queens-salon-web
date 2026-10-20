@@ -16,6 +16,7 @@ async function setup(t) {
   for (const name of [
     '0001_core_schema.sql', '0003_booking_availability.sql',
     '0004_admin_operations.sql', '0006_booking_discount_snapshots.sql',
+    '0014_app_users_permissions.sql',
     '0079_client_cashback_wallet.sql', '0081_cashback_expiry_lot_state.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
