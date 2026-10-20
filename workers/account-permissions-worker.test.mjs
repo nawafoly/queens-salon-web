@@ -210,7 +210,7 @@ test("legacy admin-profiles route cannot bypass canonical Core account permissio
     body: { firebaseUid: "uid-admin", displayName: "Escalation attempt", roles: ["owner"] },
   });
   assert.equal(ownerGrant.response.status, 403, JSON.stringify(ownerGrant.body));
-  assert.equal(ownerGrant.body.error, "ACCOUNT_ROLE_ASSIGN_FORBIDDEN");
+  assert.equal(ownerGrant.body.error, "core_admin:owner_required_for_legacy_mutation");
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM role_assignments WHERE firebase_uid='uid-admin' AND role='owner'").first()).n, 0);
 
   await db.prepare(`
@@ -221,7 +221,7 @@ test("legacy admin-profiles route cannot bypass canonical Core account permissio
   for (const [method, body] of [["PATCH", { displayName: "Blocked overwrite" }], ["DELETE", {}]]) {
     const rejected = await invoke("/uid-owner-b", { method, uid: "uid-admin", body });
     assert.equal(rejected.response.status, 403, JSON.stringify(rejected.body));
-    assert.ok(["ACCOUNT_OWNER_PROTECTED", "core_auth:missing_permission"].includes(rejected.body.error), JSON.stringify(rejected.body));
+    assert.ok(["core_admin:owner_required_for_legacy_mutation", "core_auth:missing_permission"].includes(rejected.body.error), JSON.stringify(rejected.body));
   }
   assert.equal((await db.prepare("SELECT display_name FROM admin_profiles WHERE firebase_uid='uid-owner-b'").first()).display_name, "Owner B legacy profile");
   assert.equal((await db.prepare("SELECT status FROM app_users WHERE id='user-owner-b'").first()).status, "active");
