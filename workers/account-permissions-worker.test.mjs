@@ -468,6 +468,56 @@ test("direct deny wins over role permissions and employee links are D1 records",
   assert.deepEqual(link, { user_id: "user-staff", employee_id: "staff-linked", link_status: "active" });
 });
 
+test("employee unlink and its audit roll back together on audit failure", async (t) => {
+  const { db, env: testEnv } = await setup(t);
+  const path = "/api/admin/accounts/user-staff/employee-link";
+  const linked = await worker.fetch(req(path, { method: "PUT", body: { employeeId: "staff-linked" } }), testEnv);
+  assert.equal(linked.status, 200, JSON.stringify(await json(linked)));
+
+  const original = await db.prepare(
+    "SELECT id, link_status, unlinked_at FROM user_employee_links WHERE salon_id='main' AND user_id='user-staff' AND link_status='active'"
+  ).first();
+  assert.ok(original, "fixture must have an active link");
+  await db.prepare(`
+    CREATE TRIGGER block_employee_link_delete_audit BEFORE INSERT ON audit_logs
+    WHEN NEW.action = 'account_employee_link_deleted'
+    BEGIN SELECT RAISE(ABORT, 'INJECTED_UNLINK_AUDIT_FAILURE'); END
+  `).run();
+
+  const failed = await worker.fetch(req(path, { method: "DELETE" }), testEnv);
+  assert.ok(failed.status >= 400, "unlink must fail when its audit cannot be persisted");
+  const retained = await db.prepare("SELECT link_status, unlinked_at FROM user_employee_links WHERE id=?")
+    .bind(original.id).first();
+  assert.equal(retained.link_status, "active", "D1 must roll back unlink on audit failure");
+  assert.equal(retained.unlinked_at, original.unlinked_at);
+  assert.equal(Number((await db.prepare(
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE action='account_employee_link_deleted' AND entity_id=?"
+  ).bind(original.id).first()).n), 0);
+
+  await db.prepare("DROP TRIGGER block_employee_link_delete_audit").run();
+  const unlinked = await worker.fetch(req(path, { method: "DELETE" }), testEnv);
+  assert.equal(unlinked.status, 200, JSON.stringify(await json(unlinked)));
+  const row = await db.prepare("SELECT link_status, unlinked_at FROM user_employee_links WHERE id=?")
+    .bind(original.id).first();
+  assert.equal(row.link_status, "unlinked");
+  assert.ok(row.unlinked_at);
+
+  const log = await db.prepare(
+    "SELECT before_json, after_json, actor_user_id FROM audit_logs WHERE action='account_employee_link_deleted' AND entity_id=?"
+  ).bind(original.id).first();
+  assert.ok(log);
+  assert.equal(JSON.parse(log.before_json).employeeId, "staff-linked");
+  assert.equal(JSON.parse(log.after_json), null);
+  assert.equal(log.actor_user_id, "user-owner-a");
+
+  // Idempotent repeat: nothing further to unlink, so never fabricate an audit.
+  const repeated = await worker.fetch(req(path, { method: "DELETE" }), testEnv);
+  assert.equal(repeated.status, 200, JSON.stringify(await json(repeated)));
+  assert.equal(Number((await db.prepare(
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE action='account_employee_link_deleted' AND entity_id=?"
+  ).bind(original.id).first()).n), 1);
+});
+
 test("password reset remains Firebase delivery after D1 authorization", async (t) => {
   const { env: testEnv } = await setup(t);
   const response = await worker.fetch(req("/api/admin/accounts/user-staff/reset-password", {
