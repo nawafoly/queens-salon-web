@@ -264,6 +264,44 @@ test('concurrent distinct refunds cannot exceed the original payment budget', as
   assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='refund_created'")).length, 1);
 });
 
+test('payment versus void retains legitimate overpayment even above invoice total', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  await db.prepare("UPDATE invoices SET total_halalas = 5000 WHERE id='refund-invoice'").run();
+  await createRefund(db, 'main', { id: 'overpaid-refund', paymentId: 'seed-payment', amountHalalas: 1000 });
+  const gate = gateBothInvoiceReads(db);
+  await Promise.all([
+    createPayment(gate, 'main', {
+      id: 'overpay-payment', invoiceId: 'refund-invoice', amountHalalas: 2000,
+    }),
+    voidRefund(gate, 'main', 'overpaid-refund'),
+  ]);
+  assert.equal(gate.reads, 2);
+  const invoice = await db.prepare("SELECT paid_halalas, total_halalas, status FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.total_halalas, 5000);
+  assert.equal(invoice.paid_halalas, 7000, 'refunding a refund must not erase excess collected payment');
+  assert.equal(invoice.status, 'paid');
+});
+
+test('a patch racing a void applies exactly one version of a refund amount', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  await createRefund(db, 'main', { id: 'void-edit-race', paymentId: 'seed-payment', amountHalalas: 1000 });
+  const gate = gateBothRefundReads(db);
+  const result = await Promise.allSettled([
+    patchRefund(gate, 'main', 'void-edit-race', { amountHalalas: 1500 }),
+    voidRefund(gate, 'main', 'void-edit-race'),
+  ]);
+  assert.equal(gate.reads, 2);
+  assert.equal(result.filter(p => p.status === 'fulfilled').length, 1);
+  const rejected = result.find(p => p.status === 'rejected');
+  assert.equal(rejected.reason.code, 'core_refund:concurrent_modification');
+  const refund = await db.prepare("SELECT status,amount_halalas FROM refunds WHERE id='void-edit-race'").first();
+  const invoice = await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.paid_halalas, refund.status === 'voided'
+    ? 5000 : 5000 - refund.amount_halalas);
+});
+
 test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
