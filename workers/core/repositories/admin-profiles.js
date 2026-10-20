@@ -26,26 +26,19 @@ export async function listAdminProfiles(db, salonId) {
   })));
 }
 
-// Compatibility admin_profile records are not authoritative for login or permissions.
-// Still protect owner identities from legacy edits/revocation by non-owner callers.
-async function protectLegacyOwnerTarget(db, salonId, uid, actor, nextRoles) {
-  if (cleanText(actor?.role).toLowerCase() === 'owner') return;
-  const requestedOwner = Array.isArray(nextRoles) && nextRoles.some((value) =>
-    cleanText(typeof value === 'string' ? value : value?.role).toLowerCase() === 'owner'
-  );
-  if (requestedOwner) throw new AppError(403, 'ACCOUNT_ROLE_ASSIGN_FORBIDDEN');
-  const [canonical, legacy] = await Promise.all([
-    dbFirst(db, 'SELECT primary_role FROM app_users WHERE salon_id = ? AND firebase_uid = ? LIMIT 1', [salonId, uid]),
-    dbFirst(db, "SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND role = 'owner' AND active = 1 LIMIT 1", [salonId, uid]),
-  ]);
-  if (cleanText(canonical?.primary_role).toLowerCase() === 'owner' || legacy) {
-    throw new AppError(403, 'ACCOUNT_OWNER_PROTECTED');
+// Legacy role_assignments are not canonical login authority. Mutations are
+// restricted to current D1 owners because this compatibility model has no
+// transactional last-owner lifecycle fence. Ordinary admins must use the
+// canonical /api/admin/accounts endpoints instead.
+function assertLegacyMutationOwner(actor) {
+  if (cleanText(actor?.role).toLowerCase() !== 'owner') {
+    throw new AppError(403, 'core_admin:owner_required_for_legacy_mutation');
   }
 }
 
 export async function upsertAdminProfile(db, salonId, data, actor = {}) {
   const uid = requiredId(data.firebaseUid || data.uid, 'firebaseUid');
-  await protectLegacyOwnerTarget(db, salonId, uid, actor, data.roles);
+  assertLegacyMutationOwner(actor);
   const now = nowIso();
   const existing = await dbFirst(db, 'SELECT * FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ? LIMIT 1', [salonId, uid]);
   const row = {
@@ -91,7 +84,7 @@ export async function deleteAdminProfile(db, salonId, firebaseUid, actor = {}) {
   const actorUid = cleanText(actor.uid);
   const actorRole = cleanText(actor.role).toLowerCase();
   if (actorUid && actorUid === uid) throw new AppError(409, 'core_admin:cannot_delete_self');
-  await protectLegacyOwnerTarget(db, salonId, uid, actor);
+  assertLegacyMutationOwner(actor);
 
   const existing = await dbFirst(db, 'SELECT * FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ? LIMIT 1', [salonId, uid]);
   const targetRoles = await dbAll(db, 'SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND active = 1', [salonId, uid]);
