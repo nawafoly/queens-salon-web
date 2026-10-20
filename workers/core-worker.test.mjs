@@ -2410,6 +2410,19 @@ class FakeD1 {
         const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
+      } else if (sql.startsWith("UPDATE invoices SET paid_halalas = MAX(") ||
+                 sql.startsWith("UPDATE invoices SET paid_halalas = MIN(")) {
+        const [delta, , , updatedAt, salonId, id] = params;
+        const row = this.find("invoices", salonId, id);
+        const rawPaid = Number(row?.paid_halalas || 0) + delta;
+        const paid = sql.startsWith("UPDATE invoices SET paid_halalas = MIN(")
+          ? Math.min(Number(row.total_halalas || 0), Math.max(0, rawPaid))
+          : Math.max(0, rawPaid);
+        results.push(this.update("invoices", salonId, id, {
+          paid_halalas: paid,
+          status: paid <= 0 ? "unpaid" : paid >= Number(row.total_halalas) ? "paid" : "partial",
+          updated_at: updatedAt,
+        }));
       } else if (sql.startsWith("UPDATE invoices SET paid_halalas = paid_halalas + ?")) {
         const [amount, , , updatedAt, salonId, id] = params;
         const row = this.find("invoices", salonId, id);
