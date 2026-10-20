@@ -385,8 +385,9 @@ export async function serializeAuthMe(db, salonId, account) {
 export function hasPermission(ctx, permission) {
   const role = normalizeAccountRole(ctx?.role || ctx?.user?.primary_role, 'guest');
   if (role === 'owner') return true;
-  if (role === 'admin' && ADMIN_PERMISSION_FALLBACK.has(cleanText(permission))) return true;
-  return new Set(ctx?.permissions || []).has(permission);
+  // The auth context already resolves role permissions, admin fallbacks, and
+  // direct allows/denies from D1. Never re-grant a fallback after a direct deny.
+  return new Set(ctx?.permissions || []).has(cleanText(permission));
 }
 
 export function requirePermission(ctx, permission) {
