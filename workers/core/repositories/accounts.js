@@ -837,15 +837,16 @@ export async function deleteEmployeeLink(db, salonId, id, actor = {}) {
   protectOwnerTarget(actor, target, 'unlink employee for');
   const before = await getActiveEmployeeLink(db, salonId, target.id);
   if (!before) return null;
+
   const now = nowIso();
-  await dbRun(
-    db,
-    `UPDATE user_employee_links
-        SET link_status = 'unlinked', unlinked_at = ?, updated_at = ?
-      WHERE salon_id = ? AND id = ?`,
-    [now, now, salonId, before.id]
-  );
-  await recordAudit(db, salonId, {
+  const mutation = {
+    sql: `UPDATE user_employee_links
+            SET link_status = 'unlinked', unlinked_at = ?, updated_at = ?
+          WHERE salon_id = ? AND id = ? AND user_id = ?
+            AND link_status = 'active' AND updated_at IS ?`,
+    params: [now, now, salonId, before.id, target.id, before.updated_at],
+  };
+  const { statement } = auditInsertWhenPreviousUpdateChanged(salonId, {
     action: 'account_employee_link_deleted',
     entityType: 'user_employee_link',
     entityId: before.id,
@@ -853,6 +854,13 @@ export async function deleteEmployeeLink(db, salonId, id, actor = {}) {
     before: serializeEmployeeLink(before),
     after: null,
   }, actorInfo(actor));
+
+  // Link revocation and its audit must either both commit or both roll back.
+  // The CAS guard also prevents a concurrent relink from being revoked by
+  // a stale unlink request. Failed CAS does not emit an audit entry.
+  const result = await dbBatch(db, [mutation, statement]);
+  if (changes(result[0]) !== 1) throw new AppError(409, 'ACCOUNT_EMPLOYEE_LINK_CONCURRENT_MODIFICATION');
+  if (changes(result[1]) !== 1) throw new AppError(500, 'ACCOUNT_AUDIT_TRANSACTION_INVARIANT');
   return null;
 }
 
