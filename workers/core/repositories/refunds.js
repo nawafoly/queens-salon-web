@@ -98,7 +98,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
   if (payment) {
     const totals = await dbFirst(
       db,
-      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND status = 'completed'",
+      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND LOWER(TRIM(status)) = 'completed'",
       [salonId, paymentId]
     );
     if (Number(totals?.total || 0) + amount > Number(payment.amount_halalas || 0)) {
@@ -160,7 +160,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
            AND p.amount_halalas >= ? + COALESCE((
              SELECT SUM(r.amount_halalas) FROM refunds AS r
               WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
-                AND r.status = 'completed'
+                AND r.LOWER(TRIM(status)) = 'completed'
            ), 0))`
     );
     statements[0].params.push(salonId, payment.id, amount);
@@ -210,7 +210,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   if (payment) {
     const totals = await dbFirst(
       db,
-      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND status = 'completed' AND id <> ?",
+      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND LOWER(TRIM(status)) = 'completed' AND id <> ?",
       [salonId, refund.payment_id, refund.id]
     );
     if (Number(totals?.total || 0) + amount > Number(payment.amount_halalas || 0)) {
@@ -238,7 +238,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
         AND p.amount_halalas >= ? + COALESCE((
           SELECT SUM(r.amount_halalas) FROM refunds r
            WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
-             AND r.status = 'completed' AND r.id <> ?
+             AND r.LOWER(TRIM(status)) = 'completed' AND r.id <> ?
         ), 0)
     )`;
     statements[0].params.push(salonId, payment.id, amount, refund.id);
