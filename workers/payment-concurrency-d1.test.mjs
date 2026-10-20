@@ -222,6 +222,48 @@ test('raced edits to one refund reject a stale update without double subtracting
   assert.equal(invoice.paid_halalas, 5000 - refund.amount_halalas);
 });
 
+test('concurrent distinct refunds cannot exceed the original payment budget', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  let checks = 0, open;
+  const release = new Promise((resolve) => { open = resolve; });
+  const racing = {
+    prepare(sql) {
+      return { bind(...params) {
+        const bound = db.prepare(sql).bind(...params);
+        return {
+          bound,
+          async first() {
+            const row = await bound.first();
+            if (sql.startsWith("SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds") && checks < 2) {
+              checks += 1;
+              if (checks === 2) open();
+              await release;
+            }
+            return row;
+          },
+          all: () => bound.all(), run: () => bound.run(),
+        };
+      }};
+    },
+    batch(statements) { return db.batch(statements.map((statement) => statement.bound)); },
+  };
+  const results = await Promise.allSettled(['refund-cap-a','refund-cap-b'].map(id =>
+    createRefund(racing, 'main', {
+      id, paymentId: 'seed-payment', amountHalalas: 3000, idempotencyKey: id,
+    })
+  ));
+  assert.equal(checks, 2, 'both requests must pass their stale preflight refund sum');
+  assert.equal(results.filter(p => p.status === 'fulfilled').length, 1);
+  const denied = results.find(p => p.status === 'rejected');
+  assert.equal(denied.reason.code, 'core_refund:amount_exceeds_remaining');
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 2000);
+  const refunds = await table(db, "SELECT * FROM refunds WHERE payment_id='seed-payment' AND status='completed'");
+  assert.equal(refunds.length, 1);
+  assert.equal(refunds[0].amount_halalas, 3000);
+  assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='refund_created'")).length, 1);
+});
+
 test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
