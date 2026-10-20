@@ -321,6 +321,27 @@ test('case-variant completed refund still consumes the exact live payment budget
   assert.equal((await table(db, "SELECT id FROM refunds WHERE payment_id='seed-payment'")).length, 1);
 });
 
+test('legacy mixed-case completed refund is counted against new refund budget', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO refunds
+    (id,salon_id,payment_id,invoice_id,booking_id,client_id,
+     amount_halalas,method,status,refunded_at,created_at)
+    VALUES ('legacy-mixed-case','main','seed-payment','refund-invoice',
+      NULL,'test-client',3000,'cash','Completed',?,?)`).bind(now,now).run();
+  await assert.rejects(
+    createRefund(db, 'main', {
+      id: 'legacy-over-budget', paymentId: 'seed-payment',
+      amountHalalas: 3000, idempotencyKey: 'legacy-over-budget',
+    }),
+    (error) => error?.code === 'core_refund:amount_exceeds_remaining'
+  );
+  assert.equal((await table(db, "SELECT id FROM refunds WHERE payment_id='seed-payment'")).length, 1);
+  const invoice = await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.paid_halalas, 5000);
+});
+
 test('invoice lookups do not cross salon boundaries', async (t) => {
   const db = await setup(t);
   await assert.rejects(
