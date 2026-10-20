@@ -149,11 +149,33 @@ export async function createRefund(db, salonId, data, actor = {}) {
     },
   ];
 
-  if (invoice) {
-    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, -amount, now));
+  if (payment && row.status === 'completed') {
+    // Re-check the aggregate budget at INSERT time inside the same D1 batch.
+    // A separate preflight SUM cannot protect two different refund IDs.
+    statements[0].sql = statements[0].sql.replace(
+      /VALUES\s*\([\s\S]*?\)\s*$/,
+      `SELECT ${Array.from({ length: 17 }, () => '?').join(', ')}
+       WHERE EXISTS (SELECT 1 FROM payments AS p
+         WHERE p.salon_id = ? AND p.id = ?
+           AND p.amount_halalas >= ? + COALESCE((
+             SELECT SUM(r.amount_halalas) FROM refunds AS r
+              WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
+                AND r.status = 'completed'
+           ), 0))`
+    );
+    statements[0].params.push(salonId, payment.id, amount);
   }
 
-  await dbBatch(db, statements);
+  if (invoice) {
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, -amount, now, {
+      requirePriorUpdate: true,
+    }));
+  }
+
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    throw new AppError(409, 'core_refund:amount_exceeds_remaining');
+  }
   await recordAudit(db, salonId, {
     action: 'refund_created', entityType: 'refund', entityId: row.id,
     description: 'Refund recorded in Core D1', after: row, source: 'dashboard',
@@ -210,6 +232,17 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
       params: [amount, method, reason, refundedAt, salonId, refund.id, refund.amount_halalas, refund.status],
     },
   ];
+  if (payment && cleanText(refund.status).toLowerCase() === 'completed') {
+    statements[0].sql += ` AND EXISTS (
+      SELECT 1 FROM payments p WHERE p.salon_id = ? AND p.id = ?
+        AND p.amount_halalas >= ? + COALESCE((
+          SELECT SUM(r.amount_halalas) FROM refunds r
+           WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
+             AND r.status = 'completed' AND r.id <> ?
+        ), 0)
+    )`;
+    statements[0].params.push(salonId, payment.id, amount, refund.id);
+  }
 
   if (invoice) {
     const delta = Number(refund.amount_halalas || 0) - amount;
