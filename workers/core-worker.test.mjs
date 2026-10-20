@@ -2280,6 +2280,13 @@ class FakeD1 {
       } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'")) {
         const [cancelled_at, notes, updated_at, salonId, id] = params;
         results.push(this.update("bookings", salonId, id, { status: "cancelled", cancelled_at, notes, updated_at }));
+      } else if (sql.startsWith("UPDATE bookings SET payment_status = ( SELECT status FROM invoices")) {
+        const [invoiceSalonId, invoiceId, updatedAt, salonId, bookingId] = params;
+        const liveInvoice = this.find("invoices", invoiceSalonId, invoiceId);
+        results.push(this.update("bookings", salonId, bookingId, {
+          payment_status: liveInvoice?.status ?? null,
+          updated_at: updatedAt,
+        }));
       } else if (sql.startsWith("UPDATE bookings SET")) {
         results.push(this.dynamicUpdate("bookings", sql, params));
       } else if (sql.startsWith("DELETE FROM booking_slot_locks")) {
@@ -2343,6 +2350,35 @@ class FakeD1 {
         results.push(this.insert("payments", { id, salon_id, invoice_id, booking_id, client_id, method, amount_halalas, status, provider, provider_reference, idempotency_key, paid_at, created_at }));
       } else if (sql.startsWith("INSERT INTO income_entries")) {
         results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("INSERT INTO audit_logs") && sql.includes("PAYMENT_INVOICE_AUDIT")) {
+        const amount = params[14];
+        const live = this.find("invoices", params[19], params[20]);
+        const nextPaid = Number(live.paid_halalas) + amount;
+        const nextStatus = nextPaid <= 0 ? "unpaid" : nextPaid >= Number(live.total_halalas) ? "paid" : "partial";
+        results.push(this.insert("audit_logs", {
+          id: params[0], salon_id: params[1], action: params[2], entity_type: params[3],
+          entity_id: params[4], description: params[5], source: params[6],
+          actor_uid: params[7], actor_email: params[8], actor_name: params[9],
+          actor_user_id: params[10], target_user_id: params[11],
+          ip: params[12], user_agent: params[13],
+          before_json: JSON.stringify({ paidHalalas: live.paid_halalas, status: live.status }),
+          after_json: JSON.stringify({ paidHalalas: nextPaid, status: nextStatus }),
+          meta_json: params[17], created_at: params[18],
+        }));
+      } else if (sql.startsWith("INSERT INTO audit_logs") && sql.includes("PAYMENT_BOOKING_AUDIT")) {
+        const live = this.find("invoices", params[17], params[18]);
+        results.push(this.insert("audit_logs", {
+          id: params[0], salon_id: params[1], action: params[2], entity_type: params[3],
+          entity_id: params[4], description: params[5], source: params[6],
+          actor_uid: params[7], actor_email: params[8], actor_name: params[9],
+          actor_user_id: params[10], target_user_id: params[11],
+          ip: params[12], user_agent: params[13],
+          before_json: params[14],
+          after_json: JSON.stringify({
+            paymentStatus: live.status, invoiceId: live.id, paidHalalas: live.paid_halalas,
+          }),
+          meta_json: params[15], created_at: params[16],
+        }));
       } else if (sql.startsWith("INSERT INTO audit_logs")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO app_users") || sql.startsWith("INSERT INTO user_permissions") || sql.startsWith("INSERT INTO user_employee_links")) {
@@ -2374,6 +2410,15 @@ class FakeD1 {
         const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
+      } else if (sql.startsWith("UPDATE invoices SET paid_halalas = paid_halalas + ?")) {
+        const [amount, , , updatedAt, salonId, id] = params;
+        const row = this.find("invoices", salonId, id);
+        const paid = Number(row?.paid_halalas || 0) + amount;
+        results.push(this.update("invoices", salonId, id, {
+          paid_halalas: paid,
+          status: paid <= 0 ? "unpaid" : paid >= Number(row.total_halalas) ? "paid" : "partial",
+          updated_at: updatedAt,
+        }));
       } else if (sql.startsWith("UPDATE invoices SET")) {
         results.push(this.dynamicUpdate("invoices", sql, params));
       } else if (sql.startsWith("DELETE FROM ")) {
