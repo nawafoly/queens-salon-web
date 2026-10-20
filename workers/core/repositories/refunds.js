@@ -1,6 +1,7 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
+  changes,
   cleanText,
   dbAll,
   dbBatch,
@@ -16,10 +17,21 @@ import { recordAudit } from './audit.js';
 import { safeRefreshTargetsForBooking } from './employee-targets.js';
 import { reconcileCashbackForBooking } from './cashback.js';
 
-function invoiceStatus(total, paid) {
-  if (paid <= 0) return 'unpaid';
-  if (paid >= total) return 'paid';
-  return 'partial';
+// Never derive a new invoice balance from a pre-batch read. Payment and
+// refund batches share this row; arithmetic must use the live D1 value.
+function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { requirePriorUpdate = false } = {}) {
+  // Preserve legitimate overpayments. Capping at total_halalas would silently
+  // erase money if a payment raced with a refund edit or void.
+  const next = 'MAX(0, paid_halalas + ?)';
+  return {
+    sql: `UPDATE invoices SET paid_halalas = ${next},
+      status = CASE WHEN ${next} <= 0 THEN 'unpaid'
+                    WHEN ${next} >= total_halalas THEN 'paid'
+                    ELSE 'partial' END,
+      updated_at = ? WHERE salon_id = ? AND id = ?
+        ${requirePriorUpdate ? 'AND changes() = 1' : ''}`,
+    params: [delta, delta, delta, updatedAt, salonId, invoiceId],
+  };
 }
 
 function refundDateScope(rawDate) {
@@ -86,7 +98,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
   if (payment) {
     const totals = await dbFirst(
       db,
-      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND status = 'completed'",
+      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND LOWER(TRIM(status)) = 'completed'",
       [salonId, paymentId]
     );
     if (Number(totals?.total || 0) + amount > Number(payment.amount_halalas || 0)) {
@@ -113,7 +125,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
     amount_halalas: amount,
     method: cleanText(data.method || payment?.method || 'cash'),
     reason: optionalText(data.reason) || null,
-    status: cleanText(data.status || 'completed'),
+    status: cleanText(data.status || 'completed').toLowerCase(),
     idempotency_key: idempotencyKey || null,
     provider_reference: optionalText(data.providerReference || data.provider_reference) || null,
     created_by_uid: optionalText(actor.uid) || null,
@@ -137,15 +149,33 @@ export async function createRefund(db, salonId, data, actor = {}) {
     },
   ];
 
-  if (invoice) {
-    const paidAfter = Math.max(0, Number(invoice.paid_halalas || 0) - amount);
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+  if (payment && row.status === 'completed') {
+    // Re-check the aggregate budget at INSERT time inside the same D1 batch.
+    // A separate preflight SUM cannot protect two different refund IDs.
+    statements[0].sql = statements[0].sql.replace(
+      /VALUES\s*\([\s\S]*?\)\s*$/,
+      `SELECT ${Array.from({ length: 17 }, () => '?').join(', ')}
+       WHERE EXISTS (SELECT 1 FROM payments AS p
+         WHERE p.salon_id = ? AND p.id = ?
+           AND p.amount_halalas >= ? + COALESCE((
+             SELECT SUM(r.amount_halalas) FROM refunds AS r
+              WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
+                AND LOWER(TRIM(r.status)) = 'completed'
+           ), 0))`
+    );
+    statements[0].params.push(salonId, payment.id, amount);
   }
 
-  await dbBatch(db, statements);
+  if (invoice) {
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, -amount, now, {
+      requirePriorUpdate: true,
+    }));
+  }
+
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    throw new AppError(409, 'core_refund:amount_exceeds_remaining');
+  }
   await recordAudit(db, salonId, {
     action: 'refund_created', entityType: 'refund', entityId: row.id,
     description: 'Refund recorded in Core D1', after: row, source: 'dashboard',
@@ -180,7 +210,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   if (payment) {
     const totals = await dbFirst(
       db,
-      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND status = 'completed' AND id <> ?",
+      "SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds WHERE salon_id = ? AND payment_id = ? AND LOWER(TRIM(status)) = 'completed' AND id <> ?",
       [salonId, refund.payment_id, refund.id]
     );
     if (Number(totals?.total || 0) + amount > Number(payment.amount_halalas || 0)) {
@@ -198,30 +228,37 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   const statements = [
     {
       sql: `UPDATE refunds SET amount_halalas = ?, method = ?, reason = ?, refunded_at = ?
-            WHERE salon_id = ? AND id = ?`,
-      params: [amount, method, reason, refundedAt, salonId, refund.id],
-    },
-    {
-      sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
-      params: [salonId, refund.id],
+            WHERE salon_id = ? AND id = ? AND amount_halalas = ? AND status = ?`,
+      params: [amount, method, reason, refundedAt, salonId, refund.id, refund.amount_halalas, refund.status],
     },
   ];
-
-  if (invoice) {
-    const paidAfter = Math.max(
-      0,
-      Math.min(
-        Number(invoice.total_halalas || 0),
-        Number(invoice.paid_halalas || 0) + Number(refund.amount_halalas || 0) - amount
-      )
-    );
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+  if (payment && cleanText(refund.status).toLowerCase() === 'completed') {
+    statements[0].sql += ` AND EXISTS (
+      SELECT 1 FROM payments p WHERE p.salon_id = ? AND p.id = ?
+        AND p.amount_halalas >= ? + COALESCE((
+          SELECT SUM(r.amount_halalas) FROM refunds r
+           WHERE r.salon_id = p.salon_id AND r.payment_id = p.id
+             AND LOWER(TRIM(r.status)) = 'completed' AND r.id <> ?
+        ), 0)
+    )`;
+    statements[0].params.push(salonId, payment.id, amount, refund.id);
   }
 
-  await dbBatch(db, statements);
+  if (invoice) {
+    const delta = Number(refund.amount_halalas || 0) - amount;
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, {
+      requirePriorUpdate: true,
+    }));
+  }
+  statements.push({
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
+    params: [salonId, refund.id],
+  });
+
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    throw new AppError(409, 'core_refund:concurrent_modification');
+  }
   const row = await getRefund(db, salonId, id);
   await recordAudit(db, salonId, {
     action: 'refund_updated', entityType: 'refund', entityId: id,
@@ -251,27 +288,31 @@ export async function voidRefund(db, salonId, id, actor = {}) {
   const now = nowIso();
   const statements = [
     {
-      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ?",
-      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id)],
-    },
-    {
-      sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
-      params: [salonId, id],
+      sql: "UPDATE refunds SET status = 'voided', voided_at = ?, voided_by_uid = ? WHERE salon_id = ? AND id = ? AND status = ? AND amount_halalas = ?",
+      params: [now, optionalText(actor.uid) || null, salonId, requiredId(id), refund.status, refund.amount_halalas],
     },
   ];
 
   if (invoice && cleanText(refund.status).toLowerCase() === 'completed') {
-    const paidAfter = Math.min(
-      Number(invoice.total_halalas || 0),
-      Number(invoice.paid_halalas || 0) + Number(refund.amount_halalas || 0)
-    );
-    statements.push({
-      sql: 'UPDATE invoices SET paid_halalas = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?',
-      params: [paidAfter, invoiceStatus(Number(invoice.total_halalas || 0), paidAfter), now, salonId, invoice.id],
-    });
+    statements.push(invoiceAdjustmentStatement(
+      salonId, invoice.id, Number(refund.amount_halalas || 0), now, {
+        requirePriorUpdate: true,
+      }
+    ));
   }
+  statements.push({
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
+    params: [salonId, id],
+  });
 
-  await dbBatch(db, statements);
+  const results = await dbBatch(db, statements);
+  if (changes(results[0]) !== 1) {
+    const current = await getRefund(db, salonId, id);
+    if (cleanText(current.status).toLowerCase() === 'voided') {
+      return { ...current, idempotent: true };
+    }
+    throw new AppError(409, 'core_refund:concurrent_modification');
+  }
   const row = await getRefund(db, salonId, id);
   await recordAudit(db, salonId, {
     action: 'refund_voided', entityType: 'refund', entityId: id,
