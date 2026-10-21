@@ -91,6 +91,89 @@ function gateBothRefundReads(db) {
 
 async function table(db, query) { return (await db.prepare(query).all()).results; }
 
+test('pending and failed payments cannot post income, invoice balance, cashback or audit', async (t) => {
+  const db = await setup(t);
+  for (const status of ['pending', 'failed', 'cancelled', 'unrecognized', '']) {
+    await assert.rejects(
+      createPayment(db, 'main', {
+        invoiceId: 'test-invoice', amountHalalas: 4000,
+        status, idempotencyKey: `invalid-payment-${status}`,
+      }),
+      (error) => error?.status === 400 && error?.code === 'core_payment:invalid_settlement_status',
+      status,
+    );
+  }
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 0);
+  assert.equal((await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first()).payment_status, 'unpaid');
+  for (const name of ['payments', 'income_entries', 'audit_logs', 'cashback_wallet_transactions']) {
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${name}`).first()).n, 0, name);
+  }
+});
+
+test('existing accepted settled payment aliases remain compatible and normalize casing', async (t) => {
+  const db = await setup(t);
+  for (const status of ['Paid', 'Completed', 'SUCCEEDED']) {
+    const payment = await createPayment(db, 'main', {
+      invoiceId: 'test-invoice', amountHalalas: 1000, status,
+    });
+    assert.equal(payment.status, status.toLowerCase());
+  }
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 3000);
+  assert.equal((await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first()).payment_status, 'partial');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM income_entries').first()).n, 3);
+});
+
+test('non-settled refunds cannot debit invoice, enter ledger, or consume refund budget', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  for (const status of ['pending', 'failed', 'cancelled', 'unrecognized', '']) {
+    await assert.rejects(
+      createRefund(db, 'main', {
+        paymentId: 'seed-payment', amountHalalas: 1000,
+        status, idempotencyKey: `invalid-refund-${status}`,
+      }),
+      (error) => error?.status === 400 && error?.code === 'core_refund:invalid_settlement_status',
+      status,
+    );
+  }
+  const invoice = await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id='refund-invoice'").first();
+  assert.equal(invoice.paid_halalas, 5000);
+  assert.equal(invoice.status, 'partial');
+  for (const name of ['refunds', 'audit_logs', 'cashback_wallet_transactions']) {
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${name}`).first()).n, 0, name);
+  }
+});
+
+test('refund edits cannot turn a settled refund into pending or mutate a historic pending refund', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  await createRefund(db, 'main', {
+    id: 'settled-refund', paymentId: 'seed-payment', amountHalalas: 1000,
+    status: 'Completed',
+  });
+  const paidAfterSettled = (await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas;
+  assert.equal(paidAfterSettled, 4000);
+  await assert.rejects(
+    patchRefund(db, 'main', 'settled-refund', { amountHalalas: 2000, status: 'pending' }),
+    (error) => error?.code === 'core_refund:invalid_settlement_status',
+  );
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO refunds
+    (id,salon_id,payment_id,invoice_id,client_id,amount_halalas,method,status,refunded_at,created_at)
+    VALUES ('historic-pending','main','seed-payment','refund-invoice','test-client',500,'cash','pending',?,?)`)
+    .bind(now,now).run();
+  await assert.rejects(
+    patchRefund(db, 'main', 'historic-pending', { amountHalalas: 800 }),
+    (error) => error?.code === 'core_refund:not_settled',
+  );
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, paidAfterSettled);
+  assert.equal((await db.prepare("SELECT amount_halalas FROM refunds WHERE id='settled-refund'").first()).amount_halalas, 1000);
+  assert.equal((await db.prepare("SELECT amount_halalas FROM refunds WHERE id='historic-pending'").first()).amount_halalas, 500);
+  const voided = await voidRefund(db, 'main', 'historic-pending');
+  assert.equal(voided.status, 'voided');
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, paidAfterSettled);
+});
+
 test('different concurrent payments are summed and audited from the live invoice row', async (t) => {
   const db = await setup(t), gate = gateBothInvoiceReads(db);
   const result = await Promise.all([4000, 6000].map((amount, i) =>
