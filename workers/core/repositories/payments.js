@@ -96,14 +96,16 @@ async function resolveInvoice(db, salonId, invoiceId, bookingId) {
 const SETTLED_PAYMENT_STATUSES = new Set(['paid', 'completed', 'succeeded']);
 
 export async function createPayment(db, salonId, data, actor = {}) {
+  const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
+  if (idempotencyKey) {
+    // Preserve exact retries of committed legacy records, including
+    // non-settled statuses recorded before this policy was introduced.
+    const existing = await dbFirst(db, "SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1", [salonId, idempotencyKey]);
+    if (existing) return { ...existing, idempotent: true };
+  }
   const status = cleanText(data.status == null ? 'paid' : data.status).toLowerCase();
   if (!SETTLED_PAYMENT_STATUSES.has(status)) {
     throw new AppError(400, 'core_payment:invalid_settlement_status');
-  }
-  const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
-  if (idempotencyKey) {
-    const existing = await dbFirst(db, "SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1", [salonId, idempotencyKey]);
-    if (existing) return { ...existing, idempotent: true };
   }
   const invoiceId = optionalText(data.invoiceId || data.invoice_id);
   const inputBookingId = optionalText(data.bookingId || data.booking_id);
