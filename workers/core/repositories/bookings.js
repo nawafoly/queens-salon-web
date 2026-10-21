@@ -2299,21 +2299,58 @@ export async function patchBooking(
   }
 
   if (invoice) {
+    if (shouldReconcilePayment) {
+      // Legacy financial correction remains a separate, explicitly guarded path.
+      // It must be migrated to an immutable payment-correction ledger.
+      statements.push({
+        sql: `UPDATE invoices
+                 SET subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?,
+                     paid_halalas = ?, status = ?, updated_at = ?
+               WHERE salon_id = ? AND id = ?`,
+        params: [
+          subtotalHalalas,
+          nextDiscountHalalas,
+          requestedTotal,
+          paidHalalas,
+          paymentStatus,
+          now,
+          salonId,
+          invoice.id,
+        ],
+      });
+    } else {
+      // Never overwrite a concurrently committed payment when editing a
+      // booking's staff, client, schedule, item, price or discount.
+      // Derive invoice status from the live paid balance inside the D1 batch.
+      statements.push({
+        sql: `UPDATE invoices
+                 SET subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?,
+                     status = CASE
+                       WHEN paid_halalas <= 0 THEN 'unpaid'
+                       WHEN paid_halalas >= ? THEN 'paid'
+                       ELSE 'partial' END,
+                     updated_at = ?
+               WHERE salon_id = ? AND id = ?`,
+        params: [
+          subtotalHalalas,
+          nextDiscountHalalas,
+          requestedTotal,
+          requestedTotal,
+          now,
+          salonId,
+          invoice.id,
+        ],
+      });
+    }
+
+    // The earlier booking UPDATE is for operational details. Its payment
+    // snapshot can become stale during concurrent payments; re-read the
+    // invoice's committed status within the same D1 transaction.
     statements.push({
-      sql: `UPDATE invoices
-               SET subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?,
-                   paid_halalas = ?, status = ?, updated_at = ?
-             WHERE salon_id = ? AND id = ?`,
-      params: [
-        subtotalHalalas,
-        nextDiscountHalalas,
-        requestedTotal,
-        paidHalalas,
-        paymentStatus,
-        now,
-        salonId,
-        invoice.id,
-      ],
+      sql: `UPDATE bookings SET payment_status = (
+        SELECT status FROM invoices WHERE salon_id = ? AND id = ?
+      ), updated_at = ? WHERE salon_id = ? AND id = ?`,
+      params: [salonId, invoice.id, now, salonId, bookingId],
     });
   }
 
