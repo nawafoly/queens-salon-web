@@ -77,12 +77,20 @@ export async function listRefunds(db, salonId, query = {}) {
 export async function createRefund(db, salonId, data, actor = {}) {
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
   if (idempotencyKey) {
+    // Keep exact idempotent replays of legacy pending/failed refund records
+    // working; a retry must never become a second debit or a new refund.
     const existing = await dbFirst(
       db,
       'SELECT * FROM refunds WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
       [salonId, idempotencyKey]
     );
     if (existing) return { ...existing, idempotent: true };
+  }
+  // This write path immediately debits settled invoice revenue. Pending
+  // refunds require a separate confirmation transition, not a status flag.
+  const status = cleanText(data.status == null ? 'completed' : data.status).toLowerCase();
+  if (status !== 'completed') {
+    throw new AppError(400, 'core_refund:invalid_settlement_status');
   }
 
   const paymentId = optionalText(data.paymentId || data.payment_id);
@@ -125,7 +133,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
     amount_halalas: amount,
     method: cleanText(data.method || payment?.method || 'cash'),
     reason: optionalText(data.reason) || null,
-    status: cleanText(data.status || 'completed').toLowerCase(),
+    status,
     idempotency_key: idempotencyKey || null,
     provider_reference: optionalText(data.providerReference || data.provider_reference) || null,
     created_by_uid: optionalText(actor.uid) || null,
@@ -198,6 +206,14 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
   const refund = await getRefund(db, salonId, id);
   if (cleanText(refund.status).toLowerCase() === 'voided') {
     throw new AppError(409, 'core_refund:voided');
+  }
+  // A PATCH adjusts an already settled refund amount; it cannot be used to
+  // transition legacy pending rows or request a new pending status.
+  if (cleanText(refund.status).toLowerCase() !== 'completed') {
+    throw new AppError(409, 'core_refund:not_settled');
+  }
+  if (data.status !== undefined && cleanText(data.status).toLowerCase() !== 'completed') {
+    throw new AppError(400, 'core_refund:invalid_settlement_status');
   }
 
   const payment = refund.payment_id
