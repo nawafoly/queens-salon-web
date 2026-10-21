@@ -2414,6 +2414,20 @@ class FakeD1 {
         const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
+      } else if (sql.startsWith("UPDATE invoices SET subtotal_halalas = ?") &&
+                 sql.includes("WHEN paid_halalas <= 0")) {
+        // Operational booking edits must preserve a live invoice payment that
+        // committed after patchBooking's preflight read.
+        const [subtotal, discount, total, , updatedAt, salonId, id] = params;
+        const current = this.find("invoices", salonId, id);
+        const paid = Number(current?.paid_halalas || 0);
+        results.push(this.update("invoices", salonId, id, {
+          subtotal_halalas: subtotal,
+          discount_halalas: discount,
+          total_halalas: total,
+          status: paid <= 0 ? "unpaid" : paid >= total ? "paid" : "partial",
+          updated_at: updatedAt,
+        }));
       } else if (sql.startsWith("UPDATE invoices SET paid_halalas = MAX(") ||
                  sql.startsWith("UPDATE invoices SET paid_halalas = MIN(")) {
         if (sql.includes("AND changes() = 1") && Number(results.at(-1)?.meta?.changes || 0) !== 1) {
