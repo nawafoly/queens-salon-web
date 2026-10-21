@@ -75,20 +75,22 @@ export async function listRefunds(db, salonId, query = {}) {
 }
 
 export async function createRefund(db, salonId, data, actor = {}) {
-  // This write path immediately debits settled invoice revenue. Pending
-  // refunds require a separate confirmation transition, not a status flag.
-  const status = cleanText(data.status == null ? 'completed' : data.status).toLowerCase();
-  if (status !== 'completed') {
-    throw new AppError(400, 'core_refund:invalid_settlement_status');
-  }
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
   if (idempotencyKey) {
+    // Keep exact idempotent replays of legacy pending/failed refund records
+    // working; a retry must never become a second debit or a new refund.
     const existing = await dbFirst(
       db,
       'SELECT * FROM refunds WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
       [salonId, idempotencyKey]
     );
     if (existing) return { ...existing, idempotent: true };
+  }
+  // This write path immediately debits settled invoice revenue. Pending
+  // refunds require a separate confirmation transition, not a status flag.
+  const status = cleanText(data.status == null ? 'completed' : data.status).toLowerCase();
+  if (status !== 'completed') {
+    throw new AppError(400, 'core_refund:invalid_settlement_status');
   }
 
   const paymentId = optionalText(data.paymentId || data.payment_id);
