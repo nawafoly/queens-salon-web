@@ -2323,8 +2323,17 @@ export async function patchBooking(
       // booking's staff, client, schedule, item, price or discount.
       // Derive invoice status from the live paid balance inside the D1 batch.
       statements.push({
+        // A booking-price/discount edit must check the collected amount at
+        // COMMIT time. The NOT NULL invoice constraint makes an unsafe price
+        // reduction fail the entire D1 batch rather than silently overpaying
+        // a newly reduced total after a concurrent payment was posted.
+        // Do not apply the floor to ordinary operational edits: historical
+        // legitimate overpayments must be preserved.
         sql: `UPDATE invoices
-                 SET subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?,
+                 SET subtotal_halalas = ?, discount_halalas = ?,
+                     total_halalas = ${financialTotalChanged
+                       ? 'CASE WHEN paid_halalas > ? THEN NULL ELSE ? END'
+                       : '?'},
                      status = CASE
                        WHEN paid_halalas <= 0 THEN 'unpaid'
                        WHEN paid_halalas >= ? THEN 'paid'
@@ -2334,6 +2343,7 @@ export async function patchBooking(
         params: [
           subtotalHalalas,
           nextDiscountHalalas,
+          ...(financialTotalChanged ? [requestedTotal] : []),
           requestedTotal,
           requestedTotal,
           now,
@@ -2559,6 +2569,15 @@ export async function patchBooking(
   try {
     await dbBatch(db, statements);
   } catch (error) {
+    // D1's NOT NULL constraint is the transaction-wide guard above. Turn
+    // the rejected concurrent price reduction into the existing stable Core
+    // conflict contract; the complete batch has already rolled back.
+    if (
+      financialTotalChanged &&
+      /NOT NULL constraint failed:\s*invoices\.total_halalas/i.test(cleanText(error?.message))
+    ) {
+      throw new AppError(409, "core_booking:price_below_paid_amount");
+    }
     if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) {
       throw conflictError();
     }
