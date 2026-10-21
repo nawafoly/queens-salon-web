@@ -110,6 +110,59 @@ test('pending and failed payments cannot post income, invoice balance, cashback 
   }
 });
 
+test('legacy pending payment idempotent replay returns same record without new ledger effect', async (t) => {
+  const db = await setup(t);
+  const when = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO payments
+    (id,salon_id,invoice_id,booking_id,client_id,method,amount_halalas,status,idempotency_key,paid_at,created_at)
+    VALUES ('legacy-pending-payment','main','test-invoice','test-booking','test-client',
+      'card',2000,'pending','legacy-pending-pay-key',?,?)`).bind(when,when).run();
+
+  const replay = await createPayment(db, 'main', {
+    invoiceId: 'test-invoice', amountHalalas: 2000,
+    status: 'pending', idempotencyKey: 'legacy-pending-pay-key',
+  });
+  assert.equal(replay.id, 'legacy-pending-payment');
+  assert.equal(replay.idempotent, true);
+  assert.equal((await table(db, 'SELECT id FROM payments')).length, 1);
+  assert.equal((await table(db, 'SELECT id FROM income_entries')).length, 0);
+  assert.equal((await table(db, 'SELECT id FROM audit_logs')).length, 0);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 0);
+  await assert.rejects(
+    createPayment(db, 'main', {
+      invoiceId: 'test-invoice', amountHalalas: 2000,
+      status: 'pending', idempotencyKey: 'fresh-pending-pay-key',
+    }),
+    (error) => error?.code === 'core_payment:invalid_settlement_status',
+  );
+});
+
+test('legacy pending refund idempotent replay returns same record without a second debit', async (t) => {
+  const db = await setup(t);
+  await setupRefundInvoice(db);
+  const when = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO refunds
+    (id,salon_id,payment_id,invoice_id,client_id,amount_halalas,method,status,idempotency_key,refunded_at,created_at)
+    VALUES ('legacy-pending-refund','main','seed-payment','refund-invoice','test-client',
+      1000,'cash','pending','legacy-pending-refund-key',?,?)`).bind(when,when).run();
+  const replay = await createRefund(db, 'main', {
+    paymentId: 'seed-payment', amountHalalas: 1000,
+    status: 'pending', idempotencyKey: 'legacy-pending-refund-key',
+  });
+  assert.equal(replay.id, 'legacy-pending-refund');
+  assert.equal(replay.idempotent, true);
+  assert.equal((await table(db, 'SELECT id FROM refunds')).length, 1);
+  assert.equal((await table(db, 'SELECT id FROM audit_logs')).length, 0);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='refund-invoice'").first()).paid_halalas, 5000);
+  await assert.rejects(
+    createRefund(db, 'main', {
+      paymentId: 'seed-payment', amountHalalas: 1000,
+      status: 'pending', idempotencyKey: 'fresh-pending-refund-key',
+    }),
+    (error) => error?.code === 'core_refund:invalid_settlement_status',
+  );
+});
+
 test('existing accepted settled payment aliases remain compatible and normalize casing', async (t) => {
   const db = await setup(t);
   for (const status of ['Paid', 'Completed', 'SUCCEEDED']) {
