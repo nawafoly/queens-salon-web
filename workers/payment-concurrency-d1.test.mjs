@@ -18,6 +18,7 @@ async function setup(t) {
   for (const name of [
     '0001_core_schema.sql', '0003_booking_availability.sql',
     '0004_admin_operations.sql', '0006_booking_discount_snapshots.sql',
+    '0007_booking_soft_delete.sql', '0061_booking_admin_notes.sql',
     '0014_app_users_permissions.sql',
     '0079_client_cashback_wallet.sql', '0081_cashback_expiry_lot_state.sql',
     '0083_internal_booking_price_adjustments.sql',
