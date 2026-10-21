@@ -11,6 +11,7 @@ import {
   optionalText,
   requiredId,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 import { getInvoice } from './invoices.js';
 import { auditInsertStatement } from './audit.js';
 import { reconcileCashbackForBooking } from './cashback.js';
@@ -90,7 +91,15 @@ async function resolveInvoice(db, salonId, invoiceId, bookingId) {
   );
 }
 
+// Core payment creation records *settled* income only. Pending/failed states
+// require a separate settlement transition design and must never post money.
+const SETTLED_PAYMENT_STATUSES = new Set(['paid', 'completed', 'succeeded']);
+
 export async function createPayment(db, salonId, data, actor = {}) {
+  const status = cleanText(data.status == null ? 'paid' : data.status).toLowerCase();
+  if (!SETTLED_PAYMENT_STATUSES.has(status)) {
+    throw new AppError(400, 'core_payment:invalid_settlement_status');
+  }
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
   if (idempotencyKey) {
     const existing = await dbFirst(db, "SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1", [salonId, idempotencyKey]);
@@ -109,7 +118,7 @@ export async function createPayment(db, salonId, data, actor = {}) {
     client_id: invoice?.client_id || optionalText(data.clientId || data.client_id) || null,
     method: cleanText(data.method || "cash"),
     amount_halalas: amount,
-    status: cleanText(data.status || "paid"),
+    status,
     provider: optionalText(data.provider) || null,
     provider_reference: optionalText(data.providerReference || data.provider_reference) || null,
     idempotency_key: idempotencyKey || null,
