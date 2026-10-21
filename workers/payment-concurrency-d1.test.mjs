@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 import { createPayment } from './core/repositories/payments.js';
+import { patchBooking } from './core/repositories/bookings.js';
 import { createRefund, patchRefund, voidRefund } from './core/repositories/refunds.js';
 
 async function setup(t) {
@@ -19,6 +20,7 @@ async function setup(t) {
     '0004_admin_operations.sql', '0006_booking_discount_snapshots.sql',
     '0014_app_users_permissions.sql',
     '0079_client_cashback_wallet.sql', '0081_cashback_expiry_lot_state.sql',
+    '0083_internal_booking_price_adjustments.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '').split('\n').filter((x) => !x.trim().startsWith('--')).join('\n');
@@ -540,4 +542,52 @@ test('invoice lookups do not cross salon boundaries', async (t) => {
     (error) => error?.code === 'core_invoice:not_found'
   );
   assert.equal((await table(db, 'SELECT id FROM payments')).length, 0);
+});
+
+test('concurrent settled payment survives operational booking PATCH with consistent invoice and booking status', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('test-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('test-item','test-booking','main','test-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+
+  // The booking PATCH completes all preflight reads with paid=0. Inject a
+  // separate real-D1 payment commit immediately before its own D1 batch.
+  // Neither FakeD1 nor sequential payment-only tests reproduce this race.
+  let injected = false;
+  const racingDb = {
+    prepare: (...args) => db.prepare(...args),
+    async batch(statements) {
+      if (!injected) {
+        injected = true;
+        await createPayment(db, 'main', {
+          id: 'racing-booking-payment',
+          invoiceId: 'test-invoice',
+          amountHalalas: 4000,
+          status: 'paid',
+        });
+      }
+      return db.batch(statements);
+    },
+  };
+  const booking = await patchBooking(racingDb, 'main', 'test-booking', {
+    clientName: 'New Client Name',
+  });
+  assert.equal(injected, true, 'the payment must commit after booking preflight');
+  const invoice = await db.prepare("SELECT total_halalas, paid_halalas, status FROM invoices WHERE id='test-invoice'").first();
+  const persisted = await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first();
+  assert.equal(invoice.total_halalas, 10000);
+  assert.equal(invoice.paid_halalas, 4000, 'booking operational edit must not overwrite paid money');
+  assert.equal(invoice.status, 'partial');
+  assert.equal(persisted.payment_status, 'partial');
+  assert.equal(booking.payment_status, 'partial');
+  assert.equal(booking.paid_halalas, 4000);
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
 });
