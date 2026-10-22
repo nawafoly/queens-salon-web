@@ -5325,6 +5325,21 @@ test("booking mutation routes enforce canonical permissions", async () => {
   );
   assert.equal(ownerFinancialBody.error, "core_booking:direct_payment_status_mutation_forbidden");
   assert.equal(fake.find("bookings", "main", "booking-auth-owner-financial").payment_status, "unpaid");
+
+  const mixedStatusSpoof = await worker.fetch(
+    request("/api/core/bookings/booking-auth-owner-financial", {
+      method: "PATCH",
+      body: {
+        notes: "legitimate note must not enable a forged payment status",
+        paymentStatus: "paid",
+      },
+    }),
+    env(fake)
+  );
+  const mixedStatusBody = await json(mixedStatusSpoof);
+  assert.equal(mixedStatusSpoof.status, 400, JSON.stringify(mixedStatusBody));
+  assert.equal(mixedStatusBody.error, "core_booking:direct_payment_status_mutation_forbidden");
+  assert.equal(fake.find("bookings", "main", "booking-auth-owner-financial").payment_status, "unpaid");
 });
 
 test("booking completion and cancellation update status", async () => {
