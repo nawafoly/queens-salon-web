@@ -1835,6 +1835,16 @@ export async function patchBooking(
     data.price_adjustment_note,
   ].some((value) => value !== undefined);
 
+  if (
+    !hasOperationalEdit &&
+    (data.paymentStatus !== undefined || data.payment_status !== undefined)
+  ) {
+    // A booking's payment status is a projection of settled invoice money.
+    // Direct status-only edits can make the booking disagree with its invoice
+    // without a corresponding payment, income, refund or audit movement.
+    throw new AppError(400, "core_booking:direct_payment_status_mutation_forbidden");
+  }
+
   if (!hasOperationalEdit) {
     return updateById(db, "bookings", salonId, bookingId, {
       status:
@@ -1847,10 +1857,7 @@ export async function patchBooking(
         data.adminNotes === undefined && data.admin_notes === undefined
           ? undefined
           : optionalText(data.adminNotes ?? data.admin_notes) || null,
-      payment_status:
-        data.paymentStatus === undefined && data.payment_status === undefined
-          ? undefined
-          : cleanText(data.paymentStatus || data.payment_status),
+
     });
   }
 
