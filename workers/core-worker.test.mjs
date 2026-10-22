@@ -5317,12 +5317,12 @@ test("booking mutation routes enforce canonical permissions", async () => {
     }),
     env(fake)
   );
+  const ownerFinancialBody = await json(ownerFinancial);
   assert.equal(
     ownerFinancial.status,
     400,
-    JSON.stringify(await json(ownerFinancial))
+    JSON.stringify(ownerFinancialBody)
   );
-  const ownerFinancialBody = await json(ownerFinancial);
   assert.equal(ownerFinancialBody.error, "core_booking:direct_payment_status_mutation_forbidden");
   assert.equal(fake.find("bookings", "main", "booking-auth-owner-financial").payment_status, "unpaid");
 });
