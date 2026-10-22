@@ -592,3 +592,53 @@ test('concurrent settled payment survives operational booking PATCH with consist
   assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
 });
+
+test('price reduction races with newly committed payment: reject atomically without losing either ledger', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('price-floor-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('price-floor-item','test-booking','main','price-floor-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+  let injected = false;
+  const racingDb = {
+    prepare: (...args) => db.prepare(...args),
+    async batch(statements) {
+      if (!injected) {
+        injected = true;
+        await createPayment(db, 'main', {
+          id: 'price-floor-racing-payment',
+          invoiceId: 'test-invoice',
+          amountHalalas: 9000,
+          status: 'paid',
+        });
+      }
+      return db.batch(statements);
+    },
+  };
+  await assert.rejects(
+    patchBooking(racingDb, 'main', 'test-booking', {
+      bookingItemId: 'price-floor-item',
+      bookingItemPriceHalalas: 8000,
+      priceAdjustmentReason: 'management_approved',
+    }, { uid: 'test-admin' }, { allowPriceAdjustment: true }),
+    (error) => error?.status === 409 || error?.statusCode === 409 || error?.code === 'core_booking:price_below_paid_amount',
+  );
+  assert.equal(injected, true);
+  const invoice = await db.prepare("SELECT total_halalas, paid_halalas, status FROM invoices WHERE id = 'test-invoice'").first();
+  assert.equal(invoice.total_halalas, 10000, 'rejected edit cannot modify the invoice total');
+  assert.equal(invoice.paid_halalas, 9000, 'committed payment remains in invoice');
+  assert.equal(invoice.status, 'partial');
+  const booking = await db.prepare("SELECT total_halalas, payment_status FROM bookings WHERE id = 'test-booking'").first();
+  assert.equal(booking.total_halalas, 10000, 'rejected edit cannot change booking total');
+  assert.equal(booking.payment_status, 'partial');
+  const item = await db.prepare("SELECT unit_price_halalas FROM booking_items WHERE id='price-floor-item'").first();
+  assert.equal(item.unit_price_halalas, 10000, 'rejected price edit must roll back item mutation');
+  assert.equal((await table(db, "SELECT id FROM payments WHERE id='price-floor-racing-payment'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE payment_id='price-floor-racing-payment'")).length, 1);
+});

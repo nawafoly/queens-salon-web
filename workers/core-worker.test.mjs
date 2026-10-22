@@ -2418,9 +2418,15 @@ class FakeD1 {
                  sql.includes("WHEN paid_halalas <= 0")) {
         // Operational booking edits must preserve a live invoice payment that
         // committed after patchBooking's preflight read.
-        const [subtotal, discount, total, , updatedAt, salonId, id] = params;
+        const guarded = sql.includes("CASE WHEN paid_halalas > ? THEN NULL ELSE ? END");
+        const [subtotal, discount] = params;
+        const total = params[guarded ? 3 : 2];
+        const [updatedAt, salonId, id] = params.slice(-3);
         const current = this.find("invoices", salonId, id);
         const paid = Number(current?.paid_halalas || 0);
+        if (guarded && paid > total) {
+          throw new Error("D1_ERROR: NOT NULL constraint failed: invoices.total_halalas: SQLITE_CONSTRAINT");
+        }
         results.push(this.update("invoices", salonId, id, {
           subtotal_halalas: subtotal,
           discount_halalas: discount,
