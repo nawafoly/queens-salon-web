@@ -642,3 +642,70 @@ test('price reduction races with newly committed payment: reject atomically with
   assert.equal((await table(db, "SELECT id FROM payments WHERE id='price-floor-racing-payment'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM income_entries WHERE payment_id='price-floor-racing-payment'")).length, 1);
 });
+
+test('payment correction must preserve original provider payment and completed-refund identity (regression, currently unsafe)', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('correction-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('correction-item','test-booking','main','correction-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+
+  await createPayment(db, 'main', {
+    id: 'provider-payment-must-survive',
+    invoiceId: 'test-invoice',
+    amountHalalas: 7000,
+    method: 'card',
+    provider: 'external-provider',
+    providerReference: 'provider-reference-123',
+    idempotencyKey: 'provider-payment-idempotency-123',
+  });
+  await createRefund(db, 'main', {
+    id: 'completed-refund-must-survive',
+    paymentId: 'provider-payment-must-survive',
+    amountHalalas: 1000,
+    status: 'completed',
+    method: 'card',
+  });
+
+  // Existing booking edit attempts to replace a prior settled payment
+  // despite a completed refund already pointing at that payment ID.
+  // Until a non-destructive correction design exists, rejection with 409
+  // and no mutations is safer than deleting immutable financial history.
+  let caught;
+  try {
+    await patchBooking(db, 'main', 'test-booking', {
+      paidHalalas: 5000, paymentMethod: 'card', reconcilePayment: true,
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  const originalPayment = await db.prepare(
+    "SELECT id, provider, provider_reference, idempotency_key, amount_halalas FROM payments WHERE salon_id='main' AND id='provider-payment-must-survive'"
+  ).first();
+  const linkedRefund = await db.prepare(
+    "SELECT id, payment_id, amount_halalas, status FROM refunds WHERE salon_id='main' AND id='completed-refund-must-survive'"
+  ).first();
+  assert.ok(originalPayment, 'payment correction cannot delete the external settled payment');
+  assert.equal(originalPayment.provider_reference, 'provider-reference-123');
+  assert.equal(originalPayment.idempotency_key, 'provider-payment-idempotency-123');
+  assert.equal(linkedRefund?.payment_id, originalPayment.id);
+  assert.equal(linkedRefund?.status, 'completed');
+  if (caught) {
+    assert.equal(caught.status, 409, 'unsupported destructive correction should return explicit conflict');
+  }
+  const replay = await createPayment(db, 'main', {
+    invoiceId: 'test-invoice',
+    amountHalalas: 7000,
+    method: 'card',
+    idempotencyKey: 'provider-payment-idempotency-123',
+  });
+  assert.equal(replay.id, 'provider-payment-must-survive');
+  assert.equal(replay.idempotent, true);
+});
