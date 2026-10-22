@@ -1835,6 +1835,25 @@ export async function patchBooking(
     data.price_adjustment_note,
   ].some((value) => value !== undefined);
 
+  const hasRequestedPaymentStatus =
+    data.paymentStatus !== undefined || data.payment_status !== undefined;
+  const hasExplicitPaymentReconciliation =
+    data.reconcilePayment === true ||
+    data.paidHalalas !== undefined ||
+    data.paid_halalas !== undefined ||
+    data.paymentMethod !== undefined ||
+    data.payment_method !== undefined ||
+    data.paymentBreakdown !== undefined ||
+    data.payment_breakdown !== undefined;
+
+  if (hasRequestedPaymentStatus && !hasExplicitPaymentReconciliation) {
+    // A booking's payment status is a projection of settled invoice money.
+    // Including unrelated operational edits must not bypass this restriction.
+    // Explicit legacy payment reconciliation remains unchanged until the
+    // audited replacement flow is implemented.
+    throw new AppError(400, "core_booking:direct_payment_status_mutation_forbidden");
+  }
+
   if (!hasOperationalEdit) {
     return updateById(db, "bookings", salonId, bookingId, {
       status:
@@ -1847,10 +1866,7 @@ export async function patchBooking(
         data.adminNotes === undefined && data.admin_notes === undefined
           ? undefined
           : optionalText(data.adminNotes ?? data.admin_notes) || null,
-      payment_status:
-        data.paymentStatus === undefined && data.payment_status === undefined
-          ? undefined
-          : cleanText(data.paymentStatus || data.payment_status),
+
     });
   }
 
