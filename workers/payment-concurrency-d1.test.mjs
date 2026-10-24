@@ -988,3 +988,118 @@ test('proposal audit failure rolls back proposal atomically', async (t) => {
   );
   assert.equal((await table(db, 'SELECT id FROM payment_correction_proposals')).length, 0);
 });
+
+test('correction preflight projects amount delta without posting or modifying any financial record', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'impact-amount-payment', invoiceId: 'test-invoice',
+    amountHalalas: 7000, method: 'cash',
+  });
+  const proposal = await proposePaymentCorrection(db, 'main', {
+    paymentId: 'impact-amount-payment', kind: 'amount_correction',
+    proposedAmountHalalas: 5000, reason: 'Correct cashier amount entry',
+    idempotencyKey: 'impact-amount-idempotency',
+  }, { uid: 'manager-a' });
+  const before = {
+    invoice: await db.prepare("SELECT * FROM invoices WHERE id='test-invoice'").first(),
+    payment: await db.prepare("SELECT * FROM payments WHERE id='impact-amount-payment'").first(),
+    incomes: await table(db, "SELECT * FROM income_entries WHERE booking_id='test-booking'"),
+    audits: await table(db, "SELECT * FROM audit_logs"),
+  };
+
+  const preview = await previewPaymentCorrectionImpact(db, 'main', proposal.id);
+  assert.equal(preview.eligibleForFurtherReview, true);
+  assert.deepEqual(preview.blockers, []);
+  assert.equal(preview.amountDeltaHalalas, -2000);
+  assert.equal(preview.invoiceBeforeHalalas, 7000);
+  assert.equal(preview.projectedInvoiceAfterHalalas, 5000);
+  assert.deepEqual(preview.paymentChannelDeltasHalalas, { cash: -2000, card: 0, transfer: 0 });
+  assert.equal(preview.isReadOnly, true);
+  assert.equal(preview.requiresAtomicWriteTimeRevalidation, true);
+  assert.equal(preview.requiresAccountingPostingPolicy, true);
+  assert.deepEqual(await db.prepare("SELECT * FROM invoices WHERE id='test-invoice'").first(), before.invoice);
+  assert.deepEqual(await db.prepare("SELECT * FROM payments WHERE id='impact-amount-payment'").first(), before.payment);
+  assert.deepEqual(await table(db, "SELECT * FROM income_entries WHERE booking_id='test-booking'"), before.incomes);
+  assert.deepEqual(await table(db, "SELECT * FROM audit_logs"), before.audits);
+});
+
+test('method-only correction impact reallocates payment channel without changing net money', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'impact-method-payment', invoiceId: 'test-invoice',
+    amountHalalas: 4000, method: 'card',
+  });
+  const proposal = await proposePaymentCorrection(db, 'main', {
+    paymentId: 'impact-method-payment', kind: 'method_reclassification',
+    proposedMethod: 'cash', reason: 'Wrong collection channel was selected',
+    idempotencyKey: 'impact-method-idempotency',
+  }, { uid: 'manager-a' });
+  const impact = await previewPaymentCorrectionImpact(db, 'main', proposal.id);
+  assert.equal(impact.eligibleForFurtherReview, true);
+  assert.equal(impact.amountDeltaHalalas, 0);
+  assert.equal(impact.projectedInvoiceAfterHalalas, 4000);
+  assert.deepEqual(impact.paymentChannelDeltasHalalas, { cash: 4000, card: -4000, transfer: 0 });
+  assert.equal((await db.prepare("SELECT method FROM payments WHERE id='impact-method-payment'").first()).method, 'card');
+  assert.equal((await db.prepare("SELECT method FROM income_entries WHERE payment_id='impact-method-payment'").first()).method, 'card');
+});
+
+test('financial correction preflight flags new refunds and closed accounting days', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'impact-refund-payment', invoiceId: 'test-invoice',
+    amountHalalas: 7000, method: 'cash',
+  });
+  const proposal = await proposePaymentCorrection(db, 'main', {
+    paymentId: 'impact-refund-payment', kind: 'amount_correction',
+    proposedAmountHalalas: 4000, reason: 'Original amount was entered too high',
+    idempotencyKey: 'impact-refund-idempotency',
+  }, { uid: 'manager-a' });
+
+  await createRefund(db, 'main', {
+    id: 'impact-late-refund', paymentId: 'impact-refund-payment',
+    amountHalalas: 5000, status: 'completed',
+  });
+  const income = await db.prepare("SELECT occurred_at FROM income_entries WHERE payment_id='impact-refund-payment'").first();
+  const auditDate = String(income.occurred_at).slice(0, 10);
+  const ts = new Date().toISOString();
+  await db.prepare(`INSERT INTO day_audit_closings
+    (id, salon_id, audit_date, total_halalas, cash_halalas, card_halalas,
+     transfer_halalas, manual_cash_halalas, cash_diff_halalas, closed_at, created_at)
+    VALUES ('impact-day-closure', 'main', ?, 7000, 7000, 0, 0, 7000, 0, ?, ?)`)
+    .bind(auditDate, ts, ts).run();
+
+  const impact = await previewPaymentCorrectionImpact(db, 'main', proposal.id);
+  assert.equal(impact.eligibleForFurtherReview, false);
+  assert.ok(impact.blockers.includes('refund_snapshot_changed'));
+  assert.ok(impact.blockers.includes('correction_below_completed_refunds'));
+  assert.ok(impact.blockers.includes('accounting_day_already_closed'));
+  assert.equal(impact.completedRefundHalalas, 5000);
+  assert.equal(impact.invoiceBeforeHalalas, 2000);
+  assert.equal(impact.projectedInvoiceAfterHalalas, -1000);
+  assert.ok(impact.blockers.includes('invoice_balance_conflict'));
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 2000);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM payment_correction_proposals").first()).n, 1);
+});
+
+test('financial impact preview rejects external provider and source-income mismatch, and isolates tenants', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'impact-provider-payment', invoiceId: 'test-invoice', amountHalalas: 6000,
+    method: 'card', provider: 'external-gateway', providerReference: 'original-provider-ref',
+  });
+  const proposal = await proposePaymentCorrection(db, 'main', {
+    paymentId: 'impact-provider-payment', kind: 'method_reclassification',
+    proposedMethod: 'cash', reason: 'External payment channel needs investigation',
+    idempotencyKey: 'impact-provider-idempotency',
+  }, { uid: 'manager-a' });
+  await db.prepare("UPDATE income_entries SET method = 'cash' WHERE payment_id = 'impact-provider-payment'").run();
+
+  const impact = await previewPaymentCorrectionImpact(db, 'main', proposal.id);
+  assert.equal(impact.eligibleForFurtherReview, false);
+  assert.ok(impact.blockers.includes('external_provider_requires_reconciliation'));
+  assert.ok(impact.blockers.includes('income_ledger_mismatch'));
+  await assert.rejects(
+    previewPaymentCorrectionImpact(db, 'another-salon', proposal.id),
+    (error) => error?.status === 404 && error?.code === 'core_payment_correction:not_found',
+  );
+});
