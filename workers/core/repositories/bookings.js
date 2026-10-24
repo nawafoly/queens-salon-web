@@ -2319,7 +2319,7 @@ export async function patchBooking(
                   )
                   OR EXISTS (
                     SELECT 1 FROM income_entries
-                    WHERE salon_id = ? AND payment_id IS NOT NULL
+                    WHERE salon_id = ?
                       AND (booking_id = ? OR invoice_id = ?)
                   )
                   OR EXISTS (
