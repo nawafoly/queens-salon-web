@@ -812,3 +812,177 @@ test('legacy booking income without payment id is immutable on financial PATCH',
   const incomes = await table(db, "SELECT id, amount_halalas FROM income_entries WHERE booking_id='test-booking'");
   assert.deepEqual(incomes, [{ id: 'legacy-income-protected', amount_halalas: 3000 }]);
 });
+
+
+test('financial correction proposal is append-only intent, not money: reason, audit, replay, tenant fence', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'settled-proposal-payment', invoiceId: 'test-invoice',
+    amountHalalas: 7000, method: 'card', idempotencyKey: 'settlement-proposal-key',
+  });
+  const snapshot = {
+    invoice: await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id='test-invoice'").first(),
+    booking: await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first(),
+    payment: await db.prepare("SELECT * FROM payments WHERE id='settled-proposal-payment'").first(),
+    incomes: await table(db, "SELECT * FROM income_entries WHERE booking_id='test-booking'"),
+  };
+  const data = {
+    paymentId: 'settled-proposal-payment',
+    kind: 'amount_correction', proposedAmountHalalas: 5000,
+    reason: 'Cashier entered incorrect collected amount',
+    idempotencyKey: 'proposal-amount-key',
+  };
+  const actor = { uid: 'manager-a' };
+  const proposal = await proposePaymentCorrection(db, 'main', data, actor);
+  assert.equal(proposal.status, 'proposed');
+  assert.equal(proposal.original_amount_halalas, 7000);
+  assert.equal(proposal.proposed_amount_halalas, 5000);
+  assert.equal(proposal.original_method, 'card');
+  assert.equal(proposal.proposed_method, 'card');
+  assert.equal(proposal.actor_uid, actor.uid);
+  assert.equal(proposal.completed_refund_halalas, 0);
+  assert.equal(proposal.booking_id, 'test-booking');
+  const replay = await proposePaymentCorrection(db, 'main', data, actor);
+  assert.equal(replay.id, proposal.id);
+  assert.equal(replay.idempotent, true);
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', { ...data, proposedAmountHalalas: 4000 }, actor),
+    (error) => error?.status === 409 && error?.code === 'core_payment_correction:idempotency_conflict',
+  );
+  await assert.rejects(
+    proposePaymentCorrection(db, 'other-salon', data, actor),
+    (error) => error?.status === 404 && error?.code === 'core_payment:not_found',
+  );
+  assert.deepEqual((await table(db, "SELECT id FROM payment_correction_proposals")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='payment_correction_proposed'")).length, 1);
+  assert.deepEqual(await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id='test-invoice'").first(), snapshot.invoice);
+  assert.deepEqual(await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first(), snapshot.booking);
+  assert.deepEqual(await db.prepare("SELECT * FROM payments WHERE id='settled-proposal-payment'").first(), snapshot.payment);
+  assert.deepEqual(await table(db, "SELECT * FROM income_entries WHERE booking_id='test-booking'"), snapshot.incomes);
+  assert.equal((await listPaymentCorrectionProposals(db, 'main', 'settled-proposal-payment')).length, 1);
+  assert.equal((await listPaymentCorrectionProposals(db, 'other-salon', 'settled-proposal-payment')).length, 0);
+});
+
+test('method correction proposal preserves provider identity, settles nothing and validates changes', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'provider-method-payment', invoiceId: 'test-invoice',
+    amountHalalas: 4000, method: 'card',
+    provider: 'gateway', providerReference: 'transaction-original',
+  });
+  const actor = { uid: 'finance-manager' };
+  const payload = {
+    paymentId: 'provider-method-payment', kind: 'method_reclassification',
+    proposedMethod: 'cash', reason: 'Payment mode was entered incorrectly',
+    idempotencyKey: 'proposal-method-key',
+  };
+  const proposed = await proposePaymentCorrection(db, 'main', payload, actor);
+  assert.equal(proposed.original_method, 'card');
+  assert.equal(proposed.proposed_method, 'cash');
+  assert.equal(proposed.proposed_amount_halalas, 4000);
+  const payment = await db.prepare("SELECT method, provider, provider_reference FROM payments WHERE id='provider-method-payment'").first();
+  assert.equal(payment.method, 'card');
+  assert.equal(payment.provider, 'gateway');
+  assert.equal(payment.provider_reference, 'transaction-original');
+  const income = await db.prepare("SELECT method, amount_halalas FROM income_entries WHERE payment_id='provider-method-payment'").first();
+  assert.equal(income.method, 'card');
+  assert.equal(income.amount_halalas, 4000);
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', { ...payload, proposedMethod: 'card', idempotencyKey: 'no-op-method' }, actor),
+    (error) => error?.code === 'core_payment_correction:no_change',
+  );
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', { ...payload, proposedMethod: 'cryptocurrency', idempotencyKey: 'wrong-method' }, actor),
+    (error) => error?.code === 'core_payment_correction:invalid_method',
+  );
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', { ...payload, reason: 'short', idempotencyKey: 'short-reason' }, actor),
+    (error) => error?.code === 'core_payment_correction:reason_required',
+  );
+});
+
+test('refund-linked payment proposal snapshots refunded budget; cannot propose below completed refund', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'refund-proposal-payment', invoiceId: 'test-invoice', amountHalalas: 7000,
+  });
+  await createRefund(db, 'main', {
+    id: 'linked-completed-refund', paymentId: 'refund-proposal-payment',
+    amountHalalas: 3000, status: 'completed',
+  });
+  const actor = { uid: 'finance-manager' };
+  const data = {
+    paymentId: 'refund-proposal-payment', kind: 'amount_correction',
+    reason: 'Correcting a cashier bookkeeping error', proposedAmountHalalas: 2000,
+    idempotencyKey: 'below-refund-budget',
+  };
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', data, actor),
+    (error) => error?.status === 409 && error?.code === 'core_payment_correction:stale_payment_snapshot',
+  );
+  assert.equal((await table(db, "SELECT id FROM payment_correction_proposals")).length, 0);
+  const safe = await proposePaymentCorrection(
+    db, 'main', { ...data, proposedAmountHalalas: 4000, idempotencyKey: 'above-refund-budget' }, actor
+  );
+  assert.equal(safe.completed_refund_halalas, 3000);
+  assert.equal(safe.proposed_amount_halalas, 4000);
+  const persistedRefund = await db.prepare("SELECT payment_id,status,amount_halalas FROM refunds WHERE id='linked-completed-refund'").first();
+  assert.equal(persistedRefund.payment_id, 'refund-proposal-payment');
+  assert.equal(persistedRefund.status, 'completed');
+  assert.equal(persistedRefund.amount_halalas, 3000);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 4000);
+});
+
+test('refund committed after proposal preflight is enforced by live D1 INSERT and leaves no audit', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'proposal-race-payment', invoiceId: 'test-invoice', amountHalalas: 7000,
+  });
+  let injected = false;
+  const racingDb = {
+    prepare: (...args) => db.prepare(...args),
+    async batch(statements) {
+      if (!injected) {
+        injected = true;
+        await createRefund(db, 'main', {
+          id: 'refund-concurrent-proposal', paymentId: 'proposal-race-payment',
+          amountHalalas: 5000, status: 'completed',
+        });
+      }
+      return db.batch(statements);
+    },
+  };
+  await assert.rejects(
+    proposePaymentCorrection(racingDb, 'main', {
+      paymentId: 'proposal-race-payment', kind: 'amount_correction',
+      proposedAmountHalalas: 4000, reason: 'Correct refund snapshot must be enforced',
+      idempotencyKey: 'concurrent-proposal-key',
+    }, { uid: 'manager-a' }),
+    (error) => error?.status === 409 && error?.code === 'core_payment_correction:stale_payment_snapshot',
+  );
+  assert.equal(injected, true);
+  assert.equal((await table(db, 'SELECT id FROM payment_correction_proposals')).length, 0);
+  assert.equal((await table(db, "SELECT id FROM audit_logs WHERE action='payment_correction_proposed'")).length, 0);
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 2000);
+});
+
+test('proposal audit failure rolls back proposal atomically', async (t) => {
+  const db = await setup(t);
+  await createPayment(db, 'main', {
+    id: 'proposal-audit-payment', invoiceId: 'test-invoice',
+    amountHalalas: 4000, method: 'cash',
+  });
+  await db.prepare(`CREATE TRIGGER proposal_audit_abort
+    BEFORE INSERT ON audit_logs
+    WHEN NEW.action = 'payment_correction_proposed'
+    BEGIN SELECT RAISE(ABORT, 'INJECTED_PROPOSAL_AUDIT_FAILURE'); END`).run();
+  await assert.rejects(
+    proposePaymentCorrection(db, 'main', {
+      paymentId: 'proposal-audit-payment', kind: 'amount_correction',
+      proposedAmountHalalas: 3000, reason: 'This audit must be atomic',
+      idempotencyKey: 'audit-rollback-proposal-key',
+    }, { uid: 'manager-a' }),
+    /INJECTED_PROPOSAL_AUDIT_FAILURE/,
+  );
+  assert.equal((await table(db, 'SELECT id FROM payment_correction_proposals')).length, 0);
+});
