@@ -2198,6 +2198,9 @@ export async function patchBooking(
     data.payment_method !== undefined ||
     data.paymentBreakdown !== undefined ||
     data.payment_breakdown !== undefined;
+  if (shouldReconcilePayment && !invoice) {
+    throw new AppError(409, "core_booking:payment_invoice_required");
+  }
   const paidHalalas = shouldReconcilePayment
     ? integer(data.paidHalalas ?? data.paid_halalas ?? 0, "paidHalalas", {
         min: 0,
@@ -2298,6 +2301,41 @@ export async function patchBooking(
       ],
     },
   ];
+
+  if (shouldReconcilePayment) {
+    // Temporary fail-closed boundary until corrections use a dedicated,
+    // immutable financial ledger. Initial settlement is still allowed when
+    // NO settled money or finance history exists. Guard inside the same D1
+    // batch as the payment writes: a payment/refund committed after preflight
+    // must never be deleted by the legacy replacement statements below.
+    // The NOT NULL invoice constraint aborts the ENTIRE D1 batch atomically.
+    statements.unshift({
+      sql: `UPDATE invoices
+                SET paid_halalas = CASE WHEN
+                  paid_halalas <> 0
+                  OR EXISTS (
+                    SELECT 1 FROM payments
+                    WHERE salon_id = ? AND (booking_id = ? OR invoice_id = ?)
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM income_entries
+                    WHERE salon_id = ? AND payment_id IS NOT NULL
+                      AND (booking_id = ? OR invoice_id = ?)
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM refunds
+                    WHERE salon_id = ? AND (booking_id = ? OR invoice_id = ?)
+                  )
+                  THEN NULL ELSE paid_halalas END
+              WHERE salon_id = ? AND id = ?`,
+      params: [
+        salonId, bookingId, invoice.id,
+        salonId, bookingId, invoice.id,
+        salonId, bookingId, invoice.id,
+        salonId, invoice.id,
+      ],
+    });
+  }
 
   if (clientName !== undefined || clientPhone !== undefined) {
     statements.push({
@@ -2585,6 +2623,16 @@ export async function patchBooking(
   try {
     await dbBatch(db, statements);
   } catch (error) {
+    if (
+      shouldReconcilePayment &&
+      /NOT NULL constraint failed:\s*invoices\.paid_halalas/i.test(cleanText(error?.message))
+    ) {
+      throw new AppError(
+        409,
+        "core_booking:payment_history_immutable",
+        "Existing settled payment history cannot be replaced by booking PATCH."
+      );
+    }
     // D1's NOT NULL constraint is the transaction-wide guard above. Turn
     // the rejected concurrent price reduction into the existing stable Core
     // conflict contract; the complete batch has already rolled back.
