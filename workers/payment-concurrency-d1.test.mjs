@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 import { createPayment } from './core/repositories/payments.js';
+import { proposePaymentCorrection, listPaymentCorrectionProposals } from './core/repositories/payment-correction-proposals.js';
 import { patchBooking } from './core/repositories/bookings.js';
 import { createRefund, patchRefund, voidRefund } from './core/repositories/refunds.js';
 
@@ -22,6 +23,7 @@ async function setup(t) {
     '0014_app_users_permissions.sql',
     '0079_client_cashback_wallet.sql', '0081_cashback_expiry_lot_state.sql',
     '0083_internal_booking_price_adjustments.sql',
+    '0095_payment_correction_proposals.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '').split('\n').filter((x) => !x.trim().startsWith('--')).join('\n');
