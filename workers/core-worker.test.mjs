@@ -2414,6 +2414,32 @@ class FakeD1 {
         const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
+      } else if (sql.startsWith("UPDATE invoices SET paid_halalas = CASE WHEN")) {
+        // Model the D1 transaction-level fail-closed financial-history guard.
+        const [
+          paymentSalon, paymentBooking, paymentInvoice,
+          incomeSalon, incomeBooking, incomeInvoice,
+          refundSalon, refundBooking, refundInvoice,
+          invoiceSalon, invoiceId,
+        ] = params;
+        const invoice = this.find("invoices", invoiceSalon, invoiceId);
+        const linked = (table, salon, booking, invoiceId, requirePaymentId = false) =>
+          this.rows(table).some((row) =>
+            row.salon_id === salon &&
+            (!requirePaymentId || Boolean(row.payment_id)) &&
+            (row.booking_id === booking || row.invoice_id === invoiceId)
+          );
+        if (
+          invoice && (
+            Number(invoice.paid_halalas || 0) !== 0 ||
+            linked("payments", paymentSalon, paymentBooking, paymentInvoice) ||
+            linked("income_entries", incomeSalon, incomeBooking, incomeInvoice, true) ||
+            linked("refunds", refundSalon, refundBooking, refundInvoice)
+          )
+        ) {
+          throw new Error("D1_ERROR: NOT NULL constraint failed: invoices.paid_halalas: SQLITE_CONSTRAINT");
+        }
+        results.push({ meta: { changes: invoice ? 1 : 0 } });
       } else if (sql.startsWith("UPDATE invoices SET subtotal_halalas = ?") &&
                  sql.includes("WHEN paid_halalas <= 0")) {
         // Operational booking edits must preserve a live invoice payment that
