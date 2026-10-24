@@ -2423,17 +2423,16 @@ class FakeD1 {
           invoiceSalon, invoiceId,
         ] = params;
         const invoice = this.find("invoices", invoiceSalon, invoiceId);
-        const linked = (table, salon, booking, invoiceId, requirePaymentId = false) =>
+        const linked = (table, salon, booking, invoiceId) =>
           this.rows(table).some((row) =>
             row.salon_id === salon &&
-            (!requirePaymentId || Boolean(row.payment_id)) &&
             (row.booking_id === booking || row.invoice_id === invoiceId)
           );
         if (
           invoice && (
             Number(invoice.paid_halalas || 0) !== 0 ||
             linked("payments", paymentSalon, paymentBooking, paymentInvoice) ||
-            linked("income_entries", incomeSalon, incomeBooking, incomeInvoice, true) ||
+            linked("income_entries", incomeSalon, incomeBooking, incomeInvoice) ||
             linked("refunds", refundSalon, refundBooking, refundInvoice)
           )
         ) {
