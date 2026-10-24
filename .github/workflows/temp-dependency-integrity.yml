@@ -1,0 +1,15 @@
+name: Temporary npm integrity probe
+on:
+  push:
+    branches:
+      - fix/security-audit-undici-zod-oct2026
+jobs:
+  published-integrities:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Read npm registry SHA512 integrity
+        run: |
+          echo "UNDICI_INTEGRITY=$(npm view undici@7.30.1 dist.integrity)"
+          echo "ZOD_INTEGRITY=$(npm view zod@4.6.6 dist.integrity)"
