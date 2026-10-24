@@ -783,3 +783,30 @@ test('concurrent settled payment aborts legacy replacement before any booking mu
   assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
 });
+
+test('legacy booking income without payment id is immutable on financial PATCH', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('legacy-income-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('legacy-income-item','test-booking','main','legacy-income-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+  await db.prepare(`INSERT INTO income_entries
+    (id,salon_id,booking_id,invoice_id,amount_halalas,category,description,occurred_at,created_at)
+    VALUES ('legacy-income-protected','main','test-booking','test-invoice',3000,'payment','Legacy income',?,?)`).bind(now, now).run();
+  await assert.rejects(
+    patchBooking(db, 'main', 'test-booking', {
+      paidHalalas: 3000, paymentMethod: 'cash', reconcilePayment: true,
+    }),
+    (error) => error?.status === 409 && error?.code === 'core_booking:payment_history_immutable',
+  );
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 0);
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 0);
+  const incomes = await table(db, "SELECT id, amount_halalas FROM income_entries WHERE booking_id='test-booking'");
+  assert.deepEqual(incomes, [{ id: 'legacy-income-protected', amount_halalas: 3000 }]);
+});
