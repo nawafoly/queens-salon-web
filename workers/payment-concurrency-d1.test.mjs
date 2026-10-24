@@ -642,3 +642,171 @@ test('price reduction races with newly committed payment: reject atomically with
   assert.equal((await table(db, "SELECT id FROM payments WHERE id='price-floor-racing-payment'")).length, 1);
   assert.equal((await table(db, "SELECT id FROM income_entries WHERE payment_id='price-floor-racing-payment'")).length, 1);
 });
+
+test('payment correction must preserve original provider payment and completed-refund identity (immutable ledger guard)', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('correction-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('correction-item','test-booking','main','correction-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+
+  await createPayment(db, 'main', {
+    id: 'provider-payment-must-survive',
+    invoiceId: 'test-invoice',
+    amountHalalas: 7000,
+    method: 'card',
+    provider: 'external-provider',
+    providerReference: 'provider-reference-123',
+    idempotencyKey: 'provider-payment-idempotency-123',
+  });
+  await createRefund(db, 'main', {
+    id: 'completed-refund-must-survive',
+    paymentId: 'provider-payment-must-survive',
+    amountHalalas: 1000,
+    status: 'completed',
+    method: 'card',
+  });
+
+  // Existing booking edit attempts to replace a prior settled payment
+  // despite a completed refund already pointing at that payment ID.
+  // Until a non-destructive correction design exists, rejection with 409
+  // and no mutations is safer than deleting immutable financial history.
+  await assert.rejects(
+    patchBooking(db, 'main', 'test-booking', {
+      paidHalalas: 5000, paymentMethod: 'card', reconcilePayment: true,
+    }),
+    (error) => error?.status === 409 && error?.code === 'core_booking:payment_history_immutable',
+  );
+
+  const originalPayment = await db.prepare(
+    "SELECT id, provider, provider_reference, idempotency_key, amount_halalas FROM payments WHERE salon_id='main' AND id='provider-payment-must-survive'"
+  ).first();
+  const linkedRefund = await db.prepare(
+    "SELECT id, payment_id, amount_halalas, status FROM refunds WHERE salon_id='main' AND id='completed-refund-must-survive'"
+  ).first();
+  assert.ok(originalPayment, 'payment correction cannot delete the external settled payment');
+  assert.equal(originalPayment.provider_reference, 'provider-reference-123');
+  assert.equal(originalPayment.idempotency_key, 'provider-payment-idempotency-123');
+  assert.equal(linkedRefund?.payment_id, originalPayment.id);
+  assert.equal(linkedRefund?.status, 'completed');
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 6000);
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
+  const replay = await createPayment(db, 'main', {
+    invoiceId: 'test-invoice',
+    amountHalalas: 7000,
+    method: 'card',
+    idempotencyKey: 'provider-payment-idempotency-123',
+  });
+  assert.equal(replay.id, 'provider-payment-must-survive');
+  assert.equal(replay.idempotent, true);
+});
+
+test('first booking payment reconciliation is allowed only before any settled money exists', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('first-payment-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('first-payment-item','test-booking','main','first-payment-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+  const created = await patchBooking(db, 'main', 'test-booking', {
+    paidHalalas: 3000, paymentMethod: 'cash', reconcilePayment: true,
+  });
+  assert.equal(created.paid_halalas, 3000);
+  assert.equal(created.payment_status, 'partial');
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
+  await assert.rejects(
+    patchBooking(db, 'main', 'test-booking', {
+      paidHalalas: 4000, paymentMethod: 'card', reconcilePayment: true,
+    }),
+    (error) => error?.status === 409 && error?.code === 'core_booking:payment_history_immutable',
+  );
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 3000);
+  assert.equal((await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first()).payment_status, 'partial');
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
+});
+
+test('concurrent settled payment aborts legacy replacement before any booking mutation', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('correction-race-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('correction-race-item','test-booking','main','correction-race-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+  let injected = false;
+  const racingDb = {
+    prepare: (...args) => db.prepare(...args),
+    async batch(statements) {
+      if (!injected) {
+        injected = true;
+        await createPayment(db, 'main', {
+          id: 'concurrent-settled-payment',
+          invoiceId: 'test-invoice',
+          amountHalalas: 4000,
+          method: 'card',
+          idempotencyKey: 'concurrent-settled-payment-key',
+        });
+      }
+      return db.batch(statements);
+    },
+  };
+  await assert.rejects(
+    patchBooking(racingDb, 'main', 'test-booking', {
+      paidHalalas: 2500, paymentMethod: 'cash', reconcilePayment: true,
+      clientName: 'Stale client edit cannot partially commit',
+    }),
+    (error) => error?.status === 409 && error?.code === 'core_booking:payment_history_immutable',
+  );
+  assert.equal(injected, true);
+  const invoice = await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id='test-invoice'").first();
+  assert.equal(invoice.paid_halalas, 4000);
+  assert.equal(invoice.status, 'partial');
+  assert.equal((await db.prepare("SELECT payment_status FROM bookings WHERE id='test-booking'").first()).payment_status, 'partial');
+  assert.equal((await db.prepare("SELECT name FROM clients WHERE id='test-client'").first()).name, 'Test Client');
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 1);
+  assert.equal((await table(db, "SELECT id FROM income_entries WHERE booking_id='test-booking'")).length, 1);
+});
+
+test('legacy booking income without payment id is immutable on financial PATCH', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('legacy-income-service','main','Service',60,10000,1,?,?)`).bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('legacy-income-item','test-booking','main','legacy-income-service','Service',
+     NULL,1,10000,10000,60,'2026-10-10','09:00','10:00',?)`).bind(now).run();
+  await db.prepare(`INSERT INTO income_entries
+    (id,salon_id,booking_id,invoice_id,amount_halalas,category,description,occurred_at,created_at)
+    VALUES ('legacy-income-protected','main','test-booking','test-invoice',3000,'payment','Legacy income',?,?)`).bind(now, now).run();
+  await assert.rejects(
+    patchBooking(db, 'main', 'test-booking', {
+      paidHalalas: 3000, paymentMethod: 'cash', reconcilePayment: true,
+    }),
+    (error) => error?.status === 409 && error?.code === 'core_booking:payment_history_immutable',
+  );
+  assert.equal((await db.prepare("SELECT paid_halalas FROM invoices WHERE id='test-invoice'").first()).paid_halalas, 0);
+  assert.equal((await table(db, "SELECT id FROM payments WHERE booking_id='test-booking'")).length, 0);
+  const incomes = await table(db, "SELECT id, amount_halalas FROM income_entries WHERE booking_id='test-booking'");
+  assert.deepEqual(incomes, [{ id: 'legacy-income-protected', amount_halalas: 3000 }]);
+});

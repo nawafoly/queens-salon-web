@@ -2414,6 +2414,31 @@ class FakeD1 {
         const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
+      } else if (sql.startsWith("UPDATE invoices SET paid_halalas = CASE WHEN")) {
+        // Model the D1 transaction-level fail-closed financial-history guard.
+        const [
+          paymentSalon, paymentBooking, paymentInvoice,
+          incomeSalon, incomeBooking, incomeInvoice,
+          refundSalon, refundBooking, refundInvoice,
+          invoiceSalon, invoiceId,
+        ] = params;
+        const invoice = this.find("invoices", invoiceSalon, invoiceId);
+        const linked = (table, salon, booking, invoiceId) =>
+          this.rows(table).some((row) =>
+            row.salon_id === salon &&
+            (row.booking_id === booking || row.invoice_id === invoiceId)
+          );
+        if (
+          invoice && (
+            Number(invoice.paid_halalas || 0) !== 0 ||
+            linked("payments", paymentSalon, paymentBooking, paymentInvoice) ||
+            linked("income_entries", incomeSalon, incomeBooking, incomeInvoice) ||
+            linked("refunds", refundSalon, refundBooking, refundInvoice)
+          )
+        ) {
+          throw new Error("D1_ERROR: NOT NULL constraint failed: invoices.paid_halalas: SQLITE_CONSTRAINT");
+        }
+        results.push({ meta: { changes: invoice ? 1 : 0 } });
       } else if (sql.startsWith("UPDATE invoices SET subtotal_halalas = ?") &&
                  sql.includes("WHEN paid_halalas <= 0")) {
         // Operational booking edits must preserve a live invoice payment that
@@ -4204,7 +4229,7 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
 
 
 
-test("dashboard booking edit updates schedule service client and payment while preserving agreed pricing", async () => {
+test("dashboard operational booking edit preserves settled payment identity and agreed pricing", async () => {
   const fake = new FakeD1();
   seedCore(fake);
   const now = "2027-01-01T00:00:00.000Z";
@@ -4271,9 +4296,6 @@ test("dashboard booking edit updates schedule service client and payment while p
       serviceId: "svc-b",
       durationMinutes: 45,
       notes: "ملاحظة نظيفة",
-      paidHalalas: 3000,
-      paymentMethod: "cash",
-      reconcilePayment: true,
     },
   }), env(fake));
   const body = await json(response);
@@ -4285,18 +4307,19 @@ test("dashboard booking edit updates schedule service client and payment while p
   assert.equal(body.data.start_time, "11:00");
   assert.equal(body.data.end_time, "11:45");
   assert.equal(body.data.total_halalas, 7500);
-  assert.equal(body.data.payment_status, "partial");
-  assert.equal(body.data.paid_halalas, 3000);
+  assert.equal(body.data.payment_status, "paid");
+  assert.equal(body.data.paid_halalas, 7500);
   assert.equal(body.data.items[0].service_id, "svc-b");
   assert.equal(body.data.items[0].service_name_snapshot, "Service B");
   assert.equal(body.data.items[0].unit_price_halalas, 7500);
   assert.equal(body.data.items[0].final_total_halalas, 7500);
   assert.equal(fake.find("clients", "main", "client-a").name, "Client Updated");
   assert.equal(fake.find("invoices", "main", "invoice-edit-a").total_halalas, 7500);
-  assert.equal(fake.find("invoices", "main", "invoice-edit-a").paid_halalas, 3000);
+  assert.equal(fake.find("invoices", "main", "invoice-edit-a").paid_halalas, 7500);
   assert.equal(fake.rows("payments").length, 1);
-  assert.equal(fake.rows("payments")[0].method, "cash");
-  assert.equal(fake.rows("payments")[0].amount_halalas, 3000);
+  assert.equal(fake.rows("payments")[0].id, "payment-edit-old");
+  assert.equal(fake.rows("payments")[0].method, "card");
+  assert.equal(fake.rows("payments")[0].amount_halalas, 7500);
   assert.equal(fake.rows("income_entries").length, 1);
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "details_updated"));
   assert.ok(fake.rows("booking_slot_locks").every((row) => row.booking_date === "2027-01-11"));
@@ -5525,7 +5548,7 @@ test("mixed booking payments create independent payment and income rows", async 
   assert.equal(fake.find("bookings", "main", "booking-mixed").payment_status, "paid");
 });
 
-test("booking payment reconciliation replaces canonical payment and income rows atomically", async () => {
+test("booking payment correction refuses to rewrite settled payments and income", async () => {
   const fake = new FakeD1();
   seedCore(fake);
 
@@ -5583,7 +5606,9 @@ test("booking payment reconciliation replaces canonical payment and income rows 
     env(fake)
   );
 
-  assert.equal(response.status, 200);
+  const responseBody = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(responseBody));
+  assert.equal(responseBody.error, "core_booking:payment_history_immutable");
 
   const booking = fake.find(
     "bookings",
@@ -5614,49 +5639,20 @@ test("booking payment reconciliation replaces canonical payment and income rows 
         row.payment_id
     );
 
-  assert.equal(booking.payment_status, "partial");
+  assert.equal(booking.payment_status, "paid");
 
-  assert.equal(Number(invoice.paid_halalas), 2500);
-  assert.equal(invoice.status, "partial");
+  assert.equal(Number(invoice.paid_halalas), 7500);
+  assert.equal(invoice.status, "paid");
 
   assert.equal(payments.length, 1);
+  assert.equal(payments[0].id, "payment-reconcile-old");
   assert.equal(payments[0].method, "card");
-  assert.equal(Number(payments[0].amount_halalas), 2500);
-  assert.equal(payments[0].provider, "dashboard_edit");
-  assert.notEqual(payments[0].id, "payment-reconcile-old");
-
+  assert.equal(payments[0].provider, "seed");
+  assert.equal(payments[0].amount_halalas, 7500);
   assert.equal(incomeRows.length, 1);
-  assert.equal(incomeRows[0].payment_id, payments[0].id);
-  assert.equal(incomeRows[0].invoice_id, "invoice-reconcile-edit");
-  assert.equal(incomeRows[0].method, "card");
-  assert.equal(Number(incomeRows[0].amount_halalas), 2500);
-  assert.notEqual(incomeRows[0].id, "income-reconcile-old");
-
-  assert.equal(
-    fake.find("payments", "main", "payment-reconcile-old"),
-    null
-  );
-
-  assert.equal(
-    fake.find("income_entries", "main", "income-reconcile-old"),
-    null
-  );
-
-  assert.equal(
-    payments.reduce(
-      (sum, row) => sum + Number(row.amount_halalas || 0),
-      0
-    ),
-    Number(invoice.paid_halalas)
-  );
-
-  assert.equal(
-    incomeRows.reduce(
-      (sum, row) => sum + Number(row.amount_halalas || 0),
-      0
-    ),
-    Number(invoice.paid_halalas)
-  );
+  assert.equal(incomeRows[0].id, "income-reconcile-old");
+  assert.equal(incomeRows[0].payment_id, "payment-reconcile-old");
+  assert.equal(incomeRows[0].amount_halalas, 7500);
 });
 
 test("payment batch failure rolls back and retry succeeds without duplicate rows", async () => {
