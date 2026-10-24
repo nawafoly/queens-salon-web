@@ -105,7 +105,7 @@ export async function proposePaymentCorrection(db, salonId, data = {}, actor = {
       original_method, proposed_method, completed_refund_halalas,
       reason, idempotency_key, intent_fingerprint, actor_uid, created_at, status)
       SELECT ?, p.salon_id, p.booking_id, p.invoice_id, p.id, ?,
-        p.amount_halalas, ?, p.method, ?, ${refundSum},
+        p.amount_halalas, ?, LOWER(TRIM(p.method)), ?, ${refundSum},
         ?, ?, ?, ?, ?, 'proposed'
       FROM payments p
       INNER JOIN invoices i ON i.salon_id = p.salon_id AND i.id = p.invoice_id
