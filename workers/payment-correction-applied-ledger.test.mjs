@@ -46,13 +46,13 @@ async function database(t) {
     .trim();
 
   const statements = cleaned
-    .split(/;\s*(?=CREATE\s+(?:TABLE|INDEX|TRIGGER)\b|$)/i)
+    .split(/;\s*(?=CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX|VIEW|TRIGGER)\b|$)/i)
     .map((statement) => statement.trim())
     .filter(Boolean);
 
-  if (statements.length !== 9) {
+  if (statements.length !== 11) {
     throw new Error(
-      `Expected 9 SQL statements, received ${statements.length}`
+      `Expected 11 SQL statements, received ${statements.length}`
     );
   }
 
@@ -210,4 +210,95 @@ test('signed postings are immutable and tenant isolated', async t => {
   ).first();
 
   assert.equal(count.n, 2);
+});
+
+async function insertPosting(db, id, channel, amount, date = '2026-10-24') {
+  return db.prepare(
+    `INSERT INTO payment_correction_applied_postings
+    (id, salon_id, event_id, channel, signed_amount_halalas,
+     accounting_date, created_at)
+    VALUES (?, 'main', 'e1', ?, ?, ?, '2026-10-24T13:00:00Z')`
+  ).bind(id, channel, amount, date).run();
+}
+
+async function ledgerIntegrity(db) {
+  return db.prepare(
+    "SELECT * FROM payment_correction_applied_integrity WHERE event_id = 'e1'"
+  ).first();
+}
+
+test('second applied correction for one payment is rejected', async t => {
+  const db = await database(t);
+  await addEvent(db);
+
+  await assert.rejects(
+    addEvent(db, {
+      id: 'e2',
+      proposal_id: 'q2',
+      idempotency_key: 'k2'
+    }),
+    /UNIQUE|constraint/i
+  );
+
+  const count = await db.prepare(
+    'SELECT COUNT(*) AS n FROM payment_correction_applied_events'
+  ).first();
+
+  assert.equal(count.n, 1);
+});
+
+test('method reclassification requires both correct channel postings', async t => {
+  const db = await database(t);
+  await addEvent(db);
+
+  assert.equal((await ledgerIntegrity(db)).integrity_status, 'unbalanced');
+
+  await insertPosting(db, 'card-out', 'card', -7000);
+  assert.equal((await ledgerIntegrity(db)).integrity_status, 'unbalanced');
+
+  await insertPosting(db, 'cash-in', 'cash', 7000);
+
+  const result = await ledgerIntegrity(db);
+  assert.equal(result.integrity_status, 'balanced');
+  assert.equal(result.posted_delta_halalas, 0);
+  assert.equal(result.posting_count, 2);
+});
+
+test('equal net total does not hide wrong channel allocations', async t => {
+  const db = await database(t);
+  await addEvent(db);
+
+  await insertPosting(db, 'card-wrong', 'card', -6000);
+  await insertPosting(db, 'cash-wrong', 'cash', 6000);
+
+  const result = await ledgerIntegrity(db);
+  assert.equal(result.posted_delta_halalas, 0);
+  assert.equal(result.integrity_status, 'unbalanced');
+});
+
+test('amount correction requires exact delta and accounting date', async t => {
+  const db = await database(t);
+
+  await addEvent(db, {
+    kind: 'amount_correction',
+    original_method: 'cash',
+    corrected_method: 'cash',
+    original_amount_halalas: 7000,
+    corrected_amount_halalas: 6500,
+    amount_delta_halalas: -500,
+    invoice_paid_after_halalas: 6500
+  });
+
+  await insertPosting(db, 'amount-out', 'cash', -500);
+  assert.equal((await ledgerIntegrity(db)).integrity_status, 'balanced');
+});
+
+test('accounting date mismatch is detected', async t => {
+  const db = await database(t);
+  await addEvent(db);
+
+  await insertPosting(db, 'card-other-day', 'card', -7000, '2026-10-25');
+  await insertPosting(db, 'cash-correct-day', 'cash', 7000);
+
+  assert.equal((await ledgerIntegrity(db)).integrity_status, 'unbalanced');
 });

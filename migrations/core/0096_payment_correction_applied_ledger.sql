@@ -107,3 +107,63 @@ BEFORE DELETE ON payment_correction_applied_postings
 BEGIN
   SELECT RAISE(ABORT, 'payment_correction_applied_postings_are_immutable');
 END;
+
+-- Restrict phase-one application to one correction per original payment.
+-- Future sequential corrections require explicit version chaining.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_correction_applied_once_per_payment
+ON payment_correction_applied_events (salon_id, payment_id);
+
+-- Read-only integrity projection; any unbalanced event must fail closed.
+CREATE VIEW IF NOT EXISTS payment_correction_applied_integrity AS
+SELECT
+  e.salon_id,
+  e.id AS event_id,
+  e.payment_id,
+  e.amount_delta_halalas,
+  COALESCE(SUM(p.signed_amount_halalas), 0) AS posted_delta_halalas,
+  COUNT(p.id) AS posting_count,
+  CASE
+    WHEN COUNT(p.id) =
+      CASE WHEN e.original_method = e.corrected_method THEN 1 ELSE 2 END
+
+    AND COALESCE(SUM(p.signed_amount_halalas), 0) =
+      e.amount_delta_halalas
+
+    AND COALESCE(SUM(
+      CASE WHEN p.channel = 'cash' THEN p.signed_amount_halalas ELSE 0 END
+    ), 0) =
+      (CASE WHEN e.corrected_method = 'cash'
+        THEN e.corrected_amount_halalas ELSE 0 END)
+      -
+      (CASE WHEN e.original_method = 'cash'
+        THEN e.original_amount_halalas ELSE 0 END)
+
+    AND COALESCE(SUM(
+      CASE WHEN p.channel = 'card' THEN p.signed_amount_halalas ELSE 0 END
+    ), 0) =
+      (CASE WHEN e.corrected_method = 'card'
+        THEN e.corrected_amount_halalas ELSE 0 END)
+      -
+      (CASE WHEN e.original_method = 'card'
+        THEN e.original_amount_halalas ELSE 0 END)
+
+    AND COALESCE(SUM(
+      CASE WHEN p.channel = 'transfer' THEN p.signed_amount_halalas ELSE 0 END
+    ), 0) =
+      (CASE WHEN e.corrected_method = 'transfer'
+        THEN e.corrected_amount_halalas ELSE 0 END)
+      -
+      (CASE WHEN e.original_method = 'transfer'
+        THEN e.original_amount_halalas ELSE 0 END)
+
+    AND COALESCE(SUM(
+      CASE WHEN p.accounting_date <> e.accounting_date THEN 1 ELSE 0 END
+    ), 0) = 0
+
+    THEN 'balanced'
+    ELSE 'unbalanced'
+  END AS integrity_status
+FROM payment_correction_applied_events e
+LEFT JOIN payment_correction_applied_postings p
+  ON p.salon_id = e.salon_id AND p.event_id = e.id
+GROUP BY e.salon_id, e.id;
