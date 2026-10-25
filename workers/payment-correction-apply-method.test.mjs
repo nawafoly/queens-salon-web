@@ -473,7 +473,7 @@ test('day audit includes applied method corrections without increasing revenue',
 
   assert.equal(
     after.sourceVersion,
-    'day-audit-v2-correction-ledger'
+    'day-audit-v3-riyadh-accounting-day'
   );
 
   const invoice = await db.prepare(
@@ -741,4 +741,59 @@ test('day audit scans more than 500 income rows without truncation', async t => 
   assert.equal(snapshot.transferHalalas, 0);
   assert.equal(snapshot.totalHalalas, 58000);
   assert.equal(snapshot.unclassifiedHalalas, 0);
+});
+
+test('Riyadh midnight accounting boundary is consistent across audit and APPLY', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  // October 24 at 21:30 UTC = October 25 at 00:30 Riyadh.
+  await db.prepare(
+    `UPDATE income_entries
+     SET occurred_at = ?
+     WHERE salon_id = 'main'
+       AND payment_id = 'payment-a'`
+  ).bind('2026-10-24T21:30:00.000Z').run();
+
+  const previousDay = await computeDayAuditSnapshot(
+    db, 'main', '2026-10-24'
+  );
+
+  assert.equal(previousDay.totalHalalas, 0);
+
+  const accountingDay = await computeDayAuditSnapshot(
+    db, 'main', '2026-10-25'
+  );
+
+  assert.equal(accountingDay.cardHalalas, 7000);
+  assert.equal(accountingDay.cashHalalas, 0);
+  assert.equal(accountingDay.totalHalalas, 7000);
+
+  await approve(db, proposal.id);
+
+  const event = await db.prepare(
+    `SELECT accounting_date
+     FROM payment_correction_applied_events
+     WHERE salon_id = 'main'
+     LIMIT 1`
+  ).first();
+
+  assert.equal(event.accounting_date, '2026-10-25');
+
+  const after = await computeDayAuditSnapshot(
+    db, 'main', '2026-10-25'
+  );
+
+  assert.equal(after.cashHalalas, 7000);
+  assert.equal(after.cardHalalas, 0);
+  assert.equal(after.totalHalalas, 7000);
+
+  const previousAfter = await computeDayAuditSnapshot(
+    db, 'main', '2026-10-24'
+  );
+
+  assert.equal(previousAfter.totalHalalas, 0);
 });

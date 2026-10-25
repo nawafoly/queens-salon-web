@@ -14,7 +14,7 @@ import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
 import { getAppliedCorrectionDayTotals } from './payment-correction-read-model.js';
 
-export const DAY_AUDIT_SOURCE_VERSION = 'day-audit-v2-correction-ledger';
+export const DAY_AUDIT_SOURCE_VERSION = 'day-audit-v3-riyadh-accounting-day';
 
 function salonTodayISO(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -169,10 +169,9 @@ async function readDayAuditRows(db, salonId, date, kind) {
   const alias = income ? 'i' : 'r';
   const timestamp = income ? 'occurred_at' : 'refunded_at';
 
-  const start = `${date}T00:00:00.000Z`;
-  const end = new Date(
-    Date.parse(start) + 86_400_000
-  ).toISOString();
+  const accountingDateSql = income
+    ? "date(i.occurred_at, '+3 hours')"
+    : "date(COALESCE(NULLIF(TRIM(r.refunded_at), ''), r.created_at), '+3 hours')";
 
   const projection = income
     ? 'i.*, b.booking_date AS booking_date'
@@ -197,7 +196,7 @@ async function readDayAuditRows(db, salonId, date, kind) {
   let cursor = null;
 
   while (true) {
-    const params = [salonId, date, start, end];
+    const params = [salonId, date];
 
     const cursorClause = cursor
       ? `AND (
@@ -223,13 +222,7 @@ async function readDayAuditRows(db, salonId, date, kind) {
          FROM ${table} ${alias}
          ${bookingJoin}
         WHERE ${alias}.salon_id = ?
-          AND (
-            ${alias}.${timestamp} = ?
-            OR (
-              ${alias}.${timestamp} >= ?
-              AND ${alias}.${timestamp} < ?
-            )
-          )
+          AND ${accountingDateSql} = ?
           ${cursorClause}
         ORDER BY
           ${alias}.${timestamp} DESC,
@@ -282,7 +275,7 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     // listIncome may include rows because their booking belongs to
     // the requested day. Do not post them into that day's cash audit
     // unless the income itself occurred on the requested date.
-    if (row.occurred_at.slice(0, 10) !== date) continue;
+    // Accounting date has already been validated in the SQL query.
 
     mergedById.set(row.id, row);
   }

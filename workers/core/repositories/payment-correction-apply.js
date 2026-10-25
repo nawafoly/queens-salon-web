@@ -109,7 +109,7 @@ export async function applyPaymentMethodCorrection(
       0,
       i.paid_halalas,
       i.paid_halalas,
-      SUBSTR(inc.occurred_at, 1, 10),
+      date(inc.occurred_at, '+3 hours'),
       q.actor_uid,
       ?, ?, q.reason, q.idempotency_key, ?
     FROM payment_correction_proposals q
@@ -153,7 +153,7 @@ export async function applyPaymentMethodCorrection(
       AND LOWER(TRIM(inc.method)) = LOWER(TRIM(p.method))
       AND inc.category = 'payment'
       AND inc.source = 'booking'
-      AND SUBSTR(inc.occurred_at, 1, 10)
+      AND date(inc.occurred_at, '+3 hours')
         GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
       AND i.paid_halalas >= 0
       AND (
@@ -170,7 +170,7 @@ export async function applyPaymentMethodCorrection(
       AND NOT EXISTS (
         SELECT 1 FROM day_audit_closings c
         WHERE c.salon_id = q.salon_id
-          AND c.audit_date = SUBSTR(inc.occurred_at, 1, 10)
+          AND c.audit_date = date(inc.occurred_at, '+3 hours')
       )
       AND NOT EXISTS (
         SELECT 1 FROM payment_correction_applied_events a
