@@ -344,3 +344,100 @@ test('simultaneous attempts create only one correction', async t => {
 
   assert.equal(integrity.integrity_status, 'balanced');
 });
+
+test('correction day totals preserve net revenue', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { getAppliedCorrectionDayTotals } = await import(
+    './core/repositories/payment-correction-read-model.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  const date = income.occurred_at.slice(0, 10);
+
+  const before = await getAppliedCorrectionDayTotals(db, 'main', date);
+
+  assert.equal(before.totalDeltaHalalas, 0);
+  assert.equal(before.eventCount, 0);
+
+  await approve(db, proposal.id);
+
+  const after = await getAppliedCorrectionDayTotals(db, 'main', date);
+
+  assert.equal(after.cashDeltaHalalas, 7000);
+  assert.equal(after.cardDeltaHalalas, -7000);
+  assert.equal(after.transferDeltaHalalas, 0);
+  assert.equal(after.totalDeltaHalalas, 0);
+  assert.equal(after.eventCount, 1);
+  assert.equal(after.postingCount, 2);
+
+  const otherTenant = await getAppliedCorrectionDayTotals(
+    db, 'another-salon', date
+  );
+
+  assert.equal(otherTenant.eventCount, 0);
+
+  const otherDate = await getAppliedCorrectionDayTotals(
+    db, 'main', '2026-01-01'
+  );
+
+  assert.equal(otherDate.eventCount, 0);
+
+  const originalPayment = await db.prepare(
+    "SELECT amount_halalas,method FROM payments WHERE id='payment-a'"
+  ).first();
+
+  assert.equal(originalPayment.amount_halalas, 7000);
+  assert.equal(originalPayment.method, 'card');
+
+  const originalIncome = await db.prepare(
+    "SELECT amount_halalas,method FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  assert.equal(originalIncome.amount_halalas, 7000);
+  assert.equal(originalIncome.method, 'card');
+});
+
+test('correction read model rejects an incomplete applied journal', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { getAppliedCorrectionDayTotals } = await import(
+    './core/repositories/payment-correction-read-model.js'
+  );
+
+  const applied = await approve(db, proposal.id);
+
+  await db.prepare(
+    `INSERT INTO payment_correction_applied_events (
+       id, salon_id, proposal_id, payment_id,
+       invoice_id, booking_id, kind,
+       original_amount_halalas, corrected_amount_halalas,
+       amount_delta_halalas, original_method, corrected_method,
+       refunded_snapshot_halalas, invoice_paid_before_halalas,
+       invoice_paid_after_halalas, accounting_date,
+       requested_by_uid, approved_by_uid, applied_by_uid,
+       reason, idempotency_key, applied_at
+     )
+     SELECT
+       'incomplete-event', salon_id, 'incomplete-proposal',
+       'incomplete-payment', invoice_id, booking_id, kind,
+       original_amount_halalas, corrected_amount_halalas,
+       amount_delta_halalas, original_method, corrected_method,
+       refunded_snapshot_halalas, invoice_paid_before_halalas,
+       invoice_paid_after_halalas, accounting_date,
+       requested_by_uid, approved_by_uid, applied_by_uid,
+       reason, 'incomplete-key', applied_at
+     FROM payment_correction_applied_events
+     WHERE id = ?`
+  ).bind(applied.id).run();
+
+  await assert.rejects(
+    getAppliedCorrectionDayTotals(db, 'main', applied.accounting_date),
+    error =>
+      error?.status === 409 &&
+      error?.code === 'core_payment_correction:unbalanced_ledger'
+  );
+});
