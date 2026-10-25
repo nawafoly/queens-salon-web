@@ -1,6 +1,7 @@
 // CORE D1 ONLY — day audit closings are immutable financial snapshots.
 
 import {
+  changes,
   cleanText,
   dbAll,
   dbFirst,
@@ -11,10 +12,9 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
-import { listIncome } from './finance.js';
-import { listRefunds } from './refunds.js';
+import { getAppliedCorrectionDayTotals } from './payment-correction-read-model.js';
 
-export const DAY_AUDIT_SOURCE_VERSION = 'day-audit-v1';
+export const DAY_AUDIT_SOURCE_VERSION = 'day-audit-v2-correction-ledger';
 
 function salonTodayISO(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -159,11 +159,114 @@ function normalizeRefundRow(row) {
   };
 }
 
+const DAY_AUDIT_PAGE_SIZE = 250;
+
+// Financial reconciliation must never inherit dashboard list limits.
+// Keyset pagination bounds each D1 response, not the accounting total.
+async function readDayAuditRows(db, salonId, date, kind) {
+  const income = kind === 'income';
+  const table = income ? 'income_entries' : 'refunds';
+  const alias = income ? 'i' : 'r';
+  const timestamp = income ? 'occurred_at' : 'refunded_at';
+
+  const start = `${date}T00:00:00.000Z`;
+  const end = new Date(
+    Date.parse(start) + 86_400_000
+  ).toISOString();
+
+  const projection = income
+    ? 'i.*, b.booking_date AS booking_date'
+    : 'r.*';
+
+  // Preserve the booking date metadata previously provided by
+  // finance.listIncome, including legacy booking-linked income.
+  const bookingJoin = income
+    ? `LEFT JOIN bookings b
+         ON b.salon_id = i.salon_id
+        AND b.id = CASE
+          WHEN COALESCE(TRIM(i.booking_id), '') <> ''
+            THEN i.booking_id
+          WHEN LOWER(COALESCE(TRIM(i.source), ''))
+            IN ('booking', 'invoice', 'حجز', 'فاتورة')
+            THEN i.id
+          ELSE NULL
+        END`
+    : '';
+
+  const results = [];
+  let cursor = null;
+
+  while (true) {
+    const params = [salonId, date, start, end];
+
+    const cursorClause = cursor
+      ? `AND (
+           ${alias}.${timestamp} < ?
+           OR (
+             ${alias}.${timestamp} = ?
+             AND ${alias}.id < ?
+           )
+         )`
+      : '';
+
+    if (cursor) {
+      params.push(
+        cursor.timestamp,
+        cursor.timestamp,
+        cursor.id
+      );
+    }
+
+    const page = await dbAll(
+      db,
+      `SELECT ${projection}
+         FROM ${table} ${alias}
+         ${bookingJoin}
+        WHERE ${alias}.salon_id = ?
+          AND (
+            ${alias}.${timestamp} = ?
+            OR (
+              ${alias}.${timestamp} >= ?
+              AND ${alias}.${timestamp} < ?
+            )
+          )
+          ${cursorClause}
+        ORDER BY
+          ${alias}.${timestamp} DESC,
+          ${alias}.id DESC
+        LIMIT ${DAY_AUDIT_PAGE_SIZE}`,
+      params
+    );
+
+    if (!page.length) break;
+
+    results.push(...page);
+
+    if (page.length < DAY_AUDIT_PAGE_SIZE) break;
+
+    const last = page[page.length - 1];
+
+    if (!last?.id || !last?.[timestamp]) {
+      throw new AppError(
+        409,
+        'core_day_audit:invalid_pagination_cursor'
+      );
+    }
+
+    cursor = {
+      timestamp: last[timestamp],
+      id: last.id,
+    };
+  }
+
+  return results;
+}
 export async function computeDayAuditSnapshot(db, salonId, rawDate) {
   const date = requireAuditDate(rawDate);
-  const [incomeRows, refundRows] = await Promise.all([
-    listIncome(db, salonId, { date }),
-    listRefunds(db, salonId, { date }),
+  const [incomeRows, refundRows, correction] = await Promise.all([
+    readDayAuditRows(db, salonId, date, 'income'),
+    readDayAuditRows(db, salonId, date, 'refund'),
+    getAppliedCorrectionDayTotals(db, salonId, date),
   ]);
 
   // Keep every distinct financial row. A single booking may legitimately have
@@ -174,6 +277,13 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
   for (const raw of incomeRows || []) {
     const row = normalizeIncomeRow(raw);
     if (!row.id || isVoidedStatus(row.status)) continue;
+
+    // A booking date is not a payment accounting date.
+    // listIncome may include rows because their booking belongs to
+    // the requested day. Do not post them into that day's cash audit
+    // unless the income itself occurred on the requested date.
+    if (row.occurred_at.slice(0, 10) !== date) continue;
+
     mergedById.set(row.id, row);
   }
   for (const raw of refundRows || []) {
@@ -215,7 +325,32 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     }
   }
 
-  const totalHalalas = cashHalalas + cardHalalas + transferHalalas + unclassifiedHalalas;
+  const originalTotalHalalas =
+    cashHalalas + cardHalalas + transferHalalas + unclassifiedHalalas;
+
+  cashHalalas += correction.cashDeltaHalalas;
+  cardHalalas += correction.cardDeltaHalalas;
+  transferHalalas += correction.transferDeltaHalalas;
+
+  const totalHalalas =
+    cashHalalas + cardHalalas + transferHalalas + unclassifiedHalalas;
+
+  if (
+    ![
+      originalTotalHalalas,
+      cashHalalas,
+      cardHalalas,
+      transferHalalas,
+      unclassifiedHalalas,
+      totalHalalas,
+    ].every(Number.isSafeInteger) ||
+    totalHalalas !== originalTotalHalalas + correction.totalDeltaHalalas
+  ) {
+    throw new AppError(
+      409,
+      'core_day_audit:correction_projection_conflict'
+    );
+  }
   return {
     date,
     totalHalalas,
@@ -225,6 +360,7 @@ export async function computeDayAuditSnapshot(db, salonId, rawDate) {
     unclassifiedHalalas,
     unclassifiedRows,
     rowCount,
+    correctionEventCount: correction.eventCount,
     sourceVersion: DAY_AUDIT_SOURCE_VERSION,
   };
 }
@@ -288,14 +424,23 @@ function actorName(actor = {}) {
   ) || null;
 }
 
-async function insertClosingRow(db, row) {
-  await dbRun(
+async function insertClosingRow(db, row, expectedCorrectionEventCount = null) {
+  const result = await dbRun(
     db,
     `INSERT INTO day_audit_closings
       (id, salon_id, audit_date, total_halalas, cash_halalas, card_halalas,
        transfer_halalas, unclassified_halalas, manual_cash_halalas, cash_diff_halalas,
        closed_at, closed_by_uid, closed_by_name, origin, source_snapshot_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     WHERE (
+       ? IS NULL
+       OR (
+         SELECT COUNT(*)
+         FROM payment_correction_applied_events e
+         WHERE e.salon_id = ?
+           AND e.accounting_date = ?
+       ) = ?
+     )`,
     [
       row.id,
       row.salon_id,
@@ -313,8 +458,14 @@ async function insertClosingRow(db, row) {
       row.origin,
       row.source_snapshot_json,
       row.created_at,
+      expectedCorrectionEventCount,
+      row.salon_id,
+      row.audit_date,
+      expectedCorrectionEventCount,
     ]
   );
+
+  return changes(result);
 }
 
 export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
@@ -369,7 +520,18 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
   };
 
   try {
-    await insertClosingRow(db, row);
+    const inserted = await insertClosingRow(
+      db,
+      row,
+      snapshot.correctionEventCount
+    );
+
+    if (inserted !== 1) {
+      throw new AppError(
+        409,
+        'core_day_audit:stale_snapshot'
+      );
+    }
   } catch (error) {
     if (/UNIQUE|constraint/i.test(cleanText(error?.message))) {
       const raced = await getDayAuditClosing(db, salonId, date);

@@ -441,3 +441,304 @@ test('correction read model rejects an incomplete applied journal', async t => {
       error?.code === 'core_payment_correction:unbalanced_ledger'
   );
 });
+
+test('day audit includes applied method corrections without increasing revenue', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  const date = income.occurred_at.slice(0, 10);
+
+  const before = await computeDayAuditSnapshot(db, 'main', date);
+
+  assert.equal(before.cardHalalas, 7000);
+  assert.equal(before.cashHalalas, 0);
+  assert.equal(before.totalHalalas, 7000);
+
+  await approve(db, proposal.id);
+
+  const after = await computeDayAuditSnapshot(db, 'main', date);
+
+  assert.equal(after.cardHalalas, 0);
+  assert.equal(after.cashHalalas, 7000);
+  assert.equal(after.transferHalalas, 0);
+  assert.equal(after.totalHalalas, 7000);
+  assert.equal(after.unclassifiedHalalas, 0);
+
+  assert.equal(
+    after.sourceVersion,
+    'day-audit-v2-correction-ledger'
+  );
+
+  const invoice = await db.prepare(
+    "SELECT paid_halalas FROM invoices WHERE id='invoice-a'"
+  ).first();
+
+  assert.equal(invoice.paid_halalas, 7000);
+});
+
+test('cross-date payment belongs only to its accounting date', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  // Booking: October 10.
+  // Payment income: October 11.
+  await db.prepare(
+    `UPDATE income_entries
+     SET occurred_at = '2026-10-11T08:00:00.000Z'
+     WHERE salon_id = 'main'
+       AND payment_id = 'payment-a'`
+  ).run();
+
+  const bookingDate = '2026-10-10';
+  const accountingDate = '2026-10-11';
+
+  const bookingDayBefore = await computeDayAuditSnapshot(
+    db, 'main', bookingDate
+  );
+
+  assert.equal(bookingDayBefore.totalHalalas, 0);
+  assert.equal(bookingDayBefore.cashHalalas, 0);
+  assert.equal(bookingDayBefore.cardHalalas, 0);
+
+  const paymentDayBefore = await computeDayAuditSnapshot(
+    db, 'main', accountingDate
+  );
+
+  assert.equal(paymentDayBefore.totalHalalas, 7000);
+  assert.equal(paymentDayBefore.cardHalalas, 7000);
+  assert.equal(paymentDayBefore.cashHalalas, 0);
+
+  const applied = await approve(db, proposal.id);
+
+  assert.equal(applied.accounting_date, accountingDate);
+
+  const bookingDayAfter = await computeDayAuditSnapshot(
+    db, 'main', bookingDate
+  );
+
+  assert.equal(bookingDayAfter.totalHalalas, 0);
+  assert.equal(bookingDayAfter.cardHalalas, 0);
+  assert.equal(bookingDayAfter.cashHalalas, 0);
+
+  const paymentDayAfter = await computeDayAuditSnapshot(
+    db, 'main', accountingDate
+  );
+
+  assert.equal(paymentDayAfter.totalHalalas, 7000);
+  assert.equal(paymentDayAfter.cardHalalas, 0);
+  assert.equal(paymentDayAfter.cashHalalas, 7000);
+  assert.equal(paymentDayAfter.transferHalalas, 0);
+
+  const invoice = await db.prepare(
+    "SELECT paid_halalas FROM invoices WHERE id='invoice-a'"
+  ).first();
+
+  assert.equal(invoice.paid_halalas, 7000);
+
+  const originalPayment = await db.prepare(
+    "SELECT amount_halalas,method FROM payments WHERE id='payment-a'"
+  ).first();
+
+  assert.equal(originalPayment.amount_halalas, 7000);
+  assert.equal(originalPayment.method, 'card');
+});
+
+test('day close rejects a correction committed after snapshot', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { closeDayAudit, computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  const date = income.occurred_at.slice(0, 10);
+  let injected = false;
+
+  const racingDb = {
+    prepare(sql) {
+      return {
+        bind(...params) {
+          const statement = db.prepare(sql).bind(...params);
+
+          return {
+            first: () => statement.first(),
+            all: () => statement.all(),
+            async run() {
+              if (
+                !injected &&
+                /^\s*INSERT INTO day_audit_closings\b/i.test(sql)
+              ) {
+                injected = true;
+                await approve(db, proposal.id);
+              }
+
+              return statement.run();
+            }
+          };
+        }
+      };
+    }
+  };
+
+  await assert.rejects(
+    closeDayAudit(
+      racingDb,
+      'main',
+      { date, manualCashHalalas: 0 },
+      { uid: 'owner-a' }
+    ),
+    error =>
+      error?.status === 409 &&
+      error?.code === 'core_day_audit:stale_snapshot'
+  );
+
+  assert.equal(injected, true);
+
+  const closingCount = await db.prepare(
+    `SELECT COUNT(*) AS n
+     FROM day_audit_closings
+     WHERE salon_id = 'main' AND audit_date = ?`
+  ).bind(date).first();
+
+  assert.equal(closingCount.n, 0);
+
+  const refreshed = await computeDayAuditSnapshot(
+    db, 'main', date
+  );
+
+  assert.equal(refreshed.cashHalalas, 7000);
+  assert.equal(refreshed.cardHalalas, 0);
+  assert.equal(refreshed.totalHalalas, 7000);
+  assert.equal(refreshed.correctionEventCount, 1);
+
+  const closed = await closeDayAudit(
+    db,
+    'main',
+    { date, manualCashHalalas: 7000 },
+    { uid: 'owner-a' }
+  );
+
+  assert.equal(closed.cashHalalas, 7000);
+  assert.equal(closed.cardHalalas, 0);
+  assert.equal(closed.totalHalalas, 7000);
+});
+
+test('day closing committed first prevents later APPLY', async t => {
+  const { db, proposal } = await fixture(t);
+
+  const { closeDayAudit } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  const date = income.occurred_at.slice(0, 10);
+
+  const closing = await closeDayAudit(
+    db,
+    'main',
+    { date, manualCashHalalas: 0 },
+    { uid: 'owner-a' }
+  );
+
+  assert.equal(closing.cashHalalas, 0);
+  assert.equal(closing.cardHalalas, 7000);
+  assert.equal(closing.totalHalalas, 7000);
+
+  await assert.rejects(
+    approve(db, proposal.id),
+    error =>
+      error?.status === 409 &&
+      error?.code === 'core_payment_correction:apply_conflict_or_stale'
+  );
+
+  const eventCount = await db.prepare(
+    'SELECT COUNT(*) AS n FROM payment_correction_applied_events'
+  ).first();
+
+  const postingCount = await db.prepare(
+    'SELECT COUNT(*) AS n FROM payment_correction_applied_postings'
+  ).first();
+
+  assert.equal(eventCount.n, 0);
+  assert.equal(postingCount.n, 0);
+});
+
+test('day audit scans more than 500 income rows without truncation', async t => {
+  const { db } = await fixture(t);
+
+  const { computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id='payment-a'"
+  ).first();
+
+  const date = income.occurred_at.slice(0, 10);
+
+  // Seed 510 additional invoice-source income rows.
+  // One original payment + 510 additional entries = 511 rows.
+  await db.prepare(
+    `WITH RECURSIVE seq(n) AS (
+       SELECT 1
+       UNION ALL
+       SELECT n + 1 FROM seq WHERE n < 510
+     )
+     INSERT INTO income_entries (
+       id,
+       salon_id,
+       amount_halalas,
+       category,
+       description,
+       method,
+       source,
+       note,
+       occurred_at,
+       created_at
+     )
+     SELECT
+       'audit-page-' || n,
+       'main',
+       100,
+       'payment',
+       'Pagination regression',
+       'cash',
+       'invoice',
+       '',
+       ?,
+       ?
+     FROM seq`
+  ).bind(
+    income.occurred_at,
+    income.occurred_at
+  ).run();
+
+  const snapshot = await computeDayAuditSnapshot(
+    db,
+    'main',
+    date
+  );
+
+  assert.equal(snapshot.rowCount, 511);
+  assert.equal(snapshot.cashHalalas, 51000);
+  assert.equal(snapshot.cardHalalas, 7000);
+  assert.equal(snapshot.transferHalalas, 0);
+  assert.equal(snapshot.totalHalalas, 58000);
+  assert.equal(snapshot.unclassifiedHalalas, 0);
+});
