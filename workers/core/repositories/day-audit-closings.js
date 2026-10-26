@@ -13,6 +13,7 @@ import {
 import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
 import { getAppliedCorrectionDayTotals } from './payment-correction-read-model.js';
+import { DAY_AUDIT_PAGE_SIZE, buildDayAuditPageQuery } from './day-audit-queries.js';
 
 export const DAY_AUDIT_SOURCE_VERSION = 'day-audit-v3-riyadh-accounting-day';
 
@@ -154,106 +155,39 @@ function normalizeRefundRow(row) {
     source: 'refund',
     note: cleanText(row?.reason),
     status: cleanText(row?.status),
-    occurred_at: cleanText(row?.refunded_at || row?.created_at),
+    occurred_at: cleanText(row?.refunded_at) || cleanText(row?.created_at),
     created_at: cleanText(row?.created_at),
   };
 }
 
-const DAY_AUDIT_PAGE_SIZE = 250;
-
 // Financial reconciliation must never inherit dashboard list limits.
 // Keyset pagination bounds each D1 response, not the accounting total.
 async function readDayAuditRows(db, salonId, date, kind) {
-  const income = kind === 'income';
-  const table = income ? 'income_entries' : 'refunds';
-  const alias = income ? 'i' : 'r';
-  const timestamp = income ? 'occurred_at' : 'refunded_at';
-
-  const accountingDateSql = income
-    ? "date(i.occurred_at, '+3 hours')"
-    : "date(COALESCE(NULLIF(TRIM(r.refunded_at), ''), r.created_at), '+3 hours')";
-
-  const projection = income
-    ? 'i.*, b.booking_date AS booking_date'
-    : 'r.*';
-
-  // Preserve the booking date metadata previously provided by
-  // finance.listIncome, including legacy booking-linked income.
-  const bookingJoin = income
-    ? `LEFT JOIN bookings b
-         ON b.salon_id = i.salon_id
-        AND b.id = CASE
-          WHEN COALESCE(TRIM(i.booking_id), '') <> ''
-            THEN i.booking_id
-          WHEN LOWER(COALESCE(TRIM(i.source), ''))
-            IN ('booking', 'invoice', 'حجز', 'فاتورة')
-            THEN i.id
-          ELSE NULL
-        END`
-    : '';
-
   const results = [];
   let cursor = null;
 
   while (true) {
-    const params = [salonId, date];
-
-    const cursorClause = cursor
-      ? `AND (
-           ${alias}.${timestamp} < ?
-           OR (
-             ${alias}.${timestamp} = ?
-             AND ${alias}.id < ?
-           )
-         )`
-      : '';
-
-    if (cursor) {
-      params.push(
-        cursor.timestamp,
-        cursor.timestamp,
-        cursor.id
-      );
-    }
-
-    const page = await dbAll(
-      db,
-      `SELECT ${projection}
-         FROM ${table} ${alias}
-         ${bookingJoin}
-        WHERE ${alias}.salon_id = ?
-          AND ${accountingDateSql} = ?
-          ${cursorClause}
-        ORDER BY
-          ${alias}.${timestamp} DESC,
-          ${alias}.id DESC
-        LIMIT ${DAY_AUDIT_PAGE_SIZE}`,
-      params
+    const { sql, params, cursorColumn } = buildDayAuditPageQuery(
+      kind, salonId, date, cursor
     );
+    const page = await dbAll(db, sql, params);
 
     if (!page.length) break;
-
     results.push(...page);
-
     if (page.length < DAY_AUDIT_PAGE_SIZE) break;
 
     const last = page[page.length - 1];
+    const timestamp = last?.[cursorColumn];
 
-    if (!last?.id || !last?.[timestamp]) {
-      throw new AppError(
-        409,
-        'core_day_audit:invalid_pagination_cursor'
-      );
+    if (!last?.id || !timestamp) {
+      throw new AppError(409, 'core_day_audit:invalid_pagination_cursor');
     }
-
-    cursor = {
-      timestamp: last[timestamp],
-      id: last.id,
-    };
+    cursor = { timestamp, id: last.id };
   }
 
   return results;
 }
+
 export async function computeDayAuditSnapshot(db, salonId, rawDate) {
   const date = requireAuditDate(rawDate);
   const [incomeRows, refundRows, correction] = await Promise.all([

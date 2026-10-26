@@ -52,7 +52,8 @@ async function fixture(t) {
     '0095_payment_correction_proposals.sql',
     '0096_payment_correction_applied_ledger.sql',
     '0097_financial_day_revisions.sql',
-    '0098_closed_financial_day_write_guards.sql'
+    '0098_closed_financial_day_write_guards.sql',
+    '0099_day_audit_query_indexes.sql'
   ]) {
     const sql = (
       await readFile(
@@ -65,7 +66,7 @@ async function fixture(t) {
       .join('\n')
       .trim();
 
-    const parts = /^009[678]/.test(name)
+    const parts = /^009[6789]/.test(name)
       ? sql.split(
           /;\s*(?=CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX|VIEW|TRIGGER)\b|$)/i
         )
@@ -742,6 +743,51 @@ test('day audit scans more than 500 income rows without truncation', async t => 
   assert.equal(snapshot.cardHalalas, 7000);
   assert.equal(snapshot.transferHalalas, 0);
   assert.equal(snapshot.totalHalalas, 58000);
+  assert.equal(snapshot.unclassifiedHalalas, 0);
+});
+
+test('day audit reads more than 500 legacy refunds with blank timestamps', async t => {
+  const { db } = await fixture(t);
+  const { computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const refundedAt = '2026-10-24T21:30:00.000Z';
+
+  await db.prepare(
+    `WITH RECURSIVE seq(n) AS (
+       SELECT 1
+       UNION ALL
+       SELECT n + 1 FROM seq WHERE n < 510
+     )
+     INSERT INTO refunds (
+       id, salon_id, amount_halalas, method, reason,
+       status, created_at, refunded_at
+     )
+     SELECT
+       'audit-refund-page-' || printf('%04d', n),
+       'main',
+       100,
+       'cash',
+       'Legacy refund pagination test',
+       'completed',
+       ?,
+       CASE (n % 4)
+         WHEN 0 THEN ' '
+         WHEN 1 THEN ''
+         WHEN 2 THEN '   '
+         ELSE ?
+       END
+     FROM seq`
+  ).bind(refundedAt, refundedAt).run();
+
+  const snapshot = await computeDayAuditSnapshot(
+    db, 'main', '2026-10-25'
+  );
+
+  assert.equal(snapshot.rowCount, 510);
+  assert.equal(snapshot.cashHalalas, -51000);
+  assert.equal(snapshot.totalHalalas, -51000);
   assert.equal(snapshot.unclassifiedHalalas, 0);
 });
 
