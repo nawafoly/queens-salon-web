@@ -51,7 +51,8 @@ async function fixture(t) {
     '0094_day_audit_closings.sql',
     '0095_payment_correction_proposals.sql',
     '0096_payment_correction_applied_ledger.sql',
-    '0097_financial_day_revisions.sql'
+    '0097_financial_day_revisions.sql',
+    '0098_closed_financial_day_write_guards.sql'
   ]) {
     const sql = (
       await readFile(
@@ -64,7 +65,7 @@ async function fixture(t) {
       .join('\n')
       .trim();
 
-    const parts = /^009[67]/.test(name)
+    const parts = /^009[678]/.test(name)
       ? sql.split(
           /;\s*(?=CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX|VIEW|TRIGGER)\b|$)/i
         )
@@ -956,4 +957,44 @@ test('successful day close records its financial revision', async t => {
   const snapshot = JSON.parse(persisted.source_snapshot_json);
 
   assert.equal(snapshot.financialRevision, before.revision);
+});
+
+
+test('closed day D1 blocks direct income and linked payment rewrites after close', async t => {
+  const { db } = await fixture(t);
+  const { closeDayAudit } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    "SELECT occurred_at FROM income_entries WHERE payment_id = 'payment-a'"
+  ).first();
+
+  const date = (await db.prepare(
+    "SELECT date(?, '+3 hours') AS day"
+  ).bind(income.occurred_at).first()).day;
+
+  await closeDayAudit(db, 'main', { date, manualCashHalalas: 0 }, { uid: 'owner-a' });
+
+  for (const sql of [
+    "UPDATE income_entries SET method = 'cash' WHERE payment_id = 'payment-a'",
+    "DELETE FROM income_entries WHERE payment_id = 'payment-a'",
+    "UPDATE payments SET method = 'cash' WHERE id = 'payment-a'",
+    "DELETE FROM payments WHERE id = 'payment-a'",
+  ]) {
+    await assert.rejects(
+      db.prepare(sql).run(),
+      error => /financial_day_closed/i.test(String(error?.message || ''))
+    );
+  }
+
+  const storedIncome = await db.prepare(
+    "SELECT method FROM income_entries WHERE payment_id = 'payment-a'"
+  ).first();
+  const storedPayment = await db.prepare(
+    "SELECT method FROM payments WHERE id = 'payment-a'"
+  ).first();
+
+  assert.equal(storedIncome.method, 'card');
+  assert.equal(storedPayment.method, 'card');
 });
