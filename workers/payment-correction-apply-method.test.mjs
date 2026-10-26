@@ -50,7 +50,8 @@ async function fixture(t) {
     '0083_internal_booking_price_adjustments.sql',
     '0094_day_audit_closings.sql',
     '0095_payment_correction_proposals.sql',
-    '0096_payment_correction_applied_ledger.sql'
+    '0096_payment_correction_applied_ledger.sql',
+    '0097_financial_day_revisions.sql'
   ]) {
     const sql = (
       await readFile(
@@ -63,7 +64,7 @@ async function fixture(t) {
       .join('\n')
       .trim();
 
-    const parts = name.startsWith('0096')
+    const parts = /^009[67]/.test(name)
       ? sql.split(
           /;\s*(?=CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX|VIEW|TRIGGER)\b|$)/i
         )
@@ -796,4 +797,163 @@ test('Riyadh midnight accounting boundary is consistent across audit and APPLY',
   );
 
   assert.equal(previousAfter.totalHalalas, 0);
+});
+
+test('financial revision rejects income committed after snapshot', async t => {
+  const { db } = await fixture(t);
+
+  const { closeDayAudit, computeDayAuditSnapshot } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    `SELECT occurred_at
+       FROM income_entries
+      WHERE salon_id = 'main'
+        AND payment_id = 'payment-a'`
+  ).first();
+
+  const dateRow = await db.prepare(
+    "SELECT date(?, '+3 hours') AS audit_date"
+  ).bind(income.occurred_at).first();
+
+  const date = dateRow.audit_date;
+  let injected = false;
+
+  const racingDb = {
+    prepare(sql) {
+      return {
+        bind(...params) {
+          const statement = db.prepare(sql).bind(...params);
+
+          return {
+            first: () => statement.first(),
+            all: () => statement.all(),
+
+            async run() {
+              if (
+                !injected &&
+                /^\s*INSERT INTO day_audit_closings\b/i.test(sql)
+              ) {
+                injected = true;
+
+                await db.prepare(
+                  `INSERT INTO income_entries
+                   (id, salon_id, amount_halalas,
+                    category, description, method, source,
+                    occurred_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                ).bind(
+                  'revision-race-income',
+                  'main',
+                  300,
+                  'payment',
+                  'Financial revision race',
+                  'cash',
+                  'invoice',
+                  income.occurred_at,
+                  income.occurred_at
+                ).run();
+              }
+
+              return statement.run();
+            }
+          };
+        }
+      };
+    }
+  };
+
+  await assert.rejects(
+    closeDayAudit(
+      racingDb,
+      'main',
+      {
+        date,
+        manualCashHalalas: 0
+      },
+      { uid: 'owner-a' }
+    ),
+    error =>
+      error?.status === 409 &&
+      error?.code === 'core_day_audit:stale_snapshot'
+  );
+
+  assert.equal(injected, true);
+
+  const closing = await db.prepare(
+    `SELECT COUNT(*) AS n
+       FROM day_audit_closings
+      WHERE salon_id = 'main'
+        AND audit_date = ?`
+  ).bind(date).first();
+
+  assert.equal(closing.n, 0);
+
+  const refreshed = await computeDayAuditSnapshot(
+    db,
+    'main',
+    date
+  );
+
+  assert.equal(refreshed.cardHalalas, 7000);
+  assert.equal(refreshed.cashHalalas, 300);
+  assert.equal(refreshed.totalHalalas, 7300);
+});
+
+test('successful day close records its financial revision', async t => {
+  const { db } = await fixture(t);
+
+  const { closeDayAudit } = await import(
+    './core/repositories/day-audit-closings.js'
+  );
+
+  const income = await db.prepare(
+    `SELECT occurred_at
+       FROM income_entries
+      WHERE salon_id = 'main'
+        AND payment_id = 'payment-a'`
+  ).first();
+
+  const dateRow = await db.prepare(
+    "SELECT date(?, '+3 hours') AS audit_date"
+  ).bind(income.occurred_at).first();
+
+  const date = dateRow.audit_date;
+
+  const before = await db.prepare(
+    `SELECT revision
+       FROM financial_day_revisions
+      WHERE salon_id = 'main'
+        AND audit_date = ?`
+  ).bind(date).first();
+
+  assert.ok(before.revision >= 1);
+
+  const closing = await closeDayAudit(
+    db,
+    'main',
+    {
+      date,
+      manualCashHalalas: 0
+    },
+    { uid: 'owner-a' }
+  );
+
+  assert.equal(closing.totalHalalas, 7000);
+  assert.equal(
+    closing.sourceSnapshot.financialRevision,
+    before.revision
+  );
+
+  const persisted = await db.prepare(
+    `SELECT source_snapshot_json
+       FROM day_audit_closings
+      WHERE salon_id = 'main'
+        AND audit_date = ?`
+  ).bind(date).first();
+
+  const snapshot = JSON.parse(persisted.source_snapshot_json);
+
+  assert.equal(snapshot.financialRevision, before.revision);
 });

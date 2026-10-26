@@ -417,7 +417,35 @@ function actorName(actor = {}) {
   ) || null;
 }
 
-async function insertClosingRow(db, row, expectedCorrectionEventCount = null) {
+async function getFinancialDayRevision(db, salonId, date) {
+  const row = await dbFirst(
+    db,
+    `SELECT revision
+       FROM financial_day_revisions
+      WHERE salon_id = ?
+        AND audit_date = ?
+      LIMIT 1`,
+    [salonId, date]
+  );
+
+  const revision = Number(row?.revision ?? 0);
+
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new AppError(
+      409,
+      'core_day_audit:invalid_financial_revision'
+    );
+  }
+
+  return revision;
+}
+
+async function insertClosingRow(
+  db,
+  row,
+  expectedCorrectionEventCount = null,
+  expectedFinancialRevision = null
+) {
   const result = await dbRun(
     db,
     `INSERT INTO day_audit_closings
@@ -433,7 +461,16 @@ async function insertClosingRow(db, row, expectedCorrectionEventCount = null) {
          WHERE e.salon_id = ?
            AND e.accounting_date = ?
        ) = ?
-     )`,
+     )
+      AND (
+        ? IS NULL
+        OR COALESCE((
+          SELECT revision
+          FROM financial_day_revisions r
+          WHERE r.salon_id = ?
+            AND r.audit_date = ?
+        ), 0) = ?
+      )`,
     [
       row.id,
       row.salon_id,
@@ -455,6 +492,10 @@ async function insertClosingRow(db, row, expectedCorrectionEventCount = null) {
       row.salon_id,
       row.audit_date,
       expectedCorrectionEventCount,
+      expectedFinancialRevision,
+      row.salon_id,
+      row.audit_date,
+      expectedFinancialRevision,
     ]
   );
 
@@ -474,6 +515,12 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
     if (existing.manualCashHalalas === manualCashHalalas) return { ...existing, idempotent: true };
     throw new AppError(409, 'core_day_audit:already_closed', 'The selected day is already closed');
   }
+
+  const financialRevision = await getFinancialDayRevision(
+    db,
+    salonId,
+    date
+  );
 
   const snapshot = await computeDayAuditSnapshot(db, salonId, date);
   if (snapshot.unclassifiedHalalas !== 0 || snapshot.unclassifiedRows.length > 0) {
@@ -507,6 +554,7 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
     source_snapshot_json: JSON.stringify({
       sourceVersion: snapshot.sourceVersion,
       rowCount: snapshot.rowCount,
+      financialRevision,
       capturedAt: now,
     }),
     created_at: now,
@@ -516,7 +564,8 @@ export async function closeDayAudit(db, salonId, data = {}, actor = {}) {
     const inserted = await insertClosingRow(
       db,
       row,
-      snapshot.correctionEventCount
+      snapshot.correctionEventCount,
+      financialRevision
     );
 
     if (inserted !== 1) {

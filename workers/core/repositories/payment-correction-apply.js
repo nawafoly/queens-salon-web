@@ -4,7 +4,6 @@
 // must be integrated before enabling this operation in production.
 
 import {
-  changes,
   cleanText,
   dbBatch,
   dbFirst,
@@ -188,6 +187,9 @@ export async function applyPaymentMethodCorrection(
     ],
   };
 
+  // Check the inserted event, not trigger-inclusive D1 meta.changes.
+  insertEvent.sql += '\n    RETURNING id';
+
   const posting = (prefix, methodColumn, amountSql) => ({
     sql: `INSERT INTO payment_correction_applied_postings (
       id, salon_id, event_id, channel,
@@ -278,7 +280,10 @@ export async function applyPaymentMethodCorrection(
     throw error;
   }
 
-  if (changes(results[0]) !== 1) {
+  if (
+    results[0]?.results?.length !== 1 ||
+    cleanText(results[0].results[0]?.id) !== eventId
+  ) {
     throw new AppError(
       409,
       'core_payment_correction:apply_conflict_or_stale'
