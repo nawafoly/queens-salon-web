@@ -47,7 +47,7 @@ export async function previewPaymentCorrectionImpact(db, salonId, proposalId) {
       [salonId, proposal.invoice_id]),
     dbFirst(db, 'SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
       [salonId, proposal.booking_id]),
-    dbAll(db, 'SELECT * FROM income_entries WHERE salon_id = ? AND payment_id = ? ORDER BY created_at, id',
+    dbAll(db, "SELECT i.*, date(i.occurred_at, '+3 hours') AS accounting_date FROM income_entries i WHERE i.salon_id = ? AND i.payment_id = ? ORDER BY i.created_at, i.id",
       [salonId, proposal.payment_id]),
     dbAll(db, 'SELECT amount_halalas, status, method FROM refunds WHERE salon_id = ? AND payment_id = ?',
       [salonId, proposal.payment_id]),
@@ -121,8 +121,8 @@ export async function previewPaymentCorrectionImpact(db, salonId, proposalId) {
     addBlocker(blockers, 'invoice_balance_conflict');
   }
 
-  const sourceDates = [...new Set(incomes.map(row => day(row.occurred_at)).filter(Boolean))];
-  if (incomes.some(row => !day(row.occurred_at)) || sourceDates.length !== 1) {
+  const sourceDates = [...new Set(incomes.map(row => day(row.accounting_date)).filter(Boolean))];
+  if (incomes.some(row => !day(row.accounting_date)) || sourceDates.length !== 1) {
     addBlocker(blockers, 'income_accounting_date_ambiguous');
   }
   let dayClosed = false;

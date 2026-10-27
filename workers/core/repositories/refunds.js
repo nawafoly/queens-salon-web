@@ -1,7 +1,6 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
-  changes,
   cleanText,
   dbAll,
   dbBatch,
@@ -180,8 +179,14 @@ export async function createRefund(db, salonId, data, actor = {}) {
     }));
   }
 
+  // RETURNING identifies the direct mutation independently of triggers.
+  statements[0].sql += ' RETURNING id';
+
   const results = await dbBatch(db, statements);
-  if (changes(results[0]) !== 1) {
+  if (
+    results[0]?.results?.length !== 1 ||
+    results[0].results[0]?.id !== row.id
+  ) {
     throw new AppError(409, 'core_refund:amount_exceeds_remaining');
   }
   await recordAudit(db, salonId, {
@@ -271,8 +276,14 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
     params: [salonId, refund.id],
   });
 
+  // RETURNING identifies the direct mutation independently of triggers.
+  statements[0].sql += ' RETURNING id';
+
   const results = await dbBatch(db, statements);
-  if (changes(results[0]) !== 1) {
+  if (
+    results[0]?.results?.length !== 1 ||
+    results[0].results[0]?.id !== refund.id
+  ) {
     throw new AppError(409, 'core_refund:concurrent_modification');
   }
   const row = await getRefund(db, salonId, id);
@@ -321,8 +332,14 @@ export async function voidRefund(db, salonId, id, actor = {}) {
     params: [salonId, id],
   });
 
+  // RETURNING identifies the direct mutation independently of triggers.
+  statements[0].sql += ' RETURNING id';
+
   const results = await dbBatch(db, statements);
-  if (changes(results[0]) !== 1) {
+  if (
+    results[0]?.results?.length !== 1 ||
+    results[0].results[0]?.id !== refund.id
+  ) {
     const current = await getRefund(db, salonId, id);
     if (cleanText(current.status).toLowerCase() === 'voided') {
       return { ...current, idempotent: true };

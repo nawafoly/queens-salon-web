@@ -2509,6 +2509,52 @@ class FakeD1 {
         throw new Error(`unhandled fake D1 batch: ${sql}`);
       }
       }
+
+      // FakeD1 must emulate SQLite RETURNING id for direct refund writes.
+      // Production code must not rely on trigger-inclusive meta.changes.
+      for (let index = 0; index < statements.length; index += 1) {
+        const sql = statements[index].sql.replace(/\s+/g, ' ').trim();
+
+        if (!/\bRETURNING\s+id\s*;?$/i.test(sql)) continue;
+
+        if (!/^(?:INSERT\s+INTO|UPDATE)\s+refunds\b/i.test(sql)) {
+          throw new Error('Unsupported FakeD1 RETURNING statement: ' + sql);
+        }
+
+        const result = results[index];
+
+        if (!result) {
+          throw new Error('Missing FakeD1 mutation result');
+        }
+
+        if (Number(result.meta?.changes ?? 0) !== 1) {
+          result.results = [];
+          continue;
+        }
+
+        const params = statements[index].params || [];
+
+        let id = null;
+
+        if (/^INSERT\s+INTO\s+refunds\b/i.test(sql)) {
+          id = params[0];
+        } else if (
+          /^UPDATE\s+refunds\s+SET\s+amount_halalas\b/i.test(sql)
+        ) {
+          id = params[5];
+        } else if (
+          /^UPDATE\s+refunds\s+SET\s+status\s*=\s*'voided'/i.test(sql)
+        ) {
+          id = params[3];
+        }
+
+        if (!id) {
+          throw new Error('Unrecognized FakeD1 refund RETURNING id');
+        }
+
+        result.results = [{ id }];
+      }
+
       return results;
     } catch (error) {
       this.tables = snapshot;

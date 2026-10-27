@@ -32,6 +32,18 @@ export function normalizeError(error) {
     return new AppError(409, embeddedInvariantCode, embeddedInvariantCode);
   }
 
+  // A closed accounting day is a write-boundary conflict, not an outage.
+  // SQLite/Cloudflare may wrap RAISE(ABORT) differently across runtimes.
+  if (/\bfinancial_invalid_accounting_date\b/i.test(message)) {
+    return new AppError(422, "core_finance:invalid_accounting_date", "Invalid financial accounting date");
+  }
+  if (/\bfinancial_day_closed\b/i.test(message)) {
+    return new AppError(409, "core_finance:financial_day_closed", "Financial day is closed");
+  }
+  if (/\bfinancial_day_closing_immutable\b/i.test(message)) {
+    return new AppError(409, "core_day_audit:closing_immutable", "Closed financial day cannot be modified");
+  }
+
   // D1 approval guards use RAISE(ABORT, 'payroll_*'). Cloudflare wraps those
   // in D1/SQLite constraint errors. They are domain conflicts, not service
   // outages, so preserve the payroll code instead of returning HTTP 500.

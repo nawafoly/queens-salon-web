@@ -1,0 +1,50 @@
+name: MALIKAT Finance Core Gate
+
+on:
+  pull_request:
+    paths:
+      - "migrations/core/009*.sql"
+      - "workers/core/repositories/payment-correction-*.js"
+      - "workers/core/payment-correction-review-http.js"
+      - "workers/core/worker.js"
+      - "workers/core/repositories/day-audit-*.js"
+      - "workers/core/repositories/refunds.js"
+      - "workers/core/errors.js"
+      - "workers/payment-correction-*.test.mjs"
+      - "workers/financial-day-*.test.mjs"
+      - "workers/day-audit-query-pagination.test.mjs"
+      - ".github/workflows/malikat-finance-core-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: malikat-finance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  finance-core-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify Core D1 authority
+        run: npm run check:core:d1-only
+      - name: Finance correction, day close, and pagination regressions
+        run: |
+          node --test \
+            workers/payment-correction-applied-ledger.test.mjs \
+            workers/payment-correction-review-http.test.mjs \
+            workers/payment-correction-apply-method.test.mjs \
+            workers/financial-day-revisions.test.mjs \
+            workers/financial-day-close-guards.test.mjs \
+            workers/day-audit-query-pagination.test.mjs
