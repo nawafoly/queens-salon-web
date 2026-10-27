@@ -173,3 +173,11 @@ test('review handler never imports the financial APPLY or proposal mutators', ()
   assert.match(entrypoint, /isPaymentCorrectionReviewRequest/);
   assert.match(entrypoint, /handlePaymentCorrectionReviewRequest/);
 });
+
+
+test('production Worker configuration does not silently enable financial review', () => {
+  const config = readFileSync(new URL('../wrangler.core.jsonc', import.meta.url), 'utf8');
+  assert.doesNotMatch(config, /FINANCE_CORRECTION_REVIEW_ENABLED/);
+  const worker = readFileSync(new URL('./core/payment-correction-review-http.js', import.meta.url), 'utf8');
+  assert.match(worker, /FINANCE_CORRECTION_REVIEW_ENABLED !== ENABLED_VALUE/);
+});
