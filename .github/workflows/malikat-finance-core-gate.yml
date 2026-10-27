@@ -5,6 +5,8 @@ on:
     paths:
       - "migrations/core/009*.sql"
       - "workers/core/repositories/payment-correction-*.js"
+      - "workers/core/payment-correction-review-http.js"
+      - "workers/core/worker.js"
       - "workers/core/repositories/day-audit-*.js"
       - "workers/core/repositories/refunds.js"
       - "workers/core/errors.js"
@@ -41,6 +43,7 @@ jobs:
         run: |
           node --test \
             workers/payment-correction-applied-ledger.test.mjs \
+            workers/payment-correction-review-http.test.mjs \
             workers/payment-correction-apply-method.test.mjs \
             workers/financial-day-revisions.test.mjs \
             workers/financial-day-close-guards.test.mjs \
