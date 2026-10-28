@@ -1984,7 +1984,7 @@ function DashboardEmployeesContent() {
   const [offboardingEndDate, setOffboardingEndDate] = useState("");
   const [offboardingReason, setOffboardingReason] = useState("");
   const [offboardingError, setOffboardingError] = useState("");
-  const [offboardingBookingBlocker, setOffboardingBookingBlocker] = useState<{ kind: "future" | "history"; count: number; bookingIds: string[] } | null>(null);
+  const [offboardingBookingBlocker, setOffboardingBookingBlocker] = useState<{ kind: "future" | "history"; count: number; bookingIds: string[]; conflicts: Array<{ bookingId: string; bookingDate: string; source: string; bookingItemId: string | null; serviceName: string | null }> } | null>(null);
   const [attendanceZones, setAttendanceZones] = useState<WorkZone[]>([]);
   const [attendanceZonesLoading, setAttendanceZonesLoading] = useState(false);
   const [selectedAttendanceZoneId, setSelectedAttendanceZoneId] = useState("");
@@ -6740,6 +6740,15 @@ const canonicalSchedules =
       const bookingDetails = {
         count: Number((details as any).count || 0),
         bookingIds: Array.isArray((details as any).bookingIds) ? (details as any).bookingIds.map(String) : [],
+        conflicts: Array.isArray((details as any).conflicts) ? (details as any).conflicts
+          .filter((row: any) => row && typeof row === "object")
+          .map((row: any) => ({
+            bookingId: String(row.bookingId || ""),
+            bookingDate: String(row.bookingDate || ""),
+            source: String(row.source || ""),
+            bookingItemId: row.bookingItemId ? String(row.bookingItemId) : null,
+            serviceName: row.serviceName ? String(row.serviceName) : null,
+          })) : [],
       };
       if (code === "core_hr:offboarding_future_bookings_require_reassignment") {
         setOffboardingBookingBlocker({ kind: "future", ...bookingDetails });
@@ -10490,6 +10499,19 @@ const canonicalSchedules =
                       {offboardingBookingBlocker.bookingIds.length ? (
                         <p>{t("المراجع:")} {offboardingBookingBlocker.bookingIds.join(language === "en" ? ", " : "، ")}</p>
                       ) : null}
+                      {offboardingBookingBlocker.conflicts.map((item, index) => (
+                        <p key={`${item.bookingId}-${item.bookingItemId || item.source}-${index}`}>
+                          <strong>{item.bookingId}</strong> · {item.bookingDate} · {
+                            item.source === "service_item"
+                              ? (item.serviceName || t("خدمة غير محددة"))
+                              : t("الموظفة الرئيسية للحجز")
+                          }
+                          {item.bookingItemId ? ` — ${item.bookingItemId}` : ""}
+                        </p>
+                      ))}
+                      {offboardingBookingBlocker.conflicts.length > 0 && (
+                        <small>{t("راجعي موظفة كل خدمة على حدة من شاشة تعديل الحجز. لا تعيدي إسناد عمل نفذته الموظفة فعليًا.")}</small>
+                      )}
                     </div>
                   ) : null}
                 </div>
