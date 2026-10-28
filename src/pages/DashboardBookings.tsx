@@ -4543,6 +4543,23 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         }
       : {};
 
+    // A sole employee reassignment is a minimal Core mutation. Do not
+    // re-send customer, schedule, service or financial fields from a
+    // potentially stale editor snapshot.
+    const originalDraft = buildEditBookingDraftFromBooking(target);
+    const staffOnlyEdit =
+      shouldUpdateEmployee &&
+      !paymentEditTouchedRef.current &&
+      !bookingItemPriceChanged &&
+      !bookingItemDiscountChanged &&
+      customerName === originalDraft.customerName &&
+      phone === originalDraft.phone &&
+      note === originalDraft.note &&
+      date === originalDraft.date &&
+      time === originalDraft.time &&
+      serviceId === originalDraft.serviceId &&
+      draft.status === target.status;
+
     // BOOKING_EDIT_STATUS_RULE_V2
     const statusAfterEdit: BookingStatus = draft.status;
 
@@ -4622,13 +4639,16 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         );
       }
 
-      await updateCoreBookingFields(target.id, patch);
+      await updateCoreBookingFields(
+        target.id,
+        staffOnlyEdit ? (employeePatch as Partial<Booking>) : patch
+      );
       if (statusAfterEdit && statusAfterEdit !== target.status) {
         await updateCoreBookingStatus(target.id, statusAfterEdit);
       }
 
       const resolvedStatus = statusAfterEdit || target.status;
-      onSaved(target.id, {
+      onSaved(target.id, staffOnlyEdit ? (employeePatch as Partial<Booking>) : {
         ...employeePatch,
         customerName,
         phone: phone || "",
