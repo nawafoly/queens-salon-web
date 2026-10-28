@@ -37,6 +37,7 @@ import type { StaffPublicWithId } from "../types/bookingStaff";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { coreD1BookingDataSource } from "../services/bookingDataSources/coreD1BookingDataSource";
 import { CoreBookingService } from "../services/CoreBookingService";
+import BookingItemStaffAttributionEditor from "../features/bookings/BookingItemStaffAttributionEditor";
 import { coreBookingToLegacy } from "../services/coreBookingMappers";
 import { CoreAuditService } from "../services/CoreAuditService";
 import { CoreClientService } from "../services/CoreClientService";
@@ -3257,7 +3258,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   return (
     <div className="bk-edit-grid bk-edit-grid--schedule">
       <BookingSelectField
-        label={t("الموظفة")}
+        label={t("الموظفة الرئيسية للحجز (ويشمل التغيير الخدمة الأولى)")}
         value={employeeId}
         options={employeeOptions}
         placeholder={
@@ -4848,6 +4849,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
             onTimeChange={onTimeChange}
           />
 
+          {target?.id ? (
+            <BookingItemStaffAttributionEditor
+              bookingId={target.id}
+              canCorrect={hasPermission("bookings.update") && hasPermission("employees.manage")}
+              language={language}
+            />
+          ) : null}
 
           <div className="bk-edit-grid">
             <label>
