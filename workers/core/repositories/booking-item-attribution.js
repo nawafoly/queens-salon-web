@@ -69,6 +69,16 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
     [salonId, workDate]);
   if (closedDay) throw new AppError(409, 'core_booking_item:closed_financial_day_requires_review');
 
+  // Employee targets are an independent financial performance read model.
+  // A historical reassignment with an existing attributed ledger needs its
+  // own atomic target reconciliation workflow; never leave stale bonuses.
+  const targetAttribution = await dbFirst(db,
+    'SELECT id FROM employee_target_ledger WHERE salon_id = ? AND booking_id = ? LIMIT 1',
+    [salonId, bookingId]);
+  if (targetAttribution) {
+    throw new AppError(409, 'core_booking_item:target_ledger_reconciliation_required');
+  }
+
   const payrollMonth = workDate.slice(0, 7);
   const lockedPayroll = await dbFirst(db,
     `SELECT id FROM payroll_entries
@@ -89,10 +99,12 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
            AND COALESCE(staff_id, '') = ?
            AND NOT EXISTS (SELECT 1 FROM day_audit_closings
              WHERE salon_id = ? AND audit_date = ?)
+           AND NOT EXISTS (SELECT 1 FROM employee_target_ledger
+             WHERE salon_id = ? AND booking_id = ?)
            AND EXISTS (SELECT 1 FROM bookings
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
-    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId],
+    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
     action: 'booking_item_staff_attribution_corrected',
