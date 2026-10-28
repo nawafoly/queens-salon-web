@@ -86,6 +86,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
         "core_booking_item:concurrent_staff_change": "تغيّر إسناد الخدمة من جلسة أخرى. أعيدي فتح الحجز.",
         "core_booking_item:target_not_employed_on_service_date": "الموظفة المختارة ليست ضمن فترة عملها بتاريخ تنفيذ الخدمة.",
         "core_booking_item:approved_payroll_requires_review": "يوجد راتب معتمد لهذه الفترة؛ يلزم مراجعته قبل تصحيح إسناد الخدمة.",
+        "core_booking_item:closed_financial_day_requires_review": "هذا اليوم المالي مقفل؛ يلزم مسار مراجعة مالي معتمد قبل تغيير إسناد الخدمة.",
       };
       setError(messages[code] || (english
         ? "Correction was rejected. Refresh and verify the employee."
