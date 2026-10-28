@@ -700,7 +700,7 @@ function match(url, method) {
   if (path === "/api/core/bookings/mine" && method === "GET") {
     return { name: "bookings:mine" };
   }
-  const itemCorrection = /^\\/api\\/core\\/bookings\\/([^/]+)\\/items\\/([^/]+)\\/staff-correction$/.exec(path);
+  const itemCorrection = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-correction$/.exec(path);
   if (itemCorrection && method === "POST") {
     return { name: "booking:item-staff-correction", id: itemCorrection[1], itemId: itemCorrection[2] };
   }
