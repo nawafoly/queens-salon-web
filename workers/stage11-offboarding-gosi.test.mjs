@@ -985,6 +985,10 @@ test('historical attribution correction rejects fake staff, out-of-period dates 
     'core_booking_item:target_not_employed_on_service_date');
   await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
     {...input,staffId:'nonexistent'},actor),'core_booking_item:target_staff_not_found');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:encodeURIComponent('emp-ended')},actor),'core_booking_item:target_not_employed_on_service_date');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'%2565mp-ended'},actor),'core_booking_item:noncanonical_staff_identity_requires_review');
   await expectCode(correctCompletedBookingItemStaff(db,'other-salon','protected-attribution',input,actor),
     'core_booking:not_found');
   await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
