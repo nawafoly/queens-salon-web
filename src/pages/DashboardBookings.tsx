@@ -3619,11 +3619,12 @@ const EditBookingNoteSection = memo(function EditBookingNoteSection({
 type EditBookingModalProps = {
   target: Booking | null;
   language: DashboardLanguage;
+  role: UiRole;
   onClose: () => void;
   onSaved: (bookingId: string, patch: Partial<Booking>) => void;
 };
 
-const EditBookingModal = memo(function EditBookingModal({ target, language, onClose, onSaved }: EditBookingModalProps) {
+const EditBookingModal = memo(function EditBookingModal({ target, language, role, onClose, onSaved }: EditBookingModalProps) {
   const t = (arabic: string) => bookingsText(language, arabic);
   const { hasPermission } = usePermissions();
   const canAdjustBookingPrice = hasPermission(
@@ -4852,7 +4853,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           {target?.id ? (
             <BookingItemStaffAttributionEditor
               bookingId={target.id}
-              canCorrect={hasPermission("bookings.update") && hasPermission("employees.manage")}
+              canCorrect={(role === "owner" || role === "admin") && hasPermission("bookings.update") && hasPermission("employees.manage")}
               language={language}
             />
           ) : null}
@@ -9601,7 +9602,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         </Modal>
 
         {editTarget ? (
-          <EditBookingModal target={editTarget} language={language} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
+          <EditBookingModal target={editTarget} language={language} role={currentRole} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
         ) : null}
 
         {/*
