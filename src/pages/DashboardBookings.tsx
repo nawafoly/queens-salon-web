@@ -4669,11 +4669,26 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         ),
         finalPrice: price,
         total: price,
-        paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
-        paymentBreakdown: paymentBreakdown || undefined,
-        paymentType: nextPaymentType,
-        paidAmount: round2(paidAmount),
-        remainingAmount,
+        // Reassigning staff must never overwrite even the local financial
+        // read model with recomputed/unsaved payment form defaults.
+        ...(paymentEditTouchedRef.current
+          ? {
+              paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
+              paymentBreakdown: paymentBreakdown || undefined,
+              paymentType: nextPaymentType,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
+            }
+          : (bookingItemPriceChanged || bookingItemDiscountChanged)
+            ? {
+                paidAmount: alreadyCollected,
+                remainingAmount: round2(Math.max(0, price - alreadyCollected)),
+                paymentType: paymentTypeFromAmounts(
+                  alreadyCollected,
+                  round2(Math.max(0, price - alreadyCollected))
+                ),
+              }
+            : {}),
         // BOOKING_EDIT_COMPLETION_LOCAL_V2
         ...(completionPaymentPatch || {}),
         status: resolvedStatus,
