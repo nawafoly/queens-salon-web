@@ -18,3 +18,12 @@ test('undefined payment breakdown remains absent through Core adapter', () => {
   assert.match(adapter, /patch.paymentBreakdown !== undefined/);
   assert.match(repo, /core_booking:payment_history_immutable/);
 });
+
+
+test('only an employee change uses the minimal operational update payload', () => {
+  assert.match(bookingUi, /const staffOnlyEdit =/);
+  assert.match(bookingUi, /shouldUpdateEmployee &&/);
+  assert.match(bookingUi, /staffOnlyEdit \? \(employeePatch as Partial<Booking>\) : patch/);
+  assert.match(bookingUi, /staffOnlyEdit \? \(employeePatch as Partial<Booking>\) : \{/);
+  assert.match(bookingUi, /paymentEditTouchedRef\.current/);
+});
