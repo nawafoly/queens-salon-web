@@ -1026,6 +1026,9 @@ test('item-level historical correction API requires admin plus both booking and 
   const route='/api/core/bookings/api-correction/items/item-api-correction/staff-correction';
   const payload={expectedStaffId:'emp-original',staffId:'emp-verified',reason:'Confirmed using original shift log'};
   await seedActorAccount(db,{uid:'uid-corr-no-hr',role:'admin',permissions:['bookings.update']});
+  // Admin role normally inherits HR management. A direct Core D1 deny must
+  // override that fallback before historical attribution can be mutated.
+  await db.prepare("INSERT INTO user_permissions (id,salon_id,user_id,permission_key,effect,created_at,updated_at) VALUES ('deny-correction-hr','main','user-uid-corr-no-hr','employees.manage','deny','2026-01-01','2026-01-01')").run();
   let response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-no-hr',role:'admin',body:payload}),env);
   assert.equal(response.status,403,JSON.stringify(await responseJson(response)));
 
