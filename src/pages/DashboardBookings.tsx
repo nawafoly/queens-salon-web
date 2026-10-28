@@ -3675,7 +3675,11 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const draftTargetIdRef = useRef<string>(target?.id || "");
 
   useEffect(() => {
-    if (!open || !target) return;
+    if (!open || !target) {
+      // Reopening the same booking must not restore stale unsaved values.
+      draftTargetIdRef.current = "";
+      return;
+    }
     if (draftTargetIdRef.current === target.id) return;
     draftTargetIdRef.current = target.id;
     setDraft(buildEditBookingDraftFromBooking(target));
