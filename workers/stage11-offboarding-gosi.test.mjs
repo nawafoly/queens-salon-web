@@ -43,6 +43,7 @@ const MIGRATIONS = [
   '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
   '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
   '0034_employee_offboarding_invariants.sql',
+  '0057_leave_rest_workflows.sql',
   '0094_day_audit_closings.sql',
 ];
 
