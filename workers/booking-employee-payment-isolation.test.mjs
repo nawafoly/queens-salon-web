@@ -10,7 +10,7 @@ test('operational booking edits do not send payment fields without an explicit e
   assert.match(bookingUi, /paymentEditTouchedRef\.current/);
   assert.match(bookingUi, /const employeePatch = shouldUpdateEmployee/);
   assert.match(bookingUi, /paymentEditTouchedRef\.current && alreadyCollected > 0/);
-  assert.match(bookingUi, /await updateCoreBookingFields\(target.id, patch\)/);
+  assert.match(bookingUi, /await updateCoreBookingFields\(\s*target.id,\s*staffOnlyEdit/);
 });
 
 test('undefined payment breakdown remains absent through Core adapter', () => {
