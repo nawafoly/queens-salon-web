@@ -1010,3 +1010,28 @@ test('approved payroll or closed financial day refuses retroactive staff rewrite
   assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-locked-rewrite'").first()).staff_id,'emp-from');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
 });
+
+
+test('item-level historical correction API requires admin plus both booking and HR permissions', async (t) => {
+  const { mf, db, env } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-original');
+  await seedEmployee(db,'emp-verified');
+  await seedBooking(db,{id:'api-correction',employeeId:'emp-original',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const route='/api/core/bookings/api-correction/items/item-api-correction/staff-correction';
+  const payload={expectedStaffId:'emp-original',staffId:'emp-verified',reason:'Confirmed using original shift log'};
+  await seedActorAccount(db,{uid:'uid-corr-no-hr',role:'admin',permissions:['bookings.update']});
+  let response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-no-hr',role:'admin',body:payload}),env);
+  assert.equal(response.status,403,JSON.stringify(await responseJson(response)));
+
+  await seedActorAccount(db,{uid:'uid-corr-reception',role:'reception',permissions:['bookings.update','employees.manage']});
+  response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-reception',role:'reception',body:payload}),env);
+  assert.equal(response.status,403,JSON.stringify(await responseJson(response)));
+
+  await seedActorAccount(db,{uid:'uid-corr-admin',role:'admin',permissions:['bookings.update','employees.manage']});
+  response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-admin',role:'admin',body:payload}),env);
+  const result=await responseJson(response);
+  assert.equal(response.status,200,JSON.stringify(result));
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-api-correction'").first()).staff_id,'emp-verified');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+});
