@@ -3641,6 +3641,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const [staffOptions, setStaffOptions] = useState<EditEmployeeOption[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
   const staffCacheRef = useRef<EditEmployeeOption[] | null>(null);
+  const paymentEditTouchedRef = useRef(false);
+  useEffect(() => {
+    paymentEditTouchedRef.current = false;
+  }, [open, target?.id]);
   const [draft, setDraft] = useState<EditBookingDraft>(() =>
     target
       ? buildEditBookingDraftFromBooking(target)
@@ -3965,6 +3969,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     setDraft((prev) => (prev.time === normalizedValue ? prev : { ...prev, time: normalizedValue }));
   }, []);
   const onPaymentModeChange = useCallback((nextMode: UiPaymentMode) => {
+    paymentEditTouchedRef.current = true;
     setDraft((p) => {
       if (nextMode === "none") {
         return {
@@ -3989,6 +3994,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     });
   }, []);
   const onPaymentMethodChange = useCallback((method: EditPaymentMethodOption) => {
+    paymentEditTouchedRef.current = true;
     setDraft((p) => ({
       ...p,
       paymentMethod: method || "transfer",
@@ -3996,12 +4002,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     }));
   }, []);
   const onPaidAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.paidAmount === value ? prev : { ...prev, paidAmount: value }));
   }, []);
   const onMixedCashAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.mixedCashAmount === value ? prev : { ...prev, mixedCashAmount: value }));
   }, []);
   const onMixedCardAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.mixedCardAmount === value ? prev : { ...prev, mixedCardAmount: value }));
   }, []);
   const onBookingItemPriceChange = useCallback(
@@ -4437,6 +4446,11 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         Number(target.paidAmount || 0)
       )
     );
+    // Operational edits must not implicitly replay settled payment history.
+    if (paymentEditTouchedRef.current && alreadyCollected > 0) {
+      setError("لا يمكن تعديل دفعة مسجلة من شاشة تعديل الحجز. غيّري الموظفة فقط، واتركي بيانات الدفع كما هي.");
+      return;
+    }
 
     if (
       (
@@ -4451,7 +4465,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       return;
     }
 
-    if (isMixedPayment) {
+    if (paymentEditTouchedRef.current && isMixedPayment) {
       if (
         !Number.isFinite(mixedCashAmount) ||
         !Number.isFinite(mixedCardAmount) ||
@@ -4466,7 +4480,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         return;
       }
     }
-    if (!isMixedPayment && paymentType === "partial") {
+    if (paymentEditTouchedRef.current && !isMixedPayment && paymentType === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
         setError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
@@ -4589,11 +4603,16 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         ),
         finalPrice: price,
         total: price,
-        paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
-        paymentBreakdown,
-        paymentType: nextPaymentType,
-        paidAmount: round2(paidAmount),
-        remainingAmount,
+        // Payment fields must be absent from a staff-only Core PATCH.
+        ...(paymentEditTouchedRef.current
+          ? {
+              paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
+              paymentBreakdown,
+              paymentType: nextPaymentType,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
+            }
+          : {}),
       } as any;
       // BOOKING_EDIT_COMPLETION_APPLY_V2
       if (completionPaymentPatch) {
