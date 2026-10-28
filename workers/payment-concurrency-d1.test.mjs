@@ -1103,3 +1103,49 @@ test('financial impact preview rejects external provider and source-income misma
     (error) => error?.status === 404 && error?.code === 'core_payment_correction:not_found',
   );
 });
+
+
+test('completed booking staff reassignment leaves settled ledger unchanged', async (t) => {
+  const db = await setup(t);
+  const now = '2026-10-10T08:00:00.000Z';
+  await db.prepare(`INSERT INTO services
+    (id,salon_id,name,duration_minutes,price_halalas,active,created_at,updated_at)
+    VALUES ('eyeliner-service','main','Eyeliner',60,10000,1,?,?)`)
+    .bind(now, now).run();
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,
+     staff_id,quantity,unit_price_halalas,total_halalas,duration_minutes,
+     booking_date,start_time,end_time,created_at)
+    VALUES ('eyeliner-item','test-booking','main','eyeliner-service','Eyeliner',
+     'employee-old',1,10000,10000,60,'2026-10-10','09:00','10:00',?)`)
+    .bind(now).run();
+  await createPayment(db, 'main', {
+    id: 'eyeliner-settlement',
+    invoiceId: 'test-invoice',
+    amountHalalas: 10000,
+    method: 'transfer',
+    status: 'paid',
+  });
+  await db.prepare("UPDATE bookings SET status = 'completed' WHERE salon_id = 'main' AND id = 'test-booking'").run();
+
+  const paymentsBefore = await table(db, "SELECT id, amount_halalas, method FROM payments WHERE booking_id = 'test-booking'");
+  const incomeBefore = await table(db, "SELECT id, amount_halalas, method FROM income_entries WHERE booking_id = 'test-booking'");
+  const invoiceBefore = await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id = 'test-invoice'").first();
+
+  await patchBooking(db, 'main', 'test-booking', {
+    staffId: 'employee-new',
+    serviceId: 'eyeliner-service',
+  }, { uid: 'admin' });
+
+  const item = await db.prepare("SELECT staff_id FROM booking_items WHERE id = 'eyeliner-item'").first();
+  assert.equal(item.staff_id, 'employee-new');
+  const paymentAfter = await table(db, "SELECT id, amount_halalas, method FROM payments WHERE booking_id = 'test-booking'");
+  const incomeAfter = await table(db, "SELECT id, amount_halalas, method FROM income_entries WHERE booking_id = 'test-booking'");
+  const invoiceAfter = await db.prepare("SELECT paid_halalas, status FROM invoices WHERE id = 'test-invoice'").first();
+  assert.deepEqual(paymentAfter, paymentsBefore);
+  assert.deepEqual(incomeAfter, incomeBefore);
+  assert.deepEqual(invoiceAfter, invoiceBefore);
+  const booking = await db.prepare("SELECT status, payment_status FROM bookings WHERE id = 'test-booking'").first();
+  assert.equal(booking.status, 'completed');
+  assert.equal(booking.payment_status, 'paid');
+});

@@ -490,13 +490,17 @@ export const coreD1BookingDataSource: BookingDataSource = {
       patch.bookingItemDiscount
     );
     const rawBreakdown = patch.paymentBreakdown as Record<string, unknown> | null | undefined;
-    const paymentBreakdown = rawBreakdown
-      ? Object.fromEntries(
-          Object.entries(rawBreakdown)
-            .map(([method, amount]) => [method, Number(amount || 0)] as [string, number])
-            .filter(([, amount]) => Number.isFinite(amount) && amount > 0)
-        )
-      : null;
+    // Omitted payment data is NOT an explicit reset. Never transform
+    // staff/date/service-only PATCH requests into payment reconciliation.
+    const paymentBreakdown = rawBreakdown === undefined
+      ? undefined
+      : rawBreakdown
+        ? Object.fromEntries(
+            Object.entries(rawBreakdown)
+              .map(([method, amount]) => [method, Number(amount || 0)] as [string, number])
+              .filter(([, amount]) => Number.isFinite(amount) && amount > 0)
+          )
+        : null;
 
     const editPatch = patch as Partial<BookingDoc> & {
       customerName?: string | null;

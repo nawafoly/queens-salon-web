@@ -3641,6 +3641,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const [staffOptions, setStaffOptions] = useState<EditEmployeeOption[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
   const staffCacheRef = useRef<EditEmployeeOption[] | null>(null);
+  const paymentEditTouchedRef = useRef(false);
+  useEffect(() => {
+    paymentEditTouchedRef.current = false;
+  }, [open, target?.id]);
   const [draft, setDraft] = useState<EditBookingDraft>(() =>
     target
       ? buildEditBookingDraftFromBooking(target)
@@ -3671,7 +3675,11 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
   const draftTargetIdRef = useRef<string>(target?.id || "");
 
   useEffect(() => {
-    if (!open || !target) return;
+    if (!open || !target) {
+      // Reopening the same booking must not restore stale unsaved values.
+      draftTargetIdRef.current = "";
+      return;
+    }
     if (draftTargetIdRef.current === target.id) return;
     draftTargetIdRef.current = target.id;
     setDraft(buildEditBookingDraftFromBooking(target));
@@ -3965,6 +3973,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     setDraft((prev) => (prev.time === normalizedValue ? prev : { ...prev, time: normalizedValue }));
   }, []);
   const onPaymentModeChange = useCallback((nextMode: UiPaymentMode) => {
+    paymentEditTouchedRef.current = true;
     setDraft((p) => {
       if (nextMode === "none") {
         return {
@@ -3989,6 +3998,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     });
   }, []);
   const onPaymentMethodChange = useCallback((method: EditPaymentMethodOption) => {
+    paymentEditTouchedRef.current = true;
     setDraft((p) => ({
       ...p,
       paymentMethod: method || "transfer",
@@ -3996,12 +4006,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
     }));
   }, []);
   const onPaidAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.paidAmount === value ? prev : { ...prev, paidAmount: value }));
   }, []);
   const onMixedCashAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.mixedCashAmount === value ? prev : { ...prev, mixedCashAmount: value }));
   }, []);
   const onMixedCardAmountChange = useCallback((value: string) => {
+    paymentEditTouchedRef.current = true;
     setDraft((prev) => (prev.mixedCardAmount === value ? prev : { ...prev, mixedCardAmount: value }));
   }, []);
   const onBookingItemPriceChange = useCallback(
@@ -4437,6 +4450,11 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         Number(target.paidAmount || 0)
       )
     );
+    // Operational edits must not implicitly replay settled payment history.
+    if (paymentEditTouchedRef.current && alreadyCollected > 0) {
+      setError("لا يمكن تعديل دفعة مسجلة من شاشة تعديل الحجز. غيّري الموظفة فقط، واتركي بيانات الدفع كما هي.");
+      return;
+    }
 
     if (
       (
@@ -4451,7 +4469,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
       return;
     }
 
-    if (isMixedPayment) {
+    if (paymentEditTouchedRef.current && isMixedPayment) {
       if (
         !Number.isFinite(mixedCashAmount) ||
         !Number.isFinite(mixedCardAmount) ||
@@ -4466,7 +4484,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         return;
       }
     }
-    if (!isMixedPayment && paymentType === "partial") {
+    if (paymentEditTouchedRef.current && !isMixedPayment && paymentType === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
         setError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
@@ -4529,6 +4547,23 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         }
       : {};
 
+    // A sole employee reassignment is a minimal Core mutation. Do not
+    // re-send customer, schedule, service or financial fields from a
+    // potentially stale editor snapshot.
+    const originalDraft = buildEditBookingDraftFromBooking(target);
+    const staffOnlyEdit =
+      shouldUpdateEmployee &&
+      !paymentEditTouchedRef.current &&
+      !bookingItemPriceChanged &&
+      !bookingItemDiscountChanged &&
+      customerName === originalDraft.customerName &&
+      phone === originalDraft.phone &&
+      note === originalDraft.note &&
+      date === originalDraft.date &&
+      time === originalDraft.time &&
+      serviceId === originalDraft.serviceId &&
+      draft.status === target.status;
+
     // BOOKING_EDIT_STATUS_RULE_V2
     const statusAfterEdit: BookingStatus = draft.status;
 
@@ -4589,11 +4624,16 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         ),
         finalPrice: price,
         total: price,
-        paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
-        paymentBreakdown,
-        paymentType: nextPaymentType,
-        paidAmount: round2(paidAmount),
-        remainingAmount,
+        // Payment fields must be absent from a staff-only Core PATCH.
+        ...(paymentEditTouchedRef.current
+          ? {
+              paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
+              paymentBreakdown,
+              paymentType: nextPaymentType,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
+            }
+          : {}),
       } as any;
       // BOOKING_EDIT_COMPLETION_APPLY_V2
       if (completionPaymentPatch) {
@@ -4603,13 +4643,16 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         );
       }
 
-      await updateCoreBookingFields(target.id, patch);
+      await updateCoreBookingFields(
+        target.id,
+        staffOnlyEdit ? (employeePatch as Partial<Booking>) : patch
+      );
       if (statusAfterEdit && statusAfterEdit !== target.status) {
         await updateCoreBookingStatus(target.id, statusAfterEdit);
       }
 
       const resolvedStatus = statusAfterEdit || target.status;
-      onSaved(target.id, {
+      onSaved(target.id, staffOnlyEdit ? (employeePatch as Partial<Booking>) : {
         ...employeePatch,
         customerName,
         phone: phone || "",
@@ -4650,11 +4693,26 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
         ),
         finalPrice: price,
         total: price,
-        paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
-        paymentBreakdown: paymentBreakdown || undefined,
-        paymentType: nextPaymentType,
-        paidAmount: round2(paidAmount),
-        remainingAmount,
+        // Reassigning staff must never overwrite even the local financial
+        // read model with recomputed/unsaved payment form defaults.
+        ...(paymentEditTouchedRef.current
+          ? {
+              paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
+              paymentBreakdown: paymentBreakdown || undefined,
+              paymentType: nextPaymentType,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
+            }
+          : (bookingItemPriceChanged || bookingItemDiscountChanged)
+            ? {
+                paidAmount: alreadyCollected,
+                remainingAmount: round2(Math.max(0, price - alreadyCollected)),
+                paymentType: paymentTypeFromAmounts(
+                  alreadyCollected,
+                  round2(Math.max(0, price - alreadyCollected))
+                ),
+              }
+            : {}),
         // BOOKING_EDIT_COMPLETION_LOCAL_V2
         ...(completionPaymentPatch || {}),
         status: resolvedStatus,
@@ -4694,6 +4752,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           setError("السعر الجديد أقل من الخصم المسجل على الخدمة.");
         } else if (code === "core_booking:price_below_paid_amount") {
           setError("السعر الجديد أقل من المبلغ المحصل على الحجز.");
+        } else if (code === "core_booking:payment_history_immutable") {
+          setError("هذا الحجز يحتوي على دفعة مسجلة لا يمكن تعديلها من تعديل الحجز. لتغيير الموظفة اتركي بيانات الدفع دون تعديل.");
         } else {
           setError(
             code

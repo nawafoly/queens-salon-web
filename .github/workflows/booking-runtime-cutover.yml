@@ -62,6 +62,7 @@ on:
       - "workers/internal-booking-party-core.test.mjs"
       - "workers/internal-booking-party-ui.test.mjs"
       - "workers/core-worker.test.mjs"
+      - "workers/booking-employee-payment-isolation.test.mjs"
       - "workers/hr-core-worker.test.mjs"
       - "workers/frontend-core-migration.test.mjs"
       - "scripts/audit-legacy-booking-runtime.mjs"
@@ -145,6 +146,9 @@ jobs:
 
       - name: Core worker tests
         run: npm run test:core:worker
+
+      - name: Booking employee edit financial isolation regression
+        run: node --test workers/booking-employee-payment-isolation.test.mjs
 
       - name: HR schedule and leave worker tests
         run: npm run test:hr:worker
