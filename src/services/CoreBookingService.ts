@@ -147,6 +147,17 @@ export const CoreBookingService = {
     return mapBookingRow(row);
   },
 
+  async correctCompletedItemStaff(
+    bookingId: string,
+    itemId: string,
+    input: { expectedStaffId: string; staffId: string; reason: string }
+  ): Promise<{ bookingId: string; bookingItemId: string; staffId: string; staffName?: string; unchanged: boolean }> {
+    return coreApiRequest(
+      `/api/core/bookings/${encodeURIComponent(bookingId)}/items/${encodeURIComponent(itemId)}/staff-correction`,
+      { method: "POST", body: input }
+    );
+  },
+
   async reschedule(
     id: string,
     input: Record<string, unknown>
