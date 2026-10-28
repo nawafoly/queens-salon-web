@@ -43,6 +43,7 @@ const MIGRATIONS = [
   '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
   '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
   '0034_employee_offboarding_invariants.sql',
+  '0094_day_audit_closings.sql',
 ];
 
 async function setup() {
@@ -989,4 +990,23 @@ test('historical attribution correction rejects fake staff, out-of-period dates 
   await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
     {...input,staffId:'emp-old'},{}),'core_booking_item:authenticated_actor_required');
   assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-protected-attribution'").first()).staff_id,'emp-old');
+});
+
+
+test('approved payroll or closed financial day refuses retroactive staff rewrite', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-from');
+  await seedEmployee(db,'emp-to');
+  await seedBooking(db,{id:'locked-rewrite',employeeId:'emp-from',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const correction={bookingItemId:'item-locked-rewrite', expectedStaffId:'emp-from',
+    staffId:'emp-to', reason:'Corrected against signed specialist shift record'};
+  await db.prepare(`INSERT INTO day_audit_closings
+    (id,salon_id,audit_date,total_halalas,cash_halalas,card_halalas,transfer_halalas,
+     manual_cash_halalas,cash_diff_halalas,closed_at,created_at)
+    VALUES ('closing-test','main','2026-08-21',0,0,0,0,0,0,'2026-08-22','2026-08-22')`).run();
+  await expectCode(correctCompletedBookingItemStaff(db,'main','locked-rewrite',correction,actor),
+    'core_booking_item:closed_financial_day_requires_review');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-locked-rewrite'").first()).staff_id,'emp-from');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
 });
