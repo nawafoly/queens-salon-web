@@ -7,7 +7,13 @@ import { auditInsertWhenPreviousUpdateChanged } from './audit.js';
 export async function correctCompletedBookingItemStaff(db, salonId, bookingIdValue, data = {}, actor = {}) {
   const bookingId = requiredId(bookingIdValue, 'bookingId');
   const itemId = requiredId(data.bookingItemId, 'bookingItemId');
+  const requestedStaffId = cleanText(data.staffId);
   const nextStaffId = requiredId(data.staffId, 'staffId');
+  // requiredId decodes legacy percent-escaped IDs. Never silently redirect
+  // a human historical correction to a different physical staff record.
+  if (requestedStaffId !== nextStaffId) {
+    throw new AppError(409, 'core_booking_item:noncanonical_staff_identity_requires_review');
+  }
   const reason = cleanText(data.reason);
   const expectedStaffId = data.expectedStaffId == null ? '' : cleanText(data.expectedStaffId);
 
