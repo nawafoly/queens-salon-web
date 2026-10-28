@@ -56,6 +56,13 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
     throw new AppError(409, 'core_booking_item:target_not_employed_on_service_date');
   }
 
+  // Historical specialist attribution can change an already closed day's
+  // specialist KPI/read models even when the money ledger stays immutable.
+  const closedDay = await dbFirst(db,
+    'SELECT id FROM day_audit_closings WHERE salon_id = ? AND audit_date = ? LIMIT 1',
+    [salonId, workDate]);
+  if (closedDay) throw new AppError(409, 'core_booking_item:closed_financial_day_requires_review');
+
   const payrollMonth = workDate.slice(0, 7);
   const lockedPayroll = await dbFirst(db,
     `SELECT id FROM payroll_entries
@@ -74,10 +81,12 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
          SET staff_id = ?
          WHERE salon_id = ? AND booking_id = ? AND id = ?
            AND COALESCE(staff_id, '') = ?
+           AND NOT EXISTS (SELECT 1 FROM day_audit_closings
+             WHERE salon_id = ? AND audit_date = ?)
            AND EXISTS (SELECT 1 FROM bookings
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
-    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, bookingId],
+    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
     action: 'booking_item_staff_attribution_corrected',
