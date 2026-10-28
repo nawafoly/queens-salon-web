@@ -5,6 +5,7 @@ import { Miniflare } from 'miniflare';
 import worker from './core/index.js';
 import { normalizeError } from './core/errors.js';
 import { offboardHrEmployee } from './core/repositories/employee-offboarding.js';
+import { correctCompletedBookingItemStaff } from './core/repositories/booking-item-attribution.js';
 import { upsertHrEmployee } from './core/repositories/hr-employees.js';
 import { recordAttendance } from './core/repositories/attendance.js';
 import { resolveEmployeeShift } from './core/repositories/shift-control.js';
@@ -908,4 +909,84 @@ test('v5 invariant: cancelled and rejected status restoration protections remain
     );
     assert.equal((await db.prepare('SELECT status FROM bookings WHERE id=?').bind(bookingId).first()).status,status);
   }
+});
+
+
+test('multi-service offboarding reports the exact blocking service and safely clears only corrected attribution', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'emp-samira');
+  await seedEmployee(db, 'emp-actual');
+  await seedBooking(db, {
+    id: 'multi-10627', employeeId: 'emp-samira', bookingDate: '2026-08-21',
+    status: 'completed', completedAt: '2026-08-21T11:00:00Z',
+    parentStaff: false, itemStaff: true,
+  });
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,staff_id,quantity,unit_price_halalas,total_halalas,
+     package_covered,duration_minutes,created_at,booking_date,start_time,end_time)
+    VALUES ('item-eyeliner','multi-10627','main','svc-test','Eyeliner','emp-actual',1,0,0,0,60,'2026-08-21','2026-08-21','09:00','10:00')`).run();
+  const old = await lifecycleSnapshot(db,'emp-samira');
+  await assert.rejects(
+    offboardHrEmployee(db,'main','emp-samira',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS),
+    error => error?.code === 'core_hr:offboarding_post_end_date_activity_conflict' &&
+      error?.details?.count === 1 &&
+      error?.details?.conflicts?.some(row => row.bookingItemId === 'item-multi-10627' &&
+        row.source === 'service_item' && row.serviceName === 'Service')
+  );
+  assert.deepEqual(await lifecycleSnapshot(db,'emp-samira'),old);
+  const corrected = await correctCompletedBookingItemStaff(db, 'main', 'multi-10627', {
+    bookingItemId: 'item-multi-10627', expectedStaffId: 'emp-samira',
+    staffId: 'emp-actual', reason: 'Wrong specialist captured at reception',
+  }, actor);
+  assert.equal(corrected.unchanged,false);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-multi-10627'").first()).staff_id,'emp-actual');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-eyeliner'").first()).staff_id,'emp-actual');
+  const logs = await db.prepare("SELECT before_json, after_json FROM audit_logs WHERE salon_id='main' AND action='booking_item_staff_attribution_corrected'").all();
+  assert.equal(logs.results.length,1);
+  assert.equal(JSON.parse(logs.results[0].before_json).staffId,'emp-samira');
+  assert.equal(JSON.parse(logs.results[0].after_json).staffId,'emp-actual');
+  await offboardHrEmployee(db,'main','emp-samira',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS);
+  assert.equal((await db.prepare("SELECT end_date FROM employee_employment WHERE employee_id='emp-samira'").first()).end_date,'2026-08-20');
+});
+
+test('historical attribution correction is idempotent, CAS-protected and does not touch finance', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'emp-before');
+  await seedEmployee(db, 'emp-after');
+  await seedBooking(db,{id:'historical-cas',employeeId:'emp-before',bookingDate:'2026-08-21',status:'completed',
+    completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const input = { bookingItemId:'item-historical-cas',expectedStaffId:'emp-before',
+    staffId:'emp-after',reason:'Reviewed original service delivery records' };
+  const beforeMoney = {};
+  for (const table of ['payments','income_entries','invoices','refunds']) {
+    beforeMoney[table] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n;
+  }
+  await correctCompletedBookingItemStaff(db,'main','historical-cas',input,actor);
+  const replay = await correctCompletedBookingItemStaff(db,'main','historical-cas',input,actor);
+  assert.equal(replay.unchanged,true);
+  await expectCode(correctCompletedBookingItemStaff(db,'main','historical-cas',
+    {...input,staffId:'emp-before'},actor),'core_booking_item:concurrent_staff_change');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+  for(const table of ['payments','income_entries','invoices','refunds']) {
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n,beforeMoney[table],table);
+  }
+});
+
+test('historical attribution correction rejects fake staff, out-of-period dates and missing actor', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-old');
+  await seedEmployee(db,'emp-ended',{endDate:'2026-08-20'});
+  await seedBooking(db,{id:'protected-attribution',employeeId:'emp-old',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const input={bookingItemId:'item-protected-attribution',expectedStaffId:'emp-old',
+    staffId:'emp-ended',reason:'Reviewed source and verified work log'};
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',input,actor),
+    'core_booking_item:target_not_employed_on_service_date');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'nonexistent'},actor),'core_booking_item:target_staff_not_found');
+  await expectCode(correctCompletedBookingItemStaff(db,'other-salon','protected-attribution',input,actor),
+    'core_booking:not_found');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'emp-old'},{}),'core_booking_item:authenticated_actor_required');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-protected-attribution'").first()).staff_id,'emp-old');
 });
