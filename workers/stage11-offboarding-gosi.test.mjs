@@ -39,11 +39,11 @@ const MIGRATIONS = [
   '0001_core_schema.sql','0002_frontend_cutover.sql','0003_booking_availability.sql','0004_admin_operations.sql','0005_hr_settings_files.sql',
   '0006_booking_discount_snapshots.sql','0007_booking_soft_delete.sql','0008_booking_reference_sequence.sql','0014_app_users_permissions.sql','0015_employee_type.sql',
   '0016_payroll_snapshots.sql','0016_employee_permissions.sql','0017_shift_control.sql','0018_employee_payroll_settings.sql','0020_employee_requests.sql',
+  '0021_employee_target_bonus.sql',
   '0022_shift_attendance_policy.sql','0023_exceptional_financial_payment_requests.sql','0024_employee_leave_balance_ledger.sql','0025_employee_request_reference_integrity.sql',
   '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
   '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
   '0034_employee_offboarding_invariants.sql',
-  '0057_leave_rest_workflows.sql',
   '0094_day_audit_closings.sql',
 ];
 
@@ -1042,4 +1042,25 @@ test('item-level historical correction API requires admin plus both booking and 
   assert.equal(response.status,200,JSON.stringify(result));
   assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-api-correction'").first()).staff_id,'emp-verified');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+});
+
+
+test('target-bonus ledger attribution blocks unsafe historical specialist rewrite', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'target-from');
+  await seedEmployee(db,'target-to');
+  await seedBooking(db,{id:'target-guard-booking',employeeId:'target-from',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  await db.prepare(`INSERT INTO employee_target_ledger
+    (id,salon_id,employee_id,booking_id,booking_item_id,transaction_type,
+     source_reference,performed_at,created_at,updated_at)
+    VALUES ('target-ledger-test','main','target-from','target-guard-booking','item-target-guard-booking',
+      'service_completed','service:item-target-guard-booking','2026-08-21','2026-08-21','2026-08-21')`).run();
+  await expectCode(correctCompletedBookingItemStaff(db,'main','target-guard-booking',{
+    bookingItemId:'item-target-guard-booking',expectedStaffId:'target-from',
+    staffId:'target-to',reason:'Confirmed performer with signed shift proof',
+  },actor),'core_booking_item:target_ledger_reconciliation_required');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-target-guard-booking'").first()).staff_id,'target-from');
+  assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='target-ledger-test'").first()).employee_id,'target-from');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
 });
