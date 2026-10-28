@@ -4748,6 +4748,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
           setError("السعر الجديد أقل من الخصم المسجل على الخدمة.");
         } else if (code === "core_booking:price_below_paid_amount") {
           setError("السعر الجديد أقل من المبلغ المحصل على الحجز.");
+        } else if (code === "core_booking:payment_history_immutable") {
+          setError("هذا الحجز يحتوي على دفعة مسجلة لا يمكن تعديلها من تعديل الحجز. لتغيير الموظفة اتركي بيانات الدفع دون تعديل.");
         } else {
           setError(
             code
