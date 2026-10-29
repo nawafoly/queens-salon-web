@@ -1064,3 +1064,50 @@ test('target-bonus ledger attribution blocks unsafe historical specialist rewrit
   assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='target-ledger-test'").first()).employee_id,'target-from');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
 });
+
+
+test('historical staff CAS rejects payroll approved after precheck but before atomic UPDATE', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'payroll-race-from');
+  await seedEmployee(db, 'payroll-race-to');
+  await seedBooking(db, {
+    id: 'payroll-race-booking', employeeId: 'payroll-race-from',
+    bookingDate: '2026-08-21', status: 'completed',
+    completedAt: '2026-08-21T11:00:00Z', parentStaff: false, itemStaff: true,
+  });
+
+  let approvalInterleaved = false;
+  const competingPayrollDb = {
+    prepare: (...args) => db.prepare(...args),
+    batch: async (statements) => {
+      // Simulate payroll finalization after the initial SELECT but before
+      // the atomic UPDATE: the SQL write guard must independently refuse it.
+      approvalInterleaved = true;
+      await db.prepare(`INSERT INTO payroll_entries
+        (id,salon_id,employee_id,payroll_month,status,created_at,updated_at)
+        VALUES ('approved-between-checks','main','payroll-race-from','2026-08','approved',
+                '2026-08-31','2026-08-31')`).run();
+      return db.batch(statements);
+    },
+  };
+
+  await expectCode(correctCompletedBookingItemStaff(
+    competingPayrollDb, 'main', 'payroll-race-booking', {
+      bookingItemId: 'item-payroll-race-booking',
+      expectedStaffId: 'payroll-race-from',
+      staffId: 'payroll-race-to',
+      reason: 'Signed specialist evidence checked independently',
+    }, actor
+  ), 'core_booking_item:concurrent_staff_change');
+
+  assert.equal(approvalInterleaved, true, 'the payroll must be locked between the two checks');
+  assert.equal((await db.prepare(
+    "SELECT staff_id FROM booking_items WHERE id='item-payroll-race-booking'"
+  ).first()).staff_id, 'payroll-race-from');
+  assert.equal((await db.prepare(
+    "SELECT status FROM payroll_entries WHERE id='approved-between-checks'"
+  ).first()).status, 'approved');
+  assert.equal((await db.prepare(
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'"
+  ).first()).n, 0);
+});
