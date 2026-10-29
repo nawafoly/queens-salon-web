@@ -101,10 +101,16 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
              WHERE salon_id = ? AND audit_date = ?)
            AND NOT EXISTS (SELECT 1 FROM employee_target_ledger
              WHERE salon_id = ? AND booking_id = ?)
+           -- Recheck the payroll lock in the same atomic UPDATE, not solely
+           -- in the earlier read. A concurrent payroll approval must win.
+           AND NOT EXISTS (SELECT 1 FROM payroll_entries
+             WHERE salon_id = ? AND payroll_month = ?
+               AND employee_id IN (?, ?)
+               AND LOWER(COALESCE(status, 'draft')) IN ('approved', 'paid'))
            AND EXISTS (SELECT 1 FROM bookings
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
-    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId, salonId, bookingId],
+    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId, salonId, payrollMonth, previousStaffId, nextStaffId, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
     action: 'booking_item_staff_attribution_corrected',
