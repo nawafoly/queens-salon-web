@@ -11,6 +11,8 @@ on:
       - "src/components/EmployeeNotificationBellMenu.tsx"
       - "src/helpers/employeeIdentityId.ts"
       - "src/services/CoreAccountService.ts"
+      - "src/services/adminAccountDeletionService.ts"
+      - "workers/admin-account-deletion-runtime.test.mjs"
       - "src/services/CoreHrService.ts"
       - "src/services/CoreStaffService.ts"
       - "src/services/coreBookingMappers.ts"
@@ -30,6 +32,8 @@ on:
       - "src/components/EmployeeNotificationBellMenu.tsx"
       - "src/helpers/employeeIdentityId.ts"
       - "src/services/CoreAccountService.ts"
+      - "src/services/adminAccountDeletionService.ts"
+      - "workers/admin-account-deletion-runtime.test.mjs"
       - "src/services/CoreHrService.ts"
       - "src/services/CoreStaffService.ts"
       - "src/services/coreBookingMappers.ts"
@@ -91,6 +95,9 @@ jobs:
 
       - name: Employee lifecycle identity
         run: node scripts/check-employee-lifecycle-identity.mjs
+
+      - name: Account deletion runtime boundary
+        run: node --test workers/admin-account-deletion-runtime.test.mjs
 
       - name: Build
         run: npm run build
