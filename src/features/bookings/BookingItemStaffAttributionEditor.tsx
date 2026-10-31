@@ -190,19 +190,22 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                           onChange={e => { setSearch(e.target.value); setStaffId(""); }}
                           placeholder={english ? "Search eligible staff..." : "ابحثي عن الموظفة المؤهلة..."}
                           aria-label={english ? "Search eligible staff" : "البحث في الموظفات المؤهلات"} />
-                        <DashboardSelectV2
-                          value={staffId}
-                          placeholder={candidateLoading
-                            ? (english ? "Checking eligibility..." : "جاري التحقق من الأهلية...")
-                            : (english ? "Select eligible staff" : "اختاري الموظفة المؤهلة")}
-                          disabled={busy || candidateLoading || !!candidateError || filteredStaff.length === 0}
-                          options={filteredStaff.map(row => ({
-                            value: row.id,
-                            label: (duplicateNameCounts.get(row.name.toLocaleLowerCase("ar")) || 0) > 1
-                              ? `${row.name} — ${row.id}` : row.name,
-                          }))}
-                          onChange={value => setStaffId(value)}
-                        />
+                        {/* The booking dialog is portalled outside the dashboard shell. */}
+                        <div className="dashboard-v2 bk-attribution__picker-scope">
+                          <DashboardSelectV2
+                            value={staffId}
+                            placeholder={candidateLoading
+                              ? (english ? "Checking eligibility..." : "جاري التحقق من الأهلية...")
+                              : (english ? "Select eligible staff" : "اختاري الموظفة المؤهلة")}
+                            disabled={busy || candidateLoading || !!candidateError || filteredStaff.length === 0}
+                            options={filteredStaff.map(row => ({
+                              value: row.id,
+                              label: (duplicateNameCounts.get(row.name.toLocaleLowerCase("ar")) || 0) > 1
+                                ? `${row.name} — ${row.id}` : row.name,
+                            }))}
+                            onChange={value => setStaffId(value)}
+                          />
+                        </div>
                         <small className="bk-helper-text" aria-live="polite">
                           {candidateDate && (english ? `Service date: ${candidateDate}. ` : `تاريخ الخدمة: ${candidateDate}. `)}
                           {english ? `${filteredStaff.length} staff with employment dates matching this service.` : `الموظفات المطابقة فترة عملهن لتاريخ الخدمة: ${filteredStaff.length}.`}

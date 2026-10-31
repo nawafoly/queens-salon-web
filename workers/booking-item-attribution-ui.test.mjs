@@ -48,6 +48,9 @@ test('historical staff picker uses Core eligibility, V2 search UI, and no native
   assert.match(service, /listItemStaffCorrectionCandidates/);
   assert.match(bookingClient, /staff-correction\/candidates/);
   assert.match(ui, /DashboardSelectV2/);
+  // Booking dialogs are portalled outside the Dashboard V2 shell. Without
+  // this ancestor the shared select CSS is skipped and the chevron expands.
+  assert.match(ui, /<div className="dashboard-v2 bk-attribution__picker-scope">\s*<DashboardSelectV2/);
   assert.match(ui, /type="search"/);
   assert.doesNotMatch(ui, /<select\b|<option\b/);
   assert.doesNotMatch(ui, /\/api\/core\/staff/);
