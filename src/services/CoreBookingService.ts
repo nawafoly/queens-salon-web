@@ -17,6 +17,12 @@ export type CoreStaffPortalBooking = CoreBooking & {
   staffAckByUid?: string | null;
 };
 
+export type CoreBookingItemStaffCandidates = {
+  serviceDate: string;
+  candidates: { id: string; name: string }[];
+  excludedLegacyIdentityCount: number;
+};
+
 function mapBookingRow(row: Record<string, unknown>): CoreStaffPortalBooking {
   return {
     ...mapCoreBooking(row),
@@ -155,6 +161,15 @@ export const CoreBookingService = {
     return coreApiRequest(
       `/api/core/bookings/${encodeURIComponent(bookingId)}/items/${encodeURIComponent(itemId)}/staff-correction`,
       { method: "POST", body: input }
+    );
+  },
+
+  async listItemStaffCorrectionCandidates(
+    bookingId: string,
+    itemId: string
+  ): Promise<CoreBookingItemStaffCandidates> {
+    return coreApiRequest(
+      `/api/core/bookings/${encodeURIComponent(bookingId)}/items/${encodeURIComponent(itemId)}/staff-correction/candidates`
     );
   },
 

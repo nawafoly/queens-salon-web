@@ -3680,14 +3680,14 @@ button.bk-edit-picker-control:disabled {
 
 .bookings-v2-modal-panel.bk-edit-modal.qs-modal-panel--lg {
   width: min(
-    920px,
-    calc(100vw - 56px)
+    1220px,
+    calc(100vw - 48px)
   );
-  max-width: 920px;
+  max-width: 1220px;
   min-width: 0;
   max-height: min(
-    86dvh,
-    780px
+    90dvh,
+    960px
   );
 }
 
@@ -3704,6 +3704,162 @@ button.bk-edit-picker-control:disabled {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-grid {
   gap: 16px;
+}
+
+/* Item-level staff correction follows the same surface, border and type
+   tokens as the bookings table. One service = one distinct row. */
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution {
+  display: grid;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  padding: var(--dsv2-space-4);
+  background: var(--dsv2-surface);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__head {
+  display: grid;
+  gap: var(--dsv2-space-1);
+  padding-block-end: var(--dsv2-space-3);
+  border-bottom: 1px solid var(--dsv2-border);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__head strong {
+  color: var(--dsv2-text);
+  font-size: 0.88rem;
+  font-weight: 950;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__head small,
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__id {
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__load-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-burgundy-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__list {
+  display: grid;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  padding: var(--dsv2-space-4);
+  background: var(--dsv2-surface-soft);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__summary {
+  display: grid;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__service {
+  font-size: 0.88rem;
+  font-weight: 950;
+  color: var(--dsv2-text);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__staff {
+  color: var(--dsv2-muted);
+  font-size: 0.78rem;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__staff strong {
+  color: var(--dsv2-text);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__id {
+  text-align: start;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__details {
+  min-width: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__details summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__details .bk-attribution__id {
+  display: block;
+  margin-top: var(--dsv2-space-2);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__open {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__correction {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  border-top: 1px solid var(--dsv2-border);
+  padding-block-start: var(--dsv2-space-4);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--dsv2-space-4);
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__field {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__field .dsv2-select-v2 {
+  min-width: 0;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__notice,
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__legacy {
+  margin: 0;
+  color: var(--dsv2-warning);
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dsv2-space-2);
 }
 
 /* حقل التاريخ والوقت */
@@ -4125,6 +4281,21 @@ svg {
   .bookings-v2-modal-panel.bk-edit-modal
   .bk-cancel-body {
     padding: 16px;
+  }
+
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution,
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__item {
+    padding: var(--dsv2-space-3);
+  }
+
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__item,
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__open,
+  .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__actions > button {
+    width: 100%;
   }
 }
 

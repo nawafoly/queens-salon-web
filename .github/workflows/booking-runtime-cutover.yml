@@ -155,7 +155,7 @@ jobs:
       - name: Multi-service attribution and offboarding D1 regressions
         run: |
           node --test workers/booking-item-attribution-ui.test.mjs
-          node --test --test-force-exit --test-name-pattern='^(multi-service offboarding|historical attribution correction|target-bonus ledger attribution|approved payroll or closed financial day|item-level historical correction API|completed post-end-date booking)' workers/stage11-offboarding-gosi.test.mjs
+          node --test --test-force-exit --test-name-pattern='^(multi-service offboarding|historical attribution correction|historical staff picker|target-bonus ledger attribution|approved payroll or closed financial day|item-level historical correction API|completed post-end-date booking)' workers/stage11-offboarding-gosi.test.mjs
 
       - name: HR schedule and leave worker tests
         run: npm run test:hr:worker

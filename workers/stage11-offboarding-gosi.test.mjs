@@ -5,7 +5,7 @@ import { Miniflare } from 'miniflare';
 import worker from './core/index.js';
 import { normalizeError } from './core/errors.js';
 import { offboardHrEmployee } from './core/repositories/employee-offboarding.js';
-import { correctCompletedBookingItemStaff } from './core/repositories/booking-item-attribution.js';
+import { correctCompletedBookingItemStaff, listBookingItemStaffCorrectionCandidates } from './core/repositories/booking-item-attribution.js';
 import { upsertHrEmployee } from './core/repositories/hr-employees.js';
 import { recordAttendance } from './core/repositories/attendance.js';
 import { resolveEmployeeShift } from './core/repositories/shift-control.js';
@@ -1060,6 +1060,42 @@ test('item-level historical correction API requires admin plus both booking and 
   assert.equal(response.status,200,JSON.stringify(result));
   assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-api-correction'").first()).staff_id,'emp-verified');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+});
+
+test('historical staff picker is tenant scoped, employment-date eligible, read-only and hides encoded legacy identities', async (t) => {
+  const { mf, db, env } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'candidate-recorded');
+  await seedEmployee(db, 'candidate-eligible', { staffActive: 0, endDate: '2026-08-22' });
+  await seedEmployee(db, 'candidate-future', { startDate: '2026-08-22' });
+  await seedEmployee(db, 'candidate-ended', { endDate: '2026-08-20' });
+  await seedEmployee(db, 'candidate-%D8%AF%D9%8A%D9%86%D8%A7%D8%B1');
+  await seedBooking(db, { id: 'picker-10627', employeeId: 'candidate-recorded', bookingDate: '2026-08-21',
+    status: 'completed', completedAt: '2026-08-21T11:00:00Z', parentStaff: false, itemStaff: true });
+
+  const itemId = 'item-picker-10627';
+  const result = await listBookingItemStaffCorrectionCandidates(db, 'main', 'picker-10627', itemId);
+  assert.equal(result.serviceDate, '2026-08-21');
+  assert.deepEqual(result.candidates.map(row => row.id).sort(), ['candidate-eligible', 'candidate-recorded']);
+  assert.equal(result.excludedLegacyIdentityCount, 1);
+  await assert.rejects(
+    listBookingItemStaffCorrectionCandidates(db, 'other-salon', 'picker-10627', itemId),
+    error => error?.status === 404
+  );
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n, 0);
+
+  const route = `/api/core/bookings/picker-10627/items/${itemId}/staff-correction/candidates`;
+  await seedActorAccount(db, { uid: 'uid-picker-reception', role: 'reception', permissions: ['bookings.update', 'employees.manage'] });
+  let response = await worker.fetch(req(route, { uid: 'uid-picker-reception', role: 'reception' }), env);
+  assert.equal(response.status, 403);
+  await seedActorAccount(db, { uid: 'uid-picker-no-hr', role: 'admin', permissions: ['bookings.update'] });
+  await db.prepare("INSERT INTO user_permissions (id,salon_id,user_id,permission_key,effect,created_at,updated_at) VALUES ('deny-picker-hr','main','user-uid-picker-no-hr','employees.manage','deny','2026-01-01','2026-01-01')").run();
+  response = await worker.fetch(req(route, { uid: 'uid-picker-no-hr', role: 'admin' }), env);
+  assert.equal(response.status, 403);
+  await seedActorAccount(db, { uid: 'uid-picker-admin', role: 'admin', permissions: ['bookings.update', 'employees.manage'] });
+  response = await worker.fetch(req(route, { uid: 'uid-picker-admin', role: 'admin' }), env);
+  const body = await responseJson(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.candidates.map(row => row.id).sort(), ['candidate-eligible', 'candidate-recorded']);
 });
 
 

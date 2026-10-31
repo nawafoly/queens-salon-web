@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoreBookingService } from "../../services/CoreBookingService";
-import { coreApiRequest } from "../../services/coreApiClient";
+import DashboardSelectV2 from "../../components/dashboard-v2/DashboardSelectV2";
 import type { CoreBooking, CoreBookingItem } from "../../types/coreApi";
 
 type StaffRow = { id: string; name: string };
@@ -20,12 +20,20 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   const [booking, setBooking] = useState<CoreBooking | null>(null);
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState("");
+  const [candidateDate, setCandidateDate] = useState("");
+  const [excludedLegacyCount, setExcludedLegacyCount] = useState(0);
+  const [search, setSearch] = useState("");
   const [editingItemId, setEditingItemId] = useState("");
   const [staffId, setStaffId] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const candidateRequest = useRef(0);
   const english = language === "en";
 
   const refresh = useCallback(async () => {
@@ -36,31 +44,77 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setBooking(null);
+    setLoadError("");
     setError("");
     setSuccess("");
     setEditingItemId("");
     setReason("");
-    void Promise.all([
-      CoreBookingService.get(bookingId),
-      canCorrect
-        ? coreApiRequest<Record<string, unknown>[]>("/api/core/staff", { query: { active: false } })
-        : Promise.resolve([]),
-    ]).then(([details, employees]) => {
+    candidateRequest.current += 1;
+    void CoreBookingService.get(bookingId).then(details => {
       if (!active) return;
       setBooking(details);
-      // Raw Core IDs are intentional: the historical DB has multiple
-      // differently encoded employee identities that must not be merged here.
-      setStaff(employees.map(row => ({
-        id: String(row.id || "").trim(),
-        name: String(row.name || "").trim(),
-      })).filter(row => row.id && row.name));
     }).catch(() => {
-      if (active) setError(english ? "Could not load service assignments." : "تعذر تحميل موظفات الخدمات من Core.");
+      if (active) setLoadError(english ? "Could not load service assignments from Core." : "تعذر تحميل بنود الخدمات من Core.");
     }).finally(() => {
       if (active) setLoading(false);
     });
-    return () => { active = false; };
-  }, [bookingId, canCorrect, english]);
+    return () => { active = false; candidateRequest.current += 1; };
+  }, [bookingId, english, reloadToken]);
+
+  const openCorrection = (item: CoreBookingItem) => {
+    const request = ++candidateRequest.current;
+    setEditingItemId(item.id);
+    setStaffId("");
+    setReason("");
+    setSearch("");
+    setStaff([]);
+    setCandidateError("");
+    setCandidateDate("");
+    setExcludedLegacyCount(0);
+    setError("");
+    setSuccess("");
+    setCandidateLoading(true);
+    void CoreBookingService.listItemStaffCorrectionCandidates(bookingId, item.id)
+      .then(data => {
+        if (candidateRequest.current !== request) return;
+        setStaff(data.candidates);
+        setCandidateDate(data.serviceDate);
+        setExcludedLegacyCount(data.excludedLegacyIdentityCount);
+      })
+      .catch(() => {
+        if (candidateRequest.current !== request) return;
+        setCandidateError(english
+          ? "Could not verify eligible staff for this service date."
+          : "تعذر التحقق من الموظفات المؤهلات في تاريخ هذه الخدمة.");
+      })
+      .finally(() => {
+        if (candidateRequest.current === request) setCandidateLoading(false);
+      });
+  };
+
+  const closeCorrection = () => {
+    candidateRequest.current += 1;
+    setEditingItemId("");
+    setStaffId("");
+    setReason("");
+  };
+
+  const duplicateNameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of staff) {
+      const key = row.name.toLocaleLowerCase("ar");
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [staff]);
+
+  const filteredStaff = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("ar");
+    return staff.filter(row =>
+      !term || `${row.name} ${row.id}`.toLocaleLowerCase("ar").includes(term)
+    );
+  }, [staff, search]);
 
   const correct = async (item: CoreBookingItem) => {
     if (!canCorrect || busy || !staffId || reason.trim().length < 10) return;
@@ -74,7 +128,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
         reason: reason.trim(),
       });
       await refresh();
-      setEditingItemId("");
+      closeCorrection();
       setStaffId("");
       setReason("");
       setSuccess(english
@@ -99,59 +153,120 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   };
 
   return (
-    <section className="bk-edit-grid" aria-label={english ? "Services and assigned staff" : "الخدمات والموظفات المسجلات"}>
-      <div className="bk-field-label">
-        {english ? "Staff assigned to each service (Core D1)" : "الموظفة المسجلة لكل خدمة (من Core D1)"}
-      </div>
+    <section className="bk-attribution" aria-label={english ? "Services and assigned staff" : "الخدمات والموظفات المسجلات"}>
+      <header className="bk-attribution__head">
+        <strong>{english ? "Staff assigned to each service" : "الموظفة المسجلة لكل خدمة"}</strong>
+        <small>{english ? "Each service has an independent audited assignment." : "لكل خدمة إسناد مستقل؛ التصحيح لا يغيّر بقية الخدمات."}</small>
+      </header>
       {loading ? (
         <small className="bk-helper-text">{english ? "Loading service items..." : "جاري تحميل بنود الخدمات..."}</small>
+      ) : loadError ? (
+        <div className="bk-attribution__load-failure" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary"
+            onClick={() => setReloadToken(token => token + 1)}>
+            {english ? "Retry loading services" : "إعادة تحميل الخدمات"}
+          </button>
+        </div>
       ) : (booking?.items || []).length === 0 ? (
         <small className="bk-helper-text">{english ? "No service items." : "لا توجد بنود خدمات."}</small>
       ) : (
-        (booking?.items || []).map(item => (
-          <div key={item.id} className="bk-edit-picker-field" style={{ padding: "10px 0" }}>
-            <div className="bk-field-label">{item.serviceNameSnapshot}</div>
-            <div>{english ? "Recorded staff" : "الموظفة المسجلة"}: <strong>{displayStaff(item)}</strong></div>
-            <small className="bk-helper-text">ID: {item.id} | {item.staffId || "—"}</small>
-            {canCorrect && booking?.status === "completed" && (
-              editingItemId !== item.id ? (
-                <button type="button" className="dsv2-btn dsv2-btn--secondary"
-                  onClick={() => { setEditingItemId(item.id); setStaffId(""); setReason(""); setError(""); setSuccess(""); }}>
-                  {english ? "Correct this service's staff" : "تصحيح موظفة هذه الخدمة فقط"}
-                </button>
-              ) : (
-                <div className="bk-edit-grid">
-                  <label>
-                    <span className="bk-field-label">{english ? "Actual specialist" : "الموظفة التي نفذت الخدمة فعلًا"}</span>
-                    <select className="bk-input" value={staffId} disabled={busy}
-                      onChange={e => setStaffId(e.target.value)}>
-                      <option value="">{english ? "Select" : "اختاري الموظفة"}</option>
-                      {staff.map(row => <option key={row.id} value={row.id}>{row.name} — {row.id}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="bk-field-label">{english ? "Audited correction reason" : "سبب التصحيح الموثق"}</span>
-                    <textarea className="bk-input" rows={2} maxLength={1000} value={reason} disabled={busy}
-                      onChange={e => setReason(e.target.value)}
-                      placeholder={english ? "Describe the verified evidence of who performed this service." : "اذكري الدليل الذي يؤكد من نفذت هذه الخدمة."} />
-                  </label>
-                  <small className="bk-helper-text">
-                    {english
-                      ? "Historical correction only. Invoice, payment and other services remain unchanged."
-                      : "تصحيح إسناد تاريخي فقط؛ لن تتغير الفاتورة أو المدفوعات أو بقية الخدمات."}
-                  </small>
-                  <button type="button" className="dsv2-btn dsv2-btn--primary"
-                    disabled={busy || !staffId || staffId === (item.staffId || "") || reason.trim().length < 10}
-                    onClick={() => void correct(item)}>
-                    {busy ? (english ? "Saving..." : "جاري الحفظ...") : (english ? "Confirm audited correction" : "تأكيد التصحيح الموثق")}
+        <div className="bk-attribution__list">
+          {(booking?.items || []).map(item => (
+            <article key={item.id} className="bk-attribution__item">
+              <div className="bk-attribution__summary">
+                <strong className="bk-attribution__service">{item.serviceNameSnapshot}</strong>
+                <span className="bk-attribution__staff">
+                  {english ? "Recorded staff" : "الموظفة المسجلة"}: <strong>{displayStaff(item)}</strong>
+                </span>
+                {canCorrect && (
+                  <details className="bk-attribution__details">
+                    <summary>{english ? "Audit identifiers" : "عرض معرفات التدقيق"}</summary>
+                    <small className="bk-attribution__id" dir="ltr">{item.id} · {item.staffId || "—"}</small>
+                  </details>
+                )}
+              </div>
+              {canCorrect && booking?.status === "completed" && (
+                editingItemId !== item.id ? (
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary bk-attribution__open"
+                    onClick={() => openCorrection(item)}>
+                    {english ? "Correct this service's staff" : "تصحيح موظفة هذه الخدمة فقط"}
                   </button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={busy}
-                    onClick={() => setEditingItemId("")}>{english ? "Cancel" : "إلغاء"}</button>
-                </div>
-              )
-            )}
-          </div>
-        ))
+                ) : (
+                  <div className="bk-attribution__correction">
+                    <div className="bk-attribution__fields">
+                      <div className="bk-attribution__field">
+                        <span className="bk-field-label">{english ? "Actual specialist" : "الموظفة التي نفذت الخدمة فعلًا"}</span>
+                        <input type="search" className="bk-input" autoComplete="off" value={search}
+                          disabled={busy || candidateLoading || !!candidateError}
+                          onChange={e => { setSearch(e.target.value); setStaffId(""); }}
+                          placeholder={english ? "Search eligible staff..." : "ابحثي عن الموظفة المؤهلة..."}
+                          aria-label={english ? "Search eligible staff" : "البحث في الموظفات المؤهلات"} />
+                        {/* The booking dialog is portalled outside the dashboard shell. */}
+                        <div className="dashboard-v2 bk-attribution__picker-scope">
+                          <DashboardSelectV2
+                            value={staffId}
+                            placeholder={candidateLoading
+                              ? (english ? "Checking eligibility..." : "جاري التحقق من الأهلية...")
+                              : (english ? "Select eligible staff" : "اختاري الموظفة المؤهلة")}
+                            disabled={busy || candidateLoading || !!candidateError || filteredStaff.length === 0}
+                            options={filteredStaff.map(row => ({
+                              value: row.id,
+                              label: (duplicateNameCounts.get(row.name.toLocaleLowerCase("ar")) || 0) > 1
+                                ? `${row.name} — ${row.id}` : row.name,
+                            }))}
+                            onChange={value => setStaffId(value)}
+                          />
+                        </div>
+                        <small className="bk-helper-text" aria-live="polite">
+                          {candidateDate && (english ? `Service date: ${candidateDate}. ` : `تاريخ الخدمة: ${candidateDate}. `)}
+                          {english ? `${filteredStaff.length} staff with employment dates matching this service.` : `الموظفات المطابقة فترة عملهن لتاريخ الخدمة: ${filteredStaff.length}.`}
+                        </small>
+                        {staffId && <small className="bk-attribution__id" dir="ltr">ID: {staffId}</small>}
+                        {excludedLegacyCount > 0 && (
+                          <small className="bk-attribution__legacy">
+                            {english
+                              ? `${excludedLegacyCount} legacy encoded identity record(s) excluded; no automatic merging.`
+                              : `استُبعد ${excludedLegacyCount} سجل بهوية قديمة مشفّرة؛ لا يتم دمج الهويات تلقائيًا.`}
+                          </small>
+                        )}
+                        {!candidateLoading && !candidateError && staff.length === 0 && (
+                          <small className="bk-attribution__legacy">
+                            {english ? "No staff with a verified employment period on this date." : "لا توجد موظفات بفترة توظيف موثقة في تاريخ الخدمة."}
+                          </small>
+                        )}
+                        {!candidateLoading && !candidateError && staff.length > 0 && filteredStaff.length === 0 && (
+                          <small className="bk-helper-text">{english ? "No matching employee." : "لا توجد موظفة مطابقة للبحث."}</small>
+                        )}
+                        {candidateError && <small className="bk-inline-error" role="alert">{candidateError}</small>}
+                      </div>
+                      <label className="bk-attribution__field">
+                        <span className="bk-field-label">{english ? "Audited correction reason" : "سبب التصحيح الموثق"}</span>
+                        <textarea className="bk-input" rows={3} maxLength={1000} value={reason} disabled={busy}
+                          onChange={e => setReason(e.target.value)}
+                          placeholder={english ? "Describe the verified evidence of who performed this service." : "اذكري الدليل الذي يؤكد من نفذت هذه الخدمة."} />
+                      </label>
+                    </div>
+                    <p className="bk-attribution__notice">
+                      {english
+                        ? "Employment dates are checked here; closed financial days, payroll and bonus-ledger restrictions are checked again on save. Invoice, payment and other services remain unchanged."
+                        : "القائمة تتحقق من فترة العمل؛ قيود الإقفال المالي والرواتب والتارجت تُفحص مجددًا عند الحفظ. لن تتغير الفاتورة أو المدفوعات أو بقية الخدمات."}
+                    </p>
+                    <div className="bk-attribution__actions">
+                      <button type="button" className="dsv2-btn dsv2-btn--primary"
+                        disabled={busy || candidateLoading || !!candidateError || !staffId || staffId === (item.staffId || "") || reason.trim().length < 10}
+                        onClick={() => void correct(item)}>
+                        {busy ? (english ? "Saving..." : "جاري الحفظ...") : (english ? "Confirm audited correction" : "تأكيد التصحيح الموثق")}
+                      </button>
+                      <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={busy}
+                        onClick={closeCorrection}>{english ? "Cancel" : "إلغاء"}</button>
+                    </div>
+                  </div>
+                )
+              )}
+            </article>
+          ))}
+        </div>
       )}
       {error && <div className="bk-inline-error" role="alert">{error}</div>}
       {success && <small role="status">{success}</small>}
