@@ -72,14 +72,18 @@ async function bookingEvidenceSummary(db, salonId, employeeId, endDate, business
        AND b.completed_at IS NULL`;
   const fromSql = `
        FROM (
-         SELECT b.id, b.public_id, b.booking_date AS effective_booking_date
+         SELECT b.id, b.public_id, b.booking_date AS effective_booking_date,
+                'parent' AS attribution_source, NULL AS booking_item_id,
+                NULL AS service_name
            FROM bookings b
           WHERE b.salon_id = ?
             AND b.deleted_at IS NULL
             AND b.staff_id = ?
             AND b.booking_date > ?
          UNION ALL
-         SELECT b.id, b.public_id, COALESCE(bi.booking_date, b.booking_date) AS effective_booking_date
+         SELECT b.id, b.public_id, COALESCE(bi.booking_date, b.booking_date) AS effective_booking_date,
+                'service_item' AS attribution_source, bi.id AS booking_item_id,
+                bi.service_name_snapshot AS service_name
            FROM bookings b
            JOIN booking_items bi
              ON bi.salon_id = b.salon_id
@@ -105,16 +109,27 @@ async function bookingEvidenceSummary(db, salonId, employeeId, endDate, business
     dbFirst(db, `SELECT COUNT(DISTINCT evidence.id) AS count ${fromSql}`, params),
     dbAll(
       db,
-      `SELECT DISTINCT evidence.id, evidence.public_id, evidence.effective_booking_date, b.status
+      `SELECT DISTINCT evidence.id, evidence.public_id, evidence.effective_booking_date,
+              evidence.attribution_source, evidence.booking_item_id, evidence.service_name, b.status
        ${fromSql}
-       ORDER BY evidence.effective_booking_date, evidence.id
+       ORDER BY evidence.effective_booking_date, evidence.id, evidence.attribution_source
        LIMIT 20`,
       params
     ),
   ]);
   return {
     count: Math.max(0, Number(countRow?.count || 0)),
-    bookingIds: rows.map(bookingReference).filter(Boolean),
+    bookingIds: [...new Set(rows.map(bookingReference).filter(Boolean))],
+    // Explicit Core evidence, not an inferred parent-level employee label.
+    // The UI can now show the exact service responsible for the conflict.
+    conflicts: rows.map(row => ({
+      bookingId: bookingReference(row),
+      bookingDate: row.effective_booking_date,
+      status: row.status,
+      source: row.attribution_source,
+      bookingItemId: row.booking_item_id || null,
+      serviceName: row.service_name || null,
+    })),
   };
 }
 

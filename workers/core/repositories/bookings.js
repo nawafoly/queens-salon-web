@@ -857,11 +857,28 @@ export async function getBooking(db, salonId, id) {
   if (!booking) rowNotFound("booking");
 
   const [items, client, guest, staff, invoice] = await Promise.all([
-    dbAll(
-      db,
-      "SELECT * FROM booking_items WHERE booking_id = ? ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id",
-      [booking.id]
-    ),
+    db.__fakeD1
+      ? dbAll(
+          db,
+          "SELECT * FROM booking_items WHERE booking_id = ? ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id",
+          [booking.id]
+        ).then(rows => rows
+          .filter(row => cleanText(row.salon_id) === salonId)
+          .map(row => ({
+            ...row,
+            staff_name: (db.rows("staff") || []).find(
+              staffRow => staffRow.salon_id === salonId && staffRow.id === row.staff_id
+            )?.name || null,
+          })))
+      : dbAll(
+          db,
+          `SELECT bi.*, st.name AS staff_name
+             FROM booking_items bi
+             LEFT JOIN staff st ON st.salon_id = bi.salon_id AND st.id = bi.staff_id
+            WHERE bi.salon_id = ? AND bi.booking_id = ?
+            ORDER BY COALESCE(bi.booking_date, ''), COALESCE(bi.start_time, ''), bi.created_at, bi.id`,
+          [salonId, booking.id]
+        ),
     dbFirst(
       db,
       "SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1",

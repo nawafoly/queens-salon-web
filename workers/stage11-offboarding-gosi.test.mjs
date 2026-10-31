@@ -5,6 +5,7 @@ import { Miniflare } from 'miniflare';
 import worker from './core/index.js';
 import { normalizeError } from './core/errors.js';
 import { offboardHrEmployee } from './core/repositories/employee-offboarding.js';
+import { correctCompletedBookingItemStaff } from './core/repositories/booking-item-attribution.js';
 import { upsertHrEmployee } from './core/repositories/hr-employees.js';
 import { recordAttendance } from './core/repositories/attendance.js';
 import { resolveEmployeeShift } from './core/repositories/shift-control.js';
@@ -38,10 +39,14 @@ const MIGRATIONS = [
   '0001_core_schema.sql','0002_frontend_cutover.sql','0003_booking_availability.sql','0004_admin_operations.sql','0005_hr_settings_files.sql',
   '0006_booking_discount_snapshots.sql','0007_booking_soft_delete.sql','0008_booking_reference_sequence.sql','0014_app_users_permissions.sql','0015_employee_type.sql',
   '0016_payroll_snapshots.sql','0016_employee_permissions.sql','0017_shift_control.sql','0018_employee_payroll_settings.sql','0020_employee_requests.sql',
+  '0021_employee_target_bonus.sql',
   '0022_shift_attendance_policy.sql','0023_exceptional_financial_payment_requests.sql','0024_employee_leave_balance_ledger.sql','0025_employee_request_reference_integrity.sql',
   '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
   '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
   '0034_employee_offboarding_invariants.sql',
+  // Shift control and payroll previews read these canonical 0057 tables.
+  '0057_leave_rest_workflows.sql',
+  '0094_day_audit_closings.sql',
 ];
 
 async function setup() {
@@ -70,6 +75,22 @@ async function setup() {
     },
   };
 }
+
+test('stage11 D1 fixture includes weekly-rest and leave-recall tables used by shift resolution', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  const tables = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('employee_leave_recalls','employee_weekly_rest_work_assignments') ORDER BY name"
+  ).all();
+  assert.deepEqual(
+    tables.results.map((row) => row.name),
+    ['employee_leave_recalls', 'employee_weekly_rest_work_assignments']
+  );
+  const columns = await db.prepare("PRAGMA table_info('employee_weekly_rest_work_assignments')").all();
+  for (const name of ['salon_id', 'employee_id', 'rest_date', 'status', 'start_time', 'end_time']) {
+    assert.ok(columns.results.some((column) => column.name === name), `missing weekly-rest column: ${name}`);
+  }
+});
 
 const actor = { uid: 'actor-1', email: 'hr@example.com', name: 'HR', userId: 'app-hr' };
 
@@ -908,4 +929,203 @@ test('v5 invariant: cancelled and rejected status restoration protections remain
     );
     assert.equal((await db.prepare('SELECT status FROM bookings WHERE id=?').bind(bookingId).first()).status,status);
   }
+});
+
+
+test('multi-service offboarding reports the exact blocking service and safely clears only corrected attribution', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'emp-samira');
+  await seedEmployee(db, 'emp-actual');
+  await seedBooking(db, {
+    id: 'multi-10627', employeeId: 'emp-samira', bookingDate: '2026-08-21',
+    status: 'completed', completedAt: '2026-08-21T11:00:00Z',
+    parentStaff: false, itemStaff: true,
+  });
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,staff_id,quantity,unit_price_halalas,total_halalas,
+     package_covered,duration_minutes,created_at,booking_date,start_time,end_time)
+    VALUES ('item-eyeliner','multi-10627','main','svc-test','Eyeliner','emp-actual',1,0,0,0,60,'2026-08-21','2026-08-21','09:00','10:00')`).run();
+  const old = await lifecycleSnapshot(db,'emp-samira');
+  await assert.rejects(
+    offboardHrEmployee(db,'main','emp-samira',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS),
+    error => error?.code === 'core_hr:offboarding_post_end_date_activity_conflict' &&
+      error?.details?.count === 1 &&
+      error?.details?.conflicts?.some(row => row.bookingItemId === 'item-multi-10627' &&
+        row.source === 'service_item' && row.serviceName === 'Service')
+  );
+  assert.deepEqual(await lifecycleSnapshot(db,'emp-samira'),old);
+  const corrected = await correctCompletedBookingItemStaff(db, 'main', 'multi-10627', {
+    bookingItemId: 'item-multi-10627', expectedStaffId: 'emp-samira',
+    staffId: 'emp-actual', reason: 'Wrong specialist captured at reception',
+  }, actor);
+  assert.equal(corrected.unchanged,false);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-multi-10627'").first()).staff_id,'emp-actual');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-eyeliner'").first()).staff_id,'emp-actual');
+  const logs = await db.prepare("SELECT before_json, after_json FROM audit_logs WHERE salon_id='main' AND action='booking_item_staff_attribution_corrected'").all();
+  assert.equal(logs.results.length,1);
+  assert.equal(JSON.parse(logs.results[0].before_json).staffId,'emp-samira');
+  assert.equal(JSON.parse(logs.results[0].after_json).staffId,'emp-actual');
+  await offboardHrEmployee(db,'main','emp-samira',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS);
+  assert.equal((await db.prepare("SELECT end_date FROM employee_employment WHERE employee_id='emp-samira'").first()).end_date,'2026-08-20');
+});
+
+test('historical attribution correction is idempotent, CAS-protected and does not touch finance', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'emp-before');
+  await seedEmployee(db, 'emp-after');
+  await seedBooking(db,{id:'historical-cas',employeeId:'emp-before',bookingDate:'2026-08-21',status:'completed',
+    completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const input = { bookingItemId:'item-historical-cas',expectedStaffId:'emp-before',
+    staffId:'emp-after',reason:'Reviewed original service delivery records' };
+  const beforeMoney = {};
+  for (const table of ['payments','income_entries','invoices','refunds']) {
+    beforeMoney[table] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n;
+  }
+  await correctCompletedBookingItemStaff(db,'main','historical-cas',input,actor);
+  const replay = await correctCompletedBookingItemStaff(db,'main','historical-cas',input,actor);
+  assert.equal(replay.unchanged,true);
+  await expectCode(correctCompletedBookingItemStaff(db,'main','historical-cas',
+    {...input,staffId:'emp-before'},actor),'core_booking_item:concurrent_staff_change');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+  for(const table of ['payments','income_entries','invoices','refunds']) {
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n,beforeMoney[table],table);
+  }
+});
+
+test('historical attribution correction rejects fake staff, out-of-period dates and missing actor', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-old');
+  await seedEmployee(db,'emp-ended',{endDate:'2026-08-20'});
+  await seedBooking(db,{id:'protected-attribution',employeeId:'emp-old',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const input={bookingItemId:'item-protected-attribution',expectedStaffId:'emp-old',
+    staffId:'emp-ended',reason:'Reviewed source and verified work log'};
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',input,actor),
+    'core_booking_item:target_not_employed_on_service_date');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'nonexistent'},actor),'core_booking_item:target_staff_not_found');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:encodeURIComponent('emp-ended')},actor),'core_booking_item:target_not_employed_on_service_date');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'%2565mp-ended'},actor),'core_booking_item:noncanonical_staff_identity_requires_review');
+  await expectCode(correctCompletedBookingItemStaff(db,'other-salon','protected-attribution',input,actor),
+    'core_booking:not_found');
+  await expectCode(correctCompletedBookingItemStaff(db,'main','protected-attribution',
+    {...input,staffId:'emp-old'},{}),'core_booking_item:authenticated_actor_required');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-protected-attribution'").first()).staff_id,'emp-old');
+});
+
+
+test('approved payroll or closed financial day refuses retroactive staff rewrite', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-from');
+  await seedEmployee(db,'emp-to');
+  await seedBooking(db,{id:'locked-rewrite',employeeId:'emp-from',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const correction={bookingItemId:'item-locked-rewrite', expectedStaffId:'emp-from',
+    staffId:'emp-to', reason:'Corrected against signed specialist shift record'};
+  await db.prepare(`INSERT INTO day_audit_closings
+    (id,salon_id,audit_date,total_halalas,cash_halalas,card_halalas,transfer_halalas,
+     manual_cash_halalas,cash_diff_halalas,closed_at,created_at)
+    VALUES ('closing-test','main','2026-08-21',0,0,0,0,0,0,'2026-08-22','2026-08-22')`).run();
+  await expectCode(correctCompletedBookingItemStaff(db,'main','locked-rewrite',correction,actor),
+    'core_booking_item:closed_financial_day_requires_review');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-locked-rewrite'").first()).staff_id,'emp-from');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
+});
+
+
+test('item-level historical correction API requires admin plus both booking and HR permissions', async (t) => {
+  const { mf, db, env } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'emp-original');
+  await seedEmployee(db,'emp-verified');
+  await seedBooking(db,{id:'api-correction',employeeId:'emp-original',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  const route='/api/core/bookings/api-correction/items/item-api-correction/staff-correction';
+  const payload={expectedStaffId:'emp-original',staffId:'emp-verified',reason:'Confirmed using original shift log'};
+  await seedActorAccount(db,{uid:'uid-corr-no-hr',role:'admin',permissions:['bookings.update']});
+  // Admin role normally inherits HR management. A direct Core D1 deny must
+  // override that fallback before historical attribution can be mutated.
+  await db.prepare("INSERT INTO user_permissions (id,salon_id,user_id,permission_key,effect,created_at,updated_at) VALUES ('deny-correction-hr','main','user-uid-corr-no-hr','employees.manage','deny','2026-01-01','2026-01-01')").run();
+  let response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-no-hr',role:'admin',body:payload}),env);
+  assert.equal(response.status,403,JSON.stringify(await responseJson(response)));
+
+  await seedActorAccount(db,{uid:'uid-corr-reception',role:'reception',permissions:['bookings.update','employees.manage']});
+  response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-reception',role:'reception',body:payload}),env);
+  assert.equal(response.status,403,JSON.stringify(await responseJson(response)));
+
+  await seedActorAccount(db,{uid:'uid-corr-admin',role:'admin',permissions:['bookings.update','employees.manage']});
+  response=await worker.fetch(req(route,{method:'POST',uid:'uid-corr-admin',role:'admin',body:payload}),env);
+  const result=await responseJson(response);
+  assert.equal(response.status,200,JSON.stringify(result));
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-api-correction'").first()).staff_id,'emp-verified');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+});
+
+
+test('target-bonus ledger attribution blocks unsafe historical specialist rewrite', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'target-from');
+  await seedEmployee(db,'target-to');
+  await seedBooking(db,{id:'target-guard-booking',employeeId:'target-from',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  await db.prepare(`INSERT INTO employee_target_ledger
+    (id,salon_id,employee_id,booking_id,booking_item_id,transaction_type,
+     source_reference,performed_at,created_at,updated_at)
+    VALUES ('target-ledger-test','main','target-from','target-guard-booking','item-target-guard-booking',
+      'service_completed','service:item-target-guard-booking','2026-08-21','2026-08-21','2026-08-21')`).run();
+  await expectCode(correctCompletedBookingItemStaff(db,'main','target-guard-booking',{
+    bookingItemId:'item-target-guard-booking',expectedStaffId:'target-from',
+    staffId:'target-to',reason:'Confirmed performer with signed shift proof',
+  },actor),'core_booking_item:target_ledger_reconciliation_required');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-target-guard-booking'").first()).staff_id,'target-from');
+  assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='target-ledger-test'").first()).employee_id,'target-from');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
+});
+
+
+test('historical staff CAS rejects payroll approved after precheck but before atomic UPDATE', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'payroll-race-from');
+  await seedEmployee(db, 'payroll-race-to');
+  await seedBooking(db, {
+    id: 'payroll-race-booking', employeeId: 'payroll-race-from',
+    bookingDate: '2026-08-21', status: 'completed',
+    completedAt: '2026-08-21T11:00:00Z', parentStaff: false, itemStaff: true,
+  });
+
+  let approvalInterleaved = false;
+  const competingPayrollDb = {
+    prepare: (...args) => db.prepare(...args),
+    batch: async (statements) => {
+      // Simulate payroll finalization after the initial SELECT but before
+      // the atomic UPDATE: the SQL write guard must independently refuse it.
+      approvalInterleaved = true;
+      await db.prepare(`INSERT INTO payroll_entries
+        (id,salon_id,employee_id,payroll_month,status,created_at,updated_at)
+        VALUES ('approved-between-checks','main','payroll-race-from','2026-08','approved',
+                '2026-08-31','2026-08-31')`).run();
+      return db.batch(statements);
+    },
+  };
+
+  await expectCode(correctCompletedBookingItemStaff(
+    competingPayrollDb, 'main', 'payroll-race-booking', {
+      bookingItemId: 'item-payroll-race-booking',
+      expectedStaffId: 'payroll-race-from',
+      staffId: 'payroll-race-to',
+      reason: 'Signed specialist evidence checked independently',
+    }, actor
+  ), 'core_booking_item:concurrent_staff_change');
+
+  assert.equal(approvalInterleaved, true, 'the payroll must be locked between the two checks');
+  assert.equal((await db.prepare(
+    "SELECT staff_id FROM booking_items WHERE id='item-payroll-race-booking'"
+  ).first()).staff_id, 'payroll-race-from');
+  assert.equal((await db.prepare(
+    "SELECT status FROM payroll_entries WHERE id='approved-between-checks'"
+  ).first()).status, 'approved');
+  assert.equal((await db.prepare(
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'"
+  ).first()).n, 0);
 });

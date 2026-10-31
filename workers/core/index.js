@@ -65,6 +65,7 @@ import {
   rollbackInternalBookingCreation,
   listTakenBookingTimes,
 } from './repositories/bookings.js';
+import { correctCompletedBookingItemStaff } from './repositories/booking-item-attribution.js';
 import {
   acknowledgeOwnBooking,
   listOwnStaffBookings,
@@ -698,6 +699,10 @@ function match(url, method) {
 
   if (path === "/api/core/bookings/mine" && method === "GET") {
     return { name: "bookings:mine" };
+  }
+  const itemCorrection = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-correction$/.exec(path);
+  if (itemCorrection && method === "POST") {
+    return { name: "booking:item-staff-correction", id: itemCorrection[1], itemId: itemCorrection[2] };
   }
   const bookingAction =
     /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule|acknowledge|staff-status)$/.exec(
@@ -1702,6 +1707,19 @@ async function dispatch(ctx, route, method, body, query, env) {
         ctx.employeeId,
         query
       );
+    case "booking:item-staff-correction":
+      // Historical staff attribution is an audited admin operation. Do not
+      // allow staff/reception, even with ordinary booking-edit permissions.
+      if (ctx.role !== "owner" && ctx.role !== "admin") {
+        throw new AppError(403, "core_auth:missing_permission");
+      }
+      requirePermission(ctx, "bookings.update");
+      requirePermission(ctx, "employees.manage");
+      return correctCompletedBookingItemStaff(
+        db, ctx.salonId, route.id,
+        { ...body, bookingItemId: route.itemId }, actorInfo
+      );
+
     case "bookings":
       if (method === "GET" && route.id) {
         return getBooking(db, ctx.salonId, route.id);

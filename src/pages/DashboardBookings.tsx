@@ -37,6 +37,7 @@ import type { StaffPublicWithId } from "../types/bookingStaff";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { coreD1BookingDataSource } from "../services/bookingDataSources/coreD1BookingDataSource";
 import { CoreBookingService } from "../services/CoreBookingService";
+import BookingItemStaffAttributionEditor from "../features/bookings/BookingItemStaffAttributionEditor";
 import { coreBookingToLegacy } from "../services/coreBookingMappers";
 import { CoreAuditService } from "../services/CoreAuditService";
 import { CoreClientService } from "../services/CoreClientService";
@@ -3257,7 +3258,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   return (
     <div className="bk-edit-grid bk-edit-grid--schedule">
       <BookingSelectField
-        label={t("الموظفة")}
+        label={t("الموظفة الرئيسية للحجز (ويشمل التغيير الخدمة الأولى)")}
         value={employeeId}
         options={employeeOptions}
         placeholder={
@@ -3618,11 +3619,12 @@ const EditBookingNoteSection = memo(function EditBookingNoteSection({
 type EditBookingModalProps = {
   target: Booking | null;
   language: DashboardLanguage;
+  role: UiRole;
   onClose: () => void;
   onSaved: (bookingId: string, patch: Partial<Booking>) => void;
 };
 
-const EditBookingModal = memo(function EditBookingModal({ target, language, onClose, onSaved }: EditBookingModalProps) {
+const EditBookingModal = memo(function EditBookingModal({ target, language, role, onClose, onSaved }: EditBookingModalProps) {
   const t = (arabic: string) => bookingsText(language, arabic);
   const { hasPermission } = usePermissions();
   const canAdjustBookingPrice = hasPermission(
@@ -4848,6 +4850,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, onCl
             onTimeChange={onTimeChange}
           />
 
+          {target?.id ? (
+            <BookingItemStaffAttributionEditor
+              bookingId={target.id}
+              canCorrect={(role === "owner" || role === "admin") && hasPermission("bookings.update") && hasPermission("employees.manage")}
+              language={language}
+            />
+          ) : null}
 
           <div className="bk-edit-grid">
             <label>
@@ -9593,7 +9602,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         </Modal>
 
         {editTarget ? (
-          <EditBookingModal target={editTarget} language={language} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
+          <EditBookingModal target={editTarget} language={language} role={currentRole} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
         ) : null}
 
         {/*
