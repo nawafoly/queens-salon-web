@@ -3737,6 +3737,22 @@ button.bk-edit-picker-control:disabled {
   font-size: 0.72rem;
 }
 
+.bookings-v2-modal-panel.bk-edit-modal .bk-attribution__load-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-burgundy-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .bookings-v2-modal-panel.bk-edit-modal .bk-attribution__list {
   display: grid;
   gap: var(--dsv2-space-2);

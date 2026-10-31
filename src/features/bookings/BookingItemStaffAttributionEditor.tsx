@@ -20,6 +20,8 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   const [booking, setBooking] = useState<CoreBooking | null>(null);
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const [busy, setBusy] = useState(false);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState("");
@@ -42,6 +44,8 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setBooking(null);
+    setLoadError("");
     setError("");
     setSuccess("");
     setEditingItemId("");
@@ -51,12 +55,12 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
       if (!active) return;
       setBooking(details);
     }).catch(() => {
-      if (active) setError(english ? "Could not load service assignments." : "تعذر تحميل موظفات الخدمات من Core.");
+      if (active) setLoadError(english ? "Could not load service assignments from Core." : "تعذر تحميل بنود الخدمات من Core.");
     }).finally(() => {
       if (active) setLoading(false);
     });
     return () => { active = false; candidateRequest.current += 1; };
-  }, [bookingId, english]);
+  }, [bookingId, english, reloadToken]);
 
   const openCorrection = (item: CoreBookingItem) => {
     const request = ++candidateRequest.current;
@@ -156,6 +160,14 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
       </header>
       {loading ? (
         <small className="bk-helper-text">{english ? "Loading service items..." : "جاري تحميل بنود الخدمات..."}</small>
+      ) : loadError ? (
+        <div className="bk-attribution__load-failure" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary"
+            onClick={() => setReloadToken(token => token + 1)}>
+            {english ? "Retry loading services" : "إعادة تحميل الخدمات"}
+          </button>
+        </div>
       ) : (booking?.items || []).length === 0 ? (
         <small className="bk-helper-text">{english ? "No service items." : "لا توجد بنود خدمات."}</small>
       ) : (

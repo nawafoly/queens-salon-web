@@ -21,6 +21,17 @@ test('booking editor displays all Core service items with explicit staff and ite
   assert.match(booking, /st\.name AS staff_name/);
 });
 
+test('failed Core booking read never claims that the booking has no items and offers a retry', () => {
+  assert.match(ui, /setBooking\(null\)/);
+  assert.match(ui, /setLoadError\(""\)/);
+  assert.match(ui, /\.catch\(\(\) => \{\s*if \(active\) setLoadError/);
+  assert.match(ui, /\)\s*:\s*loadError\s*\?\s*\(/);
+  assert.match(ui, /bk-attribution__load-failure" role="alert"/);
+  assert.match(ui, /onClick=\{\(\) => setReloadToken\(token => token \+ 1\)\}/);
+  assert.match(ui, /\)\s*:\s*\(booking\?\.items \|\| \[\]\)\.length === 0/);
+  assert.match(styles, /\.bk-attribution__load-failure\s*\{[\s\S]*?var\(--dsv2-burgundy-border\)/);
+});
+
 test('historical correction is an explicit item-only action with reason and CAS', () => {
   assert.match(service, /correctCompletedItemStaff/);
   assert.match(ui, /expectedStaffId: item.staffId/);
