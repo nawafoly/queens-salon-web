@@ -6,6 +6,7 @@ import { Miniflare } from 'miniflare';
 import { normalizeError } from './core/errors.js';
 import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-employees.js';
 import { listStaff } from './core/repositories/staff.js';
+import { staffCanPerformService } from './core/repositories/booking-staff-policy.js';
 import {
   createScheduleException,
   resolveEmployeeShift,
@@ -4920,6 +4921,48 @@ test('HR employee avatar file reference preserves omitted values and clears expl
   ).first();
 
   assert.equal(stored.avatar_file_id, null);
+});
+
+test('inactive catalog service cannot qualify staff even when historical assignment stays active', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  for (const [id, isActive] of [['svc-live', 1], ['home-service-disabled', 0]]) {
+    await db.prepare(
+      "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, 30, 5000, ?, 0, '2026-01-01', '2026-01-01')"
+    ).bind(id, 'main', id, isActive).run();
+  }
+  await db.prepare(
+    "INSERT INTO staff (id, salon_id, name, active, employment_status, show_on_booking, created_at, updated_at) VALUES (?, 'main', 'Legacy Assigned', 1, 'active', 1, '2026-01-01', '2026-01-01')"
+  ).bind('employee-disabled-home').run();
+  for (const id of ['svc-live', 'home-service-disabled']) {
+    await db.prepare(
+      'INSERT INTO staff_services (salon_id, staff_id, service_id, active) VALUES (?, ?, ?, 1)'
+    ).bind('main', 'employee-disabled-home', id).run();
+  }
+
+  assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'svc-live'), true);
+  assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled'), false);
+  // A confirmed item already sold before the service was disabled can still
+  // be reassigned operationally to a historically qualified employee.
+  assert.equal(
+    await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled', {
+      allowInactiveCatalogService: true,
+    }),
+    true
+  );
+  assert.equal((await listStaff(db, 'main', { serviceId: 'svc-live' })).some(
+    (row) => row.id === 'employee-disabled-home'
+  ), true);
+  assert.deepEqual(await listStaff(db, 'main', { serviceId: 'home-service-disabled' }), []);
+
+  // The inactive catalog entry does not remove or rewrite historical assignments.
+  const legacyLink = await db.prepare(
+    "SELECT active FROM staff_services WHERE salon_id = 'main' AND staff_id = ? AND service_id = ?"
+  ).bind('employee-disabled-home', 'home-service-disabled').first();
+  assert.equal(Number(legacyLink.active), 1);
+  await db.prepare("UPDATE services SET active = 1 WHERE salon_id = 'main' AND id = 'home-service-disabled'").run();
+  assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled'), true);
 });
 
 test('HR employee save atomically creates canonical booking staff row and canonical service assignments', async (t) => {

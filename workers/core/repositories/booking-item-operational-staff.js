@@ -51,8 +51,9 @@ async function assertFinancialSafety(db, salonId, bookingId, serviceDate, oldSta
   if (locked) throw new AppError(409, 'core_booking_item:approved_payroll_requires_review');
 }
 
-// Candidate preview: employment and active service qualification are mandatory.
-// Live staff schedule and conflicting bookings are checked here and again on POST.
+// Candidate preview is for a confirmed item, including services later disabled
+// in the catalog. Historical staff assignment and active employment are required.
+// Live schedule and booking collisions are checked here and again on POST.
 export async function listConfirmedBookingItemStaffCandidates(db, salonId, bookingId, itemId) {
   const state = await context(db, salonId, bookingId, itemId);
   const { serviceDate, booking, item } = state;
@@ -118,7 +119,9 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
   const target = await getStaff(db, salonId, newStaffId);
   if (!staffIsActive(target)) throw new AppError(409, 'core_booking:staff_inactive');
   await assertEmployment(db, salonId, newStaffId, serviceDate);
-  if (!(await staffCanPerformService(db, salonId, newStaffId, item.service_id))) {
+  // This is an existing confirmed item. Catalog deactivation must not block
+  // changing its assigned operator; new-booking eligibility remains strict.
+  if (!(await staffCanPerformService(db, salonId, newStaffId, item.service_id, { allowInactiveCatalogService: true }))) {
     throw new AppError(409, 'core_booking:staff_service_not_assigned');
   }
   const bufferMin = Math.max(0, Math.min(240, Number(booking.buffer_min || 0)));

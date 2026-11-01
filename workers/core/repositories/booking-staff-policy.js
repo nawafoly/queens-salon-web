@@ -693,13 +693,21 @@ export async function resolveStaffBookingDaysBatch(
   );
 }
 
-export async function staffCanPerformService(db, salonId, staffIdValue, serviceIdValue) {
+export async function staffCanPerformService(db, salonId, staffIdValue, serviceIdValue, options = {}) {
   const staffId = cleanText(staffIdValue);
   const serviceId = cleanText(serviceIdValue);
   if (!staffId || !serviceId) return false;
 
+  // Historical assignments remain stored, but disabled catalog entries
+  // must not grant booking eligibility.
   if (db?.__fakeD1) {
-    return safeFakeRows(db, 'staff_services').some((row) =>
+    const activeService = safeFakeRows(db, 'services').some((row) =>
+      row.salon_id === salonId &&
+      cleanText(row.id) === serviceId &&
+      Number(row.active) === 1
+    );
+    return (activeService || options.allowInactiveCatalogService === true) &&
+      safeFakeRows(db, 'staff_services').some((row) =>
       row.salon_id === salonId &&
       cleanText(row.staff_id) === staffId &&
       cleanText(row.service_id) === serviceId &&
@@ -709,8 +717,12 @@ export async function staffCanPerformService(db, salonId, staffIdValue, serviceI
 
   const row = await dbFirst(
     db,
-    `SELECT staff_id FROM staff_services
-      WHERE salon_id = ? AND staff_id = ? AND service_id = ? AND active = 1
+    `SELECT ss.staff_id FROM staff_services ss
+       ${options.allowInactiveCatalogService === true ? '' : `
+         JOIN services svc ON svc.salon_id = ss.salon_id
+           AND svc.id = ss.service_id AND svc.active = 1`}
+      WHERE ss.salon_id = ? AND ss.staff_id = ? AND ss.service_id = ?
+        AND ss.active = 1
       LIMIT 1`,
     [salonId, staffId, serviceId]
   );
