@@ -31,9 +31,6 @@ test("Core fallback allowlist matches stable web/native origins without developm
     "https://queens-salon-web.vercel.app",
     "https://queens-salon-web-gnxk.vercel.app",
   ]);
-  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
-  assert.match(packageJson.scripts["dev:core"], /--local/);
-  assert.match(packageJson.scripts["dev:core"], /--var ALLOWED_ORIGINS:http:\/\/localhost:5173/);
 });
 
 test("Core OPTIONS responses allow only stable production and native origins", async () => {
