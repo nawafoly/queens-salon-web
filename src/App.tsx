@@ -28,9 +28,10 @@ import Reviews from "./pages/Reviews";
 import Contact from "./pages/Contact";
 import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
-import Dashboard from "./pages/Dashboard";
+// Load protected workspaces only when their route renders.
+const Dashboard = React.lazy(() => import("./pages/Dashboard"));
 import HrEntry from "./pages/HrEntry";
-import EmployeePortal from "./pages/EmployeePortal";
+const EmployeePortal = React.lazy(() => import("./pages/EmployeePortal"));
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
@@ -766,6 +767,7 @@ const App: React.FC = () => {
     <main className="main-content">
       <ScrollToTop />
 
+      <React.Suspense fallback={<LoadingBrand text="جاري تحميل الصفحة..." />}>
       <Routes>
         {/* Public */}
         <Route
@@ -973,6 +975,7 @@ const App: React.FC = () => {
           }
         />
       </Routes>
+      </React.Suspense>
     </main>
   );
 
