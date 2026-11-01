@@ -5706,8 +5706,9 @@ function DashboardEmployeesContent() {
     const isCreatingEmployee = !editId;
     const createdLogin = isCreatingEmployee && options?.createLogin === true;
     const cleanName = name.trim();
-    // The catalog is canonical; historical staff_services can still contain
-    // deleted/inactive home-service IDs. Never send those IDs back to Core.
+    // Send only active catalog selections. Core owns the canonical merge and
+    // preserves pre-existing dormant staff_services links without re-adding
+    // inactive catalog entries as newly selected services.
     const serviceSavePlan = planActiveEmployeeServiceAssignments(
       canonicalizeSpecialties(specialties, serviceOptions),
       serviceOptions
@@ -5719,7 +5720,7 @@ function DashboardEmployeesContent() {
       return;
     }
     if (serviceSavePlan.unresolvedIds.length > 0) {
-      // Catalog failures/truncated results must not mass-deactivate assignments.
+      // Catalog failures/truncated results must never risk modifying active assignments.
       // The Core catalog endpoint currently caps results at 1000.
       if (serviceOptions.length === 0 || serviceOptions.length >= 1000) {
         setErrorMsg(language === "en"
@@ -5728,11 +5729,11 @@ function DashboardEmployeesContent() {
         return;
       }
       const approved = await requestConfirmation({
-        title: language === "en" ? "Outdated service assignments" : "ارتباطات خدمات قديمة",
+        title: language === "en" ? "Inactive service links retained" : "الاحتفاظ بالخدمات المعطلة",
         description: language === "en"
-          ? `This employee has ${serviceSavePlan.unresolvedIds.length} outdated or inactive service assignment(s) that Core cannot save. Saving will deactivate only those old assignments and keep ${specialtiesFixed.length} active catalog service(s), including your new selections. No booking history will change. Continue?`
-          : `ملف الموظفة يحتوي على ${serviceSavePlan.unresolvedIds.length} ارتباط خدمة قديم أو غير نشط لا يقبله Core. عند الحفظ سيُلغى إسناد هذه الارتباطات القديمة فقط، مع الإبقاء على ${specialtiesFixed.length} خدمة نشطة من الكتالوج تشمل اختياراتك الجديدة. لن يتغير سجل الحجوزات. هل تريد المتابعة؟`,
-        confirmLabel: language === "en" ? "Review and save" : "مراجعة وحفظ",
+          ? `This employee has ${serviceSavePlan.unresolvedIds.length} previously assigned service link(s) not available in the active catalog. Core will preserve these old links without making their services bookable. Saving updates ${specialtiesFixed.length} active service selection(s), including your new choices. Booking history is unchanged. Continue?`
+          : `ملف الموظفة يحتوي على ${serviceSavePlan.unresolvedIds.length} ارتباط خدمة سابق غير متاح في الكتالوج النشط. سيحتفظ Core بهذه الارتباطات القديمة دون إتاحة خدماتها للحجز، مع تحديث ${specialtiesFixed.length} خدمة نشطة تشمل اختياراتك الجديدة. لن يتغير سجل الحجوزات. هل تريد المتابعة؟`,
+        confirmLabel: language === "en" ? "Keep old links and save" : "حفظ مع الاحتفاظ بالقديمة",
         tone: "gold",
       });
       if (!approved) return;

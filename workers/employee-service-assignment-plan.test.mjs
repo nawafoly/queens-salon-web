@@ -52,3 +52,12 @@ test("employee master write uses verified active assignments and rehydrates from
   assert.match(page, /const reloadedRows = await load\(/);
   assert.match(page, /verifyEmployeeSaveSnapshot\(/);
 });
+
+test("employee service warning reflects Core's dormant-link preservation policy", () => {
+  const core = readFileSync("workers/core/repositories/hr-employees.js", "utf8");
+  assert.match(core, /DORMANT_STAFF_ASSIGNMENTS_PRESERVE_V1/);
+  assert.match(page, /الاحتفاظ بالخدمات المعطلة/);
+  assert.match(page, /سيحتفظ Core بهذه الارتباطات القديمة/);
+  assert.match(page, /Inactive service links retained/);
+  assert.doesNotMatch(page, /سيُلغى إسناد هذه الارتباطات القديمة/);
+});
