@@ -33,7 +33,7 @@
     "cap:open:customer": "cross-env CAP_APP_VARIANT=customer cap open android",
     "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android",
     "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android",
-    "dev:core": "wrangler dev --config wrangler.core.jsonc --local --port 8807 --show-interactive-dev-session=false",
+    "dev:core": "wrangler dev --config wrangler.core.jsonc --local --port 8807 --show-interactive-dev-session=false --var ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5174",
     "dev:all": "node scripts/dev-all.mjs",
     "check:frontend-core-migration": "node scripts/check-frontend-core-migration.mjs",
     "test:frontend:core": "node --test workers/frontend-core-migration.test.mjs",

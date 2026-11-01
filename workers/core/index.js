@@ -415,8 +415,11 @@ async function assertFileAccess(ctx, fileId, write = false) {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
-  "http://localhost:5173",
-  "http://127.0.0.1:5174",
+  // Retain native WebView origins. Development ports must be configured only
+  // for local wrangler dev, never as a permissive production fallback.
+  "http://localhost",
+  "https://localhost",
+  "capacitor://localhost",
   "https://queens-salon-web.vercel.app",
   "https://queens-salon-web-gnxk.vercel.app",
 ]);

@@ -51,6 +51,8 @@ on:
       - "src/pages/DashboardEmployees.tsx"
       - "src/types/coreApi.ts"
       - "workers/core/**"
+      - "wrangler.core.jsonc"
+      - "workers/core-cors-production-contract.test.mjs"
       - "workers/client-platform-foundation.test.mjs"
       - "workers/client-connect-runtime.test.mjs"
       - "workers/cashback-runtime.test.mjs"
@@ -95,6 +97,8 @@ on:
       - "src/pages/DashboardEmployees.tsx"
       - "src/types/coreApi.ts"
       - "workers/core/**"
+      - "wrangler.core.jsonc"
+      - "workers/core-cors-production-contract.test.mjs"
       - "workers/core-worker.test.mjs"
       - "workers/internal-booking-party-*.test.mjs"
       - "scripts/check-booking-internal-contract.mjs"
@@ -148,6 +152,9 @@ jobs:
 
       - name: Core worker tests
         run: npm run test:core:worker
+
+      - name: Production Core CORS origin allowlist contract
+        run: node --test workers/core-cors-production-contract.test.mjs
 
       - name: Employee stale catalog service assignment safety
         run: node --test workers/employee-service-assignment-plan.test.mjs
