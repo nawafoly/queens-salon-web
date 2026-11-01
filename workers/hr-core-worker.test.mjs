@@ -4943,6 +4943,14 @@ test('inactive catalog service cannot qualify staff even when historical assignm
 
   assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'svc-live'), true);
   assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled'), false);
+  // A confirmed item already sold before the service was disabled can still
+  // be reassigned operationally to a historically qualified employee.
+  assert.equal(
+    await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled', {
+      allowInactiveCatalogService: true,
+    }),
+    true
+  );
   assert.equal((await listStaff(db, 'main', { serviceId: 'svc-live' })).some(
     (row) => row.id === 'employee-disabled-home'
   ), true);

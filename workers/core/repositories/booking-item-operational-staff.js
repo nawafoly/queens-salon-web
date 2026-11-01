@@ -63,8 +63,6 @@ export async function listConfirmedBookingItemStaffCandidates(db, salonId, booki
     `SELECT DISTINCT s.id, s.name
        FROM staff s
        JOIN staff_services ss ON ss.salon_id = s.salon_id AND ss.staff_id = s.id
-       JOIN services svc ON svc.salon_id = ss.salon_id
-         AND svc.id = ss.service_id AND svc.active = 1
        JOIN employee_employment e ON e.salon_id = s.salon_id AND e.employee_id = s.id
       WHERE s.salon_id = ? AND s.active = 1 AND ss.active = 1 AND ss.service_id = ?
         AND e.start_date IS NOT NULL AND TRIM(e.start_date) <> '' AND e.start_date <= ?
@@ -120,7 +118,9 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
   const target = await getStaff(db, salonId, newStaffId);
   if (!staffIsActive(target)) throw new AppError(409, 'core_booking:staff_inactive');
   await assertEmployment(db, salonId, newStaffId, serviceDate);
-  if (!(await staffCanPerformService(db, salonId, newStaffId, item.service_id))) {
+  // This is an existing confirmed item. Catalog deactivation must not block
+  // changing its assigned operator; new-booking eligibility remains strict.
+  if (!(await staffCanPerformService(db, salonId, newStaffId, item.service_id, { allowInactiveCatalogService: true }))) {
     throw new AppError(409, 'core_booking:staff_service_not_assigned');
   }
   const bufferMin = Math.max(0, Math.min(240, Number(booking.buffer_min || 0)));
