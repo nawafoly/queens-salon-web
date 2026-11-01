@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/dashboard-v2-full-acceptance.yml"
       - "src/pages/**"
+      - "src/App.tsx"
+      - "workers/route-lazy-boundary.test.mjs"
       - "src/features/internal-booking-v2/**"
       - "src/components/dashboard-v2/**"
       - "src/components/EmployeeNotificationBellMenu.tsx"
@@ -25,6 +27,8 @@ on:
     paths:
       - ".github/workflows/dashboard-v2-full-acceptance.yml"
       - "src/pages/**"
+      - "src/App.tsx"
+      - "workers/route-lazy-boundary.test.mjs"
       - "src/features/internal-booking-v2/**"
       - "src/components/dashboard-v2/**"
       - "src/components/EmployeeNotificationBellMenu.tsx"
@@ -91,6 +95,9 @@ jobs:
 
       - name: Employee lifecycle identity
         run: node scripts/check-employee-lifecycle-identity.mjs
+
+      - name: Lazy internal workspace regression
+        run: node --test workers/route-lazy-boundary.test.mjs
 
       - name: Build
         run: npm run build
