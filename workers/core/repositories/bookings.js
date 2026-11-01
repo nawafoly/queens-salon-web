@@ -150,7 +150,7 @@ async function allocateBookingPublicId(db, salonId) {
   return `MK-${number}`;
 }
 
-function occupiedSlotTimes(startTime, endTime, slotStepMin, bufferMin) {
+export function occupiedSlotTimes(startTime, endTime, slotStepMin, bufferMin) {
   const start = timeToMinutes(startTime);
   const end = timeToMinutes(endTime);
   if (end <= start) {
@@ -456,7 +456,7 @@ async function existingRangeConflict(
   );
 }
 
-async function assertStaffRangeAvailable(
+export async function assertStaffRangeAvailable(
   db,
   salonId,
   staffId,

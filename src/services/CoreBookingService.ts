@@ -173,6 +173,26 @@ export const CoreBookingService = {
     );
   },
 
+  async changeConfirmedItemStaff(
+    bookingId: string,
+    itemId: string,
+    input: { expectedStaffId: string; staffId: string; reason: string }
+  ): Promise<{ bookingId: string; bookingItemId: string; staffId: string; staffName?: string; unchanged: boolean }> {
+    return coreApiRequest(
+      `/api/core/bookings/${encodeURIComponent(bookingId)}/items/${encodeURIComponent(itemId)}/staff-change`,
+      { method: "POST", body: input }
+    );
+  },
+
+  async listItemStaffChangeCandidates(
+    bookingId: string,
+    itemId: string
+  ): Promise<CoreBookingItemStaffCandidates> {
+    return coreApiRequest(
+      `/api/core/bookings/${encodeURIComponent(bookingId)}/items/${encodeURIComponent(itemId)}/staff-change/candidates`
+    );
+  },
+
   async reschedule(
     id: string,
     input: Record<string, unknown>

@@ -75,7 +75,10 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
     setError("");
     setSuccess("");
     setCandidateLoading(true);
-    void CoreBookingService.listItemStaffCorrectionCandidates(bookingId, item.id)
+    const loadCandidates = booking?.status === "confirmed"
+      ? CoreBookingService.listItemStaffChangeCandidates
+      : CoreBookingService.listItemStaffCorrectionCandidates;
+    void loadCandidates(bookingId, item.id)
       .then(data => {
         if (candidateRequest.current !== request) return;
         setStaff(data.candidates);
@@ -122,7 +125,10 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
     setError("");
     setSuccess("");
     try {
-      await CoreBookingService.correctCompletedItemStaff(bookingId, item.id, {
+      const submit = booking?.status === "confirmed"
+        ? CoreBookingService.changeConfirmedItemStaff
+        : CoreBookingService.correctCompletedItemStaff;
+      await submit(bookingId, item.id, {
         expectedStaffId: item.staffId || "",
         staffId,
         reason: reason.trim(),
@@ -131,12 +137,17 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
       closeCorrection();
       setStaffId("");
       setReason("");
-      setSuccess(english
-        ? "Only this service's staff assignment was corrected and audited."
-        : "تم تصحيح إسناد هذه الخدمة وحدها وتسجيل العملية في سجل التدقيق.");
+      setSuccess(booking?.status === "confirmed"
+        ? (english ? "Only this service's upcoming staff and held time slots were changed." : "تم تغيير موظفة هذه الخدمة ونقل موعدها بأمان دون تعديل بقية الخدمات.")
+        : (english ? "Only this service's staff assignment was corrected and audited." : "تم تصحيح إسناد هذه الخدمة وحدها وتسجيل العملية في سجل التدقيق."));
     } catch (e: unknown) {
       const code = e && typeof e === "object" && "code" in e ? String(e.code) : "";
       const messages: Record<string, string> = {
+        "core_booking_item:confirmed_booking_required": "هذا الإجراء متاح للحجز المؤكد فقط.",
+        "core_booking_item:slot_integrity_requires_review": "أقفال وقت الخدمة غير متطابقة؛ يلزم تدقيق الحجز قبل تغيير الموظفة.",
+        "core_booking:staff_slot_conflict": "الموظفة محجوزة في هذا الموعد. اختاري موظفة أخرى.",
+        "core_booking:staff_unavailable": "الموظفة غير متاحة في موعد الخدمة أو لديها إجازة.",
+        "core_booking:staff_service_not_assigned": "الموظفة غير مرتبطة بهذه الخدمة حاليًا.",
         "core_booking_item:concurrent_staff_change": "تغيّر إسناد الخدمة من جلسة أخرى. أعيدي فتح الحجز.",
         "core_booking_item:target_not_employed_on_service_date": "الموظفة المختارة ليست ضمن فترة عملها بتاريخ تنفيذ الخدمة.",
         "core_booking_item:approved_payroll_requires_review": "يوجد راتب معتمد لهذه الفترة؛ يلزم مراجعته قبل تصحيح إسناد الخدمة.",
@@ -186,17 +197,21 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                   </details>
                 )}
               </div>
-              {canCorrect && booking?.status === "completed" && (
+              {canCorrect && (booking?.status === "completed" || booking?.status === "confirmed") && (
                 editingItemId !== item.id ? (
                   <button type="button" className="dsv2-btn dsv2-btn--secondary bk-attribution__open"
                     onClick={() => openCorrection(item)}>
-                    {english ? "Correct this service's staff" : "تصحيح موظفة هذه الخدمة فقط"}
+                    {booking.status === "confirmed"
+                      ? (english ? "Change staff for this service" : "تغيير موظفة هذه الخدمة فقط")
+                      : (english ? "Correct this service's staff" : "تصحيح موظفة هذه الخدمة فقط")}
                   </button>
                 ) : (
                   <div className="bk-attribution__correction">
                     <div className="bk-attribution__fields">
                       <div className="bk-attribution__field">
-                        <span className="bk-field-label">{english ? "Actual specialist" : "الموظفة التي نفذت الخدمة فعلًا"}</span>
+                        <span className="bk-field-label">{booking.status === "confirmed"
+                          ? (english ? "New specialist for this appointment" : "الموظفة الجديدة لهذا الموعد")
+                          : (english ? "Actual specialist" : "الموظفة التي نفذت الخدمة فعلًا")}</span>
                         <input type="search" className="bk-input" autoComplete="off" value={search}
                           disabled={busy || candidateLoading || !!candidateError}
                           onChange={e => { setSearch(e.target.value); setStaffId(""); }}
@@ -241,22 +256,30 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                         {candidateError && <small className="bk-inline-error" role="alert">{candidateError}</small>}
                       </div>
                       <label className="bk-attribution__field">
-                        <span className="bk-field-label">{english ? "Audited correction reason" : "سبب التصحيح الموثق"}</span>
+                        <span className="bk-field-label">{booking.status === "confirmed"
+                          ? (english ? "Reason for changing staff" : "سبب تغيير الموظفة")
+                          : (english ? "Audited correction reason" : "سبب التصحيح الموثق")}</span>
                         <textarea className="bk-input" rows={3} maxLength={1000} value={reason} disabled={busy}
                           onChange={e => setReason(e.target.value)}
-                          placeholder={english ? "Describe the verified evidence of who performed this service." : "اذكري الدليل الذي يؤكد من نفذت هذه الخدمة."} />
+                          placeholder={booking.status === "confirmed"
+                            ? (english ? "Why is the assigned staff changing?" : "اذكري سبب تغيير موظفة الخدمة.")
+                            : (english ? "Describe the verified evidence of who performed this service." : "اذكري الدليل الذي يؤكد من نفذت هذه الخدمة.")} />
                       </label>
                     </div>
                     <p className="bk-attribution__notice">
-                      {english
-                        ? "Employment dates are checked here; closed financial days, payroll and bonus-ledger restrictions are checked again on save. Invoice, payment and other services remain unchanged."
-                        : "القائمة تتحقق من فترة العمل؛ قيود الإقفال المالي والرواتب والتارجت تُفحص مجددًا عند الحفظ. لن تتغير الفاتورة أو المدفوعات أو بقية الخدمات."}
+                      {booking.status === "confirmed"
+                        ? (english ? "Availability and service qualification are checked again on save. Only this service's assignment and held time slots change; payments stay untouched."
+                            : "تُفحص أهلية الموظفة وتعارض المواعيد مجددًا عند الحفظ؛ يتغير إسناد هذه الخدمة وأقفال وقتها فقط دون المساس بالمدفوعات.")
+                        : (english ? "Employment dates are checked here; closed financial days, payroll and bonus-ledger restrictions are checked again on save. Invoice, payment and other services remain unchanged."
+                            : "القائمة تتحقق من فترة العمل؛ قيود الإقفال المالي والرواتب والتارجت تُفحص مجددًا عند الحفظ. لن تتغير الفاتورة أو المدفوعات أو بقية الخدمات.")}
                     </p>
                     <div className="bk-attribution__actions">
                       <button type="button" className="dsv2-btn dsv2-btn--primary"
                         disabled={busy || candidateLoading || !!candidateError || !staffId || staffId === (item.staffId || "") || reason.trim().length < 10}
                         onClick={() => void correct(item)}>
-                        {busy ? (english ? "Saving..." : "جاري الحفظ...") : (english ? "Confirm audited correction" : "تأكيد التصحيح الموثق")}
+                        {busy ? (english ? "Saving..." : "جاري الحفظ...") : booking.status === "confirmed"
+                          ? (english ? "Confirm staff change" : "تأكيد تغيير الموظفة")
+                          : (english ? "Confirm audited correction" : "تأكيد التصحيح الموثق")}
                       </button>
                       <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={busy}
                         onClick={closeCorrection}>{english ? "Cancel" : "إلغاء"}</button>

@@ -77,3 +77,16 @@ test('booking edit modal is wider and service cards use the Dashboard V2 surface
   assert.match(styles, /\.bk-attribution__fields\s*\{[\s\S]*?grid-template-columns: repeat\(2/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.bk-attribution__item,[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
 });
+
+test('confirmed booking uses a distinct operational service-item change with slot protection', () => {
+  const operational = readFileSync('workers/core/repositories/booking-item-operational-staff.js', 'utf8');
+  assert.match(ui, /booking\?\.status === "confirmed"/);
+  assert.match(ui, /تغيير موظفة هذه الخدمة فقط/);
+  assert.match(ui, /changeConfirmedItemStaff/);
+  assert.match(service, /staff-change\/candidates/);
+  assert.match(api, /case "booking:item-staff-change"/);
+  assert.match(operational, /UPDATE booking_slot_locks SET staff_id/);
+  assert.match(operational, /auditInsertWhenPreviousUpdateChanged/);
+  assert.match(operational, /LOWER\(status\) = 'confirmed'/);
+  assert.doesNotMatch(operational, /UPDATE (?:payments|income_entries|invoices|refunds)/i);
+});
