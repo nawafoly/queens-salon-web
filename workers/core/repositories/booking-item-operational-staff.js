@@ -51,8 +51,9 @@ async function assertFinancialSafety(db, salonId, bookingId, serviceDate, oldSta
   if (locked) throw new AppError(409, 'core_booking_item:approved_payroll_requires_review');
 }
 
-// Candidate preview: employment and active service qualification are mandatory.
-// Live staff schedule and conflicting bookings are checked here and again on POST.
+// Candidate preview is for a confirmed item, including services later disabled
+// in the catalog. Historical staff assignment and active employment are required.
+// Live schedule and booking collisions are checked here and again on POST.
 export async function listConfirmedBookingItemStaffCandidates(db, salonId, bookingId, itemId) {
   const state = await context(db, salonId, bookingId, itemId);
   const { serviceDate, booking, item } = state;
