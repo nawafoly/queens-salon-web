@@ -160,3 +160,13 @@ test("slot conflict recovery targets only stale schedule rows", () => {
   assert.match(tsx, /staleKeys/);
   assert.match(tsx, /تم الاحتفاظ بكل المواعيد الصحيحة/);
 });
+
+test("internal booking calendar follows the selected dashboard language", () => {
+  const picker = readFileSync("src/components/dashboard-v2/DashboardDatePickerV2.tsx", "utf8");
+  assert.match(tsx, /<DashboardDatePickerV2\s+language=\{language\}\s+value=\{bookingDate\}/);
+  assert.match(picker, /language = "ar"/); // Default language must not override caller.
+  assert.match(picker, /WEEKDAYS\[language\]/);
+  assert.match(picker, /dateFormatters\[language\]\.month\.format\(viewDate\)/);
+  assert.match(picker, /lang=\{language\}/);
+  assert.match(picker, /dir=\{language === "en" \? "ltr" : "rtl"\}/);
+});
