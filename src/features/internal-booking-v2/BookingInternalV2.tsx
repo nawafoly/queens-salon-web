@@ -3372,6 +3372,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                   <div className="bk2-date-field">
                     <span>{t("تاريخ الحجز")}</span>
                     <DashboardDatePickerV2
+                      language={language}
                       value={bookingDate}
                       onChange={setBookingDate}
                       clearable={false}

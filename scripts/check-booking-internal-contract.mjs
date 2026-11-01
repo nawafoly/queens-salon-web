@@ -47,6 +47,14 @@ requireMatch(
   "Internal booking route lost bookings.create permission protection."
 );
 
+// The shared date picker defaults to Arabic; internal booking MUST pass
+// the current dashboard language so month, weekdays, navigation and a11y follow it.
+requireMatch(
+  booking,
+  /<DashboardDatePickerV2\s+language=\{language\}\s+value=\{bookingDate\}/,
+  "Booking date picker must use the selected dashboard language (no Arabic fallback in English mode)."
+);
+
 // Four-step workflow and the separate package/session workspace.
 requireText(booking, "type Step = 1 | 2 | 3 | 4;", "Internal booking no longer declares the four-step workflow contract.");
 requireText(booking, 'useState<"new" | "sessions">("new")', "New-booking / package-sessions mode switch contract changed.");
