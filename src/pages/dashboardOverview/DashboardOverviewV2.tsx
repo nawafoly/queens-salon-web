@@ -238,7 +238,7 @@ export default function DashboardOverviewV2({
             <span className="dsv2-metric-card__label">{t("إيرادات اليوم")}</span>
             <strong className="dsv2-metric-card__value">
               {financeAccess.income
-                ? `${stats.todayRevenue.toLocaleString(numberLocale)} {currency}`
+                ? `${stats.todayRevenue.toLocaleString(numberLocale)} ${currency}`
                 : t("غير متاح")}
             </strong>
             <span className="dsv2-metric-card__meta">
@@ -294,7 +294,7 @@ export default function DashboardOverviewV2({
             <span className="dsv2-metric-card__label">{t("إجمالي الدخل")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.income
-                ? `${financial.income.toLocaleString(numberLocale)} {currency}`
+                ? `${financial.income.toLocaleString(numberLocale)} ${currency}`
                 : t("غير متاح")}
             </strong>
           </article>
@@ -306,7 +306,7 @@ export default function DashboardOverviewV2({
             <span className="dsv2-metric-card__label">{t("إجمالي المصروفات")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.expenses
-                ? `${financial.expenses.toLocaleString(numberLocale)} {currency}`
+                ? `${financial.expenses.toLocaleString(numberLocale)} ${currency}`
                 : t("غير متاح")}
             </strong>
           </article>
@@ -324,7 +324,7 @@ export default function DashboardOverviewV2({
             <span className="dsv2-metric-card__label">{t("صافي الربح")}</span>
             <strong className="dsv2-metric-card__value">
 {financeAccess.income && financeAccess.expenses
-                ? `${financial.profit.toLocaleString(numberLocale)} {currency}`
+                ? `${financial.profit.toLocaleString(numberLocale)} ${currency}`
                 : t("غير متاح")}
             </strong>
           </article>
@@ -485,7 +485,7 @@ export default function DashboardOverviewV2({
                   <dt>{t("دخل اليوم")}</dt>
                   <dd data-tone="success">
 {financeAccess.income
-                      ? `${financeToday.income.toLocaleString(numberLocale)} {currency}`
+                      ? `${financeToday.income.toLocaleString(numberLocale)} ${currency}`
                       : t("غير متاح")}
                   </dd>
                 </div>
@@ -493,7 +493,7 @@ export default function DashboardOverviewV2({
                   <dt>{t("مصروف اليوم")}</dt>
                   <dd data-tone="danger">
 {financeAccess.expenses
-                      ? `${financeToday.expenses.toLocaleString(numberLocale)} {currency}`
+                      ? `${financeToday.expenses.toLocaleString(numberLocale)} ${currency}`
                       : t("غير متاح")}
                   </dd>
                 </div>
@@ -501,7 +501,7 @@ export default function DashboardOverviewV2({
                   <dt>{t("الصافي")}</dt>
                   <dd data-tone={financeToday.net >= 0 ? "success" : "danger"}>
 {financeAccess.income && financeAccess.expenses
-                      ? `${financeToday.net.toLocaleString(numberLocale)} {currency}`
+                      ? `${financeToday.net.toLocaleString(numberLocale)} ${currency}`
                       : t("غير متاح")}
                   </dd>
                 </div>
