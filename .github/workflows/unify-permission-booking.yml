@@ -60,6 +60,7 @@ jobs:
           const live = fs.readFileSync('src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx', 'utf8');
           const permissions = fs.readFileSync('workers/core/repositories/permissions.js', 'utf8');
           const requests = fs.readFileSync('workers/core/repositories/employee-requests.js', 'utf8');
+          const legacyRequests = fs.readFileSync('workers/core/repositories/employee-requests-legacy.js', 'utf8');
           const dashboard = fs.readFileSync('src/pages/DashboardEmployees.tsx', 'utf8');
 
           const checks = [
@@ -69,16 +70,17 @@ jobs:
             [modal.includes('isPartialLeave ? "اعتماد الاستئذان" : "اعتماد الإجازة"'), 'admin modal approval action is not permission-aware'],
             [calendar.includes('const LABEL_PARTIAL_LEAVE = "\\u0627\\u0633\\u062a\\u0626\\u0630\\u0627\\u0646";'), 'attendance label is not استئذان'],
             [/selectedSpecialDay\?\.kind === "partial_leave"\s*\?\s*t\("إلغاء الاستئذان"\)\s*:\s*t\("إلغاء الإجازة"\)/.test(live), 'attendance cancel action is not permission-aware'],
-            [attendance.includes('CoreHrService.listLeaves({ employeeId: id, status: "approved" })'), 'attendance does not read Core permission intervals'],
-            [attendance.includes('label: "استئذان"'), 'Core partial intervals are not labeled استئذان'],
+            [/CoreHrService\.listLeaves\(\{\s*employeeId: id,\s*status: "approved"/.test(attendance), 'attendance does not read Core permission intervals'],
+            [/kind:\s*"partial_leave",\s*label:\s*"\\u0627\\u0633\\u062a\\u0626\\u0630\\u0627\\u0646"/.test(attendance), 'Core partial intervals are not labeled استئذان'],
             [permissions.includes('async function syncPermissionBookingBlock'), 'permission booking sync helper missing'],
             [permissions.includes("leave_type = 'permission'"), 'permission booking block is not typed permission'],
             [permissions.includes("duration_kind = 'partial'"), 'permission booking block is not partial'],
             [permissions.includes('await syncPermissionBookingBlock(db, salonId, updated, actor);'), 'approved permission is not linked to booking'],
             [permissions.includes('await cancelPermissionBookingBlock'), 'permission cancellation does not remove booking block'],
-            [requests.includes("leave_type, start_date, end_date, days_count"), 'unified employee request does not persist booking leave'],
-            [requests.includes("'approved', 'permission'"), 'unified employee permission booking row missing'],
-            [requests.includes("actionStatus === 'approved' && updated.request_type === 'permission'"), 'unified permission approval is not auto-executed'],
+            [legacyRequests.includes("leave_type, start_date, end_date, days_count"), 'unified employee request does not persist booking leave'],
+            [legacyRequests.includes("'approved', 'permission'"), 'unified employee permission booking row missing'],
+            [legacyRequests.includes("actionStatus === 'approved' && updated.request_type === 'permission'"), 'unified permission approval is not auto-executed'],
+            [requests.includes('return legacyTransitionEmployeeRequest('), 'employee request wrapper no longer delegates to the guarded legacy transition'],
             [/const cancelLeaveForAttendanceDay = useCallback[\s\S]*?const permissionId = cleanText\(permissionLeave\?\.requestId\)[\s\S]*?await reviewPermissionRequest\(\{\s*requestId: permissionId,\s*status: "cancelled"/.test(dashboard), 'attendance cannot cancel Core permission'],
           ];
           for (const [ok, message] of checks) {
