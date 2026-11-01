@@ -1,8 +1,65 @@
 // CORE D1 ONLY. Audited correction of a specific service's historical staff
 // attribution. This must never write to payments, income or invoices.
-import { changes, cleanText, dbBatch, dbFirst, nowIso, requiredId } from '../d1.js';
+import { changes, cleanText, dbAll, dbBatch, dbFirst, nowIso, requiredId } from '../d1.js';
 import { AppError } from '../errors.js';
 import { auditInsertWhenPreviousUpdateChanged } from './audit.js';
+
+// Read-only picker data for one historical service. The same employment-date
+// rule is enforced again by the audited correction write below. Do not filter
+// by *current* service specialties: assignments may have changed since the
+// service was delivered.
+export async function listBookingItemStaffCorrectionCandidates(db, salonId, bookingIdValue, itemIdValue) {
+  const bookingId = requiredId(bookingIdValue, 'bookingId');
+  const itemId = requiredId(itemIdValue, 'bookingItemId');
+  const booking = await dbFirst(db,
+    'SELECT booking_date, status, deleted_at FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, bookingId]);
+  if (!booking || booking.deleted_at) throw new AppError(404, 'core_booking:not_found');
+  if (cleanText(booking.status).toLowerCase() !== 'completed') {
+    throw new AppError(409, 'core_booking_item:completed_booking_required');
+  }
+  const item = await dbFirst(db,
+    'SELECT booking_date FROM booking_items WHERE salon_id = ? AND booking_id = ? AND id = ? LIMIT 1',
+    [salonId, bookingId, itemId]);
+  if (!item) throw new AppError(404, 'core_booking_item:not_found');
+
+  const serviceDate = cleanText(item.booking_date) || cleanText(booking.booking_date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    throw new AppError(409, 'core_booking_item:service_date_requires_review');
+  }
+
+  const rows = await dbAll(db,
+    `SELECT DISTINCT s.id, s.name
+       FROM staff s
+       JOIN employee_employment e
+         ON e.salon_id = s.salon_id AND e.employee_id = s.id
+      WHERE s.salon_id = ?
+        AND e.start_date IS NOT NULL AND TRIM(e.start_date) <> ''
+        AND e.start_date <= ?
+        AND (e.end_date IS NULL OR TRIM(e.end_date) = '' OR e.end_date >= ?)
+      ORDER BY s.name, s.id`,
+    [salonId, serviceDate, serviceDate]);
+
+  let excludedLegacyIdentityCount = 0;
+  const candidates = [];
+  for (const row of rows) {
+    const id = cleanText(row.id);
+    const name = cleanText(row.name);
+    if (!id || !name) continue;
+    try {
+      if (requiredId(id, 'staffId') !== id) {
+        excludedLegacyIdentityCount += 1;
+        continue;
+      }
+    } catch {
+      excludedLegacyIdentityCount += 1;
+      continue;
+    }
+    candidates.push({ id, name });
+  }
+
+  return { serviceDate, candidates, excludedLegacyIdentityCount };
+}
 
 export async function correctCompletedBookingItemStaff(db, salonId, bookingIdValue, data = {}, actor = {}) {
   const bookingId = requiredId(bookingIdValue, 'bookingId');

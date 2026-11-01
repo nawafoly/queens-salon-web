@@ -65,7 +65,8 @@ import {
   rollbackInternalBookingCreation,
   listTakenBookingTimes,
 } from './repositories/bookings.js';
-import { correctCompletedBookingItemStaff } from './repositories/booking-item-attribution.js';
+import { correctCompletedBookingItemStaff, listBookingItemStaffCorrectionCandidates } from './repositories/booking-item-attribution.js';
+import { changeConfirmedBookingItemStaff, listConfirmedBookingItemStaffCandidates } from './repositories/booking-item-operational-staff.js';
 import {
   acknowledgeOwnBooking,
   listOwnStaffBookings,
@@ -699,6 +700,18 @@ function match(url, method) {
 
   if (path === "/api/core/bookings/mine" && method === "GET") {
     return { name: "bookings:mine" };
+  }
+  const operationalCandidates = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-change\/candidates$/.exec(path);
+  if (operationalCandidates && method === "GET") {
+    return { name: "booking:item-staff-change-candidates", id: operationalCandidates[1], itemId: operationalCandidates[2] };
+  }
+  const operationalChange = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-change$/.exec(path);
+  if (operationalChange && method === "POST") {
+    return { name: "booking:item-staff-change", id: operationalChange[1], itemId: operationalChange[2] };
+  }
+  const itemCandidates = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-correction\/candidates$/.exec(path);
+  if (itemCandidates && method === "GET") {
+    return { name: "booking:item-staff-candidates", id: itemCandidates[1], itemId: itemCandidates[2] };
   }
   const itemCorrection = /^\/api\/core\/bookings\/([^/]+)\/items\/([^/]+)\/staff-correction$/.exec(path);
   if (itemCorrection && method === "POST") {
@@ -1707,6 +1720,9 @@ async function dispatch(ctx, route, method, body, query, env) {
         ctx.employeeId,
         query
       );
+    case "booking:item-staff-change-candidates":
+    case "booking:item-staff-change":
+    case "booking:item-staff-candidates":
     case "booking:item-staff-correction":
       // Historical staff attribution is an audited admin operation. Do not
       // allow staff/reception, even with ordinary booking-edit permissions.
@@ -1715,6 +1731,17 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       requirePermission(ctx, "bookings.update");
       requirePermission(ctx, "employees.manage");
+      if (route.name === "booking:item-staff-change-candidates") {
+        return listConfirmedBookingItemStaffCandidates(db, ctx.salonId, route.id, route.itemId);
+      }
+      if (route.name === "booking:item-staff-change") {
+        return changeConfirmedBookingItemStaff(
+          db, ctx.salonId, route.id, { ...body, bookingItemId: route.itemId }, actorInfo
+        );
+      }
+      if (route.name === "booking:item-staff-candidates") {
+        return listBookingItemStaffCorrectionCandidates(db, ctx.salonId, route.id, route.itemId);
+      }
       return correctCompletedBookingItemStaff(
         db, ctx.salonId, route.id,
         { ...body, bookingItemId: route.itemId }, actorInfo

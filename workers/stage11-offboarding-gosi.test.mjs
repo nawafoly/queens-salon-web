@@ -5,7 +5,8 @@ import { Miniflare } from 'miniflare';
 import worker from './core/index.js';
 import { normalizeError } from './core/errors.js';
 import { offboardHrEmployee } from './core/repositories/employee-offboarding.js';
-import { correctCompletedBookingItemStaff } from './core/repositories/booking-item-attribution.js';
+import { correctCompletedBookingItemStaff, listBookingItemStaffCorrectionCandidates } from './core/repositories/booking-item-attribution.js';
+import { changeConfirmedBookingItemStaff, listConfirmedBookingItemStaffCandidates } from './core/repositories/booking-item-operational-staff.js';
 import { upsertHrEmployee } from './core/repositories/hr-employees.js';
 import { recordAttendance } from './core/repositories/attendance.js';
 import { resolveEmployeeShift } from './core/repositories/shift-control.js';
@@ -1062,6 +1063,42 @@ test('item-level historical correction API requires admin plus both booking and 
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
 });
 
+test('historical staff picker is tenant scoped, employment-date eligible, read-only and hides encoded legacy identities', async (t) => {
+  const { mf, db, env } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'candidate-recorded');
+  await seedEmployee(db, 'candidate-eligible', { staffActive: 0, endDate: '2026-08-22' });
+  await seedEmployee(db, 'candidate-future', { startDate: '2026-08-22' });
+  await seedEmployee(db, 'candidate-ended', { endDate: '2026-08-20' });
+  await seedEmployee(db, 'candidate-%D8%AF%D9%8A%D9%86%D8%A7%D8%B1');
+  await seedBooking(db, { id: 'picker-10627', employeeId: 'candidate-recorded', bookingDate: '2026-08-21',
+    status: 'completed', completedAt: '2026-08-21T11:00:00Z', parentStaff: false, itemStaff: true });
+
+  const itemId = 'item-picker-10627';
+  const result = await listBookingItemStaffCorrectionCandidates(db, 'main', 'picker-10627', itemId);
+  assert.equal(result.serviceDate, '2026-08-21');
+  assert.deepEqual(result.candidates.map(row => row.id).sort(), ['candidate-eligible', 'candidate-recorded']);
+  assert.equal(result.excludedLegacyIdentityCount, 1);
+  await assert.rejects(
+    listBookingItemStaffCorrectionCandidates(db, 'other-salon', 'picker-10627', itemId),
+    error => error?.status === 404
+  );
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n, 0);
+
+  const route = `/api/core/bookings/picker-10627/items/${itemId}/staff-correction/candidates`;
+  await seedActorAccount(db, { uid: 'uid-picker-reception', role: 'reception', permissions: ['bookings.update', 'employees.manage'] });
+  let response = await worker.fetch(req(route, { uid: 'uid-picker-reception', role: 'reception' }), env);
+  assert.equal(response.status, 403);
+  await seedActorAccount(db, { uid: 'uid-picker-no-hr', role: 'admin', permissions: ['bookings.update'] });
+  await db.prepare("INSERT INTO user_permissions (id,salon_id,user_id,permission_key,effect,created_at,updated_at) VALUES ('deny-picker-hr','main','user-uid-picker-no-hr','employees.manage','deny','2026-01-01','2026-01-01')").run();
+  response = await worker.fetch(req(route, { uid: 'uid-picker-no-hr', role: 'admin' }), env);
+  assert.equal(response.status, 403);
+  await seedActorAccount(db, { uid: 'uid-picker-admin', role: 'admin', permissions: ['bookings.update', 'employees.manage'] });
+  response = await worker.fetch(req(route, { uid: 'uid-picker-admin', role: 'admin' }), env);
+  const body = await responseJson(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.candidates.map(row => row.id).sort(), ['candidate-eligible', 'candidate-recorded']);
+});
+
 
 test('target-bonus ledger attribution blocks unsafe historical specialist rewrite', async (t) => {
   const { mf, db } = await setup(); t.after(() => mf.dispose());
@@ -1128,4 +1165,135 @@ test('historical staff CAS rejects payroll approved after precheck but before at
   assert.equal((await db.prepare(
     "SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'"
   ).first()).n, 0);
+});
+
+async function seedConfirmedStaffChangeFixture(db, suffix = 'sample') {
+  const bookingId = `confirmed-change-${suffix}`;
+  const oldId = `confirmed-old-${suffix}`;
+  const targetId = `confirmed-new-${suffix}`;
+  const date = '2026-08-24';
+  await seedEmployee(db, oldId);
+  await seedEmployee(db, targetId);
+  await seedSchedules(db, targetId);
+  await seedBooking(db, { id: bookingId, employeeId: oldId, bookingDate: date,
+    status: 'confirmed', parentStaff: true, itemStaff: true });
+  await db.prepare(`INSERT INTO staff_services (salon_id, staff_id, service_id, active)
+    VALUES ('main',?, 'svc-test', 1)`).bind(targetId).run();
+  const itemId = `item-${bookingId}`;
+  for (let i = 0; i < 60; i += 5) {
+    const time = `10:${String(i).padStart(2, '0')}`;
+    await db.prepare(`INSERT INTO booking_slot_locks
+      (salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at)
+      VALUES ('main',?,?,?,?,?,'2026-08-01')`)
+      .bind(oldId, date, time, bookingId, itemId).run();
+  }
+  return { bookingId, itemId, oldId, targetId, date };
+}
+
+test('confirmed item staff change transfers only that item and its locks atomically', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f = await seedConfirmedStaffChangeFixture(db, 'happy');
+  await seedEmployee(db, 'other-specialist');
+  await db.prepare(`INSERT INTO booking_items
+    (id,booking_id,salon_id,service_id,service_name_snapshot,staff_id,quantity,unit_price_halalas,total_halalas,
+     package_covered,duration_minutes,created_at,booking_date,start_time,end_time)
+    VALUES ('other-item',?,'main','svc-test','Second service','other-specialist',1,0,0,0,60,'2026-08-01',?,'11:00','12:00')`)
+    .bind(f.bookingId,f.date).run();
+  const other = await db.prepare("SELECT staff_id FROM booking_items WHERE id='other-item'").first();
+  const candidates = await listConfirmedBookingItemStaffCandidates(db,'main',f.bookingId,f.itemId);
+  assert.ok(candidates.candidates.some(r => r.id === f.targetId));
+  const result = await changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'
+  },actor);
+  assert.equal(result.unchanged,false);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.targetId);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='other-item'").first()).staff_id,other.staff_id);
+  const locks=await db.prepare("SELECT staff_id FROM booking_slot_locks WHERE booking_item_id=?").bind(f.itemId).all();
+  assert.equal(locks.results.length,12);
+  assert.ok(locks.results.every(r => r.staff_id === f.targetId));
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,1);
+});
+
+test('confirmed item staff change refuses a slot collision without a partial rewrite', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f = await seedConfirmedStaffChangeFixture(db, 'collision');
+  await db.prepare(`INSERT INTO booking_slot_locks
+    (salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at)
+    VALUES ('main',?,?,?,?,?,'2026-08-01')`)
+    .bind(f.targetId,f.date,'10:05','different-booking','different-item').run();
+  await expectCode(changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'
+  },actor),'core_booking:staff_slot_conflict');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.oldId);
+  const locks=await db.prepare("SELECT DISTINCT staff_id FROM booking_slot_locks WHERE booking_item_id=?").bind(f.itemId).all();
+  assert.deepEqual(locks.results.map(r=>r.staff_id),[f.oldId]);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,0);
+});
+
+test('confirmed item staff change rejects stale CAS and non-confirmed bookings', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f=await seedConfirmedStaffChangeFixture(db,'cas');
+  const payload={bookingItemId:f.itemId,expectedStaffId:'incorrect-id',staffId:f.targetId,
+    reason:'Coverage change verified by administration'};
+  await expectCode(changeConfirmedBookingItemStaff(db,'main',f.bookingId,payload,actor),
+    'core_booking_item:concurrent_staff_change');
+  await db.prepare("UPDATE bookings SET status='completed' WHERE id=?").bind(f.bookingId).run();
+  await expectCode(changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    ...payload,expectedStaffId:f.oldId},actor),'core_booking_item:confirmed_booking_required');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.oldId);
+});
+
+test('confirmed item staff change API is admin-only and requires both permissions', async (t) => {
+  const { mf, db, env } = await setup(); t.after(() => mf.dispose());
+  const f=await seedConfirmedStaffChangeFixture(db,'auth');
+  const route=`/api/core/bookings/${f.bookingId}/items/${f.itemId}/staff-change`;
+  const payload={expectedStaffId:f.oldId,staffId:f.targetId,reason:'Coverage change verified by administration'};
+  await seedActorAccount(db,{uid:'uid-confirmed-reception',role:'reception',permissions:['bookings.update','employees.manage']});
+  let resp=await worker.fetch(req(route,{method:'POST',uid:'uid-confirmed-reception',role:'reception',body:payload}),env);
+  assert.equal(resp.status,403);
+  await seedActorAccount(db,{uid:'uid-confirmed-deny',role:'admin',permissions:['bookings.update']});
+  await db.prepare(`INSERT INTO user_permissions
+    (id,salon_id,user_id,permission_key,effect,created_at,updated_at)
+    VALUES ('confirmed-hr-deny','main','user-uid-confirmed-deny','employees.manage','deny','2026-01-01','2026-01-01')`).run();
+  resp=await worker.fetch(req(route,{method:'POST',uid:'uid-confirmed-deny',role:'admin',body:payload}),env);
+  assert.equal(resp.status,403);
+  await seedActorAccount(db,{uid:'uid-confirmed-owner',role:'admin',permissions:['bookings.update','employees.manage']});
+  resp=await worker.fetch(req(route,{method:'POST',uid:'uid-confirmed-owner',role:'admin',body:payload}),env);
+  assert.equal(resp.status,200,JSON.stringify(await responseJson(resp)));
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.targetId);
+});
+
+test('confirmed item staff change rolls back locks and item if the audit insertion fails', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f = await seedConfirmedStaffChangeFixture(db, 'audit-failure');
+  await db.prepare(`CREATE TRIGGER block_confirmed_staff_change_audit
+    BEFORE INSERT ON audit_logs
+    WHEN NEW.action = 'booking_item_staff_operational_changed'
+    BEGIN SELECT RAISE(ABORT, 'INJECTED_AUDIT_FAILURE'); END`).run();
+  await assert.rejects(changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'
+  },actor));
+  assert.equal((await db.prepare('SELECT staff_id FROM booking_items WHERE id=?').bind(f.itemId).first()).staff_id,f.oldId);
+  const locks=await db.prepare('SELECT DISTINCT staff_id FROM booking_slot_locks WHERE booking_item_id=?').bind(f.itemId).all();
+  assert.deepEqual(locks.results.map(r=>r.staff_id),[f.oldId]);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,0);
+});
+
+test('confirmed item staff change concurrent CAS allows only one transfer and one audit', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f=await seedConfirmedStaffChangeFixture(db,'race');
+  const data={bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'};
+  const results=await Promise.allSettled([
+    changeConfirmedBookingItemStaff(db,'main',f.bookingId,data,actor),
+    changeConfirmedBookingItemStaff(db,'main',f.bookingId,data,actor)
+  ]);
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.filter(r=>r.status==='rejected').length,1);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,1);
+  const locks=await db.prepare('SELECT DISTINCT staff_id FROM booking_slot_locks WHERE booking_item_id=?').bind(f.itemId).all();
+  assert.deepEqual(locks.results.map(r=>r.staff_id),[f.targetId]);
 });
