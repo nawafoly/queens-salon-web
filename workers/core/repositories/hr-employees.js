@@ -604,7 +604,7 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
 
   const bookingStaffInput = data.bookingStaff || data.booking_staff || data.staff || {};
   const bookingSpecialtiesProvided = Array.isArray(bookingStaffInput.specialties);
-  const bookingSpecialtyIds = bookingSpecialtiesProvided
+  const requestedActiveSpecialtyIds = bookingSpecialtiesProvided
     ? Array.from(
         new Set(
           bookingStaffInput.specialties
@@ -614,18 +614,21 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
       )
     : null;
 
-  if (bookingSpecialtyIds?.length) {
+  // New/selected qualifications must belong to the active Core catalog.
+  // Existing dormant links are treated separately below and NEVER used as
+  // justification to add a disabled service to another employee.
+  if (requestedActiveSpecialtyIds?.length) {
     const validServiceRows = await dbAll(
       db,
       `SELECT id
          FROM services
         WHERE salon_id = ?
           AND active = 1
-          AND id IN (${bookingSpecialtyIds.map(() => '?').join(', ')})`,
-      [salonId, ...bookingSpecialtyIds]
+          AND id IN (${requestedActiveSpecialtyIds.map(() => '?').join(', ')})`,
+      [salonId, ...requestedActiveSpecialtyIds]
     );
     const validServiceIds = new Set(validServiceRows.map((row) => cleanText(row.id)));
-    const invalidServiceIds = bookingSpecialtyIds.filter((serviceId) => !validServiceIds.has(serviceId));
+    const invalidServiceIds = requestedActiveSpecialtyIds.filter((serviceId) => !validServiceIds.has(serviceId));
     if (invalidServiceIds.length) {
       throw new AppError(
         409,
@@ -634,6 +637,33 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
       );
     }
   }
+
+  // DORMANT_STAFF_ASSIGNMENTS_PRESERVE_V1
+  // Replacing the currently-bookable set is not an instruction to revoke
+  // historical qualifications for a disabled/deleted catalog service.
+  // Preserve those links on normal employee saves; intentional revocation of
+  // dormant qualifications requires a separate explicit Core operation.
+  const dormantSpecialtyRows = bookingSpecialtiesProvided && existingStaff
+    ? await dbAll(
+        db,
+        `SELECT ss.service_id
+           FROM staff_services ss
+           LEFT JOIN services svc
+             ON svc.salon_id = ss.salon_id AND svc.id = ss.service_id
+          WHERE ss.salon_id = ?
+            AND ss.staff_id = ?
+            AND ss.active = 1
+            AND (svc.id IS NULL OR svc.active <> 1)
+          ORDER BY ss.service_id`,
+        [salonId, id]
+      )
+    : [];
+  const bookingSpecialtyIds = bookingSpecialtiesProvided
+    ? Array.from(new Set([
+        ...requestedActiveSpecialtyIds,
+        ...dormantSpecialtyRows.map((row) => cleanText(row.service_id)).filter(Boolean),
+      ]))
+    : null;
 
   const staff = {
     id,
