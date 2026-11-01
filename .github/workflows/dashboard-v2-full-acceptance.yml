@@ -99,6 +99,9 @@ jobs:
       - name: Lazy internal workspace regression
         run: node --test workers/route-lazy-boundary.test.mjs
 
+      - name: Booking item staff permission context regression
+        run: node --test workers/booking-staff-permission-context.test.mjs
+
       - name: Build
         run: npm run build
 
