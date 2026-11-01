@@ -63,6 +63,8 @@ export async function listConfirmedBookingItemStaffCandidates(db, salonId, booki
     `SELECT DISTINCT s.id, s.name
        FROM staff s
        JOIN staff_services ss ON ss.salon_id = s.salon_id AND ss.staff_id = s.id
+       JOIN services svc ON svc.salon_id = ss.salon_id
+         AND svc.id = ss.service_id AND svc.active = 1
        JOIN employee_employment e ON e.salon_id = s.salon_id AND e.employee_id = s.id
       WHERE s.salon_id = ? AND s.active = 1 AND ss.active = 1 AND ss.service_id = ?
         AND e.start_date IS NOT NULL AND TRIM(e.start_date) <> '' AND e.start_date <= ?

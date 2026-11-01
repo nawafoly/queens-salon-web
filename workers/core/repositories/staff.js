@@ -270,15 +270,22 @@ export async function listStaff(db, salonId, query = {}) {
       (row) => row.salon_id === salonId && (!activeOnly || Number(row.active) === 1)
     );
     if (serviceId) {
+      const activeCatalogService = safeFakeRows(db, "services").some(
+        (row) => row.salon_id === salonId &&
+          cleanText(row.id) === serviceId &&
+          Number(row.active) === 1
+      );
       const allowedIds = new Set(
-        safeFakeRows(db, "staff_services")
-          .filter(
-            (row) =>
-              row.salon_id === salonId &&
-              cleanText(row.service_id) === serviceId &&
-              Number(row.active) === 1
-          )
-          .map((row) => cleanText(row.staff_id))
+        activeCatalogService
+          ? safeFakeRows(db, "staff_services")
+              .filter(
+                (row) =>
+                  row.salon_id === salonId &&
+                  cleanText(row.service_id) === serviceId &&
+                  Number(row.active) === 1
+              )
+              .map((row) => cleanText(row.staff_id))
+          : []
       );
       rows = rows.filter((row) => allowedIds.has(cleanText(row.id)));
     }
@@ -296,7 +303,11 @@ export async function listStaff(db, salonId, query = {}) {
                  ON ss.salon_id = s.salon_id
                 AND ss.staff_id = s.id
                 AND ss.service_id = ?
-                AND ss.active = 1`;
+                AND ss.active = 1
+               JOIN services svc
+                 ON svc.salon_id = ss.salon_id
+                AND svc.id = ss.service_id
+                AND svc.active = 1`;
       params.push(serviceId);
     }
     sql += " WHERE s.salon_id = ?";

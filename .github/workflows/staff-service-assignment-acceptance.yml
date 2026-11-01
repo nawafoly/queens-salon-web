@@ -36,7 +36,7 @@ jobs:
       - name: Canonical staff service assignment tests
         run: >
           node --test --test-force-exit
-          --test-name-pattern "HR employee save atomically creates canonical booking staff row|staff service backfill migrates valid legacy specialties"
+          --test-name-pattern "inactive catalog service cannot qualify staff|HR employee save atomically creates canonical booking staff row|staff service backfill migrates valid legacy specialties"
           workers/hr-core-worker.test.mjs
 
       - name: Booking source-of-truth guard
