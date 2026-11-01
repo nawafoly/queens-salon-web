@@ -14,7 +14,7 @@ async function context(db, salonId, bookingIdValue, itemIdValue) {
     'SELECT id, booking_date, status, deleted_at, staff_id, buffer_min FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
     [salonId, bookingId]);
   if (!booking || booking.deleted_at) throw new AppError(404, 'core_booking:not_found');
-  if (cleanText(booking.status).toLowerCase() !== 'confirmed') {
+  if (!['confirmed', 'booked'].includes(cleanText(booking.status).toLowerCase())) {
     throw new AppError(409, 'core_booking_item:confirmed_booking_required');
   }
   const item = await dbFirst(db,
@@ -146,7 +146,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
     description: reason,
     before: { bookingId, itemId, staffId: oldStaffId, serviceDate, serviceId: item.service_id },
     after: { bookingId, itemId, staffId: newStaffId, staffName: target.name, serviceDate },
-    meta: { reason, parentBookingStatus: 'confirmed', financialLedgerChanged: false },
+    meta: { reason, parentBookingStatus: cleanText(booking.status).toLowerCase(), financialLedgerChanged: false },
   }, actor);
   const slotMarks = slots.map(() => '?').join(',');
   const lockArgs = [salonId, bookingId, itemId, oldStaffId, serviceDate];
@@ -164,7 +164,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
                 WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ?
                   AND staff_id = ? AND booking_date = ? AND slot_time IN (${slotMarks})) = ?
           AND EXISTS (SELECT 1 FROM bookings
-                WHERE salon_id = ? AND id = ? AND deleted_at IS NULL AND LOWER(status) = 'confirmed')
+                WHERE salon_id = ? AND id = ? AND deleted_at IS NULL AND LOWER(status) IN ('confirmed','booked'))
           AND EXISTS (SELECT 1 FROM booking_items
                 WHERE salon_id = ? AND booking_id = ? AND id = ? AND staff_id = ?
                   AND booking_date = ? AND start_time = ? AND end_time = ?)
@@ -183,7 +183,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
         WHERE salon_id = ? AND booking_id = ? AND id = ? AND COALESCE(staff_id,'') = ?
           AND booking_date = ? AND start_time = ? AND end_time = ?
           AND EXISTS (SELECT 1 FROM bookings WHERE salon_id = ? AND id = ?
-                      AND deleted_at IS NULL AND LOWER(status) = 'confirmed')
+                      AND deleted_at IS NULL AND LOWER(status) IN ('confirmed','booked'))
           AND (SELECT COUNT(*) FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?
                AND booking_item_id = ? AND staff_id = ? AND booking_date = ?) = ?
           AND (SELECT COUNT(*) FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?
@@ -200,7 +200,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
                      THEN MAX(staff_id) ELSE NULL END FROM booking_items
                      WHERE salon_id = ? AND booking_id = ?),
           updated_at = ?
-        WHERE salon_id = ? AND id = ? AND LOWER(status) = 'confirmed'
+        WHERE salon_id = ? AND id = ? AND LOWER(status) IN ('confirmed','booked')
           AND EXISTS (SELECT 1 FROM audit_logs WHERE salon_id = ? AND id = ?)`,
       params: [salonId, bookingId, nowIso(), salonId, bookingId, salonId, audit.row.id],
     }

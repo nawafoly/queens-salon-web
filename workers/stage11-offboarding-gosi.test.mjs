@@ -1215,6 +1215,30 @@ test('confirmed item staff change transfers only that item and its locks atomica
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,1);
 });
 
+test('confirmed item staff change supports booked alias with intact locks and rejects missing locks', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f = await seedConfirmedStaffChangeFixture(db, 'legacy-booked');
+  await db.prepare("UPDATE bookings SET status='booked' WHERE id=?").bind(f.bookingId).run();
+  const candidates = await listConfirmedBookingItemStaffCandidates(db,'main',f.bookingId,f.itemId);
+  assert.ok(candidates.candidates.some(row => row.id === f.targetId));
+  const result = await changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Verified legacy booked service staff replacement'
+  },actor);
+  assert.equal(result.unchanged,false);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.targetId);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,1);
+
+  const broken = await seedConfirmedStaffChangeFixture(db, 'legacy-no-locks');
+  await db.prepare("UPDATE bookings SET status='booked' WHERE id=?").bind(broken.bookingId).run();
+  await db.prepare("DELETE FROM booking_slot_locks WHERE booking_id=?").bind(broken.bookingId).run();
+  await expectCode(changeConfirmedBookingItemStaff(db,'main',broken.bookingId,{
+    bookingItemId:broken.itemId,expectedStaffId:broken.oldId,staffId:broken.targetId,
+    reason:'Verified legacy booked service staff replacement'
+  },actor),'core_booking_item:slot_integrity_requires_review');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(broken.itemId).first()).staff_id,broken.oldId);
+});
+
 test('confirmed item staff change refuses a slot collision without a partial rewrite', async (t) => {
   const { mf, db } = await setup(); t.after(() => mf.dispose());
   const f = await seedConfirmedStaffChangeFixture(db, 'collision');
