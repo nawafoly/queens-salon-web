@@ -1,6 +1,6 @@
 // CORE D1 ONLY: Confirmed booking service-item staff changes are operational.
 // Never reuse the historical completed-booking correction workflow or edit money.
-import { addMinutes, changes, cleanText, dbAll, dbBatch, dbFirst, nowIso, requiredId } from '../d1.js';
+import { changes, cleanText, dbAll, dbBatch, dbFirst, nowIso, requiredId } from '../d1.js';
 import { AppError } from '../errors.js';
 import { auditInsertWhenPreviousUpdateChanged } from './audit.js';
 import { assertStaffRangeAvailable, occupiedSlotTimes } from './bookings.js';
@@ -79,7 +79,7 @@ export async function listConfirmedBookingItemStaffCandidates(db, salonId, booki
     } catch { excludedLegacyIdentityCount += 1; continue; }
     try {
       await assertStaffRangeAvailable(db, salonId, id, serviceDate, item.start_time,
-        addMinutes(item.end_time, Number(booking.buffer_min || 0)), state.bookingId);
+        item.end_time, state.bookingId);
       // Lock collisions against other items in this booking are also excluded.
       const overlap = await dbFirst(db,
         `SELECT 1 AS conflict FROM booking_items bi
@@ -132,7 +132,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
     throw new AppError(409, 'core_booking_item:slot_integrity_requires_review');
   }
   await assertStaffRangeAvailable(db, salonId, newStaffId, serviceDate, item.start_time,
-    addMinutes(item.end_time, bufferMin), bookingId);
+    item.end_time, bookingId);
   await assertFinancialSafety(db, salonId, bookingId, serviceDate, oldStaffId, newStaffId);
 
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
@@ -188,7 +188,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
     audit.statement,
     {
       sql: `UPDATE bookings SET
-          staff_id = (SELECT CASE WHEN COUNT(DISTINCT COALESCE(staff_id,'')) = 1
+          staff_id = (SELECT CASE WHEN COUNT(DISTINCT staff_id) = 1
                      THEN MAX(staff_id) ELSE NULL END FROM booking_items
                      WHERE salon_id = ? AND booking_id = ?),
           updated_at = ?
@@ -201,7 +201,9 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
   try {
     result = await dbBatch(db, statements);
   } catch (error) {
-    if (/UNIQUE|PRIMARY KEY|SQLITE_CONSTRAINT/i.test(cleanText(error?.message))) {
+    const message = cleanText(error?.message).toUpperCase();
+    if (message.includes('BOOKING_SLOT_LOCKS') &&
+        (message.includes('UNIQUE') || message.includes('PRIMARY KEY'))) {
       throw new AppError(409, 'core_booking:staff_slot_conflict');
     }
     throw error;

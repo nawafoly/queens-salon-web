@@ -1264,3 +1264,36 @@ test('confirmed item staff change API is admin-only and requires both permission
   assert.equal(resp.status,200,JSON.stringify(await responseJson(resp)));
   assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id=?").bind(f.itemId).first()).staff_id,f.targetId);
 });
+
+test('confirmed item staff change rolls back locks and item if the audit insertion fails', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f = await seedConfirmedStaffChangeFixture(db, 'audit-failure');
+  await db.prepare(`CREATE TRIGGER block_confirmed_staff_change_audit
+    BEFORE INSERT ON audit_logs
+    WHEN NEW.action = 'booking_item_staff_operational_changed'
+    BEGIN SELECT RAISE(ABORT, 'INJECTED_AUDIT_FAILURE'); END`).run();
+  await assert.rejects(changeConfirmedBookingItemStaff(db,'main',f.bookingId,{
+    bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'
+  },actor));
+  assert.equal((await db.prepare('SELECT staff_id FROM booking_items WHERE id=?').bind(f.itemId).first()).staff_id,f.oldId);
+  const locks=await db.prepare('SELECT DISTINCT staff_id FROM booking_slot_locks WHERE booking_item_id=?').bind(f.itemId).all();
+  assert.deepEqual(locks.results.map(r=>r.staff_id),[f.oldId]);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,0);
+});
+
+test('confirmed item staff change concurrent CAS allows only one transfer and one audit', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  const f=await seedConfirmedStaffChangeFixture(db,'race');
+  const data={bookingItemId:f.itemId,expectedStaffId:f.oldId,staffId:f.targetId,
+    reason:'Coverage change verified by administration'};
+  const results=await Promise.allSettled([
+    changeConfirmedBookingItemStaff(db,'main',f.bookingId,data,actor),
+    changeConfirmedBookingItemStaff(db,'main',f.bookingId,data,actor)
+  ]);
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.filter(r=>r.status==='rejected').length,1);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_operational_changed'").first()).n,1);
+  const locks=await db.prepare('SELECT DISTINCT staff_id FROM booking_slot_locks WHERE booking_item_id=?').bind(f.itemId).all();
+  assert.deepEqual(locks.results.map(r=>r.staff_id),[f.targetId]);
+});
