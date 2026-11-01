@@ -156,6 +156,10 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
           AND staff_id = ? AND booking_date = ? AND slot_time IN (${slotMarks})
           AND (SELECT COUNT(*) FROM booking_slot_locks
                 WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ?) = ?
+          -- Revalidate every expected source slot inside the same transaction.
+          AND (SELECT COUNT(*) FROM booking_slot_locks
+                WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ?
+                  AND staff_id = ? AND booking_date = ? AND slot_time IN (${slotMarks})) = ?
           AND EXISTS (SELECT 1 FROM bookings
                 WHERE salon_id = ? AND id = ? AND deleted_at IS NULL AND LOWER(status) = 'confirmed')
           AND EXISTS (SELECT 1 FROM booking_items
@@ -167,6 +171,7 @@ export async function changeConfirmedBookingItemStaff(db, salonId, bookingIdValu
             AND payroll_month = ? AND employee_id IN (?, ?)
             AND LOWER(COALESCE(status,'draft')) IN ('approved','paid'))`,
       params: [newStaffId, ...lockArgs, ...slots, salonId, bookingId, itemId, slots.length,
+        salonId, bookingId, itemId, oldStaffId, serviceDate, ...slots, slots.length,
         salonId, bookingId, salonId, bookingId, itemId, oldStaffId, serviceDate, item.start_time, item.end_time,
         salonId, serviceDate, salonId, bookingId, salonId, serviceDate.slice(0,7), oldStaffId, newStaffId],
     },
