@@ -133,6 +133,7 @@ import {
   type GosiWageMode,
 } from "../helpers/hr/gosiPolicy.js";
 
+import { planActiveEmployeeServiceAssignments } from "../helpers/employeeServiceAssignmentPlan";
 import {
   DEFAULT_CLOSE_TIME,
   DEFAULT_OPEN_TIME,
@@ -5705,11 +5706,36 @@ function DashboardEmployeesContent() {
     const isCreatingEmployee = !editId;
     const createdLogin = isCreatingEmployee && options?.createLogin === true;
     const cleanName = name.trim();
-    const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
+    // The catalog is canonical; historical staff_services can still contain
+    // deleted/inactive home-service IDs. Never send those IDs back to Core.
+    const serviceSavePlan = planActiveEmployeeServiceAssignments(
+      canonicalizeSpecialties(specialties, serviceOptions),
+      serviceOptions
+    );
+    const specialtiesFixed = serviceSavePlan.activeIds;
     const effectiveShowOnBooking = specialtiesFixed.length > 0 ? !!showOnBooking : false;
     if (!cleanName) {
       setErrorMsg("اكتب اسم الموظفة");
       return;
+    }
+    if (serviceSavePlan.unresolvedIds.length > 0) {
+      // Catalog failures/truncated results must not mass-deactivate assignments.
+      // The Core catalog endpoint currently caps results at 1000.
+      if (serviceOptions.length === 0 || serviceOptions.length >= 1000) {
+        setErrorMsg(language === "en"
+          ? "The service catalog is unavailable or incomplete. Reload the services before saving; no assignments were changed."
+          : "كتالوج الخدمات غير متاح أو غير مكتمل. أعيدي تحميل الخدمات قبل الحفظ؛ لم تتغير أي خدمات.");
+        return;
+      }
+      const approved = await requestConfirmation({
+        title: language === "en" ? "Outdated service assignments" : "ارتباطات خدمات قديمة",
+        description: language === "en"
+          ? `This employee has ${serviceSavePlan.unresolvedIds.length} outdated or inactive service assignment(s) that Core cannot save. Saving will deactivate only those old assignments and keep ${specialtiesFixed.length} active catalog service(s), including your new selections. No booking history will change. Continue?`
+          : `ملف الموظفة يحتوي على ${serviceSavePlan.unresolvedIds.length} ارتباط خدمة قديم أو غير نشط لا يقبله Core. عند الحفظ سيُلغى إسناد هذه الارتباطات القديمة فقط، مع الإبقاء على ${specialtiesFixed.length} خدمة نشطة من الكتالوج تشمل اختياراتك الجديدة. لن يتغير سجل الحجوزات. هل تريد المتابعة؟`,
+        confirmLabel: language === "en" ? "Review and save" : "مراجعة وحفظ",
+        tone: "gold",
+      });
+      if (!approved) return;
     }
     // Allow saving basic data even when no services are assigned.
     // In that case, force-hide from booking until services are added.
