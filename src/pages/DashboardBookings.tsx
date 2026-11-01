@@ -3626,7 +3626,7 @@ type EditBookingModalProps = {
 
 const EditBookingModal = memo(function EditBookingModal({ target, language, role, onClose, onSaved }: EditBookingModalProps) {
   const t = (arabic: string) => bookingsText(language, arabic);
-  const { hasPermission } = usePermissions();
+  const { role: permissionRole, hasPermission } = usePermissions();
   const canAdjustBookingPrice = hasPermission(
     "bookings.price.adjust"
   );
@@ -4853,7 +4853,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, language, role
           {target?.id ? (
             <BookingItemStaffAttributionEditor
               bookingId={target.id}
-              canCorrect={(role === "owner" || role === "admin") && hasPermission("bookings.update") && hasPermission("employees.manage")}
+              canCorrect={(permissionRole === "owner" || permissionRole === "admin") && hasPermission("bookings.update") && hasPermission("employees.manage")}
               language={language}
             />
           ) : null}
