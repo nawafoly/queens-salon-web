@@ -35,6 +35,8 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
   const [success, setSuccess] = useState("");
   const candidateRequest = useRef(0);
   const english = language === "en";
+  // Some Core records use the historical `booked` alias for confirmed bookings.
+  const isConfirmedBooking = booking?.status === "confirmed" || String(booking?.status) === "booked";
 
   const refresh = useCallback(async () => {
     const result = await CoreBookingService.get(bookingId);
@@ -75,7 +77,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
     setError("");
     setSuccess("");
     setCandidateLoading(true);
-    const loadCandidates = booking?.status === "confirmed"
+    const loadCandidates = isConfirmedBooking
       ? CoreBookingService.listItemStaffChangeCandidates
       : CoreBookingService.listItemStaffCorrectionCandidates;
     void loadCandidates(bookingId, item.id)
@@ -125,7 +127,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
     setError("");
     setSuccess("");
     try {
-      const submit = booking?.status === "confirmed"
+      const submit = isConfirmedBooking
         ? CoreBookingService.changeConfirmedItemStaff
         : CoreBookingService.correctCompletedItemStaff;
       await submit(bookingId, item.id, {
@@ -137,7 +139,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
       closeCorrection();
       setStaffId("");
       setReason("");
-      setSuccess(booking?.status === "confirmed"
+      setSuccess(isConfirmedBooking
         ? (english ? "Only this service's upcoming staff and held time slots were changed." : "تم تغيير موظفة هذه الخدمة ونقل موعدها بأمان دون تعديل بقية الخدمات.")
         : (english ? "Only this service's staff assignment was corrected and audited." : "تم تصحيح إسناد هذه الخدمة وحدها وتسجيل العملية في سجل التدقيق."));
     } catch (e: unknown) {
@@ -197,11 +199,11 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                   </details>
                 )}
               </div>
-              {canCorrect && (booking?.status === "completed" || booking?.status === "confirmed") && (
+              {canCorrect && (booking?.status === "completed" || isConfirmedBooking) && (
                 editingItemId !== item.id ? (
                   <button type="button" className="dsv2-btn dsv2-btn--secondary bk-attribution__open"
                     onClick={() => openCorrection(item)}>
-                    {booking.status === "confirmed"
+                    {isConfirmedBooking
                       ? (english ? "Change staff for this service" : "تغيير موظفة هذه الخدمة فقط")
                       : (english ? "Correct this service's staff" : "تصحيح موظفة هذه الخدمة فقط")}
                   </button>
@@ -209,7 +211,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                   <div className="bk-attribution__correction">
                     <div className="bk-attribution__fields">
                       <div className="bk-attribution__field">
-                        <span className="bk-field-label">{booking.status === "confirmed"
+                        <span className="bk-field-label">{isConfirmedBooking
                           ? (english ? "New specialist for this appointment" : "الموظفة الجديدة لهذا الموعد")
                           : (english ? "Actual specialist" : "الموظفة التي نفذت الخدمة فعلًا")}</span>
                         <input type="search" className="bk-input" autoComplete="off" value={search}
@@ -256,18 +258,18 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                         {candidateError && <small className="bk-inline-error" role="alert">{candidateError}</small>}
                       </div>
                       <label className="bk-attribution__field">
-                        <span className="bk-field-label">{booking.status === "confirmed"
+                        <span className="bk-field-label">{isConfirmedBooking
                           ? (english ? "Reason for changing staff" : "سبب تغيير الموظفة")
                           : (english ? "Audited correction reason" : "سبب التصحيح الموثق")}</span>
                         <textarea className="bk-input" rows={3} maxLength={1000} value={reason} disabled={busy}
                           onChange={e => setReason(e.target.value)}
-                          placeholder={booking.status === "confirmed"
+                          placeholder={isConfirmedBooking
                             ? (english ? "Why is the assigned staff changing?" : "اذكري سبب تغيير موظفة الخدمة.")
                             : (english ? "Describe the verified evidence of who performed this service." : "اذكري الدليل الذي يؤكد من نفذت هذه الخدمة.")} />
                       </label>
                     </div>
                     <p className="bk-attribution__notice">
-                      {booking.status === "confirmed"
+                      {isConfirmedBooking
                         ? (english ? "Availability and service qualification are checked again on save. Only this service's assignment and held time slots change; payments stay untouched."
                             : "تُفحص أهلية الموظفة وتعارض المواعيد مجددًا عند الحفظ؛ يتغير إسناد هذه الخدمة وأقفال وقتها فقط دون المساس بالمدفوعات.")
                         : (english ? "Employment dates are checked here; closed financial days, payroll and bonus-ledger restrictions are checked again on save. Invoice, payment and other services remain unchanged."
@@ -277,7 +279,7 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
                       <button type="button" className="dsv2-btn dsv2-btn--primary"
                         disabled={busy || candidateLoading || !!candidateError || !staffId || staffId === (item.staffId || "") || reason.trim().length < 10}
                         onClick={() => void correct(item)}>
-                        {busy ? (english ? "Saving..." : "جاري الحفظ...") : booking.status === "confirmed"
+                        {busy ? (english ? "Saving..." : "جاري الحفظ...") : isConfirmedBooking
                           ? (english ? "Confirm staff change" : "تأكيد تغيير الموظفة")
                           : (english ? "Confirm audited correction" : "تأكيد التصحيح الموثق")}
                       </button>
