@@ -4965,6 +4965,70 @@ test('inactive catalog service cannot qualify staff even when historical assignm
   assert.equal(await staffCanPerformService(db, 'main', 'employee-disabled-home', 'home-service-disabled'), true);
 });
 
+test('HR save preserves dormant catalog links without permitting new dormant assignments', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  for (const [id, active] of [['svc-active', 1], ['svc-disabled', 0]]) {
+    await db.prepare(
+      "INSERT INTO services (id, salon_id, name, duration_minutes, price_halalas, active, sort_order, created_at, updated_at) VALUES (?, 'main', ?, 30, 5000, ?, 0, '2026-01-01', '2026-01-01')"
+    ).bind(id, id, active).run();
+  }
+
+  const id = 'employee-dormant-services';
+  await upsertHrEmployee(db, 'main', {
+    id, name: 'Dormant Staff', status: 'active',
+    bookingStaff: { name: 'Dormant Staff', active: true, specialties: ['svc-active'] },
+  }, actor);
+
+  // This represents a service assigned while bookable and disabled later.
+  await db.prepare(
+    "INSERT INTO staff_services (salon_id, staff_id, service_id, active) VALUES ('main', ?, 'svc-disabled', 1)"
+  ).bind(id).run();
+
+  // Editing basic data and the bookable set must not delete the historical link.
+  await upsertHrEmployee(db, 'main', {
+    id, name: 'Dormant Staff Updated',
+    bookingStaff: { specialties: ['svc-active'] },
+  }, actor);
+
+  let assignments = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id = 'main' AND staff_id = ? ORDER BY service_id"
+  ).bind(id).all();
+  assert.deepEqual(assignments.results.map((r) => [r.service_id, Number(r.active)]), [
+    ['svc-active', 1], ['svc-disabled', 1]
+  ]);
+  const staff = (await listStaff(db, 'main')).find((row) => row.id === id);
+  assert.deepEqual(JSON.parse(staff.specialties_json), ['svc-active', 'svc-disabled']);
+  assert.equal(await staffCanPerformService(db, 'main', id, 'svc-disabled'), false);
+
+  // Explicitly removing an active service must still work and leave the
+  // intentionally disabled service qualification untouched.
+  await upsertHrEmployee(db, 'main', {
+    id, name: 'Dormant Staff Updated',
+    bookingStaff: { specialties: [] },
+  }, actor);
+  assignments = await db.prepare(
+    "SELECT service_id, active FROM staff_services WHERE salon_id = 'main' AND staff_id = ? ORDER BY service_id"
+  ).bind(id).all();
+  assert.deepEqual(assignments.results.map((r) => [r.service_id, Number(r.active)]), [
+    ['svc-active', 0], ['svc-disabled', 1]
+  ]);
+
+  // New inactive qualifications are still forbidden, including on this employee.
+  await assert.rejects(
+    () => upsertHrEmployee(db, 'main', {
+      id, name: 'Dormant Staff Updated',
+      bookingStaff: { specialties: ['svc-disabled'] },
+    }, actor),
+    (error) => error.code === 'core_hr:invalid_staff_service_assignment'
+  );
+
+  // Catalog reactivation re-enables the preserved original association only.
+  await db.prepare("UPDATE services SET active = 1 WHERE salon_id = 'main' AND id = 'svc-disabled'").run();
+  assert.equal(await staffCanPerformService(db, 'main', id, 'svc-disabled'), true);
+});
+
 test('HR employee save atomically creates canonical booking staff row and canonical service assignments', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
