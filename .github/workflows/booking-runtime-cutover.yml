@@ -149,6 +149,9 @@ jobs:
       - name: Core worker tests
         run: npm run test:core:worker
 
+      - name: Employee stale catalog service assignment safety
+        run: node --test workers/employee-service-assignment-plan.test.mjs
+
       - name: Booking employee edit financial isolation regression
         run: node --test workers/booking-employee-payment-isolation.test.mjs
 
