@@ -9,9 +9,15 @@
 }
 
 @media (max-width: 820px) {
-  html:has(.hr-shell),
-  body:has(.hr-shell),
-  body:has(.hr-shell) #root {
+  /*
+   * Only the standalone /hr app owns the viewport and can lock root scroll.
+   * /dashboard embeds HR screens via .hr-shell--embedded; applying this
+   * body/html overflow:hidden there hides employees/loading content beneath
+   * the dashboard header and breaks browser scrolling on multiple routes.
+   */
+  html:has(.hr-shell:not(.hr-shell--embedded)),
+  body:has(.hr-shell:not(.hr-shell--embedded)),
+  body:has(.hr-shell:not(.hr-shell--embedded)) #root {
     width: 100% !important;
     height: 100% !important;
     min-width: 0 !important;
