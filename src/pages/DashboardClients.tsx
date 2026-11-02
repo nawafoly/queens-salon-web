@@ -34,7 +34,8 @@ import type {
   CustomerSource,
   CustomerStats,
 } from "../features/customers/customerTypes";
-import { CoreClientService } from "../services/CoreClientService";
+import { CoreClientService, type CoreClientDirectorySummary } from "../services/CoreClientService";
+import { createShortLivedRequestCache } from "../helpers/shortLivedRequestCache";
 import type { CoreClient } from "../types/coreApi";
 
 /**
@@ -96,6 +97,9 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     averageBookings: 0,
   });
   const requestGenerationRef = useRef(0);
+  // Heavy Core aggregate: reuse only for short-lived page/sort/translation changes.
+  // Explicit refresh, import and edits always obtain a fresh authoritative count.
+  const summaryCacheRef = useRef(createShortLivedRequestCache<CoreClientDirectorySummary>(10_000));
   const packagesFilterAvailable = true;
   const [segment, setSegment] = useState<CustomerSegment>("all");
   const [sort, setSort] = useState<CustomerSort>("latest");
@@ -126,7 +130,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     setPage(0);
   }, [deferredQuery, segment, source, lastVisit, sort]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (refreshSummary = false) => {
     if (!canViewClients) {
       setLoading(false);
       return;
@@ -150,11 +154,11 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
           limit: PAGE_SIZE + 1,
           offset: page * PAGE_SIZE,
         }),
-        CoreClientService.directorySummary(search, {
-          segment,
-          lastVisit,
-          source,
-        }),
+        summaryCacheRef.current.load(
+          JSON.stringify([currentRole, search, segment, lastVisit, source]),
+          () => CoreClientService.directorySummary(search, { segment, lastVisit, source }),
+          refreshSummary
+        ),
       ]);
 
       if (generation !== requestGenerationRef.current) return;
@@ -198,6 +202,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     }
   }, [
     canViewClients,
+    currentRole,
     deferredQuery,
     segment,
     language,
@@ -290,7 +295,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
     setError("");
 
     try {
-      await loadData();
+      await loadData(true);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -406,17 +411,17 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
   return (
     <main className="dsv2-page dsv2-customers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
       <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={totalClients} language={language} />
-      <CustomersSearchToolbar language={language} query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={() => void exportCustomers()} onRefresh={() => void loadData()} />
+      <CustomersSearchToolbar language={language} query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={() => void exportCustomers()} onRefresh={() => void loadData(true)} />
       <CustomersFilters language={language} segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
       <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} language={language} />
 
       {error && !fatalError ? (
         <div className="dsv2-customers-alert dsv2-customers-alert--error" role="alert">
           <span>{error}</span>
-          <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData()}>{t("إعادة المحاولة")}</button>
+          <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData(true)}>{t("إعادة المحاولة")}</button>
         </div>
       ) : null}
-      {fatalError ? <CustomersEmptyState language={language} kind="error" message={error} onPrimary={() => void loadData()} /> : null}
+      {fatalError ? <CustomersEmptyState language={language} kind="error" message={error} onPrimary={() => void loadData(true)} /> : null}
       {noData ? <CustomersEmptyState language={language} kind="empty" canImport={canImport} onPrimary={() => navigate("/dashboard/booking-internal")} onImport={() => setImportOpen(true)} /> : null}
       {noResults ? <CustomersEmptyState language={language} kind="no-results" onPrimary={clearFilters} /> : null}
       {!fatalError && !noData && !noResults ? (
@@ -456,7 +461,7 @@ export default function DashboardClients({ currentRole = "guest", language = "ar
         onClose={() => setImportOpen(false)}
         onImported={async () => {
           setError("");
-          await loadData();
+          await loadData(true);
         }}
       />
       {copyToast ? <div className="dsv2-customers-copy-toast" role="status">{copyToast}</div> : null}
