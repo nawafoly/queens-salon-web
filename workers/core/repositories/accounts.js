@@ -245,8 +245,12 @@ export async function getActiveEmployeeLink(db, salonId, userId) {
 async function getRolePermissions(db, salonId, role) {
   const normalizedRole = normalizeAccountRole(role, 'guest');
   if (normalizedRole === 'owner') {
-    const all = await getPermissionCatalog(db);
-    return all.map((row) => row.permission_key);
+    // Permission keys are the authorization source. Fetch from their PRIMARY KEY
+    // covering index instead of loading labels/descriptions and sorting by group
+    // on every authenticated owner request. Do not cache: new/revoked catalogue
+    // permissions must take effect immediately.
+    const rows = await dbAll(db, 'SELECT permission_key FROM permissions ORDER BY permission_key');
+    return rows.map((row) => row.permission_key);
   }
   const rows = await dbAll(
     db,

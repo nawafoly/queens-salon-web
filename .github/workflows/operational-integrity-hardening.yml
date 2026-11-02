@@ -38,6 +38,9 @@ jobs:
       - name: Read-only D1 Insights profiling regression
         run: node --test workers/d1-insights-read-cost.test.mjs
 
+      - name: Owner permission index and revocation regression
+        run: node --test workers/owner-permission-d1-covering-index.test.mjs
+
       - name: Attendance Worker syntax guard
         run: node --check workers/attendance-worker.js
 
