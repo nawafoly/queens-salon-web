@@ -480,8 +480,12 @@ class FakeD1 {
     if (normalized === "SELECT * FROM permissions ORDER BY group_key, permission_key") {
       return this.rows("permissions").sort((a, b) => `${a.group_key}\u0000${a.permission_key}`.localeCompare(`${b.group_key}\u0000${b.permission_key}`));
     }
-    if (normalized === "SELECT permission_key FROM permissions") {
-      return this.rows("permissions").map((row) => ({ permission_key: row.permission_key }));
+    if (normalized === "SELECT permission_key FROM permissions" ||
+        normalized === "SELECT permission_key FROM permissions ORDER BY permission_key") {
+      const rows = this.rows("permissions").map((row) => ({ permission_key: row.permission_key }));
+      return normalized.endsWith("ORDER BY permission_key")
+        ? rows.sort((a, b) => a.permission_key.localeCompare(b.permission_key))
+        : rows;
     }
     if (normalized === "SELECT COUNT(*) AS count FROM permissions") {
       return [{ count: this.rows("permissions").length }];
