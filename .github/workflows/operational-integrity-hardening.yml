@@ -41,6 +41,9 @@ jobs:
       - name: Owner permission index and revocation regression
         run: node --test workers/owner-permission-d1-covering-index.test.mjs
 
+      - name: Client directory summary request coalescing regression
+        run: node --test workers/short-lived-request-cache.test.mjs
+
       - name: Attendance Worker syntax guard
         run: node --check workers/attendance-worker.js
 
