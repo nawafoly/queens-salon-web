@@ -2099,6 +2099,35 @@ async function reconcileAdminAttendancePayroll({
   );
 }
 
+/**
+ * Maintain per-employee materialized device usage after privileged edits and
+ * deletions, in the same D1 batch. Normal punches already update this registry.
+ * The existing attendance_records(employee_uid, server_time) index limits the
+ * exceptional recalculation to the edited employee rather than all punches.
+ */
+export function attendanceDeviceAssignmentReconcileStatements(employeeUid, updatedAt) {
+  const match = `r.employee_uid = attendance_device_assignments.employee_uid
+       AND json_valid(r.device_info) = 1
+       AND trim(json_extract(r.device_info, '$.deviceId')) = attendance_device_assignments.device_id`;
+  return [
+    {
+      sql: `UPDATE attendance_device_assignments
+        SET first_seen_at = COALESCE((SELECT MIN(r.server_time) FROM attendance_records r WHERE ${match}), first_seen_at),
+            last_seen_at = COALESCE((SELECT MAX(r.server_time) FROM attendance_records r WHERE ${match}), last_seen_at),
+            records_count = (SELECT COUNT(*) FROM attendance_records r WHERE ${match}),
+            allowed_count = (SELECT COUNT(*) FROM attendance_records r WHERE ${match} AND r.result = 'allowed'),
+            rejected_count = (SELECT COUNT(*) FROM attendance_records r WHERE ${match} AND r.result = 'rejected'),
+            updated_at = ?
+        WHERE employee_uid = ?`,
+      params: [updatedAt, employeeUid],
+    },
+    {
+      sql: 'DELETE FROM attendance_device_assignments WHERE employee_uid = ? AND records_count = 0',
+      params: [employeeUid],
+    },
+  ];
+}
+
 export async function adjustAttendanceRecords(request, db, directoryDb, salonId, requester) {
   const input = await readJsonBody(request);
   if (!input.ok) return input.response;
@@ -2380,6 +2409,11 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       );
     }
 
+    if (statements.length) {
+      for (const { sql, params } of attendanceDeviceAssignmentReconcileStatements(employeeUid, now)) {
+        statements.push(db.prepare(sql).bind(...params));
+      }
+    }
     const batchResults = statements.length ? await db.batch(statements) : [];
     const clearedRecords =
       deleteResultIndex >= 0
@@ -2560,6 +2594,9 @@ export async function clearAttendanceRecordsForDay({
              AND COALESCE(work_date, date(server_time, '+3 hours')) = ?`
         )
         .bind(employeeUid, ...idsToClear, date),
+      ...attendanceDeviceAssignmentReconcileStatements(employeeUid, now).map(({ sql, params }) =>
+        db.prepare(sql).bind(...params)
+      ),
     ]);
 
     const result = results[1];
