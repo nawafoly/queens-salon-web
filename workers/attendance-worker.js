@@ -1428,12 +1428,13 @@ async function listAttendanceRecords(
       db
         .prepare(
           `
-          // The canonical device registry is maintained on each punch and
-          // backfilled by attendance migration 0005. Do not group/scan all
-          // attendance_records just to count today's new devices.
+          -- The canonical device registry is maintained on each punch and
+          -- backfilled by attendance migration 0005. Avoid ledger-wide grouping.
           SELECT COUNT(*) AS new_devices
           FROM attendance_devices
           WHERE first_seen_at >= ? AND first_seen_at < ?
+        `
+        )
         .bind(today.start, today.end),
     ]);
 
