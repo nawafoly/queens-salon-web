@@ -1066,7 +1066,8 @@ async function getAttendanceSecurityDashboard(url, db, directoryDb) {
           SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
           AVG(CASE WHEN location_accuracy > 0 THEN location_accuracy ELSE NULL END) AS average_accuracy
         FROM attendance_records
-        WHERE server_time >= ? AND server_time < ?
+        WHERE result IN ('allowed', 'rejected')
+          AND server_time >= ? AND server_time < ?
       `).bind(today.start, today.end),
       db.prepare(`SELECT COUNT(*) AS checked_in FROM attendance_state WHERE status = 'checked_in'`),
       db.prepare(`SELECT COUNT(*) AS new_devices FROM attendance_devices WHERE first_seen_at >= ? AND first_seen_at < ?`).bind(today.start, today.end),
@@ -1421,28 +1422,19 @@ async function listAttendanceRecords(
             SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
             AVG(CASE WHEN location_accuracy > 0 THEN location_accuracy ELSE NULL END) AS average_accuracy
           FROM attendance_records
-          WHERE server_time >= ? AND server_time < ?
+          WHERE result IN ('allowed', 'rejected')
+            AND server_time >= ? AND server_time < ?
         `
         )
         .bind(today.start, today.end),
       db
         .prepare(
           `
+          -- The canonical device registry is maintained on each punch and
+          -- backfilled by attendance migration 0005. Avoid ledger-wide grouping.
           SELECT COUNT(*) AS new_devices
-          FROM (
-            SELECT
-              trim(json_extract(device_info, '$.deviceId')) AS device_id,
-              MIN(
-                COALESCE(
-                  NULLIF(trim(json_extract(device_info, '$.firstSeenAt')), ''),
-                  server_time
-                )
-              ) AS first_seen_at
-            FROM attendance_records
-            WHERE length(trim(coalesce(json_extract(device_info, '$.deviceId'), ''))) > 0
-            GROUP BY trim(json_extract(device_info, '$.deviceId'))
-            HAVING first_seen_at >= ? AND first_seen_at < ?
-          )
+          FROM attendance_devices
+          WHERE first_seen_at >= ? AND first_seen_at < ?
         `
         )
         .bind(today.start, today.end),
