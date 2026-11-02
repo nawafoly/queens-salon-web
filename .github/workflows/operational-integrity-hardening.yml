@@ -38,6 +38,9 @@ jobs:
       - name: Read-only D1 Insights profiling regression
         run: node --test workers/d1-insights-read-cost.test.mjs
 
+      - name: Attendance device summary read-cost regression
+        run: node --test workers/attendance-device-summary-readcost.test.mjs
+
       - name: Fixed interval polling guard
         run: node scripts/check-fixed-interval-polling.mjs
 
