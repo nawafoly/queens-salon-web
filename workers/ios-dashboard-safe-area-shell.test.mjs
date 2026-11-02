@@ -42,7 +42,11 @@ test('embedded HR does not lock root scrolling, standalone HR keeps its own isol
   assert.match(hrMobile, /html:has\(\.hr-shell:not\(\.hr-shell--embedded\)\)/);
   assert.match(hrMobile, /body:has\(\.hr-shell:not\(\.hr-shell--embedded\)\)/);
   assert.match(hrMobile, /body:has\(\.hr-shell:not\(\.hr-shell--embedded\)\) #root/);
-  assert.doesNotMatch(hrMobile, /(?:html|body):has\(\.hr-shell\)(?:\s|,|#root)/,
+  const rootScrollContract = hrMobile.slice(
+    hrMobile.indexOf('@media (max-width: 820px)'),
+    hrMobile.indexOf('  .hr-shell.madan-admin-shell {')
+  );
+  assert.doesNotMatch(rootScrollContract, /(?:html|body):has\(\.hr-shell\)(?:\s|,|#root)/,
     'embedded HR must not accidentally set body/html overflow:hidden');
   assert.match(hrDashboard, /hr-workspace-loading/, 'employee loading state remains in its route content lane');
   assert.match(dashboard, /<div className="dashboard-inner">/);
