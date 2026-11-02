@@ -1428,23 +1428,12 @@ async function listAttendanceRecords(
       db
         .prepare(
           `
+          // The canonical device registry is maintained on each punch and
+          // backfilled by attendance migration 0005. Do not group/scan all
+          // attendance_records just to count today's new devices.
           SELECT COUNT(*) AS new_devices
-          FROM (
-            SELECT
-              trim(json_extract(device_info, '$.deviceId')) AS device_id,
-              MIN(
-                COALESCE(
-                  NULLIF(trim(json_extract(device_info, '$.firstSeenAt')), ''),
-                  server_time
-                )
-              ) AS first_seen_at
-            FROM attendance_records
-            WHERE length(trim(coalesce(json_extract(device_info, '$.deviceId'), ''))) > 0
-            GROUP BY trim(json_extract(device_info, '$.deviceId'))
-            HAVING first_seen_at >= ? AND first_seen_at < ?
-          )
-        `
-        )
+          FROM attendance_devices
+          WHERE first_seen_at >= ? AND first_seen_at < ?
         .bind(today.start, today.end),
     ]);
 
