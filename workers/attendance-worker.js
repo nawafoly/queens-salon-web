@@ -1511,16 +1511,18 @@ async function loadSharedDeviceUsage(db, directoryDb, rawDeviceIds) {
     const result = await db
       .prepare(
         `
+        -- Security migration 0005 backfills this registry; each punch
+        -- maintains its per-device/employee counters. The ledger-wide
+        -- json_extract/GROUP BY query on every list request is unnecessary.
         SELECT
-          trim(json_extract(device_info, '$.deviceId')) AS device_id,
+          device_id,
           employee_uid,
-          MAX(server_time) AS last_seen_at,
-          MIN(server_time) AS first_seen_at,
-          COUNT(*) AS records_count
-        FROM attendance_records
-        WHERE trim(json_extract(device_info, '$.deviceId')) IN (${placeholders})
+          last_seen_at,
+          first_seen_at,
+          records_count
+        FROM attendance_device_assignments
+        WHERE device_id IN (${placeholders})
           AND length(trim(coalesce(employee_uid, ''))) > 0
-        GROUP BY trim(json_extract(device_info, '$.deviceId')), employee_uid
         ORDER BY device_id ASC, last_seen_at DESC
       `
       )
