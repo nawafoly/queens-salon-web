@@ -49,3 +49,30 @@ test("registry summary preserves distinct first-seen device count without scanni
     db.close();
   }
 });
+
+
+test("daily attendance aggregates use existing result-time index without excluding valid punches", () => {
+  const securityStart = source.indexOf("async function", source.indexOf("SELECT COUNT(*) AS checked_in"));
+  // Both daily aggregates must constrain result, enabling the existing (result, server_time) index.
+  const indexPredicates = source.match(/WHERE result IN \('allowed', 'rejected'\)\s+AND server_time >= \? AND server_time < \?/g) || [];
+  assert.equal(indexPredicates.length, 2);
+
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE attendance_records (id INTEGER PRIMARY KEY, result TEXT NOT NULL CHECK (result IN ('allowed','rejected')), type TEXT NOT NULL, server_time TEXT NOT NULL, location_accuracy REAL NOT NULL)");
+    db.exec("CREATE INDEX idx_attendance_records_result_time ON attendance_records(result,server_time DESC)");
+    const insert = db.prepare("INSERT INTO attendance_records(result,type,server_time,location_accuracy) VALUES(?,?,?,?)");
+    const before = "2026-11-01T10:00:00.000Z", today = "2026-11-02T10:00:00.000Z";
+    for (let i = 0; i < 1000; i++) insert.run(i % 4 === 0 ? "rejected" : "allowed", i % 2 === 0 ? "check_in" : "check_out", i < 10 ? today : before, 10);
+    const start = "2026-11-02T00:00:00.000Z", end = "2026-11-03T00:00:00.000Z";
+    const measure = "SELECT COUNT(*) AS total, SUM(CASE WHEN type='check_in' THEN 1 ELSE 0 END) AS ins, SUM(CASE WHEN result='rejected' THEN 1 ELSE 0 END) AS rejected, AVG(location_accuracy) AS accuracy FROM attendance_records";
+    const previous = db.prepare(measure + " WHERE server_time >= ? AND server_time < ?").get(start,end);
+    const optimizedSql = measure + " WHERE result IN ('allowed','rejected') AND server_time >= ? AND server_time < ?";
+    const optimized = db.prepare(optimizedSql).get(start,end);
+    assert.deepEqual({ ...optimized }, { ...previous });
+    const plan = db.prepare("EXPLAIN QUERY PLAN " + optimizedSql).all(start,end);
+    assert.ok(plan.some((row) => String(row.detail).includes("SEARCH attendance_records USING INDEX idx_attendance_records_result_time")), JSON.stringify(plan));
+  } finally {
+    db.close();
+  }
+});
