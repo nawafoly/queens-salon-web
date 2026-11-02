@@ -35,6 +35,9 @@ jobs:
       - name: Verify Firebase Functions TypeScript
         run: npm --prefix functions run build
 
+      - name: Read-only D1 Insights profiling regression
+        run: node --test workers/d1-insights-read-cost.test.mjs
+
       - name: Fixed interval polling guard
         run: node scripts/check-fixed-interval-polling.mjs
 
