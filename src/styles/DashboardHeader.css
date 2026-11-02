@@ -518,6 +518,8 @@
     width: auto !important;
     z-index: 1200 !important;
     margin: 0 !important;
+    /* The safe inset is outside the bar, not additional internal padding. */
+    padding: 10px 16px !important;
   }
 
   /*
