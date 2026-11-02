@@ -98,8 +98,8 @@ if (process.argv[1] && resolve(process.argv[1]) === ownFile) {
   try {
     const [first, second] = process.argv.slice(2);
     if (!first || !second) throw new Error('USAGE: node scripts/compare-d1-read-cost.mjs BASELINE.json FOLLOWUP.json');
-    const baseline = JSON.parse(readFileSync(first, 'utf8'));
-    const followup = JSON.parse(readFileSync(second, 'utf8'));
+    const baseline = JSON.parse(readFileSync(first, 'utf8').replace(/^\uFEFF/, ''));
+    const followup = JSON.parse(readFileSync(second, 'utf8').replace(/^\uFEFF/, ''));
     process.stdout.write(JSON.stringify(compareProfiles(baseline, followup), null, 2) + '\n');
   } catch (error) {
     // Neither paths nor contents should leak account data in errors.
