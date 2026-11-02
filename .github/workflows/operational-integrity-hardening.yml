@@ -50,6 +50,9 @@ jobs:
       - name: Attendance device summary read-cost regression
         run: node --test workers/attendance-device-summary-readcost.test.mjs
 
+      - name: Attendance per-device registry read-cost regression
+        run: node --test workers/attendance-device-usage-readcost.test.mjs
+
       - name: Fixed interval polling guard
         run: node scripts/check-fixed-interval-polling.mjs
 
