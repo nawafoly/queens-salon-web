@@ -499,17 +499,37 @@
 }
 
 @media (max-width: 991.98px) {
+  /*
+   * iOS standalone uses viewport-fit=cover + black-translucent status bar.
+   * The fixed dashboard header must start BELOW the native status/Dynamic
+   * Island zone, and the page must reserve the exact same offset.
+   * This contract is shared by all /dashboard routes, including embedded HR
+   * employee loading states, instead of patching individual pages.
+   */
+  .dashboard-skin.madan-admin-shell.dashboard-page {
+    --dashboard-mobile-header-top: calc(8px + env(safe-area-inset-top, 0px));
+    --dashboard-mobile-content-top: calc(96px + env(safe-area-inset-top, 0px));
+  }
+
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header.dashboard-header--dashboard {
     position: fixed !important;
-    top: 8px !important;
+    top: var(--dashboard-mobile-header-top) !important;
     inset-inline: 8px !important;
     width: auto !important;
     z-index: 1200 !important;
     margin: 0 !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
-    padding-top: 96px !important;
+  /*
+   * More specific than AdminDashboardShell's max-width:767px padding
+   * shorthand, which otherwise resets padding-top to zero and lets the
+   * entire page (including HR loading cards) slide behind the fixed bar.
+   */
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    > .container-fluid
+    > .row
+    > .dashboard-main {
+    padding-top: var(--dashboard-mobile-content-top) !important;
   }
 
   .employee-portal.madan-employee-portal .dashboard-header.employee-workspace-header--desktop,
