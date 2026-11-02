@@ -57,13 +57,13 @@ export function summarize(rows) {
 function live(database, sort, period) {
   const cli = resolve(root, 'node_modules/wrangler/bin/wrangler.js');
   if (!existsSync(cli)) throw new Error('WRANGLER_NOT_INSTALLED_RUN_NPM_CI');
-  const command = [cli, 'd1', 'insights', database, \`--time-period=\${period}\`,
-    \`--sort-by=\${sort[0]}\`, \`--sort-type=\${sort[1]}\`, '--limit=100', '--json'];
+  const command = [cli, 'd1', 'insights', database, `--time-period=${period}`,
+    `--sort-by=${sort[0]}`, `--sort-type=${sort[1]}`, '--limit=100', '--json'];
   const response = spawnSync(process.execPath, command,
     { cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
   if (response.error || response.status !== 0) {
     // Do not echo Wrangler stderr: it may contain account details.
-    throw new Error(\`INSIGHTS_FAILED:\${database}:\${sort[0]}:exit=\${response.status ?? 'error'}\`);
+    throw new Error(`INSIGHTS_FAILED:${database}:${sort[0]}:exit=${response.status ?? 'error'}`);
   }
   return parseInsights(response.stdout);
 }
