@@ -1066,7 +1066,8 @@ async function getAttendanceSecurityDashboard(url, db, directoryDb) {
           SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
           AVG(CASE WHEN location_accuracy > 0 THEN location_accuracy ELSE NULL END) AS average_accuracy
         FROM attendance_records
-        WHERE server_time >= ? AND server_time < ?
+        WHERE result IN ('allowed', 'rejected')
+          AND server_time >= ? AND server_time < ?
       `).bind(today.start, today.end),
       db.prepare(`SELECT COUNT(*) AS checked_in FROM attendance_state WHERE status = 'checked_in'`),
       db.prepare(`SELECT COUNT(*) AS new_devices FROM attendance_devices WHERE first_seen_at >= ? AND first_seen_at < ?`).bind(today.start, today.end),
@@ -1421,7 +1422,8 @@ async function listAttendanceRecords(
             SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
             AVG(CASE WHEN location_accuracy > 0 THEN location_accuracy ELSE NULL END) AS average_accuracy
           FROM attendance_records
-          WHERE server_time >= ? AND server_time < ?
+          WHERE result IN ('allowed', 'rejected')
+            AND server_time >= ? AND server_time < ?
         `
         )
         .bind(today.start, today.end),
