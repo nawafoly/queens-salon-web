@@ -6,6 +6,8 @@ export type InventoryConsumptionPolicy =
   | "DIRECT_SALE"
   | "SHARED_OPERATIONAL";
 
+export type InventoryDisposalType = "WASTE_OUT" | "DAMAGED_OUT" | "EXPIRED_OUT";
+
 export type InventoryItem = {
   id: string;
   salon_id: string;
@@ -244,7 +246,7 @@ export const CoreInventoryService = {
   transferStock(input: { itemId: string; quantity: number; fromLocationId: string; toLocationId: string; note?: string }) {
     return coreApiRequest("/api/core/inventory/transfer", { method: "POST", body: input });
   },
-  recordWaste(input: { itemId: string; quantity: number; note?: string; locationId?: string }) {
+  recordWaste(input: { itemId: string; quantity: number; movementType?: InventoryDisposalType; note?: string; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },
   adjustAfterStocktake(input: { itemId: string; countedQty: number; note?: string }) {

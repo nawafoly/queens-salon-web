@@ -8,7 +8,7 @@ import {
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
-import { CoreInventoryService, type InventoryItem } from "../services/CoreInventoryService";
+import { CoreInventoryService, type InventoryDisposalType, type InventoryItem } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 
 function errorMessage(error: unknown) {
@@ -39,6 +39,8 @@ export default function DashboardInventoryOps() {
   const [toLocationId, setToLocationId] = useState("");
   const [transferQty, setTransferQty] = useState("1");
   const [wasteQty, setWasteQty] = useState("1");
+  const [disposalType, setDisposalType] = useState<InventoryDisposalType>("WASTE_OUT");
+  const [disposalNote, setDisposalNote] = useState("");
   const [countedQty, setCountedQty] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
@@ -86,13 +88,15 @@ export default function DashboardInventoryOps() {
       await CoreInventoryService.recordWaste({
         itemId,
         quantity: Number(wasteQty),
-        note: "UI waste",
+        movementType: disposalType,
+        note: disposalNote.trim() || undefined,
         locationId: wasteLocationId || undefined,
       });
       setOperationFeedback("waste", {
         tone: "success",
-        message: "تم تسجيل الهدر وخصم الكمية من الدفتر.",
+        message: "تم تسجيل الاستبعاد وخصم الكمية من دفتر المخزون.",
       });
+      setDisposalNote("");
     } catch (err) {
       setOperationFeedback("waste", { tone: "danger", message: errorMessage(err) });
     } finally {
@@ -150,30 +154,44 @@ export default function DashboardInventoryOps() {
 
   return (
     <div>
-      <p className="text-muted">الهدر يخصم مباشرة. الجرد يسجل الفرق. التحويل يحتاج موقعين مختلفين.</p>
+      <p className="text-muted">استبعاد الهدر والتالف والمنتهي يسجل حركة خصم. الجرد يسجل الفرق، والتحويل يحتاج موقعين مختلفين.</p>
       <DashboardFieldV2 id="inv-ops-item" label="المادة">
         <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: item.name }))} onChange={setItemId} />
       </DashboardFieldV2>
       <div className="border rounded p-3 mb-3">
-        <h3 className="h6">هدر</h3>
+        <h3 className="h6">استبعاد مادة من المخزون</h3>
+        <DashboardFieldV2 id="inv-disposal-type" label="سبب الاستبعاد">
+          <DashboardSelectV2
+            value={disposalType}
+            options={[
+              { value: "WASTE_OUT", label: "هدر" },
+              { value: "DAMAGED_OUT", label: "تالف" },
+              { value: "EXPIRED_OUT", label: "منتهي الصلاحية" },
+            ]}
+            onChange={(value) => setDisposalType(value as InventoryDisposalType)}
+          />
+        </DashboardFieldV2>
         <DashboardFieldV2 id="inv-waste-loc" label="الموقع">
           <DashboardSelectV2 value={wasteLocationId} options={locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))} onChange={setWasteLocationId} />
         </DashboardFieldV2>
-        <DashboardFieldV2 id="inv-waste-qty" label="الكمية الهالكة">
+        <DashboardFieldV2 id="inv-waste-qty" label="الكمية المستبعدة">
           <DashboardNumberInputV2 value={wasteQty} onChange={(e) => setWasteQty(e.target.value)} />
+        </DashboardFieldV2>
+        <DashboardFieldV2 id="inv-disposal-note" label="ملاحظة (اختياري)">
+          <input className="form-control" value={disposalNote} onChange={(event) => setDisposalNote(event.target.value)} placeholder="سبب إضافي أو رقم التشغيلة إن وجد" />
         </DashboardFieldV2>
         {feedback.waste ? (
           <DashboardActionFeedbackV2
             compact
             revealOnMount
             tone={feedback.waste.tone}
-            title={feedback.waste.tone === "success" ? "تم تسجيل الهدر" : "تعذر تسجيل الهدر"}
+            title={feedback.waste.tone === "success" ? "تم تسجيل الاستبعاد" : "تعذر تسجيل الاستبعاد"}
             description={feedback.waste.message}
           />
         ) : null}
         {canWaste ? (
-          <button type="button" className="btn btn-dark" disabled={!!saving || !itemId} onClick={() => void runWaste()}>
-            {saving === "waste" ? "جاري التسجيل..." : "تسجيل هدر"}
+          <button type="button" className="btn btn-dark" disabled={!!saving || !itemId || !(Number(wasteQty) > 0)} onClick={() => void runWaste()}>
+            {saving === "waste" ? "جاري التسجيل..." : "تسجيل الاستبعاد"}
           </button>
         ) : <p className="text-muted">لا توجد صلاحية هدر.</p>}
       </div>

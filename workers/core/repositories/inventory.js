@@ -2019,7 +2019,16 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
 }
 
 
+export function normalizeDisposalMovementType(value) {
+  const requested = cleanText(value || 'WASTE_OUT').toUpperCase();
+  if (!['WASTE_OUT', 'DAMAGED_OUT', 'EXPIRED_OUT'].includes(requested)) {
+    throw new AppError(400, 'inventory:invalid_disposal_type', 'Unsupported disposal movement type');
+  }
+  return requested;
+}
+
 export async function recordWaste(db, salonId, data, actor = {}) {
+  const movementType = normalizeDisposalMovementType(preferred(data, 'movementType', 'movement_type'));
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
   const quantity = Number(preferred(data, 'quantity', 'qty'));
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -2036,7 +2045,7 @@ export async function recordWaste(db, salonId, data, actor = {}) {
   return appendMovement(db, salonId, {
     itemId,
     locationId: location.id,
-    movementType: 'WASTE_OUT',
+    movementType,
     quantityDelta: -quantity,
     unitCostHalalas: fifo.unitCostHalalas,
     unit: item.unit,
@@ -2044,7 +2053,11 @@ export async function recordWaste(db, salonId, data, actor = {}) {
     sourceId: operationId,
     lineKey: itemId,
     operationId,
-    note: optionalText(data.note) || 'Waste recorded',
+    note: optionalText(data.note) || {
+      WASTE_OUT: 'Waste recorded',
+      DAMAGED_OUT: 'Damaged item recorded',
+      EXPIRED_OUT: 'Expired item recorded',
+    }[movementType],
   }, actor);
 }
 
