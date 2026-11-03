@@ -86,6 +86,12 @@ export type InventoryConsumptionCostReport = {
   summary: Pick<InventoryCostBreakdown, "confirmations" | "known_cost_halalas" | "uncosted_confirmations">;
   by_service: InventoryCostBreakdown[];
   by_employee: InventoryCostBreakdown[];
+  uncosted_items: Array<{
+    id: string;
+    name: string;
+    affected_confirmations: number;
+    uncosted_lines: number;
+  }>;
 };
 
 export type InventoryItemInput = {

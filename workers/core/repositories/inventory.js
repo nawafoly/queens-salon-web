@@ -1083,6 +1083,23 @@ export async function getInventoryConsumptionCostReport(db, salonId, query = {},
     [salonId, utcStart, utcEndExclusive]
   );
 
+  const uncostedItems = await dbAll(
+    db,
+    `SELECT l.inventory_item_id AS id, COALESCE(i.name, l.inventory_item_id) AS name,
+            COUNT(DISTINCT sc.id) AS affected_confirmations, COUNT(*) AS uncosted_lines
+       FROM service_consumption_lines l
+       JOIN service_consumptions sc
+         ON sc.id = l.consumption_id AND sc.salon_id = l.salon_id
+       LEFT JOIN inventory_items i
+         ON i.id = l.inventory_item_id AND i.salon_id = l.salon_id
+      WHERE sc.salon_id = ? AND sc.status = 'confirmed'
+        AND sc.confirmed_at >= ? AND sc.confirmed_at < ?
+        AND l.unit_cost_halalas IS NULL
+      GROUP BY l.inventory_item_id
+      ORDER BY uncosted_lines DESC, name`,
+    [salonId, utcStart, utcEndExclusive]
+  );
+
   const byService = new Map();
   const byEmployee = new Map();
   const total = { confirmations: 0, known_cost_halalas: 0, uncosted_confirmations: 0 };
@@ -1110,6 +1127,7 @@ export async function getInventoryConsumptionCostReport(db, salonId, query = {},
     summary: total,
     by_service: sorted(byService),
     by_employee: sorted(byEmployee),
+    uncosted_items: uncostedItems,
   };
 }
 

@@ -15,17 +15,19 @@ function testDatabase() {
       confirmed_at TEXT, total_material_cost_halalas INTEGER
     );
     CREATE TABLE service_consumption_lines (
-      id TEXT, salon_id TEXT, consumption_id TEXT, unit_cost_halalas INTEGER
+      id TEXT, salon_id TEXT, consumption_id TEXT, inventory_item_id TEXT, unit_cost_halalas INTEGER
     );
+    CREATE TABLE inventory_items (id TEXT, salon_id TEXT, name TEXT);
   `);
   const run = (sql, ...args) => sqlite.prepare(sql).run(...args);
   run('INSERT INTO services VALUES (?, ?, ?)', 'cut', 'main', 'قص شعر');
   run('INSERT INTO services VALUES (?, ?, ?)', 'color', 'main', 'صبغة');
   run('INSERT INTO staff VALUES (?, ?, ?)', 's1', 'main', 'الموظفة الأولى');
   run('INSERT INTO staff VALUES (?, ?, ?)', 's2', 'main', 'الموظفة الثانية');
+  run('INSERT INTO inventory_items VALUES (?, ?, ?)', 'cream', 'main', 'كريم');
   const add = (id, salon, service, employee, status, at, cost, lineCost) => {
     run('INSERT INTO service_consumptions VALUES (?, ?, ?, ?, ?, ?, ?)', id, salon, service, employee, status, at, cost);
-    run('INSERT INTO service_consumption_lines VALUES (?, ?, ?, ?)', `l_${id}`, salon, id, lineCost);
+    run('INSERT INTO service_consumption_lines VALUES (?, ?, ?, ?, ?)', `l_${id}`, salon, id, 'cream', lineCost);
   };
   // Saudi November 3 starts at November 2, 21:00 UTC.
   add('a', 'main', 'cut', 's1', 'confirmed', '2026-11-02T21:00:00.000Z', 550, 55);
@@ -54,6 +56,9 @@ test('cost report uses Saudi-day boundaries and confirmed tenant-scoped actual c
     });
     assert.equal(report.by_employee.find(row => row.id === 's1').known_cost_halalas, 1300);
     assert.equal(report.by_employee.find(row => row.id === 's2').uncosted_confirmations, 1);
+    assert.deepEqual(report.uncosted_items.map((row) => ({ ...row })), [{
+      id: 'cream', name: 'كريم', affected_confirmations: 1, uncosted_lines: 1,
+    }]);
   } finally { db.close(); }
 });
 

@@ -119,6 +119,32 @@ export default function DashboardInventoryCosts() {
               إجمالي التكلفة المسجلة ليس التكلفة النهائية؛ توجد عمليات تشمل مواد بلا تكلفة معتمدة.
             </div>
           ) : null}
+          {report.uncosted_items.length > 0 ? (
+            <section className="dsv2-card dsv2-card--padded" aria-label="مواد تحتاج مراجعة التكلفة">
+              <h3 className="h6 mb-2">مواد تحتاج تسجيل تكلفة شراء</h3>
+              <p className="small text-muted mb-3">هذه المواد ظهرت في استهلاك مؤكد دون تكلفة وحدة موثوقة وقت التأكيد. تحديث الأسعار مستقبلًا لا يعيد احتساب سجلات الماضي تلقائيًا.</p>
+              <div className="table-responsive">
+                <table className="table align-middle">
+                  <thead>
+                    <tr>
+                      <th scope="col">المادة</th>
+                      <th scope="col">تأكيدات متأثرة</th>
+                      <th scope="col">سطور بلا تكلفة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.uncosted_items.map((item) => (
+                      <tr key={item.id}>
+                        <th scope="row">{item.name}</th>
+                        <td>{item.affected_confirmations}</td>
+                        <td>{item.uncosted_lines}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
           <div className="d-grid gap-3">
             <CostBreakdown title="التكلفة حسب الخدمة" rows={report.by_service} />
             <CostBreakdown title="التكلفة حسب الموظفة" rows={report.by_employee} />
