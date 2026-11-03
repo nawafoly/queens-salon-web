@@ -51,6 +51,13 @@ export type InventoryLocation = {
   active?: number;
 };
 
+export type InventoryStaffLocation = {
+  employee_id: string;
+  employee_name: string;
+  location_id: string | null;
+  location_name: string | null;
+};
+
 export type InventoryMovement = {
   location_id?: string;
   location_name?: string;
@@ -237,6 +244,14 @@ export const CoreInventoryService = {
   },
   listLocations() {
     return coreApiRequest("/api/core/inventory/locations");
+  },
+  listStaffHomeLocations() {
+    return coreApiRequest<InventoryStaffLocation[]>("/api/core/inventory/staff-home-locations");
+  },
+  setStaffHomeLocation(input: { employeeId: string; locationId: string }) {
+    return coreApiRequest<{ employeeId: string; locationId: string }>(
+      "/api/core/inventory/staff-home-locations", { method: "POST", body: input }
+    );
   },
   createLocation(input: { name: string }) {
     return coreApiRequest("/api/core/inventory/locations", { method: "POST", body: input });

@@ -659,8 +659,20 @@ async function resolveStaffHomeLocationId(db, salonId, employeeId) {
 export async function setStaffHomeLocation(db, salonId, data, actor = {}) {
   const employeeId = requiredId(preferred(data, "employeeId", "employee_id"), "employeeId");
   const locationId = requiredId(preferred(data, "locationId", "location_id"), "locationId");
-  const loc = await dbFirst(db, "SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, locationId]);
+  const employee = await dbFirst(
+    db, "SELECT id, active FROM staff WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, employeeId]
+  );
+  if (!employee) throw new AppError(404, "inventory:employee_not_found", "Employee was not found");
+  if (Number(employee.active) !== 1) {
+    throw new AppError(409, "inventory:employee_inactive", "Employee is inactive");
+  }
+  const loc = await dbFirst(
+    db, "SELECT id, active FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, locationId]
+  );
   if (!loc) throw new AppError(404, "inventory:location_not_found", "Location was not found");
+  if (Number(loc.active) !== 1) {
+    throw new AppError(409, "inventory:location_inactive", "Location is inactive");
+  }
   await dbRun(
     db,
     `INSERT INTO inventory_staff_locations (salon_id, employee_id, location_id, updated_at)
@@ -669,6 +681,22 @@ export async function setStaffHomeLocation(db, salonId, data, actor = {}) {
     [salonId, employeeId, locationId, nowIso()]
   );
   return { employeeId, locationId };
+}
+
+export async function listStaffHomeLocations(db, salonId) {
+  return dbAll(
+    db,
+    `SELECT s.id AS employee_id, s.name AS employee_name,
+            isl.location_id, l.name AS location_name
+       FROM staff s
+       LEFT JOIN inventory_staff_locations isl
+         ON isl.employee_id = s.id AND isl.salon_id = s.salon_id
+       LEFT JOIN inventory_locations l
+         ON l.id = isl.location_id AND l.salon_id = s.salon_id
+      WHERE s.salon_id = ? AND s.active = 1
+      ORDER BY s.name, s.id LIMIT 2000`,
+    [salonId]
+  );
 }
 
 export async function getStaffHomeLocation(db, salonId, employeeId) {

@@ -110,6 +110,7 @@ import {
   listLocations as listInventoryLocations,
   ensureDefaultLocation,
   setStaffHomeLocation,
+  listStaffHomeLocations,
   getStaffHomeLocation,
   createLocation,
   listStockLevels,
@@ -1074,6 +1075,7 @@ function match(url, method) {
   const invItem = /^\/api\/core\/inventory\/items\/([^/]+)$/.exec(path);
   if (invItem) return { name: "inventory:item", id: invItem[1] };
   if (path === "/api/core/inventory/locations") return { name: "inventory:locations" };
+  if (path === "/api/core/inventory/staff-home-locations") return { name: "inventory:staff-home-locations" };
   if (path === "/api/core/inventory/stock-levels") return { name: "inventory:stock-levels" };
   if (path === "/api/core/inventory/movements") return { name: "inventory:movements" };
   if (path === "/api/core/inventory/opening-balance" && method === "POST") {
@@ -3607,11 +3609,16 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
-    case "inventory:staff-home-location": {
-      requirePermission(actorInfo, "inventory.locations.manage");
-      const saved = await setStaffHomeLocation(env.D1, tenantId, body || {}, actorInfo);
-      return json({ ok: true, data: saved });
-    }
+    case "inventory:staff-home-locations":
+      if (method === "GET") {
+        requirePermission(ctx, "inventory.items.manage");
+        return listStaffHomeLocations(db, ctx.salonId);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.items.manage");
+        return setStaffHomeLocation(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
     case "inventory:locations":
       if (method === "GET") {
         requireAnyPermission(ctx, ["inventory.view", "inventory.items.manage"]);
