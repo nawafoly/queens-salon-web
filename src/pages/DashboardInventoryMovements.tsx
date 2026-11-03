@@ -11,6 +11,8 @@ const TYPE_LABEL: Record<string, string> = {
   TRANSFER_IN: "تحويل وارد",
   ADJUSTMENT: "تسوية",
   WASTE_OUT: "هدر",
+  DAMAGED_OUT: "تالف",
+  EXPIRED_OUT: "منتهي الصلاحية",
   EMPLOYEE_ISSUE_OUT: "صرف موظفة",
   EMPLOYEE_RETURN_IN: "إرجاع موظفة",
   STOCKTAKE_VARIANCE: "فرق جرد",

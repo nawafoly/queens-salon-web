@@ -6,6 +6,8 @@ export type InventoryConsumptionPolicy =
   | "DIRECT_SALE"
   | "SHARED_OPERATIONAL";
 
+export type InventoryDisposalType = "WASTE_OUT" | "DAMAGED_OUT" | "EXPIRED_OUT";
+
 export type InventoryItem = {
   id: string;
   salon_id: string;
@@ -51,6 +53,13 @@ export type InventoryLocation = {
   active?: number;
 };
 
+export type InventoryStaffLocation = {
+  employee_id: string;
+  employee_name: string;
+  location_id: string | null;
+  location_name: string | null;
+};
+
 export type InventoryMovement = {
   location_id?: string;
   location_name?: string;
@@ -71,6 +80,27 @@ export type InventoryMovement = {
   supplier_id?: string | null;
   supplier_name?: string | null;
   created_at: string;
+};
+
+export type InventoryCostBreakdown = {
+  id: string;
+  name: string;
+  confirmations: number;
+  known_cost_halalas: number;
+  uncosted_confirmations: number;
+};
+
+export type InventoryConsumptionCostReport = {
+  period: { days: number; from: string; through: string };
+  summary: Pick<InventoryCostBreakdown, "confirmations" | "known_cost_halalas" | "uncosted_confirmations">;
+  by_service: InventoryCostBreakdown[];
+  by_employee: InventoryCostBreakdown[];
+  uncosted_items: Array<{
+    id: string;
+    name: string;
+    affected_confirmations: number;
+    uncosted_lines: number;
+  }>;
 };
 
 export type InventoryItemInput = {
@@ -173,6 +203,11 @@ export const CoreInventoryService = {
   listMovements(query: { itemId?: string; limit?: string } = {}) {
     return coreApiRequest<InventoryMovement[]>("/api/core/inventory/movements", { query });
   },
+  getConsumptionCostReport(days: 7 | 30 | 90 = 30) {
+    return coreApiRequest<InventoryConsumptionCostReport>(
+      "/api/core/inventory/consumption-costs", { query: { days } }
+    );
+  },
   listPurchaseOrders() {
     return coreApiRequest("/api/core/inventory/purchase-orders");
   },
@@ -238,13 +273,21 @@ export const CoreInventoryService = {
   listLocations() {
     return coreApiRequest("/api/core/inventory/locations");
   },
+  listStaffHomeLocations() {
+    return coreApiRequest<InventoryStaffLocation[]>("/api/core/inventory/staff-home-locations");
+  },
+  setStaffHomeLocation(input: { employeeId: string; locationId: string }) {
+    return coreApiRequest<{ employeeId: string; locationId: string }>(
+      "/api/core/inventory/staff-home-locations", { method: "POST", body: input }
+    );
+  },
   createLocation(input: { name: string }) {
     return coreApiRequest("/api/core/inventory/locations", { method: "POST", body: input });
   },
   transferStock(input: { itemId: string; quantity: number; fromLocationId: string; toLocationId: string; note?: string }) {
     return coreApiRequest("/api/core/inventory/transfer", { method: "POST", body: input });
   },
-  recordWaste(input: { itemId: string; quantity: number; note?: string; locationId?: string }) {
+  recordWaste(input: { itemId: string; quantity: number; movementType?: InventoryDisposalType; note?: string; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },
   adjustAfterStocktake(input: { itemId: string; countedQty: number; note?: string }) {

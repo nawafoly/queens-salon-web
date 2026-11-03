@@ -659,8 +659,20 @@ async function resolveStaffHomeLocationId(db, salonId, employeeId) {
 export async function setStaffHomeLocation(db, salonId, data, actor = {}) {
   const employeeId = requiredId(preferred(data, "employeeId", "employee_id"), "employeeId");
   const locationId = requiredId(preferred(data, "locationId", "location_id"), "locationId");
-  const loc = await dbFirst(db, "SELECT id FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, locationId]);
+  const employee = await dbFirst(
+    db, "SELECT id, active FROM staff WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, employeeId]
+  );
+  if (!employee) throw new AppError(404, "inventory:employee_not_found", "Employee was not found");
+  if (Number(employee.active) !== 1) {
+    throw new AppError(409, "inventory:employee_inactive", "Employee is inactive");
+  }
+  const loc = await dbFirst(
+    db, "SELECT id, active FROM inventory_locations WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, locationId]
+  );
   if (!loc) throw new AppError(404, "inventory:location_not_found", "Location was not found");
+  if (Number(loc.active) !== 1) {
+    throw new AppError(409, "inventory:location_inactive", "Location is inactive");
+  }
   await dbRun(
     db,
     `INSERT INTO inventory_staff_locations (salon_id, employee_id, location_id, updated_at)
@@ -669,6 +681,22 @@ export async function setStaffHomeLocation(db, salonId, data, actor = {}) {
     [salonId, employeeId, locationId, nowIso()]
   );
   return { employeeId, locationId };
+}
+
+export async function listStaffHomeLocations(db, salonId) {
+  return dbAll(
+    db,
+    `SELECT s.id AS employee_id, s.name AS employee_name,
+            isl.location_id, l.name AS location_name
+       FROM staff s
+       LEFT JOIN inventory_staff_locations isl
+         ON isl.employee_id = s.id AND isl.salon_id = s.salon_id
+       LEFT JOIN inventory_locations l
+         ON l.id = isl.location_id AND l.salon_id = s.salon_id
+      WHERE s.salon_id = ? AND s.active = 1
+      ORDER BY s.name, s.id LIMIT 2000`,
+    [salonId]
+  );
 }
 
 export async function getStaffHomeLocation(db, salonId, employeeId) {
@@ -1049,6 +1077,86 @@ export async function listMovements(db, salonId, query = {}) {
       LIMIT ${limit}`,
     params
   );
+}
+
+/**
+ * Read-only cost control: use the costs frozen when a booking item was confirmed.
+ * Never estimate missing prices as zero-cost materials, and never infer cost from
+ * today's purchase price (historical values may have changed).
+ */
+export async function getInventoryConsumptionCostReport(db, salonId, query = {}, now = new Date()) {
+  const days = integer(query.days ?? 30, 'days', { min: 1, max: 90 });
+  const through = salonTodayISO(now);
+  const from = shiftISODate(through, 1 - days);
+  const utcStart = new Date(`${from}T00:00:00+03:00`).toISOString();
+  const utcEndExclusive = new Date(`${shiftISODate(through, 1)}T00:00:00+03:00`).toISOString();
+
+  const rows = await dbAll(
+    db,
+    `SELECT sc.service_id, COALESCE(s.name, sc.service_id) AS service_name,
+            sc.employee_id, COALESCE(st.name, sc.employee_id) AS employee_name,
+            COUNT(*) AS confirmations,
+            COALESCE(SUM(sc.total_material_cost_halalas), 0) AS known_cost_halalas,
+            SUM(CASE WHEN EXISTS (
+              SELECT 1 FROM service_consumption_lines l
+               WHERE l.salon_id = sc.salon_id AND l.consumption_id = sc.id
+                 AND l.unit_cost_halalas IS NULL
+            ) THEN 1 ELSE 0 END) AS uncosted_confirmations
+       FROM service_consumptions sc
+       LEFT JOIN services s ON s.id = sc.service_id AND s.salon_id = sc.salon_id
+       LEFT JOIN staff st ON st.id = sc.employee_id AND st.salon_id = sc.salon_id
+      WHERE sc.salon_id = ? AND sc.status = 'confirmed'
+        AND sc.confirmed_at >= ? AND sc.confirmed_at < ?
+      GROUP BY sc.service_id, sc.employee_id`,
+    [salonId, utcStart, utcEndExclusive]
+  );
+
+  const uncostedItems = await dbAll(
+    db,
+    `SELECT l.inventory_item_id AS id, COALESCE(i.name, l.inventory_item_id) AS name,
+            COUNT(DISTINCT sc.id) AS affected_confirmations, COUNT(*) AS uncosted_lines
+       FROM service_consumption_lines l
+       JOIN service_consumptions sc
+         ON sc.id = l.consumption_id AND sc.salon_id = l.salon_id
+       LEFT JOIN inventory_items i
+         ON i.id = l.inventory_item_id AND i.salon_id = l.salon_id
+      WHERE sc.salon_id = ? AND sc.status = 'confirmed'
+        AND sc.confirmed_at >= ? AND sc.confirmed_at < ?
+        AND l.unit_cost_halalas IS NULL
+      GROUP BY l.inventory_item_id
+      ORDER BY uncosted_lines DESC, name`,
+    [salonId, utcStart, utcEndExclusive]
+  );
+
+  const byService = new Map();
+  const byEmployee = new Map();
+  const total = { confirmations: 0, known_cost_halalas: 0, uncosted_confirmations: 0 };
+  const add = (target, id, name, row) => {
+    if (!target.has(id)) {
+      target.set(id, {
+        id, name, confirmations: 0, known_cost_halalas: 0, uncosted_confirmations: 0,
+      });
+    }
+    const record = target.get(id);
+    for (const key of Object.keys(total)) record[key] += Number(row[key] || 0);
+  };
+
+  for (const row of rows) {
+    for (const key of Object.keys(total)) total[key] += Number(row[key] || 0);
+    add(byService, row.service_id, row.service_name, row);
+    add(byEmployee, row.employee_id, row.employee_name, row);
+  }
+  const sorted = (entries) => [...entries.values()].sort(
+    (a, b) => b.known_cost_halalas - a.known_cost_halalas || b.confirmations - a.confirmations
+  );
+
+  return {
+    period: { days, from, through },
+    summary: total,
+    by_service: sorted(byService),
+    by_employee: sorted(byEmployee),
+    uncosted_items: uncostedItems,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2019,7 +2127,16 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
 }
 
 
+export function normalizeDisposalMovementType(value) {
+  const requested = cleanText(value || 'WASTE_OUT').toUpperCase();
+  if (!['WASTE_OUT', 'DAMAGED_OUT', 'EXPIRED_OUT'].includes(requested)) {
+    throw new AppError(400, 'inventory:invalid_disposal_type', 'Unsupported disposal movement type');
+  }
+  return requested;
+}
+
 export async function recordWaste(db, salonId, data, actor = {}) {
+  const movementType = normalizeDisposalMovementType(preferred(data, 'movementType', 'movement_type'));
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
   const quantity = Number(preferred(data, 'quantity', 'qty'));
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -2036,7 +2153,7 @@ export async function recordWaste(db, salonId, data, actor = {}) {
   return appendMovement(db, salonId, {
     itemId,
     locationId: location.id,
-    movementType: 'WASTE_OUT',
+    movementType,
     quantityDelta: -quantity,
     unitCostHalalas: fifo.unitCostHalalas,
     unit: item.unit,
@@ -2044,7 +2161,11 @@ export async function recordWaste(db, salonId, data, actor = {}) {
     sourceId: operationId,
     lineKey: itemId,
     operationId,
-    note: optionalText(data.note) || 'Waste recorded',
+    note: optionalText(data.note) || {
+      WASTE_OUT: 'Waste recorded',
+      DAMAGED_OUT: 'Damaged item recorded',
+      EXPIRED_OUT: 'Expired item recorded',
+    }[movementType],
   }, actor);
 }
 
