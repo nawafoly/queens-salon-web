@@ -291,8 +291,10 @@ function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
 function attendanceCalendarCompactStatus(day: AttendanceCalendarDayLiveV2) {
   if (!day.interactive) return "—";
   const status = attendanceCalendarDisplayStatus(day);
+  if (day.specialDay?.kind === "partial_leave" || status.includes("استئذان")) return "استئذان";
   if (status.includes("دوام في")) return "دوام";
   if (status.includes("غياب")) return "غياب";
+  if (status.includes("خروج مبكر")) return "خروج مبكر";
   if (status.includes("تأخير")) return "تأخير";
   if (status.includes("نقص ساعات")) return "نقص ساعات";
   if (status.includes("غير مكتمل")) return "غير مكتمل";
@@ -300,6 +302,11 @@ function attendanceCalendarCompactStatus(day: AttendanceCalendarDayLiveV2) {
   if (status.includes("إجازة")) return "إجازة";
   if (status.includes("حضور")) return "حضور";
   return "—";
+}
+
+function attendancePartialLeaveInterval(specialDay?: AttendanceSpecialDay | null) {
+  if (specialDay?.kind !== "partial_leave") return "";
+  return [specialDay.partialStartTime, specialDay.partialEndTime].filter(Boolean).join(" – ");
 }
 
 function attendanceCalendarTimeLabel(input: {
@@ -1377,8 +1384,8 @@ export function EmployeeAttendanceTabLiveV2({
                     data-selected={activeSelectedDate === day.date ? "true" : "false"}
                     data-today={todayKey === day.date ? "true" : "false"}
                     aria-label={tr(
-                      `${formatAttendanceDate(day.date)}: ${attendanceCalendarDisplayStatus(day)}، ${day.timeLabel}`,
-                      `${day.date}: ${t(attendanceCalendarDisplayStatus(day))}, ${day.timeLabel}`
+                      `${formatAttendanceDate(day.date)}: ${attendanceCalendarDisplayStatus(day)}، ${day.timeLabel}${attendancePartialLeaveInterval(day.specialDay) ? `، ${attendancePartialLeaveInterval(day.specialDay)}` : ""}`,
+                      `${day.date}: ${t(attendanceCalendarDisplayStatus(day))}, ${day.timeLabel}${attendancePartialLeaveInterval(day.specialDay) ? `, ${attendancePartialLeaveInterval(day.specialDay)}` : ""}`
                     )}
                     onClick={() => day.interactive && selectCalendarDay(day.date)}
                     onDoubleClick={() => day.interactive && openDayDetails(day.date)}
@@ -1391,7 +1398,7 @@ export function EmployeeAttendanceTabLiveV2({
                     </span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
-                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || t("فترة الاستئذان")}
+                        {attendancePartialLeaveInterval(day.specialDay) || t("فترة الاستئذان")}
                       </em>
                     ) : day.specialDay && day.specialDay.label !== day.status ? (
                       <em className="dsv2-ew-calendar__special">{t(day.specialDay.label)}</em>
@@ -1421,6 +1428,12 @@ export function EmployeeAttendanceTabLiveV2({
                 </div>
 
                 <dl className="dsv2-ew-day-fields">
+                  {selectedSpecialDay?.kind === "partial_leave" ? (
+                    <div>
+                      <dt>{t("فترة الاستئذان")}</dt>
+                      <dd dir="ltr">{attendancePartialLeaveInterval(selectedSpecialDay) || "-"}</dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>{t("وقت الدخول")}</dt>
                     <dd>{formatAttendanceTime(selectedRow?.checkInAtClient) || "-"}</dd>
@@ -1518,6 +1531,12 @@ export function EmployeeAttendanceTabLiveV2({
               />
 
               <dl className="dsv2-ew-day-fields">
+                {drawerDay?.specialDay?.kind === "partial_leave" ? (
+                  <div>
+                    <dt>{t("فترة الاستئذان")}</dt>
+                    <dd dir="ltr">{attendancePartialLeaveInterval(drawerDay.specialDay) || "-"}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>{t("الشفت الفعلي")}</dt>
                   <dd>
