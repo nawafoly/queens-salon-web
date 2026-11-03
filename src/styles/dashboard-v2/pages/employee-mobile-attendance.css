@@ -1,0 +1,265 @@
+/*
+ * Employee profile — mobile-only presentation layer.
+ * Keep desktop and iPad calendar semantics intact. No duplicate attendance
+ * data source; the compact grid and selected-day card share one view model.
+ */
+.dashboard-v2 .dsv2-ew-mobile-icon-tabs,
+.dashboard-v2 .dsv2-ew-calendar-mobile-hint,
+.dashboard-v2 .dsv2-ew-calendar__mobile-summary {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* Direct section shortcuts replace the oversized native-looking select. */
+  .dashboard-v2 .dsv2-ew-mobile-tab-select {
+    display: none !important;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-mobile-icon-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(80px, 22vw, 104px);
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 3px 2px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+    min-height: 77px;
+    padding: 7px 4px;
+    border: 1px solid var(--dsv2-ew-border);
+    border-radius: 14px;
+    background: var(--dsv2-surface);
+    color: var(--dsv2-text-soft);
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.25;
+    text-align: center;
+    cursor: pointer;
+    scroll-snap-align: start;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab__icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    background: var(--dsv2-surface-soft);
+    color: var(--dsv2-black);
+    font-size: 0.88rem;
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab__label {
+    display: -webkit-box;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab[data-active="true"] {
+    border-color: var(--dsv2-gold);
+    background: var(--dsv2-ew-gold-soft);
+    color: var(--dsv2-black);
+    box-shadow: inset 0 -3px 0 var(--dsv2-gold);
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab[data-active="true"] .dsv2-ew-mobile-icon-tab__icon {
+    background: var(--dsv2-gold);
+  }
+
+  .dashboard-v2 .dsv2-ew-mobile-icon-tab:focus-visible {
+    outline: 2px solid var(--dsv2-gold);
+    outline-offset: 2px;
+  }
+
+  /* Seven-column month remains browsable, but never renders paragraphs in
+     40px cells. Full status/punch times stay in the existing detail card. */
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-calendar-card {
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-mobile-hint {
+    display: block;
+    margin: 0;
+    color: var(--dsv2-ew-muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-legend {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 14px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-block: 3px 8px;
+    white-space: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-v2 .dsv2-ew-calendar-legend::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-legend > span {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-head,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-calendar-head span {
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding-inline: 0;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    min-width: 0;
+    min-height: 65px;
+    height: 65px;
+    padding: 7px 2px !important;
+    border-radius: 10px;
+    text-align: center;
+    overflow: hidden;
+    --ew-mobile-day-dot: var(--dsv2-text-soft);
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day > strong {
+    font-size: 0.87rem;
+    font-weight: 900;
+    line-height: 1.15;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day > .dsv2-ew-calendar__full-status,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day > .dsv2-ew-calendar__special,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day > small {
+    display: none !important;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__mobile-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    width: 100%;
+    color: var(--dsv2-black);
+  }
+
+  .dashboard-v2 .dsv2-ew-calendar__mobile-dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: var(--ew-mobile-day-dot);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__mobile-summary > span {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.57rem;
+    font-weight: 850;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-align: center;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="حضور"],
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="دوام في"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-present-accent, #15803d);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="تأخير"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-late-border, #d6a800);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="نقص ساعات"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-short-hours-border, #ea8a2e);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="غياب"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-absent-border, #c33b56);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="راحة"],
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="إجازة"] {
+    --ew-mobile-day-dot: var(--dsv2-info, #3b82f6);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="غير مكتمل"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-incomplete-legend-dot, #38a5db);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-employment-state="pre_employment"],
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-employment-state="post_employment"] {
+    --ew-mobile-day-dot: var(--dsv2-text-soft);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="weekly_rest"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-weekly-rest-accent, #3156da);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="annual"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-late-short-hours-accent, #b36b1d);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-leave-type="compensatory"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-compensatory-accent, #256e52);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-selected="true"] {
+    outline: 2px solid var(--dsv2-black);
+    outline-offset: -3px;
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-detail-card {
+    scroll-margin-top: calc(116px + env(safe-area-inset-top, 0px));
+  }
+}
