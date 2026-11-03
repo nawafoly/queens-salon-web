@@ -18,9 +18,12 @@ export function compactAttendanceStatus(
   if (status.includes("تأخير")) return "تأخير";
   if (status.includes("نقص ساعات")) return "نقص ساعات";
   if (status.includes("غير مكتمل")) return "غير مكتمل";
-  if (hasPartialLeave || status.includes("استئذان")) return "استئذان";
+  if (status.includes("استئذان")) return "استئذان";
   if (status.includes("راحة")) return "راحة";
   if (status.includes("إجازة")) return "إجازة";
   if (status.includes("حضور")) return "حضور";
+  // A partial leave is a time interval, not an excuse for a full-day absence
+  // nor an override of an otherwise valid recorded attendance status.
+  if (hasPartialLeave) return "استئذان";
   return "—";
 }
