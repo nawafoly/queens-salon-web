@@ -63,3 +63,28 @@ test("mobile CSS is imported after desktop calendar rules, without modifying pay
   assert.match(styles, /@media \(max-width: 767px\)/);
   assert.doesNotMatch(styles, /@media \(min-width/);
 });
+
+test("early departure and approved partial-day leave are never hidden behind the unclassified symbol", () => {
+  const compact = calendar.slice(
+    calendar.indexOf("function attendanceCalendarCompactStatus("),
+    calendar.indexOf("function attendanceCalendarTimeLabel(")
+  );
+  assert.match(compact, /day\.specialDay\?\.kind === "partial_leave"/);
+  assert.match(compact, /status\.includes\("استئذان"\)/);
+  assert.match(compact, /status\.includes\("خروج مبكر"\)/);
+  assert.match(compact, /return "استئذان"/);
+  assert.match(compact, /return "خروج مبكر"/);
+  assert.match(styles, /data-special="partial_leave"/);
+  assert.match(styles, /data-status\*="خروج مبكر"/);
+});
+
+test("approved partial-leave start and end times stay available in selected-day card and drawer", () => {
+  assert.match(calendar, /function attendancePartialLeaveInterval\(specialDay\?: AttendanceSpecialDay \| null\)/);
+  assert.match(calendar, /specialDay\.partialStartTime, specialDay\.partialEndTime/);
+  assert.match(calendar, /selectedSpecialDay\?\.kind === "partial_leave"/);
+  assert.match(calendar, /attendancePartialLeaveInterval\(selectedSpecialDay\)/);
+  assert.match(calendar, /drawerDay\?\.specialDay\?\.kind === "partial_leave"/);
+  assert.match(calendar, /attendancePartialLeaveInterval\(drawerDay\.specialDay\)/);
+  assert.match(calendar, /attendancePartialLeaveInterval\(day\.specialDay\) \?/);
+  assert.match(calendar, /<dt>\{t\("فترة الاستئذان"\)\}<\/dt>/);
+});
