@@ -1051,6 +1051,86 @@ export async function listMovements(db, salonId, query = {}) {
   );
 }
 
+/**
+ * Read-only cost control: use the costs frozen when a booking item was confirmed.
+ * Never estimate missing prices as zero-cost materials, and never infer cost from
+ * today's purchase price (historical values may have changed).
+ */
+export async function getInventoryConsumptionCostReport(db, salonId, query = {}, now = new Date()) {
+  const days = integer(query.days ?? 30, 'days', { min: 1, max: 90 });
+  const through = salonTodayISO(now);
+  const from = shiftISODate(through, 1 - days);
+  const utcStart = new Date(`${from}T00:00:00+03:00`).toISOString();
+  const utcEndExclusive = new Date(`${shiftISODate(through, 1)}T00:00:00+03:00`).toISOString();
+
+  const rows = await dbAll(
+    db,
+    `SELECT sc.service_id, COALESCE(s.name, sc.service_id) AS service_name,
+            sc.employee_id, COALESCE(st.name, sc.employee_id) AS employee_name,
+            COUNT(*) AS confirmations,
+            COALESCE(SUM(sc.total_material_cost_halalas), 0) AS known_cost_halalas,
+            SUM(CASE WHEN EXISTS (
+              SELECT 1 FROM service_consumption_lines l
+               WHERE l.salon_id = sc.salon_id AND l.consumption_id = sc.id
+                 AND l.unit_cost_halalas IS NULL
+            ) THEN 1 ELSE 0 END) AS uncosted_confirmations
+       FROM service_consumptions sc
+       LEFT JOIN services s ON s.id = sc.service_id AND s.salon_id = sc.salon_id
+       LEFT JOIN staff st ON st.id = sc.employee_id AND st.salon_id = sc.salon_id
+      WHERE sc.salon_id = ? AND sc.status = 'confirmed'
+        AND sc.confirmed_at >= ? AND sc.confirmed_at < ?
+      GROUP BY sc.service_id, sc.employee_id`,
+    [salonId, utcStart, utcEndExclusive]
+  );
+
+  const uncostedItems = await dbAll(
+    db,
+    `SELECT l.inventory_item_id AS id, COALESCE(i.name, l.inventory_item_id) AS name,
+            COUNT(DISTINCT sc.id) AS affected_confirmations, COUNT(*) AS uncosted_lines
+       FROM service_consumption_lines l
+       JOIN service_consumptions sc
+         ON sc.id = l.consumption_id AND sc.salon_id = l.salon_id
+       LEFT JOIN inventory_items i
+         ON i.id = l.inventory_item_id AND i.salon_id = l.salon_id
+      WHERE sc.salon_id = ? AND sc.status = 'confirmed'
+        AND sc.confirmed_at >= ? AND sc.confirmed_at < ?
+        AND l.unit_cost_halalas IS NULL
+      GROUP BY l.inventory_item_id
+      ORDER BY uncosted_lines DESC, name`,
+    [salonId, utcStart, utcEndExclusive]
+  );
+
+  const byService = new Map();
+  const byEmployee = new Map();
+  const total = { confirmations: 0, known_cost_halalas: 0, uncosted_confirmations: 0 };
+  const add = (target, id, name, row) => {
+    if (!target.has(id)) {
+      target.set(id, {
+        id, name, confirmations: 0, known_cost_halalas: 0, uncosted_confirmations: 0,
+      });
+    }
+    const record = target.get(id);
+    for (const key of Object.keys(total)) record[key] += Number(row[key] || 0);
+  };
+
+  for (const row of rows) {
+    for (const key of Object.keys(total)) total[key] += Number(row[key] || 0);
+    add(byService, row.service_id, row.service_name, row);
+    add(byEmployee, row.employee_id, row.employee_name, row);
+  }
+  const sorted = (entries) => [...entries.values()].sort(
+    (a, b) => b.known_cost_halalas - a.known_cost_halalas || b.confirmations - a.confirmations
+  );
+
+  return {
+    period: { days, from, through },
+    summary: total,
+    by_service: sorted(byService),
+    by_employee: sorted(byEmployee),
+    uncosted_items: uncostedItems,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Recipes
 // ---------------------------------------------------------------------------
