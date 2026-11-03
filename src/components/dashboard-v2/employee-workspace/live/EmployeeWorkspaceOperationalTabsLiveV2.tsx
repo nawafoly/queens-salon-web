@@ -1,6 +1,7 @@
 import DashboardNumberInputV2 from "../../DashboardNumberInputV2";
 import { useEffect, useState } from "react";
 import type { AttendanceSpecialDay } from "../../../../helpers/hr/attendanceCalendarData";
+import { compactAttendanceStatus } from "../../../../helpers/hr/compactAttendanceStatus";
 
 import {
   DashboardDrawerV2,
@@ -289,19 +290,11 @@ function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
  * Status is derived from the same canonical day record as desktop.
  */
 function attendanceCalendarCompactStatus(day: AttendanceCalendarDayLiveV2) {
-  if (!day.interactive) return "—";
-  const status = attendanceCalendarDisplayStatus(day);
-  if (day.specialDay?.kind === "partial_leave" || status.includes("استئذان")) return "استئذان";
-  if (status.includes("دوام في")) return "دوام";
-  if (status.includes("غياب")) return "غياب";
-  if (status.includes("خروج مبكر")) return "خروج مبكر";
-  if (status.includes("تأخير")) return "تأخير";
-  if (status.includes("نقص ساعات")) return "نقص ساعات";
-  if (status.includes("غير مكتمل")) return "غير مكتمل";
-  if (status.includes("راحة")) return "راحة";
-  if (status.includes("إجازة")) return "إجازة";
-  if (status.includes("حضور")) return "حضور";
-  return "—";
+  return compactAttendanceStatus(
+    attendanceCalendarDisplayStatus(day),
+    day.interactive,
+    day.specialDay?.kind === "partial_leave"
+  );
 }
 
 function attendancePartialLeaveInterval(specialDay?: AttendanceSpecialDay | null) {

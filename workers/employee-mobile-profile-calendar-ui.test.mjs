@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { compactAttendanceStatus } from "../src/helpers/hr/compactAttendanceStatus.ts";
 
 const profile = readFileSync(new URL("../src/pages/dashboardEmployees/EmployeeProfilePageLayout.tsx", import.meta.url), "utf8");
 const calendar = readFileSync(new URL("../src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx", import.meta.url), "utf8");
@@ -25,7 +26,7 @@ test("mobile employee sections render permitted icon tabs, without a select/drop
 
 test("mobile calendar is a compact seven-day grid with one clear status indicator per date", () => {
   assert.match(calendar, /function attendanceCalendarCompactStatus\(day: AttendanceCalendarDayLiveV2\)/);
-  assert.match(calendar, /const status = attendanceCalendarDisplayStatus\(day\)/);
+  assert.match(calendar, /return compactAttendanceStatus\(/);
   assert.match(calendar, /className="dsv2-ew-calendar__full-status"/);
   assert.match(calendar, /className="dsv2-ew-calendar__mobile-summary"/);
   assert.match(calendar, /className="dsv2-ew-calendar__mobile-dot"/);
@@ -64,16 +65,27 @@ test("mobile CSS is imported after desktop calendar rules, without modifying pay
   assert.doesNotMatch(styles, /@media \(min-width/);
 });
 
-test("early departure and approved partial-day leave are never hidden behind the unclassified symbol", () => {
-  const compact = calendar.slice(
-    calendar.indexOf("function attendanceCalendarCompactStatus("),
-    calendar.indexOf("function attendanceCalendarTimeLabel(")
-  );
-  assert.match(compact, /day\.specialDay\?\.kind === "partial_leave"/);
-  assert.match(compact, /status\.includes\("استئذان"\)/);
-  assert.match(compact, /status\.includes\("خروج مبكر"\)/);
-  assert.match(compact, /return "استئذان"/);
-  assert.match(compact, /return "خروج مبكر"/);
+test("canonical attendance states always take precedence over partial leave", () => {
+  const states = [
+    ["غياب", "غياب"],
+    ["خروج مبكر", "خروج مبكر"],
+    ["تأخير / نقص ساعات", "تأخير"],
+    ["نقص ساعات", "نقص ساعات"],
+    ["غير مكتمل", "غير مكتمل"],
+    ["حضور", "حضور"],
+    ["إجازة", "إجازة"],
+    ["راحة أسبوعية", "راحة"],
+    ["دوام في راحة أسبوعية", "دوام"],
+  ];
+  for (const [raw, expected] of states) {
+    assert.equal(compactAttendanceStatus(raw, true, true), expected, raw);
+    assert.equal(compactAttendanceStatus(raw, true, false), expected, raw);
+  }
+  assert.equal(compactAttendanceStatus("غير مصنف", true, true), "استئذان");
+  assert.equal(compactAttendanceStatus("استئذان معتمد", true, true), "استئذان");
+  assert.equal(compactAttendanceStatus("غير مصنف", true, false), "—");
+  assert.equal(compactAttendanceStatus("غياب", false, true), "—", "out-of-employment dates stay disabled");
+  assert.match(calendar, /day\.specialDay\?\.kind === "partial_leave"/);
   assert.match(styles, /data-special="partial_leave"/);
   assert.match(styles, /data-status\*="خروج مبكر"/);
 });
