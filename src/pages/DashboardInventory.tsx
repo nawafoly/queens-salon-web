@@ -26,6 +26,7 @@ import DashboardInventoryMovements from "./DashboardInventoryMovements";
 import DashboardInventoryIssue from "./DashboardInventoryIssue";
 import DashboardInventoryOps from "./DashboardInventoryOps";
 import DashboardInventoryTrade from "./DashboardInventoryTrade";
+import DashboardInventoryStaffLocations from "./DashboardInventoryStaffLocations";
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -74,7 +75,7 @@ export default function DashboardInventory() {
   const canManage = hasPermission("inventory.items.manage");
   const canAdjust = hasPermission("inventory.adjust");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po" | "staff-locations">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -216,6 +217,7 @@ export default function DashboardInventory() {
         <button type="button" className={tab === "po" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("po")}>أوامر الشراء</button>
         <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>استلام شراء</button>
         <button type="button" className={tab === "suppliers" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("suppliers")}>الموردون</button>
+        {canManage ? <button type="button" className={tab === "staff-locations" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("staff-locations")}>مواقع الموظفات</button> : null}
       </div>
 
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
@@ -226,6 +228,7 @@ export default function DashboardInventory() {
       {tab === "trade" ? <DashboardInventoryTrade /> : null}
       {tab === "po" ? <DashboardInventoryPurchaseOrders /> : null}
       {tab === "suppliers" ? <DashboardInventorySuppliers /> : null}
+      {tab === "staff-locations" && canManage ? <DashboardInventoryStaffLocations /> : null}
 
       {tab === "items" ? (
         <>
