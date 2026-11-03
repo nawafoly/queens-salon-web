@@ -13,6 +13,10 @@ import {
 } from "../services/CoreBookingService";
 import type { HrSession } from "./hr/shared";
 import { useEmployeePortalLanguage } from "../features/employee-portal/EmployeePortalLanguage";
+import {
+  removeMixedCategoryLine,
+  splitCategoryConsumptionLine,
+} from "../features/inventory/recipeMixing";
 import "../styles/EmployeeBookingWorkspace.css";
 
 const bookingCopy = {
@@ -129,6 +133,7 @@ type DraftLine = {
   quantity: string;
   defaultQty: string;
   unit: string;
+  isMixAddition?: boolean;
 };
 
 const LIFECYCLE_META: Record<
@@ -432,6 +437,27 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
         item.category_id === line.categoryId &&
         item.unit === line.unit
     );
+  }
+
+  function availableMixProducts(line: DraftLine) {
+    if (
+      line.lineType !== "CATEGORY" || !line.recipeLineId || !line.inventoryItemId ||
+      !Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0
+    ) return [];
+    const used = new Set(
+      lines.filter((row) => row.recipeLineId === line.recipeLineId).map((row) => row.inventoryItemId)
+    );
+    return productOptions(line).filter((item) => !used.has(item.id));
+  }
+
+  function addMixedProduct(key: string) {
+    const source = lines.find((row) => row.key === key);
+    if (!source || !selectedConfirmable) return;
+    const nextItem = availableMixProducts(source)[0];
+    if (!nextItem) return;
+    setLines((current) => splitCategoryConsumptionLine(
+      current, key, `mix-${crypto.randomUUID()}`, { id: nextItem.id, name: nextItem.name }
+    ));
   }
 
   function changeProduct(key: string, inventoryItemId: string) {
@@ -889,17 +915,25 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                             {language === "ar" ? "اختاري المنتج" : "Select product"}
                           </option>
                         ) : null}
-                        {productOptions(line).map((item) => (
+                        {productOptions(line)
+                          .filter((item) => item.id === line.inventoryItemId || !lines.some(
+                            (other) => other.key !== line.key &&
+                              other.recipeLineId === line.recipeLineId &&
+                              other.inventoryItemId === item.id
+                          ))
+                          .map((item) => (
                           <option key={item.id} value={item.id}>
                             {item.name}
                           </option>
-                        ))}
+                          ))}
                       </select>
                       <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
-                        {copy.default}: {line.lineType === "CATEGORY"
+                        {line.isMixAddition
+                          ? (language === "ar" ? "مادة إضافية ضمن نفس وصفة الاستهلاك" : "Additional product in the same recipe slot")
+                          : <>{copy.default}: {line.lineType === "CATEGORY"
                           ? (language === "ar" ? "اختيار من الفئة المحددة" : "Choose from the configured category")
                           : (itemNames[line.defaultInventoryItemId] || line.defaultInventoryItemId)} · {line.defaultQty}{" "}
-                        {line.unit}
+                          {line.unit}</>}
                       </div>
                     </div>
                     <div>
@@ -934,6 +968,30 @@ export default function EmployeeServiceConsumption({ session }: { session: HrSes
                       </div>
                     </div>
                   </div>
+                  {line.lineType === "CATEGORY" && (availableMixProducts(line).length > 0 || line.isMixAddition) ? (
+                    <div className="d-flex flex-wrap gap-2">
+                      {availableMixProducts(line).length > 0 ? (
+                        <button
+                          type="button"
+                          className="dsv2-btn dsv2-btn--secondary"
+                          disabled={!selectedConfirmable}
+                          onClick={() => addMixedProduct(line.key)}
+                        >
+                          {language === "ar" ? "خلط منتج آخر" : "Mix another product"}
+                        </button>
+                      ) : null}
+                      {line.isMixAddition ? (
+                        <button
+                          type="button"
+                          className="dsv2-btn dsv2-btn--secondary"
+                          disabled={!selectedConfirmable}
+                          onClick={() => setLines((current) => removeMixedCategoryLine(current, line.key))}
+                        >
+                          {language === "ar" ? "إزالة منتج الخلط" : "Remove mixed product"}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
