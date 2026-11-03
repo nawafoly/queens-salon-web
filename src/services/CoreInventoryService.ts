@@ -73,6 +73,21 @@ export type InventoryMovement = {
   created_at: string;
 };
 
+export type InventoryCostBreakdown = {
+  id: string;
+  name: string;
+  confirmations: number;
+  known_cost_halalas: number;
+  uncosted_confirmations: number;
+};
+
+export type InventoryConsumptionCostReport = {
+  period: { days: number; from: string; through: string };
+  summary: Pick<InventoryCostBreakdown, "confirmations" | "known_cost_halalas" | "uncosted_confirmations">;
+  by_service: InventoryCostBreakdown[];
+  by_employee: InventoryCostBreakdown[];
+};
+
 export type InventoryItemInput = {
   name: string;
   unit: string;
@@ -172,6 +187,11 @@ export const CoreInventoryService = {
   },
   listMovements(query: { itemId?: string; limit?: string } = {}) {
     return coreApiRequest<InventoryMovement[]>("/api/core/inventory/movements", { query });
+  },
+  getConsumptionCostReport(days: 7 | 30 | 90 = 30) {
+    return coreApiRequest<InventoryConsumptionCostReport>(
+      "/api/core/inventory/consumption-costs", { query: { days } }
+    );
   },
   listPurchaseOrders() {
     return coreApiRequest("/api/core/inventory/purchase-orders");

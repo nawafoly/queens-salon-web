@@ -115,6 +115,7 @@ import {
   listStockLevels,
   recordOpeningBalance,
   listMovements as listInventoryMovements,
+  getInventoryConsumptionCostReport,
   getActiveRecipeForService,
   upsertServiceRecipe,
   confirmServiceConsumption,
@@ -1076,6 +1077,9 @@ function match(url, method) {
   if (path === "/api/core/inventory/locations") return { name: "inventory:locations" };
   if (path === "/api/core/inventory/stock-levels") return { name: "inventory:stock-levels" };
   if (path === "/api/core/inventory/movements") return { name: "inventory:movements" };
+  if (path === "/api/core/inventory/consumption-costs" && method === "GET") {
+    return { name: "inventory:consumption-costs" };
+  }
   if (path === "/api/core/inventory/opening-balance" && method === "POST") {
     return { name: "inventory:opening-balance" };
   }
@@ -3636,6 +3640,13 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") {
         requireAnyPermission(ctx, ["inventory.movements.view", "inventory.view"]);
         return listInventoryMovements(db, ctx.salonId, readQuery);
+      }
+      break;
+
+    case "inventory:consumption-costs":
+      if (method === "GET") {
+        requirePermission(ctx, "inventory.movements.view");
+        return getInventoryConsumptionCostReport(db, ctx.salonId, readQuery);
       }
       break;
 
