@@ -34,6 +34,7 @@
 @import "./pages/employees.css";
 @import "./pages/employee-workspace.css";
 @import "./pages/employee-attendance-calendar-alignment.css";
+@import "./pages/employee-mobile-attendance.css";
 @import "./pages/payroll.css";
 @import "./pages/payroll-compliance-workspace.css";
 @import "./pages/reports.css";

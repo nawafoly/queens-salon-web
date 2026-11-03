@@ -38,6 +38,9 @@ jobs:
       - name: iPhone Dynamic Island safe area and embedded HR scroll regression
         run: node --test workers/ios-dashboard-safe-area-shell.test.mjs
 
+      - name: Employee mobile profile icons and calendar readability regression
+        run: node --test workers/employee-mobile-profile-calendar-ui.test.mjs
+
       - name: Read-only D1 Insights profiling regression
         run: node --test workers/d1-insights-read-cost.test.mjs
 

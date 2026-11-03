@@ -1,13 +1,12 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowLeft, faArrowRight, faUserSlash } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faArrowRight, faFolderOpen, faUserSlash } from "@fortawesome/free-solid-svg-icons";
 import { createPortal } from "react-dom";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
-import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import {
   WorkspaceMetricV2,
   WorkspaceStatusBadgeV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
-import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
+import { normalizeSpecialties } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 import { useEmployeeLanguage } from "./employeeLanguage";
 
@@ -201,14 +200,30 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         })}
       </nav>
 
-      <div className="dsv2-ew-mobile-tab-select">
-        <DashboardSelectV2
-          id="employees-v2-live-section"
-          value={props.activeTab || "basic"}
-          options={tabs.map((tab) => ({ value: tab.key, label: tab.label }))}
-          onChange={(value) => props.onDetailTabChange?.(value as EmployeeSplitTab)}
-        />
-      </div>
+      {/* Mobile: direct, permission-filtered icon navigation rather than a select menu. */}
+      <nav className="dsv2-ew-mobile-icon-tabs" role="tablist" aria-label={t("أقسام ملف الموظفة")}>
+        {tabs.map((tab) => {
+          const isActive = props.activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              className="dsv2-ew-mobile-icon-tab"
+              data-active={isActive ? "true" : "false"}
+              aria-selected={isActive}
+              aria-label={tab.label}
+              title={tab.label}
+              onClick={() => props.onDetailTabChange?.(tab.key)}
+            >
+              <span className="dsv2-ew-mobile-icon-tab__icon" aria-hidden="true">
+                <FontAwesomeIcon icon={tab.icon || faFolderOpen} />
+              </span>
+              <span className="dsv2-ew-mobile-icon-tab__label">{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <main className="dsv2-ew-content" aria-label={activeLabel}>
         <fieldset

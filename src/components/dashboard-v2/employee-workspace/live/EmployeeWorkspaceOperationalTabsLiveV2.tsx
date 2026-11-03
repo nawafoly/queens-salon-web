@@ -283,6 +283,25 @@ function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
   return day.status;
 }
 
+/**
+ * Compact seven-column month view only. Full statuses, time ranges and leave
+ * details remain accessible in the selected-day card and day-detail drawer.
+ * Status is derived from the same canonical day record as desktop.
+ */
+function attendanceCalendarCompactStatus(day: AttendanceCalendarDayLiveV2) {
+  if (!day.interactive) return "—";
+  const status = attendanceCalendarDisplayStatus(day);
+  if (status.includes("دوام في")) return "دوام";
+  if (status.includes("غياب")) return "غياب";
+  if (status.includes("تأخير")) return "تأخير";
+  if (status.includes("نقص ساعات")) return "نقص ساعات";
+  if (status.includes("غير مكتمل")) return "غير مكتمل";
+  if (status.includes("راحة")) return "راحة";
+  if (status.includes("إجازة")) return "إجازة";
+  if (status.includes("حضور")) return "حضور";
+  return "—";
+}
+
 function attendanceCalendarTimeLabel(input: {
   status: string;
   specialDay?: AttendanceSpecialDay;
@@ -1179,6 +1198,19 @@ export function EmployeeAttendanceTabLiveV2({
     }
     onSelectedDateChange(cleanDate);
   };
+  const selectCalendarDay = (nextDate: string) => {
+    handleSelectedDateChange(nextDate);
+    // Keep the calendar compact on iPhone. A single tap reveals the existing
+    // full canonical day card without requiring a second tap or a double click.
+    if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 767px)").matches) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(".dsv2-ew-attendance-detail-card")?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "start",
+        });
+      });
+    }
+  };
   const openDayDetails = (nextDate: string) => {
     const cleanDate = cleanText(nextDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return;
@@ -1324,6 +1356,9 @@ export function EmployeeAttendanceTabLiveV2({
                 <span data-leave-type="annual"><i />{t("إجازة سنوية")}</span>
                 <span data-leave-type="exceptional"><i />{t("إجازة استثنائية")}</span>
               </div>
+              <p className="dsv2-ew-calendar-mobile-hint">
+                {tr("اختاري تاريخًا لعرض الحالة والبصمات والتفاصيل كاملة أسفل التقويم.", "Select a date to see full attendance details below the calendar.")}
+              </p>
               <div className="dsv2-ew-calendar-head" aria-hidden="true">
                 {(language === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : AR_WEEKDAY_SHORT).map((day) => <span key={day}>{day}</span>)}
               </div>
@@ -1341,11 +1376,19 @@ export function EmployeeAttendanceTabLiveV2({
                     data-leave-type={attendanceCalendarLeaveType(day)}
                     data-selected={activeSelectedDate === day.date ? "true" : "false"}
                     data-today={todayKey === day.date ? "true" : "false"}
-                    onClick={() => day.interactive && handleSelectedDateChange(day.date)}
+                    aria-label={tr(
+                      `${formatAttendanceDate(day.date)}: ${attendanceCalendarDisplayStatus(day)}، ${day.timeLabel}`,
+                      `${day.date}: ${t(attendanceCalendarDisplayStatus(day))}, ${day.timeLabel}`
+                    )}
+                    onClick={() => day.interactive && selectCalendarDay(day.date)}
                     onDoubleClick={() => day.interactive && openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
-                    <span>{attendanceCalendarDisplayStatus(day) ? t(attendanceCalendarDisplayStatus(day)) : "-"}</span>
+                    <span className="dsv2-ew-calendar__full-status">{attendanceCalendarDisplayStatus(day) ? t(attendanceCalendarDisplayStatus(day)) : "-"}</span>
+                    <span className="dsv2-ew-calendar__mobile-summary" aria-hidden="true">
+                      <i className="dsv2-ew-calendar__mobile-dot" />
+                      <span>{t(attendanceCalendarCompactStatus(day))}</span>
+                    </span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
                         {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || t("فترة الاستئذان")}
