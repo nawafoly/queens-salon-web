@@ -224,6 +224,15 @@
     --ew-mobile-day-dot: var(--dsv2-attendance-short-hours-border, #ea8a2e);
   }
 
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="خروج مبكر"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-late-border, #d6a800);
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-special="partial_leave"],
+  .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="استئذان"] {
+    --ew-mobile-day-dot: var(--dsv2-attendance-compensatory-accent, #256e52);
+  }
+
   .dashboard-v2 .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status*="غياب"] {
     --ew-mobile-day-dot: var(--dsv2-attendance-absent-border, #c33b56);
   }
