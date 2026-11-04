@@ -82,6 +82,20 @@ export type InventoryMovement = {
   created_at: string;
 };
 
+export type InventoryEmployeeCustodyReport = {
+  lines: Array<{
+    employee_id: string;
+    employee_name: string;
+    item_id: string;
+    item_name: string;
+    unit: string;
+    issued_qty: number;
+    returned_qty: number;
+    outstanding_qty: number;
+  }>;
+  summary: { outstanding_lines: number; anomalies: number };
+};
+
 export type InventoryStocktakeSessionSummary = {
   id: string;
   title: string;
@@ -359,6 +373,10 @@ export const CoreInventoryService = {
   },
   issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/employee-issue", { method: "POST", body: input });
+  },
+  getEmployeeCustodyReport(employeeId?: string) {
+    const query = employeeId ? `?employeeId=${encodeURIComponent(employeeId)}` : "";
+    return coreApiRequest<InventoryEmployeeCustodyReport>(`/api/core/inventory/employee-custody${query}`);
   },
   returnFromEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/employee-return", { method: "POST", body: input });
