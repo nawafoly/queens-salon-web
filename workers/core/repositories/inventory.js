@@ -2258,7 +2258,16 @@ export async function receivePurchase(db, salonId, data, actor = {}) {
       throw new AppError(404, 'inventory:supplier_not_found', 'Supplier was not found');
     }
   }
-  const location = await ensureDefaultLocation(db, salonId);
+  // Honor the selected receiving location. Prior behavior always wrote to
+  // the default location, ignoring locationId sent by the Inventory UI.
+  // Keep the default only for older API callers that omit the field.
+  const requestedLocationId = optionalText(preferred(data, 'locationId', 'location_id'));
+  const location = requestedLocationId
+    ? await getLocation(db, salonId, requestedLocationId)
+    : await ensureDefaultLocation(db, salonId);
+  if (Number(location.active) !== 1) {
+    throw new AppError(409, 'inventory:location_inactive', 'Cannot receive stock into an inactive location');
+  }
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
   const baseNote = optionalText(data.note) || 'Purchase receipt';
   const note = supplierId
