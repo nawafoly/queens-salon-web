@@ -1,6 +1,15 @@
 # MALIKAT Inventory — isolated staging for PR #286
 
-Status (2026-11-04): isolated Core Worker, Core D1 and Firebase Auth are active; branch-only Preview environment overrides have been saved in both Vercel projects. A rebuilt PR preview and visual QA remain necessary. This is **not production approval**.
+Status (2026-11-04): isolated Core Worker, Core D1 and Firebase Auth are active. Both Git branch-scoped Vercel Preview deployments rebuilt successfully at commit `a05acc9deec9d563ce87a4d28ec7524ef23de1bb`. Authenticated Inventory visual QA and final CI review remain necessary. This is **not production approval**.
+
+## Stable PR #286 preview links
+
+Use these **branch aliases**, which remain stable across commits and are explicitly allowlisted by staging Core CORS and test Firebase Auth:
+
+- Primary: https://queens-salon-web-git-feat-inven-b73c85-nawafs-projects-05f9ecad.vercel.app/hr
+- Secondary: https://queens-salon-web-gnxk-git-feat-3c418c-nawafs-projects-05f9ecad.vercel.app/hr
+
+Avoid using the generated immutable Vercel deployment hostnames (`queens-salon-<build-id>-...` and `queens-salon-web-gnxk-<build-id>-...`) for browser QA. They are not on the exact staging CORS or Firebase authorized-domain allowlists, and may show a false-negative Core connection error. Do **not** relax CORS to a wildcard to make those hosts pass. Both stable aliases opened successfully on 2026-11-04 without new browser console errors; the authenticated inventory page is still awaiting a browser sign-in test.
 
 ## Resource fence
 
@@ -56,7 +65,7 @@ npx wrangler deploy --config wrangler.core.staging.jsonc --dry-run
 
 ## Remaining acceptance checks
 
-- Inspect the rebuilt preview bundle to confirm it embeds `malikat-staging-core-api` and `malikat-staging-tests-2026`, not the production URLs and Firebase project.
+- Branch-only Vercel settings were read back in both projects, confirming `VITE_CORE_WORKER_URL` and `VITE_FIREBASE_PROJECT_ID` point to staging. Both deployments finished `READY`; verify the actual compiled bundle when authenticated testing becomes available.
 - Sign in with the test-only QA account and inspect the Inventory dashboard on desktop, mobile and iPad, including the cost report, category mixing, staff stock location and all three disposal reasons.
 - Exercise mutation paths on **synthetic records only** and reconcile `inventory_stock_movements` with `inventory_stock_levels`; confirm an unfinished booking does not deduct inventory.
 - Review CI and merge readiness separately. PR #286 stays a draft until reviewed; do not merge the four original PRs separately.
