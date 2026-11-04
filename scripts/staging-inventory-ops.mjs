@@ -50,8 +50,9 @@ export function assertStagingConfig(config) {
 }
 
 function runWrangler(args) {
-  const bin = resolve(root, 'node_modules/.bin/wrangler');
-  const result = spawnSync(bin, args, {
+  // Launch the JS entrypoint directly so Windows PowerShell needs no .cmd shell.
+  const entrypoint = resolve(root, 'node_modules/wrangler/bin/wrangler.js');
+  const result = spawnSync(process.execPath, [entrypoint, ...args], {
     cwd: root,
     stdio: 'inherit',
     env: process.env,
