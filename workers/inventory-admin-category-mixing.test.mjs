@@ -25,19 +25,25 @@ test('admin consumption draft retains CATEGORY and SPECIFIC_ITEM recipe lines', 
   const lines = buildRecipeConsumptionDraft(recipe, items);
   assert.equal(lines.length, 2);
   assert.deepEqual(lines.map((line) => line.recipeLineId), ['recipe-category', 'recipe-fixed']);
-  assert.deepEqual(lines.map((line) => line.inventoryItemId), ['dye-a', 'oxygen']);
+  assert.deepEqual(lines.map((line) => line.inventoryItemId), ['', 'oxygen']);
   assert.deepEqual(lines.map((line) => line.quantity), ['75', '30']);
-  assert.deepEqual(validateRecipeConsumptionDraft(lines, items), {});
+  assert.match(validateRecipeConsumptionDraft(lines, items)['recipe-category'], /اختاري منتج/);
 });
 
 test('admin can mix CATEGORY products without increasing the recipe quantity or dropping fixed lines', () => {
   const initial = buildRecipeConsumptionDraft(recipe, items);
-  const mixed = splitCategoryConsumptionLine(initial, 'recipe-category', 'mix-1', { id: 'dye-b', name: 'Dye B' });
+  const selected = [{ ...initial[0], inventoryItemId: 'dye-a' }, initial[1]];
+  const pendingMix = splitCategoryConsumptionLine(selected, 'recipe-category', 'mix-1', null);
+  assert.deepEqual(pendingMix.map((line) => line.inventoryItemId), ['dye-a', '', 'oxygen']);
+  assert.match(validateRecipeConsumptionDraft(pendingMix, items)['mix-1'], /اختاري منتج/);
+  const mixed = pendingMix.map((line) => line.key === 'mix-1'
+    ? { ...line, inventoryItemId: 'dye-b', itemName: 'Dye B' }
+    : line);
   assert.deepEqual(mixed.map((line) => line.inventoryItemId), ['dye-a', 'dye-b', 'oxygen']);
   assert.equal(mixed.slice(0, 2).reduce((total, line) => total + Number(line.quantity), 0), 75);
   assert.equal(mixed[2].quantity, '30');
   assert.deepEqual(validateRecipeConsumptionDraft(mixed, items), {});
-  assert.deepEqual(removeMixedCategoryLine(mixed, 'mix-1'), initial);
+  assert.deepEqual(removeMixedCategoryLine(mixed, 'mix-1'), selected);
 });
 
 test('admin confirmation refuses a missing category product, invalid units or duplicate choices', () => {
@@ -50,7 +56,8 @@ test('admin confirmation refuses a missing category product, invalid units or du
     const invalid = [{ ...initial[0], inventoryItemId: badItem }, initial[1]];
     assert.match(validateRecipeConsumptionDraft(invalid, items)['recipe-category'], /لا يتبع فئة/);
   }
-  const duplicate = [...initial, { ...initial[0], key: 'mix-duplicate', isMixAddition: true }];
+  const selected = [{ ...initial[0], inventoryItemId: 'dye-a' }, initial[1]];
+  const duplicate = [...selected, { ...selected[0], key: 'mix-duplicate', isMixAddition: true }];
   assert.match(validateRecipeConsumptionDraft(duplicate, items)['recipe-category'], /تكرار المنتج/);
 });
 

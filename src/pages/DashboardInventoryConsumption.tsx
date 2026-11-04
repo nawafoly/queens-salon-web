@@ -81,6 +81,7 @@ export default function DashboardInventoryConsumption() {
   function availableMixProducts(line: RecipeConsumptionDraft) {
     if (line.lineType !== "CATEGORY" || !line.recipeLineId || !line.inventoryItemId ||
         !Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0) return [];
+    if (lines.some((row) => row.recipeLineId === line.recipeLineId && !row.inventoryItemId)) return [];
     const used = new Set(lines.filter((row) => row.recipeLineId === line.recipeLineId).map((row) => row.inventoryItemId));
     return productOptions(line).filter((item) => !used.has(item.id));
   }
@@ -88,10 +89,9 @@ export default function DashboardInventoryConsumption() {
   function addMixedProduct(key: string) {
     const source = lines.find((row) => row.key === key);
     if (!source) return;
-    const alternative = availableMixProducts(source)[0];
-    if (!alternative) return;
+    if (!availableMixProducts(source).length) return;
     setLines((current) => splitCategoryConsumptionLine(
-      current, key, `mix-${crypto.randomUUID()}`, { id: alternative.id, name: alternative.name }
+      current, key, `mix-${crypto.randomUUID()}`, null
     ));
     setLineErrors({});
     setActionFeedback(null);

@@ -34,17 +34,16 @@ export function buildRecipeConsumptionDraft(
 
     const categoryId = line.category_id ? String(line.category_id) : null;
     const specificItemId = line.inventory_item_id ? String(line.inventory_item_id) : "";
-    const categoryDefault = categoryId
-      ? trackedItems.find((item) => item.category_id === categoryId && item.unit === line.unit)?.id || ""
-      : "";
-    const inventoryItemId = line.line_type === "SPECIFIC_ITEM" ? specificItemId : categoryDefault;
+    // An admin must explicitly choose the actual product for a CATEGORY slot.
+    // The first matching catalog item may not be the one used in the service.
+    const inventoryItemId = line.line_type === "SPECIFIC_ITEM" ? specificItemId : "";
 
     return [{
       key: line.id || `recipe-${index}`,
       recipeLineId: line.id || null,
       lineType: line.line_type,
       categoryId,
-      defaultInventoryItemId: specificItemId || categoryDefault,
+      defaultInventoryItemId: specificItemId,
       inventoryItemId,
       itemName: trackedItems.find((item) => item.id === inventoryItemId)?.name || inventoryItemId,
       quantity: String(line.default_qty),
@@ -92,14 +91,16 @@ export function splitCategoryConsumptionLine<T extends CategoryConsumptionDraft>
   lines: T[],
   key: string,
   nextKey: string,
-  alternative: { id: string; name: string }
+  alternative: { id: string; name: string } | null
 ): T[] {
   const index = lines.findIndex((line) => line.key === key);
   const source = lines[index];
   if (
     !source || source.lineType !== "CATEGORY" || !source.recipeLineId || !source.inventoryItemId ||
-    !alternative.id || !nextKey || lines.some((line) => line.key === nextKey) ||
-    lines.some((line) => line.recipeLineId === source.recipeLineId && line.inventoryItemId === alternative.id)
+    !nextKey || lines.some((line) => line.key === nextKey) ||
+    (alternative !== null && (!alternative.id || lines.some(
+      (line) => line.recipeLineId === source.recipeLineId && line.inventoryItemId === alternative.id
+    )))
   ) return lines;
 
   const quantity = Number(source.quantity);
@@ -113,8 +114,8 @@ export function splitCategoryConsumptionLine<T extends CategoryConsumptionDraft>
     {
       ...source,
       key: nextKey,
-      inventoryItemId: alternative.id,
-      itemName: alternative.name,
+      inventoryItemId: alternative?.id || "",
+      itemName: alternative?.name || "",
       quantity: String(secondQty),
       defaultQty: "0",
       isMixAddition: true,
