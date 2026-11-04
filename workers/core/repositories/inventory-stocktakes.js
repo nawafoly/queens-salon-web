@@ -97,9 +97,12 @@ export async function listStocktakeSessions(db, salonId) {
     SELECT s.id, s.title, s.status, s.created_at, s.submitted_at,
       COUNT(l.id) AS line_count,
       COUNT(l.counted_qty) AS counted_count,
-      SUM(CASE WHEN l.counted_qty IS NOT NULL AND l.counted_qty <> l.expected_qty THEN 1 ELSE 0 END) AS variance_count
+      SUM(CASE WHEN l.counted_qty IS NOT NULL AND l.counted_qty <> l.expected_qty THEN 1 ELSE 0 END) AS variance_count,
+      COUNT(r.id) AS reviewed_count
     FROM inventory_stocktake_sessions s
     LEFT JOIN inventory_stocktake_lines l ON l.salon_id = s.salon_id AND l.session_id = s.id
+    LEFT JOIN inventory_stocktake_line_resolutions r
+      ON r.salon_id = l.salon_id AND r.session_id = l.session_id AND r.line_id = l.id
     WHERE s.salon_id = ?
     GROUP BY s.id
     ORDER BY s.created_at DESC, s.id DESC LIMIT 100`, [salonId]);
@@ -114,10 +117,15 @@ export async function getStocktakeSession(db, salonId, sessionId) {
     throw new AppError(404, 'inventory:stocktake_session_not_found', 'Stocktake session was not found');
   }
   const rows = await dbAll(db, `
-    SELECT l.*, i.name AS item_name, loc.name AS location_name
+    SELECT l.*, i.name AS item_name, loc.name AS location_name,
+      r.decision AS review_decision, r.reason AS review_reason,
+      r.movement_id AS review_movement_id,
+      r.resolved_by_name AS reviewed_by_name, r.resolved_at AS reviewed_at
     FROM inventory_stocktake_lines l
     LEFT JOIN inventory_items i ON i.id = l.item_id AND i.salon_id = l.salon_id
     LEFT JOIN inventory_locations loc ON loc.id = l.location_id AND loc.salon_id = l.salon_id
+    LEFT JOIN inventory_stocktake_line_resolutions r
+      ON r.salon_id = l.salon_id AND r.session_id = l.session_id AND r.line_id = l.id
     WHERE l.salon_id = ? AND l.session_id = ?
     ORDER BY loc.name, i.name, l.id`, [salonId, id]);
   const lines = rows.map((row) => ({ ...row,
@@ -130,6 +138,7 @@ export async function getStocktakeSession(db, salonId, sessionId) {
       total_lines: lines.length,
       counted_lines: lines.filter((line) => line.counted_qty !== null).length,
       variance_lines: lines.filter((line) => line.variance_qty !== null && line.variance_qty !== 0).length,
+      reviewed_lines: lines.filter((line) => line.review_decision !== null).length,
     },
   };
 }

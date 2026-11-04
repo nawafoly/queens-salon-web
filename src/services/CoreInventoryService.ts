@@ -91,6 +91,7 @@ export type InventoryStocktakeSessionSummary = {
   line_count: number;
   counted_count: number;
   variance_count: number;
+  reviewed_count: number;
 };
 
 export type InventoryStocktakeSessionLine = {
@@ -104,11 +105,16 @@ export type InventoryStocktakeSessionLine = {
   counted_qty: number | null;
   variance_qty: number | null;
   note: string | null;
+  review_decision: "APPLY" | "DISMISS" | null;
+  review_reason: string | null;
+  review_movement_id: string | null;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
 };
 
-export type InventoryStocktakeSession = Omit<InventoryStocktakeSessionSummary, "line_count" | "counted_count" | "variance_count"> & {
+export type InventoryStocktakeSession = Omit<InventoryStocktakeSessionSummary, "line_count" | "counted_count" | "variance_count" | "reviewed_count"> & {
   lines: InventoryStocktakeSessionLine[];
-  summary: { total_lines: number; counted_lines: number; variance_lines: number };
+  summary: { total_lines: number; counted_lines: number; variance_lines: number; reviewed_lines: number };
 };
 
 export type InventoryCostBreakdown = {
@@ -341,6 +347,14 @@ export const CoreInventoryService = {
     return coreApiRequest<InventoryStocktakeSession>(
       `/api/core/inventory/stocktake-sessions/${encodeURIComponent(id)}/submit`,
       { method: "POST" }
+    );
+  },
+  resolveStocktakeSessionLine(sessionId: string, input: {
+    lineId: string; decision: "APPLY" | "DISMISS"; reason: string;
+  }) {
+    return coreApiRequest<InventoryStocktakeSession>(
+      `/api/core/inventory/stocktake-sessions/${encodeURIComponent(sessionId)}/resolve`,
+      { method: "POST", body: input }
     );
   },
   issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {

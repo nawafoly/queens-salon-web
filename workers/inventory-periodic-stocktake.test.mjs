@@ -19,6 +19,7 @@ function database() {
     CREATE TABLE inventory_stock_movements (id TEXT, salon_id TEXT);
   `);
   sql.exec(readFileSync('migrations/core/0100_inventory_stocktake_sessions.sql', 'utf8'));
+  sql.exec(readFileSync('migrations/core/0101_inventory_stocktake_line_resolutions.sql', 'utf8'));
   const insert = (statement, ...params) => sql.prepare(statement).run(...params);
   for (const [id, salon, name, unit, active] of [
     ['dye', 'main', 'صبغة', 'ml', 1], ['gloves', 'main', 'قفازات', 'piece', 1],
@@ -102,7 +103,7 @@ test('counts need explanations for variance; submitted report is frozen and read
     await recordStocktakeSessionCount(db, 'main', created.id, { lineId: frontDye.id, countedQty: 103, note: 'Found box' });
     const submitted = await submitStocktakeSession(db, 'main', created.id);
     assert.equal(submitted.status, 'submitted');
-    assert.deepEqual(submitted.summary, { total_lines: 3, counted_lines: 3, variance_lines: 2 });
+    assert.deepEqual(submitted.summary, { total_lines: 3, counted_lines: 3, variance_lines: 2, reviewed_lines: 0 });
     assert.deepEqual(submitted.lines.map((line) => line.variance_qty), [-3, 0, 3]);
     assert.equal((await submitStocktakeSession(db, 'main', created.id)).status, 'submitted');
     await assert.rejects(recordStocktakeSessionCount(db, 'main', created.id, { lineId: frontDye.id, countedQty: 0, note: 'Changed' }),

@@ -144,6 +144,7 @@ import {
   recordStocktakeSessionCount,
   submitStocktakeSession,
 } from './repositories/inventory-stocktakes.js';
+import { resolveStocktakeSessionLine } from './repositories/inventory-stocktake-approvals.js';
 import {
   createCatalogRow,
   deleteCatalogRow,
@@ -1119,6 +1120,10 @@ function match(url, method) {
   const stocktakeSubmit = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)\/submit$/.exec(path);
   if (stocktakeSubmit && method === "POST") {
     return { name: "inventory:stocktake-session-submit", id: stocktakeSubmit[1] };
+  }
+  const stocktakeResolve = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)\/resolve$/.exec(path);
+  if (stocktakeResolve && method === "POST") {
+    return { name: "inventory:stocktake-session-resolve", id: stocktakeResolve[1] };
   }
   const stocktakeById = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)$/.exec(path);
   if (stocktakeById && method === "GET") {
@@ -3793,6 +3798,12 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
         return submitStocktakeSession(db, ctx.salonId, route.id);
+      }
+      break;
+    case "inventory:stocktake-session-resolve":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return resolveStocktakeSessionLine(db, ctx.salonId, route.id, body || {}, actorInfo);
       }
       break;
 
