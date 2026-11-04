@@ -93,6 +93,8 @@ test('stocktake requires a location, recorded balance and meaningful reason', as
       { countedQty: Number.NaN }, { countedQty: undefined },
       { countedQty: null }, { countedQty: '' }, { expectedQty: ' ' },
     ]) await assert.rejects(adjustAfterStocktake(db, 'main', payload(invalid)));
+    await assert.rejects(adjustAfterStocktake(db, 'main', payload({ note: '' })),
+      (error) => error.code === 'inventory:stocktake_reason_required');
     assert.equal(db.movements().length, 0);
     assert.equal(db.balance('back'), 30);
   } finally { db.close(); }

@@ -2196,7 +2196,7 @@ export async function adjustAfterStocktake(db, salonId, data, actor = {}) {
     throw new AppError(400, 'inventory:stocktake_expected_required', 'Current stock quantity is required for stocktake');
   }
   const expectedQty = nonNegativeQty(rawExpected, 'expectedQty');
-  const note = optionalText(data.note);
+  const note = optionalText(data.note) || '';
   if (note.length < 3 || note.length > 300) {
     throw new AppError(400, 'inventory:stocktake_reason_required', 'Stocktake reason must be 3 to 300 characters');
   }
