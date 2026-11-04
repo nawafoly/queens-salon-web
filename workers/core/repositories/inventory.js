@@ -407,6 +407,9 @@ async function appendMovement(db, salonId, input, actor = {}) {
     input.unitCostHalalas != null
       ? integer(input.unitCostHalalas, 'unitCostHalalas', { min: 0 })
       : null;
+  // Stocktake adjustments are based on a counted snapshot. Guard the ledger
+  // INSERT itself so an intervening stock movement cannot be overwritten.
+  const hasExpectedBalance = input.expectedBalance !== undefined;
 
   await ensureStockLevel(db, salonId, itemId, locationId, now);
 
@@ -433,7 +436,8 @@ async function appendMovement(db, salonId, input, actor = {}) {
       WHERE sl.salon_id = ?
         AND sl.item_id = ?
         AND sl.location_id = ?
-        AND sl.qty_on_hand + ? >= 0`,
+        AND sl.qty_on_hand + ? >= 0
+        ${hasExpectedBalance ? 'AND sl.qty_on_hand = ?' : ''}`,
       params: [
         movementId,
         salonId,
@@ -464,6 +468,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
         itemId,
         locationId,
         quantityDelta,
+        ...(hasExpectedBalance ? [input.expectedBalance] : []),
       ],
     },
     {
@@ -495,6 +500,13 @@ async function appendMovement(db, salonId, input, actor = {}) {
   const levelChanges = changes(results?.[1]);
 
   if (movementChanges !== 1) {
+    if (hasExpectedBalance) {
+      throw new AppError(
+        409,
+        'inventory:stocktake_stale_balance',
+        'Stock has changed since the physical count was reviewed; refresh before confirming'
+      );
+    }
     throw new AppError(
       409,
       'inventory:insufficient_stock',
@@ -2171,17 +2183,36 @@ export async function recordWaste(db, salonId, data, actor = {}) {
 
 export async function adjustAfterStocktake(db, salonId, data, actor = {}) {
   const itemId = requiredId(preferred(data, 'itemId', 'item_id'), 'itemId');
-  const counted = Number(preferred(data, 'countedQty', 'counted_qty'));
-  if (!Number.isFinite(counted) || counted < 0) {
+  // An explicit location is mandatory. A physical count never silently uses
+  // the default location when the material is stocked in multiple places.
+  const locationId = requiredId(preferred(data, 'locationId', 'location_id'), 'locationId');
+  const rawCounted = preferred(data, 'countedQty', 'counted_qty');
+  const counted = Number(rawCounted);
+  if (rawCounted === undefined || rawCounted === null || String(rawCounted).trim() === '' || !Number.isFinite(counted) || counted < 0) {
     throw new AppError(400, 'core_validation:invalid_quantity', 'Counted quantity must be zero or more');
+  }
+  const rawExpected = preferred(data, 'expectedQty', 'expected_qty');
+  if (rawExpected === undefined || rawExpected === null || String(rawExpected).trim() === '') {
+    throw new AppError(400, 'inventory:stocktake_expected_required', 'Current stock quantity is required for stocktake');
+  }
+  const expectedQty = nonNegativeQty(rawExpected, 'expectedQty');
+  const note = optionalText(data.note);
+  if (note.length < 3 || note.length > 300) {
+    throw new AppError(400, 'inventory:stocktake_reason_required', 'Stocktake reason must be 3 to 300 characters');
   }
   const item = await getItem(db, salonId, itemId);
   if (!item || Number(item.is_active) !== 1) {
     throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
   }
-  const location = await ensureDefaultLocation(db, salonId);
-  const level = await getStockLevelRow(db, salonId, itemId, location.id);
+  const location = await getLocation(db, salonId, locationId);
+  if (Number(location.active) !== 1) {
+    throw new AppError(409, 'inventory:location_inactive', 'Stocktake location is inactive');
+  }
+  const level = await getStockLevelRow(db, salonId, itemId, locationId);
   const current = Number(level?.qty_on_hand || 0);
+  if (current !== expectedQty) {
+    throw new AppError(409, 'inventory:stocktake_stale_balance', 'Stock has changed since the physical count was reviewed; refresh before confirming');
+  }
   const delta = counted - current;
   if (delta === 0) {
     throw new AppError(409, 'inventory:stocktake_no_variance', 'Counted quantity matches on-hand stock');
@@ -2189,15 +2220,16 @@ export async function adjustAfterStocktake(db, salonId, data, actor = {}) {
   const operationId = optionalText(preferred(data, 'operationId', 'operation_id')) || generatedId('invop');
   return appendMovement(db, salonId, {
     itemId,
-    locationId: location.id,
+    locationId,
     movementType: 'STOCKTAKE_VARIANCE',
     quantityDelta: delta,
+    expectedBalance: expectedQty,
     unit: item.unit,
     sourceType: 'STOCKTAKE',
     sourceId: operationId,
     lineKey: itemId,
     operationId,
-    note: optionalText(data.note) || 'Stocktake variance',
+    note,
   }, actor);
 }
 

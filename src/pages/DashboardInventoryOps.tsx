@@ -16,7 +16,7 @@ function errorMessage(error: unknown) {
   return "تعذر تنفيذ العملية.";
 }
 
-type LocationRow = { id: string; name?: string };
+type LocationRow = { id: string; name?: string; active?: number };
 type OperationScope = "waste" | "stocktake" | "transfer" | "location";
 type OperationFeedback = { tone: "success" | "danger"; message: string } | null;
 
@@ -42,6 +42,12 @@ export default function DashboardInventoryOps() {
   const [disposalType, setDisposalType] = useState<InventoryDisposalType>("WASTE_OUT");
   const [disposalNote, setDisposalNote] = useState("");
   const [countedQty, setCountedQty] = useState("");
+  const [stocktakeLocationId, setStocktakeLocationId] = useState("");
+  const [stocktakeBalance, setStocktakeBalance] = useState<number | null>(null);
+  const [stocktakeBalanceLoading, setStocktakeBalanceLoading] = useState(false);
+  const [stocktakeBalanceError, setStocktakeBalanceError] = useState("");
+  const [stocktakeNote, setStocktakeNote] = useState("");
+  const [stocktakeRefresh, setStocktakeRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -67,7 +73,7 @@ export default function DashboardInventoryOps() {
         if (cancelled) return;
         setItems(itemRows || []);
         const locs = Array.isArray(locRows) ? locRows : [];
-        setLocations(locs as LocationRow[]);
+        setLocations((locs as LocationRow[]).filter((row) => Number(row.active ?? 1) === 1));
       } catch (err) {
         if (!cancelled) setLoadError(errorMessage(err));
       } finally {
@@ -79,6 +85,41 @@ export default function DashboardInventoryOps() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStocktakeBalance(null);
+    setStocktakeBalanceError("");
+    if (!itemId || !stocktakeLocationId) {
+      setStocktakeBalanceLoading(false);
+      return;
+    }
+
+    setStocktakeBalanceLoading(true);
+    void (async () => {
+      try {
+        const rows = await CoreInventoryService.listStockLevels({ itemId, locationId: stocktakeLocationId });
+        if (cancelled) return;
+        const row = rows.find((entry) => entry.item_id === itemId && entry.location_id === stocktakeLocationId);
+        const balance = row ? Number(row.qty_on_hand) : 0;
+        if (!Number.isFinite(balance) || balance < 0) throw new Error("Invalid stock balance");
+        setStocktakeBalance(balance);
+      } catch (err) {
+        if (!cancelled) setStocktakeBalanceError(errorMessage(err));
+      } finally {
+        if (!cancelled) setStocktakeBalanceLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [itemId, stocktakeLocationId, stocktakeRefresh]);
+
+  const countedNumber = countedQty.trim() === "" ? NaN : Number(countedQty);
+  const validCounted = Number.isFinite(countedNumber) && countedNumber >= 0;
+  const stocktakeDelta = validCounted && stocktakeBalance !== null ? countedNumber - stocktakeBalance : null;
+  const canConfirmStocktake = canAdjust && !!itemId && !!stocktakeLocationId &&
+    !stocktakeBalanceLoading && stocktakeBalance !== null && validCounted &&
+    stocktakeDelta !== 0 && stocktakeNote.trim().length >= 3 && stocktakeNote.trim().length <= 300;
 
   async function runWaste() {
     if (!canWaste || !itemId) return;
@@ -105,21 +146,30 @@ export default function DashboardInventoryOps() {
   }
 
   async function runStocktake() {
-    if (!canAdjust || !itemId) return;
+    if (!canConfirmStocktake || stocktakeBalance === null) return;
     setSaving("stocktake");
     setOperationFeedback("stocktake", null);
     try {
       await CoreInventoryService.adjustAfterStocktake({
         itemId,
-        countedQty: Number(countedQty),
-        note: "UI stocktake",
+        locationId: stocktakeLocationId,
+        countedQty: countedNumber,
+        expectedQty: stocktakeBalance,
+        note: stocktakeNote.trim(),
       });
       setOperationFeedback("stocktake", {
         tone: "success",
         message: "تم تسجيل فرق الجرد في الدفتر.",
       });
+      setCountedQty("");
+      setStocktakeNote("");
+      setStocktakeRefresh((current) => current + 1);
     } catch (err) {
       setOperationFeedback("stocktake", { tone: "danger", message: errorMessage(err) });
+      if (err instanceof CoreApiError && err.code === "inventory:stocktake_stale_balance") {
+        setCountedQty("");
+        setStocktakeRefresh((current) => current + 1);
+      }
     } finally {
       setSaving("");
     }
@@ -156,7 +206,11 @@ export default function DashboardInventoryOps() {
     <div>
       <p className="text-muted">استبعاد الهدر والتالف والمنتهي يسجل حركة خصم. الجرد يسجل الفرق، والتحويل يحتاج موقعين مختلفين.</p>
       <DashboardFieldV2 id="inv-ops-item" label="المادة">
-        <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: item.name }))} onChange={setItemId} />
+        <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => {
+          setItemId(value);
+          setCountedQty("");
+          setOperationFeedback("stocktake", null);
+        }} />
       </DashboardFieldV2>
       <div className="border rounded p-3 mb-3">
         <h3 className="h6">استبعاد مادة من المخزون</h3>
@@ -196,9 +250,33 @@ export default function DashboardInventoryOps() {
         ) : <p className="text-muted">لا توجد صلاحية هدر.</p>}
       </div>
       <div className="border rounded p-3 mb-3">
-        <h3 className="h6">جرد</h3>
+        <h3 className="h6">جرد حسب الموقع</h3>
+        <p className="small text-muted">اختاري موقع التخزين، ثم قارني الكمية الفعلية بالرصيد المسجل قبل الاعتماد. لا يتم تغيير مواقع أخرى.</p>
+        <DashboardFieldV2 id="inv-stocktake-location" label="الموقع المطلوب جرده">
+          <DashboardSelectV2 value={stocktakeLocationId} options={locations.map((loc) => ({ value: loc.id, label: loc.name || loc.id }))} onChange={(value) => {
+            setStocktakeLocationId(value);
+            setCountedQty("");
+            setOperationFeedback("stocktake", null);
+          }} />
+        </DashboardFieldV2>
+        <div className="alert alert-light border" role="status">
+          {!itemId || !stocktakeLocationId ? "حددي المادة وموقع التخزين لعرض الرصيد الحالي." :
+            stocktakeBalanceLoading ? "جاري قراءة الرصيد من Core..." :
+              stocktakeBalanceError ? `تعذر قراءة الرصيد: ${stocktakeBalanceError}` :
+                stocktakeBalance === null ? "الرصيد غير متاح حالياً." :
+                  `الرصيد المسجل في هذا الموقع: ${stocktakeBalance} ${items.find((item) => item.id === itemId)?.unit || ""}`}
+        </div>
         <DashboardFieldV2 id="inv-count-qty" label="الكمية المعدودة فعلياً">
           <DashboardNumberInputV2 value={countedQty} onChange={(e) => setCountedQty(e.target.value)} />
+        </DashboardFieldV2>
+        {stocktakeDelta !== null ? (
+          <div className={`alert ${stocktakeDelta === 0 ? "alert-success" : "alert-warning"}`} role="status">
+            {stocktakeDelta === 0 ? "الرصيد مطابق، لا يوجد فرق جرد لتسجيله." :
+              `فرق الجرد: ${stocktakeDelta > 0 ? "+" : ""}${stocktakeDelta} ${items.find((item) => item.id === itemId)?.unit || ""}`}
+          </div>
+        ) : null}
+        <DashboardFieldV2 id="inv-stocktake-note" label="سبب فرق الجرد (إلزامي)">
+          <input className="form-control" value={stocktakeNote} maxLength={300} onChange={(event) => setStocktakeNote(event.target.value)} placeholder="سبب الفرق أو مرجع محضر الجرد" />
         </DashboardFieldV2>
         {feedback.stocktake ? (
           <DashboardActionFeedbackV2
@@ -210,7 +288,7 @@ export default function DashboardInventoryOps() {
           />
         ) : null}
         {canAdjust ? (
-          <button type="button" className="btn btn-dark" disabled={!!saving || !itemId || countedQty === ""} onClick={() => void runStocktake()}>
+          <button type="button" className="btn btn-dark" disabled={!!saving || !canConfirmStocktake} onClick={() => void runStocktake()}>
             {saving === "stocktake" ? "جاري التسجيل..." : "اعتماد فرق الجرد"}
           </button>
         ) : <p className="text-muted">لا توجد صلاحية جرد.</p>}
