@@ -26,6 +26,14 @@ isolated Staging once authorized. Neither migration nor Worker changes are
 deployed as part of local code review. Do **not** use the production Worker or
 Core D1 for the test.
 
+The employee custody report adds `0102_inventory_employee_custody_index.sql`
+after 0101; it indexes the existing append-mostly movement ledger for
+`EMPLOYEE_ISSUE_OUT`/`EMPLOYEE_RETURN_IN` queries. No balances are migrated.
+The Core now rejects returns exceeding an employee's outstanding issued
+quantity, including concurrent attempts. Test this with synthetic employees
+and quantities only. Historical over-returns remain visible as anomalies for
+manual review; this feature does not silently rewrite history.
+
 ## Stable PR #286 preview links
 
 Use these **branch aliases**, which remain stable across commits and are explicitly allowlisted by staging Core CORS and test Firebase Auth:

@@ -10,7 +10,7 @@ import {
 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
-import { CoreInventoryService, type InventoryItem } from "../services/CoreInventoryService";
+import { CoreInventoryService, type InventoryItem, type InventoryEmployeeCustodyReport } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 
 function errorMessage(error: unknown) {
@@ -23,6 +23,7 @@ type ActionFeedback = { tone: "success" | "danger"; message: string } | null;
 export default function DashboardInventoryIssue() {
   const { hasPermission } = usePermissions();
   const canAdjust = hasPermission("inventory.adjust");
+  const canViewCustody = canAdjust || hasPermission("inventory.movements.view");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [itemId, setItemId] = useState("");
@@ -34,6 +35,8 @@ export default function DashboardInventoryIssue() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback>(null);
+  const [custody, setCustody] = useState<InventoryEmployeeCustodyReport | null>(null);
+  const [custodyError, setCustodyError] = useState("");
 
   const issueItems = useMemo(
     () => items.filter((item) => item.consumption_policy === "EMPLOYEE_ISSUED" && Number(item.is_active) === 1),
@@ -71,6 +74,17 @@ export default function DashboardInventoryIssue() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!canViewCustody) return;
+    let cancelled = false;
+    void CoreInventoryService.getEmployeeCustodyReport().then((report) => {
+      if (!cancelled) setCustody(report);
+    }).catch((err: unknown) => {
+      if (!cancelled) setCustodyError(errorMessage(err));
+    });
+    return () => { cancelled = true; };
+  }, [canViewCustody]);
+
   async function submit() {
     if (!canAdjust || !itemId || !employeeId) return;
     const qty = Number(quantity);
@@ -89,6 +103,10 @@ export default function DashboardInventoryIssue() {
       } else {
         await CoreInventoryService.returnFromEmployee({ itemId, employeeId, quantity: qty });
         setActionFeedback({ tone: "success", message: "تم إرجاع المادة إلى المخزن." });
+      }
+      if (canViewCustody) {
+        setCustody(await CoreInventoryService.getEmployeeCustodyReport());
+        setCustodyError("");
       }
     } catch (err) {
       setActionFeedback({ tone: "danger", message: errorMessage(err) });
@@ -174,6 +192,46 @@ export default function DashboardInventoryIssue() {
           )}
         </>
       )}
+      {canViewCustody ? (
+        <section className="border rounded p-3 mt-4">
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <h3 className="h6 mb-0">تقرير العهد المتبقية لدى الموظفات</h3>
+            <button type="button" className="btn btn-outline-dark btn-sm" disabled={saving}
+              onClick={() => void CoreInventoryService.getEmployeeCustodyReport().then((report) => {
+                setCustody(report); setCustodyError("");
+              }).catch((err: unknown) => setCustodyError(errorMessage(err)))}>تحديث التقرير</button>
+          </div>
+          <p className="small text-muted">
+            يُحتسب من حركات الصرف والإرجاع الفعلية في Core، لكل موظفة ومادة ووحدة على حدة؛
+            لا يشمل كميات الخدمات أو المواد المشتركة.
+          </p>
+          {custodyError ? <DashboardErrorStateV2 title="تعذر قراءة تقرير العهد" description={custodyError} /> : null}
+          {custody && !custody.lines.length ? (
+            <DashboardEmptyStateV2 title="لا توجد عهد معلقة" description="لا توجد كميات مصروفة لم تُعد حتى الآن." />
+          ) : null}
+          {custody && custody.lines.length ? (
+            <div className="table-responsive">
+              <table className="table table-sm align-middle">
+                <thead><tr><th>الموظفة</th><th>المادة</th><th>المصروف</th><th>المرتجع</th><th>المتبقي بعهدتها</th></tr></thead>
+                <tbody>
+                  {custody.lines.map((line) => (
+                    <tr key={`${line.employee_id}:${line.item_id}:${line.unit}`}>
+                      <th scope="row">{line.employee_name}</th>
+                      <td>{line.item_name}</td>
+                      <td>{Number(line.issued_qty).toLocaleString("ar-SA")} {line.unit}</td>
+                      <td>{Number(line.returned_qty).toLocaleString("ar-SA")} {line.unit}</td>
+                      <td className={Number(line.outstanding_qty) < 0 ? "text-danger" : "fw-semibold"}>
+                        {Number(line.outstanding_qty).toLocaleString("ar-SA")} {line.unit}
+                        {Number(line.outstanding_qty) < 0 ? " — فرق تاريخي يتطلب مراجعة" : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

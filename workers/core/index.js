@@ -145,6 +145,7 @@ import {
   submitStocktakeSession,
 } from './repositories/inventory-stocktakes.js';
 import { resolveStocktakeSessionLine } from './repositories/inventory-stocktake-approvals.js';
+import { getEmployeeCustodyReport } from './repositories/inventory-custody.js';
 import {
   createCatalogRow,
   deleteCatalogRow,
@@ -1109,6 +1110,9 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/stocktake" && method === "POST") {
     return { name: "inventory:stocktake" };
+  }
+  if (path === "/api/core/inventory/employee-custody" && method === "GET") {
+    return { name: "inventory:employee-custody" };
   }
   if (path === "/api/core/inventory/stocktake-sessions") {
     return { name: "inventory:stocktake-sessions" };
@@ -3769,6 +3773,13 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
         return adjustAfterStocktake(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:employee-custody":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.adjust", "inventory.movements.view"]);
+        return getEmployeeCustodyReport(db, ctx.salonId, readQuery);
       }
       break;
 

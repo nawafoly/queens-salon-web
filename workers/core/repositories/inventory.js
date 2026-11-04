@@ -410,6 +410,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
   // Stocktake adjustments are based on a counted snapshot. Guard the ledger
   // INSERT itself so an intervening stock movement cannot be overwritten.
   const hasExpectedBalance = input.expectedBalance !== undefined;
+  const guardEmployeeCustodyReturn = input.guardEmployeeCustodyReturn === true;
 
   await ensureStockLevel(db, salonId, itemId, locationId, now);
 
@@ -437,7 +438,14 @@ async function appendMovement(db, salonId, input, actor = {}) {
         AND sl.item_id = ?
         AND sl.location_id = ?
         AND sl.qty_on_hand + ? >= 0
-        ${hasExpectedBalance ? 'AND sl.qty_on_hand = ?' : ''}`,
+        ${hasExpectedBalance ? 'AND sl.qty_on_hand = ?' : ''}
+        ${guardEmployeeCustodyReturn ? `AND COALESCE((
+          SELECT SUM(-m.quantity_delta)
+          FROM inventory_stock_movements m
+          WHERE m.salon_id = sl.salon_id AND m.item_id = sl.item_id
+            AND m.employee_id = ?
+            AND m.movement_type IN ('EMPLOYEE_ISSUE_OUT', 'EMPLOYEE_RETURN_IN')
+        ), 0) >= ?` : ''}`,
       params: [
         movementId,
         salonId,
@@ -469,6 +477,7 @@ async function appendMovement(db, salonId, input, actor = {}) {
         locationId,
         quantityDelta,
         ...(hasExpectedBalance ? [input.expectedBalance] : []),
+        ...(guardEmployeeCustodyReturn ? [requiredId(input.employeeId, 'employeeId'), quantityDelta] : []),
       ],
     },
     {
@@ -500,6 +509,13 @@ async function appendMovement(db, salonId, input, actor = {}) {
   const levelChanges = changes(results?.[1]);
 
   if (movementChanges !== 1) {
+    if (guardEmployeeCustodyReturn) {
+      throw new AppError(
+        409,
+        'inventory:employee_custody_insufficient',
+        'Return exceeds the quantity currently issued to this employee'
+      );
+    }
     if (hasExpectedBalance) {
       throw new AppError(
         409,
@@ -2113,6 +2129,9 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
   if (!item || Number(item.is_active) !== 1) {
     throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
   }
+  if (cleanText(item.consumption_policy) !== 'EMPLOYEE_ISSUED') {
+    throw new AppError(409, 'inventory:item_policy_mismatch', 'Only EMPLOYEE_ISSUED items can be returned from staff custody');
+  }
   const employee = await dbFirst(
     db,
     'SELECT id, status FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
@@ -2134,6 +2153,7 @@ export async function returnFromEmployee(db, salonId, data, actor = {}) {
     lineKey: itemId,
     operationId,
     employeeId,
+    guardEmployeeCustodyReturn: true,
     note: optionalText(data.note) || 'Returned from employee',
   }, actor);
 }
