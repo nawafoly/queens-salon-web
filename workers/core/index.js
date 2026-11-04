@@ -147,6 +147,7 @@ import {
 import { resolveStocktakeSessionLine } from './repositories/inventory-stocktake-approvals.js';
 import { getEmployeeCustodyReport } from './repositories/inventory-custody.js';
 import { getInventoryReorderSignals } from './repositories/inventory-reorder.js';
+import { getPurchaseOrderDetail, decidePurchaseOrder } from './repositories/inventory-purchase-approvals.js';
 import {
   createCatalogRow,
   deleteCatalogRow,
@@ -1148,6 +1149,14 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/purchase-order-receive" && method === "POST") {
     return { name: "inventory:purchase-order-receive" };
+  }
+  const purchaseOrderDetail = /^\/api\/core\/inventory\/purchase-orders\/([^/]+)$/.exec(path);
+  if (purchaseOrderDetail && method === "GET") {
+    return { name: "inventory:purchase-order-detail", id: purchaseOrderDetail[1] };
+  }
+  const purchaseOrderDecision = /^\/api\/core\/inventory\/purchase-orders\/([^/]+)\/decision$/.exec(path);
+  if (purchaseOrderDecision && method === "POST") {
+    return { name: "inventory:purchase-order-decision", id: purchaseOrderDecision[1] };
   }
   if (path === "/api/core/inventory/transfer" && method === "POST") {
     return { name: "inventory:transfer" };
@@ -3851,6 +3860,23 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
         return receivePurchaseOrderLine(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
+    case "inventory:purchase-order-detail":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.view", "inventory.adjust"]);
+        const detail = await getPurchaseOrderDetail(db, ctx.salonId, route.id);
+        if (!hasPermission(ctx, "inventory.movements.view") && !hasPermission(ctx, "inventory.adjust")) {
+          return { ...detail, lines: detail.lines.map((line) => ({ ...line, unit_cost_halalas: null })) };
+        }
+        return detail;
+      }
+      break;
+    case "inventory:purchase-order-decision":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        requireRole(ctx.role, ADMIN_ROLES);
+        return decidePurchaseOrder(db, ctx.salonId, route.id, body || {}, actorInfo);
       }
       break;
     case "inventory:transfer":

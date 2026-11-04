@@ -2434,8 +2434,8 @@ export async function addPurchaseOrderLine(db, salonId, data, actor = {}) {
   }
   const po = await dbFirst(db, `SELECT * FROM inventory_purchase_orders WHERE salon_id = ? AND id = ?`, [salonId, poId]);
   if (!po) throw new AppError(404, 'inventory:po_not_found', 'Purchase order was not found');
-  if (String(po.status) === 'CANCELLED') {
-    throw new AppError(409, 'inventory:po_cancelled', 'Cannot add lines to a cancelled purchase order');
+  if (String(po.status).toUpperCase() !== 'DRAFT') {
+    throw new AppError(409, 'inventory:po_not_editable', 'Only draft purchase orders may be edited');
   }
   const item = await getItem(db, salonId, itemId);
   if (!item) throw new AppError(404, 'inventory:item_not_found', 'Inventory item was not found');
@@ -2444,14 +2444,18 @@ export async function addPurchaseOrderLine(db, salonId, data, actor = {}) {
   const unitCost = data.unitCostHalalas != null || data.unit_cost_halalas != null
     ? integer(preferred(data, 'unitCostHalalas', 'unit_cost_halalas'), 'unitCostHalalas', { min: 0 })
     : null;
-  await dbRun(
+  const added = await dbRun(
     db,
     `INSERT INTO inventory_purchase_order_lines
       (id, salon_id, purchase_order_id, item_id, qty_ordered, qty_received, unit_cost_halalas, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-    [id, salonId, poId, itemId, qty, unitCost, now, now]
+     SELECT ?, ?, ?, ?, ?, 0, ?, ?, ?
+     FROM inventory_purchase_orders po
+     WHERE po.id = ? AND po.salon_id = ? AND UPPER(po.status) = 'DRAFT'`,
+    [id, salonId, poId, itemId, qty, unitCost, now, now, poId, salonId]
   );
-  await dbRun(db, `UPDATE inventory_purchase_orders SET status = CASE WHEN status = 'DRAFT' THEN 'ORDERED' ELSE status END, updated_at = ? WHERE id = ? AND salon_id = ?`, [now, poId, salonId]);
+  if (changes(added) !== 1) {
+    throw new AppError(409, 'inventory:po_not_editable', 'Purchase order was approved while adding its line');
+  }
   return dbFirst(db, `SELECT * FROM inventory_purchase_order_lines WHERE id = ?`, [id]);
 }
 
@@ -2520,16 +2524,16 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
     );
   }
 
-  const location = await ensureDefaultLocation(
-    db,
-    salonId
-  );
+  const requestedLocationId = optionalText(preferred(data, 'locationId', 'location_id'));
+  const location = requestedLocationId
+    ? await getLocation(db, salonId, requestedLocationId)
+    : await ensureDefaultLocation(db, salonId);
 
   if (Number(location.active) !== 1) {
     throw new AppError(
       409,
       'inventory:location_inactive',
-      'Default inventory location is inactive'
+      'Receiving location is inactive'
     );
   }
 
@@ -2621,6 +2625,21 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
     };
   }
 
+  const approvedReceipt = await dbFirst(
+    db,
+    `SELECT 1 AS approved
+     FROM inventory_purchase_order_decisions
+     WHERE salon_id = ? AND purchase_order_id = ? AND decision = 'APPROVE'
+     LIMIT 1`,
+    [salonId, line.purchase_order_id]
+  );
+  if (
+    !['APPROVED', 'PARTIAL'].includes(cleanText(line.purchase_order_status).toUpperCase()) ||
+    !approvedReceipt
+  ) {
+    throw new AppError(409, 'inventory:po_approval_required', 'Purchase order must be approved before receiving');
+  }
+
   const remaining =
     Number(line.qty_ordered) -
     Number(line.qty_received || 0);
@@ -2687,7 +2706,10 @@ export async function receivePurchaseOrderLine(db, salonId, data, actor = {}) {
        AND sl.location_id = ?
       WHERE pol.salon_id = ?
         AND pol.id = ?
-        AND UPPER(COALESCE(po.status, '')) <> 'CANCELLED'
+        AND UPPER(COALESCE(po.status, '')) IN ('APPROVED', 'PARTIAL')
+        AND EXISTS (SELECT 1 FROM inventory_purchase_order_decisions d
+          WHERE d.salon_id = po.salon_id AND d.purchase_order_id = po.id
+            AND d.decision = 'APPROVE')
         AND pol.qty_received + ? <= pol.qty_ordered + 0.000000001`,
       params: [
         movementId,

@@ -105,6 +105,39 @@ export type InventoryReorderSignal = {
   shortage_qty: number;
 };
 
+export type InventoryPurchaseOrderStatus =
+  | "DRAFT" | "ORDERED" | "APPROVED" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+
+export type InventoryPurchaseOrder = {
+  id: string;
+  supplier_id: string | null;
+  status: InventoryPurchaseOrderStatus;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventoryPurchaseOrderLine = {
+  id: string;
+  purchase_order_id: string;
+  item_id: string;
+  item_name: string | null;
+  item_unit: string | null;
+  qty_ordered: number;
+  qty_received: number;
+  unit_cost_halalas: number | null;
+};
+
+export type InventoryPurchaseOrderDetail = InventoryPurchaseOrder & {
+  lines: InventoryPurchaseOrderLine[];
+  decisions: Array<{
+    decision: "APPROVE" | "CANCEL";
+    reason: string;
+    decided_by_name: string | null;
+    decided_at: string;
+  }>;
+};
+
 export type InventoryStocktakeSessionSummary = {
   id: string;
   title: string;
@@ -270,7 +303,18 @@ export const CoreInventoryService = {
     );
   },
   listPurchaseOrders() {
-    return coreApiRequest("/api/core/inventory/purchase-orders");
+    return coreApiRequest<InventoryPurchaseOrder[]>("/api/core/inventory/purchase-orders");
+  },
+  getPurchaseOrderDetail(id: string) {
+    return coreApiRequest<InventoryPurchaseOrderDetail>(
+      `/api/core/inventory/purchase-orders/${encodeURIComponent(id)}`
+    );
+  },
+  decidePurchaseOrder(id: string, input: { decision: "APPROVE" | "CANCEL"; reason: string }) {
+    return coreApiRequest<InventoryPurchaseOrderDetail>(
+      `/api/core/inventory/purchase-orders/${encodeURIComponent(id)}/decision`,
+      { method: "POST", body: input }
+    );
   },
   createPurchaseOrder(input: { supplierId?: string | null; note?: string }) {
     return coreApiRequest("/api/core/inventory/purchase-orders", { method: "POST", body: input });
@@ -278,7 +322,7 @@ export const CoreInventoryService = {
   addPurchaseOrderLine(input: { purchaseOrderId: string; itemId: string; qtyOrdered: number; unitCostHalalas?: number | null }) {
     return coreApiRequest("/api/core/inventory/purchase-order-lines", { method: "POST", body: input });
   },
-  receivePurchaseOrderLine(input: { lineId: string; quantity: number }) {
+  receivePurchaseOrderLine(input: { lineId: string; quantity: number; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/purchase-order-receive", { method: "POST", body: input });
   },
   recordOpeningBalance(input: { itemId: string; quantity: number; note?: string }) {
