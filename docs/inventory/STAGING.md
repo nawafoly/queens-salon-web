@@ -34,6 +34,13 @@ quantity, including concurrent attempts. Test this with synthetic employees
 and quantities only. Historical over-returns remain visible as anomalies for
 manual review; this feature does not silently rewrite history.
 
+The purchase-order approval workflow adds migration
+0103_inventory_purchase_order_decisions.sql after 0102. It requires a
+recorded administrative approval before any new PO receipt, and requires
+manual authorization to continue legacy PARTIAL orders. See
+docs/inventory/PURCHASE_ORDERS.md. The staging D1 has **not** had
+0100–0103 applied remotely yet; a safe dry-run is not a deployment.
+
 ## Stable PR #286 preview links
 
 Use these **branch aliases**, which remain stable across commits and are explicitly allowlisted by staging Core CORS and test Firebase Auth:
