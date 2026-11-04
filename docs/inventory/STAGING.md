@@ -19,6 +19,13 @@ Worker update are complete, the new session endpoints are not ready for
 browser acceptance. Do not run the migration on production. Review the
 separate periodic-report rules in `docs/inventory/STOCKTAKE.md`.
 
+The follow-up stocktake-review branch adds migration
+`0101_inventory_stocktake_line_resolutions.sql` and an explicit per-variance
+review API. It depends on migration 0100 and should be exercised only against
+isolated Staging once authorized. Neither migration nor Worker changes are
+deployed as part of local code review. Do **not** use the production Worker or
+Core D1 for the test.
+
 ## Stable PR #286 preview links
 
 Use these **branch aliases**, which remain stable across commits and are explicitly allowlisted by staging Core CORS and test Firebase Auth:

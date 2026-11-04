@@ -48,6 +48,7 @@ export default function DashboardInventorySessions() {
   const [locationId, setLocationId] = useState("");
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [drafts, setDrafts] = useState<Record<string, CountDraft>>({});
+  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -78,6 +79,7 @@ export default function DashboardInventorySessions() {
       qty: line.counted_qty == null ? "" : String(line.counted_qty),
       note: line.note || "",
     }])));
+    setReviewReasons(Object.fromEntries(session.lines.map((line) => [line.id, line.review_reason || ""])));
     setFeedback(null);
     setError("");
   }
@@ -180,6 +182,28 @@ export default function DashboardInventorySessions() {
     }
   }
 
+  async function resolveLine(lineId: string, decision: "APPLY" | "DISMISS") {
+    if (!selected || selected.status !== "submitted" || !canAdjust || busy) return;
+    const reason = reviewReasons[lineId]?.trim() || "";
+    if (reason.length < 3 || reason.length > 300) return;
+    setBusy(`review:${lineId}`);
+    setError("");
+    setFeedback(null);
+    try {
+      showSession(await CoreInventoryService.resolveStocktakeSessionLine(selected.id, {
+        lineId, decision, reason,
+      }));
+      await refreshList();
+      setFeedback({ tone: "success", message: decision === "APPLY"
+        ? "تم اعتماد الفرق وإنشاء حركة التسوية وتحديث الرصيد في معاملة واحدة."
+        : "تم إغلاق الفرق دون إنشاء حركة مخزون أو تغيير الرصيد." });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (loading) return <DashboardSkeletonV2 lines={5} />;
 
   return (
@@ -188,7 +212,7 @@ export default function DashboardInventorySessions() {
         <h3 className="h6 mb-1">جلسات الجرد الدوري</h3>
         <p className="small text-muted mb-0">
           جرد عدة مواد في مواقع مختلفة، وحفظ الأعداد والفروقات للمراجعة. اعتماد التقرير لا يغيّر الرصيد؛
-          أي تسوية لاحقة تتم بشكل منفصل مع التحقق من الرصيد الحالي.
+          أي تسوية لاحقة تتم بقرار مستقل لكل فرق مع التحقق من الرصيد الحالي وتسجيل حركة تدقيق.
         </p>
       </div>
 
@@ -269,7 +293,7 @@ export default function DashboardInventorySessions() {
         ) : (
           <div className="table-responsive">
             <table className="table align-middle">
-              <thead><tr><th>المحضر</th><th>الحالة</th><th>العدّ</th><th>الفروقات</th><th>التفاصيل</th></tr></thead>
+              <thead><tr><th>المحضر</th><th>الحالة</th><th>العدّ</th><th>الفروقات</th><th>المراجعة</th><th>التفاصيل</th></tr></thead>
               <tbody>
                 {sessions.map((session) => (
                   <tr key={session.id}>
@@ -277,6 +301,7 @@ export default function DashboardInventorySessions() {
                     <td>{session.status === "submitted" ? "مقفل" : session.status === "draft" ? "مسودة" : "ملغي"}</td>
                     <td>{session.counted_count} / {session.line_count}</td>
                     <td>{session.variance_count}</td>
+                    <td>{session.reviewed_count} / {session.variance_count}</td>
                     <td><button type="button" className="btn btn-sm btn-outline-dark"
                       disabled={!!busy} onClick={() => void openSession(session.id)}>
                       عرض
@@ -298,6 +323,7 @@ export default function DashboardInventorySessions() {
                 {selected.status === "draft" ? "مسودة قابلة للتعديل" : "تقرير عدّ مقفل"}
                 {" — "}{selected.summary.counted_lines} من {selected.summary.total_lines} بند معدود
                 {" — "}{selected.summary.variance_lines} بند فيه فرق
+                {selected.status === "submitted" ? ` — ${selected.summary.reviewed_lines} قرار مراجعة` : ""}
               </p>
             </div>
             <button type="button" className="btn btn-outline-secondary btn-sm"
@@ -306,7 +332,7 @@ export default function DashboardInventorySessions() {
           <div className="table-responsive">
             <table className="table align-middle">
               <thead>
-                <tr><th>المادة والموقع</th><th>الرصيد المرجعي</th><th>العدد الفعلي</th><th>الفرق</th><th>سبب الفرق</th><th>الحفظ</th></tr>
+                <tr><th>المادة والموقع</th><th>الرصيد المرجعي</th><th>العدد الفعلي</th><th>الفرق</th><th>سبب الفرق</th><th>الحفظ / المراجعة</th></tr>
               </thead>
               <tbody>
                 {selected.lines.map((line) => {
@@ -350,7 +376,34 @@ export default function DashboardInventorySessions() {
                             onClick={() => void saveCount(line.id)}>
                             {busy === line.id ? "حفظ..." : "حفظ العدّ"}
                           </button>
-                        ) : "—"}
+                        ) : line.review_decision ? (
+                          <div className="small">
+                            <span className={line.review_decision === "APPLY" ? "text-success" : "text-secondary"}>
+                              {line.review_decision === "APPLY" ? "تم اعتماد التسوية" : "تم إغلاق الفرق دون تسوية"}
+                            </span>
+                            <div>{line.review_reason}</div>
+                            {line.reviewed_by_name ? <div className="text-muted">بواسطة: {line.reviewed_by_name}</div> : null}
+                            {line.review_movement_id ? <div className="text-muted">الحركة: {line.review_movement_id}</div> : null}
+                          </div>
+                        ) : selected.status === "submitted" && line.variance_qty !== null && line.variance_qty !== 0 ? (
+                          canAdjust ? (
+                            <div className="d-grid gap-2" style={{ minWidth: 200 }}>
+                              <input className="form-control form-control-sm" maxLength={300}
+                                aria-label={`سبب قرار تسوية: ${line.item_name || line.item_id}`}
+                                placeholder="سبب قرار المراجعة (إلزامي)"
+                                value={reviewReasons[line.id] || ""}
+                                onChange={(event) => setReviewReasons((current) => ({ ...current, [line.id]: event.target.value }))} />
+                              <button type="button" className="btn btn-sm btn-dark"
+                                disabled={!!busy || (reviewReasons[line.id]?.trim().length || 0) < 3}
+                                onClick={() => void resolveLine(line.id, "APPLY")}>
+                                {busy === `review:${line.id}` ? "جاري التنفيذ..." : "اعتماد التسوية وتحديث الرصيد"}
+                              </button>
+                              <button type="button" className="btn btn-sm btn-outline-secondary"
+                                disabled={!!busy || (reviewReasons[line.id]?.trim().length || 0) < 3}
+                                onClick={() => void resolveLine(line.id, "DISMISS")}>إغلاق الفرق دون تسوية</button>
+                            </div>
+                          ) : "بانتظار مسؤول المخزون"
+                        ) : "لا توجد تسوية"}
                       </td>
                     </tr>
                   );
