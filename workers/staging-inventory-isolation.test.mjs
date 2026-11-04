@@ -25,8 +25,24 @@ test('staging refuses production Firebase project or wildcard CORS', () => {
   assert.throws(() => assertStagingConfig({ ...config, vars: {
     ...config.vars, ALLOWED_ORIGINS: '*',
   } }), /STAGING_SAFETY/);
+  assert.throws(() => assertStagingConfig({ ...config, vars: {
+    ...config.vars, ALLOWED_ORIGINS: config.vars.ALLOWED_ORIGINS + ',https://queens-salon-web.vercel.app',
+  } }), /STAGING_SAFETY/);
+  assert.throws(() => assertStagingConfig({ ...config, vars: {
+    ...config.vars, FIREBASE_PROJECT_ID: '',
+  } }), /STAGING_SAFETY/);
 });
 
 test('staging refuses scheduled cron triggers', () => {
   assert.throws(() => assertStagingConfig({ ...config, triggers: { crons: ['* * * * *'] } }), /STAGING_SAFETY/);
+});
+
+test('synthetic QA identity fixture cannot provision a real production account', () => {
+  const sql = readFileSync(resolve('scripts/fixtures/staging-auth-qa.sql'), 'utf8');
+  assert.match(sql, /SYNTHETIC AUTH ONLY/);
+  assert.match(sql, /qa-inventory-pr286@malikat\.test/);
+  assert.match(sql, /'staging'/);
+  assert.match(sql, /'staging-qa-owner'/);
+  assert.match(sql, /'staging-employee-one'/);
+  assert.doesNotMatch(sql, /waves-hotel-dashboard|queens-salon-core|password\s*=/i);
 });

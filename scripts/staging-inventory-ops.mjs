@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const configFile = resolve(root, 'wrangler.core.staging.jsonc');
 const fixtureFile = resolve(root, 'scripts/fixtures/staging-inventory-demo.sql');
+const authFixtureFile = resolve(root, 'scripts/fixtures/staging-auth-qa.sql');
 
 const expected = Object.freeze({
   worker: 'malikat-staging-core-api',
@@ -17,6 +18,13 @@ const expected = Object.freeze({
   attendanceId: 'a4bf6f14-2fc9-4796-96c9-c16e48440a55',
   bucket: 'malikat-staging-files',
   salon: 'staging',
+  firebaseProject: 'malikat-staging-tests-2026',
+  origins: [
+    'https://queens-salon-web-git-feat-inven-b73c85-nawafs-projects-05f9ecad.vercel.app',
+    'https://queens-salon-web-gnxk-git-feat-3c418c-nawafs-projects-05f9ecad.vercel.app',
+    'https://queens-salon-i2p9zzym3-nawafs-projects-05f9ecad.vercel.app',
+    'https://queens-salon-web-gnxk-f4y6tua0v-nawafs-projects-05f9ecad.vercel.app',
+  ],
 });
 
 export function assertStagingConfig(config) {
@@ -40,11 +48,12 @@ export function assertStagingConfig(config) {
     throw new Error('STAGING_SAFETY: R2 binding is not the staging bucket.');
   }
   const origins = String(config.vars?.ALLOWED_ORIGINS || '').split(',').filter(Boolean);
-  if (!origins.length || origins.some((origin) => !/^https:\/\/[-\w]+\.vercel\.app$/.test(origin))) {
-    throw new Error('STAGING_SAFETY: Only exact HTTPS Vercel preview origins are allowed.');
+  if (origins.length !== expected.origins.length ||
+      origins.some((origin, i) => origin !== expected.origins[i])) {
+    throw new Error('STAGING_SAFETY: CORS must match the approved PR preview origins exactly.');
   }
-  if (config.vars?.FIREBASE_PROJECT_ID === 'waves-hotel-dashboard') {
-    throw new Error('STAGING_SAFETY: Production Firebase identity is forbidden.');
+  if (config.vars?.FIREBASE_PROJECT_ID !== expected.firebaseProject) {
+    throw new Error('STAGING_SAFETY: Only the isolated Firebase test project is allowed.');
   }
   return expected;
 }
@@ -68,9 +77,15 @@ function main() {
   if (!fixture.includes('SYNTHETIC DATA ONLY') || !fixture.includes("'staging'")) {
     throw new Error('STAGING_SAFETY: Expected synthetic staging fixture is missing.');
   }
+  const authFixture = readFileSync(authFixtureFile, 'utf8');
+  if (!authFixture.includes('SYNTHETIC AUTH ONLY') ||
+      !authFixture.includes("'staging'") ||
+      !authFixture.includes("'qa-inventory-pr286@malikat.test'")) {
+    throw new Error('STAGING_SAFETY: Expected synthetic QA authentication fixture is missing.');
+  }
   const [action, confirmation, ...extras] = process.argv.slice(2);
-  if (extras.length || !['check', 'migrate', 'seed', 'deploy'].includes(action)) {
-    throw new Error('Usage: node scripts/staging-inventory-ops.mjs check|migrate|seed|deploy [--apply]');
+  if (extras.length || !['check', 'migrate', 'seed', 'seed-auth', 'deploy'].includes(action)) {
+    throw new Error('Usage: node scripts/staging-inventory-ops.mjs check|migrate|seed|seed-auth|deploy [--apply]');
   }
   if (action === 'check') {
     if (confirmation) throw new Error('The check action does not accept extra arguments.');
@@ -86,6 +101,12 @@ function main() {
   } else if (action === 'seed') {
     runWrangler(['d1', 'execute', expected.coreName, '--remote', '--config', configFile,
       '--file', fixtureFile, '--yes']);
+  } else if (action === 'seed-auth') {
+    if (config.vars?.FIREBASE_PROJECT_ID !== 'malikat-staging-tests-2026') {
+      throw new Error('STAGING_SAFETY: QA login requires the exact staging Firebase project.');
+    }
+    runWrangler(['d1', 'execute', expected.coreName, '--remote', '--config', configFile,
+      '--file', authFixtureFile, '--yes']);
   } else if (action === 'deploy') {
     runWrangler(['deploy', '--config', configFile]);
   }

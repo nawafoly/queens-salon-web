@@ -27,6 +27,7 @@
   ],
   "vars": {
     "SALON_ID": "staging",
+    "FIREBASE_PROJECT_ID": "malikat-staging-tests-2026",
     "ALLOWED_ORIGINS": "https://queens-salon-web-git-feat-inven-b73c85-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-web-gnxk-git-feat-3c418c-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-i2p9zzym3-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-web-gnxk-f4y6tua0v-nawafs-projects-05f9ecad.vercel.app"
   }
 }
