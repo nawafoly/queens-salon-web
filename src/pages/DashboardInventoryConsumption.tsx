@@ -14,11 +14,19 @@ import { CoreBookingService } from "../services/CoreBookingService";
 import { CoreHrService } from "../services/CoreHrService";
 import {
   CoreInventoryService,
+  type InventoryItem,
   type PendingServiceConsumption,
   type ServiceRecipeLine,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 import type { CoreBooking } from "../types/coreApi";
+import {
+  buildRecipeConsumptionDraft,
+  removeMixedCategoryLine,
+  splitCategoryConsumptionLine,
+  validateRecipeConsumptionDraft,
+  type RecipeConsumptionDraft,
+} from "../features/inventory/recipeMixing";
 
 function todayISO() {
   const d = new Date();
@@ -32,13 +40,6 @@ function errorMessage(error: unknown) {
   return "تعذر تأكيد الاستهلاك.";
 }
 
-type DraftLine = {
-  recipeLineId: string | null;
-  inventoryItemId: string;
-  itemName: string;
-  quantity: string;
-  unit: string;
-};
 type ActionFeedback = { tone: "success" | "danger"; message: string } | null;
 
 export default function DashboardInventoryConsumption() {
@@ -50,14 +51,14 @@ export default function DashboardInventoryConsumption() {
   const [bookingId, setBookingId] = useState("");
   const [bookingItemId, setBookingItemId] = useState("");
   const [employeeId, setEmployeeId] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [lines, setLines] = useState<RecipeConsumptionDraft[]>([]);
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [recipeError, setRecipeError] = useState("");
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback>(null);
-  const [itemNames, setItemNames] = useState<Record<string, string>>({});
+  const [trackedItems, setTrackedItems] = useState<InventoryItem[]>([]);
   const [overdueRows, setOverdueRows] = useState<PendingServiceConsumption[]>([]);
 
   const selectedBooking = useMemo(
@@ -65,6 +66,36 @@ export default function DashboardInventoryConsumption() {
     [bookings, bookingId]
   );
   const items = selectedBooking?.items || [];
+  const validationErrors = useMemo(
+    () => validateRecipeConsumptionDraft(lines, trackedItems),
+    [lines, trackedItems]
+  );
+  const materialLinesReady = lines.length > 0 && Object.keys(validationErrors).length === 0;
+
+  function productOptions(line: RecipeConsumptionDraft) {
+    return line.lineType === "SPECIFIC_ITEM"
+      ? trackedItems.filter((item) => item.id === line.defaultInventoryItemId)
+      : trackedItems.filter((item) => item.category_id === line.categoryId && item.unit === line.unit);
+  }
+
+  function availableMixProducts(line: RecipeConsumptionDraft) {
+    if (line.lineType !== "CATEGORY" || !line.recipeLineId || !line.inventoryItemId ||
+        !Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0) return [];
+    if (lines.some((row) => row.recipeLineId === line.recipeLineId && !row.inventoryItemId)) return [];
+    const used = new Set(lines.filter((row) => row.recipeLineId === line.recipeLineId).map((row) => row.inventoryItemId));
+    return productOptions(line).filter((item) => !used.has(item.id));
+  }
+
+  function addMixedProduct(key: string) {
+    const source = lines.find((row) => row.key === key);
+    if (!source) return;
+    if (!availableMixProducts(source).length) return;
+    setLines((current) => splitCategoryConsumptionLine(
+      current, key, `mix-${crypto.randomUUID()}`, null
+    ));
+    setLineErrors({});
+    setActionFeedback(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -94,11 +125,9 @@ export default function DashboardInventoryConsumption() {
         if (cancelled) return;
         setBookings(bookingRows || []);
         setOverdueRows(overdue || []);
-        const inventoryItems = await CoreInventoryService.listItems({ active: "1" });
+        const inventoryItems = await CoreInventoryService.listItems({ active: "1", policy: "SERVICE_TRACKED" });
         if (cancelled) return;
-        const names: Record<string, string> = {};
-        for (const item of inventoryItems || []) names[item.id] = item.name;
-        setItemNames(names);
+        setTrackedItems(inventoryItems || []);
         setEmployees(
           (employeeRows || []).map((row: { id?: string; fullName?: string; name?: string; displayName?: string }) => ({
             id: String(row.id || ""),
@@ -127,6 +156,7 @@ export default function DashboardInventoryConsumption() {
 
   useEffect(() => {
     let cancelled = false;
+    setLines([]);
     setLineErrors({});
     setRecipeError("");
     setActionFeedback(null);
@@ -143,18 +173,8 @@ export default function DashboardInventoryConsumption() {
       try {
         const recipe = await CoreInventoryService.getRecipeByService(item.serviceId);
         if (cancelled) return;
-        const recipeLines = ((recipe as { lines?: ServiceRecipeLine[] } | null)?.lines || []).filter(
-          (line) => line.line_type === "SPECIFIC_ITEM" && line.inventory_item_id
-        );
-        setLines(
-          recipeLines.map((line) => ({
-            recipeLineId: line.id,
-            inventoryItemId: String(line.inventory_item_id),
-            itemName: itemNames[String(line.inventory_item_id)] || String(line.inventory_item_id),
-            quantity: String(line.default_qty),
-            unit: line.unit,
-          }))
-        );
+        const recipeLines = (recipe as { lines?: ServiceRecipeLine[] } | null)?.lines || [];
+        setLines(buildRecipeConsumptionDraft(recipeLines, trackedItems));
       } catch (err) {
         if (!cancelled) setRecipeError(errorMessage(err));
       }
@@ -163,18 +183,12 @@ export default function DashboardInventoryConsumption() {
     return () => {
       cancelled = true;
     };
-  }, [bookingItemId]);
+  }, [bookingItemId, selectedBooking, trackedItems]);
 
   async function confirm() {
     if (!canConfirm || !bookingItemId || !employeeId || !lines.length) return;
 
-    const nextLineErrors: Record<string, string> = {};
-    for (const line of lines) {
-      const quantity = Number(line.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        nextLineErrors[line.inventoryItemId] = "الكمية الفعلية يجب أن تكون أكبر من صفر.";
-      }
-    }
+    const nextLineErrors = validateRecipeConsumptionDraft(lines, trackedItems);
     if (Object.keys(nextLineErrors).length) {
       setLineErrors(nextLineErrors);
       setActionFeedback({ tone: "danger", message: "راجع كميات الاستهلاك المميزة ثم أعد التأكيد." });
@@ -286,31 +300,85 @@ export default function DashboardInventoryConsumption() {
         <DashboardEmptyStateV2 title="لا توجد وصفة جاهزة" description="احفظ وصفة استهلاك للخدمة أولاً من التبويب السابق." />
       ) : (
         lines.map((line) => (
-          <div key={line.inventoryItemId} className="border rounded p-3 mb-3">
-            <div className="mb-2">{line.itemName}</div>
+          <div key={line.key} className="border rounded p-3 mb-3">
+            {line.lineType === "CATEGORY" ? (
+              <DashboardFieldV2 id={`${line.key}-product`} label="المنتج المستخدم من الفئة">
+                <DashboardSelectV2
+                  value={line.inventoryItemId}
+                  placeholder="اختاري المنتج"
+                  options={productOptions(line)
+                    .filter((item) => item.id === line.inventoryItemId || !lines.some(
+                      (other) => other.key !== line.key &&
+                        other.recipeLineId === line.recipeLineId &&
+                        other.inventoryItemId === item.id
+                    ))
+                    .map((item) => ({ value: item.id, label: item.name }))}
+                  onChange={(inventoryItemId) => {
+                    const item = trackedItems.find((row) => row.id === inventoryItemId);
+                    setLines((current) => current.map((row) => row.key === line.key
+                      ? { ...row, inventoryItemId, itemName: item?.name || inventoryItemId }
+                      : row));
+                    setLineErrors({});
+                    setActionFeedback(null);
+                  }}
+                />
+                {productOptions(line).length === 0 ? (
+                  <p className="text-danger mt-2 mb-0">لا توجد منتجات تتبع فئة الوصفة بوحدة {line.unit}.</p>
+                ) : null}
+              </DashboardFieldV2>
+            ) : (
+              <div className="mb-2">{line.itemName}</div>
+            )}
+            <p className="text-muted mb-2" style={{ fontSize: 13 }}>
+              {line.isMixAddition
+                ? "منتج إضافي ضمن نفس سطر الوصفة"
+                : `الكمية الافتراضية: ${line.defaultQty} ${line.unit}`}
+            </p>
             <DashboardFieldV2
-              id={`${line.inventoryItemId}-qty`}
+              id={`${line.key}-qty`}
               label={`الكمية الفعلية (${line.unit})`}
-              error={lineErrors[line.inventoryItemId]}
+              error={lineErrors[line.key] || validationErrors[line.key]}
             >
               <DashboardNumberInputV2
                 value={line.quantity}
                 onChange={(e) => {
                   setLineErrors((current) => {
-                    if (!current[line.inventoryItemId]) return current;
+                    if (!current[line.key]) return current;
                     const next = { ...current };
-                    delete next[line.inventoryItemId];
+                    delete next[line.key];
                     return next;
                   });
                   setActionFeedback(null);
                   setLines((prev) =>
                     prev.map((row) =>
-                      row.inventoryItemId === line.inventoryItemId ? { ...row, quantity: e.target.value } : row
+                      row.key === line.key ? { ...row, quantity: e.target.value } : row
                     )
                   );
                 }}
               />
             </DashboardFieldV2>
+            {line.lineType === "CATEGORY" ? (
+              <div className="d-flex flex-wrap gap-2">
+                {availableMixProducts(line).length > 0 ? (
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => addMixedProduct(line.key)}>
+                    خلط منتج آخر
+                  </button>
+                ) : null}
+                {line.isMixAddition ? (
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--secondary"
+                    onClick={() => {
+                      setLines((current) => removeMixedCategoryLine(current, line.key));
+                      setLineErrors({});
+                      setActionFeedback(null);
+                    }}
+                  >
+                    إزالة منتج الخلط
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ))
       )}
@@ -328,7 +396,7 @@ export default function DashboardInventoryConsumption() {
         <button
           type="button"
           className="btn btn-dark"
-          disabled={saving || !bookingItemId || !employeeId || !lines.length}
+          disabled={saving || !bookingItemId || !employeeId || !materialLinesReady}
           onClick={() => void confirm()}
         >
           {saving ? "جاري التأكيد..." : "تأكيد الاستهلاك وخصم المخزون"}

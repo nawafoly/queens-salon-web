@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "malikat-staging-core-api",
+  "main": "workers/core/worker.js",
+  "compatibility_date": "2026-06-24",
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "CORE_DB",
+      "database_name": "malikat-staging-core",
+      "database_id": "3ffae051-12d6-4cce-a992-5e39245b80a3",
+      "migrations_dir": "migrations/core"
+    },
+    {
+      "binding": "ATTENDANCE_DB",
+      "database_name": "malikat-staging-attendance",
+      "database_id": "a4bf6f14-2fc9-4796-96c9-c16e48440a55"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES_BUCKET",
+      "bucket_name": "malikat-staging-files"
+    }
+  ],
+  "vars": {
+    "SALON_ID": "staging",
+    "FIREBASE_PROJECT_ID": "malikat-staging-tests-2026",
+    "ALLOWED_ORIGINS": "https://queens-salon-web-git-feat-inven-b73c85-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-web-gnxk-git-feat-3c418c-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-i2p9zzym3-nawafs-projects-05f9ecad.vercel.app,https://queens-salon-web-gnxk-f4y6tua0v-nawafs-projects-05f9ecad.vercel.app"
+  }
+}
