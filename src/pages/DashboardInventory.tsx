@@ -16,6 +16,7 @@ import {
   type InventoryConsumptionPolicy,
   type InventoryItem,
   type InventoryStockLevel,
+  type InventoryReorderSignal,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
@@ -81,6 +82,7 @@ export default function DashboardInventory() {
   const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "sessions" | "trade" | "suppliers" | "po" | "costs" | "staff-locations">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
+  const [reorderSignals, setReorderSignals] = useState<InventoryReorderSignal[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -103,28 +105,20 @@ export default function DashboardInventory() {
     return rows.map((row) => locationName(row.location_id) + ": " + String(row.qty_on_hand ?? 0)).join(" | ");
   }
 
-  const lowStockItems = useMemo(() => {
-    return items.filter((item) => {
-      if (Number(item.is_active) !== 1) return false;
-      const min = Number(item.min_stock_qty || 0);
-      if (!(min > 0)) return false;
-      const qty = qtyByItem.get(item.id);
-      return qty != null && qty <= min;
-    });
-  }, [items, qtyByItem]);
-
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [itemRows, levelRows, locationRows] = await Promise.all([
+      const [itemRows, levelRows, locationRows, reorderRows] = await Promise.all([
         CoreInventoryService.listItems({ search: search || undefined }),
         CoreInventoryService.listStockLevels(),
         CoreInventoryService.listLocations(),
+        CoreInventoryService.listReorderSignals(),
       ]);
       setItems(itemRows || []);
       setLevels(levelRows || []);
       setLocations(Array.isArray(locationRows) ? locationRows : []);
+      setReorderSignals(reorderRows || []);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -257,11 +251,26 @@ export default function DashboardInventory() {
             </button>
           </div>
 
-          {!loading && lowStockItems.length ? (
+          {!loading && reorderSignals.length ? (
             <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div>
-                <strong>مواد تحتاج إعادة طلب: {lowStockItems.length}</strong>
-                <div className="small mb-0">{lowStockItems.map((item) => `${item.name} (${qtyByItem.get(item.id)} / حد ${item.min_stock_qty})`).join(" — ")}</div>
+                <strong>تنبيه نقص المخزون: {reorderSignals.length} مادة وصلت للحد الأدنى أو أقل</strong>
+                <div className="small mb-2">الكميات أدناه محسوبة في Core من المواقع النشطة، وتشمل المواد التي رصيدها صفر.</div>
+                <div className="table-responsive">
+                  <table className="table table-sm mb-0 align-middle">
+                    <thead><tr><th>المادة</th><th>المتاح</th><th>الحد الأدنى</th><th>النقص عن الحد</th></tr></thead>
+                    <tbody>
+                      {reorderSignals.map((item) => (
+                        <tr key={item.item_id}>
+                          <th scope="row">{item.item_name}</th>
+                          <td>{item.stock_qty} {item.unit}</td>
+                          <td>{item.min_stock_qty} {item.unit}</td>
+                          <td>{Math.max(0, Number(item.shortage_qty))} {item.unit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ) : null}
@@ -291,8 +300,9 @@ export default function DashboardInventory() {
                 </thead>
                 <tbody>
                   {items.map((item) => {
-                    const qty = qtyByItem.get(item.id);
-                    const low = qty != null && Number(item.min_stock_qty || 0) > 0 && qty <= Number(item.min_stock_qty);
+                    const coreLow = reorderSignals.find((signal) => signal.item_id === item.id);
+                    const qty = coreLow ? Number(coreLow.stock_qty) : qtyByItem.get(item.id);
+                    const low = !!coreLow;
                     return (
                       <tr key={item.id}>
                         <td>

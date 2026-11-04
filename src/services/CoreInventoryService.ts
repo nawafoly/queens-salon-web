@@ -96,6 +96,15 @@ export type InventoryEmployeeCustodyReport = {
   summary: { outstanding_lines: number; anomalies: number };
 };
 
+export type InventoryReorderSignal = {
+  item_id: string;
+  item_name: string;
+  unit: string;
+  min_stock_qty: number;
+  stock_qty: number;
+  shortage_qty: number;
+};
+
 export type InventoryStocktakeSessionSummary = {
   id: string;
   title: string;
@@ -248,6 +257,9 @@ export const CoreInventoryService = {
   },
   listStockLevels(query: { lowOnly?: string; itemId?: string; locationId?: string } = {}) {
     return coreApiRequest<InventoryStockLevel[]>("/api/core/inventory/stock-levels", { query });
+  },
+  listReorderSignals() {
+    return coreApiRequest<InventoryReorderSignal[]>("/api/core/inventory/reorder-signals");
   },
   listMovements(query: { itemId?: string; limit?: string } = {}) {
     return coreApiRequest<InventoryMovement[]>("/api/core/inventory/movements", { query });
