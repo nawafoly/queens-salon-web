@@ -82,6 +82,35 @@ export type InventoryMovement = {
   created_at: string;
 };
 
+export type InventoryStocktakeSessionSummary = {
+  id: string;
+  title: string;
+  status: "draft" | "submitted" | "cancelled";
+  created_at: string;
+  submitted_at: string | null;
+  line_count: number;
+  counted_count: number;
+  variance_count: number;
+};
+
+export type InventoryStocktakeSessionLine = {
+  id: string;
+  item_id: string;
+  location_id: string;
+  item_name: string | null;
+  location_name: string | null;
+  item_unit: string;
+  expected_qty: number;
+  counted_qty: number | null;
+  variance_qty: number | null;
+  note: string | null;
+};
+
+export type InventoryStocktakeSession = Omit<InventoryStocktakeSessionSummary, "line_count" | "counted_count" | "variance_count"> & {
+  lines: InventoryStocktakeSessionLine[];
+  summary: { total_lines: number; counted_lines: number; variance_lines: number };
+};
+
 export type InventoryCostBreakdown = {
   id: string;
   name: string;
@@ -271,7 +300,7 @@ export const CoreInventoryService = {
     return coreApiRequest("/api/core/inventory/sale-return", { method: "POST", body: input });
   },
   listLocations() {
-    return coreApiRequest("/api/core/inventory/locations");
+    return coreApiRequest<InventoryLocation[]>("/api/core/inventory/locations");
   },
   listStaffHomeLocations() {
     return coreApiRequest<InventoryStaffLocation[]>("/api/core/inventory/staff-home-locations");
@@ -292,6 +321,27 @@ export const CoreInventoryService = {
   },
   adjustAfterStocktake(input: { itemId: string; locationId: string; countedQty: number; expectedQty: number; note: string }) {
     return coreApiRequest("/api/core/inventory/stocktake", { method: "POST", body: input });
+  },
+  listStocktakeSessions() {
+    return coreApiRequest<InventoryStocktakeSessionSummary[]>("/api/core/inventory/stocktake-sessions");
+  },
+  getStocktakeSession(id: string) {
+    return coreApiRequest<InventoryStocktakeSession>(`/api/core/inventory/stocktake-sessions/${encodeURIComponent(id)}`);
+  },
+  createStocktakeSession(input: { title: string; lines: Array<{ itemId: string; locationId: string }> }) {
+    return coreApiRequest<InventoryStocktakeSession>("/api/core/inventory/stocktake-sessions", { method: "POST", body: input });
+  },
+  recordStocktakeSessionCount(sessionId: string, input: { lineId: string; countedQty: number; note?: string }) {
+    return coreApiRequest<InventoryStocktakeSession>(
+      `/api/core/inventory/stocktake-sessions/${encodeURIComponent(sessionId)}/count`,
+      { method: "POST", body: input }
+    );
+  },
+  submitStocktakeSession(id: string) {
+    return coreApiRequest<InventoryStocktakeSession>(
+      `/api/core/inventory/stocktake-sessions/${encodeURIComponent(id)}/submit`,
+      { method: "POST" }
+    );
   },
   issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
     return coreApiRequest("/api/core/inventory/employee-issue", { method: "POST", body: input });

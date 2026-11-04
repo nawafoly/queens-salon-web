@@ -34,10 +34,42 @@ The guarded ledger insert also re-checks the balance atomically in D1, so
 a concurrent stock movement cannot silently be overwritten. The UI reloads
 the location's current balance and requires a fresh count after this error.
 
+## Periodic multi-item / multi-location count (separate workflow)
+
+The **الجرد الدوري** tab records an auditable *count report*, not an adjustment:
+
+1. Choose 1–100 unique item/location pairs and name the session. The Core
+   snapshots each pair's expected quantity in its own unit.
+2. Enter the counted quantity for each line. A variance requires a reason of
+   3–300 characters. Counts can be revised while the session is a draft.
+3. Compare the per-line variance; quantities from different units are never
+   summed into one misleading total.
+4. Close the report after every line has been counted. Closed reports are
+   immutable and do **not** change stock levels or append ledger movements.
+
+API endpoints: `GET/POST /api/core/inventory/stocktake-sessions`,
+`GET /api/core/inventory/stocktake-sessions/:id`,
+`POST /api/core/inventory/stocktake-sessions/:id/count`, and
+`POST /api/core/inventory/stocktake-sessions/:id/submit`.
+Writes require `inventory.adjust`; views require that permission or
+`inventory.movements.view`. All records are tenant-scoped.
+
+The report is intentionally **not** an instruction to apply its recorded
+variance. If stock changed since the session's snapshot, a later adjustment
+must re-read the current balance and go through the independent guarded
+stocktake endpoint above.
+
+Migration: `migrations/core/0100_inventory_stocktake_sessions.sql`.
+Apply to **isolated Staging Core D1 only** for QA, after checking the target
+database ID. Production migration needs an explicit separate release decision
+and backup.
+
 ## Release and QA gate
 
 - No new migration is required. The frontend and Core Worker changes must
-  be tested together on **isolated Staging** before any Production release.
+  be tested together on **isolated Staging** before any Production release
+  for the single-location adjustment workflow. Periodic sessions additionally
+  require migration 0100, as described above.
 - The PR Preview branch must point only to Staging Core/Firebase, not Production.
 - On synthetic stock data, count one of two locations and verify only that
   location's `inventory_stock_levels` changes, with exactly one matching

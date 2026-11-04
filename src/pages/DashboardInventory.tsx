@@ -28,6 +28,7 @@ import DashboardInventoryOps from "./DashboardInventoryOps";
 import DashboardInventoryTrade from "./DashboardInventoryTrade";
 import DashboardInventoryCosts from "./DashboardInventoryCosts";
 import DashboardInventoryStaffLocations from "./DashboardInventoryStaffLocations";
+import DashboardInventorySessions from "./DashboardInventorySessions";
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -77,7 +78,7 @@ export default function DashboardInventory() {
   const canAdjust = hasPermission("inventory.adjust");
   const canViewCosts = hasPermission("inventory.movements.view");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po" | "costs" | "staff-locations">("items");
+  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "sessions" | "trade" | "suppliers" | "po" | "costs" | "staff-locations">("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -209,13 +210,17 @@ export default function DashboardInventory() {
         ) : null}
       </div>
 
-      <div className="d-flex gap-2 mb-3">
+      <div className="d-flex flex-wrap gap-2 mb-3">
         <button type="button" className={tab === "items" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("items")}>المواد</button>
         <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
         <button type="button" className={tab === "consume" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("consume")}>تأكيد الاستهلاك</button>
         <button type="button" className={tab === "moves" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("moves")}>الحركات</button>
         <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
         <button type="button" className={tab === "ops" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("ops")}>هدر وجرد</button>
+        {(canAdjust || canViewCosts) ? (
+          <button type="button" className={tab === "sessions" ? "btn btn-dark" : "btn btn-outline-dark"}
+            onClick={() => setTab("sessions")}>الجرد الدوري</button>
+        ) : null}
         <button type="button" className={tab === "po" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("po")}>أوامر الشراء</button>
         <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>استلام شراء</button>
         <button type="button" className={tab === "suppliers" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("suppliers")}>الموردون</button>
@@ -228,6 +233,7 @@ export default function DashboardInventory() {
       {tab === "moves" ? <DashboardInventoryMovements /> : null}
       {tab === "issue" ? <DashboardInventoryIssue /> : null}
       {tab === "ops" ? <DashboardInventoryOps /> : null}
+      {tab === "sessions" && (canAdjust || canViewCosts) ? <DashboardInventorySessions /> : null}
       {tab === "trade" ? <DashboardInventoryTrade /> : null}
       {tab === "po" ? <DashboardInventoryPurchaseOrders /> : null}
       {tab === "suppliers" ? <DashboardInventorySuppliers /> : null}
