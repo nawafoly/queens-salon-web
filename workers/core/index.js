@@ -138,6 +138,13 @@ import {
   returnProduct,
 } from './repositories/inventory.js';
 import {
+  createStocktakeSession,
+  listStocktakeSessions,
+  getStocktakeSession,
+  recordStocktakeSessionCount,
+  submitStocktakeSession,
+} from './repositories/inventory-stocktakes.js';
+import {
   createCatalogRow,
   deleteCatalogRow,
   listCatalogRows,
@@ -1101,6 +1108,21 @@ function match(url, method) {
   }
   if (path === "/api/core/inventory/stocktake" && method === "POST") {
     return { name: "inventory:stocktake" };
+  }
+  if (path === "/api/core/inventory/stocktake-sessions") {
+    return { name: "inventory:stocktake-sessions" };
+  }
+  const stocktakeCount = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)\/count$/.exec(path);
+  if (stocktakeCount && method === "POST") {
+    return { name: "inventory:stocktake-session-count", id: stocktakeCount[1] };
+  }
+  const stocktakeSubmit = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)\/submit$/.exec(path);
+  if (stocktakeSubmit && method === "POST") {
+    return { name: "inventory:stocktake-session-submit", id: stocktakeSubmit[1] };
+  }
+  const stocktakeById = /^\/api\/core\/inventory\/stocktake-sessions\/([^/]+)$/.exec(path);
+  if (stocktakeById && method === "GET") {
+    return { name: "inventory:stocktake-session", id: stocktakeById[1] };
   }
   if (path === "/api/core/inventory/purchase-orders" && method === "GET") {
     return { name: "inventory:purchase-orders" };
@@ -3742,6 +3764,35 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") {
         requirePermission(ctx, "inventory.adjust");
         return adjustAfterStocktake(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "inventory:stocktake-sessions":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.adjust", "inventory.movements.view"]);
+        return listStocktakeSessions(db, ctx.salonId);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return createStocktakeSession(db, ctx.salonId, body || {}, actorInfo);
+      }
+      break;
+    case "inventory:stocktake-session":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["inventory.adjust", "inventory.movements.view"]);
+        return getStocktakeSession(db, ctx.salonId, route.id);
+      }
+      break;
+    case "inventory:stocktake-session-count":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return recordStocktakeSessionCount(db, ctx.salonId, route.id, body || {});
+      }
+      break;
+    case "inventory:stocktake-session-submit":
+      if (method === "POST") {
+        requirePermission(ctx, "inventory.adjust");
+        return submitStocktakeSession(db, ctx.salonId, route.id);
       }
       break;
 

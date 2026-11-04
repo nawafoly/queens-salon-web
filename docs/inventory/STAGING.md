@@ -2,6 +2,23 @@
 
 Status (2026-11-04): isolated Core Worker, Core D1 and Firebase Auth are active. Both Git branch-scoped Vercel Preview deployments rebuilt successfully at commit `a05acc9deec9d563ce87a4d28ec7524ef23de1bb`. Authenticated Inventory visual QA and final CI review remain necessary. This is **not production approval**.
 
+## Follow-up stacked inventory PRs
+
+PR #287 (location-specific guarded stocktake) and PR #288 (periodic multi-item,
+multi-location count reports) are development drafts, **not production releases**.
+Both Vercel projects have exact branch-scoped Preview `VITE_*` configuration
+for `feat/inventory-periodic-stocktake` (10 variables on `queens-salon-web`,
+12 on `queens-salon-web-gnxk`). The Core URL and Firebase project ID
+were read back and confirmed to point to this isolated Staging environment.
+Existing deployment builds made before setting those variables must be
+**rebuilt**; their old bundles are not trusted for authenticated QA.
+
+The new PR #288 adds Core D1 migration `0100_inventory_stocktake_sessions.sql`;
+it has **not** been applied remotely. Until the staging migration and staging
+Worker update are complete, the new session endpoints are not ready for
+browser acceptance. Do not run the migration on production. Review the
+separate periodic-report rules in `docs/inventory/STOCKTAKE.md`.
+
 ## Stable PR #286 preview links
 
 Use these **branch aliases**, which remain stable across commits and are explicitly allowlisted by staging Core CORS and test Firebase Auth:
