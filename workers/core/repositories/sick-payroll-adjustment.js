@@ -107,6 +107,16 @@ export function statutorySickPayrollAdjustment({
         throw new Error('core_payroll:sick_leave_overlapping_approved_dates');
       }
       seen.add(dayKey);
+      const overlap = leaves.some((candidate) =>
+        candidate !== leave &&
+        String(candidate.status || '').toLowerCase() === 'approved' &&
+        String(candidate.start_date || '') <= dayKey &&
+        String(candidate.end_date || '') >= dayKey &&
+        !recalledLeaveDates.has(`${candidate.id}|${dayKey}`)
+      );
+      if (overlap) {
+        throw new Error('core_payroll:sick_leave_overlapping_approved_leave');
+      }
       const reduction = 10000 - rates[day - start];
       unitsBps += reduction;
       if (reduction > 0) affectedDays += 1;
