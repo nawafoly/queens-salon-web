@@ -197,7 +197,7 @@ test('live annual availability accrues after an opening anchor without double-co
   );
 });
 
-test('legacy scalar balance fails closed until HR records an opening balance anchor', async () => {
+test('legacy scalar balance is informational when service-date accrual has no opening anchor', async () => {
   const db = new FakeAnnualD1({
     employment: employment({ leave_balance: 8 }),
   });
@@ -205,8 +205,23 @@ test('legacy scalar balance fails closed until HR records an opening balance anc
     asOfDate: '2026-08-28',
   });
 
+  assert.equal(state.reviewRequired, false);
+  assert.equal(state.legacyBalanceDays, 8);
+  assert.equal(state.openingBalanceDays, 0);
+  assert.ok(state.availableDays > 0);
+  assert.notEqual(state.availableDays, state.legacyBalanceDays);
+});
+
+test('missing service start date blocks annual entitlement even with a legacy balance', async () => {
+  const db = new FakeAnnualD1({
+    employment: employment({ start_date: null, leave_balance: 8 }),
+  });
+  const state = await getAnnualLeaveState(db, 'main', 'emp-1', {
+    asOfDate: '2026-08-28',
+  });
+
   assert.equal(state.reviewRequired, true);
-  assert.equal(state.reviewReason, 'opening_balance_required');
+  assert.equal(state.reviewReason, 'service_start_date_required');
   assert.equal(state.legacyBalanceDays, 8);
   assert.equal(state.availableDays, null);
 });

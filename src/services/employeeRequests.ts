@@ -101,6 +101,8 @@ export type EmployeeRequestAssignee = {
 };
 
 const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
+  "core_annual_leave:service_start_date_required":
+    "لا يمكن تنفيذ الإجازة السنوية لأن تاريخ بداية العمل غير مسجل في ملف الموظفة. يجب تسجيل تاريخ بداية العمل الفعلي أولاً.",
   "core_employee_request:attendance_record_not_found":
     "لم يتم العثور على بصمة حضور أو انصراف مطابقة للموظفة في التاريخ والوقت المحددين. تأكد من التاريخ والوقت الحالي، أو اختر «إضافة بصمة» بدل «تعديل بصمة» إذا لم يوجد سجل سابق.",
   "core_employee_request:invalid_transition": "لا يمكن تنفيذ هذا الإجراء في الحالة الحالية للطلب.",
