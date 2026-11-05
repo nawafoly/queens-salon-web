@@ -429,7 +429,7 @@ export default function EmployeeStatsSection({
         description="التفاصيل الإدارية الحالية تبقى هنا منفصلة عن الراحة الأسبوعية والتعويضية."
       >
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="الرصيد الحالي" value={leaveBalanceLabel} tone="success" />
+        <WorkspaceMetricV2 label="الرصيد التاريخي (غير معتمد للاستحقاق السنوي)" value={leaveBalanceLabel} tone="success" />
         <WorkspaceMetricV2 label="الحالة" value={leaveStatusLabel} tone={leave.modalOnLeave ? "gold" : "success"} />
         <WorkspaceMetricV2 label="بداية الإجازة" value={leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : t("غير محددة")} />
         <WorkspaceMetricV2 label="نهاية الإجازة" value={leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : t("غير محددة")} />
@@ -486,74 +486,22 @@ export default function EmployeeStatsSection({
           ) : null}
         </WorkspaceCardV2>
 
-        <WorkspaceCardV2 title="رصيد الإجازات" description="تاريخ الاستحقاق وتعديل الرصيد.">
-          <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-            <DashboardFieldV2 id="employee-live-v2-entitlement-date" label={t("تاريخ الاستحقاق")}>
-              <DashboardDatePickerV2
-                id="employee-live-v2-entitlement-date"
-                value={leave.leaveEntitlementDate}
-                disabled={readOnlyLeave}
-                clearable
-                onChange={leave.onLeaveEntitlementDateChange}
-              />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-date" label={t("تاريخ الحركة")}>
-              <DashboardDatePickerV2
-                id="employee-live-v2-adjust-date"
-                value={leave.leaveAdjustDate}
-                disabled={readOnlyLeave}
-                clearable
-                onChange={leave.onLeaveAdjustDateChange}
-              />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-days" label={t("عدد الأيام")}>
-              <DashboardNumberInputV2
-                id="employee-live-v2-adjust-days"
-                className="dsv2-input"
-                min="0"
-                step="1"
-                value={leave.leaveAdjustDays}
-                disabled={readOnlyLeave}
-                onChange={(event) => leave.onLeaveAdjustDaysChange(event.target.value)}
-              />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-adjust-note" label={t("سبب الحركة")}>
-              <input
-                id="employee-live-v2-adjust-note"
-                className="dsv2-input"
-                value={leave.leaveAdjustNote}
-                disabled={readOnlyLeave}
-                onChange={(event) => leave.onLeaveAdjustNoteChange(event.target.value)}
-              />
-            </DashboardFieldV2>
-          </div>
-
-          <div className="dsv2-cluster">
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnlyLeave} onClick={leave.onSaveEntitlementDate}>{tr("حفظ تاريخ الاستحقاق", "Save entitlement date")}</button>
-            <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("add")}>{tr("إضافة رصيد", "Add balance")}</button>
-            <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnlyLeave} onClick={() => leave.onApplyLeaveChange("deduct")}>{tr("خصم رصيد", "Deduct balance")}</button>
-          </div>
-        </WorkspaceCardV2>
+        <WorkspaceNoticeV2
+          title="السجل التاريخي للرصيد"
+          description="هذا الرصيد من النظام السابق وللمراجعة فقط. استخدم قسم الإجازة السنوية أعلاه للاطلاع على الرصيد المعتمد وإجراء التسويات المدققة."
+          tone="neutral"
+        />
       </div>
 
       <WorkspaceCardV2 title="سجل حركات الإجازات" description="آخر 12 حركة محفوظة.">
         <WorkspaceTableV2
-          headers={["التاريخ", "النوع", "التغيير", "قبل", "بعد", "إجراء"]}
+          headers={["التاريخ", "النوع", "التغيير", "قبل", "بعد"]}
           rows={sortedLeaveEntries.map((entry) => [
             fmtIsoDate(entry.date || String(getLeaveEntryCreatedAt(entry) || "")),
             t(leaveActionLabel(entry)),
             formatLeaveChange(entry, language),
             formatLeaveBalance(getLeaveEntryBalanceBefore(entry), language),
             formatLeaveBalance(getLeaveEntryBalanceAfter(entry), language),
-            <button
-              key={`${entry.id || entry.date}-delete`}
-              type="button"
-              className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
-              disabled={readOnlyLeave}
-              onClick={() => leave.onDeleteLeaveEntry(entry)}
-            >
-              {t("حذف")}
-            </button>,
           ])}
           emptyText={loading ? t("جاري تحميل السجل...") : t("لا توجد حركات إجازات محفوظة.")}
         />
