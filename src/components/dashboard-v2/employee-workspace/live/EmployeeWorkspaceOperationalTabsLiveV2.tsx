@@ -1503,7 +1503,24 @@ export function EmployeeAttendanceTabLiveV2({
                 <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !drawerDate} onClick={() => drawerDate && onEditPunch(drawerDate)}>
                   {t("تعديل البصمة")}
                 </button>
-                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeDetailDrawer}>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger"
+                  disabled={readOnly || !canDelete || !drawerDate || !(drawerRow?.checkInAtClient || drawerRow?.checkOutAtClient || Number(drawerRow?.recordCount || 0) > 0)}
+                  onClick={() => drawerDate && onDeletePunch(drawerDate)}
+                >
+                  {t("حذف البصمة")}
+                </button>
+                {drawerDay?.specialDay?.kind === "partial_leave" || approvedLeaveDateKeys.includes(drawerDate) ? (
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !drawerDate} onClick={() => drawerDate && onCancelLeave?.(drawerDate)}>
+                    {t("إلغاء الإجازة أو الاستئذان")}
+                  </button>
+                ) : (
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !drawerDate || Boolean(drawerRow?.checkInAtClient || drawerRow?.checkOutAtClient)} onClick={() => drawerDate && onCreateEmergencyLeave?.(drawerDate)}>
+                    {t("تسجيل إجازة أو استئذان")}
+                  </button>
+                )}
+<button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeDetailDrawer}>
                   {t("إغلاق")}
                 </button>
               </>
