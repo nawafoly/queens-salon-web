@@ -216,8 +216,8 @@ function leaveActionLabel(entry: LeaveEntry) {
 function leaveTypeLabel(value: string) {
   const type = String(value || "").trim().toLowerCase();
   if (type === "annual") return "سنوية مدفوعة";
-  if (type === "sick") return "مرضية مدفوعة";
-  if (type === "emergency") return "طارئة مدفوعة";
+  if (type === "sick") return "مرضية (الأجر حسب الشريحة النظامية)";
+  if (type === "emergency") return "اضطرارية (حسب سياسة المنشأة)";
   if (type === "unpaid") return "إجازة بدون راتب";
   if (type === "rest") return "راحة معتمدة";
   if (type === "weekly_rest_substitute_use") return "راحة أسبوعية تعويضية";
@@ -496,7 +496,7 @@ export default function EmployeeStatsSection({
 
           <WorkspaceNoticeV2
             title="الأثر المالي يُحدد حسب النوع"
-            description="الإجازات السنوية والمرضية والطارئة تظهر في الحضور ولا تخصم من الراتب، بينما الإجازة بدون راتب تظهر كإجازة معتمدة ويُخصم مقابل أيامها من الراتب."
+            description="تظهر الإجازات المعتمدة في الحضور. السنوية بأجر كامل، والمرضية تتدرج بين الأجر الكامل و75% وبدون أجر بحسب أيام السنة المرضية؛ أما الاضطرارية الشخصية فتخضع لسياسة المنشأة والتصنيف المعتمد، والإجازة بدون راتب لا يُصرف أجر أيامها."
             tone="neutral"
           />
 
