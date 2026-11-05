@@ -25,7 +25,6 @@ import {
   calculateStatutoryOvertimeHalalas,
 } from '../../../src/helpers/hr/saLaborPolicy.js';
 import { listAttendance } from './attendance.js';
-import { listLeaves } from './leaves.js';
 import { statutorySickPayrollAdjustment } from './sick-payroll-adjustment.js';
 import { listAbsences } from './absences.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
@@ -323,6 +322,19 @@ function canonicalGosiFromEmployment(employment, payrollMonth) {
   }
 }
 
+async function payrollApprovedLeaves(db, salonId, employeeId, dateFrom, dateTo) {
+  // Apply employee and period filters in D1: the legacy listLeaves() reader
+  // limits all salon leaves to 1,000 before applying employee filters.
+  return dbAll(
+    db,
+    `SELECT * FROM employee_leaves
+      WHERE salon_id = ? AND employee_id = ? AND status = 'approved'
+        AND start_date <= ? AND end_date >= ?
+      ORDER BY start_date, id`,
+    [salonId, employeeId, dateTo, dateFrom]
+  );
+}
+
 async function buildCanonicalAttendanceSummary(
   db,
   salonId,
@@ -386,7 +398,7 @@ async function buildCanonicalAttendanceSummary(
     shiftBatch,
   ] = await Promise.all([
     listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
-    listLeaves(db, salonId, { employeeId, status: 'approved' }),
+    payrollApprovedLeaves(db, salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd),
     listAbsences(db, salonId, { employeeId }),
     dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd]).catch(() => []),
     dbAll(
