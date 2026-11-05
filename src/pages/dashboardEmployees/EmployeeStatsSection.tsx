@@ -186,6 +186,29 @@ function formatLeaveBalance(value: number | null, language: "ar" | "en" = "ar") 
   return `${value} ${language === "en" ? "day(s)" : "يوم"}`;
 }
 
+function historicalLeaveTypeLabel(entry: LeaveEntry) {
+  const data = entry as LeaveEntry & {
+    leaveType?: string;
+    leave_type?: string;
+  };
+
+  const type = String(data.leaveType || data.leave_type || "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    annual: "سنوية",
+    sick: "مرضية",
+    emergency: "طارئة",
+    unpaid: "بدون راتب",
+    rest: "راحة",
+    weekly_rest_substitute_use: "راحة تعويضية",
+  };
+
+  if (labels[type]) return labels[type];
+
+  return getLeaveEntryActionType(entry) === "deduct"
+    ? "غير موثق في السجل القديم"
+    : "حركة رصيد وليست إجازة";
+}
+
 function leaveActionLabel(entry: LeaveEntry) {
   return getLeaveEntryActionType(entry) === "deduct" ? "إجازة / خصم" : "إضافة";
 }
@@ -495,13 +518,14 @@ export default function EmployeeStatsSection({
 
       <WorkspaceCardV2 title="سجل حركات الإجازات" description="آخر 12 حركة محفوظة.">
         <WorkspaceTableV2
-          headers={["التاريخ", "النوع", "التغيير", "قبل", "بعد"]}
+          headers={["التاريخ", "النوع", "التغيير", "قبل", "بعد", "نوع الإجازة"]}
           rows={sortedLeaveEntries.map((entry) => [
             fmtIsoDate(entry.date || String(getLeaveEntryCreatedAt(entry) || "")),
             t(leaveActionLabel(entry)),
             formatLeaveChange(entry, language),
             formatLeaveBalance(getLeaveEntryBalanceBefore(entry), language),
             formatLeaveBalance(getLeaveEntryBalanceAfter(entry), language),
+            t(historicalLeaveTypeLabel(entry)),
           ])}
           emptyText={loading ? t("جاري تحميل السجل...") : t("لا توجد حركات إجازات محفوظة.")}
         />
