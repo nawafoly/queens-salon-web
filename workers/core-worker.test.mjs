@@ -699,6 +699,21 @@ class FakeD1 {
         .sort((a, b) => String(b.server_time || "").localeCompare(String(a.server_time || "")))
         .slice(0, 5000);
     }
+    if (normalized.startsWith("SELECT * FROM employee_leaves WHERE salon_id = ? AND employee_id = ? AND status = 'approved'")) {
+      const [salonId, employeeId, dateTo, dateFrom] = params;
+      return this.rows("employee_leaves")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.status === "approved" &&
+          row.start_date <= dateTo &&
+          row.end_date >= dateFrom
+        )
+        .sort((a, b) =>
+          String(a.start_date || "").localeCompare(String(b.start_date || "")) ||
+          String(a.id || "").localeCompare(String(b.id || ""))
+        );
+    }
     if (normalized.startsWith("SELECT * FROM employee_leaves WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("employee_leaves")

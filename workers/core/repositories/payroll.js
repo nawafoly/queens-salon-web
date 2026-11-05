@@ -25,7 +25,7 @@ import {
   calculateStatutoryOvertimeHalalas,
 } from '../../../src/helpers/hr/saLaborPolicy.js';
 import { listAttendance } from './attendance.js';
-import { listLeaves } from './leaves.js';
+import { statutorySickPayrollAdjustment } from './sick-payroll-adjustment.js';
 import { listAbsences } from './absences.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
 import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.js';
@@ -322,6 +322,19 @@ function canonicalGosiFromEmployment(employment, payrollMonth) {
   }
 }
 
+async function payrollApprovedLeaves(db, salonId, employeeId, dateFrom, dateTo) {
+  // Apply employee and period filters in D1: the legacy listLeaves() reader
+  // limits all salon leaves to 1,000 before applying employee filters.
+  return dbAll(
+    db,
+    `SELECT * FROM employee_leaves
+      WHERE salon_id = ? AND employee_id = ? AND status = 'approved'
+        AND start_date <= ? AND end_date >= ?
+      ORDER BY start_date, id`,
+    [salonId, employeeId, dateTo, dateFrom]
+  );
+}
+
 async function buildCanonicalAttendanceSummary(
   db,
   salonId,
@@ -385,7 +398,7 @@ async function buildCanonicalAttendanceSummary(
     shiftBatch,
   ] = await Promise.all([
     listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
-    listLeaves(db, salonId, { employeeId, status: 'approved' }),
+    payrollApprovedLeaves(db, salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd),
     listAbsences(db, salonId, { employeeId }),
     dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd]).catch(() => []),
     dbAll(
@@ -416,6 +429,14 @@ async function buildCanonicalAttendanceSummary(
         `${cleanText(row.leave_id)}|${cleanText(row.recall_date)}`
     )
   );
+  const sickPayrollAdjustment = effectiveCompletedEnd >= servicePeriod.periodStart
+    ? statutorySickPayrollAdjustment({
+        leaves: leaveRows,
+        periodStart: servicePeriod.periodStart,
+        periodEnd: effectiveCompletedEnd,
+        recalledLeaveDates,
+      })
+    : { unpaidEquivalentDays: 0, affectedDays: 0 };
   const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= servicePeriod.periodStart && cleanText(row.date_key) <= servicePeriod.periodEnd);
   const punchRecordCount = periodAttendance.filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase())).length;
   const paidFullDayLeaveDates = new Set();
@@ -466,6 +487,8 @@ async function buildCanonicalAttendanceSummary(
         incompleteDays: 0,
         approvedLeaveDays,
         approvedAbsenceDays,
+        statutorySickUnpaidEquivalentDays: sickPayrollAdjustment.unpaidEquivalentDays,
+        statutorySickReducedPayDays: sickPayrollAdjustment.affectedDays,
         employmentStartDate: servicePeriod.startDate,
         servicePeriodStart: servicePeriod.periodStart,
         servicePeriodEnd: servicePeriod.periodEnd,
@@ -610,6 +633,8 @@ async function buildCanonicalAttendanceSummary(
       incompleteDays,
       approvedLeaveDays,
       approvedAbsenceDays,
+      statutorySickUnpaidEquivalentDays: sickPayrollAdjustment.unpaidEquivalentDays,
+      statutorySickReducedPayDays: sickPayrollAdjustment.affectedDays,
       employmentStartDate: servicePeriod.startDate,
       servicePeriodStart: servicePeriod.periodStart,
       servicePeriodEnd: servicePeriod.periodEnd,
@@ -687,9 +712,13 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   if (workDays <= 0) setupMissing.push('workDays');
   if (summary.attendancePayrollMode !== 'exempt' && monthlyHours <= 0) setupMissing.push('monthlyHours');
   const payrollSetupComplete = setupMissing.length === 0;
-  const absenceDeductionHalalas = payrollSetupComplete
-    ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas)
+  const statutorySickPayReductionHalalas = payrollSetupComplete
+    ? Math.round(Number(summary.statutorySickUnpaidEquivalentDays || 0) * dailyRateHalalas)
     : 0;
+  const absenceDeductionHalalas = payrollSetupComplete
+    ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas) + statutorySickPayReductionHalalas
+    : 0;
+  summary.statutorySickPayReductionHalalas = statutorySickPayReductionHalalas;
 
   const absenceCoveredMissingHours = Math.min(
     Number(summary.totalMissingHours || 0),
@@ -871,6 +900,7 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     dailyRateHalalas,
     hourlyRateHalalas,
     absenceDeductionHalalas,
+    statutorySickPayReductionHalalas,
     rawMissingHoursDeductionHalalas,
     missingHoursDeductionHalalas,
     attendanceDeductionDeferral,
@@ -1809,9 +1839,13 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
   const summary = attendance.summary;
   const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
   const hourlyRateHalalas = intMoney(sourceEntry.hourly_rate_halalas);
+  const statutorySickPayReductionHalalas = payrollRoundMoney(
+    Number(summary.statutorySickUnpaidEquivalentDays || 0) * dailyRateHalalas
+  );
   const absenceDeductionHalalas = payrollRoundMoney(
     Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas
-  );
+  ) + statutorySickPayReductionHalalas;
+  summary.statutorySickPayReductionHalalas = statutorySickPayReductionHalalas;
   const missingHours = Math.max(
     0,
     payrollRoundHours(
@@ -1855,7 +1889,7 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     intMoney(sourceEntry.insurance_deduction_halalas);
 
   const deferrableDeductionsHalalas =
-    absenceDeductionHalalas +
+    (absenceDeductionHalalas - statutorySickPayReductionHalalas) +
     missingHoursDeductionHalalas +
     intMoney(sourceEntry.manual_deductions_halalas) +
     intMoney(sourceEntry.advances_halalas) +
@@ -1887,6 +1921,7 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
 
   const totalDeductionsHalalas =
     insuranceDeductionHalalas +
+    statutorySickPayReductionHalalas +
     deferrableDeductionsHalalas -
     partialDeductionDeferralHalalas;
   return {
@@ -3045,7 +3080,7 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   // A generic payroll deduction deferral must never pretend to defer an advance
   // while leaving salary_advance_installments unchanged.
   const canonicalDeferrableDeductionsHalalas =
-    authority.absenceDeductionHalalas +
+    (authority.absenceDeductionHalalas - authority.statutorySickPayReductionHalalas) +
     authority.missingHoursDeductionHalalas +
     canonicalDeferrableManualDeductionsHalalas;
 
@@ -3525,7 +3560,8 @@ export async function deferPayrollDeductions(
   // canonical rescheduling ledger and must use that dedicated path.
 
   const eligibleHalalas =
-    Number(authority.absenceDeductionHalalas || 0) +
+    Number(authority.absenceDeductionHalalas || 0) -
+    Number(authority.statutorySickPayReductionHalalas || 0) +
     Number(authority.missingHoursDeductionHalalas || 0) +
     deferrableManualHalalas;
 
