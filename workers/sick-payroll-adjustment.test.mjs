@@ -80,6 +80,18 @@ test('two approved sick leaves for one date are rejected to prevent double deduc
   }), /overlapping_approved_dates/);
 });
 
+test('approved sick leave overlapping annual leave fails closed', () => {
+  const illness = sick({ firstOrdinal: 31, rates: [7500] });
+  const annual = {
+    id: 'annual-1', status: 'approved', leave_type: 'annual',
+    start_date: illness.start_date, end_date: illness.end_date,
+  };
+  assert.throws(() => statutorySickPayrollAdjustment({
+    leaves: [illness, annual],
+    periodStart: '2026-10-01', periodEnd: '2026-10-31',
+  }), /overlapping_approved_leave/);
+});
+
 test('sick leave crossing the statutory sick-year boundary requires review', () => {
   const leave = sick({
     start: '2027-04-09', rates: [7500, 7500], firstOrdinal: 31,
