@@ -83,6 +83,22 @@ export function statutorySickPayrollAdjustment({
     if (String(leave.duration_kind || '').toLowerCase() !== 'full_day') {
       throw new Error('core_payroll:sick_leave_partial_requires_review');
     }
+    // A single statutory-year segment allocation cannot be stretched across
+    // the employee's next sick year. Require separate HR review/reallocation.
+    if (leave.sick_year_start) {
+      const yearStart = String(leave.sick_year_start);
+      calendarDayNumber(yearStart);
+      const nextAnniversary = new Date(`${yearStart}T12:00:00.000Z`);
+      const originalMonth = nextAnniversary.getUTCMonth();
+      nextAnniversary.setUTCFullYear(nextAnniversary.getUTCFullYear() + 1);
+      if (nextAnniversary.getUTCMonth() !== originalMonth) {
+        nextAnniversary.setUTCDate(0); // Feb 29 -> Feb 28.
+      }
+      const yearEndDay = Math.floor(nextAnniversary.getTime() / 86400000);
+      if (start < calendarDayNumber(yearStart) || end >= yearEndDay) {
+        throw new Error('core_payroll:sick_leave_crosses_statutory_year');
+      }
+    }
     const rates = requiredSegments(leave, end - start + 1);
     for (let day = Math.max(start, first); day <= Math.min(end, last); day += 1) {
       const dayKey = new Date(day * 86400000).toISOString().slice(0, 10);
