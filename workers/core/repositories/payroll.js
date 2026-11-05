@@ -1909,6 +1909,7 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
 
   const totalDeductionsHalalas =
     insuranceDeductionHalalas +
+    statutorySickPayReductionHalalas +
     deferrableDeductionsHalalas -
     partialDeductionDeferralHalalas;
   return {
