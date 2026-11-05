@@ -107,7 +107,7 @@ export function statutorySickPayrollAdjustment({
         throw new Error('core_payroll:sick_leave_overlapping_approved_dates');
       }
       seen.add(dayKey);
-      const overlap = leaves.some((candidate) =>
+      const overlap = leaves.find((candidate) =>
         candidate !== leave &&
         String(candidate.status || '').toLowerCase() === 'approved' &&
         String(candidate.start_date || '') <= dayKey &&
@@ -115,7 +115,10 @@ export function statutorySickPayrollAdjustment({
         !recalledLeaveDates.has(`${candidate.id}|${dayKey}`)
       );
       if (overlap) {
-        throw new Error('core_payroll:sick_leave_overlapping_approved_leave');
+        const overlapType = String(overlap.leave_type || '').toLowerCase();
+        throw new Error(overlapType === 'sick'
+          ? 'core_payroll:sick_leave_overlapping_approved_dates'
+          : 'core_payroll:sick_leave_overlapping_approved_leave');
       }
       const reduction = 10000 - rates[day - start];
       unitsBps += reduction;
