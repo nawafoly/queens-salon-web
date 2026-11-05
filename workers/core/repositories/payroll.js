@@ -26,6 +26,7 @@ import {
 } from '../../../src/helpers/hr/saLaborPolicy.js';
 import { listAttendance } from './attendance.js';
 import { listLeaves } from './leaves.js';
+import { statutorySickPayrollAdjustment } from './sick-payroll-adjustment.js';
 import { listAbsences } from './absences.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
 import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.js';
@@ -416,6 +417,14 @@ async function buildCanonicalAttendanceSummary(
         `${cleanText(row.leave_id)}|${cleanText(row.recall_date)}`
     )
   );
+  const sickPayrollAdjustment = effectiveCompletedEnd >= servicePeriod.periodStart
+    ? statutorySickPayrollAdjustment({
+        leaves: leaveRows,
+        periodStart: servicePeriod.periodStart,
+        periodEnd: effectiveCompletedEnd,
+        recalledLeaveDates,
+      })
+    : { unpaidEquivalentDays: 0, affectedDays: 0 };
   const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= servicePeriod.periodStart && cleanText(row.date_key) <= servicePeriod.periodEnd);
   const punchRecordCount = periodAttendance.filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase())).length;
   const paidFullDayLeaveDates = new Set();
@@ -466,6 +475,8 @@ async function buildCanonicalAttendanceSummary(
         incompleteDays: 0,
         approvedLeaveDays,
         approvedAbsenceDays,
+        statutorySickUnpaidEquivalentDays: sickPayrollAdjustment.unpaidEquivalentDays,
+        statutorySickReducedPayDays: sickPayrollAdjustment.affectedDays,
         employmentStartDate: servicePeriod.startDate,
         servicePeriodStart: servicePeriod.periodStart,
         servicePeriodEnd: servicePeriod.periodEnd,
@@ -610,6 +621,8 @@ async function buildCanonicalAttendanceSummary(
       incompleteDays,
       approvedLeaveDays,
       approvedAbsenceDays,
+      statutorySickUnpaidEquivalentDays: sickPayrollAdjustment.unpaidEquivalentDays,
+      statutorySickReducedPayDays: sickPayrollAdjustment.affectedDays,
       employmentStartDate: servicePeriod.startDate,
       servicePeriodStart: servicePeriod.periodStart,
       servicePeriodEnd: servicePeriod.periodEnd,
@@ -688,7 +701,7 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   if (summary.attendancePayrollMode !== 'exempt' && monthlyHours <= 0) setupMissing.push('monthlyHours');
   const payrollSetupComplete = setupMissing.length === 0;
   const absenceDeductionHalalas = payrollSetupComplete
-    ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas)
+    ? Math.round((Number(summary.approvedAbsenceDays || 0) + Number(summary.statutorySickUnpaidEquivalentDays || 0)) * dailyRateHalalas)
     : 0;
 
   const absenceCoveredMissingHours = Math.min(
@@ -1810,7 +1823,7 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
   const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
   const hourlyRateHalalas = intMoney(sourceEntry.hourly_rate_halalas);
   const absenceDeductionHalalas = payrollRoundMoney(
-    Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas
+    (Number(summary.approvedAbsenceDays || 0) + Number(summary.statutorySickUnpaidEquivalentDays || 0)) * dailyRateHalalas
   );
   const missingHours = Math.max(
     0,
