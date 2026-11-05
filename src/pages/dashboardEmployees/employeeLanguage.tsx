@@ -744,7 +744,7 @@ const employeeEnglish: Record<string, string> = {
   "تاريخ غير محدد": "Date not specified",
   "سجّل إجازة جديدة ليتم اعتمادها وإظهارها في الحضور وربط أثرها بالراتب.": "Record a new leave request so it can be approved, reflected in attendance, and linked to payroll.",
   "الأثر المالي يُحدد حسب النوع": "Financial impact depends on leave type",
-  "الإجازات السنوية والمرضية والطارئة تظهر في الحضور ولا تخصم من الراتب، بينما الإجازة بدون راتب تظهر كإجازة معتمدة ويُخصم مقابل أيامها من الراتب.": "Annual, sick, and emergency leave appears in attendance without salary deduction; unpaid leave is approved leave whose days are deducted from payroll.",
+  "تظهر الإجازات المعتمدة في الحضور. السنوية بأجر كامل، والمرضية تتدرج بين الأجر الكامل و75% وبدون أجر بحسب أيام السنة المرضية؛ أما الاضطرارية الشخصية فتخضع لسياسة المنشأة والتصنيف المعتمد، والإجازة بدون راتب لا يُصرف أجر أيامها.": "Approved leave appears in attendance. Annual leave is fully paid; sick leave follows the statutory full-pay, 75%-pay, and unpaid bands. Personal emergency leave depends on the documented company policy and approved classification; unpaid leave carries no pay for its days.",
   "انتهى تاريخ الإجازة": "Leave period ended",
   "يمكن إنهاء الحالة الحالية أو تسجيل إجازة جديدة بمدى زمني صحيح.": "You can end the current state or record a new leave with a valid date range.",
   "تاريخ الاستحقاق وتعديل الرصيد.": "Entitlement date and balance adjustments.",
