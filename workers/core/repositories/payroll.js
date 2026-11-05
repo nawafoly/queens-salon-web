@@ -700,9 +700,13 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   if (workDays <= 0) setupMissing.push('workDays');
   if (summary.attendancePayrollMode !== 'exempt' && monthlyHours <= 0) setupMissing.push('monthlyHours');
   const payrollSetupComplete = setupMissing.length === 0;
-  const absenceDeductionHalalas = payrollSetupComplete
-    ? Math.round((Number(summary.approvedAbsenceDays || 0) + Number(summary.statutorySickUnpaidEquivalentDays || 0)) * dailyRateHalalas)
+  const statutorySickPayReductionHalalas = payrollSetupComplete
+    ? Math.round(Number(summary.statutorySickUnpaidEquivalentDays || 0) * dailyRateHalalas)
     : 0;
+  const absenceDeductionHalalas = payrollSetupComplete
+    ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas) + statutorySickPayReductionHalalas
+    : 0;
+  summary.statutorySickPayReductionHalalas = statutorySickPayReductionHalalas;
 
   const absenceCoveredMissingHours = Math.min(
     Number(summary.totalMissingHours || 0),
@@ -884,6 +888,7 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     dailyRateHalalas,
     hourlyRateHalalas,
     absenceDeductionHalalas,
+    statutorySickPayReductionHalalas,
     rawMissingHoursDeductionHalalas,
     missingHoursDeductionHalalas,
     attendanceDeductionDeferral,
@@ -1822,9 +1827,13 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
   const summary = attendance.summary;
   const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
   const hourlyRateHalalas = intMoney(sourceEntry.hourly_rate_halalas);
-  const absenceDeductionHalalas = payrollRoundMoney(
-    (Number(summary.approvedAbsenceDays || 0) + Number(summary.statutorySickUnpaidEquivalentDays || 0)) * dailyRateHalalas
+  const statutorySickPayReductionHalalas = payrollRoundMoney(
+    Number(summary.statutorySickUnpaidEquivalentDays || 0) * dailyRateHalalas
   );
+  const absenceDeductionHalalas = payrollRoundMoney(
+    Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas
+  ) + statutorySickPayReductionHalalas;
+  summary.statutorySickPayReductionHalalas = statutorySickPayReductionHalalas;
   const missingHours = Math.max(
     0,
     payrollRoundHours(
@@ -1868,7 +1877,7 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     intMoney(sourceEntry.insurance_deduction_halalas);
 
   const deferrableDeductionsHalalas =
-    absenceDeductionHalalas +
+    (absenceDeductionHalalas - statutorySickPayReductionHalalas) +
     missingHoursDeductionHalalas +
     intMoney(sourceEntry.manual_deductions_halalas) +
     intMoney(sourceEntry.advances_halalas) +
@@ -3058,7 +3067,7 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   // A generic payroll deduction deferral must never pretend to defer an advance
   // while leaving salary_advance_installments unchanged.
   const canonicalDeferrableDeductionsHalalas =
-    authority.absenceDeductionHalalas +
+    (authority.absenceDeductionHalalas - authority.statutorySickPayReductionHalalas) +
     authority.missingHoursDeductionHalalas +
     canonicalDeferrableManualDeductionsHalalas;
 
@@ -3538,7 +3547,8 @@ export async function deferPayrollDeductions(
   // canonical rescheduling ledger and must use that dedicated path.
 
   const eligibleHalalas =
-    Number(authority.absenceDeductionHalalas || 0) +
+    Number(authority.absenceDeductionHalalas || 0) -
+    Number(authority.statutorySickPayReductionHalalas || 0) +
     Number(authority.missingHoursDeductionHalalas || 0) +
     deferrableManualHalalas;
 
