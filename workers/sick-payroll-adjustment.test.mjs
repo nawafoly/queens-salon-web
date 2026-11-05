@@ -95,4 +95,6 @@ test('payroll canonical and locked recalculation both use sick-equivalent deduct
   assert.match(source, /statutorySickPayrollAdjustment\(/);
   assert.match(source, /statutorySickUnpaidEquivalentDays: sickPayrollAdjustment\.unpaidEquivalentDays/);
   assert.equal((source.match(/Number\(summary\.statutorySickUnpaidEquivalentDays \|\| 0\)/g) || []).length, 2);
+  assert.match(source, /insuranceDeductionHalalas \+\s*statutorySickPayReductionHalalas \+\s*deferrableDeductionsHalalas/);
+  assert.match(source, /authority\.absenceDeductionHalalas - authority\.statutorySickPayReductionHalalas/);
 });
