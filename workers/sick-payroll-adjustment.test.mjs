@@ -80,6 +80,16 @@ test('two approved sick leaves for one date are rejected to prevent double deduc
   }), /overlapping_approved_dates/);
 });
 
+test('sick leave crossing the statutory sick-year boundary requires review', () => {
+  const leave = sick({
+    start: '2027-04-09', rates: [7500, 7500], firstOrdinal: 31,
+    sick_year_start: '2026-04-10',
+  });
+  assert.throws(() => statutorySickPayrollAdjustment({
+    leaves: [leave], periodStart: '2027-04-01', periodEnd: '2027-04-30',
+  }), /crosses_statutory_year/);
+});
+
 test('payroll canonical and locked recalculation both use sick-equivalent deduction units', () => {
   const source = readFileSync(new URL('./core/repositories/payroll.js', import.meta.url), 'utf8');
   assert.match(source, /statutorySickPayrollAdjustment\(/);
