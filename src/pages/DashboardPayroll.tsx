@@ -1242,6 +1242,8 @@ export default function DashboardPayroll() {
           acc.additions += payrollOrdinaryAdditionsHalalas(entry);
           acc.overtime += entry.overtimeValueHalalas;
           acc.leaveCompensation += payrollLeaveCompensationHalalas(entry);
+          acc.carryover += payrollEntryCarryoverNetHalalas(entry);
+          acc.carryoverDeductions += carryoverDeductionHalalas(entry);
           acc.deductions += entry.totalDeductionsHalalas;
           acc.net += entry.netSalaryHalalas;
           acc.earned += calculatePayrollAccrualView(entry).earnedToDateHalalas;
@@ -1277,6 +1279,8 @@ export default function DashboardPayroll() {
         additions: 0,
         overtime: 0,
         leaveCompensation: 0,
+        carryover: 0,
+        carryoverDeductions: 0,
         deductions: 0,
         net: 0,
         earned: 0,
@@ -1286,6 +1290,15 @@ export default function DashboardPayroll() {
       }
     );
   }, [visibleEntries, isFuturePayrollPeriod]);
+
+  // Carryover deductions already belong to totalDeductions; subtract them
+  // from that subtotal when reconciling the signed carryover separately.
+  const expectedNetFromVisibleLines = Math.max(0,
+    summary.base + summary.allowances + summary.additions + summary.overtime +
+    summary.leaveCompensation + summary.carryover -
+    (summary.deductions - summary.carryoverDeductions)
+  );
+  const netReconciliationDifference = summary.net - expectedNetFromVisibleLines;
 
   const selectedEmployeeName =
     employeeFilter === "all"
@@ -2524,10 +2537,15 @@ export default function DashboardPayroll() {
           <div className="payroll-financial-item is-positive"><span>الإضافات والمكافآت</span><strong>{formatPayrollMoney(summary.additions)}</strong></div>
           <div className="payroll-financial-item is-positive"><span>الأوفر تايم</span><strong>{formatPayrollMoney(summary.overtime)}</strong></div>
           <div className="payroll-financial-item"><span>تعويض رصيد الإجازات</span><strong>{formatPayrollMoney(summary.leaveCompensation)}</strong></div>
+          <div className="payroll-financial-item"><span>تسويات فترات سابقة (صافي)</span><strong>{summary.carryover > 0 ? "+" : summary.carryover < 0 ? "−" : ""}{formatPayrollMoney(Math.abs(summary.carryover))}</strong></div>
           <div className="payroll-financial-item is-negative"><span>الخصومات</span><strong>{formatPayrollMoney(summary.deductions)}</strong></div>
           <div className="payroll-financial-item is-accrued"><span>المستحق حتى اليوم</span><strong>{formatPayrollMoney(summary.earned)}</strong></div>
           <div className="payroll-financial-item is-net"><span>الصافي المتوقع</span><strong>{formatPayrollMoney(summary.net)}</strong></div>
         </div>
+        <p className="small text-muted">التسويات الموجبة تضاف للمستحقات، والتسويات السالبة مدرجة ضمن إجمالي الخصومات؛ لا تُخصم مرتين.</p>
+        {Math.abs(netReconciliationDifference) > 1 ? (
+          <div className="payroll-alert is-warning" role="alert">تعذر مطابقة صافي المسيرة مع البنود الظاهرة؛ فرق المطابقة: {formatPayrollMoney(Math.abs(netReconciliationDifference))}. يلزم فحص مصدر البنود قبل الاعتماد.</div>
+        ) : null}
         <div className="payroll-status-strip" aria-label="حالات المسيرات">
           <span>المسودات <strong>{summary.drafts}</strong></span>
           <span>المعتمدة <strong>{summary.approved}</strong></span>
@@ -2572,6 +2590,7 @@ export default function DashboardPayroll() {
               <th>الإضافات والمكافآت</th>
               <th>الأوفر تايم</th>
               <th>تعويض رصيد الإجازات</th>
+              <th>تسويات فترات سابقة</th>
               <th>الخصومات</th>
               <th>المستحق / المتوقع</th>
               <th>الحالة</th>
@@ -2702,6 +2721,7 @@ export default function DashboardPayroll() {
                   <td className="payroll-money-cell is-positive">{formatPayrollMoney(payrollOrdinaryAdditionsHalalas(entry))}</td>
                   <td className="payroll-money-cell is-positive">{formatPayrollMoney(entry.overtimeValueHalalas)}</td>
                   <td className="payroll-money-cell">{formatPayrollMoney(payrollLeaveCompensationHalalas(entry))}</td>
+                  <td className="payroll-money-cell"><strong>{payrollEntryCarryoverNetHalalas(entry) > 0 ? "+" : payrollEntryCarryoverNetHalalas(entry) < 0 ? "−" : ""}{formatPayrollMoney(Math.abs(payrollEntryCarryoverNetHalalas(entry)))}</strong></td>
                   <td className="payroll-money-cell is-negative">
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
                     <small>غياب {formatPayrollMoney(entry.absenceDeductionHalalas)}</small>
