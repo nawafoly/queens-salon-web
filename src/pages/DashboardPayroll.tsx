@@ -1294,16 +1294,24 @@ export default function DashboardPayroll() {
 
   // Carryover deductions already belong to totalDeductions; subtract them
   // from that subtotal when reconciling the signed carryover separately.
-  const expectedNetFromVisibleLines = expectedPayrollNetFromDisplayedLines({
-    base: summary.base,
-    allowances: summary.allowances,
-    additions: summary.additions,
-    overtime: summary.overtime,
-    leaveCompensation: summary.leaveCompensation,
-    signedCarryover: summary.carryover,
-    carryoverDeductions: summary.carryoverDeductions,
-    totalDeductions: summary.deductions,
-  });
+  // Core clamps each employee's net to zero independently.
+  const expectedNetFromVisibleLines = visibleEntries
+    .filter((entry) => entry.payrollSetupComplete)
+    .reduce(
+      (total, entry) =>
+        total +
+        expectedPayrollNetFromDisplayedLines({
+          base: entry.baseSalaryHalalas,
+          allowances: entry.allowancesHalalas,
+          additions: payrollOrdinaryAdditionsHalalas(entry),
+          overtime: entry.overtimeValueHalalas,
+          leaveCompensation: payrollLeaveCompensationHalalas(entry),
+          signedCarryover: payrollEntryCarryoverNetHalalas(entry),
+          carryoverDeductions: carryoverDeductionHalalas(entry),
+          totalDeductions: entry.totalDeductionsHalalas,
+        }),
+      0
+    );
   const netReconciliationDifference = summary.net - expectedNetFromVisibleLines;
 
   const selectedEmployeeName =

@@ -29,9 +29,42 @@ test("zero carryovers and unpaid deficit reconcile as expected", () => {
 test("payroll page exposes signed carryover in summary and employee rows", () => {
   const page = readFileSync(new URL("../src/pages/DashboardPayroll.tsx", import.meta.url), "utf8");
   assert.match(page, /acc\.carryover \+= payrollEntryCarryoverNetHalalas\(entry\)/);
-  assert.match(page, /summary\.carryoverDeductions/);
+  assert.match(page, /carryoverDeductions: carryoverDeductionHalalas\(entry\)/);
   assert.match(page, /<th>تسويات فترات سابقة<\/th>/);
   assert.match(page, /تسويات فترات سابقة \(صافي\)/);
   assert.match(page, /netReconciliationDifference/);
   assert.match(page, /تعذر مطابقة صافي المسيرة/);
+});
+
+test("employee-level reconciliation preserves independent zero-floor", () => {
+  const employees = [
+    { base: 10000, totalDeductions: 25000 },
+    { base: 240000, totalDeductions: 0 },
+  ];
+
+  const expectedTotal = employees.reduce(
+    (sum, employee) =>
+      sum + expectedPayrollNetFromDisplayedLines(employee),
+    0
+  );
+
+  assert.equal(expectedTotal, 240000);
+
+  const incorrectlyAggregated = expectedPayrollNetFromDisplayedLines({
+    base: 250000,
+    totalDeductions: 25000,
+  });
+
+  assert.equal(incorrectlyAggregated, 225000);
+  assert.notEqual(expectedTotal, incorrectlyAggregated);
+
+  const page = readFileSync(
+    new URL("../src/pages/DashboardPayroll.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    page,
+    /visibleEntries\s*\.filter\(\(entry\) => entry\.payrollSetupComplete\)/
+  );
 });
