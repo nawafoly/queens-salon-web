@@ -69,6 +69,7 @@ import {
   payrollAttendanceReadiness,
 } from "../helpers/hr/payrollReadiness.js";
 import { isPayrollCarryoverItem } from "../helpers/hr/payrollCarryoverPolicy.js";
+import { expectedPayrollNetFromDisplayedLines } from "../helpers/hr/payrollCarryoverReconciliation.js";
 import {
   payrollAttendanceObligationDeductionTotal,
   payrollObligationDeductionTotal,
@@ -1293,11 +1294,16 @@ export default function DashboardPayroll() {
 
   // Carryover deductions already belong to totalDeductions; subtract them
   // from that subtotal when reconciling the signed carryover separately.
-  const expectedNetFromVisibleLines = Math.max(0,
-    summary.base + summary.allowances + summary.additions + summary.overtime +
-    summary.leaveCompensation + summary.carryover -
-    (summary.deductions - summary.carryoverDeductions)
-  );
+  const expectedNetFromVisibleLines = expectedPayrollNetFromDisplayedLines({
+    base: summary.base,
+    allowances: summary.allowances,
+    additions: summary.additions,
+    overtime: summary.overtime,
+    leaveCompensation: summary.leaveCompensation,
+    signedCarryover: summary.carryover,
+    carryoverDeductions: summary.carryoverDeductions,
+    totalDeductions: summary.deductions,
+  });
   const netReconciliationDifference = summary.net - expectedNetFromVisibleLines;
 
   const selectedEmployeeName =
