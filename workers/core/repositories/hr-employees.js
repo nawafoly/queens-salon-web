@@ -3,6 +3,7 @@
 
 import {
   activeFlag,
+  canonicalIdCandidates,
   cleanText,
   dbAll,
   dbBatch,
@@ -257,6 +258,26 @@ export async function listHrEmployees(db, salonId, query = {}) {
 export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   const now = nowIso();
   const id = requiredId(data.id || data.employeeId || generatedId('employee'));
+
+  // Reject writes to a legacy-only encoded identity before any mutation.
+  // Identity reconciliation is a separate, explicitly reviewed migration.
+  const identityCandidates = canonicalIdCandidates(id);
+  const identityPlaceholders = identityCandidates.map(() => '?').join(', ');
+  const physicalIdentity = await dbFirst(
+    db,
+    `SELECT id FROM employee_profiles
+     WHERE salon_id = ? AND id IN (${identityPlaceholders})
+     ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [salonId, ...identityCandidates, id]
+  );
+
+  if (physicalIdentity && physicalIdentity.id !== id) {
+    throw new AppError(
+      409,
+      'core_hr:legacy_employee_identity_requires_migration'
+    );
+  }
   const existing = await dbFirst(
     db,
     'SELECT * FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
