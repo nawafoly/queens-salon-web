@@ -28,7 +28,7 @@ test("zero carryovers and unpaid deficit reconcile as expected", () => {
 
 test("payroll page exposes signed carryover in summary and employee rows", () => {
   const page = readFileSync(new URL("../src/pages/DashboardPayroll.tsx", import.meta.url), "utf8");
-  assert.match(page, /summary\.carryover \+= payrollEntryCarryoverNetHalalas\(entry\)/);
+  assert.match(page, /acc\.carryover \+= payrollEntryCarryoverNetHalalas\(entry\)/);
   assert.match(page, /summary\.carryoverDeductions/);
   assert.match(page, /<th>تسويات فترات سابقة<\/th>/);
   assert.match(page, /تسويات فترات سابقة \(صافي\)/);
