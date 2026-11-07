@@ -8140,3 +8140,154 @@ test('Stage 11 attendance deferral can be recreated after cancellation', async (
     1
   );
 });
+
+test('encoded HR upsert preserves a single canonical employee', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const canonicalId = 'اختبار_هوية_موظفة';
+  const encodedOnce = encodeURIComponent(canonicalId);
+  const encodedTwice = encodeURIComponent(encodedOnce);
+
+  await upsertHrEmployee(db, 'main', {
+    id: canonicalId,
+    name: 'Test Employee',
+  }, actor);
+
+  for (const id of [encodedOnce, encodedTwice]) {
+    await upsertHrEmployee(db, 'main', {
+      id,
+      name: 'Test Employee Updated',
+    }, actor);
+  }
+
+  const ids = [canonicalId, encodedOnce, encodedTwice];
+
+  for (const table of [
+    'employee_profiles',
+    'employee_employment',
+    'staff',
+  ]) {
+    const idColumn = table === 'employee_employment'
+      ? 'employee_id'
+      : 'id';
+
+    const placeholders = ids.map(() => '?').join(', ');
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS total FROM ${table}
+       WHERE salon_id = ? AND ${idColumn} IN (${placeholders})`
+    ).bind('main', ...ids).first();
+
+    assert.equal(
+      Number(row.total),
+      1,
+      `${table} must contain exactly one employee identity`
+    );
+  }
+
+  const profile = await db.prepare(
+    'SELECT id, name FROM employee_profiles WHERE salon_id = ? AND id = ?'
+  ).bind('main', canonicalId).first();
+
+  assert.equal(profile.id, canonicalId);
+  assert.equal(profile.name, 'Test Employee Updated');
+});
+
+test('legacy-only encoded HR profile must not create a duplicate', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const canonicalId = 'اختبار_سجل_قديم';
+  const legacyId = encodeURIComponent(canonicalId);
+  const now = '2026-10-01T12:00:00.000Z';
+
+  await db.prepare(
+    `INSERT INTO employee_profiles
+       (id, salon_id, name, status, created_at, updated_at)
+     VALUES (?, 'main', 'Legacy Employee', 'active', ?, ?)`
+  ).bind(legacyId, now, now).run();
+
+  let saveError = null;
+
+  try {
+    await upsertHrEmployee(db, 'main', {
+      id: canonicalId,
+      name: 'Updated Legacy Employee',
+    }, actor);
+  } catch (error) {
+    saveError = error;
+  }
+
+  const rows = await db.prepare(
+    `SELECT id, name FROM employee_profiles
+     WHERE salon_id = 'main' AND id IN (?, ?)`
+  ).bind(canonicalId, legacyId).all();
+
+  assert.equal(
+    rows.results.length,
+    1,
+    'Saving a legacy alias must not create a second physical employee profile'
+  );
+
+  assert.equal(
+    rows.results[0].id,
+    legacyId,
+    'Existing legacy identity must be preserved until explicit migration'
+  );
+
+  assert.ok(
+    saveError instanceof Error,
+    'A legacy-only encoded identity must reject the write'
+  );
+  assert.equal(saveError.status, 409);
+  assert.equal(saveError.code, 'core_hr:legacy_employee_identity_requires_migration');
+});
+
+test('double-encoded legacy-only HR identity rejects mutation', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const canonicalId = 'اختبار_هوية_مشفرة_مرتين';
+  const legacyId = encodeURIComponent(encodeURIComponent(canonicalId));
+  const now = '2026-10-01T12:00:00.000Z';
+
+  await db.prepare(
+    `INSERT INTO employee_profiles
+       (id, salon_id, name, status, created_at, updated_at)
+     VALUES (?, 'main', 'Original Employee', 'active', ?, ?)`
+  ).bind(legacyId, now, now).run();
+
+  await assert.rejects(
+    () => upsertHrEmployee(db, 'main', {
+      id: canonicalId,
+      name: 'Changed Employee',
+    }, actor),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(
+        error.code,
+        'core_hr:legacy_employee_identity_requires_migration'
+      );
+      return true;
+    }
+  );
+
+  const result = await db.prepare(
+    `SELECT id, name FROM employee_profiles
+     WHERE salon_id = 'main' AND id IN (?, ?)`
+  ).bind(canonicalId, legacyId).all();
+
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].id, legacyId);
+  assert.equal(result.results[0].name, 'Original Employee');
+
+  for (const table of ['employee_employment', 'staff']) {
+    const column = table === 'employee_employment' ? 'employee_id' : 'id';
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS total FROM ${table}
+       WHERE salon_id = ? AND ${column} IN (?, ?)`
+    ).bind('main', canonicalId, legacyId).first();
+
+    assert.equal(Number(row.total), 0, `${table} must remain unchanged`);
+  }
+});
