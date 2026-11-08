@@ -1,6 +1,6 @@
 # Samira canonical identity repair — verification record (2026-11-08)
 
-Related: Draft PR #301. This document records evidence observed in operator PowerShell output. It does **not** authorize production execution.
+Related: Draft PR #301. This document records evidence observed in operator PowerShell output. The production execution described below was explicitly approved by the owner. This record is not authorization to rerun it.
 
 ## Production read-only validation
 - Account access restored via Wrangler OAuth; D1 database ID verified as `d0565103-0b29-490d-8c10-c955e8d65c4a`.
@@ -21,7 +21,15 @@ Related: Draft PR #301. This document records evidence observed in operator Powe
 - Subsequent independent local D1 comparison: all 132 application data tables matched the source by row fingerprints; integrity check OK; foreign key check zero violations; source database unchanged.
 - Limit: the D1 rollback comparison validates application table content, **not** all schema objects or the exact execution point independently. The injected error was appended after the repair's final postcondition, and the SQL itself contains no explicit `COMMIT` statement. This is strong local evidence, but not an assertion about production behavior under every failure mode.
 
+## Actual production execution and postconditions — 2026-11-08
+- Owner approved proceeding and a final read-only preflight matched expectations: profiles=3, staff=3, employment=3, schedules=21, legacy_links=1, canonical_links=0.
+- Exact repair SQL Git blob: `82ec60eb1fc294ddd16c3453df1c883667586dff`; verified locally before remote execution.
+- Wrangler 4.148.0 executed `scripts/repair-samira-canonical-identity.sql` with `d1 execute queens-salon-core --remote --config wrangler.core.jsonc --file ... --yes`. Operator output: success; 15 queries, 232 rows read, 41 rows written; D1 bookmark `000067c3-00000006-0000511d-98fd07eabb6b40f1c1a5f2a3ba4b6f0d`.
+- **Independent remote read-only postcondition passed**: `employee_profiles=1`, `staff=1`, `employee_employment=1`, `hr_work_schedules=21`, active canonical user link=1, canonical notification=1, legacy records across six targeted tables=0, canonical staff Firebase UID matches canonical profile UID.
+- No second execution is necessary or permitted: this is a one-time repair.
+- Remaining acceptance: verify actual employee login and HR/admin UI (employee list, profile, attendance and schedules) with the owner; then decide PR merge policy. SQL/data postconditions **alone** do not prove UI/login behavior.
+
 ## Release safety
-- PR #301 stays Draft. The above is not a production migration or an instruction to run `--remote --file`.
-- Before any production mutation: review current SQL against branch tip, fresh read-only preflight immediately before execution, retain verified backup and rollback plan, and obtain explicit owner authorization.
-- After explicitly approved production execution: verify identities, link, notification and 21 schedules, plus application login and HR UI checks. Record results separately.
+- PR #301 stays Draft until release review. Production **data repair has already executed successfully**; merging the PR is a separate Git change and must not re-run SQL automatically.
+- Keep the verified pre-repair backup outside Git. Do not rerun one-time SQL.
+
