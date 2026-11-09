@@ -40,7 +40,7 @@ function payrollFixture(status) {
     },
     async first(sql, params) {
       reads.push({ sql, params });
-      if (/FROM payroll_entries\\b/.test(sql) && /id = \\?/.test(sql)) {
+      if (/FROM payroll_entries\b/.test(sql) && /id = \?/.test(sql)) {
         assert.deepEqual(params, ["main", entry.id]);
         return entry;
       }
