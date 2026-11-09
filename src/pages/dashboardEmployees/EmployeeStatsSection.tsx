@@ -200,6 +200,9 @@ function historicalLeaveTypeLabel(entry: LeaveEntry) {
     unpaid: "بدون راتب",
     rest: "راحة",
     weekly_rest_substitute_use: "راحة تعويضية",
+    other: "أخرى",
+    exceptional: "استثنائية",
+    compensatory: "تعويضية",
   };
 
   if (labels[type]) return labels[type];

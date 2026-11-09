@@ -1472,7 +1472,7 @@ export function EmployeeAttendanceTabLiveV2({
                   <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !activeSelectedDate} onClick={() => activeSelectedDate && onEditPunch(activeSelectedDate)}>
                     {t("تعديل البصمة")}
                   </button>
-                  <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={readOnly || !canDelete || !selectedRow?.date} onClick={() => selectedRow?.date && onDeletePunch(selectedRow.date)}>
+                  <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={readOnly || !canDelete || !selectedRow?.date || !selectedHasPunch} onClick={() => selectedRow?.date && selectedHasPunch && onDeletePunch(selectedRow.date)}>
                     {t("حذف البصمة")}
                   </button>
                   {selectedHasApprovedLeave ? (
