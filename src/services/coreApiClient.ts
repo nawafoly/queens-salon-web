@@ -1,4 +1,5 @@
 import { auth } from "./firebase";
+import { pendingReconciliations } from "../helpers/hr/reconciliationStatus.js";
 import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 
 export class CoreApiError extends Error {
@@ -257,7 +258,11 @@ async function requestOnce<T>(
       );
     }
 
-    return (payload.data ?? payload) as T;
+    const result = payload.data ?? payload;
+    if (typeof window !== "undefined") for (const operation of pendingReconciliations(result)) {
+      window.dispatchEvent(new CustomEvent("malikat:financial-reconciliation-pending",{detail:operation}));
+    }
+    return result as T;
   } catch (error) {
     if (error instanceof CoreApiError) {
       throw error;

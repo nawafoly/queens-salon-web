@@ -4,6 +4,7 @@ import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
 import { CoreHrService } from "../../services/CoreHrService";
 import { isCanonicalEmployeeIdentityId } from "../../helpers/employeeIdentityId";
 import { clearAttendancePunchTimeFromWorker } from "../../services/attendancePunchAdminService";
+import { attendanceReconciliationMessage } from "../../services/attendanceOperationClient";
 import type { CoreResolvedShift } from "../../types/hrCoreApi";
 import {
   computeAttendanceEarlyLeaveMinutes,
@@ -776,7 +777,7 @@ export default function AttendanceSection({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
-  const { t, tr } = useEmployeeLanguage();
+  const { t, tr, language } = useEmployeeLanguage();
   const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [corePermissionSpecialDays, setCorePermissionSpecialDays] = useState<AttendanceSpecialDay[]>([]);
   const [corePermissionLoading, setCorePermissionLoading] = useState(false);
@@ -1489,9 +1490,11 @@ export default function AttendanceSection({
         serverTimes,
         note: tr(`مسح وقت ${label} فقط من إدارة الموظفات`, `Clear ${label} time only from Staff Management`),
       });
+      const reconciliationMessage = attendanceReconciliationMessage(result,language === "en");
       if (Number(result.clearedRecords || 0) <= 0) {
         throw new Error(tr(`لم يتم العثور على سجل ${label} قابل للمسح.`, `No clearable ${label} record was found.`));
       }
+      if (reconciliationMessage) setPunchClearError(reconciliationMessage);
       setPunchClearMessage(tr(`تم مسح وقت ${label} فقط، وبقيت بقية سجلات اليوم كما هي.`, `The ${label} time was cleared; the rest of the day records were preserved.`));
       try {
         await onPunchCleared?.({

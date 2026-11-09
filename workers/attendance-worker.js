@@ -1,5 +1,11 @@
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
+  attendanceRequestHash, readAttendanceOperation, prepareAttendanceOperation,
+  commitAttendanceOperation, processAttendanceOperation, attendanceOperationPayload,
+  retryAttendanceOperations,
+  punchReconciliationStatement,
+} from "./attendance-operations.js";
+import {
   resolveAttendanceWorkAuthorization,
 } from "./core/repositories/leave-rest-workflows.js";
 import {
@@ -642,6 +648,7 @@ export async function handleAttendanceRequest({
   const zoneMatch = pathname.match(/^\/attendance\/work-zones\/([^/]+)$/);
   const deviceMatch = pathname.match(/^\/attendance\/admin\/devices\/([^/]+)$/);
   const securityEventMatch = pathname.match(/^\/attendance\/admin\/security-events\/([^/]+)$/);
+  const operationMatch = pathname.match(/^\/attendance\/operations\/([a-zA-Z0-9:_-]{1,160})$/);
 
   if (pathname === "/attendance/record" && request.method !== "POST") {
     return methodNotAllowed(["POST"]);
@@ -699,6 +706,7 @@ export async function handleAttendanceRequest({
     !zoneMatch &&
     !deviceMatch &&
     !securityEventMatch
+    && !operationMatch
   ) {
     return json(404, { ok: false, message: "not_found" });
   }
@@ -708,6 +716,26 @@ export async function handleAttendanceRequest({
 
   if (!requester.runtime?.isActive) {
     return json(403, { ok: false, message: "inactive_account" });
+  }
+
+  if (operationMatch) {
+    if (!["GET","POST"].includes(request.method)) return methodNotAllowed(["GET","POST"]);
+    const permission = request.method === "POST" ? "attendance.settings.manage" : "attendance.view";
+    if (!hasRuntimePermission(requester.runtime,permission)) return forbidden(permission);
+    const op = await readAttendanceOperation(db,operationMatch[1]);
+    if (!op || op.salon_id !== salonId) return json(404,{ok:false,message:"attendance_operation_not_found"});
+    if (request.method === "POST") {
+      await db.prepare(`UPDATE attendance_operations SET status='pending',attempts=0,
+        next_attempt_at=?,updated_at=? WHERE id=? AND status='needs_attention'`)
+        .bind(new Date().toISOString(),new Date().toISOString(),op.id).run();
+      return finishAttendanceOperation(db,directoryDb,op.id);
+    }
+    const events = await db.prepare("SELECT * FROM attendance_operation_events WHERE operation_id=? ORDER BY sequence")
+      .bind(op.id).all();
+    return json(200,{...attendanceOperationPayload(op),audit:{
+      actor:JSON.parse(op.actor_json),employeeId:op.employee_id,date:op.work_date,reason:op.reason,
+      before:JSON.parse(op.before_records),after:JSON.parse(op.after_records || '[]'),events:events.results,
+    }});
   }
 
 
@@ -2070,7 +2098,7 @@ async function reconcileAdminAttendancePayroll({
   sourceId = null,
   reason = null,
 }) {
-  if (!directoryDb || !employeeId || !date) return null;
+  if (!directoryDb || !employeeId || !date) throw new Error("attendance_core_reconciliation_unavailable");
 
   return reconcileLockedPayrollImpactForEmployeeDate(
     directoryDb,
@@ -2097,6 +2125,55 @@ async function reconcileAdminAttendancePayroll({
       externalAttendanceDb: attendanceDb,
     }
   );
+}
+
+async function recoverAttendanceOperation(db, directoryDb, op) {
+  if (op.origin !== "punch") await rebuildAttendanceState(db, op.employee_uid);
+  const checkIn = await db.prepare(`SELECT id FROM attendance_records WHERE employee_uid=?
+    AND result='allowed' AND type='check_in'
+    AND COALESCE(work_date,date(server_time,'+3 hours'))=? LIMIT 1`)
+    .bind(op.employee_uid,op.work_date).first();
+  if (!directoryDb) throw new Error("attendance_core_reconciliation_unavailable");
+  if (checkIn) await clearAutomaticLockAbsence(directoryDb,op.salon_id,op.employee_id,op.work_date);
+  const actor = JSON.parse(op.actor_json);
+  return reconcileAdminAttendancePayroll({directoryDb,attendanceDb:db,salonId:op.salon_id,
+    employeeId:op.employee_id,date:op.work_date,requester:actor,sourceId:op.id,reason:op.reason});
+}
+
+export async function recoverPendingAttendanceOperations(db, directoryDb) {
+  return retryAttendanceOperations(db,op => recoverAttendanceOperation(db,directoryDb,op));
+}
+
+export async function finishAttendanceOperation(db, directoryDb, id) {
+  let op;
+  try {
+    op = await processAttendanceOperation(db,id,row => recoverAttendanceOperation(db,directoryDb,row));
+  } catch (error) {
+    // Even a lost acknowledgement from the outbox update must not turn a
+    // committed punch mutation into an unqualified "save failed" response.
+    console.error("[attendance] operation acknowledgement failed",id,error);
+    op = await readAttendanceOperation(db,id).catch(() => null);
+  }
+  if (!op) return json(202,{ok:true,attendanceApplied:true,fullyCompleted:false,
+    operation:{id,status:"pending"},message:"attendance_saved_reconciliation_pending"});
+  return json(op.status === "completed" ? 200 : 202,attendanceOperationPayload(op));
+}
+
+async function attendanceMutationError(db,directoryDb,operation,message,error) {
+  const committed = operation && await readAttendanceOperation(db,operation.id).catch(() => null);
+  if (committed) {
+    if (committed.request_hash !== operation.requestHash || JSON.parse(committed.actor_json).uid !== operation.actor.uid) {
+      return json(409,{ok:false,message:"attendance_operation_key_conflict"});
+    }
+    return finishAttendanceOperation(db,directoryDb,operation.id);
+  }
+  const active = operation && await db.prepare(`SELECT id FROM attendance_operations
+    WHERE employee_uid=? AND status<>'completed' LIMIT 1`).bind(operation.employeeUid).first().catch(() => null);
+  if (active) return json(409,{ok:false,attendanceApplied:false,message:"attendance_employee_reconciliation_pending",operation:{id:active.id}});
+  if (String(error?.message).includes('snapshot_matches')) return json(409,{
+    ok:false,attendanceApplied:false,message:"attendance_changed_reload_required",
+  });
+  return serverError(message,error);
 }
 
 /**
@@ -2167,6 +2244,32 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
     return json(400, { ok: false, message: "invalid_employee" });
   }
 
+  const operationId = normalizeText(input.data?.operationId) || crypto.randomUUID();
+  if (!/^[a-zA-Z0-9:_-]{1,160}$/.test(operationId)) {
+    return json(400,{ok:false,message:"invalid_attendance_operation_id"});
+  }
+  const { operationId: ignoredOperationId, ...operationRequest } = input.data;
+  const requestHash = await attendanceRequestHash(operationRequest);
+  let operation;
+  try {
+    const replay = await readAttendanceOperation(db,operationId);
+    if (replay) {
+      if (replay.request_hash !== requestHash || replay.employee_uid !== employeeUid ||
+          JSON.parse(replay.actor_json).uid !== requester.uid || replay.salon_id !== salonId) {
+        return json(409,{ok:false,message:"attendance_operation_key_conflict"});
+      }
+      for (const permission of JSON.parse(replay.required_permissions)) {
+        if (!hasRuntimePermission(requester.runtime,permission)) return forbidden(permission);
+      }
+      return finishAttendanceOperation(db,directoryDb,operationId);
+    }
+    operation = await prepareAttendanceOperation(db,{id:operationId,requestHash,salonId,
+      employeeUid,employeeId:employeeDocId,date,actor:{uid:requester.uid,email:requester.email,
+        runtime:{role:requester.runtime?.role,name:requester.runtime?.name}},reason:note,permissions:[]});
+  } catch (error) {
+    return serverError("attendance_operation_prepare_failed",error);
+  }
+
   if (clearRequested) {
     if (!hasRuntimePermission(requester.runtime, "attendance.records.delete")) {
       return forbidden("attendance.records.delete");
@@ -2183,6 +2286,7 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       recordIds: clearRecordIds,
       serverTimes: clearServerTimes,
       note,
+      operation,
     });
   }
 
@@ -2228,7 +2332,9 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       if (!hasRuntimePermission(requester.runtime, requiredPermission)) {
         return forbidden(requiredPermission);
       }
+      operation.permissions.push(requiredPermission);
     }
+    if (clearCheckIn || clearCheckOut) operation.permissions.push("attendance.records.delete");
 
     const existingCheckIn = existingRows
       .filter((row) => normalizeText(row.type) === "check_in")
@@ -2373,7 +2479,6 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
       .map((row) => normalizeText(row.id))
       .filter(Boolean);
 
-    let deleteResultIndex = -1;
     if (clearIds.length) {
       const placeholders = clearIds.map(() => "?").join(", ");
       statements.push(
@@ -2397,7 +2502,6 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
           )
           .bind(now, employeeUid, ...clearIds)
       );
-      deleteResultIndex = statements.length;
       statements.push(
         db
           .prepare(
@@ -2414,49 +2518,15 @@ export async function adjustAttendanceRecords(request, db, directoryDb, salonId,
         statements.push(db.prepare(sql).bind(...params));
       }
     }
-    const batchResults = statements.length ? await db.batch(statements) : [];
-    const clearedRecords =
-      deleteResultIndex >= 0
-        ? Number(batchResults[deleteResultIndex]?.meta?.changes || 0)
-        : 0;
+    const response = {
+      ok: true, date, records: changed, clearedRecords: clearIds.length,
+      clearedTypes: [...(clearCheckIn ? ["check_in"] : []),...(clearCheckOut ? ["check_out"] : [])],
+    };
+    await commitAttendanceOperation(db,operation,statements,response);
 
-    await rebuildAttendanceState(db, employeeUid);
-    if (operations.some((operation) => operation.type === "check_in")) {
-      await clearAutomaticLockAbsence(
-        directoryDb,
-        salonId,
-        employeeDocId,
-        date
-      ).catch(() => {});
-    }
-
-    const payrollReconciliation =
-      await reconcileAdminAttendancePayroll({
-        directoryDb,
-        attendanceDb: db,
-        salonId,
-        employeeId: employeeDocId,
-        date,
-        requester,
-        sourceId: `attendance-admin:${employeeDocId}:${date}`,
-        reason:
-          note ||
-          `Attendance admin adjustment for ${employeeDocId} on ${date}.`,
-      });
-
-    return json(200, {
-      ok: true,
-      date,
-      records: changed,
-      clearedRecords,
-      clearedTypes: [
-        ...(clearCheckIn ? ["check_in"] : []),
-        ...(clearCheckOut ? ["check_out"] : []),
-      ],
-      payrollReconciliation,
-    });
+    return finishAttendanceOperation(db,directoryDb,operation.id);
   } catch (error) {
-    return serverError("attendance_admin_adjustment_failed", error);
+    return attendanceMutationError(db,directoryDb,operation,"attendance_admin_adjustment_failed",error);
   }
 }
 
@@ -2471,6 +2541,7 @@ export async function clearAttendanceRecordsForDay({
   recordIds = [],
   serverTimes = [],
   note,
+  operation = null,
 }) {
   const source = JSON.stringify({
     area: "hr",
@@ -2484,6 +2555,12 @@ export async function clearAttendanceRecordsForDay({
   });
 
   try {
+    if (!hasRuntimePermission(requester.runtime,"attendance.records.delete")) return forbidden("attendance.records.delete");
+    operation ||= await prepareAttendanceOperation(db,{
+      id:crypto.randomUUID(),requestHash:await attendanceRequestHash({employeeUid,date,recordIds,serverTimes}),
+      salonId,employeeUid,employeeId:employeeDocId,date,actor:requester,reason:note,permissions:[],
+    });
+    operation.permissions = ["attendance.records.delete"];
     const normalizedRecordIds = normalizeTextList(recordIds);
     const normalizedServerTimes = normalizeTextList(serverTimes);
     const targetedSelection =
@@ -2540,34 +2617,15 @@ export async function clearAttendanceRecordsForDay({
     }
 
     if (!idsToClear.length) {
-      const payrollReconciliation =
-        await reconcileAdminAttendancePayroll({
-          directoryDb,
-          attendanceDb: db,
-          salonId,
-          employeeId: employeeDocId,
-          date,
-          requester,
-          sourceId:
-            `attendance-admin-clear:${employeeDocId || employeeUid}:${date}`,
-          reason:
-            note ||
-            `Attendance admin clear replay for ${employeeDocId || employeeUid} on ${date}.`,
-        });
-
-      return json(200, {
-        ok: true,
-        action: "clear",
-        date,
-        clearedRecords: 0,
-        source: safeJsonObject(source),
-        payrollReconciliation,
+      await commitAttendanceOperation(db,operation,[],{
+        ok:true,action:"clear",date,clearedRecords:0,source:safeJsonObject(source),
       });
+      return finishAttendanceOperation(db,directoryDb,operation.id);
     }
 
     const idPlaceholders = idsToClear.map(() => "?").join(", ");
     const now = new Date().toISOString();
-    const results = await db.batch([
+    const statements = [
       db
         .prepare(
           `UPDATE attendance_state
@@ -2597,36 +2655,14 @@ export async function clearAttendanceRecordsForDay({
       ...attendanceDeviceAssignmentReconcileStatements(employeeUid, now).map(({ sql, params }) =>
         db.prepare(sql).bind(...params)
       ),
-    ]);
+    ];
 
-    const result = results[1];
-    await rebuildAttendanceState(db, employeeUid);
-
-    const payrollReconciliation =
-      await reconcileAdminAttendancePayroll({
-        directoryDb,
-        attendanceDb: db,
-        salonId,
-        employeeId: employeeDocId,
-        date,
-        requester,
-        sourceId:
-          `attendance-admin-clear:${employeeDocId || employeeUid}:${date}`,
-        reason:
-          note ||
-          `Attendance admin clear for ${employeeDocId || employeeUid} on ${date}.`,
-      });
-
-    return json(200, {
-      ok: true,
-      action: "clear",
-      date,
-      clearedRecords: Number(result?.meta?.changes || 0),
-      source: safeJsonObject(source),
-      payrollReconciliation,
+    await commitAttendanceOperation(db,operation,statements,{
+      ok:true,action:"clear",date,clearedRecords:idsToClear.length,source:safeJsonObject(source),
     });
+    return finishAttendanceOperation(db,directoryDb,operation.id);
   } catch (error) {
-    return serverError("attendance_admin_clear_failed", error);
+    return attendanceMutationError(db,directoryDb,operation,"attendance_admin_clear_failed",error);
   }
 }
 
@@ -3226,6 +3262,15 @@ async function recordAttendance({
     return json(403, { ok: false, message: "attendance_employee_mismatch" });
   }
 
+  const punchId = normalizeText(input.data?.operationId) || crypto.randomUUID();
+  if (!/^[a-zA-Z0-9:_-]{1,160}$/.test(punchId)) return json(400,{ok:false,message:"invalid_attendance_operation_id"});
+  const replay = await readAttendanceOperation(db,`punch:${punchId}`);
+  if (replay) {
+    if (replay.employee_uid !== requester.uid || replay.employee_id !== employeeDocId ||
+        JSON.parse(replay.response_json).type !== type) return json(409,{ok:false,message:"attendance_operation_key_conflict"});
+    return finishAttendanceOperation(db,directoryDb,replay.id);
+  }
+
   const employeeAllowedZoneIds = zoneAssignment.allowedZoneIds;
   const allowedZoneIds =
     requestedAttendanceZoneId &&
@@ -3276,7 +3321,7 @@ async function recordAttendance({
   if (attendanceDebug) {
     console.log("attendance_debug", attendanceDebug);
   }
-  const recordId = crypto.randomUUID();
+  const recordId = punchId;
   const now = new Date().toISOString();
   const clientTime = clampText(input.data?.clientTime, 80) || null;
   const policyDecision = await resolveAttendanceCheckInPolicy({
@@ -3527,6 +3572,8 @@ async function recordAttendance({
           "SELECT result, rejection_reason FROM attendance_records WHERE id = ?"
         )
         .bind(recordId),
+      punchReconciliationStatement(db,{recordId,salonId,employeeId:policyDecision.coreEmployeeId || employeeDocId,
+        employeeUid:requester.uid,date:stateWorkDate,actor:requester,now}),
     ]);
 
     const recordRows = results[5]?.results || [];
@@ -3537,14 +3584,8 @@ async function recordAttendance({
       savedResult === "allowed" ? stateRequirement : targetStatus;
     const currentStatus =
       savedResult === "allowed" ? targetStatus : previousStatus;
-    if (savedResult === "allowed" && type === "check_in") {
-      await clearAutomaticLockAbsence(
-        directoryDb,
-        salonId,
-        policyDecision.coreEmployeeId,
-        policyDecision.dateKey
-      ).catch(() => {});
-    }
+    const financialOperation = savedResult === "allowed"
+      ? await finishAttendanceOperation(db,directoryDb,`punch:${recordId}`) : null;
     await syncAttendanceDeviceSecurity({
       db,
       requester,
@@ -3558,7 +3599,7 @@ async function recordAttendance({
       previousDeviceId,
       deviceContext,
     });
-    return attendanceResponse({
+    const response = attendanceResponse({
       recordId,
       type,
       result: savedResult,
@@ -3570,7 +3611,13 @@ async function recordAttendance({
       currentStatus,
       debug: attendanceDebug,
     });
+    if (!financialOperation) return response;
+    const operationPayload = await financialOperation.json();
+    return json(financialOperation.status,{...await response.json(),
+      attendanceApplied:true,fullyCompleted:operationPayload.fullyCompleted,operation:operationPayload.operation});
   } catch (error) {
+    const committed = await readAttendanceOperation(db,`punch:${recordId}`).catch(() => null);
+    if (committed) return finishAttendanceOperation(db,directoryDb,committed.id);
     return serverError("attendance_record_failed", error);
   }
 }

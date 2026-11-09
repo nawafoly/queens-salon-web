@@ -1,3 +1,4 @@
+import { reconcileHrPayrollSource, ensureHrPayrollOutbox } from './hr-payroll-operations.js';
 // CORE D1 ONLY — canonical Saudi leave runtime dispatcher.
 // The legacy repository remains available only for storage/lifecycle operations
 // that do not own statutory entitlement calculations.
@@ -287,6 +288,7 @@ export async function createLeave(
   data = {},
   actor = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const resolved = requireExplicitSaLeaveType(data);
   const entitlementMinutesRequested = timeEntitlementRequestMinutes(
     data,
@@ -532,6 +534,7 @@ export async function decideLeave(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const decided = await decideLeaveCanonical(
     db,
     salonId,
@@ -552,13 +555,13 @@ export async function decideLeave(
   // leave transaction has completed. Every retry (including an idempotent leave
   // decision) re-runs reconciliation and can repair a prior post-commit failure.
   const { reconcileLockedPayrollImpactForHrCorrection } = await import('./payroll.js');
-  const payrollReconciliation = await reconcileLockedPayrollImpactForHrCorrection(
+  const payrollReconciliation = await reconcileHrPayrollSource(db,salonId,'employee_leave',idValue,options,() => reconcileLockedPayrollImpactForHrCorrection(
     db,
     salonId,
     { leaveId: idValue },
     actor,
     options
-  );
+  ));
 
   return {
     ...decided,

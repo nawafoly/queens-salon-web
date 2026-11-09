@@ -1,4 +1,5 @@
 import { auth } from "./firebase";
+import { attendanceOperationRequest, type AttendanceOperationResult } from "./attendanceOperationClient";
 
 const DEFAULT_ATTENDANCE_WORKER_URL =
   "https://malikat-attendance.maedin.workers.dev";
@@ -14,7 +15,7 @@ function getWorkerBaseUrl() {
   return (configured || DEFAULT_ATTENDANCE_WORKER_URL).replace(/\/+$/g, "");
 }
 
-type SelectiveClearResponse = {
+type SelectiveClearResponse = AttendanceOperationResult & {
   ok?: boolean;
   action?: string;
   date?: string;
@@ -28,6 +29,7 @@ async function postSelectiveClear(body: Record<string, unknown>) {
   if (!currentUser) {
     throw new Error("يجب تسجيل الدخول قبل تعديل سجل الحضور.");
   }
+  const mutation = await attendanceOperationRequest(currentUser.uid,body);
 
   const execute = async (forceRefreshToken: boolean) => {
     const idToken = await currentUser.getIdToken(forceRefreshToken);
@@ -41,14 +43,18 @@ async function postSelectiveClear(body: Record<string, unknown>) {
           "Content-Type": "application/json",
         },
         cache: "no-store",
-        body: JSON.stringify(body),
+        body: JSON.stringify(mutation.body),
       }
     );
     const payload = (await response.json().catch(() => null)) as SelectiveClearResponse | null;
     return { response, payload };
   };
 
-  let result = await execute(false);
+  let result;
+  try { result = await execute(false); }
+  catch {
+    throw new Error(`انقطع الاتصال قبل تأكيد النتيجة؛ قد يكون الحضور محفوظًا. أعد المحاولة بنفس معرّف العملية: ${mutation.body.operationId}. Connection lost before confirmation; attendance may be saved. Retry the same operation.`);
+  }
   if (result.response.status === 401 || result.response.status === 403) {
     result = await execute(true);
   }
@@ -61,6 +67,7 @@ async function postSelectiveClear(body: Record<string, unknown>) {
     );
   }
 
+  mutation.finish(payload);
   return payload;
 }
 

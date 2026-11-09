@@ -1,3 +1,5 @@
+import { prepareAttendanceOperation, commitAttendanceOperation, readAttendanceOperation } from '../../attendance-operations.js';
+import { reconcileHrPayrollSource } from './hr-payroll-operations.js';
 // CORE D1 ONLY — Firebase is authentication only.
 
 import {
@@ -1200,6 +1202,7 @@ async function createLeaveEffect(
     leaveId: leave.id,
     permissionId,
     days,
+    payrollReconciliation: leave.payrollReconciliation || null,
   };
 }
 
@@ -1214,10 +1217,11 @@ async function findExternalAttendanceRecord(externalDb, row, payload, recordType
     const found = await dbFirst(
       externalDb,
       `SELECT * FROM attendance_records
-        WHERE id = ? AND (employee_doc_id = ? OR employee_uid = ?) LIMIT 1`,
-      [recordId, row.employee_id, row.employee_uid || '']
+        WHERE id = ? AND employee_uid = ?
+          AND COALESCE(work_date,date(server_time,'+3 hours')) = ? LIMIT 1`,
+      [recordId, row.employee_uid || '',payload.date]
     );
-    if (found) return found;
+    return found && (payload.correctionType === 'delete_record' || found.type === recordType) ? found : null;
   }
   if (!payload.currentTime) return null;
   const target = new Date(`${payload.date}T${payload.currentTime}:00+03:00`).toISOString();
@@ -1226,62 +1230,36 @@ async function findExternalAttendanceRecord(externalDb, row, payload, recordType
     `SELECT * FROM attendance_records
       WHERE result = 'allowed' AND type = ?
         AND (employee_doc_id = ? OR employee_uid = ?)
-        AND date(server_time, '+3 hours') = ?
+        AND COALESCE(work_date,date(server_time, '+3 hours')) = ?
       ORDER BY ABS(strftime('%s', server_time) - strftime('%s', ?))
       LIMIT 1`,
     [recordType, row.employee_id, row.employee_uid || '', payload.date, target]
   );
 }
 
-async function refreshExternalAttendanceState(externalDb, row, dateKey) {
-  if (!externalDb || !cleanText(row.employee_uid)) return;
-  const latest = await dbFirst(
-    externalDb,
-    `SELECT * FROM attendance_records
-      WHERE employee_uid = ? AND result = 'allowed' AND type IN ('check_in', 'check_out')
-      ORDER BY server_time DESC, id DESC LIMIT 1`,
-    [row.employee_uid]
-  );
-  if (latest) {
-    await dbRun(
-      externalDb,
-      `INSERT INTO attendance_state
-        (employee_uid, employee_doc_id, status, last_type, last_record_id, last_server_time,
-         last_location_lat, last_location_lng, last_location_accuracy, last_zone_id, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(employee_uid) DO UPDATE SET
-        employee_doc_id = excluded.employee_doc_id, status = excluded.status,
-        last_type = excluded.last_type, last_record_id = excluded.last_record_id,
-        last_server_time = excluded.last_server_time, last_location_lat = excluded.last_location_lat,
-        last_location_lng = excluded.last_location_lng,
-        last_location_accuracy = excluded.last_location_accuracy,
-        last_zone_id = excluded.last_zone_id, updated_at = excluded.updated_at`,
-      [
-        row.employee_uid,
-        row.employee_id,
-        latest.type === 'check_in' ? 'checked_in' : 'checked_out',
-        latest.type,
-        latest.id,
-        latest.server_time,
-        latest.location_lat,
-        latest.location_lng,
-        latest.location_accuracy,
-        latest.zone_id || null,
-        nowIso(),
-      ]
-    );
-  } else {
-    await dbRun(externalDb, 'DELETE FROM attendance_state WHERE employee_uid = ?', [row.employee_uid]);
-  }
-  await dbRun(
-    externalDb,
-    `DELETE FROM attendance_monthly_summaries
-      WHERE (employee_uid = ? OR employee_doc_id = ?) AND year_month = ?`,
-    [row.employee_uid, row.employee_id, cleanText(dateKey).slice(0, 7)]
-  );
-}
-
 async function executeExternalAttendanceCorrection(externalDb, row, payload, actor) {
+  const operationId=`core-request:${row.id}`;
+  const replay=await readAttendanceOperation(externalDb,operationId);
+  if (replay) {
+    const result=JSON.parse(replay.response_json);
+    return {...result,before:JSON.parse(replay.before_records).find(value=>value.id===result.sourceId) || null,
+      after:JSON.parse(replay.after_records).find(value=>value.id===result.sourceId) || null,operationId};
+  }
+  const operation=await prepareAttendanceOperation(externalDb,{id:operationId,salonId:row.salon_id,
+    employeeUid:requiredId(row.employee_uid,'employeeUid'),employeeId:row.employee_id,date:payload.date,
+    requestHash:row.id,actor:{uid:actor.uid,email:actor.email,runtime:{role:actor.role}},
+    permissions:[],reason:payload.reason});
+  const mutate=async (sql,params,id) => {
+    const {attendanceDeviceAssignmentReconcileStatements}=await import('../../attendance-worker.js');
+    const statements=[externalDb.prepare(sql).bind(...params),
+      ...attendanceDeviceAssignmentReconcileStatements(row.employee_uid,nowIso()).map(({sql,params})=>externalDb.prepare(sql).bind(...params))];
+    try {
+      await commitAttendanceOperation(externalDb,operation,statements,
+        {ok:true,sourceType:'malikat_attendance_record',sourceId:id,operationId});
+    } catch (error) {
+      if (!await readAttendanceOperation(externalDb,operationId).catch(()=>null)) throw error;
+    }
+  };
   const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
   const before = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
   const sourceJson = JSON.stringify({
@@ -1294,8 +1272,7 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
   if (payload.correctionType === 'delete_record') {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
     const now = nowIso();
-    await dbRun(
-      externalDb,
+    await mutate(
       `UPDATE attendance_records
           SET result = 'rejected',
               rejection_reason = 'voided_by_employee_request',
@@ -1306,45 +1283,47 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
               created_by_role = ?
         WHERE id = ? AND result = 'allowed'`,
       [sourceJson, now, cleanText(actor.uid) || 'system', optionalText(actor.email) || null,
-        cleanText(actor.role) || 'hr', before.id]
+        cleanText(actor.role) || 'hr', before.id],before.id
     );
     const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
     if (!after || cleanText(after.result).toLowerCase() !== 'rejected') {
       throw new AppError(409, 'core_employee_request:attendance_void_failed');
     }
-    await refreshExternalAttendanceState(externalDb, row, payload.date);
-    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after };
+    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after,operationId };
   }
 
-  const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
+  let recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
+  if (recordType === 'check_out') {
+    const checkIn=await dbFirst(externalDb,`SELECT server_time FROM attendance_records WHERE employee_uid=?
+      AND type='check_in' AND result='allowed' AND COALESCE(work_date,date(server_time,'+3 hours'))=?
+      ORDER BY server_time LIMIT 1`,[row.employee_uid,payload.date]);
+    if (checkIn && recordedAt<=checkIn.server_time) recordedAt=new Date(Date.parse(recordedAt)+86400000).toISOString();
+  }
   if (payload.correctionType.startsWith('update_')) {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(
-      externalDb,
+    await mutate(
       `UPDATE attendance_records
           SET server_time = ?, client_time = ?, source = ?, updated_at = ?,
-              created_by_uid = ?, created_by_email = ?, created_by_role = ?
+              created_by_uid = ?, created_by_email = ?, created_by_role = ?, work_date = ?
         WHERE id = ?`,
       [recordedAt, recordedAt, sourceJson, nowIso(), cleanText(actor.uid) || 'system',
-        optionalText(actor.email) || null, cleanText(actor.role) || 'hr', before.id]
+        optionalText(actor.email) || null, cleanText(actor.role) || 'hr',payload.date,before.id],before.id
     );
     const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
-    await refreshExternalAttendanceState(externalDb, row, payload.date);
-    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after };
+    return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after,operationId };
   }
 
   const employeeUid = requiredId(row.employee_uid, 'employeeUid');
   const id = `request_correction_${row.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
   const now = nowIso();
-  await dbRun(
-    externalDb,
+  await mutate(
     `INSERT OR IGNORE INTO attendance_records
       (id, employee_uid, employee_doc_id, type, server_time, client_time,
        location_lat, location_lng, location_accuracy, zone_id, zone_name, zone_type,
        allowed_zone_ids, distance_meters, result, rejection_reason, accuracy_accepted,
-       device_info, source, created_by_uid, created_by_email, created_by_role, created_at, updated_at)
+       device_info, source, created_by_uid, created_by_email, created_by_role, created_at, updated_at,work_date)
      VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, 'تصحيح إداري', 'manual',
-       '[]', NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)`,
+       '[]', NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?,?)`,
     [
       id,
       employeeUid,
@@ -1359,11 +1338,11 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
       cleanText(actor.role) || 'hr',
       now,
       now,
-    ]
+      payload.date,
+    ],id
   );
   const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [id]);
-  await refreshExternalAttendanceState(externalDb, row, payload.date);
-  return { sourceType: 'malikat_attendance_record', sourceId: id, before: null, after };
+  return { sourceType: 'malikat_attendance_record', sourceId: id, before: null, after,operationId };
 }
 
 async function executeAttendanceCorrection(db, salonId, row, payload, actor, input, options = {}) {
@@ -1372,7 +1351,7 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
       reconcileLockedPayrollImpactForAttendanceCorrection,
     } = await import('./payroll.js');
     const payrollReconciliation =
-      await reconcileLockedPayrollImpactForAttendanceCorrection(
+      await reconcileHrPayrollSource(db,salonId,'core_attendance',effect.sourceId,options,() => reconcileLockedPayrollImpactForAttendanceCorrection(
         db,
         salonId,
         {
@@ -1384,7 +1363,7 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
         },
         actor,
         options
-      );
+      ));
     return {
       ...effect,
       payrollReconciliation,
@@ -1403,27 +1382,12 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
         payload,
         actor
       );
-      const {
-        reconcileLockedPayrollImpactForAttendanceCorrection,
-      } = await import('./payroll.js');
-      const payrollReconciliation =
-        await reconcileLockedPayrollImpactForAttendanceCorrection(
-          db,
-          salonId,
-          {
-            employeeId: row.employee_id,
-            date: payload.date,
-            sourceId: row.id,
-            reason:
-              `Attendance correction ${row.request_number}: ${payload.reason}`,
-          },
-          actor,
-          options
-        );
-      return {
-        ...effect,
-        payrollReconciliation,
-      };
+      const {finishAttendanceOperation}=await import('../../attendance-worker.js');
+      const result=await finishAttendanceOperation(externalDb,db,effect.operationId);
+      const operation=await result.json();
+      return {...effect,payrollReconciliation:operation.fullyCompleted
+        ? operation.payrollReconciliation
+        : {fullyCompleted:false,operationId:effect.operationId,status:operation.operation.status}};
     }
   }
 
@@ -2592,7 +2556,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
         reconcileLockedPayrollImpactForEmployeeDate,
       } = await import('./payroll.js');
       const payrollReconciliation =
-        await reconcileLockedPayrollImpactForEmployeeDate(
+        await reconcileHrPayrollSource(db,salonId,'permission',id,options,() => reconcileLockedPayrollImpactForEmployeeDate(
           db,
           salonId,
           {
@@ -2605,7 +2569,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
           },
           actor,
           options
-        );
+        ));
       return {
         sourceType: 'employee_permission_request',
         sourceId: id,
@@ -2618,7 +2582,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
     }
     case 'leave': {
       const effect = await createLeaveEffect(db, salonId, row, payload, actor, options, input);
-      return { sourceType: 'employee_leave', sourceId: effect.leaveId, before: null, after: { status: 'approved', days: effect.days, permissionId: effect.permissionId } };
+      return { sourceType: 'employee_leave', sourceId: effect.leaveId, before: null, after: { status: 'approved', days: effect.days, permissionId: effect.permissionId, payrollReconciliation:effect.payrollReconciliation } };
     }
     case 'overtime': return executeOvertime(db, salonId, row, payload, actor, input);
     case 'salary_advance': return executeSalaryAdvance(db, salonId, row, payload, actor, input);
@@ -2876,7 +2840,7 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
         idempotencyKey: `execution_completed:${current.version + 1}`,
       }, actor);
       await notifyEmployee(db, salonId, completed.updated, completed.eventId, `اكتمل تنفيذ طلبك ${completed.updated.request_number}`, 'تم تنفيذ الطلب وتسجيل أثره التشغيلي.', actor.uid);
-      return requestSummary(completed.updated);
+      return {...requestSummary(completed.updated),payrollReconciliation:effect.payrollReconciliation || effect.after?.payrollReconciliation || null};
     } catch (error) {
       await dbRun(
         db,

@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { handleAttendanceRequest } from "./attendance-worker.js";
+import { handleAttendanceRequest, recoverPendingAttendanceOperations } from "./attendance-worker.js";
 import {
   assertAccountCanAuthenticate,
   getAccountByFirebaseUid,
@@ -130,6 +130,9 @@ const ROLE_ATTENDANCE_PERMISSIONS = {
 };
 
 export default {
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(recoverPendingAttendanceOperations(env.ATTENDANCE_DB,env.CORE_DB));
+  },
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
       return withCors(new Response(null, { status: 204 }), request, env);

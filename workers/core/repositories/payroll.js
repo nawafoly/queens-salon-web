@@ -250,6 +250,32 @@ function payrollPermissionMinutesForDate(rows, dateKey) {
   return { paid, unpaid };
 }
 
+// Deduct only the union inside recorded presence and the scheduled work window.
+// A permission outside that span is already missing attendance (or outside the
+// shift) and must not be charged again. Overnight times belong to work_date.
+function unpaidPermissionInsidePresence(rows,dateKey,checkIn,checkOut,shiftStart,shiftEnd) {
+  const intervals=[];
+  for (const row of rows || []) {
+    if (row.date_key !== dateKey || !['approved','out','returned'].includes(cleanText(row.status)) ||
+        cleanText(row.financial_effect) !== 'unpaid') continue;
+    let start=payrollTimeMinutes(row.actual_exit_time || row.requested_exit_time);
+    let end=payrollTimeMinutes(row.actual_return_time || row.expected_return_time);
+    if (start == null || end == null || start === end) continue;
+    if (end<start) end+=1440;
+    if (shiftEnd>1440 && start<shiftStart) {start+=1440;end+=1440;}
+    start=Math.max(start,shiftStart,checkIn);
+    end=Math.min(end,shiftEnd,checkOut);
+    if (end>start) intervals.push([start,end]);
+  }
+  intervals.sort((a,b)=>a[0]-b[0]);
+  let total=0,previousEnd=-Infinity;
+  for (const [start,end] of intervals) {
+    total+=Math.max(0,end-Math.max(start,previousEnd));
+    previousEnd=Math.max(previousEnd,end);
+  }
+  return total;
+}
+
 async function canonicalEmployment(db, salonId, employeeId, options = {}) {
   const employment = await dbFirst(
     db,
@@ -330,6 +356,12 @@ async function payrollApprovedLeaves(db, salonId, employeeId, dateFrom, dateTo) 
     `SELECT * FROM employee_leaves
       WHERE salon_id = ? AND employee_id = ? AND status = 'approved'
         AND start_date <= ? AND end_date >= ?
+        AND NOT (leave_type = 'permission' AND EXISTS (
+          SELECT 1 FROM employee_permission_requests pr
+          WHERE pr.salon_id = employee_leaves.salon_id
+            AND pr.employee_id = employee_leaves.employee_id
+            AND pr.id = employee_leaves.request_id
+        ))
       ORDER BY start_date, id`,
     [salonId, employeeId, dateTo, dateFrom]
   );
@@ -397,7 +429,7 @@ async function buildCanonicalAttendanceSummary(
     activeRecallRows,
     shiftBatch,
   ] = await Promise.all([
-    listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
+    listAttendance(db, salonId, { employeeId, fromDate: servicePeriod.periodStart, toDate: servicePeriod.periodEnd }, options.externalAttendanceDb || null),
     payrollApprovedLeaves(db, salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd),
     listAbsences(db, salonId, { employeeId }),
     dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, servicePeriod.periodStart, servicePeriod.periodEnd]).catch(() => []),
@@ -592,12 +624,14 @@ async function buildCanonicalAttendanceSummary(
       if (scheduleEnd <= scheduleStart) scheduleEnd += 24 * 60;
       if (checkOut < checkIn) checkOut += 24 * 60;
       const workedMinutes = Math.max(0, checkOut - checkIn);
-      totalActualMinutes += workedMinutes;
+      const unpaidInside = unpaidPermissionInsidePresence(permissionRows,dateKey,checkIn,checkOut,scheduleStart,scheduleEnd);
+      const paidWorkedMinutes = Math.max(0,workedMinutes-unpaidInside);
+      totalActualMinutes += paidWorkedMinutes;
       const lateMinutes = Math.max(0, checkIn - scheduleStart - Math.round(schedule.lateGraceMinutes));
       const earlyMinutes = Math.max(0, scheduleEnd - checkOut - Math.round(schedule.earlyLeaveGraceMinutes));
       totalLateMinutes += lateMinutes;
       totalEarlyMinutes += earlyMinutes;
-      const rawMissing = Math.max(0, scheduledMinutes - workedMinutes);
+      const rawMissing = Math.max(0, scheduledMinutes - paidWorkedMinutes);
       const permission = payrollPermissionMinutesForDate(permissionRows, dateKey);
       totalPermissionRequestedMinutes += permission.paid + permission.unpaid;
       const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
@@ -608,7 +642,7 @@ async function buildCanonicalAttendanceSummary(
       const covered = Math.min(rawMissing, permission.paid + partialPaidMinutes);
       totalPermissionCoveredMinutes += covered;
       totalMissingMinutes += Math.max(0, rawMissing - covered);
-      totalExtraMinutes += Math.max(0, workedMinutes - scheduledMinutes);
+      totalExtraMinutes += Math.max(0, paidWorkedMinutes - scheduledMinutes);
     }
   }
 

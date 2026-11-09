@@ -1,3 +1,4 @@
+import { reconcileHrPayrollSource, ensureHrPayrollOutbox } from './hr-payroll-operations.js';
 // CORE D1 ONLY — do not add Firestore fallback.
 // Firebase is allowed only for authentication token verification.
 
@@ -271,7 +272,9 @@ async function reconcilePermissionPayroll(
     reconcileLockedPayrollImpactForEmployeeDate,
   } = await import('./payroll.js');
 
-  return reconcileLockedPayrollImpactForEmployeeDate(
+  return reconcileHrPayrollSource(db,salonId,'permission',permission.id,options,async () => {
+    await refreshPayrollEntries(db,salonId,permission.employee_id,permission.date_key);
+    return reconcileLockedPayrollImpactForEmployeeDate(
     db,
     salonId,
     {
@@ -284,25 +287,28 @@ async function reconcilePermissionPayroll(
     },
     actor,
     options
-  );
+    );
+  });
 }
 
-async function refreshPayrollEntries(db, salonId, employeeId, dateKey) {
+export async function refreshPayrollEntries(db, salonId, employeeId, dateKey) {
   const entries = await dbAll(
     db,
     `SELECT pe.id, pe.payroll_month,
        COALESCE(
          (SELECT pp.month_start FROM payroll_periods pp
            WHERE pp.salon_id = pe.salon_id
-             AND (pp.id = pe.period_id OR pp.payroll_month = pe.payroll_month)
-           ORDER BY CASE WHEN pp.id = pe.period_id THEN 0 ELSE 1 END LIMIT 1),
+             AND pp.id = pe.period_id LIMIT 1),
+         (SELECT pp.month_start FROM payroll_periods pp
+           WHERE pp.salon_id = pe.salon_id AND pp.payroll_month = pe.payroll_month LIMIT 1),
          pe.payroll_month || '-01'
        ) AS period_start,
        COALESCE(
          (SELECT pp.month_end FROM payroll_periods pp
            WHERE pp.salon_id = pe.salon_id
-             AND (pp.id = pe.period_id OR pp.payroll_month = pe.payroll_month)
-           ORDER BY CASE WHEN pp.id = pe.period_id THEN 0 ELSE 1 END LIMIT 1),
+             AND pp.id = pe.period_id LIMIT 1),
+         (SELECT pp.month_end FROM payroll_periods pp
+           WHERE pp.salon_id = pe.salon_id AND pp.payroll_month = pe.payroll_month LIMIT 1),
          date(pe.payroll_month || '-01', '+1 month', '-1 day')
        ) AS period_end
      FROM payroll_entries pe
@@ -379,6 +385,7 @@ export async function createPermissionRequest(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const source = normalizedChoice(data.source, VALID_SOURCES, 'employee_request');
   const identity = await resolveEmployeeIdentity(db, salonId, data, actor, source);
   const dateKey = validDate(data.date || data.dateKey || data.date_key, 'date');
@@ -453,7 +460,6 @@ export async function createPermissionRequest(
     await insertAttendanceEvent(db, salonId, row, 'permission_out', requestedExitTime, actor);
     await insertAttendanceEvent(db, salonId, row, 'permission_return', expectedReturnTime, actor);
     await syncPermissionBookingBlock(db, salonId, row, actor);
-    await refreshPayrollEntries(db, salonId, row.employee_id, row.date_key);
     const payrollReconciliation = await reconcilePermissionPayroll(
       db,
       salonId,
@@ -485,6 +491,7 @@ export async function decidePermissionRequest(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const row = await getPermission(db, salonId, idValue);
   const status = normalizedChoice(decision.status, VALID_STATUSES, '');
   if (!['approved', 'rejected', 'cancelled'].includes(status)) {
@@ -582,7 +589,6 @@ export async function decidePermissionRequest(
   const updated = await getPermission(db, salonId, row.id);
   if (status === 'rejected' || status === 'cancelled') {
     await cancelPermissionBookingBlock(db, salonId, row.id, actor, status === 'cancelled' ? 'تم إلغاء الاستئذان' : 'تم رفض الاستئذان');
-    await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
   }
   const payrollReconciliation = await reconcilePermissionPayroll(
     db,
@@ -610,6 +616,7 @@ export async function markPermissionOut(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const row = await getPermission(db, salonId, idValue);
   if (row.status === 'out') {
     const payrollReconciliation = await reconcilePermissionPayroll(
@@ -675,6 +682,7 @@ export async function markPermissionReturned(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const row = await getPermission(db, salonId, idValue);
   if (row.status === 'returned') {
     const payrollReconciliation = await reconcilePermissionPayroll(
@@ -718,7 +726,6 @@ export async function markPermissionReturned(
   const updated = await getPermission(db, salonId, row.id);
   await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_return', actualReturnTime, actor);
-  await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
   const payrollReconciliation = await reconcilePermissionPayroll(
     db,
     salonId,

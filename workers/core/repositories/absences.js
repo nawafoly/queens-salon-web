@@ -1,3 +1,4 @@
+import { reconcileHrPayrollSource, ensureHrPayrollOutbox } from './hr-payroll-operations.js';
 // CORE D1 ONLY — do not add Firestore fallback.
 // Firebase is allowed only for authentication token verification.
 
@@ -15,7 +16,7 @@ async function reconcileAbsencePayroll(
     reconcileLockedPayrollImpactForEmployeeDate,
   } = await import('./payroll.js');
 
-  return reconcileLockedPayrollImpactForEmployeeDate(
+  return reconcileHrPayrollSource(db,salonId,'absence',absence.id,options,() => reconcileLockedPayrollImpactForEmployeeDate(
     db,
     salonId,
     {
@@ -28,7 +29,7 @@ async function reconcileAbsencePayroll(
     },
     actor,
     options
-  );
+  ));
 }
 
 async function resolveAbsenceEmployeeIdentity(db, salonId, data) {
@@ -74,6 +75,7 @@ export async function createAbsence(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const now = nowIso();
   const identity = await resolveAbsenceEmployeeIdentity(db, salonId, data);
   const row = {
@@ -177,6 +179,7 @@ export async function deleteAbsence(
   actor = {},
   options = {}
 ) {
+  await ensureHrPayrollOutbox(db);
   const id = requiredId(idValue);
   const existing = await dbFirst(
     db,
