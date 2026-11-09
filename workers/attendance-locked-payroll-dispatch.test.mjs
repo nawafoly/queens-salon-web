@@ -38,7 +38,12 @@ function payrollFixture(status) {
       }
       throw new Error("UNEXPECTED_PAYROLL_QUERY: " + sql);
     },
-    async first(sql) {
+    async first(sql, params) {
+      reads.push({ sql, params });
+      if (/FROM payroll_entries\\b/.test(sql) && /id = \\?/.test(sql)) {
+        assert.deepEqual(params, ["main", entry.id]);
+        return entry;
+      }
       throw new Error("UNEXPECTED_PAYROLL_POINT_READ: " + sql);
     },
     async run(sql) {
