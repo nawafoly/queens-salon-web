@@ -79,32 +79,54 @@ export async function getAttendanceState(db, salonId, employeeIdValue) {
 export async function listAttendance(db, salonId, query = {}, externalAttendanceDb = null) {
   const employeeId = cleanText(query.employeeId || query.employee_id);
   const date = cleanText(query.date || query.dateKey || query.date_key);
+  const fromDate = cleanText(query.fromDate || date);
+  const toDate = cleanText(query.toDate || date);
+  const predicates = ['salon_id = ?'];
+  const params = [salonId];
+  const financialRange = Boolean(employeeId && fromDate && toDate);
+  const limitSql = financialRange ? '' : ' LIMIT 5000';
+  if (employeeId) { predicates.push('(employee_id = ? OR employee_uid = ?)'); params.push(employeeId,employeeId); }
+  if (fromDate) { predicates.push('date_key >= ?'); params.push(fromDate); }
+  if (toDate) { predicates.push('date_key <= ?'); params.push(toDate); }
   const coreRows = await dbAll(
     db,
-    'SELECT * FROM attendance_records WHERE salon_id = ? ORDER BY recorded_at DESC LIMIT 5000',
-    [salonId]
+    `SELECT * FROM attendance_records WHERE ${predicates.join(' AND ')} ORDER BY recorded_at DESC${limitSql}`,
+    params
   );
   let rows = filterAttendanceRows(coreRows, employeeId, date);
 
   if (externalAttendanceDb) {
+    const profile = employeeId ? await dbFirst(db,
+      'SELECT firebase_uid FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
+      [salonId,employeeId]) : null;
+    const externalPredicates = ['result = ?', 'type IN (?, ?)'];
+    const externalParams = ['allowed','check_in','check_out'];
+    if (employeeId) {
+      externalPredicates.push('(employee_doc_id = ? OR employee_uid = ?)');
+      externalParams.push(employeeId,cleanText(profile?.firebase_uid) || employeeId);
+    }
+    if (fromDate) { externalPredicates.push("COALESCE(work_date,date(server_time,'+3 hours')) >= ?"); externalParams.push(fromDate); }
+    if (toDate) { externalPredicates.push("COALESCE(work_date,date(server_time,'+3 hours')) <= ?"); externalParams.push(toDate); }
     const malikatRows = await dbAll(
       externalAttendanceDb,
       `SELECT id, employee_uid, employee_doc_id, type, server_time, client_time, work_date, location_lat,
         location_lng, location_accuracy, zone_id, zone_name, result, rejection_reason, created_at
        FROM attendance_records
-       WHERE result = ? AND type IN (?, ?)
+       WHERE ${externalPredicates.join(' AND ')}
        ORDER BY server_time DESC
-       LIMIT 5000`,
-      ['allowed', 'check_in', 'check_out']
+       ${limitSql}`,
+      externalParams
     );
     rows = rows.concat(
-      filterAttendanceRows(malikatRows.map(normalizeMalikatAttendance), employeeId, date)
+      filterAttendanceRows(malikatRows.filter(row=>!profile?.firebase_uid || !cleanText(row.employee_uid) ||
+        [employeeId,cleanText(profile.firebase_uid)].includes(cleanText(row.employee_uid))).map(row => ({...normalizeMalikatAttendance(row),
+        employee_id: employeeId && cleanText(row.employee_uid) === cleanText(profile?.firebase_uid)
+          ? employeeId : cleanText(row.employee_doc_id)})),employeeId,date)
     );
   }
 
-  return rows
-    .sort((a, b) => cleanText(b.recorded_at).localeCompare(cleanText(a.recorded_at)))
-    .slice(0, 5000);
+  rows.sort((a, b) => cleanText(b.recorded_at).localeCompare(cleanText(a.recorded_at)));
+  return financialRange ? rows : rows.slice(0,5000);
 }
 
 export async function recordAttendance(db, salonId, data, actor = {}) {

@@ -60,6 +60,7 @@ class FakeD1 {
       "payroll_entries",
       "payroll_carryover_adjustments",
       "payroll_historical_settlements",
+      "hr_payroll_operations",
       "cashback_policies",
       "cashback_wallet_transactions",
       "salary_advances",
@@ -253,6 +254,14 @@ class FakeD1 {
     this.allQueryCount += 1;
     const normalized = sql.replace(/\s+/g, " ").trim();
     this.allQueries.push({ sql: normalized, params: [...params] });
+    if (normalized.startsWith("SELECT id FROM hr_payroll_operations")) {
+      const [salonId,sourceType,sourceId]=params;
+      return this.rows("hr_payroll_operations").filter(row=>row.salon_id===salonId &&
+        JSON.parse(row.response_json).sourceType===sourceType && JSON.parse(row.response_json).sourceId===sourceId && row.status!=="completed");
+    }
+    if (normalized.startsWith("SELECT firebase_uid FROM employee_profiles WHERE salon_id = ? AND id = ?")) {
+      return this.rows("employee_profiles").filter(row=>row.salon_id===params[0] && row.id===params[1]).slice(0,1);
+    }
 
     if (normalized.includes("FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t")) {
       const [salonId, employeeId, dateFrom, dateTo] = params;

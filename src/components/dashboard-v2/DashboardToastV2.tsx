@@ -390,6 +390,20 @@ export default function DashboardToastProviderV2({
     [defaultDuration, maxToasts],
   );
 
+  useEffect(() => {
+    const onPending = (event: Event) => {
+      const {id,status} = (event as CustomEvent<{id:string;status:string}>).detail;
+      const english = document.documentElement.lang === "en";
+      pushToast({id:`hr-reconciliation:${id}`,tone:"warning",persistent:true,
+        title:english ? "Saved — financial reconciliation pending" : "تم الحفظ — التسوية المالية قيد الاستكمال",
+        description:english
+          ? `${status === "needs_attention" ? "Administrator review is required" : "Recovery will retry automatically"}. Reference: ${id}`
+          : `${status === "needs_attention" ? "تحتاج مراجعة الإدارة" : "ستُعاد المحاولة تلقائيًا"}. المرجع: ${id}`});
+    };
+    window.addEventListener("malikat:financial-reconciliation-pending",onPending);
+    return () => window.removeEventListener("malikat:financial-reconciliation-pending",onPending);
+  },[pushToast]);
+
   const contextValue = useMemo<DashboardToastContextValueV2>(
     () => ({ pushToast, dismissToast, clearToasts }),
     [clearToasts, dismissToast, pushToast],

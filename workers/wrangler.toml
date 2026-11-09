@@ -2,6 +2,9 @@ name = "malikat-attendance"
 main = "malikat-attendance-worker.js"
 compatibility_date = "2026-07-08"
 
+[triggers]
+crons = ["*/5 * * * *"]
+
 [[d1_databases]]
 binding = "ATTENDANCE_DB"
 database_name = "malikat-attendance"

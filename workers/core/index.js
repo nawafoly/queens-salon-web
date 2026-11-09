@@ -1007,6 +1007,10 @@ function match(url, method) {
       id: payrollHistoricalSettlementVoid[1],
     };
   }
+  const hrPayrollOperation = /^\/api\/core\/hr\/reconciliation-operations\/([^/]+)(\/retry)?$/.exec(path);
+  if (hrPayrollOperation && ((method === "GET" && !hrPayrollOperation[2]) || (method === "POST" && hrPayrollOperation[2]))) {
+    return {name:hrPayrollOperation[2] ? "hr-operation:retry" : "hr-operation:get",id:hrPayrollOperation[1]};
+  }
   if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|late-approve|paid|unpay|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
@@ -2897,6 +2901,16 @@ async function dispatch(ctx, route, method, body, query, env) {
         { externalAttendanceDb: env.ATTENDANCE_DB || null }
       );
 
+    case "hr-operation:get": {
+      requirePermission(ctx,"attendance.view");
+      const {getHrPayrollOperation}=await import('./repositories/hr-payroll-operations.js');
+      return getHrPayrollOperation(db,ctx.salonId,route.id);
+    }
+    case "hr-operation:retry": {
+      requirePermission(ctx,"attendance.settings.manage");
+      const {retryHrPayrollOperation}=await import('./repositories/hr-payroll-operations.js');
+      return retryHrPayrollOperation(db,ctx.salonId,route.id,{externalAttendanceDb:env.ATTENDANCE_DB || null});
+    }
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
       return decideLeave(
@@ -3993,7 +4007,8 @@ export async function handleRequest(request, env) {
     env
   );
 
-  return jsonResponse(request, env, 200, { ok: true, data });
+  const {pendingReconciliations}=await import('../../src/helpers/hr/reconciliationStatus.js');
+  return jsonResponse(request, env, pendingReconciliations(data).length ? 202 : 200, { ok: true, data });
 }
 
 // CORE_REQUEST_OBSERVABILITY_V1
@@ -4272,6 +4287,8 @@ export default {
     return finalResponse;
   },
   async scheduled(event, env, ctx) {
+    ctx.waitUntil(import('./repositories/hr-payroll-operations.js').then(({recoverHrPayrollOperations}) =>
+      recoverHrPayrollOperations(env.CORE_DB,{externalAttendanceDb:env.ATTENDANCE_DB || null})));
     const salonId = cleanText(env.SALON_ID) || "main";
     if (event?.cron === "*/5 * * * *") {
       ctx.waitUntil(Promise.all([

@@ -86,6 +86,9 @@ jobs:
       - name: Locked payroll attendance correction dispatch regression
         run: node --test workers/attendance-locked-payroll-dispatch.test.mjs
 
+      - name: Attendance and HR financial recovery integration with real migrations
+        run: node --test workers/attendance-admin-adjustment.test.mjs workers/attendance-payroll-integrity.test.mjs workers/attendance-operation-client.test.mjs
+
       - name: Salary advance contracts
         run: node --test workers/salary-advance-core-only.test.mjs
 

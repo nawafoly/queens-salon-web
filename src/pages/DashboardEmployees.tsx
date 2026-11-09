@@ -1,4 +1,5 @@
 import { DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
+import { attendanceReconciliationMessage } from "../services/attendanceOperationClient";
 // src/pages/DashboardEmployees.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -2564,7 +2565,7 @@ function DashboardEmployeesContent() {
 
       const attendanceIdentity = resolveEmployeeAttendanceIdentity(employeeProfile, selectedEmployeeId);
 
-      await adjustAttendanceDayFromWorker({
+      const adjustmentResult = await adjustAttendanceDayFromWorker({
         employeeUid: attendanceIdentity.employeeUid,
         employeeId: attendanceIdentity.employeeDocId,
         date,
@@ -2576,6 +2577,7 @@ function DashboardEmployeesContent() {
         clearCheckOut,
         note: attendanceEditNote,
       });
+      setErrorMsg(attendanceReconciliationMessage(adjustmentResult,language === "en"));
 
       await writeAuditLog({
         action: "attendance_updated",
@@ -2674,6 +2676,7 @@ function DashboardEmployeesContent() {
         date,
         note: "مسح بصمة اليوم من إدارة الموظفات",
       });
+      setErrorMsg(attendanceReconciliationMessage(clearResult,language === "en"));
 
       const clearedRecords = Number(clearResult?.clearedRecords || 0);
       if (clearedRecords <= 0) {
@@ -2701,7 +2704,7 @@ function DashboardEmployeesContent() {
           employeeDocId: attendanceIdentity.employeeDocId,
           clearedRecords,
         },
-      });
+      }).catch((auditError) => console.warn("attendance clear client audit failed",auditError));
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));

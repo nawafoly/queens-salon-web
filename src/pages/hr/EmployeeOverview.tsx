@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { attendanceReconciliationMessage } from "../../services/attendanceOperationClient";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
@@ -1157,7 +1158,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         await loadAttendanceMonth();
       }
 
-      setAttendanceMessage(language === "en" ? (type === "check_in" ? copy.attendanceRecorded : copy.attendanceComplete) : getAttendanceWorkerMessage(response));
+      setAttendanceMessage(attendanceReconciliationMessage(response,language === "en") || (language === "en" ? (type === "check_in" ? copy.attendanceRecorded : copy.attendanceComplete) : getAttendanceWorkerMessage(response)));
     } catch (error) {
       const attendanceError = error as any;
 

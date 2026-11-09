@@ -176,6 +176,7 @@ async function setup() {
     '0083_internal_booking_price_adjustments.sql',
     '0084_service_promo_prices.sql',
     '0088_internal_booking_parties.sql',
+    '0100_hr_payroll_operations.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')

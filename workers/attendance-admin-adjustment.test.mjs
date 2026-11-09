@@ -91,6 +91,7 @@ function createFixture() {
     "0004_create_permission_cache.sql",
     "0005_create_attendance_device_security.sql",
     "0006_shift_work_date_and_checkout_window.sql",
+    "0007_attendance_operations.sql",
   ]) {
     attendanceSqlite.exec(
       fs.readFileSync(
@@ -554,7 +555,7 @@ test("unauthorized create, update, and delete are rejected independently", async
 });
 
 test("targeted clear never falls back to deleting the whole requested day", async () => {
-  const { attendanceSqlite, attendanceDb } = createFixture();
+  const { attendanceSqlite, attendanceDb, coreDb } = createFixture();
   insertRecord(attendanceSqlite, {
     id: "target-day",
     type: "check_in",
@@ -574,6 +575,8 @@ test("targeted clear never falls back to deleting the whole requested day", asyn
     recordIds: ["other-day"],
     serverTimes: [],
     note: "scope regression",
+    directoryDb: coreDb,
+    employeeDocId: CORE_ID,
   });
   const payload = await json(response);
 

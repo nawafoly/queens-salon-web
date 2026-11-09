@@ -1,4 +1,5 @@
 import { auth } from "./firebase";
+import { attendanceOperationRequest, type AttendanceOperationResult } from "./attendanceOperationClient";
 import {
   getBrowserPosition,
   type AttendanceLocation,
@@ -28,7 +29,7 @@ export type AttendanceWorkerResult =
   | "allowed"
   | "rejected";
 
-export type AttendanceWorkerResponse = {
+export type AttendanceWorkerResponse = AttendanceOperationResult & {
   ok: boolean;
   id: string;
   result: AttendanceWorkerResult;
@@ -310,6 +311,14 @@ async function requestAttendanceWorker<T>(
     );
   }
 
+  const requestBody = typeof init.body === "string" ? JSON.parse(init.body) : null;
+  const mutation = pathname === "/attendance/admin-adjustment" && requestBody
+    ? await attendanceOperationRequest(currentUser.uid,requestBody)
+    : pathname === "/attendance/record" && requestBody
+      ? await attendanceOperationRequest(currentUser.uid,{employeeId:requestBody.employeeId,type:requestBody.type,
+          date:new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Riyadh"})}) : null;
+  if (mutation) init = {...init,body:JSON.stringify({...requestBody,operationId:mutation.body.operationId})};
+
 type WorkerPayload = T & {
     message?: string;
     detail?: string;
@@ -395,10 +404,12 @@ type WorkerPayload = T & {
     error.status = 0;
     error.code = "attendance_worker_network_error";
     error.endpoint = pathname;
+    if (mutation) error.message = `انقطع الاتصال قبل تأكيد النتيجة؛ قد يكون الحضور محفوظًا. أعد المحاولة للتحقق بنفس معرّف العملية: ${mutation.body.operationId}. Connection lost before confirmation; attendance may be saved. Retry to check the same operation.`;
     throw error;
   }
 
   const { response, payload } = result;
+  if (response.ok && payload) mutation?.finish(payload as AttendanceOperationResult);
 
   if (!response.ok || !payload) {
     const rawMessage = cleanText(
@@ -1001,7 +1012,7 @@ export async function listAttendanceByDateRangeForEmployeeFromWorker(
 }
 
 
-export type AttendanceAdminAdjustmentResponse = {
+export type AttendanceAdminAdjustmentResponse = import("./attendanceOperationClient").AttendanceOperationResult & {
   ok: boolean;
   action?: string;
   date?: string;
