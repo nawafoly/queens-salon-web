@@ -27,3 +27,22 @@ test("leave registration remains available for a day without punches", () => {
     /disabled=\{readOnly \|\| !canCreateEmergencyLeave \|\| !activeSelectedDate \|\| selectedHasPunch\}/
   );
 });
+
+const leaveStatsSource = readFileSync(
+  new URL("../src/pages/dashboardEmployees/EmployeeStatsSection.tsx", import.meta.url),
+  "utf8"
+);
+
+test("historical leave types keep their explicit categories rather than showing unrecorded", () => {
+  for (const [type, arabicLabel] of [
+    ["other", "أخرى"],
+    ["exceptional", "استثنائية"],
+    ["compensatory", "تعويضية"],
+  ]) {
+    assert.ok(
+      leaveStatsSource.includes(type + ': "' + arabicLabel + '"'),
+      "missing historical leave type: " + type
+    );
+  }
+  assert.match(leaveStatsSource, /t\(historicalLeaveTypeLabel\(entry\)\)/);
+});
