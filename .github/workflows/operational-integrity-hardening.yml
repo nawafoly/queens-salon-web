@@ -83,6 +83,9 @@ jobs:
       - name: Payroll deduction compliance
         run: node --test workers/payroll-deduction-compliance.test.mjs
 
+      - name: Locked payroll attendance correction dispatch regression
+        run: node --test workers/attendance-locked-payroll-dispatch.test.mjs
+
       - name: Salary advance contracts
         run: node --test workers/salary-advance-core-only.test.mjs
 
