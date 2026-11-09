@@ -84,12 +84,21 @@ function d1FromSqlite(database) {
 function createFixture() {
   const attendanceSqlite = new DatabaseSync(":memory:");
   attendanceSqlite.exec("PRAGMA foreign_keys = ON");
-  attendanceSqlite.exec(
-    fs.readFileSync(
-      path.join(here, "attendance-migrations", "0001_create_attendance.sql"),
-      "utf8"
-    )
-  );
+  for (const migration of [
+    "0001_create_attendance.sql",
+    "0002_create_attendance_monthly_summaries.sql",
+    "0003_add_work_zone_office_ip.sql",
+    "0004_create_permission_cache.sql",
+    "0005_create_attendance_device_security.sql",
+    "0006_shift_work_date_and_checkout_window.sql",
+  ]) {
+    attendanceSqlite.exec(
+      fs.readFileSync(
+        path.join(here, "attendance-migrations", migration),
+        "utf8"
+      )
+    );
+  }
 
   const coreSqlite = new DatabaseSync(":memory:");
   coreSqlite.exec(`
@@ -105,6 +114,13 @@ function createFixture() {
       employee_id TEXT NOT NULL,
       date_key TEXT NOT NULL,
       absence_type TEXT NOT NULL
+    );
+    CREATE TABLE payroll_entries (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      payroll_month TEXT NOT NULL,
+      status TEXT NOT NULL
     );
   `);
   coreSqlite
