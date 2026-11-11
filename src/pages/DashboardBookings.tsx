@@ -1,6 +1,6 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
-import { DashboardActionFeedbackV2 } from "../components/dashboard-v2";
+import { DashboardActionFeedbackV2, DashboardToastProviderV2, useDashboardToastV2, DashboardErrorStateV2 } from "../components/dashboard-v2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -5070,7 +5070,8 @@ type DashboardBookingsProps = {
   language?: DashboardLanguage;
 };
 
-export default function DashboardBookings({ currentRole = "guest", language = "ar" }: DashboardBookingsProps) {
+function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: DashboardBookingsProps) {
+  const { pushToast } = useDashboardToastV2();
   const t = (arabic: string) => bookingsText(language, arabic);
 
   /* BOOKING_STATUS_OUTSIDE_CLOSE_V1 */
@@ -5108,7 +5109,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveBookingsSource, setLiveBookingsSource] = useState<Booking[]>([]);
   const [historyBookingsSource, setHistoryBookingsSource] = useState<Booking[]>([]);
-  const [error, setError] = useState("");
+  const [bookingLoadError, setBookingLoadError] = useState("");
   const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0);
 
   const [q, setQ] = useState("");
@@ -5160,6 +5161,30 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     tone: "success" | "danger" | "warning";
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (!bookingActionFeedback) return;
+    pushToast({
+      tone: bookingActionFeedback.tone,
+      title: bookingActionFeedback.tone === "success"
+        ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
+        : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء"),
+      description: bookingActionFeedback.message,
+      duration: bookingActionFeedback.tone === "success" ? 5500 : 9500,
+    });
+  }, [bookingActionFeedback, language, pushToast]);
+
+  useEffect(() => {
+    if (!bookingListFeedback) return;
+    pushToast({
+      tone: bookingListFeedback.tone,
+      title: bookingListFeedback.tone === "success"
+        ? (language === "en" ? "Bookings updated" : "تم تحديث الحجوزات")
+        : (language === "en" ? "Booking action needs attention" : "إجراء الحجز يحتاج متابعة"),
+      description: bookingListFeedback.message,
+      duration: bookingListFeedback.tone === "success" ? 5500 : 9500,
+    });
+  }, [bookingListFeedback, language, pushToast]);
   const [refundBusyId, setRefundBusyId] = useState("");
   const [printInvoiceBusyId, setPrintInvoiceBusyId] = useState("");
   const printInvoiceLockRef = useRef(false);
@@ -5374,11 +5399,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         if (!active) return;
         setLiveBookingsSource(data as Booking[]);
         setHistoryBookingsSource([]);
-        setError("");
+        setBookingLoadError("");
       } catch (loadError) {
         if (!active) return;
         console.error("[DashboardBookings] Core booking load failed", loadError);
-        setError("تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى.");
+        setBookingLoadError("تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى.");
       } finally {
         requestInFlight = false;
         if (active) setLoading(false);
@@ -7140,7 +7165,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     } catch (error) {
       console.error("[DashboardBookings] Core admin note save failed", error);
       setSavedNoteId("");
-      setError("تعذر حفظ ملاحظة الإدارة في Core D1. حاول مرة أخرى.");
+      pushToast({ tone: "danger", title: t("تعذر حفظ ملاحظة الإدارة"), description: t("تعذر حفظ ملاحظة الإدارة في Core D1. حاول مرة أخرى."), duration: 9500 });
     } finally {
       noteSaveInFlightRef.current[id] = false;
       setSavingNoteId((current) => current === id ? "" : current);
@@ -7482,7 +7507,6 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
 
     printInvoiceLockRef.current = true;
     setPrintInvoiceBusyId(bookingId);
-    setError("");
 
     try {
       let sourceBooking = booking;
@@ -7503,13 +7527,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
       );
       if (!popup || popup === window) {
-        setError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم جرّبي مرة أخرى.");
+        pushToast({ tone: "danger", title: t("تعذرت طباعة الفاتورة"), description: t("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم جرّبي مرة أخرى."), duration: 9500 });
         return;
       }
       popup.focus();
     } catch (e) {
       console.error("print booking invoice error:", e);
-      setError("تعذر تجهيز الفاتورة للطباعة.");
+      pushToast({ tone: "danger", title: t("تعذرت طباعة الفاتورة"), description: t("تعذر تجهيز الفاتورة للطباعة."), duration: 9500 });
     } finally {
       window.setTimeout(() => {
         printInvoiceLockRef.current = false;
@@ -7749,17 +7773,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                               </>
                             ) : null}
                           </div>
-                          {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
-                            <DashboardActionFeedbackV2
-                              compact
-                              tone={bookingActionFeedback.tone}
-                              title={bookingActionFeedback.tone === "success"
-                                ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
-                                : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
-                              description={bookingActionFeedback.message}
-                              className="bk-row-action-feedback"
-                            />
-                          ) : null}
+
                         </td>
                       </tr>
                     );
@@ -7933,17 +7947,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           </>
                         )}
                       </div>
-                      {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
-                        <DashboardActionFeedbackV2
-                          compact
-                          tone={bookingActionFeedback.tone}
-                          title={bookingActionFeedback.tone === "success"
-                            ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
-                            : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
-                          description={bookingActionFeedback.message}
-                          className="bk-mobile-action-feedback"
-                        />
-                      ) : null}
+
                     </div>
                   );
                 })}
@@ -8021,7 +8025,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
   }, [bulkTargetBookings, language]);
 
   const refreshBookingData = useCallback(() => {
-    setError("");
+    setBookingLoadError("");
     setLoading(true);
     setBookingsRefreshKey((current) => current + 1);
   }, []);
@@ -8033,6 +8037,18 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           <strong>{t("جاري تحميل الحجوزات...")}</strong>
           <span>{t("يتم تجهيز قائمة الحجوزات والحالات المالية.")}</span>
         </section>
+      </main>
+    );
+  }
+
+  if (bookingLoadError) {
+    return (
+      <main className="dsv2-page bookings-v2-page" dir={language === "en" ? "ltr" : "rtl"}>
+        <DashboardErrorStateV2
+          title={t("تعذر تحميل الحجوزات")}
+          description={bookingLoadError}
+          action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={refreshBookingData}>{t("إعادة المحاولة")}</button>}
+        />
       </main>
     );
   }
@@ -8059,7 +8075,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           </div>
         </header>
 
-        {error ? <div className="bookings-v2-error" role="alert">{error}</div> : null}
+
 
         <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label={t("ملخص عمليات الحجوزات")}>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
@@ -8556,16 +8572,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           </section>
         ) : null}
 
-        {bookingListFeedback ? (
-          <DashboardActionFeedbackV2
-            revealOnMount
-            tone={bookingListFeedback.tone}
-            title={bookingListFeedback.tone === "success"
-              ? (language === "en" ? "Bookings updated" : "تم تحديث الحجوزات")
-              : (language === "en" ? "Booking action needs attention" : "إجراء الحجز يحتاج متابعة")}
-            description={bookingListFeedback.message}
-          />
-        ) : null}
+
 
         <div className="bookings-v2-sections">
           {bookingSectionsView}
@@ -9925,5 +9932,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         </Modal>
       </div>
     </main>
+  );
+}
+
+export default function DashboardBookings(props: DashboardBookingsProps) {
+  return (
+    <DashboardToastProviderV2 position="top-center">
+      <DashboardBookingsContent {...props} />
+    </DashboardToastProviderV2>
   );
 }
