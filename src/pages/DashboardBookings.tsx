@@ -1,6 +1,6 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
-import { DashboardToastProviderV2, useDashboardToastV2, DashboardErrorStateV2 } from "../components/dashboard-v2";
+import { DashboardActionFeedbackV2, DashboardToastProviderV2, useDashboardToastV2, DashboardErrorStateV2 } from "../components/dashboard-v2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
