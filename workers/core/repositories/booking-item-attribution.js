@@ -3,6 +3,7 @@
 import { changes, cleanText, dbAll, dbBatch, dbFirst, nowIso, requiredId } from '../d1.js';
 import { AppError } from '../errors.js';
 import { auditInsertWhenPreviousUpdateChanged } from './audit.js';
+import { loadTargetIdentityIndex, resolveTargetEmployeeId } from './employee-targets.js';
 
 // Read-only picker data for one historical service. The same employment-date
 // rule is enforced again by the audited correction write below. Do not filter
@@ -145,11 +146,24 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
 
   // Even an open bonus snapshot can be embedded in a draft payroll entry.
   // Do not silently rewrite its source ledger and leave a stale entitlement.
+  const identityIndex = await loadTargetIdentityIndex(db, salonId);
+  const canonicalPreviousStaffId = resolveTargetEmployeeId(identityIndex, previousStaffId);
+  const canonicalNextStaffId = resolveTargetEmployeeId(identityIndex, nextStaffId);
+  // Historical staff IDs may be aliases of the employee profile owning the
+  // bonus snapshot. Always guard both identities, not just booking item IDs.
+  const targetEmployeeIds = [...new Set([
+    previousStaffId, nextStaffId, canonicalPreviousStaffId, canonicalNextStaffId,
+  ].filter(Boolean))];
+  const targetEmployeePlaceholders = targetEmployeeIds.map(() => '?').join(', ');
+  const targetSummaryGuard = `NOT EXISTS (
+    SELECT 1 FROM employee_target_period_summaries
+    WHERE salon_id = ? AND employee_id IN (${targetEmployeePlaceholders})
+      AND period_start <= ? AND period_end >= ?)`;
   const targetSummary = await dbFirst(db,
     `SELECT id FROM employee_target_period_summaries
-      WHERE salon_id = ? AND employee_id IN (?, ?)
+      WHERE salon_id = ? AND employee_id IN (${targetEmployeePlaceholders})
         AND period_start <= ? AND period_end >= ? LIMIT 1`,
-    [salonId, previousStaffId, nextStaffId, workDate, workDate]);
+    [salonId, ...targetEmployeeIds, workDate, workDate]);
   if (targetSummary) {
     throw new AppError(409, 'core_booking_item:target_summary_requires_review');
   }
@@ -188,9 +202,7 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
            AND NOT EXISTS (SELECT 1 FROM day_audit_closings
              WHERE salon_id = ? AND audit_date = ?)
            ${targetLedgerGuard}
-           AND NOT EXISTS (SELECT 1 FROM employee_target_period_summaries
-             WHERE salon_id = ? AND employee_id IN (?, ?)
-               AND period_start <= ? AND period_end >= ?)
+           AND ${targetSummaryGuard}
            -- Recheck the payroll lock in the same atomic UPDATE, not solely
            -- in the earlier read. A concurrent payroll approval must win.
            AND NOT EXISTS (SELECT 1 FROM payroll_entries
@@ -201,7 +213,7 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
     params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate,
-      ...targetLedgerParams, salonId, previousStaffId, nextStaffId, workDate, workDate,
+      ...targetLedgerParams, salonId, ...targetEmployeeIds, workDate, workDate,
       salonId, payrollMonth, previousStaffId, nextStaffId, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
