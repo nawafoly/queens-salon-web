@@ -4,6 +4,7 @@ import { changes, cleanText, dbAll, dbBatch, dbFirst, nowIso, requiredId } from 
 import { AppError } from '../errors.js';
 import { auditInsertWhenPreviousUpdateChanged } from './audit.js';
 import { loadTargetIdentityIndex, resolveTargetEmployeeId } from './employee-targets.js';
+import { prepareDraftTargetSummaryTransfer } from './booking-item-target-reconciliation.js';
 
 // Read-only picker data for one historical service. The same employment-date
 // rule is enforced again by the audited correction write below. Do not filter
@@ -164,7 +165,14 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
       WHERE salon_id = ? AND employee_id IN (${targetEmployeePlaceholders})
         AND period_start <= ? AND period_end >= ? LIMIT 1`,
     [salonId, ...targetEmployeeIds, workDate, workDate]);
-  if (targetSummary) {
+  const summaryTransfer = targetSummary
+    ? await prepareDraftTargetSummaryTransfer(db, salonId, {
+        workDate, itemId, serviceId: item.service_id, targetRow,
+        previousStaffId, nextStaffId, canonicalPreviousStaffId,
+        canonicalNextStaffId, targetEmployeeIds,
+      })
+    : { snapshots: [], statements: [], atomicGuard: '', atomicGuardParams: [] };
+  if (targetSummary && !summaryTransfer.snapshots.length) {
     throw new AppError(409, 'core_booking_item:target_summary_requires_review');
   }
 
@@ -181,6 +189,12 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
   }
 
   const now = nowIso();
+  const targetSnapshotGuard = summaryTransfer.snapshots.length
+    ? summaryTransfer.atomicGuard
+    : `AND ${targetSummaryGuard}`;
+  const targetSnapshotParams = summaryTransfer.snapshots.length
+    ? summaryTransfer.atomicGuardParams
+    : [salonId, ...targetEmployeeIds, workDate, workDate];
   const targetLedgerGuard = targetRow
     ? `AND EXISTS (SELECT 1 FROM employee_target_ledger
          WHERE salon_id = ? AND id = ? AND booking_id = ? AND booking_item_id = ?
@@ -202,7 +216,7 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
            AND NOT EXISTS (SELECT 1 FROM day_audit_closings
              WHERE salon_id = ? AND audit_date = ?)
            ${targetLedgerGuard}
-           AND ${targetSummaryGuard}
+           ${targetSnapshotGuard}
            -- Recheck the payroll lock in the same atomic UPDATE, not solely
            -- in the earlier read. A concurrent payroll approval must win.
            AND NOT EXISTS (SELECT 1 FROM payroll_entries
@@ -213,7 +227,7 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
     params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate,
-      ...targetLedgerParams, salonId, ...targetEmployeeIds, workDate, workDate,
+      ...targetLedgerParams, ...targetSnapshotParams,
       salonId, payrollMonth, previousStaffId, nextStaffId, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
@@ -226,7 +240,8 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
     after: { bookingId, itemId, staffId: nextStaffId, staffName: target.name, serviceDate: workDate },
     meta: { reason, parentBookingStatus: 'completed', financialLedgerChanged: false,
       targetLedgerReconciled: Boolean(targetRow), targetLedgerId: targetRow?.id || null,
-      targetEligibleAmount: targetRow?.eligible_amount ?? null },
+      targetEligibleAmount: targetRow?.eligible_amount ?? null,
+      targetSummaryTransfer: summaryTransfer.snapshots },
   }, actor).statement;
   // D1 batch executes these statements in one transaction. Recheck the
   // booking-item change inside the ledger UPDATE, keeping a racing stale
@@ -246,11 +261,15 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
       salonId, targetRow.id, bookingId, itemId, previousStaffId, `service:${itemId}`,
       salonId, bookingId, itemId, nextStaffId],
   } : null;
-  const statements = ledgerUpdate ? [update, ledgerUpdate, audit] : [update, audit];
+  const statements = ledgerUpdate
+    ? [update, ledgerUpdate, audit, ...summaryTransfer.statements]
+    : [update, audit, ...summaryTransfer.statements];
   const result = await dbBatch(db, statements);
   if (changes(result[0]) !== 1 || (ledgerUpdate && changes(result[1]) !== 1)) {
     throw new AppError(409, 'core_booking_item:concurrent_staff_change');
   }
   return { bookingId, bookingItemId: itemId, staffId: nextStaffId, staffName: target.name,
-    targetLedgerReconciled: Boolean(ledgerUpdate), unchanged: false, correctedAt: now };
+    targetLedgerReconciled: Boolean(ledgerUpdate),
+    targetSummariesReconciled: summaryTransfer.snapshots.length,
+    unchanged: false, correctedAt: now };
 }
