@@ -15,6 +15,8 @@ import {
   DashboardDatePickerV2,
   DashboardDrawerV2,
   DashboardSelectV2,
+  DashboardToastProviderV2,
+  useDashboardToastV2,
 } from "../components/dashboard-v2";
 import { payrollMonthBounds } from "../helpers/hr/payrollCalculations";
 import { usePermissions } from "../security/PermissionContext";
@@ -205,7 +207,8 @@ function draftFromPlan(plan: EmployeeTargetPlan | null, fallbackStart: string): 
   };
 }
 
-export default function DashboardEmployeeTargets() {
+function DashboardEmployeeTargetsContent() {
+  const { pushToast } = useDashboardToastV2();
   const initial = currentPayrollParts();
   const [searchParams] = useSearchParams();
   const queryMonth = String(searchParams.get("payrollMonth") || "");
@@ -228,6 +231,14 @@ export default function DashboardEmployeeTargets() {
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (error) pushToast({ id: "targets-operation-error", tone: "danger", title: "تعذرت العملية", description: error, duration: 9000 });
+  }, [error, pushToast]);
+
+  useEffect(() => {
+    if (message) pushToast({ id: "targets-operation-success", tone: "success", title: "التارقت", description: message });
+  }, [message, pushToast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -454,8 +465,6 @@ export default function DashboardEmployeeTargets() {
         </div>
       </section>
 
-      {error ? <div className="dsv2-targets-alert dsv2-targets-alert--error" role="alert">{error}</div> : null}
-      {message ? <div className="dsv2-targets-alert" role="status">{message}</div> : null}
       {!hasAnyPermission(["targets.manage", "targets.adjust"]) ? (
         <div className="dsv2-targets-alert dsv2-targets-alert--readonly" role="status">
           وضع قراءة فقط: يمكنك مراجعة التارقت والبونص المتوقع دون تعديل.
@@ -794,5 +803,13 @@ export default function DashboardEmployeeTargets() {
         ) : null}
       </DashboardDrawerV2>
     </main>
+  );
+}
+
+export default function DashboardEmployeeTargets() {
+  return (
+    <DashboardToastProviderV2 position="top-center">
+      <DashboardEmployeeTargetsContent />
+    </DashboardToastProviderV2>
   );
 }
