@@ -154,7 +154,8 @@ export default function BookingItemStaffAttributionEditor({ bookingId, canCorrec
         "core_booking_item:target_not_employed_on_service_date": "الموظفة المختارة ليست ضمن فترة عملها بتاريخ تنفيذ الخدمة.",
         "core_booking_item:approved_payroll_requires_review": "يوجد راتب معتمد لهذه الفترة؛ يلزم مراجعته قبل تصحيح إسناد الخدمة.",
         "core_booking_item:closed_financial_day_requires_review": "هذا اليوم المالي مقفل؛ يلزم مسار مراجعة مالي معتمد قبل تغيير إسناد الخدمة.",
-        "core_booking_item:target_ledger_reconciliation_required": "توجد حركات تارجت أو مكافآت مرتبطة بالحجز؛ يلزم مسار تسوية التارجت أولًا حتى لا تتغير حقوق الموظفات.",
+        "core_booking_item:target_ledger_reconciliation_required": "حركات التارجت لهذه الخدمة غير قابلة للتسوية الآمنة تلقائيًا؛ يلزم مراجعتها قبل التصحيح.",
+        "core_booking_item:target_summary_requires_review": "توجد خلاصة تارجت أو مكافأة محسوبة لإحدى الموظفتين؛ يلزم مراجعة الاستحقاق والراتب قبل تصحيح الخدمة.",
         "core_booking_item:noncanonical_staff_identity_requires_review": "هذه هوية موظفة قديمة بترميز مكرر؛ لا يمكن استخدامها في التصحيح قبل تدقيق وربط الهوية.",
       };
       setError(messages[code] || (english
