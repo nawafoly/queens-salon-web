@@ -145,7 +145,7 @@ export function createTargetIdentityIndex({ employeeProfiles = [], staffRows = [
   return index;
 }
 
-async function loadTargetIdentityIndex(db, salonId) {
+export async function loadTargetIdentityIndex(db, salonId) {
   const [employeeProfiles, staffRows, appUsers, links] = await Promise.all([
     dbAll(db, 'SELECT id, firebase_uid, name, email, phone_normalized, avatar_file_id, status FROM employee_profiles WHERE salon_id = ?', [salonId]),
     dbAll(db, 'SELECT id, firebase_uid, name, phone_normalized, active, employment_status FROM staff WHERE salon_id = ?', [salonId]),
@@ -155,7 +155,7 @@ async function loadTargetIdentityIndex(db, salonId) {
   return createTargetIdentityIndex({ employeeProfiles, staffRows, appUsers, links });
 }
 
-function resolveTargetEmployeeId(index, rawEmployeeId) {
+export function resolveTargetEmployeeId(index, rawEmployeeId) {
   const raw = cleanText(rawEmployeeId);
   if (!raw || raw === UNASSIGNED_TARGET_EMPLOYEE_ID) return null;
   return cleanText(index?.aliasToEmployeeId?.get(raw) || raw);
