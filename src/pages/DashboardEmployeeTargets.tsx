@@ -14,6 +14,7 @@ import {
 import {
   DashboardDatePickerV2,
   DashboardDrawerV2,
+  DashboardErrorStateV2,
   DashboardSelectV2,
   DashboardToastProviderV2,
   useDashboardToastV2,
@@ -231,6 +232,8 @@ function DashboardEmployeeTargetsContent() {
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [detailError, setDetailError] = useState("");
 
   useEffect(() => {
     if (error) pushToast({ id: "targets-operation-error", tone: "danger", title: "تعذرت العملية", description: error, duration: 9000 });
@@ -242,7 +245,7 @@ function DashboardEmployeeTargetsContent() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const [targetResult, planRows, employeeRows] = await Promise.all([
         CoreEmployeeTargetService.dashboard({
@@ -261,8 +264,8 @@ function DashboardEmployeeTargetsContent() {
       if (!planRows.length && !planDraft.id) {
         setPlanDraft(draftFromPlan(null, payrollBounds.monthStart));
       }
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "تعذر تحميل تارقت الموظفات.");
+    } catch (loadFailure) {
+      setLoadError(loadFailure instanceof Error ? loadFailure.message : "تعذر تحميل تارقت الموظفات.");
     } finally {
       setLoading(false);
     }
@@ -312,10 +315,14 @@ function DashboardEmployeeTargetsContent() {
   const openDetails = async (row: EmployeeTargetDashboardRow) => {
     setSelected(row);
     setDetails(null);
+    setDetailError("");
+    setError("");
     try {
       setDetails(await CoreEmployeeTargetService.details(row.employeeId, { payrollMonth: payrollBounds.payrollMonth }));
-    } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : "تعذر تحميل تفاصيل التارقت.");
+    } catch (detailFailure) {
+      const reason = detailFailure instanceof Error ? detailFailure.message : "تعذر تحميل تفاصيل التارقت.";
+      setDetailError(reason);
+      pushToast({ tone: "danger", title: "تعذر تحميل تفاصيل التارقت", description: reason, duration: 9000 });
     }
   };
 
@@ -471,6 +478,15 @@ function DashboardEmployeeTargetsContent() {
         </div>
       ) : null}
 
+      {loadError ? (
+        <DashboardErrorStateV2
+          title="تعذر تحميل بيانات التارقت"
+          description={loadError}
+          action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void load()} disabled={loading}>إعادة المحاولة</button>}
+        />
+      ) : null}
+
+      {!loadError && dashboard ? (
       <section className="dsv2-grid--metrics dsv2-targets-summary-grid" aria-label="ملخص التارقت">
         {topCards.map((card) => {
           const Icon = card.icon;
@@ -487,7 +503,9 @@ function DashboardEmployeeTargetsContent() {
           );
         })}
       </section>
+      ) : null}
 
+      {!loadError ? (
       <div className="dsv2-targets-layout">
         <section className="dsv2-table-card dsv2-targets-main-panel" aria-labelledby="employee-targets-progress-title">
           <div className="dsv2-card--padded dsv2-targets-panel-head">
@@ -760,6 +778,7 @@ function DashboardEmployeeTargetsContent() {
           </div>
         </aside>
       </div>
+      ) : null}
 
       <DashboardDrawerV2
         open={Boolean(selected)}
@@ -783,7 +802,9 @@ function DashboardEmployeeTargetsContent() {
 
             <section className="dsv2-targets-ledger-section">
               <h3 className="dsv2-section-title">حركات التارقت</h3>
-              {selectedLedger.length ? (
+              {detailError ? (
+                <DashboardErrorStateV2 title="تعذر تحميل حركات التارقت" description={detailError} compact action={<button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => selected && void openDetails(selected)}>إعادة المحاولة</button>} />
+              ) : selectedLedger.length ? (
                 <div className="dsv2-targets-ledger-list">
                   {selectedLedger.map((row) => (
                     <article key={row.id}>

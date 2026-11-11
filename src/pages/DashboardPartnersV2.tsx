@@ -28,6 +28,7 @@ import {
 import {
   DashboardDatePickerV2,
   DashboardEmptyStateV2,
+  DashboardErrorStateV2,
   DashboardModalV2,
   DashboardSelectV2,
   DashboardSkeletonV2,
@@ -448,6 +449,8 @@ function DashboardPartnersContentV2() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
@@ -472,7 +475,7 @@ function DashboardPartnersContentV2() {
   const loadData = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") setLoading(true);
     if (mode === "refresh") setRefreshing(true);
-    setError("");
+    setLoadError("");
 
     try {
       const [partnerRows, resourceRows, contractRows, memberRows] = await Promise.all([
@@ -486,9 +489,10 @@ function DashboardPartnersContentV2() {
       setResources(resourceRows);
       setContracts(contractRows);
       setMembers(memberRows);
-    } catch (loadError) {
-      console.error("DashboardPartners.loadData error:", loadError);
-      setError(translatePartnerError(loadError));
+      setHasLoadedSuccessfully(true);
+    } catch (loadFailure) {
+      console.error("DashboardPartners.loadData error:", loadFailure);
+      setLoadError(translatePartnerError(loadFailure));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1198,6 +1202,18 @@ function DashboardPartnersContentV2() {
       </section>
 
 
+      {loadError ? (
+        <DashboardErrorStateV2
+          title={hasLoadedSuccessfully ? "تعذر تحديث بيانات الشريكات" : "تعذر تحميل بيانات الشريكات"}
+          description={loadError}
+          action={
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void loadData("refresh")} disabled={refreshing || loading}>
+              إعادة المحاولة
+            </button>
+          }
+        />
+      ) : null}
+      {!hasLoadedSuccessfully ? null : (
       <section className="partners-v2-metrics" aria-label="ملخص نظام الشريكات">
         <article className="dsv2-metric-card dsv2-metric-card--dark">
           <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faStore} /></span>
@@ -1224,7 +1240,9 @@ function DashboardPartnersContentV2() {
           <p className="dsv2-metric-card__meta">من أصل {contracts.length} عقد</p>
         </article>
       </section>
+      )}
 
+      {hasLoadedSuccessfully ? (
       <section className="dsv2-card partners-v2-workspace">
         <header className="partners-v2-workspace__head">
           <div className="partners-v2-tabs" role="tablist" aria-label="أقسام الشريكات والمساحات">
@@ -1507,6 +1525,7 @@ function DashboardPartnersContentV2() {
           )}
         </div>
       </section>
+      ) : null}
 
       <DashboardModalV2
         open={createModal === "partner"}
