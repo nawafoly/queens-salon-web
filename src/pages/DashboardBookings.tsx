@@ -5134,6 +5134,16 @@ function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: Da
   const [bulkTargetStatus, setBulkTargetStatus] = useState<BookingStatus | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResultMessage, setBulkResultMessage] = useState("");
+
+  useEffect(() => {
+    if (!bulkResultMessage) return;
+    pushToast({
+      tone: "success",
+      title: language === "en" ? "Bulk update completed" : "اكتمل التحديث الجماعي",
+      description: bulkResultMessage,
+      duration: 9500,
+    });
+  }, [bulkResultMessage, language, pushToast]);
   const [bulkError, setBulkError] = useState("");
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
@@ -8556,7 +8566,7 @@ function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: Da
           </div>
         </section>
 
-        {selectedBookingIds.size || bulkResultMessage || bulkError ? (
+        {selectedBookingIds.size || bulkError ? (
           <section className="dsv2-card dsv2-card--padded bookings-v2-bulk-toolbar">
             <div className="bk-bulk-summary"><strong>{selectedBookingIds.size}</strong><span>{t("حجز محدد")}</span><small>{selectedMatchingCount} {t("ضمن النتائج الحالية")}</small></div>
             <div className="bk-bulk-actions">
@@ -8567,7 +8577,6 @@ function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: Da
               <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>{t("مؤكد")}</button>
               <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>{t("ملغي")}</button>
             </div>
-            {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
             {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
           </section>
         ) : null}
