@@ -1154,6 +1154,33 @@ test('historical target correction refuses stale or approved bonus snapshots', a
   assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='snapshot-ledger'").first()).employee_id,'snapshot-from');
 });
 
+
+test('canonical target identity bonus snapshot prevents alias staff transfer', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db,'alias-from');
+  await seedEmployee(db,'alias-to');
+  await seedEmployee(db,'canonical-destination');
+  await db.prepare("UPDATE staff SET firebase_uid = 'firebase-canonical-destination' WHERE salon_id = 'main' AND id = 'alias-to'").run();
+  await seedBooking(db,{id:'alias-target-booking',employeeId:'alias-from',bookingDate:'2026-08-21',
+    status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
+  await db.prepare(`INSERT INTO employee_target_ledger
+    (id,salon_id,employee_id,booking_id,booking_item_id,transaction_type,
+     source_reference,performed_at,created_at,updated_at)
+    VALUES ('alias-target-ledger','main','alias-from','alias-target-booking','item-alias-target-booking',
+      'service_completed','service:item-alias-target-booking','2026-08-21','2026-08-21','2026-08-21')`).run();
+  await db.prepare(`INSERT INTO employee_target_period_summaries
+    (id,salon_id,employee_id,period_start,period_end,status,created_at,updated_at)
+    VALUES ('canonical-bonus-snapshot','main','canonical-destination','2026-08-01','2026-08-31',
+      'posted_to_payroll','2026-08-22','2026-08-22')`).run();
+  await expectCode(correctCompletedBookingItemStaff(db,'main','alias-target-booking',{
+    bookingItemId:'item-alias-target-booking',expectedStaffId:'alias-from',
+    staffId:'alias-to',reason:'Verified actual specialist from attendance notes',
+  },actor),'core_booking_item:target_summary_requires_review');
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-alias-target-booking'").first()).staff_id,'alias-from');
+  assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='alias-target-ledger'").first()).employee_id,'alias-from');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,0);
+});
+
 test('historical staff CAS rejects payroll approved after precheck but before atomic UPDATE', async (t) => {
   const { mf, db } = await setup(); t.after(() => mf.dispose());
   await seedEmployee(db, 'payroll-race-from');
