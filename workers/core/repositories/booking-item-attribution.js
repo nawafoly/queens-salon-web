@@ -129,11 +129,29 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
   // Employee targets are an independent financial performance read model.
   // A historical reassignment with an existing attributed ledger needs its
   // own atomic target reconciliation workflow; never leave stale bonuses.
-  const targetAttribution = await dbFirst(db,
-    'SELECT id FROM employee_target_ledger WHERE salon_id = ? AND booking_id = ? LIMIT 1',
-    [salonId, bookingId]);
-  if (targetAttribution) {
+  // Reconcile only the exact service's canonical target attribution. Other
+  // services in the same booking must retain their independently owned rows.
+  const targetRows = await dbAll(db,
+    'SELECT id, employee_id, transaction_type, source_reference, eligible_amount, payroll_period_id FROM employee_target_ledger WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ? LIMIT 3',
+    [salonId, bookingId, itemId]);
+  const targetRow = targetRows.length === 1 ? targetRows[0] : null;
+  if (targetRows.length > 1 || (targetRow && (
+    cleanText(targetRow.employee_id) !== previousStaffId ||
+    cleanText(targetRow.transaction_type) !== 'service_completed' ||
+    cleanText(targetRow.source_reference) !== `service:${itemId}`
+  ))) {
     throw new AppError(409, 'core_booking_item:target_ledger_reconciliation_required');
+  }
+
+  // Even an open bonus snapshot can be embedded in a draft payroll entry.
+  // Do not silently rewrite its source ledger and leave a stale entitlement.
+  const targetSummary = await dbFirst(db,
+    `SELECT id FROM employee_target_period_summaries
+      WHERE salon_id = ? AND employee_id IN (?, ?)
+        AND period_start <= ? AND period_end >= ? LIMIT 1`,
+    [salonId, previousStaffId, nextStaffId, workDate, workDate]);
+  if (targetSummary) {
+    throw new AppError(409, 'core_booking_item:target_summary_requires_review');
   }
 
   const payrollMonth = workDate.slice(0, 7);
@@ -149,6 +167,19 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
   }
 
   const now = nowIso();
+  const targetLedgerGuard = targetRow
+    ? `AND EXISTS (SELECT 1 FROM employee_target_ledger
+         WHERE salon_id = ? AND id = ? AND booking_id = ? AND booking_item_id = ?
+           AND employee_id = ? AND transaction_type = 'service_completed'
+           AND source_reference = ?)
+       AND NOT EXISTS (SELECT 1 FROM employee_target_ledger
+         WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ? AND id <> ?)`
+    : `AND NOT EXISTS (SELECT 1 FROM employee_target_ledger
+         WHERE salon_id = ? AND booking_id = ? AND booking_item_id = ?)`;
+  const targetLedgerParams = targetRow
+    ? [salonId, targetRow.id, bookingId, itemId, previousStaffId, `service:${itemId}`,
+       salonId, bookingId, itemId, targetRow.id]
+    : [salonId, bookingId, itemId];
   const update = {
     sql: `UPDATE booking_items
          SET staff_id = ?
@@ -156,8 +187,10 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
            AND COALESCE(staff_id, '') = ?
            AND NOT EXISTS (SELECT 1 FROM day_audit_closings
              WHERE salon_id = ? AND audit_date = ?)
-           AND NOT EXISTS (SELECT 1 FROM employee_target_ledger
-             WHERE salon_id = ? AND booking_id = ?)
+           ${targetLedgerGuard}
+           AND NOT EXISTS (SELECT 1 FROM employee_target_period_summaries
+             WHERE salon_id = ? AND employee_id IN (?, ?)
+               AND period_start <= ? AND period_end >= ?)
            -- Recheck the payroll lock in the same atomic UPDATE, not solely
            -- in the earlier read. A concurrent payroll approval must win.
            AND NOT EXISTS (SELECT 1 FROM payroll_entries
@@ -167,7 +200,9 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
            AND EXISTS (SELECT 1 FROM bookings
               WHERE salon_id = ? AND id = ? AND deleted_at IS NULL
               AND LOWER(status) = 'completed')`,
-    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate, salonId, bookingId, salonId, payrollMonth, previousStaffId, nextStaffId, salonId, bookingId],
+    params: [nextStaffId, salonId, bookingId, itemId, expectedStaffId, salonId, workDate,
+      ...targetLedgerParams, salonId, previousStaffId, nextStaffId, workDate, workDate,
+      salonId, payrollMonth, previousStaffId, nextStaffId, salonId, bookingId],
   };
   const audit = auditInsertWhenPreviousUpdateChanged(salonId, {
     action: 'booking_item_staff_attribution_corrected',
@@ -177,9 +212,33 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
     source: 'core-booking-attribution',
     before: { bookingId, itemId, staffId: previousStaffId, serviceId: item.service_id, serviceName: item.service_name_snapshot, serviceDate: workDate },
     after: { bookingId, itemId, staffId: nextStaffId, staffName: target.name, serviceDate: workDate },
-    meta: { reason, parentBookingStatus: 'completed', financialLedgerChanged: false },
+    meta: { reason, parentBookingStatus: 'completed', financialLedgerChanged: false,
+      targetLedgerReconciled: Boolean(targetRow), targetLedgerId: targetRow?.id || null,
+      targetEligibleAmount: targetRow?.eligible_amount ?? null },
   }, actor).statement;
-  const result = await dbBatch(db, [update, audit]);
-  if (!changes(result[0])) throw new AppError(409, 'core_booking_item:concurrent_staff_change');
-  return { bookingId, bookingItemId: itemId, staffId: nextStaffId, staffName: target.name, unchanged: false, correctedAt: now };
+  // D1 batch executes these statements in one transaction. Recheck the
+  // booking-item change inside the ledger UPDATE, keeping a racing stale
+  // assignment from reattributing targets.
+  const ledgerUpdate = targetRow ? {
+    sql: `UPDATE employee_target_ledger
+      SET employee_id = ?,
+          details_json = json_set(CASE WHEN json_valid(details_json) THEN details_json ELSE '{}' END,
+            '$.rawEmployeeId', ?, '$.bookingItemStaffId', ?),
+          updated_at = ?
+      WHERE salon_id = ? AND id = ? AND booking_id = ? AND booking_item_id = ?
+        AND employee_id = ? AND transaction_type = 'service_completed'
+        AND source_reference = ?
+        AND EXISTS (SELECT 1 FROM booking_items
+          WHERE salon_id = ? AND booking_id = ? AND id = ? AND staff_id = ?)`,
+    params: [nextStaffId, nextStaffId, nextStaffId, now,
+      salonId, targetRow.id, bookingId, itemId, previousStaffId, `service:${itemId}`,
+      salonId, bookingId, itemId, nextStaffId],
+  } : null;
+  const statements = ledgerUpdate ? [update, ledgerUpdate, audit] : [update, audit];
+  const result = await dbBatch(db, statements);
+  if (changes(result[0]) !== 1 || (ledgerUpdate && changes(result[1]) !== 1)) {
+    throw new AppError(409, 'core_booking_item:concurrent_staff_change');
+  }
+  return { bookingId, bookingItemId: itemId, staffId: nextStaffId, staffName: target.name,
+    targetLedgerReconciled: Boolean(ledgerUpdate), unchanged: false, correctedAt: now };
 }
