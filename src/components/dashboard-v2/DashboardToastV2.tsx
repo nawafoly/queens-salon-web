@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -29,6 +28,7 @@ export type DashboardToastInputV2 = {
   title: ReactNode;
   description?: ReactNode;
   tone?: DashboardToastToneV2;
+  /** Retained for callers using the legacy timed-toast API; all dashboard toasts now dismiss manually. */
   duration?: number;
   persistent?: boolean;
   action?: DashboardToastActionV2;
@@ -243,51 +243,6 @@ type DashboardToastItemV2Props = {
 };
 
 function DashboardToastItemV2({ toast, onDismiss }: DashboardToastItemV2Props) {
-  const timerRef = useRef<number | null>(null);
-  const startedAtRef = useRef(0);
-  const remainingRef = useRef(toast.duration);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  const scheduleDismiss = useCallback(() => {
-    if (toast.persistent || remainingRef.current <= 0) {
-      return;
-    }
-
-    clearTimer();
-    startedAtRef.current = Date.now();
-    timerRef.current = window.setTimeout(() => {
-      onDismiss(toast.id);
-    }, remainingRef.current);
-  }, [clearTimer, onDismiss, toast.id, toast.persistent]);
-
-  useEffect(() => {
-    remainingRef.current = toast.duration;
-    scheduleDismiss();
-    return clearTimer;
-  }, [clearTimer, scheduleDismiss, toast.duration]);
-
-  const pauseTimer = () => {
-    if (toast.persistent || timerRef.current === null) {
-      return;
-    }
-
-    const elapsed = Date.now() - startedAtRef.current;
-    remainingRef.current = Math.max(0, remainingRef.current - elapsed);
-    clearTimer();
-  };
-
-  const resumeTimer = () => {
-    if (!toast.persistent) {
-      scheduleDismiss();
-    }
-  };
-
   const handleAction = () => {
     toast.action?.onClick();
     if (toast.action?.dismissAfterClick !== false) {
@@ -301,14 +256,6 @@ function DashboardToastItemV2({ toast, onDismiss }: DashboardToastItemV2Props) {
       data-tone={toast.tone}
       role={toast.tone === "danger" ? "alert" : "status"}
       aria-live={toast.tone === "danger" ? "assertive" : "polite"}
-      onMouseEnter={pauseTimer}
-      onMouseLeave={resumeTimer}
-      onFocusCapture={pauseTimer}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          resumeTimer();
-        }
-      }}
     >
       <span className="dsv2-toast__icon">
         <ToastIcon tone={toast.tone} />
@@ -354,6 +301,7 @@ export default function DashboardToastProviderV2({
   maxToasts = 4,
   defaultDuration = 4800,
 }: DashboardToastProviderV2Props) {
+  // Toasts stay visible until explicitly dismissed; no auto-dismiss timer is scheduled.
   const [toasts, setToasts] = useState<DashboardToastRecordV2[]>([]);
   const shellInsets = useDashboardToastShellInsetsV2();
   const rootStyle = {
