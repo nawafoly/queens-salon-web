@@ -17,7 +17,7 @@ import {
   faSkullCrossbones,
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
-import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
+import { DashboardDatePickerV2, DashboardSelectV2, DashboardErrorStateV2, DashboardToastProviderV2, useDashboardToastV2 } from "../components/dashboard-v2";
 import { offersText, type DashboardLanguage } from "../helpers/dashboardOffersLanguage";
 import "../styles/dashboard-v2/dashboard-v2.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
@@ -328,7 +328,8 @@ function getPackageStatusLabel(p: CorePackage, language: DashboardLanguage = "ar
   return offersText(language, "نشط");
 }
 
-const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+const DashboardOffersContent: React.FC<{ language?: DashboardLanguage }> = ({ language = "ar" }) => {
+  const { pushToast } = useDashboardToastV2();
   const t = (text: string) => offersText(language, text);
   const currency = language === "en" ? "SAR" : "ر.س";
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -369,8 +370,8 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
   const [sequenceEditorOpen, setSequenceEditorOpen] = useState(false);
   const [pickedImageName, setPickedImageName] = useState("");
   const [filterMode, setFilterMode] = useState<OfferFilterMode>("all");
-  const [inlineNotice, setInlineNotice] = useState<{ type: "error" | "success"; text: string } | null>(null);
-  const noticeTimerRef = useRef<number | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
   const packageFormRef = useRef<HTMLDivElement | null>(null);
   const offerFormRef = useRef<HTMLDivElement | null>(null);
 
@@ -404,9 +405,12 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
   });
 
   const showNotice = (text: string, type: "error" | "success" = "error") => {
-    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
-    setInlineNotice({ type, text: String(text || "").trim() });
-    noticeTimerRef.current = window.setTimeout(() => setInlineNotice(null), 4200);
+    pushToast({
+      tone: type === "success" ? "success" : "danger",
+      title: type === "success" ? t("تمت العملية") : t("تعذرت العملية"),
+      description: String(text || "").trim(),
+      duration: type === "success" ? 5000 : 9000,
+    });
   };
 
   useEffect(() => {
@@ -637,6 +641,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
   }, [form, language]);
 
   const refresh = async () => {
+    setLoadError("");
     try {
       const [
         offersData,
@@ -717,6 +722,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         .filter((row) => row.id && row.name && row.active !== false);
 
       setPackageServices(srvRows);
+      setHasLoadedSuccessfully(true);
     } catch (error: any) {
       console.error(
         "Core offers/packages load failed:",
@@ -724,7 +730,7 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
         error?.message,
         error
       );
-      showNotice(t("تعذر تحميل العروض أو الباقات من Core API."));
+      setLoadError(t("تعذر تحميل العروض أو الباقات من Core API."));
     }
   };
 
@@ -1498,14 +1504,15 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
 
   return (
     <main className="dsv2-page dsv2-offers-page" dir={language === "en" ? "ltr" : "rtl"} lang={language}>
-      {inlineNotice ? (
-        <div
-          className={`offers-inline-notice offers-inline-notice--${inlineNotice.type}`}
-          role="alert"
-        >
-          {inlineNotice.text}
-        </div>
+      {loadError ? (
+        <DashboardErrorStateV2
+          title={hasLoadedSuccessfully ? t("تعذر تحديث العروض والباقات") : t("تعذر تحميل العروض والباقات")}
+          description={loadError}
+          action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void refresh()}>{t("إعادة المحاولة")}</button>}
+        />
       ) : null}
+      {hasLoadedSuccessfully || !loadError ? (
+      <>
       {/* Enterprise hero */}
       <div className="offers-header offers-enterprise-hero">
         <div className="offers-head-main">
@@ -3139,9 +3146,17 @@ const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = ({ language 
           </div>
         </div>
       )}
+      </>
+      ) : null}
     </main>
   );
 };
+
+const DashboardOffers: React.FC<{ language?: DashboardLanguage }> = (props) => (
+  <DashboardToastProviderV2 position="top-center">
+    <DashboardOffersContent {...props} />
+  </DashboardToastProviderV2>
+);
 
 export default DashboardOffers;
 
