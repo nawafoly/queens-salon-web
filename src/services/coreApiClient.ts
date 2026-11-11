@@ -53,7 +53,7 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_payroll:deduction_evidence_reference_required": "يوجد خصم يحتاج مستندًا أو مرجع إثبات قبل اعتماد المسيرة.",
   "core_payroll:written_consent_reference_required": "يوجد خصم يتطلب مرجع موافقة خطية قبل اعتماد المسيرة.",
   "core_payroll:employee_not_active": "لا يمكن اعتماد المسيرة لأن الموظفة غير نشطة في Core لهذه الفترة.",
-  "core_payroll:employee_not_payroll_eligible": "لا يمكن اعتماد المسيرة لأن إعداد الراتب الأساسي للموظفة غير مكتمل أو غير صالح.",
+  "core_payroll:employee_not_payroll_eligible": "تعذرت عملية الراتب: الراتب الأساسي المسجل للموظفة في Core غير محدد أو لا يتجاوز صفرًا. راجع إعداد الراتب للموظفة المعنية.",
   "core_payroll:attendance_deferral_snapshot_stale": "تغيّر خصم الحضور بعد إنشاء التأجيل السابق. ألغِ التأجيل القديم ثم أعد إنشاءه بالمبلغ الحالي.",
   "core_payroll:obligation_snapshot_stale": "تغيّر جدول الخصومات والالتزامات بعد حساب المسودة. أعد حساب المسيرة.",
   "core_payroll:attendance_deferral_target_must_be_future": "شهر تحصيل خصم الحضور يجب أن يكون بعد شهر الخصم الأصلي.",
