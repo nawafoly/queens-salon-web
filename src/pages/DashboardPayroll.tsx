@@ -23,6 +23,8 @@ import {
   DashboardActionFeedbackV2,
   DashboardDatePickerV2,
   DashboardSelectV2,
+  DashboardToastProviderV2,
+  useDashboardToastV2,
 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
@@ -905,7 +907,8 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   return String((error as any)?.message || fallback);
 }
 
-export default function DashboardPayroll() {
+function DashboardPayrollContent() {
+  const { pushToast } = useDashboardToastV2();
   const { hasPermission, role } = usePermissions();
   const canManage = hasPermission("payroll.manage");
   const canRecordLateApproval =
@@ -958,6 +961,32 @@ export default function DashboardPayroll() {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  // Page feedback is delivered through the dashboard-wide toast design system.
+  // Passive initial-load counters stay in the readiness overview instead of
+  // creating a popup on every visit or period/filter refresh.
+  useEffect(() => {
+    if (!error) return;
+    pushToast({
+      id: "payroll-action-error",
+      tone: error.startsWith("لم تُحفظ مسودات") ? "warning" : "danger",
+      title: error.startsWith("لم تُحفظ مسودات") ? "مسودات تحتاج استكمال بيانات" : "تعذرت العملية",
+      description: error,
+      duration: 12000,
+    });
+  }, [error, pushToast]);
+
+  useEffect(() => {
+    if (!message || message.startsWith("تم تحميل")) return;
+    pushToast({
+      id: "payroll-action-success",
+      tone: "success",
+      title: "إدارة الرواتب",
+      description: message,
+      duration: 7000,
+    });
+  }, [message, pushToast]);
+
   const loadGenerationRef = useRef(0);
 
   const payrollBounds = payrollMonthBounds(year, month);
@@ -2393,7 +2422,7 @@ export default function DashboardPayroll() {
               onClick={() => void handleSaveDrafts()}
               disabled={!canManage || Boolean(busy)}
             >
-              <FiSave /> حفظ المسودات
+              <FiSave /> {busy === "save" ? "جاري حفظ المسودات..." : "حفظ المسودات"}
             </button>
             <button
               type="button"
@@ -2517,8 +2546,6 @@ export default function DashboardPayroll() {
         canManage={canManage}
       />
 
-      {error ? <div className="payroll-alert is-error">{error}</div> : null}
-      {message ? <div className="payroll-alert"><FiCheckCircle />{message}</div> : null}
       {!canManage ? <div className="payroll-alert is-readonly">وضع قراءة فقط: يمكنك مراجعة الرواتب دون تعديلها.</div> : null}
 
       <section className="payroll-readiness-overview" aria-label="حالة جاهزية الرواتب">
@@ -4397,5 +4424,13 @@ function PayrollDetailsModal({
       </aside>
     </div>,
     document.body
+  );
+}
+
+export default function DashboardPayroll() {
+  return (
+    <DashboardToastProviderV2 position="top-center">
+      <DashboardPayrollContent />
+    </DashboardToastProviderV2>
   );
 }
