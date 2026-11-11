@@ -20,7 +20,7 @@ const assertPreviousUpdate = {
 };
 
 export async function prepareDraftTargetSummaryTransfer(db, salonId, {
-  workDate, itemId, serviceId, targetRow, previousStaffId, nextStaffId,
+  workDate, serviceId, targetRow, previousStaffId, nextStaffId,
   canonicalPreviousStaffId, canonicalNextStaffId, targetEmployeeIds,
 }) {
   const identities = [...new Set(targetEmployeeIds)];
@@ -42,12 +42,10 @@ export async function prepareDraftTargetSummaryTransfer(db, salonId, {
   const calculatedRows = pair.map(id => summaries.summaries.find(row => cleanText(row.employee_id) === id));
   if (snapshotRows.some(row => !row) || calculatedRows.some(row => !row)) throw invalidSnapshot();
 
-  const service = await dbFirst(db,
-    `SELECT s.category_id FROM booking_items bi
-      LEFT JOIN services s ON s.salon_id = bi.salon_id AND s.id = bi.service_id
-      WHERE bi.salon_id = ? AND bi.id = ? LIMIT 1`,
-    [salonId, itemId]);
-  const item = { service_id: serviceId, category_id: service?.category_id || null };
+  // Ledger summaries filter persisted employee_target_ledger rows. Those rows
+  // contain service_id but no category_id: use EXACTLY the same row shape,
+  // otherwise category-specific plans yield incorrect transfer deltas.
+  const item = { service_id: serviceId };
   const amount = int(targetRow.eligible_amount);
   if (!Number.isSafeInteger(amount) || amount < 0) throw invalidSnapshot();
   const now = nowIso();
