@@ -1,6 +1,6 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
 import { DashboardDateInputV2, DashboardSelectBridgeV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
-import { DashboardActionFeedbackV2 } from "../components/dashboard-v2";
+import { DashboardToastProviderV2, useDashboardToastV2, DashboardErrorStateV2 } from "../components/dashboard-v2";
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -5070,7 +5070,8 @@ type DashboardBookingsProps = {
   language?: DashboardLanguage;
 };
 
-export default function DashboardBookings({ currentRole = "guest", language = "ar" }: DashboardBookingsProps) {
+function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: DashboardBookingsProps) {
+  const { pushToast } = useDashboardToastV2();
   const t = (arabic: string) => bookingsText(language, arabic);
 
   /* BOOKING_STATUS_OUTSIDE_CLOSE_V1 */
@@ -5160,6 +5161,30 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
     tone: "success" | "danger" | "warning";
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (!bookingActionFeedback) return;
+    pushToast({
+      tone: bookingActionFeedback.tone,
+      title: bookingActionFeedback.tone === "success"
+        ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
+        : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء"),
+      description: bookingActionFeedback.message,
+      duration: bookingActionFeedback.tone === "success" ? 5500 : 9500,
+    });
+  }, [bookingActionFeedback, language, pushToast]);
+
+  useEffect(() => {
+    if (!bookingListFeedback) return;
+    pushToast({
+      tone: bookingListFeedback.tone,
+      title: bookingListFeedback.tone === "success"
+        ? (language === "en" ? "Bookings updated" : "تم تحديث الحجوزات")
+        : (language === "en" ? "Booking action needs attention" : "إجراء الحجز يحتاج متابعة"),
+      description: bookingListFeedback.message,
+      duration: bookingListFeedback.tone === "success" ? 5500 : 9500,
+    });
+  }, [bookingListFeedback, language, pushToast]);
   const [refundBusyId, setRefundBusyId] = useState("");
   const [printInvoiceBusyId, setPrintInvoiceBusyId] = useState("");
   const printInvoiceLockRef = useRef(false);
@@ -7749,17 +7774,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                               </>
                             ) : null}
                           </div>
-                          {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
-                            <DashboardActionFeedbackV2
-                              compact
-                              tone={bookingActionFeedback.tone}
-                              title={bookingActionFeedback.tone === "success"
-                                ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
-                                : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
-                              description={bookingActionFeedback.message}
-                              className="bk-row-action-feedback"
-                            />
-                          ) : null}
+
                         </td>
                       </tr>
                     );
@@ -7933,17 +7948,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
                           </>
                         )}
                       </div>
-                      {bookingActionFeedback?.bookingId === String(b.id || "").trim() ? (
-                        <DashboardActionFeedbackV2
-                          compact
-                          tone={bookingActionFeedback.tone}
-                          title={bookingActionFeedback.tone === "success"
-                            ? (language === "en" ? "Action completed" : "تم تنفيذ الإجراء")
-                            : (language === "en" ? "Action failed" : "تعذر تنفيذ الإجراء")}
-                          description={bookingActionFeedback.message}
-                          className="bk-mobile-action-feedback"
-                        />
-                      ) : null}
+
                     </div>
                   );
                 })}
@@ -8059,7 +8064,11 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           </div>
         </header>
 
-        {error ? <div className="bookings-v2-error" role="alert">{error}</div> : null}
+        {error ? (
+          <DashboardErrorStateV2 title={t("تعذر تحميل الحجوزات")} description={error}
+            action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={refreshBookingData}>{t("إعادة المحاولة")}</button>}
+          />
+        ) : null}
 
         <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label={t("ملخص عمليات الحجوزات")}>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
@@ -8556,16 +8565,7 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
           </section>
         ) : null}
 
-        {bookingListFeedback ? (
-          <DashboardActionFeedbackV2
-            revealOnMount
-            tone={bookingListFeedback.tone}
-            title={bookingListFeedback.tone === "success"
-              ? (language === "en" ? "Bookings updated" : "تم تحديث الحجوزات")
-              : (language === "en" ? "Booking action needs attention" : "إجراء الحجز يحتاج متابعة")}
-            description={bookingListFeedback.message}
-          />
-        ) : null}
+
 
         <div className="bookings-v2-sections">
           {bookingSectionsView}
@@ -9925,5 +9925,13 @@ export default function DashboardBookings({ currentRole = "guest", language = "a
         </Modal>
       </div>
     </main>
+  );
+}
+
+export default function DashboardBookings(props: DashboardBookingsProps) {
+  return (
+    <DashboardToastProviderV2 position="top-center">
+      <DashboardBookingsContent {...props} />
+    </DashboardToastProviderV2>
   );
 }
