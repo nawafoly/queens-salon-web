@@ -1242,6 +1242,7 @@ function DashboardPartnersContentV2() {
       </section>
       )}
 
+      {hasLoadedSuccessfully ? (
       <section className="dsv2-card partners-v2-workspace">
         <header className="partners-v2-workspace__head">
           <div className="partners-v2-tabs" role="tablist" aria-label="أقسام الشريكات والمساحات">
@@ -1524,6 +1525,7 @@ function DashboardPartnersContentV2() {
           )}
         </div>
       </section>
+      ) : null}
 
       <DashboardModalV2
         open={createModal === "partner"}
