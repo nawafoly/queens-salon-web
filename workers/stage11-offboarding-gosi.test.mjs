@@ -45,6 +45,8 @@ const MIGRATIONS = [
   '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
   '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
   '0034_employee_offboarding_invariants.sql',
+  // Payroll authority reads overtime compensation fields introduced by this migration.
+  '0043_sa_overtime_request_runtime.sql',
   // Shift control and payroll previews read these canonical 0057 tables.
   '0057_leave_rest_workflows.sql',
   '0094_day_audit_closings.sql',
@@ -1160,6 +1162,10 @@ test('canonical target identity bonus snapshot prevents alias staff transfer', a
   await seedEmployee(db,'alias-from');
   await seedEmployee(db,'alias-to');
   await seedEmployee(db,'canonical-destination');
+  // Legacy staff alias: staff has no matching canonical employee_profile ID.
+  // If alias-to retained its own profile, the target index legitimately maps
+  // that ID to itself and no canonical-alias condition is being exercised.
+  await db.prepare("DELETE FROM employee_profiles WHERE salon_id = 'main' AND id = 'alias-to'").run();
   await db.prepare("UPDATE staff SET firebase_uid = 'firebase-canonical-destination' WHERE salon_id = 'main' AND id = 'alias-to'").run();
   await seedBooking(db,{id:'alias-target-booking',employeeId:'alias-from',bookingDate:'2026-08-21',
     status:'completed',completedAt:'2026-08-21T11:00:00Z',parentStaff:false,itemStaff:true});
