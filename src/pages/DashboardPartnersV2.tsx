@@ -9,7 +9,6 @@ import {
   faCalendarDays,
   faChair,
   faCircleCheck,
-  faCircleExclamation,
   faClock,
   faFileContract,
   faEnvelope,
@@ -32,6 +31,8 @@ import {
   DashboardModalV2,
   DashboardSelectV2,
   DashboardSkeletonV2,
+  DashboardToastProviderV2,
+  useDashboardToastV2,
 } from "../components/dashboard-v2";
 import { auth } from "../services/firebase";
 import { PartnerService } from "../services/partnerService";
@@ -435,7 +436,8 @@ function contractBadgeClass(status: PartnerContractStatus) {
   return "";
 }
 
-export default function DashboardPartnersV2() {
+function DashboardPartnersContentV2() {
+  const { pushToast } = useDashboardToastV2();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [resources, setResources] = useState<RentalResource[]>([]);
   const [contracts, setContracts] = useState<PartnerContract[]>([]);
@@ -447,6 +449,14 @@ export default function DashboardPartnersV2() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (error) pushToast({ id: "partners-operation-error", tone: "danger", title: "تعذرت العملية", description: error, duration: 9000 });
+  }, [error, pushToast]);
+
+  useEffect(() => {
+    if (successMessage) pushToast({ id: "partners-operation-success", tone: "success", title: "الشركاء والعقود", description: successMessage });
+  }, [successMessage, pushToast]);
   const [createModal, setCreateModal] = useState<CreateModal>(null);
   const [partnerForm, setPartnerForm] = useState<PartnerFormState>(EMPTY_PARTNER_FORM);
   const [resourceForm, setResourceForm] = useState<ResourceFormState>(EMPTY_RESOURCE_FORM);
@@ -1187,22 +1197,6 @@ export default function DashboardPartnersV2() {
         </div>
       </section>
 
-      {(error || successMessage) ? (
-        <section className="partners-v2-notices" aria-live="polite">
-          {error ? (
-            <div className="partners-v2-notice partners-v2-notice--error" role="alert">
-              <FontAwesomeIcon icon={faCircleExclamation} />
-              <span>{error}</span>
-            </div>
-          ) : null}
-          {successMessage ? (
-            <div className="partners-v2-notice partners-v2-notice--success" role="status">
-              <FontAwesomeIcon icon={faCircleCheck} />
-              <span>{successMessage}</span>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
 
       <section className="partners-v2-metrics" aria-label="ملخص نظام الشريكات">
         <article className="dsv2-metric-card dsv2-metric-card--dark">
@@ -1949,5 +1943,13 @@ export default function DashboardPartnersV2() {
         </form>
       </DashboardModalV2>
     </main>
+  );
+}
+
+export default function DashboardPartnersV2() {
+  return (
+    <DashboardToastProviderV2 position="top-center">
+      <DashboardPartnersContentV2 />
+    </DashboardToastProviderV2>
   );
 }
