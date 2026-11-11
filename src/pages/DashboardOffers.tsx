@@ -1511,6 +1511,8 @@ const DashboardOffersContent: React.FC<{ language?: DashboardLanguage }> = ({ la
           action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void refresh()}>{t("إعادة المحاولة")}</button>}
         />
       ) : null}
+      {hasLoadedSuccessfully || !loadError ? (
+      <>
       {/* Enterprise hero */}
       <div className="offers-header offers-enterprise-hero">
         <div className="offers-head-main">
@@ -3144,6 +3146,8 @@ const DashboardOffersContent: React.FC<{ language?: DashboardLanguage }> = ({ la
           </div>
         </div>
       )}
+      </>
+      ) : null}
     </main>
   );
 };
