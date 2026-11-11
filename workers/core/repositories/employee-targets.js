@@ -547,7 +547,7 @@ export async function replaceTargetAssignments(db, salonId, planId, assignments 
   await dbBatch(db, statements);
 }
 
-function serviceIncludedByPlan(plan, item) {
+export function serviceIncludedByPlan(plan, item) {
   if (!plan) return true;
   const includedServices = readJsonList(plan.included_service_ids_json);
   const includedCategories = readJsonList(plan.included_category_ids_json);
