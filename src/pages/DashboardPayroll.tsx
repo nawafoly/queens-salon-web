@@ -1441,14 +1441,49 @@ export default function DashboardPayroll() {
     if (!canManage) return;
     setBusy("save");
     setError("");
+    setMessage("");
     try {
-      const period = await ensurePayrollPeriod(year, month);
-      const prepared = visibleEntries.map((entry) => ({ ...entry, periodId: entry.periodId || period.id }));
-      const saved = await savePayrollDrafts(prepared);
-      setEntries((current) => saved.reduce(replaceEntry, current));
+      const candidates = visibleEntries.filter((entry) => !isPayrollSnapshotLocked(entry.status));
+      if (!candidates.length) {
+        setMessage("لا توجد مسودات قابلة للحفظ ضمن الموظفات المعروضات.");
+        return;
+      }
+
+      const ready = candidates.filter((entry) => entry.payrollSetupComplete);
+      const rejected = candidates
+        .filter((entry) => !entry.payrollSetupComplete)
+        .map((entry) => ({
+          name: entry.employeeName,
+          reason: setupMissingLabels(entry).join("، ") || "إعداد الراتب غير مكتمل",
+        }));
+
+      const saved: PayrollEntryView[] = [];
+      if (ready.length) {
+        const period = await ensurePayrollPeriod(year, month);
+        for (const entry of ready) {
+          try {
+            const persisted = await savePayrollDrafts([{ ...entry, periodId: entry.periodId || period.id }]);
+            if (persisted.length !== 1) {
+              throw new Error("لم يتم حفظ المسودة.");
+            }
+            saved.push(persisted[0]);
+            // Preserve successful writes even if a later employee fails.
+            setEntries((current) => replaceEntry(current, persisted[0]));
+          } catch (actionError: any) {
+            rejected.push({
+              name: entry.employeeName,
+              reason: payrollActionErrorMessage(actionError, "تعذر حفظ المسودة."),
+            });
+          }
+        }
+      }
+
       setMessage(`تم حفظ ${saved.length} مسودة في نظام الرواتب.`);
+      if (rejected.length) {
+        setError(`لم تُحفظ مسودات ${rejected.length} موظفة: ${rejected.map((item) => `${item.name} (${item.reason})`).join("؛ ")}.`);
+      }
     } catch (actionError: any) {
-      setError(String(actionError?.message || "تعذر حفظ مسودات الرواتب."));
+      setError(payrollActionErrorMessage(actionError, "تعذر حفظ مسودات الرواتب."));
     } finally {
       setBusy("");
     }
