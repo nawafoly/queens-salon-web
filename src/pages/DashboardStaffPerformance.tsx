@@ -15,6 +15,7 @@ import {
 } from "react-icons/fi";
 import {
   DashboardDatePickerV2,
+  DashboardErrorStateV2,
   DashboardSelectV2,
 } from "../components/dashboard-v2";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
@@ -96,6 +97,7 @@ export default function DashboardStaffPerformance() {
   const [result, setResult] = useState<StaffPerformanceResult>(EMPTY_RESULT);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
 
   useEffect(() => {
     if (!routeEmployeeId) return;
@@ -120,9 +122,9 @@ export default function DashboardStaffPerformance() {
         bookingStatus,
       });
       setResult(next);
+      setHasLoadedSuccessfully(true);
     } catch (err) {
       console.error("[staff-performance] load failed", err);
-      setResult(EMPTY_RESULT);
       setError(err instanceof Error ? err.message : "تعذر تحميل أداء الموظفات.");
     } finally {
       setLoading(false);
@@ -280,7 +282,7 @@ export default function DashboardStaffPerformance() {
             type="button"
             className="dsv2-btn dsv2-btn--secondary"
             onClick={handleExportPerformancePdf}
-            disabled={loading}
+            disabled={loading || !hasLoadedSuccessfully || Boolean(error)}
           >
             <FiFileText /> تصدير PDF
           </button>
@@ -288,7 +290,7 @@ export default function DashboardStaffPerformance() {
             type="button"
             className="dsv2-btn dsv2-btn--secondary"
             onClick={handleExportPerformanceExcel}
-            disabled={loading}
+            disabled={loading || !hasLoadedSuccessfully || Boolean(error)}
           >
             <FiDownload /> تصدير Excel
           </button>
@@ -296,9 +298,11 @@ export default function DashboardStaffPerformance() {
       </section>
 
       {error ? (
-        <div className="dsv2-staff-performance-alert dsv2-staff-performance-alert--error" role="alert">
-          <FiAlertTriangle />{error}
-        </div>
+        <DashboardErrorStateV2
+          title={hasLoadedSuccessfully ? "تعذر تحديث أداء الموظفات" : "تعذر تحميل أداء الموظفات"}
+          description={error}
+          action={<button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void load()} disabled={loading}>إعادة المحاولة</button>}
+        />
       ) : null}
       {result.warnings.length ? (
         <div className="dsv2-staff-performance-alert" role="status">
@@ -307,6 +311,8 @@ export default function DashboardStaffPerformance() {
         </div>
       ) : null}
 
+      {hasLoadedSuccessfully && !error ? (
+      <>
       <section className="dsv2-grid--metrics dsv2-staff-performance-stats" aria-label="ملخص أداء الموظفات">
         {statsCards.map((card) => {
           const Icon = card.icon;
@@ -507,6 +513,8 @@ export default function DashboardStaffPerformance() {
       ) : null}
       {!result.summary.ratingAvailable ? (
         <p className="dsv2-staff-performance-note"><FiStar /> التقييمات غير متوفرة في بيانات الحجوزات الحالية.</p>
+      ) : null}
+      </>
       ) : null}
     </main>
   );
