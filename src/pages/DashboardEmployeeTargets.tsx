@@ -1,5 +1,5 @@
 import DashboardNumberInputV2 from "../components/dashboard-v2/DashboardNumberInputV2";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   FiActivity,
@@ -234,6 +234,9 @@ function DashboardEmployeeTargetsContent() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [detailError, setDetailError] = useState("");
+  const detailRequestIdRef = useRef(0);
+
+  useEffect(() => () => { detailRequestIdRef.current += 1; }, [payrollBounds.payrollMonth]);
 
   useEffect(() => {
     if (error) pushToast({ id: "targets-operation-error", tone: "danger", title: "تعذرت العملية", description: error, duration: 9000 });
@@ -313,13 +316,17 @@ function DashboardEmployeeTargetsContent() {
   ];
 
   const openDetails = async (row: EmployeeTargetDashboardRow) => {
+    const requestId = ++detailRequestIdRef.current;
     setSelected(row);
     setDetails(null);
     setDetailError("");
     setError("");
     try {
-      setDetails(await CoreEmployeeTargetService.details(row.employeeId, { payrollMonth: payrollBounds.payrollMonth }));
+      const response = await CoreEmployeeTargetService.details(row.employeeId, { payrollMonth: payrollBounds.payrollMonth });
+      if (requestId !== detailRequestIdRef.current) return;
+      setDetails(response);
     } catch (detailFailure) {
+      if (requestId !== detailRequestIdRef.current) return;
       const reason = detailFailure instanceof Error ? detailFailure.message : "تعذر تحميل تفاصيل التارقت.";
       setDetailError(reason);
       pushToast({ tone: "danger", title: "تعذر تحميل تفاصيل التارقت", description: reason, duration: 9000 });
@@ -782,7 +789,12 @@ function DashboardEmployeeTargetsContent() {
 
       <DashboardDrawerV2
         open={Boolean(selected)}
-        onClose={() => setSelected(null)}
+        onClose={() => {
+          detailRequestIdRef.current += 1;
+          setSelected(null);
+          setDetails(null);
+          setDetailError("");
+        }}
         title={selected?.employeeName || "تفاصيل التارقت"}
         description={selected?.plan?.name || "لا توجد خطة مفعلة"}
         eyebrow={payrollBounds.payrollMonth}
