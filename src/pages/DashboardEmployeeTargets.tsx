@@ -505,6 +505,7 @@ function DashboardEmployeeTargetsContent() {
       </section>
       ) : null}
 
+      {!loadError ? (
       <div className="dsv2-targets-layout">
         <section className="dsv2-table-card dsv2-targets-main-panel" aria-labelledby="employee-targets-progress-title">
           <div className="dsv2-card--padded dsv2-targets-panel-head">
@@ -777,6 +778,7 @@ function DashboardEmployeeTargetsContent() {
           </div>
         </aside>
       </div>
+      ) : null}
 
       <DashboardDrawerV2
         open={Boolean(selected)}
