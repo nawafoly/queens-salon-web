@@ -261,11 +261,22 @@ export async function correctCompletedBookingItemStaff(db, salonId, bookingIdVal
       salonId, targetRow.id, bookingId, itemId, previousStaffId, `service:${itemId}`,
       salonId, bookingId, itemId, nextStaffId],
   } : null;
+  // The audit must immediately follow the guarded booking UPDATE: it uses
+  // SQLite changes() to avoid logging failed CAS attempts. When a summary
+  // transfer exists, assert the following ledger UPDATE inside the same D1
+  // transaction *before* touching either snapshot. A racing day close or
+  // payroll approval then aborts and rolls back the entire batch.
+  const assertTransferredLedger = {
+    sql: "SELECT CASE WHEN changes() = 1 THEN 1 ELSE json_extract('INVALID_LEDGER_TRANSFER', '$.value') END AS asserted",
+    params: [],
+  };
   const statements = ledgerUpdate
-    ? [update, ledgerUpdate, audit, ...summaryTransfer.statements]
-    : [update, audit, ...summaryTransfer.statements];
+    ? [update, audit, ledgerUpdate,
+        ...(summaryTransfer.snapshots.length ? [assertTransferredLedger] : []),
+        ...summaryTransfer.statements]
+    : [update, audit];
   const result = await dbBatch(db, statements);
-  if (changes(result[0]) !== 1 || (ledgerUpdate && changes(result[1]) !== 1)) {
+  if (changes(result[0]) !== 1 || (ledgerUpdate && changes(result[2]) !== 1)) {
     throw new AppError(409, 'core_booking_item:concurrent_staff_change');
   }
   return { bookingId, bookingItemId: itemId, staffId: nextStaffId, staffName: target.name,
