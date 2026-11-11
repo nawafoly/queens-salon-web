@@ -5134,16 +5134,17 @@ function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: Da
   const [bulkTargetStatus, setBulkTargetStatus] = useState<BookingStatus | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResultMessage, setBulkResultMessage] = useState("");
+  const [bulkResultTone, setBulkResultTone] = useState<"success" | "warning">("success");
 
   useEffect(() => {
     if (!bulkResultMessage) return;
     pushToast({
-      tone: "success",
+      tone: bulkResultTone,
       title: language === "en" ? "Bulk update completed" : "اكتمل التحديث الجماعي",
       description: bulkResultMessage,
       duration: 9500,
     });
-  }, [bulkResultMessage, language, pushToast]);
+  }, [bulkResultMessage, bulkResultTone, language, pushToast]);
   const [bulkError, setBulkError] = useState("");
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
@@ -7491,6 +7492,7 @@ function DashboardBookingsContent({ currentRole = "guest", language = "ar" }: Da
             }
           : prev
       );
+      setBulkResultTone(result.failedCount > 0 ? "warning" : "success");
       setBulkResultMessage(
         `تم تحديث ${result.successCount} حجز. فشل ${result.failedCount} حجز.`
       );
