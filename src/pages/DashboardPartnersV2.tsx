@@ -9,7 +9,6 @@ import {
   faCalendarDays,
   faChair,
   faCircleCheck,
-  faCircleExclamation,
   faClock,
   faFileContract,
   faEnvelope,
