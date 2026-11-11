@@ -1157,6 +1157,66 @@ test('historical target correction refuses stale or approved bonus snapshots', a
 });
 
 
+
+test('draft payroll and zero-bonus snapshots reconcile a 150 SAR specialist transfer, preserving carryover', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose());
+  await seedEmployee(db, 'draft-from');
+  await seedEmployee(db, 'draft-to');
+  await seedBooking(db, { id:'draft-target-booking', employeeId:'draft-from',
+    bookingDate:'2026-08-21', status:'completed',
+    completedAt:'2026-08-21T11:00:00Z', parentStaff:false, itemStaff:true });
+  const now = '2026-08-22T12:00:00Z';
+  await db.prepare("UPDATE booking_items SET total_halalas = 15000, unit_price_halalas = 15000 WHERE id = 'item-draft-target-booking'").run();
+  await db.prepare(`INSERT INTO invoices
+    (id,salon_id,booking_id,client_id,invoice_number,subtotal_halalas,discount_halalas,
+     total_halalas,paid_halalas,status,issued_at,created_at,updated_at)
+    VALUES ('draft-target-invoice','main','draft-target-booking','client-test','INV-DRAFT',15000,0,
+      15000,15000,'paid',?,?,?)`).bind(now,now,now).run();
+  await db.prepare(`INSERT INTO payroll_periods
+    (id,salon_id,payroll_month,month_start,month_end,status,created_at,updated_at)
+    VALUES ('draft-target-period','main','2026-08','2026-08-01','2026-08-31','open',?,?)`).bind(now,now).run();
+  await db.prepare(`INSERT INTO employee_target_ledger
+    (id,salon_id,employee_id,booking_id,booking_item_id,transaction_type,
+     eligible_amount,source_reference,performed_at,payroll_period_id,created_at,updated_at)
+    VALUES ('draft-target-ledger','main','draft-from','draft-target-booking',
+      'item-draft-target-booking','service_completed',15000,'service:item-draft-target-booking',
+      '2026-08-21T10:00:00','draft-target-period',?,?)`).bind(now,now).run();
+  const carryover = JSON.stringify([{ sourceType:'payroll_carryover', amountHalalas:61100 }]);
+  await db.prepare(`INSERT INTO payroll_entries
+    (id,salon_id,employee_id,payroll_month,status,additions_json,manual_additions_halalas,
+     gross_salary_halalas,final_salary_halalas,net_salary_halalas,created_at,updated_at)
+    VALUES ('draft-target-payroll','main','draft-to','2026-08','draft',?,61100,
+      361100,334662,334662,?,?)`).bind(carryover,now,now).run();
+  await db.prepare(`INSERT INTO employee_target_period_summaries
+    (id,salon_id,employee_id,payroll_period_id,payroll_month,period_start,period_end,
+     total_eligible_services,net_target_amount,earned_bonus_amount,status,payroll_entry_id,created_at,updated_at)
+    VALUES ('draft-from-summary','main','draft-from','draft-target-period','2026-08','2026-08-01','2026-08-31',
+      15000,15000,0,'open',NULL,?,?)`).bind(now,now).run();
+  await db.prepare(`INSERT INTO employee_target_period_summaries
+    (id,salon_id,employee_id,payroll_period_id,payroll_month,period_start,period_end,
+     total_eligible_services,net_target_amount,earned_bonus_amount,status,payroll_entry_id,created_at,updated_at)
+    VALUES ('draft-to-summary','main','draft-to','draft-target-period','2026-08','2026-08-01','2026-08-31',
+      0,0,0,'posted_to_payroll','draft-target-payroll',?,?)`).bind(now,now).run();
+
+  const changed = await correctCompletedBookingItemStaff(db,'main','draft-target-booking',{
+    bookingItemId:'item-draft-target-booking',expectedStaffId:'draft-from',
+    staffId:'draft-to',reason:'Verified actual specialist from service record',
+  },actor);
+  assert.equal(changed.targetSummariesReconciled,2);
+  assert.equal((await db.prepare("SELECT staff_id FROM booking_items WHERE id='item-draft-target-booking'").first()).staff_id,'draft-to');
+  assert.equal((await db.prepare("SELECT employee_id FROM employee_target_ledger WHERE id='draft-target-ledger'").first()).employee_id,'draft-to');
+  const sums = (await db.prepare("SELECT employee_id,net_target_amount,earned_bonus_amount,status FROM employee_target_period_summaries WHERE payroll_period_id='draft-target-period' ORDER BY employee_id").all()).results;
+  assert.deepEqual(sums.map(x=>[x.employee_id,x.net_target_amount,x.earned_bonus_amount,x.status]),[
+    ['draft-from',0,0,'open'],['draft-to',15000,0,'posted_to_payroll'],
+  ]);
+  const payroll = await db.prepare("SELECT additions_json,manual_additions_halalas,net_salary_halalas,status FROM payroll_entries WHERE id='draft-target-payroll'").first();
+  assert.equal(payroll.additions_json,carryover);
+  assert.equal(payroll.manual_additions_halalas,61100);
+  assert.equal(payroll.net_salary_halalas,334662);
+  assert.equal(payroll.status,'draft');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='booking_item_staff_attribution_corrected'").first()).n,1);
+});
+
 test('canonical target identity bonus snapshot prevents alias staff transfer', async (t) => {
   const { mf, db } = await setup(); t.after(() => mf.dispose());
   await seedEmployee(db,'alias-from');
