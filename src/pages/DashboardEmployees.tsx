@@ -3109,6 +3109,7 @@ function DashboardEmployeesContent() {
           partialStartTime,
           partialEndTime,
           note: cleanText(payload.note) || "طلب إجازة بانتظار المراجعة والاعتماد النهائي",
+          ...(leaveType === "other" ? { manualLeavePolicy: { deductFromBalance: payload.deductFromBalance === true, affectsPayroll: payload.affectsPayroll === true } } : {}),
         });
         void writeAuditLog({
           action: "leave_request_submitted",
