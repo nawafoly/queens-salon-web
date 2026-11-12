@@ -74,3 +74,11 @@ test('Core guards both direct creation and approval with atomic D1.batch writes'
   assert.match(source, /assertConflictFreeWrite/);
   assert.match(source, /json_extract\('PERMISSION_INTERVAL_CONFLICT'/);
 });
+
+test('deliberate SQLite assertion failure is mapped to a permission domain conflict, not HTTP 500', () => {
+  assert.match(source, /async function runPermissionConflictGuardedBatch\(db, statements\)/);
+  assert.match(source, /if \(\/malformed json\/i\.test\(message\)\)/);
+  assert.match(source, /new AppError\(409, 'core_permission:interval_conflict'/);
+  const guardedCalls = source.match(/await runPermissionConflictGuardedBatch\(db, \[/g) || [];
+  assert.equal(guardedCalls.length, 3, 'creation, approval and exit must all use translated atomic guard');
+});
