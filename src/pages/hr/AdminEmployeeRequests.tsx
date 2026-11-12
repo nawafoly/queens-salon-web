@@ -87,6 +87,8 @@ type DialogState = {
   finalWorkingDay: string;
   confirmClearance: boolean;
   documentationVerified: boolean;
+  manualDeductBalance: boolean;
+  manualAffectsPayroll: boolean;
   reviewerName: string;
   signatureDataUrl: string;
 };
@@ -257,6 +259,8 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     finalWorkingDay: "",
     confirmClearance: false,
     documentationVerified: false,
+    manualDeductBalance: false,
+    manualAffectsPayroll: false,
     reviewerName: "",
     signatureDataUrl: "",
   };
@@ -444,6 +448,10 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
     if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
       setDialogError("يجب إضافة توقيع المعتمد، إما بالرسم اليدوي أو برفع صورة توقيع.");
       return;
+    }
+
+    if (selected.request_type === "leave" && ["approve", "execute"].includes(dialog.kind) && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase())) {
+      body.manualLeavePolicy = { deductFromBalance: dialog.manualDeductBalance, affectsPayroll: dialog.manualAffectsPayroll };
     }
 
     if (dialog.kind === "assign") {
@@ -752,6 +760,14 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
               </label>
             ) : null}
 
+            {dialog.kind === "approve" && selected.request_type === "leave" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase()) ? (
+              <div className="employee-request-execution-form">
+                <strong>تحديد سياسة الإجازة الأخرى قبل الاعتماد النهائي</strong>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualDeductBalance} onChange={(event) => setDialog({ ...dialog, manualDeductBalance: event.target.checked })} /><span>خصم من الرصيد السنوي</span></label>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualAffectsPayroll} onChange={(event) => setDialog({ ...dialog, manualAffectsPayroll: event.target.checked })} /><span>تؤثر على الراتب</span></label>
+              </div>
+            ) : null}
+
             {decisionNeedsSignature ? (
               <SignatureCaptureField
                 required
@@ -761,6 +777,14 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                 value={dialog.signatureDataUrl}
                 onChange={(signatureDataUrl) => setDialog({ ...dialog, signatureDataUrl })}
               />
+            ) : null}
+
+            {dialog.kind === "execute" && selected.request_type === "leave" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase()) ? (
+              <div className="employee-request-execution-form">
+                <strong>تأكيد سياسة الإجازة الأخرى عند التنفيذ</strong>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualDeductBalance} onChange={(event) => setDialog({ ...dialog, manualDeductBalance: event.target.checked })} /><span>خصم من الرصيد السنوي</span></label>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualAffectsPayroll} onChange={(event) => setDialog({ ...dialog, manualAffectsPayroll: event.target.checked })} /><span>تؤثر على الراتب</span></label>
+              </div>
             ) : null}
 
             {dialog.kind === "execute" ? (
