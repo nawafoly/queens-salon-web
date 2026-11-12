@@ -2243,7 +2243,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return listEmployeeRequests(db, ctx.salonId, query, actorInfo, { ownOnly: true });
       if (method === "POST") {
         requirePermission(ctx, "employee_requests.own.create");
-        return createEmployeeRequest(db, ctx.salonId, body, actorInfo);
+        return createEmployeeRequest(db, ctx.salonId, body, actorInfo, { employeeSelfService: true });
       }
       break;
 
