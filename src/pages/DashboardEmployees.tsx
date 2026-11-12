@@ -68,7 +68,6 @@ import {
 } from "../services/employeeHub";
 import {
   decideCanonicalEmployeeLeaveRequest,
-  refreshCanonicalEmployeeLeaveRequest,
 } from "../services/canonicalEmployeeLeaveRequests";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import { archiveEmployee } from "../services/employeeLifecycleService";
@@ -536,13 +535,6 @@ function inclusiveLeaveDays(fromDate: string, toDate: string) {
   const to = new Date(`${toDate}T12:00:00.000Z`).getTime();
   const days = Math.floor((to - from) / 86400000) + 1;
   return Number.isFinite(days) && days > 0 ? days : 0;
-}
-
-function managedLeavePolicy(type: ManagedLeaveType) {
-  return {
-    deductFromBalance: type === "annual" || type === "sick" || type === "emergency",
-    affectsPayroll: type === "unpaid",
-  };
 }
 
 function positiveNumberOrZero(value: unknown) {
