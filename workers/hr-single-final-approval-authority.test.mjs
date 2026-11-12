@@ -56,7 +56,7 @@ test('leave finalization guards exist on direct leave and request workflows', as
   for (const route of ['leave:approve', 'leave:reject', 'employee-request:action']) {
     assert.ok(source.includes('case "' + route + '"'));
   }
-  assert.match(source, /requestRow\.request_type === "leave" && \["approve", "reject", "execute"\]/);
+  assert.match(source, /requestRow\.request_type === "leave" && \([\s\S]*?\["approve", "reject", "execute"\]/);
   assert.match(source, /case "leave:approve":[\s\S]*?await requireFinalLeaveAuthority/);
   assert.match(source, /case "leave:reject":[\s\S]*?await requireFinalLeaveAuthority/);
 });
