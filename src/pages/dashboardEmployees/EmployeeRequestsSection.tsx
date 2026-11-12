@@ -19,6 +19,7 @@ import {
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { useEmployeeLanguage } from "./employeeLanguage";
+import { LeaveFinalApprovalService, type LeaveFinalApprovalAuthority } from "../../services/LeaveFinalApprovalService";
 
 type EmployeeRequestsSectionProps = {
   isVisible: boolean;
@@ -162,6 +163,19 @@ export default function EmployeeRequestsSection({
   const [message, setMessage] = useState("");
   const [scope, setScope] = useState<RequestScope>("pending");
   const [adminNote, setAdminNote] = useState("");
+  const [finalAuthority, setFinalAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
+  useEffect(() => {
+    if (!isVisible) return;
+    let live = true;
+    void LeaveFinalApprovalService.get().then((authority) => {
+      if (live) setFinalAuthority(authority);
+    }).catch(() => {
+      if (live) setFinalAuthority(null);
+    });
+    return () => { live = false; };
+  }, [isVisible]);
+  const canFinalizeLeave = canManage && !!finalAuthority?.approver_uid
+    && finalAuthority.approver_uid === reviewerUid;
 
   const load = useCallback(async () => {
     if (!isVisible || !employeeId) return;
@@ -189,7 +203,10 @@ export default function EmployeeRequestsSection({
   const pendingCount = rows.filter((row) => row.status === "pending" || !row.status).length;
 
   const decide = async (request: EmployeeLeaveRequest, nextStatus: "approved" | "rejected" | "cancelled") => {
-    if (!canManage) return;
+    if (!canFinalizeLeave) {
+      setError("يمكنك مراجعة الطلب فقط؛ الاعتماد النهائي محصور بحساب المالك المُعيّن.");
+      return;
+    }
     const uid = cleanText(reviewerUid);
     if (!uid) {
       setError("تعذر تحديد مستخدم الإدارة للمراجعة.");
@@ -300,12 +317,12 @@ export default function EmployeeRequestsSection({
               t("بدون مرفقات"),
               <div className="dsv2-cluster">
                 <WorkspaceStatusBadgeV2 tone={statusTone(request.status)}>{t(statusLabel(request.status))}</WorkspaceStatusBadgeV2>
-                {request.status === "pending" || !request.status ? (
+                {(request.status === "pending" || !request.status) && canFinalizeLeave ? (
                   <>
                     <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "approved")}>{t("قبول")}</button>
                     <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "rejected")}>{t("رفض")}</button>
                   </>
-                ) : request.status === "approved" ? (
+                ) : request.status === "approved" && canFinalizeLeave ? (
                   <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={!canManage || savingId === request.id} onClick={() => void decide(request, "cancelled")}>{t("إلغاء")}</button>
                 ) : null}
               </div>,
