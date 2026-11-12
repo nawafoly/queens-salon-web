@@ -37,6 +37,74 @@ function durationMinutes(startTime, endTime) {
   return end >= start ? end - start : end + 24 * 60 - start;
 }
 
+// The predicate runs in the SAME SQLite write statement as the permission
+// insert/approval, preventing two concurrent requests from both passing an
+// earlier read-only conflict check. Intervals are half-open [start, end).
+// A full-day approved leave blocks the whole date; legacy partial rows
+// without trustworthy time boundaries fail closed.
+const permissionConflictPredicate = `
+  NOT EXISTS (
+    SELECT 1 FROM employee_permission_requests p
+    WHERE p.salon_id = ? AND p.employee_id = ? AND p.date_key = ?
+      AND p.status IN ('approved', 'out', 'returned')
+      AND p.id <> ?
+      AND (
+        p.expected_return_time IS NULL
+        OR p.requested_exit_time >= p.expected_return_time
+        OR (p.requested_exit_time < ? AND ? < p.expected_return_time)
+      )
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM employee_leaves l
+    WHERE l.salon_id = ? AND l.employee_id = ?
+      AND l.status = 'approved'
+      AND l.start_date <= ? AND l.end_date >= ?
+      AND (l.request_id IS NULL OR l.request_id <> ?)
+      AND (
+        COALESCE(l.duration_kind, 'full_day') <> 'partial'
+        OR l.partial_start_time IS NULL OR l.partial_end_time IS NULL
+        OR l.partial_start_time >= l.partial_end_time
+        OR (l.partial_start_time < ? AND ? < l.partial_end_time)
+      )
+  )`;
+
+function assertSameDayPermissionRange(start, end) {
+  // Cross-midnight permissions require a date-aware interval model. Do not
+  // silently treat them as disjoint from the next day's work or leave.
+  if (minutesOf(end) <= minutesOf(start)) {
+    throw new AppError(409, 'core_permission:cross_midnight_requires_review');
+  }
+}
+
+function permissionConflictParams(salonId, employeeId, dateKey, permissionId, start, end) {
+  return [
+    salonId, employeeId, dateKey, permissionId, end, start,
+    salonId, employeeId, dateKey, dateKey, permissionId, end, start,
+  ];
+}
+
+const assertConflictFreeWrite = {
+  sql: "SELECT CASE WHEN changes() = 1 THEN 1 ELSE json_extract('PERMISSION_INTERVAL_CONFLICT', '$.value') END AS asserted",
+  params: [],
+};
+
+// Keep the deliberate SQLite abort in the same D1 batch so a failed
+// optimistic conflict check rolls back the preceding mutation. Only the
+// sentinel's malformed-JSON failure is translated; unrelated database
+// failures must remain visible as operational errors.
+async function runPermissionConflictGuardedBatch(db, statements) {
+  try {
+    return await dbBatch(db, statements);
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (/malformed json/i.test(message)) {
+      throw new AppError(409, 'core_permission:interval_conflict',
+        'Permission overlaps an approved leave or another permission');
+    }
+    throw error;
+  }
+}
+
 function eventRecordedAt(dateKey, timeValue) {
   return new Date(`${dateKey}T${validTime(timeValue)}:00+03:00`).toISOString();
 }
@@ -404,6 +472,7 @@ export async function createPermissionRequest(
   }
   const now = nowIso();
   const autoApproved = source === 'admin_direct';
+  if (autoApproved) assertSameDayPermissionRange(requestedExitTime, expectedReturnTime);
   const approvedMinutes = autoApproved
     ? durationMinutes(requestedExitTime, expectedReturnTime)
     : 0;
@@ -439,7 +508,7 @@ export async function createPermissionRequest(
     updated_at: now,
   };
 
-  await dbBatch(db, [
+  await runPermissionConflictGuardedBatch(db, [
     {
       sql: `INSERT INTO employee_permission_requests
         (id, salon_id, employee_id, employee_uid, employee_name, date_key,
@@ -448,9 +517,14 @@ export async function createPermissionRequest(
          created_by_uid, created_by_name, reviewer_uid, reviewer_name,
          returned_by_uid, returned_by_name, reviewed_at, exited_at, returned_at,
          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: Object.values(row),
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE ${source === 'admin_direct' ? permissionConflictPredicate : '1 = 1'}`,
+      params: [
+        ...Object.values(row),
+        ...(autoApproved ? permissionConflictParams(salonId, row.employee_id, dateKey, row.id, requestedExitTime, expectedReturnTime) : []),
+      ],
     },
+    ...(autoApproved ? [assertConflictFreeWrite] : []),
   ]);
   await insertEvent(db, salonId, row.id, 'created', actor, { source, status, financialEffect });
 
@@ -527,17 +601,25 @@ export async function decidePermissionRequest(
     const returnTime = cleanText(row.expected_return_time);
     if (!returnTime) throw new AppError(409, 'core_permission:return_time_required');
     const approvedReturnTime = validTime(returnTime, 'expectedReturnTime');
+    assertSameDayPermissionRange(exitTime, approvedReturnTime);
     const requestedMinutes = durationMinutes(exitTime, approvedReturnTime);
-    await dbRun(
-      db,
-      `UPDATE employee_permission_requests
+    await runPermissionConflictGuardedBatch(db, [
+      {
+        sql: `UPDATE employee_permission_requests
           SET status = 'approved', financial_effect = ?, actual_exit_time = NULL,
               actual_return_time = NULL, duration_minutes = 0, unpaid_minutes = 0,
               reviewer_uid = ?, reviewer_name = ?, returned_by_uid = NULL, returned_by_name = NULL,
               reviewed_at = ?, exited_at = NULL, returned_at = NULL, updated_at = ?
-        WHERE salon_id = ? AND id = ?`,
-      [financialEffect, optionalText(actor.uid) || null, optionalText(actor.name) || null, now, now, salonId, row.id]
-    );
+        WHERE salon_id = ? AND id = ? AND status = 'pending'
+          AND ${permissionConflictPredicate}`,
+        params: [
+          financialEffect, optionalText(actor.uid) || null, optionalText(actor.name) || null,
+          now, now, salonId, row.id,
+          ...permissionConflictParams(salonId, row.employee_id, row.date_key, row.id, exitTime, approvedReturnTime),
+        ],
+      },
+      assertConflictFreeWrite,
+    ]);
     await insertEvent(db, salonId, row.id, 'approved', actor, {
       financialEffect,
       autoFinalized: false,
@@ -637,25 +719,28 @@ export async function markPermissionOut(
     throw new AppError(409, 'core_permission:invalid_transition');
   }
   const actualExitTime = validTime(data.actualExitTime || data.actual_exit_time || row.requested_exit_time, 'actualExitTime');
+  const plannedReturn = cleanText(row.expected_return_time);
+  if (!plannedReturn) throw new AppError(409, 'core_permission:return_time_required');
+  assertSameDayPermissionRange(row.requested_exit_time, plannedReturn);
   const now = nowIso();
-  await dbRun(
-    db,
-    `UPDATE employee_permission_requests
+  await runPermissionConflictGuardedBatch(db, [
+    {
+      sql: `UPDATE employee_permission_requests
         SET status = 'out', actual_exit_time = ?, reviewer_uid = COALESCE(reviewer_uid, ?),
             reviewer_name = COALESCE(reviewer_name, ?), reviewed_at = COALESCE(reviewed_at, ?),
             exited_at = ?, updated_at = ?
-      WHERE salon_id = ? AND id = ?`,
-    [
-      actualExitTime,
-      optionalText(actor.uid) || null,
-      optionalText(actor.name) || null,
-      now,
-      now,
-      now,
-      salonId,
-      row.id,
-    ]
-  );
+      WHERE salon_id = ? AND id = ? AND status IN ('pending', 'approved')
+        AND ${permissionConflictPredicate}`,
+      params: [
+        actualExitTime,
+        optionalText(actor.uid) || null,
+        optionalText(actor.name) || null,
+        now, now, now, salonId, row.id,
+        ...permissionConflictParams(salonId, row.employee_id, row.date_key, row.id, row.requested_exit_time, plannedReturn),
+      ],
+    },
+    assertConflictFreeWrite,
+  ]);
   const updated = await getPermission(db, salonId, row.id);
   if (cleanText(updated.expected_return_time)) await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_out', actualExitTime, actor);
