@@ -88,6 +88,23 @@ const assertConflictFreeWrite = {
   params: [],
 };
 
+// Keep the deliberate SQLite abort in the same D1 batch so a failed
+// optimistic conflict check rolls back the preceding mutation. Only the
+// sentinel's malformed-JSON failure is translated; unrelated database
+// failures must remain visible as operational errors.
+async function runPermissionConflictGuardedBatch(db, statements) {
+  try {
+    return await dbBatch(db, statements);
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (/malformed json/i.test(message)) {
+      throw new AppError(409, 'core_permission:interval_conflict',
+        'Permission overlaps an approved leave or another permission');
+    }
+    throw error;
+  }
+}
+
 function eventRecordedAt(dateKey, timeValue) {
   return new Date(`${dateKey}T${validTime(timeValue)}:00+03:00`).toISOString();
 }
@@ -491,7 +508,7 @@ export async function createPermissionRequest(
     updated_at: now,
   };
 
-  await dbBatch(db, [
+  await runPermissionConflictGuardedBatch(db, [
     {
       sql: `INSERT INTO employee_permission_requests
         (id, salon_id, employee_id, employee_uid, employee_name, date_key,
@@ -586,7 +603,7 @@ export async function decidePermissionRequest(
     const approvedReturnTime = validTime(returnTime, 'expectedReturnTime');
     assertSameDayPermissionRange(exitTime, approvedReturnTime);
     const requestedMinutes = durationMinutes(exitTime, approvedReturnTime);
-    await dbBatch(db, [
+    await runPermissionConflictGuardedBatch(db, [
       {
         sql: `UPDATE employee_permission_requests
           SET status = 'approved', financial_effect = ?, actual_exit_time = NULL,
@@ -706,7 +723,7 @@ export async function markPermissionOut(
   if (!plannedReturn) throw new AppError(409, 'core_permission:return_time_required');
   assertSameDayPermissionRange(row.requested_exit_time, plannedReturn);
   const now = nowIso();
-  await dbBatch(db, [
+  await runPermissionConflictGuardedBatch(db, [
     {
       sql: `UPDATE employee_permission_requests
         SET status = 'out', actual_exit_time = ?, reviewer_uid = COALESCE(reviewer_uid, ?),
