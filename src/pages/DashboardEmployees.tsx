@@ -3023,15 +3023,6 @@ function DashboardEmployeesContent() {
     const isPartialLeave = durationKind === "partial";
     const partialStartTime = isPartialLeave ? cleanText(payload.partialStartTime) : "";
     const partialEndTime = isPartialLeave ? cleanText(payload.partialEndTime) : "";
-    const basePolicy = managedLeavePolicy(leaveType);
-    const policy = isPartialLeave
-      ? { deductFromBalance: false, affectsPayroll: false }
-      : leaveType === "other"
-        ? {
-            deductFromBalance: payload.deductFromBalance === true,
-            affectsPayroll: payload.affectsPayroll === true,
-          }
-        : basePolicy;
     const fromDate = normalizeLeaveUntil(payload.fromDate);
     const toDate = normalizeLeaveUntil(payload.toDate);
     const days = inclusiveLeaveDays(fromDate, toDate);
