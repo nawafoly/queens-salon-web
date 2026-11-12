@@ -28,7 +28,7 @@ type Props = {
   defaultType?: string;
   availableBalance?: number | null;
   hasAttendanceInRange?: (fromDate: string, toDate: string) => boolean;
-  hasOverlappingLeave?: (fromDate: string, toDate: string) => boolean;
+  hasOverlappingLeave?: (fromDate: string, toDate: string, durationKind: "full_day" | "partial", partialStartTime: string, partialEndTime: string) => boolean;
 };
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
@@ -53,7 +53,8 @@ const LEAVE_TYPE_POLICY: Record<string, { deductFromBalance: boolean; affectsPay
   rest: { deductFromBalance: false, affectsPayroll: false },
   weekly_rest_substitute_use: { deductFromBalance: false, affectsPayroll: false },
   other: { deductFromBalance: false, affectsPayroll: false },
-  sick: { deductFromBalance: true, affectsPayroll: false },
+  // Sick leave has a separate statutory entitlement bucket in Core, not annual leave.
+  sick: { deductFromBalance: false, affectsPayroll: false },
 };
 
 export default function LeaveRequestModal({
@@ -145,7 +146,7 @@ export default function LeaveRequestModal({
     if (!isPartialLeave && hasAttendanceInRange && hasAttendanceInRange(fromDate, toDate)) {
       result.push("يوجد بصمة داخل النطاق المحدد.");
     }
-    if (hasOverlappingLeave && hasOverlappingLeave(fromDate, toDate)) {
+    if (hasOverlappingLeave && hasOverlappingLeave(fromDate, toDate, durationKind, partialStartTime, partialEndTime)) {
       result.push("توجد إجازة معتمدة تتداخل مع النطاق المحدد.");
     }
     return result;
