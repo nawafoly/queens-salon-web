@@ -195,7 +195,7 @@ export default function LeaveRequestModal({
       open={open}
       onClose={onClose}
       title="تسجيل إجازة أو استئذان"
-      description={isPartialLeave ? "حدّد فترة الاستئذان؛ هذه الفترة فقط ستُحجب من الحجز." : "اختر إجازة أو استئذان، ثم أدخل البيانات المطلوبة للاعتماد."}
+      description={isPartialLeave ? "حدّد فترة الاستئذان؛ هذه الفترة فقط ستُحجب من الحجز." : "اختر نوع الإجازة وحدد المدة لإرسال الطلب للمراجعة. لا تُعتمد الإجازة عند الإرسال."}
       eyebrow="الحضور والإجازات"
       size="md"
       tone="gold"
@@ -211,7 +211,7 @@ export default function LeaveRequestModal({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? "جاري الاعتماد..." : isPartialLeave ? "اعتماد الاستئذان" : "اعتماد الإجازة"}
+            {submitting ? "جاري الاعتماد..." : isPartialLeave ? "اعتماد الاستئذان" : "إرسال طلب الإجازة للمراجعة"}
           </button>
           <button
             type="button"
