@@ -10807,7 +10807,7 @@ const canonicalSchedules =
             return Boolean((row as any).checkInAtClient || (row as any).checkOutAtClient);
           });
         }}
-        hasOverlappingLeave={(fromDate: string, toDate: string) => {
+        hasOverlappingLeave={(fromDate: string, toDate: string, durationKind, partialStartTime, partialEndTime) => {
           const from = normalizeLeaveUntil(fromDate);
           const to = normalizeLeaveUntil(toDate) || from;
           if (!from || !to) return false;
@@ -10815,8 +10815,17 @@ const canonicalSchedules =
             if (cleanText(request.status).toLowerCase() !== "approved") return false;
             const rf = normalizeLeaveUntil(request.fromDate);
             const rt = normalizeLeaveUntil(request.toDate) || rf;
-            if (!rf || !rt) return false;
-            return !(rt < from || rf > to);
+            if (!rf || !rt || rt < from || rf > to) return false;
+            // A full-day leave covers the whole date. Two partial permissions
+            // conflict only when their half-open time intervals intersect.
+            const existingPartial =
+              cleanText((request as any).durationKind || (request as any).duration_kind).toLowerCase() === "partial";
+            if (durationKind !== "partial" || !existingPartial) return true;
+            const existingStart = cleanText((request as any).partialStartTime || (request as any).partial_start_time);
+            const existingEnd = cleanText((request as any).partialEndTime || (request as any).partial_end_time);
+            // Missing legacy interval metadata must fail closed.
+            if (!existingStart || !existingEnd) return true;
+            return partialStartTime < existingEnd && existingStart < partialEndTime;
           });
         }}
         onSubmit={async (payload) => {
