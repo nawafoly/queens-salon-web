@@ -57,6 +57,10 @@ test('leave finalization guards exist on direct leave and request workflows', as
     assert.ok(source.includes('case "' + route + '"'));
   }
   assert.match(source, /requestRow\.request_type === "leave" && \([\s\S]*?\["approve", "reject", "execute"\]/);
+  const guardPosition = source.indexOf('if (requestRow.request_type === "leave" && (');
+  const selfActionPosition = source.indexOf('const employeeActions = new Set(["answer-info", "cancel"])');
+  assert.ok(guardPosition > 0 && selfActionPosition > guardPosition,
+    'approved leave cancellation authority check must precede early self-service return');
   assert.match(source, /case "leave:approve":[\s\S]*?await requireFinalLeaveAuthority/);
   assert.match(source, /case "leave:reject":[\s\S]*?await requireFinalLeaveAuthority/);
 });
