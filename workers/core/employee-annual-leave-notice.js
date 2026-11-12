@@ -1,7 +1,7 @@
 // Employee self-service annual leave notice period. Internal operational policy,
 // not a general Saudi statutory notice period and not an HR-admin restriction.
 // All calculations use Saudi civil dates, not UTC date boundaries.
-import { AppError } from '../errors.js';
+import { AppError } from './errors.js';
 
 const NOTICE_DAYS = 3;
 
