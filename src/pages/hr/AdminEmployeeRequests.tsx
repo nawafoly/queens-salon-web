@@ -27,6 +27,7 @@ import { printExceptionalFinancialPaymentRequestDocument } from "../../services/
 import { printSalaryCertificateDocument } from "../../services/salaryCertificateExport";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
+import { CoreAccountService, type CoreAccount } from "../../services/CoreAccountService";
 import { LeaveFinalApprovalService, type LeaveFinalApprovalAuthority } from "../../services/LeaveFinalApprovalService";
 import {
   exportLeaveRequestToExcel,
@@ -287,6 +288,36 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
   const [assigneesLoading, setAssigneesLoading] = useState(false);
   const [leaveAuthority, setLeaveAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
   const [leaveAuthorityLoaded, setLeaveAuthorityLoaded] = useState(false);
+  const [ownerAccounts, setOwnerAccounts] = useState<CoreAccount[]>([]);
+  const [targetApproverUserId, setTargetApproverUserId] = useState("");
+  const [authorityError, setAuthorityError] = useState("");
+  const [authoritySaving, setAuthoritySaving] = useState(false);
+  useEffect(() => {
+    if (session.role !== "owner") return;
+    let live = true;
+    void CoreAccountService.list(false, "internal").then((accounts) => {
+      if (live) setOwnerAccounts(accounts.filter((account) =>
+        account.primaryRole === "owner" && account.status === "active"
+      ));
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [session.role]);
+  const canAssignLeaveAuthority = session.role === "owner" &&
+    leaveAuthorityLoaded && (!leaveAuthority || leaveAuthority.approver_uid === session.uid);
+  const saveLeaveAuthority = async () => {
+    if (!canAssignLeaveAuthority || !targetApproverUserId || authoritySaving) return;
+    setAuthoritySaving(true);
+    setAuthorityError("");
+    try {
+      const updated = await LeaveFinalApprovalService.assign(targetApproverUserId);
+      setLeaveAuthority(updated);
+      setTargetApproverUserId("");
+    } catch (error) {
+      setAuthorityError(String((error as Error)?.message || "تعذر تعيين المعتمد النهائي."));
+    } finally {
+      setAuthoritySaving(false);
+    }
+  };
   useEffect(() => {
     let live = true;
     void LeaveFinalApprovalService.get().then((authority) => {
@@ -1122,6 +1153,32 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
         <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadList()} disabled={loading}>
           <FontAwesomeIcon icon={faRotate} spin={loading} /> تحديث
         </button>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded" aria-label="صلاحية اعتماد الإجازات">
+        <h2>المعتمد النهائي للإجازات</h2>
+        <p>كل حسابات الإدارة يمكنها مراجعة الطلبات. الاعتماد والرفض والتنفيذ النهائي محصور بحساب واحد مُعيّن في Core.</p>
+        <p>{leaveAuthorityLoaded
+          ? leaveAuthority?.approver_name
+            ? `المعتمد الحالي: ${leaveAuthority.approver_name}`
+            : "لم يُعيّن المعتمد النهائي بعد، ولن تُعتمد الإجازات حتى تعيينه."
+          : "جارٍ التحقق من صلاحيات الاعتماد..."}</p>
+        {canAssignLeaveAuthority ? (
+          <div className="employee-request-form-grid">
+            <label><span>اختر حساب المالك صاحب الاعتماد النهائي</span>
+              <select className="dsv2-input" value={targetApproverUserId} onChange={(event) => setTargetApproverUserId(event.target.value)}>
+                <option value="">اختر حسابًا</option>
+                {ownerAccounts.filter((account) => account.firebaseUid !== session.uid).map((account) => (
+                  <option key={account.id} value={account.id}>{account.displayName || account.email}</option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={authoritySaving || !targetApproverUserId} onClick={() => void saveLeaveAuthority()}>
+              {authoritySaving ? "جارٍ التعيين..." : "تعيين المعتمد النهائي"}
+            </button>
+          </div>
+        ) : null}
+        {authorityError ? <p role="alert">{authorityError}</p> : null}
       </section>
 
       <section className="admin-request-stats-v2" aria-label="ملخص حالات الطلبات">
