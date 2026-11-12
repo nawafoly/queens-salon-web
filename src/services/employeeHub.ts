@@ -1087,6 +1087,7 @@ export async function createManagedLeaveRequest(input: {
   durationKind?: "full_day" | "partial";
   partialStartTime?: string;
   partialEndTime?: string;
+  manualLeavePolicy?: { deductFromBalance: boolean; affectsPayroll: boolean };
 }) {
   // Operational leave requests are Core employee_requests via createManagedEmployeeRequest.
   return createManagedLeaveRequestCore(input);

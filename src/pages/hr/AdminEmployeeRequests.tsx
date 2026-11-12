@@ -27,6 +27,8 @@ import { printExceptionalFinancialPaymentRequestDocument } from "../../services/
 import { printSalaryCertificateDocument } from "../../services/salaryCertificateExport";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
+import { CoreAccountService, type CoreAccount } from "../../services/CoreAccountService";
+import { LeaveFinalApprovalService, type LeaveFinalApprovalAuthority } from "../../services/LeaveFinalApprovalService";
 import {
   exportLeaveRequestToExcel,
   exportLeaveRequestToPdf,
@@ -85,6 +87,8 @@ type DialogState = {
   finalWorkingDay: string;
   confirmClearance: boolean;
   documentationVerified: boolean;
+  manualDeductBalance: boolean;
+  manualAffectsPayroll: boolean;
   reviewerName: string;
   signatureDataUrl: string;
 };
@@ -255,6 +259,8 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     finalWorkingDay: "",
     confirmClearance: false,
     documentationVerified: false,
+    manualDeductBalance: false,
+    manualAffectsPayroll: false,
     reviewerName: "",
     signatureDataUrl: "",
   };
@@ -284,6 +290,49 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
   const [dialogError, setDialogError] = useState("");
   const [assignees, setAssignees] = useState<EmployeeRequestAssignee[]>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [leaveAuthority, setLeaveAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
+  const [leaveAuthorityLoaded, setLeaveAuthorityLoaded] = useState(false);
+  const [ownerAccounts, setOwnerAccounts] = useState<CoreAccount[]>([]);
+  const [targetApproverUserId, setTargetApproverUserId] = useState("");
+  const [authorityError, setAuthorityError] = useState("");
+  const [authoritySaving, setAuthoritySaving] = useState(false);
+  useEffect(() => {
+    if (session.role !== "owner") return;
+    let live = true;
+    void CoreAccountService.list(false, "internal").then((accounts) => {
+      if (live) setOwnerAccounts(accounts.filter((account) =>
+        account.primaryRole === "owner" && account.status === "active"
+      ));
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [session.role]);
+  const canAssignLeaveAuthority = session.role === "owner" &&
+    leaveAuthorityLoaded && (!leaveAuthority || leaveAuthority.approver_uid === session.uid);
+  const saveLeaveAuthority = async () => {
+    if (!canAssignLeaveAuthority || !targetApproverUserId || authoritySaving) return;
+    setAuthoritySaving(true);
+    setAuthorityError("");
+    try {
+      const updated = await LeaveFinalApprovalService.assign(targetApproverUserId);
+      setLeaveAuthority(updated);
+      setTargetApproverUserId("");
+    } catch (error) {
+      setAuthorityError(String((error as Error)?.message || "تعذر تعيين المعتمد النهائي."));
+    } finally {
+      setAuthoritySaving(false);
+    }
+  };
+  useEffect(() => {
+    let live = true;
+    void LeaveFinalApprovalService.get().then((authority) => {
+      if (live) setLeaveAuthority(authority);
+    }).catch(() => {
+      if (live) setLeaveAuthority(null);
+    }).finally(() => {
+      if (live) setLeaveAuthorityLoaded(true);
+    });
+    return () => { live = false; };
+  }, []);
 
   useEffect(() => {
     setType(initialType);
@@ -399,6 +448,10 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
     if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
       setDialogError("يجب إضافة توقيع المعتمد، إما بالرسم اليدوي أو برفع صورة توقيع.");
       return;
+    }
+
+    if (selected.request_type === "leave" && ["approve", "execute"].includes(dialog.kind) && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase())) {
+      body.manualLeavePolicy = { deductFromBalance: dialog.manualDeductBalance, affectsPayroll: dialog.manualAffectsPayroll };
     }
 
     if (dialog.kind === "assign") {
@@ -707,6 +760,14 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
               </label>
             ) : null}
 
+            {dialog.kind === "approve" && selected.request_type === "leave" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase()) ? (
+              <div className="employee-request-execution-form">
+                <strong>تحديد سياسة الإجازة الأخرى قبل الاعتماد النهائي</strong>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualDeductBalance} onChange={(event) => setDialog({ ...dialog, manualDeductBalance: event.target.checked })} /><span>خصم من الرصيد السنوي</span></label>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualAffectsPayroll} onChange={(event) => setDialog({ ...dialog, manualAffectsPayroll: event.target.checked })} /><span>تؤثر على الراتب</span></label>
+              </div>
+            ) : null}
+
             {decisionNeedsSignature ? (
               <SignatureCaptureField
                 required
@@ -716,6 +777,14 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                 value={dialog.signatureDataUrl}
                 onChange={(signatureDataUrl) => setDialog({ ...dialog, signatureDataUrl })}
               />
+            ) : null}
+
+            {dialog.kind === "execute" && selected.request_type === "leave" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase()) ? (
+              <div className="employee-request-execution-form">
+                <strong>تأكيد سياسة الإجازة الأخرى عند التنفيذ</strong>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualDeductBalance} onChange={(event) => setDialog({ ...dialog, manualDeductBalance: event.target.checked })} /><span>خصم من الرصيد السنوي</span></label>
+                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualAffectsPayroll} onChange={(event) => setDialog({ ...dialog, manualAffectsPayroll: event.target.checked })} /><span>تؤثر على الراتب</span></label>
+              </div>
             ) : null}
 
             {dialog.kind === "execute" ? (
@@ -821,6 +890,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
 
   if (selected) {
     const can = (permission: Parameters<typeof hasPermission>[0]) => hasPermission(permission);
+    const canFinalizeSelectedLeave = selected.request_type !== "leave" || (leaveAuthorityLoaded && !!leaveAuthority?.approver_uid && leaveAuthority.approver_uid === session.uid);
     const timelineEvents = (selected.events || []).filter(
       (event) => !HIDDEN_TIMELINE_EVENTS.has(event.event_type)
     );
@@ -959,22 +1029,22 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <FontAwesomeIcon icon={faCommentDots} /> طلب معلومات
                 </button>
               ) : null}
-              {selected.status === "under_review" && can("employee_requests.approve") ? (
+              {selected.status === "under_review" && canFinalizeSelectedLeave && can("employee_requests.approve") ? (
                 <button className="is-success" disabled={busy} onClick={() => void openDialog("approve")}>
                   <FontAwesomeIcon icon={faCheck} /> موافقة
                 </button>
               ) : null}
-              {["received", "under_review", "needs_info"].includes(selected.status) && can("employee_requests.reject") ? (
+              {["received", "under_review", "needs_info"].includes(selected.status) && canFinalizeSelectedLeave && can("employee_requests.reject") ? (
                 <button className="is-danger" disabled={busy} onClick={() => void openDialog("reject")}>
                   <FontAwesomeIcon icon={faXmark} /> رفض
                 </button>
               ) : null}
-              {selected.status === "executing" && selected.execution_status === "failed" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
+              {selected.status === "executing" && selected.execution_status === "failed" && selected.request_type !== "salary_certificate" && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> إعادة محاولة التنفيذ
                 </button>
               ) : null}
-              {selected.status === "approved" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
+              {selected.status === "approved" && selected.request_type !== "salary_certificate" && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> بدء التنفيذ
                 </button>
@@ -989,7 +1059,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <FontAwesomeIcon icon={faRotate} /> إعادة فتح
                 </button>
               ) : null}
-              {selected.request_type === "exit_return" && selected.status === "executing" && !selected.actual_exit_at && can("employee_requests.execute") ? (
+              {selected.request_type === "exit_return" && selected.status === "executing" && !selected.actual_exit_at && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button disabled={busy} onClick={() => void runAction("record-exit")}>
                   <FontAwesomeIcon icon={faClock} /> تسجيل الخروج
                 </button>
@@ -1107,6 +1177,37 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
         <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadList()} disabled={loading}>
           <FontAwesomeIcon icon={faRotate} spin={loading} /> تحديث
         </button>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded" aria-label="صلاحية اعتماد الإجازات">
+        <h2>المعتمد النهائي للإجازات</h2>
+        <p>كل حسابات الإدارة يمكنها مراجعة الطلبات. الاعتماد والرفض والتنفيذ النهائي محصور بحساب واحد مُعيّن في Core.</p>
+        <p>{leaveAuthorityLoaded
+          ? leaveAuthority?.approver_name
+            ? `المعتمد الحالي: ${leaveAuthority.approver_name}`
+            : "لم يُعيّن المعتمد النهائي بعد، ولن تُعتمد الإجازات حتى تعيينه."
+          : "جارٍ التحقق من صلاحيات الاعتماد..."}</p>
+        {canAssignLeaveAuthority ? (
+          <div className="employee-request-form-grid">
+            <label><span>اختر حساب المالك صاحب الاعتماد النهائي</span>
+              <DashboardSelectV2
+                value={targetApproverUserId}
+                options={[
+                  { value: "", label: "اختر حسابًا" },
+                  ...ownerAccounts.filter((account) => account.firebaseUid !== session.uid).map((account) => ({
+                    value: account.id,
+                    label: account.displayName || account.email,
+                  })),
+                ]}
+                onChange={setTargetApproverUserId}
+              />
+            </label>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={authoritySaving || !targetApproverUserId} onClick={() => void saveLeaveAuthority()}>
+              {authoritySaving ? "جارٍ التعيين..." : "تعيين المعتمد النهائي"}
+            </button>
+          </div>
+        ) : null}
+        {authorityError ? <p role="alert">{authorityError}</p> : null}
       </section>
 
       <section className="admin-request-stats-v2" aria-label="ملخص حالات الطلبات">
