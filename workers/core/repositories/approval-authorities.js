@@ -12,6 +12,7 @@ export async function getApprovalAuthority(db, salonId, authorityKey = FINAL_LEA
     `SELECT a.salon_id, a.authority_key, a.approver_user_id,
             a.assigned_by_user_id, a.assigned_at, a.updated_at,
             u.display_name AS approver_name, u.email AS approver_email,
+            u.firebase_uid AS approver_uid,
             u.status AS approver_status, u.primary_role AS approver_role
        FROM approval_authorities a
        LEFT JOIN app_users u
