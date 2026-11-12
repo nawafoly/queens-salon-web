@@ -42,6 +42,7 @@ import {
   type EmployeeRequestType,
 } from "../../services/employeeRequests";
 import { CoreFilesService } from "../../services/CoreFilesService";
+import { minimumAnnualLeaveRequestDate } from "../../helpers/hr/employeeAnnualLeaveNotice";
 import { useEmployeePortalLanguage, type EmployeePortalLanguage } from "../../features/employee-portal/EmployeePortalLanguage";
 import "../../styles/EmployeeRequests.css";
 
@@ -351,6 +352,9 @@ function RequestForm({ type, employeeId, employeeName, language, onCreated, onCl
         const endDate = String(form.endDate || "");
         if (!startDate || !endDate) throw new Error(pick(language, "حدد تاريخ بداية الإجازة وآخر يوم إجازة قبل الإرسال.", "Select the first and last day of leave before submitting."));
         if (endDate < startDate) throw new Error(pick(language, "آخر يوم إجازة لا يمكن أن يسبق تاريخ بداية الإجازة.", "The leave end date cannot be before the start date."));
+        if (String(form.leaveType || "").toLowerCase() === "annual" && startDate < minimumAnnualLeaveRequestDate()) {
+          throw new Error(pick(language, "يجب تقديم طلب الإجازة السنوية قبل بدايتها بثلاثة أيام تقويمية على الأقل.", "Annual leave requests must be submitted at least three calendar days before the start date."));
+        }
         if (leaveSignatureMissing) throw new Error(pick(language, "يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.", "A handwritten signature is required before submitting the leave request."));
       }
       if (type === "salary_certificate" && !String(form.addressee || "").trim()) {
