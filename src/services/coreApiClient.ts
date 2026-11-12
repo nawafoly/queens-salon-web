@@ -84,6 +84,8 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_client:identity_conflict": "بيانات العميلة تتعارض مع ملف موجود. راجعي الملف قبل المتابعة.",
   "core_leave:insufficient_balance": "رصيد الإجازة المتاح لا يكفي لتنفيذ هذه الإجازة.",
   "core_employee_request:leave_overlap": "توجد إجازة معتمدة أخرى تتداخل مع الفترة المحددة.",
+  "core_permission:interval_conflict": "يوجد استئذان أو إجازة معتمدة تتداخل مع الوقت المحدد. اختر فترة أخرى أو راجع السجل الحالي.",
+  "core_permission:cross_midnight_requires_review": "الاستئذان الذي يمتد بعد منتصف الليل يحتاج معالجة خاصة. اختر فترة ضمن اليوم نفسه.",
   "core_leave:hr_review_resolution_required": "نوع الإجازة يحتاج قرار موارد بشرية إضافيًا قبل الاعتماد.",
   "core_leave:statutory_validation_required": "نوع الإجازة يحتاج تحققًا نظاميًا إضافيًا قبل الاعتماد.",
   "core_leave:entitlement_consumption_runtime_required": "هذه الإجازة تعتمد على رصيد استحقاق زمني ولم يكتمل مسار خصم الاستحقاق.",
