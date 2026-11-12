@@ -702,25 +702,28 @@ export async function markPermissionOut(
     throw new AppError(409, 'core_permission:invalid_transition');
   }
   const actualExitTime = validTime(data.actualExitTime || data.actual_exit_time || row.requested_exit_time, 'actualExitTime');
+  const plannedReturn = cleanText(row.expected_return_time);
+  if (!plannedReturn) throw new AppError(409, 'core_permission:return_time_required');
+  assertSameDayPermissionRange(row.requested_exit_time, plannedReturn);
   const now = nowIso();
-  await dbRun(
-    db,
-    `UPDATE employee_permission_requests
+  await dbBatch(db, [
+    {
+      sql: `UPDATE employee_permission_requests
         SET status = 'out', actual_exit_time = ?, reviewer_uid = COALESCE(reviewer_uid, ?),
             reviewer_name = COALESCE(reviewer_name, ?), reviewed_at = COALESCE(reviewed_at, ?),
             exited_at = ?, updated_at = ?
-      WHERE salon_id = ? AND id = ?`,
-    [
-      actualExitTime,
-      optionalText(actor.uid) || null,
-      optionalText(actor.name) || null,
-      now,
-      now,
-      now,
-      salonId,
-      row.id,
-    ]
-  );
+      WHERE salon_id = ? AND id = ? AND status IN ('pending', 'approved')
+        AND ${permissionConflictPredicate}`,
+      params: [
+        actualExitTime,
+        optionalText(actor.uid) || null,
+        optionalText(actor.name) || null,
+        now, now, now, salonId, row.id,
+        ...permissionConflictParams(salonId, row.employee_id, row.date_key, row.id, row.requested_exit_time, plannedReturn),
+      ],
+    },
+    assertConflictFreeWrite,
+  ]);
   const updated = await getPermission(db, salonId, row.id);
   if (cleanText(updated.expected_return_time)) await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_out', actualExitTime, actor);
