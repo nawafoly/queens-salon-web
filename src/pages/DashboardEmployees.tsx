@@ -6750,13 +6750,23 @@ const canonicalSchedules =
         endDate: offboardingEndDate,
         reason: offboardingReason.trim(),
       });
-      setList((rows) => rows.filter((row) => row.id !== target.id));
-      if (selectedEmployeeId === target.id) {
+      // Offboarding removes the employee from the active directory. If the
+      // detail route still points at that employee when the list updates, the
+      // route resolver mistakes a successful offboarding for a missing file.
+      // Mark intentional navigation *before* removing the directory entry.
+      const viewingOffboardedEmployee =
+        selectedEmployeeId === target.id ||
+        Boolean(routeEmployeeId && employeeMatchesRouteId(target, routeEmployeeId));
+      if (viewingOffboardedEmployee) {
+        closingEmployeeDetailRef.current = true;
+        selectedEmployeeIdentityRef.current = null;
         setSelectedEmployeeId(null);
         setEditId(null);
         setIsOpen(false);
         setMode("edit");
+        navigate("/dashboard/employees", { replace: true });
       }
+      setList((rows) => rows.filter((row) => row.id !== target.id));
       setBookingStats((stats) => {
         const next = { ...stats };
         delete next[target.id];
@@ -6764,6 +6774,7 @@ const canonicalSchedules =
       });
       window.dispatchEvent(new Event("queens:staff-updated"));
       setOffboardingEmployee(null);
+      setSaveMessage("تم إنهاء خدمة الموظفة بنجاح مع الاحتفاظ بسجلاتها التاريخية.");
     } catch (e: any) {
       const code = String(e?.code || "");
       const details = e?.details && typeof e.details === "object" ? e.details : {};
