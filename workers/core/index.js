@@ -194,6 +194,7 @@ import {
   recordAttendance,
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
+import { FINAL_LEAVE_APPROVAL_KEY, getApprovalAuthority, assignApprovalAuthority, requireFinalLeaveAuthority } from './repositories/approval-authorities.js';
 import {
   cancelAnnualLeaveRecall,
   cancelWeeklyRestWorkAssignment,
@@ -803,6 +804,10 @@ function match(url, method) {
   const leaveRecalls = /^\/api\/core\/hr\/leaves\/([^/]+)\/recalls$/.exec(path);
   if (leaveRecalls && ["GET", "POST"].includes(method)) {
     return { name: "leave:recalls", id: leaveRecalls[1] };
+  }
+  if (path === "/api/core/hr/approval-authorities/leaves") {
+    if (method === "GET") return { name: "approval-authority:leave" };
+    if (method === "PUT") return { name: "approval-authority:leave-update" };
   }
   const leaveDecision = /^\/api\/core\/hr\/leaves\/([^/]+)\/(approve|reject)$/.exec(path);
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
@@ -2320,6 +2325,9 @@ async function dispatch(ctx, route, method, body, query, env) {
         "record-return": "employee_requests.complete",
       }[route.action] || "employee_requests.manage";
       if (!leaveManager) requirePermission(ctx, actionPermission);
+      if (requestRow.request_type === "leave" && ["approve", "reject", "execute"].includes(route.action)) {
+        await requireFinalLeaveAuthority(db, ctx.salonId, actorInfo, requestRow.employee_id);
+      }
       if (["approve", "execute"].includes(route.action)) {
         if (requestRow.request_type === "salary_advance" && route.action === "approve") {
           requirePermission(ctx, "employee_requests.salary_advance.approve");
@@ -2911,8 +2919,18 @@ async function dispatch(ctx, route, method, body, query, env) {
       const {retryHrPayrollOperation}=await import('./repositories/hr-payroll-operations.js');
       return retryHrPayrollOperation(db,ctx.salonId,route.id,{externalAttendanceDb:env.ATTENDANCE_DB || null});
     }
+    case "approval-authority:leave":
+      requireAnyPermission(ctx, ["attendance.leaves.manage", "employee_requests.view"]);
+      return getApprovalAuthority(db, ctx.salonId, FINAL_LEAVE_APPROVAL_KEY);
+
+    case "approval-authority:leave-update":
+      requireRole(ctx.role, new Set(["owner"]));
+      return assignApprovalAuthority(db, ctx.salonId, FINAL_LEAVE_APPROVAL_KEY, body.approverUserId, actorInfo);
+
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
+      await requireFinalLeaveAuthority(db, ctx.salonId, actorInfo,
+        (await dbFirst(db, "SELECT employee_id FROM employee_leaves WHERE salon_id = ? AND id = ? LIMIT 1", [ctx.salonId, route.id]))?.employee_id);
       return decideLeave(
         db,
         ctx.salonId,
@@ -2924,6 +2942,8 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "leave:reject":
       requirePermission(ctx, "attendance.leaves.manage");
+      await requireFinalLeaveAuthority(db, ctx.salonId, actorInfo,
+        (await dbFirst(db, "SELECT employee_id FROM employee_leaves WHERE salon_id = ? AND id = ? LIMIT 1", [ctx.salonId, route.id]))?.employee_id);
       return decideLeave(
         db,
         ctx.salonId,
