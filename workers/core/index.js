@@ -2312,6 +2312,12 @@ async function dispatch(ctx, route, method, body, query, env) {
       const leaveManager =
         requestRow.request_type === "leave" &&
         ctx.permissions.includes("attendance.leaves.manage");
+      if (requestRow.request_type === "leave" && (
+        ["approve", "reject", "execute"].includes(route.action) ||
+        (route.action === "cancel" && ["approved", "executing", "completed"].includes(requestRow.status))
+      )) {
+        await requireFinalLeaveAuthority(db, ctx.salonId, actorInfo, requestRow.employee_id);
+      }
       const employeeActions = new Set(["answer-info", "cancel"]);
       if (employeeActions.has(route.action) && !ctx.permissions.includes("employee_requests.manage") && !leaveManager) {
         requirePermission(ctx, route.action === "cancel" ? "employee_requests.own.cancel" : "employee_requests.own.comment");
@@ -2326,12 +2332,6 @@ async function dispatch(ctx, route, method, body, query, env) {
         "record-return": "employee_requests.complete",
       }[route.action] || "employee_requests.manage";
       if (!leaveManager) requirePermission(ctx, actionPermission);
-      if (requestRow.request_type === "leave" && (
-        ["approve", "reject", "execute"].includes(route.action) ||
-        (route.action === "cancel" && ["approved", "executing", "completed"].includes(requestRow.status))
-      )) {
-        await requireFinalLeaveAuthority(db, ctx.salonId, actorInfo, requestRow.employee_id);
-      }
       if (["approve", "execute"].includes(route.action)) {
         if (requestRow.request_type === "salary_advance" && route.action === "approve") {
           requirePermission(ctx, "employee_requests.salary_advance.approve");
