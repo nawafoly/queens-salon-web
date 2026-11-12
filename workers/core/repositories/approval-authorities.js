@@ -72,7 +72,8 @@ export async function assignApprovalAuthority(db, salonId, authorityKey, targetU
     before: existing ? { approverUserId: existing.approver_user_id } : null,
     after: { approverUserId: target.id, authorityKey },
   }, actor);
-  await dbBatch(db, [
+  try {
+    await dbBatch(db, [
     {
       sql: `INSERT INTO approval_authorities
           (salon_id, authority_key, approver_user_id, assigned_by_user_id, assigned_at, updated_at)
@@ -91,6 +92,13 @@ export async function assignApprovalAuthority(db, salonId, authorityKey, targetU
       params: [],
     },
     audit.statement,
-  ]);
+    ]);
+  } catch (error) {
+    if (/malformed json/i.test(String(error?.message || ''))) {
+      throw new AppError(409, 'core_approval_authority:concurrent_change',
+        'Approval authority changed concurrently; reload before retrying.');
+    }
+    throw error;
+  }
   return getApprovalAuthority(db, salonId, authorityKey);
 }
