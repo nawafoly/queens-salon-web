@@ -1190,12 +1190,17 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
         {canAssignLeaveAuthority ? (
           <div className="employee-request-form-grid">
             <label><span>اختر حساب المالك صاحب الاعتماد النهائي</span>
-              <select className="dsv2-input" value={targetApproverUserId} onChange={(event) => setTargetApproverUserId(event.target.value)}>
-                <option value="">اختر حسابًا</option>
-                {ownerAccounts.filter((account) => account.firebaseUid !== session.uid).map((account) => (
-                  <option key={account.id} value={account.id}>{account.displayName || account.email}</option>
-                ))}
-              </select>
+              <DashboardSelectV2
+                value={targetApproverUserId}
+                options={[
+                  { value: "", label: "اختر حسابًا" },
+                  ...ownerAccounts.filter((account) => account.firebaseUid !== session.uid).map((account) => ({
+                    value: account.id,
+                    label: account.displayName || account.email,
+                  })),
+                ]}
+                onChange={setTargetApproverUserId}
+              />
             </label>
             <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={authoritySaving || !targetApproverUserId} onClick={() => void saveLeaveAuthority()}>
               {authoritySaving ? "جارٍ التعيين..." : "تعيين المعتمد النهائي"}
