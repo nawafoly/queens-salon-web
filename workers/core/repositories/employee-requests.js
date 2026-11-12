@@ -7,6 +7,7 @@ import {
   dbFirst,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import { assertEmployeeAnnualLeaveNotice } from '../employee-annual-leave-notice.js';
 import { calculateFixedActualWageHalalas, employerLoanDeductionCapHalalas } from '../../../src/helpers/hr/saLaborPolicy.js';
 import {
   leaveDecisionRuntime,
@@ -243,7 +244,8 @@ export async function createEmployeeRequest(
   db,
   salonId,
   data = {},
-  actor = {}
+  actor = {},
+  options = {}
 ) {
   const requestType = cleanText(
     data.requestType || data.request_type
@@ -272,6 +274,10 @@ export async function createEmployeeRequest(
     ...payload,
     leaveType: resolved.leaveType,
   };
+
+  if (options.employeeSelfService === true) {
+    assertEmployeeAnnualLeaveNotice(resolved.leaveType, nextPayload.startDate);
+  }
 
   return legacyCreateEmployeeRequest(
     db,

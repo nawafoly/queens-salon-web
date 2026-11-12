@@ -18,6 +18,7 @@ import {
   DocumentWatermark,
 } from "../../documents/core/DocumentPage";
 import DashboardDatePickerV2 from "../dashboard-v2/DashboardDatePickerV2";
+import { minimumAnnualLeaveRequestDate } from "../../helpers/hr/employeeAnnualLeaveNotice";
 import SignatureCaptureField from "./SignatureCaptureField";
 import "../../styles/LeaveRequestDocument.css";
 import "../../styles/LeaveRequestDatePicker.css";
@@ -96,6 +97,7 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
   const endDate = String(form.endDate || "");
   const days = leaveDays(startDate, endDate);
   const requestDate = todayDocumentDateKey();
+  const annualMinimumDate = String(form.leaveType || "").toLowerCase() === "annual" ? minimumAnnualLeaveRequestDate() : undefined;
   const employeeSignature = String(form.employeeSignatureDataUrl || "");
 
   const updateStartDate = (value: string) => {
@@ -139,9 +141,11 @@ export function LeaveRequestFormFields({ employeeName, form, update, language = 
             required
             clearable
             placeholder={choose(language, "اختر تاريخ البداية", "Select start date")}
+            min={annualMinimumDate}
             onChange={updateStartDate}
           />
         </div>
+        {annualMinimumDate ? <p className="leave-doc-annual-notice">{choose(language, `طلبات الإجازة السنوية تُقدَّم قبل بدايتها بثلاثة أيام على الأقل. أقرب تاريخ: ${annualMinimumDate}`, `Annual leave requires 3 days notice. Earliest date: ${annualMinimumDate}`)}</p> : null}
         <div className="leave-doc-date-field dashboard-v2">
           <span>{choose(language, "إلى تاريخ", "To")}</span>
           <DashboardDatePickerV2

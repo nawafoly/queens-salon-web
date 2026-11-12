@@ -68,6 +68,7 @@ const CORE_API_CODE_MESSAGES: Record<string, string> = {
   "core_employee_request:invalid_transition": "حالة الطلب الحالية لا تسمح بهذا الإجراء. أعد تحميل الطلب وراجع حالته.",
   "core_employee_request:insufficient_leave_balance": "رصيد الإجازة المتاح لا يكفي لتنفيذ هذه الإجازة.",
   "core_employee_request:insufficient_annual_leave_balance": "رصيد الإجازة السنوية لا يكفي لتنفيذ هذه الإجازة.",
+  "core_employee_request:annual_leave_three_day_notice": "يجب تقديم طلب الإجازة السنوية قبل بدايتها بثلاثة أيام تقويمية على الأقل.",
   "core_leave:not_found": "لا توجد إجازة معتمدة لهذه الموظفة في هذا اليوم.",
   "core_annual_leave:leave_not_found": "لا توجد إجازة سنوية معتمدة لهذا اليوم.",
   "core_weekly_rest_work:not_weekly_rest_day": "هذا اليوم ليس راحة أسبوعية في الجدول.",
