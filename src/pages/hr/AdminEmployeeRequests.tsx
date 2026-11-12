@@ -27,6 +27,7 @@ import { printExceptionalFinancialPaymentRequestDocument } from "../../services/
 import { printSalaryCertificateDocument } from "../../services/salaryCertificateExport";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
+import { LeaveFinalApprovalService, type LeaveFinalApprovalAuthority } from "../../services/LeaveFinalApprovalService";
 import {
   exportLeaveRequestToExcel,
   exportLeaveRequestToPdf,
@@ -284,6 +285,19 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
   const [dialogError, setDialogError] = useState("");
   const [assignees, setAssignees] = useState<EmployeeRequestAssignee[]>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [leaveAuthority, setLeaveAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
+  const [leaveAuthorityLoaded, setLeaveAuthorityLoaded] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void LeaveFinalApprovalService.get().then((authority) => {
+      if (live) setLeaveAuthority(authority);
+    }).catch(() => {
+      if (live) setLeaveAuthority(null);
+    }).finally(() => {
+      if (live) setLeaveAuthorityLoaded(true);
+    });
+    return () => { live = false; };
+  }, []);
 
   useEffect(() => {
     setType(initialType);
@@ -821,6 +835,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
 
   if (selected) {
     const can = (permission: Parameters<typeof hasPermission>[0]) => hasPermission(permission);
+    const canFinalizeSelectedLeave = selected.request_type !== "leave" || (leaveAuthorityLoaded && !!leaveAuthority?.approver_uid && leaveAuthority.approver_uid === session.uid);
     const timelineEvents = (selected.events || []).filter(
       (event) => !HIDDEN_TIMELINE_EVENTS.has(event.event_type)
     );
@@ -959,22 +974,22 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <FontAwesomeIcon icon={faCommentDots} /> طلب معلومات
                 </button>
               ) : null}
-              {selected.status === "under_review" && can("employee_requests.approve") ? (
+              {selected.status === "under_review" && canFinalizeSelectedLeave && can("employee_requests.approve") ? (
                 <button className="is-success" disabled={busy} onClick={() => void openDialog("approve")}>
                   <FontAwesomeIcon icon={faCheck} /> موافقة
                 </button>
               ) : null}
-              {["received", "under_review", "needs_info"].includes(selected.status) && can("employee_requests.reject") ? (
+              {["received", "under_review", "needs_info"].includes(selected.status) && canFinalizeSelectedLeave && can("employee_requests.reject") ? (
                 <button className="is-danger" disabled={busy} onClick={() => void openDialog("reject")}>
                   <FontAwesomeIcon icon={faXmark} /> رفض
                 </button>
               ) : null}
-              {selected.status === "executing" && selected.execution_status === "failed" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
+              {selected.status === "executing" && selected.execution_status === "failed" && selected.request_type !== "salary_certificate" && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> إعادة محاولة التنفيذ
                 </button>
               ) : null}
-              {selected.status === "approved" && selected.request_type !== "salary_certificate" && can("employee_requests.execute") ? (
+              {selected.status === "approved" && selected.request_type !== "salary_certificate" && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button className="is-primary" disabled={busy} onClick={() => void openDialog("execute")}>
                   <FontAwesomeIcon icon={faBolt} /> بدء التنفيذ
                 </button>
@@ -989,7 +1004,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
                   <FontAwesomeIcon icon={faRotate} /> إعادة فتح
                 </button>
               ) : null}
-              {selected.request_type === "exit_return" && selected.status === "executing" && !selected.actual_exit_at && can("employee_requests.execute") ? (
+              {selected.request_type === "exit_return" && selected.status === "executing" && !selected.actual_exit_at && canFinalizeSelectedLeave && can("employee_requests.execute") ? (
                 <button disabled={busy} onClick={() => void runAction("record-exit")}>
                   <FontAwesomeIcon icon={faClock} /> تسجيل الخروج
                 </button>
