@@ -685,6 +685,10 @@ async function updateStatus(db, salonId, row, toStatus, input, actor) {
   const snapshot = actorSnapshot(actor);
   const eventId = generatedId('request_event');
   const eventKey = cleanText(input.idempotencyKey) || `${toStatus}:${updatedSnapshot.version}`;
+  // The audit event must only be inserted when this exact versioned
+  // UPDATE won. SQLite changes() is scoped to the immediately prior
+  // statement in the same D1 batch, preventing losing concurrent requests
+  // from creating a misleading approval event.
   const results = await dbBatch(db, [
     {
       sql: `UPDATE employee_requests SET ${entries.map(([key]) => `${key} = ?`).join(', ')}
@@ -696,7 +700,8 @@ async function updateStatus(db, salonId, row, toStatus, input, actor) {
         (id, salon_id, request_id, request_number, event_type, from_status, to_status,
          actor_uid, actor_email, actor_name, actor_role, note, payload_json, before_json,
          after_json, request_idempotency_key, ip, user_agent, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE changes() = 1`,
       params: [
         eventId, salonId, row.id, row.request_number, input.eventType || toStatus,
         row.status, toStatus, snapshot.uid || null, snapshot.email || null,
