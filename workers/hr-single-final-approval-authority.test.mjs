@@ -131,3 +131,15 @@ test('custom leave execution resolves approved policy before the Core compliance
     (err) => err.status === 409 && err.code === 'core_leave:hr_review_resolution_required'
   );
 });
+
+test('concurrent loser cannot insert a phantom approved-policy event', async () => {
+  const source = await readFile(new URL('./core/repositories/employee-requests-legacy.js', import.meta.url), 'utf8');
+  const update = source.indexOf('async function updateStatus(');
+  const end = source.indexOf('async function refreshPermissionPayrollEntries(', update);
+  const transition = source.slice(update, end);
+  assert.match(transition, /WHERE salon_id = \? AND id = \? AND version = \?/);
+  assert.match(transition, /INSERT OR IGNORE INTO employee_request_events[\s\S]*?WHERE changes\(\) = 1/);
+  assert.match(transition, /changes\(results\?\.\[0\]\) !== 1/);
+  const code = transition.slice(transition.indexOf('const results = await dbBatch'));
+  assert.ok(code.indexOf('UPDATE employee_requests') < code.indexOf('INSERT OR IGNORE INTO employee_request_events'));
+});
