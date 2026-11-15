@@ -66,7 +66,7 @@ test('leave finalization guards exist on direct leave and request workflows', as
 });
 
 test('new authority table has exactly one approver per workflow and no implicit owner grant', async () => {
-  const migration = await readFile(new URL('../migrations/core/0100_single_final_approval_authority.sql', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../migrations/core/0101_single_final_approval_authority.sql', import.meta.url), 'utf8');
   assert.match(migration, /PRIMARY KEY \(salon_id, authority_key\)/);
   assert.doesNotMatch(migration, /INSERT INTO approval_authorities/i);
 });
