@@ -160,3 +160,17 @@ test('staging final-approver rollout uses isolated D1, attendance, R2 and salon'
   assert.notEqual(staging.r2_buckets[0].bucket_name, production.r2_buckets[0].bucket_name);
   assert.notEqual(staging.vars.FIREBASE_PROJECT_ID, production.vars.FIREBASE_PROJECT_ID);
 });
+
+
+test('final leave approver is managed only from administrative D1 account settings', async () => {
+  const settings = await readFile(new URL('../src/pages/settings/SettingsUsers.tsx', import.meta.url), 'utf8');
+  const requests = await readFile(new URL('../src/pages/hr/AdminEmployeeRequests.tsx', import.meta.url), 'utf8');
+  assert.match(settings, /صلاحيات الاعتماد الحصرية/);
+  assert.match(settings, /LeaveFinalApprovalService\.assign\(targetApproverUserId\)/);
+  assert.match(settings, /leaveAuthority\.approver_user_id === me\?\.id/);
+  assert.match(settings, /account\.primaryRole === "owner" && account\.status === "active"/);
+  assert.match(settings, /account\.id !== me\?\.id/);
+  assert.match(requests, /المعتمد الحالي:/);
+  assert.doesNotMatch(requests, /LeaveFinalApprovalService\.assign\(/);
+  assert.doesNotMatch(requests, /تعيين المعتمد النهائي/);
+});
