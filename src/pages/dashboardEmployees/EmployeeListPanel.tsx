@@ -99,9 +99,9 @@ function statusOf(staff: StaffPublicUi) {
     return { label: "تم إنهاء عقدها", tone: "danger" } as const;
   }
   if (staff.includeInEmployeeManagement === false) {
-    return { label: "مخفية من الدليل", tone: "gold" } as const;
+    return { label: "مخفي من الدليل", tone: "gold" } as const;
   }
-  return { label: "ظاهرة في الدليل", tone: "success" } as const;
+  return { label: "ظاهر في الدليل", tone: "success" } as const;
 }
 
 function EmployeeCardSkeleton({ index }: { index: number }) {
