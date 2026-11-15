@@ -208,9 +208,17 @@ test("admin UI and dashboard pass the partial leave contract end to end", () => 
   assert.match(modal, /استئذان/);
   assert.match(modal, /partialStartTime/);
   assert.match(modal, /partialEndTime/);
+  // Partial leave is an approved permission with an explicit time interval,
+  // while full-day leave is submitted for a designated final approver.
+  assert.match(dashboard, /if \(isPartialLeave\) \{/);
+  assert.match(dashboard, /createPermissionRequest\(\{/);
+  assert.match(dashboard, /startTime: partialStartTime/);
+  assert.match(dashboard, /expectedReturnTime: partialEndTime/);
+  assert.match(dashboard, /financialEffect: "none"/);
+  assert.match(dashboard, /createManagedLeaveRequest\(\{/);
   assert.match(dashboard, /durationKind,/);
-  assert.match(dashboard, /partialStartTime: isPartialLeave/);
-  assert.match(dashboard, /partialEndTime:\s*isPartialLeave/);
+  assert.match(dashboard, /partialStartTime,/);
+  assert.match(dashboard, /partialEndTime,/);
   assert.match(
     canonicalLeaveBridge,
     /durationKind:\s*cleanText\(payload\.durationKind\)\.toLowerCase\(\)\s*===\s*"partial"\s*\?\s*"partial"\s*:\s*"full_day"/
