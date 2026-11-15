@@ -167,7 +167,9 @@ test('final leave approver is managed only from administrative D1 account settin
   const requests = await readFile(new URL('../src/pages/hr/AdminEmployeeRequests.tsx', import.meta.url), 'utf8');
   assert.match(settings, /صلاحيات الاعتماد الحصرية/);
   assert.match(settings, /LeaveFinalApprovalService\.assign\(targetApproverUserId\)/);
-  assert.match(settings, /leaveAuthority\.approver_user_id === me\?\.id/);
+  assert.match(settings, /assignedLeaveApproverId === me\?\.id/);
+  assert.match(settings, /leaveAuthorityLoadFailed/);
+  assert.match(settings, /!!assignedLeaveApproverId/);
   assert.match(settings, /account\.primaryRole === "owner" && account\.status === "active"/);
   assert.match(settings, /account\.id !== me\?\.id/);
   assert.match(requests, /المعتمد الحالي:/);
