@@ -88,16 +88,20 @@ function resolveDepartment(
 }
 
 function statusOf(staff: StaffPublicUi) {
-  const today = todayIso();
-  const leaveFrom = normalizeLeaveUntil((staff as any).leaveStartDate || (staff as any).leaveFrom || (staff as any).leaveFromDate);
-  const leaveUntil = normalizeLeaveUntil(staff.leaveUntil);
-  const leaveExpired = !!leaveUntil && leaveUntil < today;
-  const leaveStarted = !leaveFrom || leaveFrom <= today;
-  const onLeave = !!staff.onLeave && leaveStarted && !leaveExpired;
+  // Directory visibility and employment termination are different concepts.
+  // Never infer a terminated contract from the generic operational active flag.
+  const employmentStatus = cleanText(staff.employmentStatus).toLowerCase();
+  const terminated = ["terminated", "resigned", "ended"].includes(employmentStatus);
+  const endDate = normalizeLeaveUntil(staff.employmentEndDate);
+  const completedEndDate = !!endDate && endDate < todayIso() && !staff.active;
 
-  if (onLeave) return { label: "في إجازة", tone: "gold" } as const;
-  if (staff.active) return { label: "نشطة", tone: "success" } as const;
-  return { label: "غير نشطة", tone: "danger" } as const;
+  if (terminated || completedEndDate) {
+    return { label: "تم إنهاء عقدها", tone: "danger" } as const;
+  }
+  if (staff.includeInEmployeeManagement === false) {
+    return { label: "مخفية من الدليل", tone: "gold" } as const;
+  }
+  return { label: "ظاهرة في الدليل", tone: "success" } as const;
 }
 
 function EmployeeCardSkeleton({ index }: { index: number }) {
