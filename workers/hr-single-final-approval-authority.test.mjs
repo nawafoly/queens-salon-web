@@ -82,3 +82,52 @@ test('custom leave approval persists policy and execution is pinned to the appro
   assert.match(ui, /kind === "execute" \? confirmed\.manualLeavePolicy : proposed/);
   assert.match(ui, /السياسة المالية المعتمدة نهائيًا \(للقراءة فقط\)/);
 });
+
+test('custom leave execution resolves approved policy before the Core compliance guard', async () => {
+  const { transitionEmployeeRequest } = await import('./core/repositories/employee-requests.js');
+  const row = {
+    request_type: 'leave',
+    status: 'approved',
+    source_reference_id: null,
+    payload_json: JSON.stringify({ leaveType: 'other_hr_review' }),
+    employee_id: 'employee-1',
+  };
+  const policy = { deductFromBalance: true, affectsPayroll: false };
+  const approval = { payload_json: JSON.stringify({ manualLeavePolicy: policy }) };
+  function fakeDb(event) {
+    return {
+      __fakeD1: true,
+      first: async (sql) => {
+        if (sql.includes('SELECT request_type, status')) return row;
+        if (sql.includes('FROM employee_request_events')) return event;
+        // A missing legacy row proves the request passed the wrapper's
+        // compliance gate; no data mutations are made in this test.
+        return null;
+      },
+    };
+  }
+  const opts = { manualLeavePolicyAuthorized: true };
+  const args = ['main', 'request-1', 'execute'];
+  await assert.rejects(
+    transitionEmployeeRequest(fakeDb(null), ...args, {}, {}, opts),
+    (err) => err.status === 409 && err.code === 'core_leave:hr_review_resolution_required'
+  );
+  await assert.rejects(
+    transitionEmployeeRequest(fakeDb(approval), ...args, {
+      manualLeavePolicy: { deductFromBalance: false, affectsPayroll: false },
+    }, {}, opts),
+    (err) => err.status === 409 && err.code === 'core_leave:approved_policy_mismatch'
+  );
+  await assert.rejects(
+    transitionEmployeeRequest(fakeDb(approval), ...args, {}, {}, opts),
+    (err) => err.status === 404 && err.code === 'core_employee_request:not_found'
+  );
+  await assert.rejects(
+    transitionEmployeeRequest(fakeDb(approval), ...args, { manualLeavePolicy: policy }, {}, opts),
+    (err) => err.status === 404 && err.code === 'core_employee_request:not_found'
+  );
+  await assert.rejects(
+    transitionEmployeeRequest(fakeDb(approval), ...args, {}, {}, {}),
+    (err) => err.status === 409 && err.code === 'core_leave:hr_review_resolution_required'
+  );
+});
