@@ -31,6 +31,7 @@ import {
   type CoreRole,
 } from "../../services/CoreAccountService";
 import { CoreApiError } from "../../services/coreApiClient";
+import { LeaveFinalApprovalService, type LeaveFinalApprovalAuthority } from "../../services/LeaveFinalApprovalService";
 import { usePermissions } from "../../security/PermissionContext";
 import { settingsText, type DashboardLanguage } from "../../helpers/dashboardSettingsLanguage";
 import { permissionEnglishHint, permissionEnglishLabel } from "../../helpers/dashboardPermissionsLanguage";
@@ -251,6 +252,11 @@ export default function SettingsUsers({
   const pageTitle = isAdminShell ? t("إدارة الحسابات الإدارية") : t("إدارة الحسابات");
   const pageHint = t("مصدر الحسابات والأدوار والصلاحيات والربط الوظيفي هو Cloudflare D1.");
 
+  const [leaveAuthority, setLeaveAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
+  const [leaveAuthorityLoaded, setLeaveAuthorityLoaded] = useState(false);
+  const [leaveAuthorityError, setLeaveAuthorityError] = useState("");
+  const [leaveAuthoritySaving, setLeaveAuthoritySaving] = useState(false);
+  const [targetApproverUserId, setTargetApproverUserId] = useState("");
   const [me, setMe] = useState<CoreAccount | null>(null);
   const [accounts, setAccounts] = useState<CoreAccount[]>([]);
   const [roles, setRoles] = useState<CoreRole[]>([]);
@@ -284,6 +290,12 @@ export default function SettingsUsers({
 
   const actorRole = normalizeRole(me?.role || permissionRole || initialRole);
   const actorIsOwner = actorRole === "owner";
+  const canAssignLeaveAuthority = actorIsOwner && leaveAuthorityLoaded &&
+    (!leaveAuthority || leaveAuthority.approver_user_id === me?.id);
+  const eligibleLeaveApprovers = accounts.filter((account) =>
+    account.primaryRole === "owner" && account.status === "active" &&
+    !!account.firebaseUid && account.id !== me?.id
+  );
   const canReadAccounts = hasAnyPermission(["accounts.read", "admin_accounts.view"]);
   const canCreateAccounts = hasAnyPermission(["accounts.create", "admin_accounts.manage"]);
   const canUpdateAccounts = hasAnyPermission(["accounts.update", "admin_accounts.manage"]);
@@ -322,6 +334,38 @@ export default function SettingsUsers({
     void loadAccounts();
     // PermissionContext changes after /api/auth/me; reload when it does.
   }, [authReady, canReadAccounts]);
+
+  useEffect(() => {
+    if (authReady === false || !canReadAccounts) return;
+    let live = true;
+    setLeaveAuthorityLoaded(false);
+    void LeaveFinalApprovalService.get()
+      .then((authority) => {
+        if (live) setLeaveAuthority(authority);
+      })
+      .catch((loadError) => {
+        if (live) setLeaveAuthorityError(errorMessage(loadError, language));
+      })
+      .finally(() => {
+        if (live) setLeaveAuthorityLoaded(true);
+      });
+    return () => { live = false; };
+  }, [authReady, canReadAccounts, language]);
+
+  const saveLeaveAuthority = async () => {
+    if (!canAssignLeaveAuthority || !targetApproverUserId || leaveAuthoritySaving) return;
+    setLeaveAuthoritySaving(true);
+    setLeaveAuthorityError("");
+    try {
+      const updated = await LeaveFinalApprovalService.assign(targetApproverUserId);
+      setLeaveAuthority(updated);
+      setTargetApproverUserId("");
+    } catch (saveError) {
+      setLeaveAuthorityError(errorMessage(saveError, language));
+    } finally {
+      setLeaveAuthoritySaving(false);
+    }
+  };
 
     const roleOptions = useMemo(() => {
     const source = roles.length ? roles : FALLBACK_ROLES;
@@ -617,6 +661,52 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               {t("إنشاء حساب D1")}
             </button>
           ) : null}
+        </div>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded" aria-label={t("صلاحيات الاعتماد الحصرية")}>
+        <div className="dsv2-stack">
+          <h2>{t("صلاحيات الاعتماد الحصرية")}</h2>
+          <h3>{t("المعتمد النهائي للإجازات")}</h3>
+          <p>{t("هذه صلاحية حصرية لشخص واحد، وليست صلاحية عامة قابلة للمنح لجميع المالكين.")}</p>
+          <p>{!leaveAuthorityLoaded
+            ? t("جارٍ التحقق من المعتمد الحالي...")
+            : leaveAuthority?.approver_name
+              ? `${t("المعتمد الحالي:")} ${leaveAuthority.approver_name}`
+              : t("لم يُعيّن المعتمد النهائي بعد؛ الاعتماد النهائي للإجازات متوقف حتى تعيينه.")}</p>
+          {canAssignLeaveAuthority ? (
+            <div className="dsv2-stack">
+              <label>
+                <span>{t("اختر حساب المالك صاحب الاعتماد النهائي")}</span>
+                <DashboardSelectV2
+                  value={targetApproverUserId}
+                  options={[
+                    { value: "", label: t("اختر حسابًا") },
+                    ...eligibleLeaveApprovers.map((account) => ({
+                      value: account.id,
+                      label: account.displayName || account.email || account.id,
+                    })),
+                  ]}
+                  onChange={setTargetApproverUserId}
+                />
+              </label>
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--primary"
+                disabled={!targetApproverUserId || leaveAuthoritySaving}
+                onClick={() => void saveLeaveAuthority()}
+              >
+                {leaveAuthoritySaving ? t("جارٍ التعيين...") : t("تعيين المعتمد النهائي")}
+              </button>
+              {eligibleLeaveApprovers.length === 0 ? (
+                <p>{t("يلزم وجود مالك نشط آخر مرتبط بحساب Firebase لتعيينه.")}</p>
+              ) : null}
+            </div>
+          ) : null}
+          {leaveAuthorityLoaded && !canAssignLeaveAuthority && actorIsOwner && leaveAuthority ? (
+            <p>{t("نقل صلاحية الاعتماد متاح للمعتمد الحالي فقط.")}</p>
+          ) : null}
+          {leaveAuthorityError ? <p role="alert">{leaveAuthorityError}</p> : null}
         </div>
       </section>
 
