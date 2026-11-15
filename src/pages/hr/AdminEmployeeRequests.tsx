@@ -413,7 +413,18 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
   };
 
   const openDialog = async (kind: ActionDialogKind) => {
-    setDialog(emptyDialog(kind));
+    const next = emptyDialog(kind);
+    if (selected?.request_type === "leave" &&
+        ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase())) {
+      const proposed = selected.payload.manualLeavePolicy as { deductFromBalance?: boolean; affectsPayroll?: boolean } | undefined;
+      const approval = [...(selected.events || [])].reverse().find((event) => event.to_status === "approved");
+      let confirmed: { manualLeavePolicy?: { deductFromBalance?: boolean; affectsPayroll?: boolean } } = {};
+      try { confirmed = approval?.payload_json ? JSON.parse(approval.payload_json) : {}; } catch { /* invalid historical event */ }
+      const policy = kind === "execute" ? confirmed.manualLeavePolicy : proposed;
+      next.manualDeductBalance = policy?.deductFromBalance === true;
+      next.manualAffectsPayroll = policy?.affectsPayroll === true;
+    }
+    setDialog(next);
     setDialogError("");
     if (kind === "assign" && assignees.length === 0) {
       setAssigneesLoading(true);
@@ -450,7 +461,7 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
       return;
     }
 
-    if (selected.request_type === "leave" && ["approve", "execute"].includes(dialog.kind) && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase())) {
+    if (selected.request_type === "leave" && dialog.kind === "approve" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase())) {
       body.manualLeavePolicy = { deductFromBalance: dialog.manualDeductBalance, affectsPayroll: dialog.manualAffectsPayroll };
     }
 
@@ -781,9 +792,10 @@ export default function AdminEmployeeRequestsPage({ session, initialType = "" }:
 
             {dialog.kind === "execute" && selected.request_type === "leave" && ["other", "other_hr_review"].includes(String(selected.payload.leaveType || "").toLowerCase()) ? (
               <div className="employee-request-execution-form">
-                <strong>تأكيد سياسة الإجازة الأخرى عند التنفيذ</strong>
-                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualDeductBalance} onChange={(event) => setDialog({ ...dialog, manualDeductBalance: event.target.checked })} /><span>خصم من الرصيد السنوي</span></label>
-                <label className="employee-request-action-confirmation"><input type="checkbox" checked={dialog.manualAffectsPayroll} onChange={(event) => setDialog({ ...dialog, manualAffectsPayroll: event.target.checked })} /><span>تؤثر على الراتب</span></label>
+                <strong>السياسة المالية المعتمدة نهائيًا (للقراءة فقط)</strong>
+                <p>خصم من الرصيد السنوي: {dialog.manualDeductBalance ? "نعم" : "لا"}</p>
+                <p>التأثير على الراتب: {dialog.manualAffectsPayroll ? "نعم" : "لا"}</p>
+                <small>يستخدم Core السياسة المحفوظة في حدث الاعتماد، ولا يسمح بتغييرها أثناء التنفيذ.</small>
               </div>
             ) : null}
 
