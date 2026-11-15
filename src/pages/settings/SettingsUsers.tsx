@@ -291,8 +291,9 @@ export default function SettingsUsers({
 
   const actorRole = normalizeRole(me?.role || permissionRole || initialRole);
   const actorIsOwner = actorRole === "owner";
+  const assignedLeaveApproverId = leaveAuthority?.approver_user_id || "";
   const canAssignLeaveAuthority = actorIsOwner && leaveAuthorityLoaded && !leaveAuthorityLoadFailed &&
-    (!leaveAuthority || leaveAuthority.approver_user_id === me?.id);
+    (!assignedLeaveApproverId || assignedLeaveApproverId === me?.id);
   const eligibleLeaveApprovers = accounts.filter((account) =>
     account.primaryRole === "owner" && account.status === "active" &&
     !!account.firebaseUid && account.id !== me?.id
@@ -677,9 +678,13 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
           <p>{t("هذه صلاحية حصرية لشخص واحد، وليست صلاحية عامة قابلة للمنح لجميع المالكين.")}</p>
           <p>{!leaveAuthorityLoaded
             ? t("جارٍ التحقق من المعتمد الحالي...")
-            : leaveAuthority?.approver_name
-              ? `${t("المعتمد الحالي:")} ${leaveAuthority.approver_name}`
-              : t("لم يُعيّن المعتمد النهائي بعد؛ الاعتماد النهائي للإجازات متوقف حتى تعيينه.")}</p>
+            : leaveAuthorityLoadFailed
+              ? t("تعذر التحقق من المعتمد النهائي؛ لا يمكن تغيير الصلاحية قبل استعادة الاتصال.")
+              : assignedLeaveApproverId
+                ? leaveAuthority?.approver_name
+                  ? `${t("المعتمد الحالي:")} ${leaveAuthority.approver_name}`
+                  : t("يوجد معتمد مسجل، لكن بيانات حسابه غير متاحة؛ راجع حالة الحساب في D1.")
+                : t("لم يُعيّن المعتمد النهائي بعد؛ الاعتماد النهائي للإجازات متوقف حتى تعيينه.")}</p>
           {canAssignLeaveAuthority ? (
             <div className="dsv2-stack">
               <label>
@@ -709,7 +714,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
               ) : null}
             </div>
           ) : null}
-          {leaveAuthorityLoaded && !canAssignLeaveAuthority && actorIsOwner && leaveAuthority ? (
+          {leaveAuthorityLoaded && !leaveAuthorityLoadFailed && !canAssignLeaveAuthority && actorIsOwner && !!assignedLeaveApproverId ? (
             <p>{t("نقل صلاحية الاعتماد متاح للمعتمد الحالي فقط.")}</p>
           ) : null}
           {leaveAuthorityError ? <p role="alert">{leaveAuthorityError}</p> : null}
