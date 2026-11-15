@@ -103,6 +103,7 @@ export async function createManagedLeaveRequest(input: {
   durationKind?: "full_day" | "partial";
   partialStartTime?: string;
   partialEndTime?: string;
+  manualLeavePolicy?: { deductFromBalance: boolean; affectsPayroll: boolean };
 }) {
   const durationKind = cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day";
   const row = await createManagedEmployeeRequest({
@@ -123,6 +124,7 @@ export async function createManagedLeaveRequest(input: {
           }
         : {}),
       reason: cleanText(input.note || "") || "تسجيل إجازة معتمدة من إدارة الموظفات",
+      ...(input.manualLeavePolicy ? { manualLeavePolicy: input.manualLeavePolicy } : {}),
       ...(Number.isFinite(Number(input.days)) && Number(input.days) > 0 ? { days: Number(input.days) } : {}),
     },
   });

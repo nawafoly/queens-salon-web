@@ -68,7 +68,6 @@ import {
 } from "../services/employeeHub";
 import {
   decideCanonicalEmployeeLeaveRequest,
-  refreshCanonicalEmployeeLeaveRequest,
 } from "../services/canonicalEmployeeLeaveRequests";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import { archiveEmployee } from "../services/employeeLifecycleService";
@@ -536,13 +535,6 @@ function inclusiveLeaveDays(fromDate: string, toDate: string) {
   const to = new Date(`${toDate}T12:00:00.000Z`).getTime();
   const days = Math.floor((to - from) / 86400000) + 1;
   return Number.isFinite(days) && days > 0 ? days : 0;
-}
-
-function managedLeavePolicy(type: ManagedLeaveType) {
-  return {
-    deductFromBalance: type === "annual" || type === "sick" || type === "emergency",
-    affectsPayroll: type === "unpaid",
-  };
 }
 
 function positiveNumberOrZero(value: unknown) {
@@ -3023,15 +3015,6 @@ function DashboardEmployeesContent() {
     const isPartialLeave = durationKind === "partial";
     const partialStartTime = isPartialLeave ? cleanText(payload.partialStartTime) : "";
     const partialEndTime = isPartialLeave ? cleanText(payload.partialEndTime) : "";
-    const basePolicy = managedLeavePolicy(leaveType);
-    const policy = isPartialLeave
-      ? { deductFromBalance: false, affectsPayroll: false }
-      : leaveType === "other"
-        ? {
-            deductFromBalance: payload.deductFromBalance === true,
-            affectsPayroll: payload.affectsPayroll === true,
-          }
-        : basePolicy;
     const fromDate = normalizeLeaveUntil(payload.fromDate);
     const toDate = normalizeLeaveUntil(payload.toDate);
     const days = inclusiveLeaveDays(fromDate, toDate);
@@ -3100,36 +3083,21 @@ function DashboardEmployeesContent() {
       }
     }
 
+    // Full-day leave registration is a request, not a final approval.
+    // Final decisions are reserved for the single account configured in Core.
     setSaving(true);
     setErrorMsg("");
-    let requestId = "";
-    let coreLeaveId = "";
-    let createdRequestId = "";
-    let requestForCanonical: EmployeeLeaveRequest | null = null;
-    let canonicalApprovalCommitted = false;
     try {
-      const existingRequests = selectedEmployeeLeaveRequests.length
-        ? selectedEmployeeLeaveRequests
-        : (await listEmployeeLeaveRequests(500)).filter((request) =>
-            leaveRequestMatchesProfile(request, employeeProfile, attendanceIdentity.allIds)
-          );
-      const matchingRequest = existingRequests.find((request) =>
-        ["pending", "approved"].includes(
+      const matchingRequest = selectedEmployeeLeaveRequests.find((request) =>
+        ["submitted", "received", "under_review", "needs_info", "pending", "approved"].includes(
           cleanText(request.status).toLowerCase()
         ) &&
         normalizeLeaveUntil(request.fromDate) === fromDate &&
         normalizeLeaveUntil(request.toDate) === toDate &&
-        normalizeManagedLeaveType(request.type) === leaveType &&
-        (((request as any).durationKind === "partial" || (request as any).duration_kind === "partial") ? "partial" : "full_day") === durationKind &&
-        (!isPartialLeave || (cleanText((request as any).partialStartTime || (request as any).partial_start_time) === partialStartTime &&
-          cleanText((request as any).partialEndTime || (request as any).partial_end_time) === partialEndTime))
+        normalizeManagedLeaveType(request.type) === leaveType
       );
-
-      if (matchingRequest) {
-        requestId = matchingRequest.id;
-        requestForCanonical = matchingRequest;
-      } else {
-        const requestRecord = await createManagedLeaveRequest({
+      if (!matchingRequest) {
+        const created = await createManagedLeaveRequest({
           employeeUid: employeeUidLocal,
           employeeId: employeeIdLocal,
           employeeName,
@@ -3140,160 +3108,23 @@ function DashboardEmployeesContent() {
           durationKind,
           partialStartTime,
           partialEndTime,
-          note:
-            payload.note ||
-            (isPartialLeave
-              ? "تسجيل استئذان معتمد من إدارة الموظفات"
-              : "تسجيل إجازة معتمدة من إدارة الموظفات"),
+          note: cleanText(payload.note) || "طلب إجازة بانتظار المراجعة والاعتماد النهائي",
+          ...(leaveType === "other" ? { manualLeavePolicy: { deductFromBalance: payload.deductFromBalance === true, affectsPayroll: payload.affectsPayroll === true } } : {}),
         });
-        requestId = requestRecord.id;
-        createdRequestId = requestRecord.id;
-        requestForCanonical = requestRecord;
+        void writeAuditLog({
+          action: "leave_request_submitted",
+          entityType: "employee_leave_request",
+          entityId: created.id,
+          source: "dashboard",
+          description: "إرسال طلب إجازة للمراجعة دون اعتماد أو تعديل حضور ورواتب",
+          after: { employeeId: employeeIdLocal, leaveType, fromDate, toDate, days },
+        });
       }
-
-      if (!requestForCanonical) {
-        throw new Error(
-          "employee_leave_request_not_resolved"
-        );
-      }
-
-      // Attendance identity may be Firebase UID.
-      // Core HR operations must use the canonical employee_profiles.id.
-      requestForCanonical = {
-        ...requestForCanonical,
-        employeeUid:
-          employeeUidLocal ||
-          requestForCanonical.employeeUid,
-        employeeId: employeeIdLocal,
-      };
-
-      const canonicalResult =
-        await decideCanonicalEmployeeLeaveRequest(
-        requestForCanonical,
-        "approved",
-        {
-          reviewerUid: authUser.uid,
-          reviewerName:
-            authUser.displayName ||
-            authUser.email,
-          hrNote:
-            leaveType === "other"
-              ? policy.affectsPayroll
-                ? "إجازة أخرى معتمدة — تؤثر على الراتب حسب سياسة الإدارة"
-                : "إجازة أخرى معتمدة — سياسة إدارية مخصصة"
-              : policy.affectsPayroll
-                ? "إجازة بدون راتب — تخصم حسب معدل اليوم"
-                : "إجازة مدفوعة معتمدة",
-          ...(leaveType === "other"
-            ? {
-                manualLeavePolicy: {
-                  deductFromBalance: policy.deductFromBalance,
-                  affectsPayroll: policy.affectsPayroll,
-                },
-              }
-            : {}),
-        }
-      );
-
-      // The canonical service already verifies the linked
-      // operational Core leave before returning success.
-      requestForCanonical =
-        canonicalResult.request;
-
-      if (!canonicalResult.coreLeave) {
-        throw new Error(
-          "employee_leave_core_approval_missing"
-        );
-      }
-
-      coreLeaveId =
-        canonicalResult.coreLeave.id;
-      canonicalApprovalCommitted = true;
-      // Core employee_leaves is the only operational leave source.
-      // Do not mirror full-day or partial leave state into Firestore staff/profile rows.
-      if (!isPartialLeave) {
-        setModalOnLeave(true);
-        setModalLeaveFrom(fromDate);
-        setModalLeaveUntil(toDate);
-        setModalLeaveType(leaveType);
-        setModalLeaveNote(cleanText(payload.note));
-      }
-      try {
-        await Promise.all([
-          load(),
-          loadSelectedEmployeeAttendance({
-            force: true,
-          }),
-        ]);
-      } catch (refreshError) {
-        console.warn(
-          "canonical leave post-commit refresh failed",
-          refreshError
-        );
-      }
-
-      window.dispatchEvent(
-        new Event("queens:staff-updated")
-      );
-
-      void writeAuditLog({
-        action: "leave_approved",
-        entityType: "employee_leave",
-        entityId: requestId || coreLeaveId,
-        source: "dashboard",
-        description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب",
-        after: {
-          employeeUid: employeeUidLocal,
-          employeeId: selectedEmployeeId,
-          leaveType,
-          fromDate,
-          toDate,
-          days,
-          durationKind,
-          partialStartTime: isPartialLeave ? partialStartTime : null,
-          partialEndTime: isPartialLeave ? partialEndTime : null,
-          affectsPayroll: policy.affectsPayroll,
-          deductFromBalance: policy.deductFromBalance,
-          requestId,
-          coreLeaveId,
-        },
-        meta: {
-          staffId: selectedEmployeeId,
-          staffName: employeeName,
-        },
-      });
+      await load();
+      setErrorMsg("تم إرسال طلب الإجازة للمراجعة. لم تُعتمد الإجازة بعد.");
+      window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (error) {
-      if (
-        !canonicalApprovalCommitted &&
-        createdRequestId &&
-        requestForCanonical
-      ) {
-        try {
-          const rollbackRequest =
-            await refreshCanonicalEmployeeLeaveRequest(
-              requestForCanonical
-            );
-
-          await decideCanonicalEmployeeLeaveRequest(
-            rollbackRequest,
-            "cancelled",
-            {
-              reviewerUid: authUser.uid,
-              reviewerName:
-                authUser.displayName ||
-                authUser.email,
-              hrNote:
-                "تم التراجع تلقائيًا بسبب تعذر إكمال تسجيل الإجازة",
-            }
-          );
-        } catch (rollbackError) {
-          console.warn(
-            "canonical leave rollback failed",
-            rollbackError
-          );
-        }
-      }
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة وربطها بالحضور والراتب."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إرسال طلب الإجازة للمراجعة."));
       throw error;
     } finally {
       setSaving(false);

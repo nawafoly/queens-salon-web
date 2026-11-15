@@ -346,3 +346,19 @@
     white-space: normal;
   }
 }
+
+/* Exclusive leave authority: readable copy against the light surface. */
+.dashboard-v2 .settings-users-v2-route .leave-authority-panel {
+  color: var(--dsv2-text);
+}
+
+.dashboard-v2 .settings-users-v2-route .leave-authority-panel p,
+.dashboard-v2 .settings-users-v2-route .leave-authority-panel label {
+  color: var(--dsv2-text-soft);
+  opacity: 1;
+}
+
+.dashboard-v2 .settings-users-v2-route .leave-authority-panel h2,
+.dashboard-v2 .settings-users-v2-route .leave-authority-panel h3 {
+  color: var(--dsv2-text);
+}

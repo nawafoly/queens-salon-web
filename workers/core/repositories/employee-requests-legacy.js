@@ -685,6 +685,10 @@ async function updateStatus(db, salonId, row, toStatus, input, actor) {
   const snapshot = actorSnapshot(actor);
   const eventId = generatedId('request_event');
   const eventKey = cleanText(input.idempotencyKey) || `${toStatus}:${updatedSnapshot.version}`;
+  // The audit event must only be inserted when this exact versioned
+  // UPDATE won. SQLite changes() is scoped to the immediately prior
+  // statement in the same D1 batch, preventing losing concurrent requests
+  // from creating a misleading approval event.
   const results = await dbBatch(db, [
     {
       sql: `UPDATE employee_requests SET ${entries.map(([key]) => `${key} = ?`).join(', ')}
@@ -696,7 +700,8 @@ async function updateStatus(db, salonId, row, toStatus, input, actor) {
         (id, salon_id, request_id, request_number, event_type, from_status, to_status,
          actor_uid, actor_email, actor_name, actor_role, note, payload_json, before_json,
          after_json, request_idempotency_key, ip, user_agent, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE changes() = 1`,
       params: [
         eventId, salonId, row.id, row.request_number, input.eventType || toStatus,
         row.status, toStatus, snapshot.uid || null, snapshot.email || null,
@@ -2752,6 +2757,15 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
   }[actionKey];
 
   if (actionStatus) {
+    // Store the final approver's chosen financial policy in the immutable
+    // approval event, not only in a transient browser dialog.
+    if (actionKey === 'approve' && row.request_type === 'leave' &&
+        ['other', 'other_hr_review'].includes(cleanText(parseJson(row.payload_json, {}).leaveType).toLowerCase())) {
+      const manualPolicy = normalizeManualLeavePolicy(input);
+      if (!manualPolicy) throw new AppError(409, 'core_leave:hr_review_resolution_required');
+      if (options.manualLeavePolicyAuthorized !== true) throw new AppError(403, 'core_leave:manual_policy_forbidden');
+      input = { ...input, payload: { ...(input.payload || {}), manualLeavePolicy: manualPolicy } };
+    }
     if (actionKey === 'complete') {
       if (row.status !== 'executing' || !cleanText(row.source_reference_id)) throw new AppError(409, 'core_employee_request:execution_not_ready');
       if (row.request_type === 'exit_return' && !row.actual_return_at) throw new AppError(409, 'core_employee_request:return_not_recorded');
@@ -2818,6 +2832,21 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
       throw new AppError(409, 'core_employee_request:execute_requires_approval');
     }
     try {
+      if (row.request_type === 'leave' &&
+          ['other', 'other_hr_review'].includes(cleanText(parseJson(row.payload_json, {}).leaveType).toLowerCase())) {
+        const approvedEvent = await dbFirst(db,
+          `SELECT payload_json FROM employee_request_events
+             WHERE salon_id = ? AND request_id = ? AND to_status = 'approved'
+             ORDER BY created_at DESC LIMIT 1`, [salonId, row.id]);
+        const approvedPolicy = normalizeManualLeavePolicy(parseJson(approvedEvent?.payload_json, {}));
+        if (!approvedPolicy) throw new AppError(409, 'core_leave:hr_review_resolution_required');
+        const suppliedPolicy = normalizeManualLeavePolicy(input);
+        if (suppliedPolicy && (suppliedPolicy.deductFromBalance !== approvedPolicy.deductFromBalance ||
+            suppliedPolicy.affectsPayroll !== approvedPolicy.affectsPayroll)) {
+          throw new AppError(409, 'core_leave:approved_policy_mismatch');
+        }
+        input = { ...input, manualLeavePolicy: approvedPolicy };
+      }
       const effect = await executeEffects(db, salonId, row, actor, input, options);
       const sourceType = cleanText(effect?.sourceType);
       const sourceId = cleanText(effect?.sourceId);

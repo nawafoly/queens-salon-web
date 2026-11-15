@@ -3,6 +3,18 @@ import { dashboardText, type DashboardLanguage } from "./dashboardLanguage";
 export type { DashboardLanguage } from "./dashboardLanguage";
 
 const settingsEnglish: Record<string, string> = {
+  "صلاحيات الاعتماد الحصرية": "Exclusive approval authorities",
+  "المعتمد النهائي للإجازات": "Final leave approver",
+  "هذه صلاحية حصرية لشخص واحد، وليست صلاحية عامة قابلة للمنح لجميع المالكين.": "Only one designated account can hold this authority; it is not a general Owner permission.",
+  "جارٍ التحقق من المعتمد الحالي...": "Checking the current approver...",
+  "المعتمد الحالي:": "Current approver:",
+  "لم يُعيّن المعتمد النهائي بعد؛ الاعتماد النهائي للإجازات متوقف حتى تعيينه.": "No final approver is assigned; final leave decisions are blocked until assignment.",
+  "اختر حساب المالك صاحب الاعتماد النهائي": "Select an Owner account as final approver",
+  "اختر حسابًا": "Select an account",
+  "جارٍ التعيين...": "Assigning...",
+  "تعيين المعتمد النهائي": "Assign final approver",
+  "يلزم وجود مالك نشط آخر مرتبط بحساب Firebase لتعيينه.": "Another active Owner with a Firebase identity is required for assignment.",
+  "نقل صلاحية الاعتماد متاح للمعتمد الحالي فقط.": "Only the current final approver may transfer this authority.",
   "اسم القسم بالإنجليزي": "Section name in English",
   "اسم الخدمة بالإنجليزي": "Service name in English",
   "اسم التصنيف بالإنجليزي": "Category name in English",
