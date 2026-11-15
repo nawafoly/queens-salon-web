@@ -671,7 +671,7 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
         </div>
       </section>
 
-      <section className="dsv2-card dsv2-card--padded" aria-label={t("صلاحيات الاعتماد الحصرية")}>
+      <section className="dsv2-card dsv2-card--padded leave-authority-panel" aria-label={t("صلاحيات الاعتماد الحصرية")}>
         <div className="dsv2-stack">
           <h2>{t("صلاحيات الاعتماد الحصرية")}</h2>
           <h3>{t("المعتمد النهائي للإجازات")}</h3>
