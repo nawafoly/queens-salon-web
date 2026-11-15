@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { requireFinalLeaveAuthority, FINAL_LEAVE_APPROVAL_KEY } from './core/repositories/approval-authorities.js';
+import { requireFinalLeaveAuthority, assignApprovalAuthority, FINAL_LEAVE_APPROVAL_KEY } from './core/repositories/approval-authorities.js';
 
 function dbFor(record) {
   return {
@@ -175,4 +175,32 @@ test('final leave approver is managed only from administrative D1 account settin
   assert.match(requests, /المعتمد الحالي:/);
   assert.doesNotMatch(requests, /LeaveFinalApprovalService\.assign\(/);
   assert.doesNotMatch(requests, /تعيين المعتمد النهائي/);
+});
+
+
+test('former assigning Owner cannot change final approver after appointment', async () => {
+  let attemptedWrite = false;
+  const db = {
+    __fakeD1: true,
+    first: async (sql) => {
+      if (sql.includes('FROM app_users')) {
+        return { id: 'other-owner-id', primary_role: 'owner', status: 'active' };
+      }
+      if (sql.includes('FROM approval_authorities')) {
+        return { approver_user_id: 'current-approver-id' };
+      }
+      throw new Error('Unexpected query in authority transfer check');
+    },
+    batch: async () => {
+      attemptedWrite = true;
+      throw new Error('Unauthorized transfer reached mutation');
+    },
+  };
+  await assert.rejects(
+    assignApprovalAuthority(db, 'staging', FINAL_LEAVE_APPROVAL_KEY,
+      'other-owner-id', { userId: 'initial-assigning-owner-id', role: 'owner' }),
+    (error) => error.status === 403 &&
+      error.code === 'core_approval_authority:delegation_requires_incumbent'
+  );
+  assert.equal(attemptedWrite, false, 'forbidden transfer must not mutate D1');
 });
