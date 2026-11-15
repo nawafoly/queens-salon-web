@@ -143,3 +143,20 @@ test('concurrent loser cannot insert a phantom approved-policy event', async () 
   const code = transition.slice(transition.indexOf('const results = await dbBatch'));
   assert.ok(code.indexOf('UPDATE employee_requests') < code.indexOf('INSERT OR IGNORE INTO employee_request_events'));
 });
+
+test('staging final-approver rollout uses isolated D1, attendance, R2 and salon', async () => {
+  const staging = JSON.parse(await readFile(new URL('../wrangler.core.staging.jsonc', import.meta.url), 'utf8'));
+  const productionText = await readFile(new URL('../wrangler.core.jsonc', import.meta.url), 'utf8');
+  const production = JSON.parse(productionText.replace(/^\uFEFF/, ''));
+  assert.equal(staging.vars.SALON_ID, 'staging');
+  assert.notEqual(staging.name, production.name);
+  for (const binding of ['CORE_DB', 'ATTENDANCE_DB']) {
+    const stage = staging.d1_databases.find((item) => item.binding === binding);
+    const prod = production.d1_databases.find((item) => item.binding === binding);
+    assert.ok(stage && prod, binding + ' must exist in both environments');
+    assert.notEqual(stage.database_id, prod.database_id, binding + ' must use independent databases');
+    assert.notEqual(stage.database_name, prod.database_name, binding + ' must use independent names');
+  }
+  assert.notEqual(staging.r2_buckets[0].bucket_name, production.r2_buckets[0].bucket_name);
+  assert.notEqual(staging.vars.FIREBASE_PROJECT_ID, production.vars.FIREBASE_PROJECT_ID);
+});
