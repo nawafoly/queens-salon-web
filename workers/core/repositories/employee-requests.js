@@ -317,8 +317,33 @@ export async function transitionEmployeeRequest(
   }
 
   if (requestType === 'leave') {
+    const requestPayload = parsePayload(row.payload_json);
+    // Resolve the signed-off financial decision before the compliance gate.
+    // Otherwise approved custom leave would be rejected before execution
+    // can reach the legacy executor's own approved-policy verification.
+    if (actionKey === 'execute' &&
+        ['other', 'other_hr_review'].includes(cleanText(requestPayload.leaveType).toLowerCase())) {
+      const approvalEvent = await dbFirst(
+        db,
+        `SELECT payload_json FROM employee_request_events
+           WHERE salon_id = ? AND request_id = ? AND to_status = 'approved'
+           ORDER BY created_at DESC LIMIT 1`,
+        [salonId, cleanText(idValue)]
+      );
+      const approvedPolicy = normalizeManualLeavePolicy(parsePayload(approvalEvent?.payload_json));
+      if (!approvedPolicy) throw new AppError(409, 'core_leave:hr_review_resolution_required');
+      const suppliedPolicy = normalizeManualLeavePolicy(input);
+      if (input.manualLeavePolicy !== undefined || input.manual_leave_policy !== undefined) {
+        if (!suppliedPolicy ||
+            suppliedPolicy.deductFromBalance !== approvedPolicy.deductFromBalance ||
+            suppliedPolicy.affectsPayroll !== approvedPolicy.affectsPayroll) {
+          throw new AppError(409, 'core_leave:approved_policy_mismatch');
+        }
+      }
+      input = { ...input, manualLeavePolicy: approvedPolicy };
+    }
     assertLeaveRequestDecisionAllowed(
-      parsePayload(row.payload_json),
+      requestPayload,
       actionKey,
       input,
       options
