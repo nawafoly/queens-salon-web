@@ -8,8 +8,8 @@ const translations = readFileSync("src/pages/dashboardEmployees/employeeLanguage
 
 test("employee directory badge distinguishes visibility and ended employment", () => {
   assert.match(panel, /"تم إنهاء عقدها"/);
-  assert.match(panel, /"مخفية من الدليل"/);
-  assert.match(panel, /"ظاهرة في الدليل"/);
+  assert.match(panel, /"مخفي من الدليل"/);
+  assert.match(panel, /"ظاهر في الدليل"/);
   assert.match(panel, /staff\.includeInEmployeeManagement === false/);
   assert.match(panel, /terminated \|\| completedEndDate/);
   assert.doesNotMatch(panel, /if \(staff\.active\) return \{ label: "نشطة"/);
@@ -24,7 +24,7 @@ test("ending a contract is never inferred from inactive flag alone", () => {
 });
 
 test("new badges include English translations", () => {
-  for (const label of ["ظاهرة في الدليل", "مخفية من الدليل", "تم إنهاء عقدها"]) {
+  for (const label of ["ظاهر في الدليل", "مخفي من الدليل", "تم إنهاء عقدها"]) {
     assert.ok(translations.includes('"'+label+'":'), label);
   }
 });
