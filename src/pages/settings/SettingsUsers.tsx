@@ -254,6 +254,7 @@ export default function SettingsUsers({
 
   const [leaveAuthority, setLeaveAuthority] = useState<LeaveFinalApprovalAuthority | null>(null);
   const [leaveAuthorityLoaded, setLeaveAuthorityLoaded] = useState(false);
+  const [leaveAuthorityLoadFailed, setLeaveAuthorityLoadFailed] = useState(false);
   const [leaveAuthorityError, setLeaveAuthorityError] = useState("");
   const [leaveAuthoritySaving, setLeaveAuthoritySaving] = useState(false);
   const [targetApproverUserId, setTargetApproverUserId] = useState("");
@@ -290,7 +291,7 @@ export default function SettingsUsers({
 
   const actorRole = normalizeRole(me?.role || permissionRole || initialRole);
   const actorIsOwner = actorRole === "owner";
-  const canAssignLeaveAuthority = actorIsOwner && leaveAuthorityLoaded &&
+  const canAssignLeaveAuthority = actorIsOwner && leaveAuthorityLoaded && !leaveAuthorityLoadFailed &&
     (!leaveAuthority || leaveAuthority.approver_user_id === me?.id);
   const eligibleLeaveApprovers = accounts.filter((account) =>
     account.primaryRole === "owner" && account.status === "active" &&
@@ -339,12 +340,17 @@ export default function SettingsUsers({
     if (authReady === false || !canReadAccounts) return;
     let live = true;
     setLeaveAuthorityLoaded(false);
+    setLeaveAuthorityLoadFailed(false);
+    setLeaveAuthorityError("");
     void LeaveFinalApprovalService.get()
       .then((authority) => {
         if (live) setLeaveAuthority(authority);
       })
       .catch((loadError) => {
-        if (live) setLeaveAuthorityError(errorMessage(loadError, language));
+        if (live) {
+          setLeaveAuthorityLoadFailed(true);
+          setLeaveAuthorityError(errorMessage(loadError, language));
+        }
       })
       .finally(() => {
         if (live) setLeaveAuthorityLoaded(true);
