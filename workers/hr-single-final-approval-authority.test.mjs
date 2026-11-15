@@ -70,3 +70,15 @@ test('new authority table has exactly one approver per workflow and no implicit 
   assert.match(migration, /PRIMARY KEY \(salon_id, authority_key\)/);
   assert.doesNotMatch(migration, /INSERT INTO approval_authorities/i);
 });
+
+test('custom leave approval persists policy and execution is pinned to the approved event', async () => {
+  const core = await readFile(new URL('./core/repositories/employee-requests-legacy.js', import.meta.url), 'utf8');
+  assert.match(core, /actionKey === 'approve' && row\.request_type === 'leave'[\s\S]*?manualLeavePolicy: manualPolicy/);
+  assert.match(core, /SELECT payload_json FROM employee_request_events[\s\S]*?to_status = 'approved'/);
+  assert.match(core, /if \(!approvedPolicy\) throw new AppError\(409, 'core_leave:hr_review_resolution_required'\)/);
+  assert.match(core, /core_leave:approved_policy_mismatch/);
+  assert.match(core, /input = \{ \.\.\.input, manualLeavePolicy: approvedPolicy \}/);
+  const ui = await readFile(new URL('../src/pages/hr/AdminEmployeeRequests.tsx', import.meta.url), 'utf8');
+  assert.match(ui, /kind === "execute" \? confirmed\.manualLeavePolicy : proposed/);
+  assert.match(ui, /السياسة المالية المعتمدة نهائيًا \(للقراءة فقط\)/);
+});
