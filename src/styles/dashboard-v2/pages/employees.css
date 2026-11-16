@@ -3119,3 +3119,23 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Independent lifecycle and directory badges remain readable on narrow cards. */
+.dashboard-v2 .employees-v2-card__state-badges {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+}
+.dashboard-v2 .employees-v2-card__state-badges .dsv2-badge {
+  white-space: normal;
+  text-align: center;
+}
+.dashboard-v2 .employees-v2-card__login-status {
+  margin: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
