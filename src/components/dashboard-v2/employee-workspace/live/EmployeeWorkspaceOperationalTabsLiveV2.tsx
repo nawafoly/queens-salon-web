@@ -1641,6 +1641,7 @@ export type EmployeePayrollTabLiveV2Props = {
   attendancePayrollMode: "required" | "exempt";
   attendancePayrollExemptionReason: string;
   savingSettings: boolean;
+  saveNotice: { tone: "success" | "danger"; text: string } | null;
   onMonthlySalaryChange: (value: string) => void;
   onHousingAllowanceChange: (value: string) => void;
   onTransportationAllowanceChange: (value: string) => void;
@@ -1689,6 +1690,7 @@ export function EmployeePayrollTabLiveV2({
   attendancePayrollMode,
   attendancePayrollExemptionReason,
   savingSettings,
+  saveNotice,
   onMonthlySalaryChange,
   onHousingAllowanceChange,
   onTransportationAllowanceChange,
@@ -1742,6 +1744,20 @@ export function EmployeePayrollTabLiveV2({
           {savingSettings ? t("جاري الحفظ...") : t("حفظ إعدادات الراتب والتأمينات")}
         </button>
       </div>
+
+      {saveNotice ? (
+        <div
+          role={saveNotice.tone === "danger" ? "alert" : "status"}
+          aria-live={saveNotice.tone === "danger" ? "assertive" : "polite"}
+          className={`dsv2-ew-payroll-save-feedback dsv2-ew-payroll-save-feedback--${saveNotice.tone}`}
+        >
+          {t(saveNotice.text)}
+        </div>
+      ) : savingSettings ? (
+        <div className="dsv2-ew-payroll-save-feedback" role="status" aria-live="polite">
+          {t("جاري حفظ إعدادات الراتب والتأمينات...")}
+        </div>
+      ) : null}
 
       <WorkspaceCardV2
         title="هيكل الراتب والدوام"

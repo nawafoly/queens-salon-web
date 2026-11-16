@@ -283,7 +283,8 @@ export default function EmployeeListPanel({
             const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
             const kpiLabel = statsLoading ? "…" : `${kpi}%`;
             const isSelected = selectedEmployeeId === staff.id;
-            const needsCompletion = staff.profileIncomplete || staff.source !== "staff_public";
+            // Core HR / Core Staff are canonical records, not incomplete legacy mirrors.
+            const needsCompletion = staff.profileIncomplete === true;
             const name = t(employeeDisplayName(staff));
             const email = cleanText(staff.email);
             const phone = cleanText(staff.phone);
