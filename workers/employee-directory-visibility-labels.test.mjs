@@ -17,7 +17,7 @@ const translations = readFileSync("src/pages/dashboardEmployees/employeeLanguage
 const today = "2026-11-16";
 const staff = (changes = {}) => ({
   active: true, employmentStatus: "active", employmentEndDate: "",
-  onLeave: false, includeInEmployeeManagement: true, accountStatus: "active", ...changes
+  onLeave: false, leaveStatusKnown: true, includeInEmployeeManagement: true, accountStatus: "active", ...changes
 });
 
 test("employment state is separate from visibility and login", () => {
@@ -31,6 +31,8 @@ test("employment state is separate from visibility and login", () => {
 
 test("ended employment requires explicit status or inactive completed end date", () => {
   assert.equal(employeeWorkState(staff({ active: false, employmentStatus: "inactive" }), today), "inactive");
+  assert.equal(employeeWorkState(staff({ active: true, employmentStatus: "inactive" }), today), "inactive");
+  assert.equal(employeeWorkState(staff({ active: true, employmentStatus: "inactive", employmentEndDate: today }), today), "ended");
   assert.equal(employeeWorkState(staff({ active: false, employmentStatus: "inactive", employmentEndDate: today }), today), "ended");
   assert.equal(employeeWorkState(staff({ active: false, employmentStatus: "inactive", employmentEndDate: "2026-11-17" }), today), "inactive");
   assert.equal(employeeWorkState(staff({ active: false, employmentStatus: "terminated" }), today), "ended");
@@ -43,6 +45,13 @@ test("active approved leave is not confused with inactive status", () => {
   assert.equal(employeeWorkState(staff({ active: false, onLeave: true, leaveUntil: "2026-11-17" }), today), "inactive");
 });
 
+test("unknown leave entitlement is not misreported as working", () => {
+  assert.equal(employeeWorkState(staff({ leaveStatusKnown: false }), today), "unknown");
+  assert.equal(employeeWorkState(staff({ leaveStatusKnown: undefined }), today), "unknown");
+  assert.equal(employeeWorkState(staff({ leaveStatusKnown: false, employmentStatus: "inactive" }), today), "inactive");
+  assert.equal(employeeWorkState(staff({ leaveStatusKnown: true }), today), "working");
+});
+
 test("independent filters and badges use shared state and canonical account linkage", () => {
   assert.match(panel, /employeeWorkState\(staff, todayIso\(\)\)/);
   assert.match(panel, /employeeDirectoryVisibility\(staff\)/);
@@ -50,11 +59,12 @@ test("independent filters and badges use shared state and canonical account link
   assert.match(page, /employeeWorkState\(staff, todayIso\(\)\) === employmentFilter/);
   assert.match(page, /accountStatus: cleanText\(account\.status\)/);
   assert.match(page, /employmentStatus: cleanText\(employment\.status \?\? employment\.employment_status\)/);
+  assert.match(page, /leaveStatusKnown: canManageLeaveBalance/);
 });
 
 test("employee directory labels have translations", () => {
   for (const label of ["ظاهر في الدليل", "مخفي من الدليل", "تم إنهاء عقدها",
-    "الحالة الوظيفية", "على رأس العمل", "متوقفة عن العمل", "حساب الدخول", "مفعل", "معطل"]) {
+    "الحالة الوظيفية", "على رأس العمل", "متوقفة عن العمل", "حالة الإجازة غير متاحة", "حساب الدخول", "مفعل", "معطل"]) {
     assert.ok(translations.includes('"'+label+'":'), label);
   }
 });
