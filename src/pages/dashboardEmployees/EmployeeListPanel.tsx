@@ -33,7 +33,7 @@ import {
 
 type EmployeeListPanelProps = {
   qText: string;
-  employmentFilter: "all" | "working" | "leave" | "ended" | "inactive";
+  employmentFilter: "all" | "working" | "leave" | "ended" | "inactive" | "unknown";
   directoryVisibility: "visible" | "hidden" | "all";
   specialtyFilter: string;
   serviceOptions: ServiceOption[];
@@ -45,7 +45,7 @@ type EmployeeListPanelProps = {
   selectedEmployeeId: string | null;
   canManage: boolean;
   onQTextChange: (value: string) => void;
-  onEmploymentFilterChange: (value: "all" | "working" | "leave" | "ended" | "inactive") => void;
+  onEmploymentFilterChange: (value: "all" | "working" | "leave" | "ended" | "inactive" | "unknown") => void;
   onDirectoryVisibilityChange: (value: "visible" | "hidden" | "all") => void;
   onSpecialtyFilterChange: (value: string) => void;
   onCreateEmployee: () => void;
@@ -93,6 +93,7 @@ const WORK_LABELS = {
   leave: { label: "في إجازة", tone: "gold" },
   ended: { label: "تم إنهاء عقدها", tone: "danger" },
   inactive: { label: "متوقفة عن العمل", tone: "gold" },
+  unknown: { label: "حالة الإجازة غير متاحة", tone: "gold" },
 } as const;
 
 
@@ -222,9 +223,10 @@ export default function EmployeeListPanel({
               { value: "leave", label: t("في إجازة") },
               { value: "ended", label: t("تم إنهاء عقدها") },
               { value: "inactive", label: t("متوقفة عن العمل") },
+              { value: "unknown", label: t("حالة الإجازة غير متاحة") },
             ]}
             onChange={(value) => {
-              const next = value as "all" | "working" | "leave" | "ended" | "inactive";
+              const next = value as "all" | "working" | "leave" | "ended" | "inactive" | "unknown";
               // Offboarding hides directory visibility. Selecting ended employment
               // must not silently look empty behind the default visible-only filter.
               if (next === "ended" && directoryVisibility === "visible") {
