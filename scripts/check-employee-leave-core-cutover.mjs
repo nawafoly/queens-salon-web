@@ -9,7 +9,8 @@ const checks = [
       /decideCanonicalEmployeeLeaveRequest/,
       /canonicalDisplayLeaveForEmployee/,
       /CoreHrService\.listLeaves\(\{ status: "approved" \}\)/,
-      /Core employee_leaves is the only operational leave source/,
+      /const canonicalLeave = canManageLeaveBalance\s*\?\s*canonicalDisplayLeaveForEmployee\(\s*coreApprovedLeaves,/,
+      /leaveStatusKnown:\s*canManageLeaveBalance,\s*onLeave:\s*Boolean\(canonicalLeave\)/,
       /Never consume legacy Firestore leave mirrors at runtime/,
     ],
     forbidden: [
@@ -136,7 +137,7 @@ const checks = [
   },
   {
     file: "workers/core/repositories/permissions.js",
-    required: [/cancelPermissionBookingBlock[\s\S]{0,300}refreshPayrollEntries/],
+    required: [/if\s*\(status === 'rejected' \|\| status === 'cancelled'\)\s*\{\s*await cancelPermissionBookingBlock\([^;]+;\s*\}\s*const payrollReconciliation = await reconcilePermissionPayroll\(/],
     forbidden: [],
   },
 ];
