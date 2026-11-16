@@ -64,3 +64,25 @@ test("payroll save feedback is reset per employee and stale asynchronous results
   assert.match(source, /const rejectSave = \(message: string\) => \{\s*if \(!isCurrentSaveContext\(\)\) return;/);
   assert.match(source, /if \(isCurrentSaveContext\(\)\) \{\s*setPayrollSaveNotice\(\{ tone: "success"/);
 });
+
+test("canonical Core HR records do not inherit account-only incomplete status", () => {
+  assert.match(source, /profileIncomplete:\s*source === "core_accounts"/);
+  assert.match(source, /profileIncomplete:\s*!\[primary\.source, fallback\.source\]\.some\(\(source\) => source === "core_hr" \|\| source === "core_staff"\)/);
+});
+
+test("unlinked Core account users are not treated as employee directory records", () => {
+  assert.match(source, /const linkedEmployeeId = cleanText\(\s*account\.employeeLink\?\.employeeId\s*\);\s*\/\/ Account membership alone does not make someone an employee\./);
+  assert.match(source, /if \(!linkedEmployeeId\) return;/);
+});
+
+test("payroll save does not infer or overwrite Core employment lifecycle", () => {
+  const begin = source.indexOf("  const savePayrollSettings = async () => {");
+  const end = source.indexOf("\n\n  useEffect(() => {", begin);
+  assert.ok(begin >= 0 && end > begin);
+  const payrollSave = source.slice(begin, end);
+  assert.match(payrollSave, /await CoreHrService\.getEmployee\(targetEmployeeId\)/);
+  assert.doesNotMatch(payrollSave, /getEmployee\(targetEmployeeId\)\.catch\(\(\) => null\)/);
+  assert.doesNotMatch(payrollSave, /employmentStatus:\s*active \?/);
+  assert.doesNotMatch(payrollSave, /status:\s*active \?/);
+  assert.match(payrollSave, /await CoreHrService\.saveEmployee\(/);
+});
