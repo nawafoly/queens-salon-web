@@ -56,6 +56,19 @@ if (!errors.length) {
     errors.push("Attendance route no longer uses the shared attendanceOnly workflow.");
   }
 
+  // iOS long-press must not select attendance labels or open Copy/Translate.
+  if (!overview.includes('onContextMenu={(event) => event.preventDefault()}')) {
+    errors.push("Fingerprint button must suppress the long-press context menu.");
+  }
+  for (const declaration of ["-webkit-user-select: none;", "user-select: none;", "-webkit-touch-callout: none;", "touch-action: manipulation;"]) {
+    if (!attendanceCss.includes(declaration)) {
+      errors.push(`Attendance touch control missing: ${declaration}`);
+    }
+  }
+  if (!attendanceCss.includes(".employee-attendance-console *")) {
+    errors.push("Attendance console labels must not allow accidental selection.");
+  }
+
   if (!overview.includes('className="employee-overview-v2-page"')) {
     errors.push("Employee overview is missing the isolated V2 page root.");
   }
