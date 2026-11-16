@@ -3139,3 +3139,23 @@
   font-size: 0.72rem;
   font-weight: 700;
 }
+
+/* Canonical payroll-save response stays visible within the employee workspace. */
+.dashboard-v2 .dsv2-ew-payroll-save-feedback {
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  padding: var(--dsv2-space-3);
+  font-size: 0.85rem;
+  font-weight: 750;
+  line-height: 1.7;
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+}
+.dashboard-v2 .dsv2-ew-payroll-save-feedback--success {
+  color: var(--dsv2-success, #166534);
+  border-color: currentColor;
+}
+.dashboard-v2 .dsv2-ew-payroll-save-feedback--danger {
+  color: var(--dsv2-danger, #b91c1c);
+  border-color: currentColor;
+}
