@@ -93,7 +93,7 @@ function statusOf(staff: StaffPublicUi) {
   const employmentStatus = cleanText(staff.employmentStatus).toLowerCase();
   const terminated = ["terminated", "resigned", "ended"].includes(employmentStatus);
   const endDate = normalizeLeaveUntil(staff.employmentEndDate);
-  const completedEndDate = !!endDate && endDate < todayIso() && !staff.active;
+  const completedEndDate = !!endDate && endDate <= todayIso() && !staff.active;
 
   if (terminated || completedEndDate) {
     return { label: "تم إنهاء عقدها", tone: "danger" } as const;
