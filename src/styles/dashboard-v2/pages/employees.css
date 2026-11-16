@@ -3152,10 +3152,10 @@
   background: var(--dsv2-surface);
 }
 .dashboard-v2 .dsv2-ew-payroll-save-feedback--success {
-  color: var(--dsv2-success, #166534);
+  color: var(--dsv2-success);
   border-color: currentColor;
 }
 .dashboard-v2 .dsv2-ew-payroll-save-feedback--danger {
-  color: var(--dsv2-danger, #b91c1c);
+  color: var(--dsv2-danger);
   border-color: currentColor;
 }
