@@ -2130,6 +2130,7 @@ function DashboardEmployeesContent() {
     setPayrollAttendanceExemptionReason,
   ] = useState("");
   const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
+  const [payrollSaveNotice, setPayrollSaveNotice] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
   const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("");
   const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("");
@@ -5066,19 +5067,26 @@ function DashboardEmployeesContent() {
   };
 
   const savePayrollSettings = async () => {
+    if (payrollSettingsSaving) return;
+    setPayrollSaveNotice(null);
+    const rejectSave = (message: string) => {
+      setPayrollSaveNotice({ tone: "danger", text: message });
+      // Keep the global dashboard error for cross-tab action feedback too.
+      setErrorMsg(message);
+    };
     if (!canManagePayroll) {
-      setErrorMsg("ليست لديك صلاحية لإدارة الرواتب.");
+      rejectSave("ليست لديك صلاحية لإدارة الرواتب.");
       return;
     }
     const targetEmployeeId = cleanText(selectedEmployeeId || editId || routeEmployeeId);
     const currentEmployee = editingStaff || selectedEmployee;
     if (!targetEmployeeId || !currentEmployee) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      rejectSave("لم يتم تحديد الموظفة.");
       return;
     }
     const cleanName = cleanText(name || currentEmployee.name || targetEmployeeId);
     if (!cleanName) {
-      setErrorMsg("اكتب اسم الموظفة قبل حفظ إعدادات الراتب.");
+      rejectSave("اكتب اسم الموظفة قبل حفظ إعدادات الراتب.");
       return;
     }
 
@@ -5086,39 +5094,39 @@ function DashboardEmployeesContent() {
       payrollAttendanceMode === "exempt" &&
       !cleanText(payrollAttendanceExemptionReason)
     ) {
-      setErrorMsg(
+      rejectSave(
         "اكتب سبب إعفاء الموظف من البصمة قبل حفظ إعدادات الراتب."
       );
       return;
     }
 
     if (!payrollSocialInsuranceCategory) {
-      setErrorMsg("حدد تصنيف التأمينات الاجتماعية للموظفة قبل حفظ إعدادات الراتب.");
+      rejectSave("حدد تصنيف التأمينات الاجتماعية للموظفة قبل حفظ إعدادات الراتب.");
       return;
     }
     if (!cleanText(payrollSocialInsuranceEffectiveFrom)) {
-      setErrorMsg("حدد تاريخ سريان تصنيف التأمينات حتى يبقى السجل المالي واضحًا مستقبلًا.");
+      rejectSave("حدد تاريخ سريان تصنيف التأمينات حتى يبقى السجل المالي واضحًا مستقبلًا.");
       return;
     }
     if (
       payrollGosiWageMode === "override" &&
       positiveNumberOrZero(payrollGosiContributoryWageOverride) <= 0
     ) {
-      setErrorMsg("اكتب أجر الاشتراك في GOSI عند استخدام الإدخال المعتمد يدويًا.");
+      rejectSave("اكتب أجر الاشتراك في GOSI عند استخدام الإدخال المعتمد يدويًا.");
       return;
     }
     if (
       payrollGosiWageMode === "override" &&
       !cleanText(payrollGosiContributoryWageOverrideReason)
     ) {
-      setErrorMsg("اكتب سبب استخدام أجر اشتراك GOSI مختلف عن الأساسي + بدل السكن.");
+      rejectSave("اكتب سبب استخدام أجر اشتراك GOSI مختلف عن الأساسي + بدل السكن.");
       return;
     }
     if (
       payrollSocialInsuranceCategory === "gcc" &&
       !cleanText(payrollGccHomeCountryCode)
     ) {
-      setErrorMsg("حدد دولة الموظفة الخليجية لإعداد مد الحماية دون معاملتها كغير سعودية.");
+      rejectSave("حدد دولة الموظفة الخليجية لإعداد مد الحماية دون معاملتها كغير سعودية.");
       return;
     }
 
@@ -5217,9 +5225,11 @@ function DashboardEmployeesContent() {
             : employee
         )
       );
+      setPayrollSaveNotice({ tone: "success", text: "تم حفظ إعدادات الراتب والتأمينات بنجاح." });
       setSaveMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب."));
+      const message = toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب.");
+      rejectSave(message);
     } finally {
       setPayrollSettingsSaving(false);
     }
@@ -10195,6 +10205,7 @@ const canonicalSchedules =
                   summary: modalPayrollMonthSummary,
                   setupPreview: payrollSettingsPreview,
                   savingSettings: payrollSettingsSaving,
+                  saveNotice: payrollSaveNotice,
                   onMonthlySalaryChange: setMonthlySalary,
                   onHousingAllowanceChange: setPayrollHousingAllowance,
                   onTransportationAllowanceChange: setPayrollTransportationAllowance,
