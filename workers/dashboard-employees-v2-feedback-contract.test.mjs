@@ -52,3 +52,15 @@ test("canonical Core staff record is not labeled incomplete solely by its source
   assert.match(directory, /staff\.profileIncomplete === true/);
   assert.doesNotMatch(directory, /staff\.source !== "staff_public"/);
 });
+
+
+test("payroll save feedback is reset per employee and stale asynchronous results are ignored", () => {
+  assert.match(source, /const payrollSaveContextVersionRef = useRef\(0\)/);
+  assert.match(source, /const resetForm = \(\) => \{\s*payrollSaveContextVersionRef\.current \+= 1;\s*setPayrollSaveNotice\(null\)/);
+  assert.match(source, /const openEdit = \(x: StaffPublicUi, updateRoute = true\) => \{\s*payrollSaveContextVersionRef\.current \+= 1;\s*setPayrollSaveNotice\(null\)/);
+  assert.match(source, /\[selectedEmployeeId\]\);\s*const savePayrollSettings = async/);
+  assert.match(source, /const saveContextVersion = payrollSaveContextVersionRef\.current/);
+  assert.match(source, /const isCurrentSaveContext = \(\) => payrollSaveContextVersionRef\.current === saveContextVersion/);
+  assert.match(source, /const rejectSave = \(message: string\) => \{\s*if \(!isCurrentSaveContext\(\)\) return;/);
+  assert.match(source, /if \(isCurrentSaveContext\(\)\) \{\s*setPayrollSaveNotice\(\{ tone: "success"/);
+});
