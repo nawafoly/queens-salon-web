@@ -223,7 +223,15 @@ export default function EmployeeListPanel({
               { value: "ended", label: t("تم إنهاء عقدها") },
               { value: "inactive", label: t("متوقفة عن العمل") },
             ]}
-            onChange={(value) => onEmploymentFilterChange(value as "all" | "working" | "leave" | "ended" | "inactive")}
+            onChange={(value) => {
+              const next = value as "all" | "working" | "leave" | "ended" | "inactive";
+              // Offboarding hides directory visibility. Selecting ended employment
+              // must not silently look empty behind the default visible-only filter.
+              if (next === "ended" && directoryVisibility === "visible") {
+                onDirectoryVisibilityChange("all");
+              }
+              onEmploymentFilterChange(next);
+            }}
           />
         </label>
 
