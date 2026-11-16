@@ -2131,6 +2131,8 @@ function DashboardEmployeesContent() {
   ] = useState("");
   const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
   const [payrollSaveNotice, setPayrollSaveNotice] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+  // Invalidate in-flight feedback when switching or closing employee profiles.
+  const payrollSaveContextVersionRef = useRef(0);
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
   const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("");
   const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("");
@@ -3385,6 +3387,8 @@ function DashboardEmployeesContent() {
   ]);
 
   const resetForm = () => {
+    payrollSaveContextVersionRef.current += 1;
+    setPayrollSaveNotice(null);
     setEditId(null);
     setModalTab("basic");
     setName("");
@@ -3478,6 +3482,8 @@ function DashboardEmployeesContent() {
   };
 
   const openEdit = (x: StaffPublicUi, updateRoute = true) => {
+    payrollSaveContextVersionRef.current += 1;
+    setPayrollSaveNotice(null);
     closingEmployeeDetailRef.current = false;
     const employeeIdentity = employeeIdentityOf(x);
     const canonicalEmployeeId = employeeCanonicalUiId(x, x.id);
@@ -5066,10 +5072,18 @@ function DashboardEmployeesContent() {
     );
   };
 
+  useEffect(() => {
+    payrollSaveContextVersionRef.current += 1;
+    setPayrollSaveNotice(null);
+  }, [selectedEmployeeId]);
+
   const savePayrollSettings = async () => {
     if (payrollSettingsSaving) return;
+    const saveContextVersion = payrollSaveContextVersionRef.current;
     setPayrollSaveNotice(null);
+    const isCurrentSaveContext = () => payrollSaveContextVersionRef.current === saveContextVersion;
     const rejectSave = (message: string) => {
+      if (!isCurrentSaveContext()) return;
       setPayrollSaveNotice({ tone: "danger", text: message });
       // Keep the global dashboard error for cross-tab action feedback too.
       setErrorMsg(message);
@@ -5225,8 +5239,10 @@ function DashboardEmployeesContent() {
             : employee
         )
       );
-      setPayrollSaveNotice({ tone: "success", text: "تم حفظ إعدادات الراتب والتأمينات بنجاح." });
-      setSaveMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
+      if (isCurrentSaveContext()) {
+        setPayrollSaveNotice({ tone: "success", text: "تم حفظ إعدادات الراتب والتأمينات بنجاح." });
+        setSaveMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
+      }
     } catch (error) {
       const message = toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب.");
       rejectSave(message);
