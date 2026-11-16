@@ -1452,6 +1452,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
               type="button"
               className={`employee-punch-button employee-punch-button--${punchTone}`}
               onClick={() => void handleAttendancePunch(punchAction)}
+              onContextMenu={(event) => event.preventDefault()}
               disabled={punchDisabled}
               aria-label={attendanceBusy ? copy.registering : punchLabel}
               aria-describedby="employee-punch-hint"
