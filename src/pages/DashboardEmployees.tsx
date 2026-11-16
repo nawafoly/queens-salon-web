@@ -1115,8 +1115,10 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
       Array.isArray(value) ? value.map(cleanText).filter(Boolean) : []
     ),
 
+    // Canonical Core HR and Core Staff are complete records irrespective of origin.
+    // Account-only rows remain reviewable until linked to a canonical employee.
     profileIncomplete:
-      ![primary.source, fallback.source].some((source) => source === "staff_public" || source === "core_staff"),
+      ![primary.source, fallback.source].some((source) => source === "core_hr" || source === "core_staff"),
   };
 }
 
@@ -4313,7 +4315,7 @@ function DashboardEmployeesContent() {
             employeeProfileEnabled: includeInEmployeeManagement,
             includeInEmployeeManagement,
             source,
-            profileIncomplete: source !== "core_staff",
+            profileIncomplete: source === "core_accounts",
             employeeKind: administrative
               ? "administrative"
               : "service",
@@ -4395,6 +4397,10 @@ function DashboardEmployeesContent() {
           const linkedEmployeeId = cleanText(
             account.employeeLink?.employeeId
           );
+
+          // Account membership alone does not make someone an employee.
+          // Only explicit Core employee links may enter the HR directory.
+          if (!linkedEmployeeId) return;
 
           const recordId =
             linkedEmployeeId ||
@@ -5147,8 +5153,10 @@ function DashboardEmployeesContent() {
     setPayrollSettingsSaving(true);
     setErrorMsg("");
     try {
-      const existingCoreEmployee = await CoreHrService.getEmployee(targetEmployeeId).catch(() => null);
-      const existingEmployment = (existingCoreEmployee?.employment || {}) as Record<string, unknown>;
+      // Fail closed: salary edits must not recreate employees or infer lifecycle state.
+      const existingCoreEmployee = await CoreHrService.getEmployee(targetEmployeeId);
+      if (!existingCoreEmployee) throw new Error("تعذر تحميل سجل الموظفة من Core. لم يتم حفظ الراتب.");
+      const existingEmployment = (existingCoreEmployee.employment || {}) as Record<string, unknown>;
       const baseSalaryHalalas = riyalsInputToHalalas(monthlySalary);
       const housingAllowanceHalalas = riyalsInputToHalalas(payrollHousingAllowance);
       const transportationAllowanceHalalas = riyalsInputToHalalas(payrollTransportationAllowance);
@@ -5168,7 +5176,7 @@ function DashboardEmployeesContent() {
         title: cleanText((currentEmployee as any).title || (currentEmployee as any).jobTitle || existingEmployment.title),
         jobTitle: cleanText((currentEmployee as any).jobTitle || (currentEmployee as any).title || existingEmployment.job_title || existingEmployment.jobTitle),
         department: cleanText((currentEmployee as any).department || existingEmployment.department),
-        employmentStatus: active ? "active" : "inactive",
+        // Preserve Core employment lifecycle; payroll cannot change it.
         baseSalaryHalalas,
         housingAllowanceHalalas,
         transportationAllowanceHalalas,
@@ -5205,7 +5213,7 @@ function DashboardEmployeesContent() {
         firebaseUid: cleanText((currentEmployee as any).linkedUid || (currentEmployee as any).uid || (currentEmployee as any).employeeUid),
         email: cleanText((currentEmployee as any).email),
         phone: cleanText((currentEmployee as any).phone),
-        status: active ? "active" : "inactive",
+        // PATCH only salary settings; no top-level status or lifecycle override.
         employment,
       });
 
