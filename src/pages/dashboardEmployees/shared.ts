@@ -106,6 +106,7 @@ export type StaffPublicDoc = {
   employmentEndDate?: string;
   employmentStartDate?: string;
   employmentStatus?: string;
+  accountStatus?: string;
   showOnAbout: boolean;
   showOnBooking: boolean;
   onLeave?: boolean;
