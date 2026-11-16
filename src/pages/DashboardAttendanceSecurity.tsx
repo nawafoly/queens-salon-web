@@ -864,6 +864,26 @@ export default function DashboardAttendanceSecurity() {
     [dashboard.alerts, search, staffNames]
   );
 
+  const groupedAlerts = useMemo(() => {
+    const groups = new Map<string, AttendanceSecurityEvent[]>();
+    for (const event of visibleAlerts) {
+      // Only group device-sharing alerts with a known device. Other events
+      // remain individually actionable, as do alerts with no device ID.
+      const key = event.eventType === "shared_device" && event.deviceId
+        ? `shared:${event.deviceId}`
+        : `event:${event.id}`;
+      const existing = groups.get(key);
+      if (existing) existing.push(event);
+      else groups.set(key, [event]);
+    }
+    return Array.from(groups, ([key, events]) => ({
+      key,
+      events,
+      isSharedGroup: key.startsWith("shared:"),
+      device: dashboard.devices.find((device) => device.deviceId === events[0]?.deviceId),
+    }));
+  }, [visibleAlerts, dashboard.devices]);
+
   const recentRiskRecords = useMemo(
     () =>
       dashboard.records.filter((record) => {
@@ -1479,21 +1499,54 @@ export default function DashboardAttendanceSecurity() {
 
         {!error && activeTab === "alerts" ? (
           <div className="dsv2-attendance-alert-list">
-            {visibleAlerts.map((event) => (
-              <article key={event.id} className={`dsv2-card dsv2-card--padded is-${event.severity}`}>
-                <span><FiAlertTriangle /></span>
-                <div>
-                  <header><strong>{event.title}</strong><em>{eventTypeLabel(event.eventType)}</em></header>
-                  <p>{event.detail || "تنبيه أمني مرتبط بعملية بصمة."}</p>
-                  <small>{event.employeeName || staffNames.get(event.employeeUid) || event.employeeDocId || event.employeeUid} · {formatDateTime(event.createdAt)} · {shortDeviceId(event.deviceId)}</small>
-                </div>
-                {canResolveAlerts ? (
-                  <footer>
-                    <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "resolved")}><FiCheck />تمت المعالجة</button>
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "ignored")}>تجاهل</button>
-                  </footer>
-                ) : null}
-              </article>
+            {groupedAlerts.map((group) => (
+              <div key={group.key}>
+                {group.isSharedGroup ? (
+                  <details className="dsv2-card dsv2-card--padded is-critical">
+                    <summary>
+                      <strong>جهاز مشترك · {shortDeviceId(group.events[0].deviceId)} · {group.events.length} تنبيهات معروضة</strong>
+                      <small>أول تنبيه: {formatDateTime(group.events.reduce((first, event) => event.createdAt < first ? event.createdAt : first, group.events[0].createdAt))} · آخر تنبيه: {formatDateTime(group.events.reduce((last, event) => event.createdAt > last ? event.createdAt : last, group.events[0].createdAt))}</small>
+                      {group.device ? (
+                        <small>الحسابات: {group.device.assignments.length} · البصمات المقبولة: {group.device.allowedRecords} · المرفوضة: {group.device.rejectedRecords}</small>
+                      ) : (
+                        <small>إحصاءات الجهاز غير متاحة في هذه الصفحة.</small>
+                      )}
+                      <small>افتح لعرض كل حدث ومعالجته منفردًا. التجميع للعرض فقط ولا يغيّر التنبيهات.</small>
+                    </summary>
+                    {group.events.map((event) => (
+                      <article key={event.id} className={`dsv2-card dsv2-card--padded is-${event.severity}`}>
+                        <span><FiAlertTriangle /></span>
+                        <div>
+                          <header><strong>{event.title}</strong><em>{eventTypeLabel(event.eventType)}</em></header>
+                          <p>{event.detail || "تنبيه أمني مرتبط بعملية بصمة."}</p>
+                          <small>{event.employeeName || staffNames.get(event.employeeUid) || event.employeeDocId || event.employeeUid} · {formatDateTime(event.createdAt)} · {shortDeviceId(event.deviceId)}</small>
+                        </div>
+                        {canResolveAlerts ? (
+                          <footer>
+                            <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "resolved")}><FiCheck />تمت المعالجة</button>
+                            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "ignored")}>تجاهل</button>
+                          </footer>
+                        ) : null}
+                      </article>
+                    ))}
+                  </details>
+                ) : group.events.map((event) => (
+                  <article key={event.id} className={`dsv2-card dsv2-card--padded is-${event.severity}`}>
+                    <span><FiAlertTriangle /></span>
+                    <div>
+                      <header><strong>{event.title}</strong><em>{eventTypeLabel(event.eventType)}</em></header>
+                      <p>{event.detail || "تنبيه أمني مرتبط بعملية بصمة."}</p>
+                      <small>{event.employeeName || staffNames.get(event.employeeUid) || event.employeeDocId || event.employeeUid} · {formatDateTime(event.createdAt)} · {shortDeviceId(event.deviceId)}</small>
+                    </div>
+                    {canResolveAlerts ? (
+                      <footer>
+                        <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "resolved")}><FiCheck />تمت المعالجة</button>
+                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "ignored")}>تجاهل</button>
+                      </footer>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
             ))}
             {!loading && !visibleAlerts.length ? <DashboardEmptyStateV2 compact title="لا توجد تنبيهات مفتوحة مطابقة للبحث." /> : null}
           </div>
