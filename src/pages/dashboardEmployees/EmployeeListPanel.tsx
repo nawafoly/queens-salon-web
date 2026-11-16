@@ -24,6 +24,7 @@ import {
   type StaffPublicUi,
 } from "./shared";
 import { useEmployeeLanguage } from "./employeeLanguage";
+import { employeeDirectoryVisibility, employeeLoginState, employeeWorkState } from "./employeeDirectoryStatus";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   clearEmployeeOnboardingDraft,
@@ -32,7 +33,7 @@ import {
 
 type EmployeeListPanelProps = {
   qText: string;
-  onlyActive: "all" | "active" | "inactive";
+  employmentFilter: "all" | "working" | "leave" | "ended" | "inactive" | "unknown";
   directoryVisibility: "visible" | "hidden" | "all";
   specialtyFilter: string;
   serviceOptions: ServiceOption[];
@@ -44,7 +45,7 @@ type EmployeeListPanelProps = {
   selectedEmployeeId: string | null;
   canManage: boolean;
   onQTextChange: (value: string) => void;
-  onOnlyActiveChange: (value: "all" | "active" | "inactive") => void;
+  onEmploymentFilterChange: (value: "all" | "working" | "leave" | "ended" | "inactive" | "unknown") => void;
   onDirectoryVisibilityChange: (value: "visible" | "hidden" | "all") => void;
   onSpecialtyFilterChange: (value: string) => void;
   onCreateEmployee: () => void;
@@ -87,22 +88,14 @@ function resolveDepartment(
   );
 }
 
-function statusOf(staff: StaffPublicUi) {
-  // Directory visibility and employment termination are different concepts.
-  // Never infer a terminated contract from the generic operational active flag.
-  const employmentStatus = cleanText(staff.employmentStatus).toLowerCase();
-  const terminated = ["terminated", "resigned", "ended"].includes(employmentStatus);
-  const endDate = normalizeLeaveUntil(staff.employmentEndDate);
-  const completedEndDate = !!endDate && endDate <= todayIso() && !staff.active;
+const WORK_LABELS = {
+  working: { label: "على رأس العمل", tone: "success" },
+  leave: { label: "في إجازة", tone: "gold" },
+  ended: { label: "تم إنهاء عقدها", tone: "danger" },
+  inactive: { label: "متوقفة عن العمل", tone: "gold" },
+  unknown: { label: "حالة الإجازة غير متاحة", tone: "gold" },
+} as const;
 
-  if (terminated || completedEndDate) {
-    return { label: "تم إنهاء عقدها", tone: "danger" } as const;
-  }
-  if (staff.includeInEmployeeManagement === false) {
-    return { label: "مخفي من الدليل", tone: "gold" } as const;
-  }
-  return { label: "ظاهر في الدليل", tone: "success" } as const;
-}
 
 function EmployeeCardSkeleton({ index }: { index: number }) {
   return (
@@ -121,7 +114,7 @@ function EmployeeCardSkeleton({ index }: { index: number }) {
 
 export default function EmployeeListPanel({
   qText,
-  onlyActive,
+  employmentFilter,
   directoryVisibility,
   specialtyFilter,
   serviceOptions,
@@ -133,7 +126,7 @@ export default function EmployeeListPanel({
   selectedEmployeeId,
   canManage,
   onQTextChange,
-  onOnlyActiveChange,
+  onEmploymentFilterChange,
   onDirectoryVisibilityChange,
   onSpecialtyFilterChange,
   onCreateEmployee,
@@ -164,7 +157,7 @@ export default function EmployeeListPanel({
 
   const hasActiveFilters =
     qText.trim().length > 0 ||
-    onlyActive !== "all" ||
+    employmentFilter !== "all" ||
     directoryVisibility !== "visible" ||
     specialtyFilter !== "all";
   const serviceFilterOptions = serviceOptions.filter((option, index, all) => {
@@ -174,7 +167,7 @@ export default function EmployeeListPanel({
 
   const clearFilters = () => {
     onQTextChange("");
-    onOnlyActiveChange("all");
+    onEmploymentFilterChange("all");
     onDirectoryVisibilityChange("visible");
     onSpecialtyFilterChange("all");
   };
@@ -221,15 +214,26 @@ export default function EmployeeListPanel({
 
 
         <label className="dsv2-field">
-          <span className="dsv2-field__label">{t("الحالة")}</span>
+          <span className="dsv2-field__label">{t("الحالة الوظيفية")}</span>
           <DashboardSelectV2
-            value={onlyActive}
+            value={employmentFilter}
             options={[
-              { value: "all", label: t("كل الحالات") },
-              { value: "active", label: t("النشطات فقط") },
-              { value: "inactive", label: t("غير النشطات فقط") },
+              { value: "all", label: t("كل الحالات الوظيفية") },
+              { value: "working", label: t("على رأس العمل") },
+              { value: "leave", label: t("في إجازة") },
+              { value: "ended", label: t("تم إنهاء عقدها") },
+              { value: "inactive", label: t("متوقفة عن العمل") },
+              { value: "unknown", label: t("حالة الإجازة غير متاحة") },
             ]}
-            onChange={(value) => onOnlyActiveChange(value as "all" | "active" | "inactive")}
+            onChange={(value) => {
+              const next = value as "all" | "working" | "leave" | "ended" | "inactive" | "unknown";
+              // Offboarding hides directory visibility. Selecting ended employment
+              // must not silently look empty behind the default visible-only filter.
+              if (next === "ended" && directoryVisibility === "visible") {
+                onDirectoryVisibilityChange("all");
+              }
+              onEmploymentFilterChange(next);
+            }}
           />
         </label>
 
@@ -270,7 +274,9 @@ export default function EmployeeListPanel({
         <div className="employees-v2-grid">
           {filtered.map((staff) => {
             const specialtyIds = normalizeSpecialties(staff.specialties);
-            const status = statusOf(staff);
+            const work = WORK_LABELS[employeeWorkState(staff, todayIso())];
+            const visibility = employeeDirectoryVisibility(staff);
+            const login = employeeLoginState(staff);
             const department = t(resolveDepartment(staff, serviceOptions, sectionOptions));
             const total = bookingStats[staff.id]?.total ?? 0;
             const confirmed = bookingStats[staff.id]?.byStatus.confirmed ?? 0;
@@ -307,7 +313,12 @@ export default function EmployeeListPanel({
                       </p>
                     </div>
                   </div>
-                  <span className={`dsv2-badge dsv2-badge--${status.tone}`}>{t(status.label)}</span>
+                  <div className="employees-v2-card__state-badges">
+                    <span className={`dsv2-badge dsv2-badge--${work.tone}`}>{t(work.label)}</span>
+                    <span className={`dsv2-badge dsv2-badge--${visibility === "visible" ? "success" : "gold"}`}>
+                      {t(visibility === "visible" ? "ظاهر في الدليل" : "مخفي من الدليل")}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="employees-v2-card__contact">
@@ -320,6 +331,12 @@ export default function EmployeeListPanel({
                     <b>{phone || t("لا يوجد جوال")}</b>
                   </span>
                 </div>
+
+                {login !== "unlinked" ? (
+                  <p className="employees-v2-card__login-status">
+                    {t("حساب الدخول")}: {t(login === "active" ? "مفعل" : "معطل")}
+                  </p>
+                ) : null}
 
                 <div className="employees-v2-card__stats">
                   <span>

@@ -96,6 +96,9 @@ jobs:
       - name: Employee lifecycle identity
         run: node scripts/check-employee-lifecycle-identity.mjs
 
+      - name: Independent employee employment and visibility status matrix
+        run: node --test workers/employee-directory-visibility-labels.test.mjs
+
       - name: Lazy internal workspace regression
         run: node --test workers/route-lazy-boundary.test.mjs
 
