@@ -1125,7 +1125,7 @@ export function getAttendanceWorkerMessage(
       response.allowedRadiusMeters != null
         ? `نصف القطر المسموح ${Math.round(response.allowedRadiusMeters)} م`
         : "",
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean).join(" · ") + ". تأكدي من تفعيل الموقع الدقيق، ثم اضغطي البصمة مجددًا لإعادة قياس GPS. لن تُقبل البصمة ما دمت خارج النطاق.";
   }
 
   if (response.rejectionReason === "zone_not_assigned") {
