@@ -81,6 +81,7 @@ const employeeEnglish: Record<string, string> = {
   "الحالة الوظيفية": "Employment status",
   "كل الحالات الوظيفية": "All employment statuses",
   "متوقفة عن العمل": "Not working",
+  "حالة الإجازة غير متاحة": "Leave status unavailable",
   "مفعل": "Enabled",
   "معطل": "Disabled",
   "لا يوجد بريد": "No email",
