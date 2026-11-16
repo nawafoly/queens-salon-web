@@ -1,6 +1,6 @@
 import type { StaffPublicUi } from "./shared";
 
-export type EmployeeWorkState = "working" | "leave" | "ended" | "inactive";
+export type EmployeeWorkState = "working" | "leave" | "ended" | "inactive" | "unknown";
 
 function day(value: unknown): string {
   const text = String(value ?? "").trim().slice(0, 10);
@@ -15,10 +15,12 @@ export function employeeWorkState(staff: StaffPublicUi, today: string): Employee
   // Mere account deactivation or directory hiding must never imply offboarding.
   const endedByDate = employment === "inactive" &&
     Boolean(day(staff.employmentEndDate)) &&
-    day(staff.employmentEndDate) <= today &&
-    !staff.active;
+    day(staff.employmentEndDate) <= today;
   if (endedByStatus || endedByDate) return "ended";
-  if (!staff.active) return "inactive";
+  if (!staff.active || employment === "inactive" || employment === "suspended" || employment === "disabled") return "inactive";
+  // Leave permissions may hide Core employee_leaves, so absence of a returned
+  // leave row is not proof of being at work unless the status was loaded.
+  if (staff.leaveStatusKnown !== true) return "unknown";
   const leaveFrom = day(staff.leaveStartDate);
   const leaveUntil = day(staff.leaveUntil);
   if (staff.onLeave && (!leaveFrom || leaveFrom <= today) && (!leaveUntil || leaveUntil >= today)) {
