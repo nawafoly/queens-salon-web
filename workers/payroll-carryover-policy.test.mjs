@@ -334,9 +334,26 @@ test('historical locked payroll is the only path allowed to bypass current activ
     /runtime\.allowInactiveHistoricalPayroll === true[\s\S]*?employeeHistoricallyOperationalOnDate/
   );
 
+  const historicalEligibilityStart = shiftControl.indexOf(
+    'function employeeHistoricallyOperationalOnDate(row, date) {'
+  );
+  const historicalEligibilityEnd = shiftControl.indexOf(
+    '\nfunction employeeOperationalForResolution(',
+    historicalEligibilityStart
+  );
+  assert.ok(historicalEligibilityStart >= 0 && historicalEligibilityEnd > historicalEligibilityStart);
+  const historicalEligibility = shiftControl.slice(
+    historicalEligibilityStart,
+    historicalEligibilityEnd
+  );
+  assert.match(historicalEligibility, /if \(!hasProfile \|\| !hasEmployment\) return false/);
   assert.match(
-    shiftControl,
-    /return !cleanText\(row\.end_date\) \|\| date <= cleanText\(row\.end_date\)/
+    historicalEligibility,
+    /!cleanText\(row\.start_date\) \|\| date >= cleanText\(row\.start_date\)/
+  );
+  assert.match(
+    historicalEligibility,
+    /!cleanText\(row\.end_date\) \|\| date <= cleanText\(row\.end_date\)/
   );
 });
 
