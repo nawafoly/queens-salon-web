@@ -216,6 +216,7 @@ import {
   type WorkingHourOverrideQuickMode,
 } from "./dashboardEmployees/shared";
 import { resolveEmployeeSaveCommandPlan } from "./dashboardEmployees/employeeSaveCommandOwnership";
+import { employeeWorkState } from "./dashboardEmployees/employeeDirectoryStatus";
 import { normalizeEmployeeIdentityId } from "../helpers/employeeIdentityId";
 
 function cleanText(value: unknown) {
@@ -1937,8 +1938,8 @@ function DashboardEmployeesContent() {
   const [leaveEntitlementDate, setLeaveEntitlementDate] = useState("");
 
   const [qText, setQText] = useState("");
-  const [onlyActive, setOnlyActive] =
-    useState<"all" | "active" | "inactive">("all");
+  const [employmentFilter, setEmploymentFilter] =
+    useState<"all" | "working" | "leave" | "ended" | "inactive">("all");
 
   const [directoryVisibility, setDirectoryVisibility] =
     useState<"visible" | "hidden" | "all">("visible");
@@ -6919,8 +6920,9 @@ const canonicalSchedules =
         (x) => (x as any).includeInEmployeeManagement === false
       );
     }
-    if (onlyActive === "active") rows = rows.filter((x) => x.active);
-    if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
+    if (employmentFilter !== "all") {
+      rows = rows.filter((staff) => employeeWorkState(staff, todayIso()) === employmentFilter);
+    }
     if (specialtyFilter === "none") {
       rows = rows.filter((x) => normalizeSpecialties(x.specialties).length === 0);
     } else if (specialtyFilter !== "all") {
@@ -6948,7 +6950,7 @@ const canonicalSchedules =
       });
     }
     return rows;
-  }, [list, directoryVisibility, onlyActive, specialtyFilter, qText]);
+  }, [list, directoryVisibility, employmentFilter, specialtyFilter, qText]);
   const selectedEmployee = useMemo(() => {
     if (!selectedEmployeeId) return null;
     const selectedIdentity = selectedEmployeeIdentityRef.current;
@@ -10079,7 +10081,7 @@ const canonicalSchedules =
           {!isEmployeeProfileRoute ? (
             <EmployeeListPanel
               qText={qText}
-              onlyActive={onlyActive}
+              employmentFilter={employmentFilter}
               directoryVisibility={directoryVisibility}
               specialtyFilter={specialtyFilter}
               serviceOptions={serviceOptions}
@@ -10090,7 +10092,7 @@ const canonicalSchedules =
               bookingStats={bookingStats}
               selectedEmployeeId={selectedEmployeeId}
               onQTextChange={setQText}
-              onOnlyActiveChange={setOnlyActive}
+              onEmploymentFilterChange={setEmploymentFilter}
               onDirectoryVisibilityChange={setDirectoryVisibility}
               onSpecialtyFilterChange={setSpecialtyFilter}
               canManage={canCreateEmployees}
