@@ -296,6 +296,12 @@ test('offboarding is idempotent only after every lifecycle projection is converg
   const { mf, db } = await setup(); t.after(() => mf.dispose()); await seedEmployee(db); await seedAccount(db); await seedSchedules(db); await seedScheduleExceptions(db);
   const first = await offboardHrEmployee(db,'main','emp-1',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS);
   assert.equal(first.idempotent,false);
+  const visibility = await db.prepare("SELECT status,show_on_about,include_in_employee_management FROM employee_profiles WHERE id='emp-1'").first();
+  assert.deepEqual(
+    [visibility.status, visibility.show_on_about, visibility.include_in_employee_management],
+    ['inactive', 0, 0],
+    'offboarding must hide employee from directory and About page'
+  );
   const second = await offboardHrEmployee(db,'main','emp-1',{endDate:'2026-08-20',reason:'contract ended'},actor,OFFBOARD_OPTIONS);
   assert.equal(second.idempotent,true);
   const staff = await db.prepare("SELECT active,show_on_booking,employment_status,firebase_uid FROM staff WHERE id='emp-1'").first();
@@ -306,6 +312,17 @@ test('offboarding is idempotent only after every lifecycle projection is converg
   assert.equal(link.link_status,'unlinked');
   const fence = await db.prepare("SELECT status,end_date FROM employee_offboarding_fences WHERE employee_id='emp-1'").first();
   assert.deepEqual([fence.status,fence.end_date],['offboarded','2026-08-20']);
+});
+
+test('offboarding reconciles stale visibility flags on an already ended profile', async (t) => {
+  const { mf, db } = await setup(); t.after(() => mf.dispose()); await seedEmployee(db);
+  const command = { endDate: '2026-08-20', reason: 'contract ended' };
+  await offboardHrEmployee(db, 'main', 'emp-1', command, actor, OFFBOARD_OPTIONS);
+  await db.prepare("UPDATE employee_profiles SET show_on_about=1, include_in_employee_management=1 WHERE id='emp-1'").run();
+  const repaired = await offboardHrEmployee(db, 'main', 'emp-1', command, actor, OFFBOARD_OPTIONS);
+  assert.equal(repaired.idempotent, false, 'visibility drift must be corrected, not silently ignored');
+  const profile = await db.prepare("SELECT show_on_about,include_in_employee_management FROM employee_profiles WHERE id='emp-1'").first();
+  assert.deepEqual([profile.show_on_about, profile.include_in_employee_management], [0, 0]);
 });
 
 test('offboarding closes current schedules/assignments, disables future ones and preserves history', async (t) => {
