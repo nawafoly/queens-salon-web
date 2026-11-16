@@ -398,3 +398,16 @@
     font-size: 0.5rem;
   }
 }
+
+/* The attendance punch is a touch control, never selectable page text.
+   Suppress iOS long-press callout without disabling native click or scrolling. */
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console,
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
