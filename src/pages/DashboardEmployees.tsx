@@ -4570,6 +4570,9 @@ function DashboardEmployeesContent() {
 
               // Never consume legacy Firestore leave mirrors at runtime.
               // When leave access is available, employee_leaves fully owns the UI state.
+              // Without this permission, absence of leave records is NOT confirmation
+              // that the employee is currently working.
+              leaveStatusKnown: canManageLeaveBalance,
               onLeave: Boolean(canonicalLeave),
               leaveStartDate: canonicalLeave
                 ? normalizeLeaveUntil(canonicalLeave.startDate)
