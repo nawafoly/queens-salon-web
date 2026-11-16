@@ -1104,6 +1104,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     employmentStartDate: pickEditableText("employmentStartDate"),
     employmentEndDate: pickEditableText("employmentEndDate"),
     employmentStatus: cleanText(primary.employmentStatus || fallback.employmentStatus),
+    accountStatus: cleanText(primary.accountStatus || fallback.accountStatus),
 
     allowedAttendanceZoneId: pickEditableText("allowedAttendanceZoneId"),
     attendanceZoneId: pickEditableText("attendanceZoneId"),
@@ -4319,6 +4320,7 @@ function DashboardEmployeesContent() {
             employmentStartDate: normalizeLeaveUntil(combined?.employmentStartDate),
             employmentEndDate: normalizeLeaveUntil(combined?.employmentEndDate),
             employmentStatus: cleanText(combined?.employmentStatus),
+            accountStatus: cleanText(combined?.accountStatus),
             onLeave: !!combined?.onLeave,
             leaveStartDate: normalizeLeaveUntil(
               combined?.leaveStartDate || combined?.leaveFrom || combined?.leaveFromDate
@@ -4417,6 +4419,7 @@ function DashboardEmployeesContent() {
               role,
               active: account.status === "active",
               isActive: account.status === "active",
+              accountStatus: cleanText(account.status),
 
               includeInEmployeeManagement: true,
               employeeProfileEnabled: true,
