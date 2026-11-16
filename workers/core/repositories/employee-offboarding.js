@@ -382,7 +382,10 @@ export async function offboardHrEmployee(
   const accountPlans = await loadCandidateAccounts(db, salonId, employeeId, profile, staff, links);
   const currentTargetLinks = links.filter((row) => CURRENT_LINK_STATUSES.has(statusLower(row.link_status)));
 
-  const profileConverged = statusLower(profile.status) === CLOSED_PROFILE_STATUS;
+  const profileConverged =
+    statusLower(profile.status) === CLOSED_PROFILE_STATUS &&
+    Number(profile.include_in_employee_management) === 0 &&
+    Number(profile.show_on_about) === 0;
   const employmentConverged =
     statusLower(employment.employment_status) === CLOSED_EMPLOYMENT_STATUS && existingEndDate === endDate;
   const staffConverged = !staff || (
@@ -436,7 +439,10 @@ export async function offboardHrEmployee(
     },
     {
       sql: `UPDATE employee_profiles
-               SET status = 'inactive', updated_at = ?
+               SET status = 'inactive',
+                   include_in_employee_management = 0,
+                   show_on_about = 0,
+                   updated_at = ?
              WHERE salon_id = ? AND id = ?`,
       params: [now, salonId, employeeId],
     },
@@ -600,6 +606,8 @@ export async function offboardHrEmployee(
     source: 'core-hr-offboarding',
     before: {
       profileStatus: profile.status,
+      directoryVisible: Number(profile.include_in_employee_management) === 1,
+      showOnAbout: Number(profile.show_on_about) === 1,
       employmentStatus: employment.employment_status,
       endDate: employment.end_date || null,
       staff: staff ? {
@@ -614,6 +622,8 @@ export async function offboardHrEmployee(
     },
     after: {
       profileStatus: CLOSED_PROFILE_STATUS,
+      directoryVisible: false,
+      showOnAbout: false,
       employmentStatus: CLOSED_EMPLOYMENT_STATUS,
       endDate,
       staff: staff ? { active: 0, showOnBooking: 0, employmentStatus: CLOSED_EMPLOYMENT_STATUS } : null,

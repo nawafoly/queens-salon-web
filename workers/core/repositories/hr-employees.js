@@ -754,6 +754,12 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     if (targetOperational) {
       throw new AppError(409, 'core_hr:employee_rehire_requires_lifecycle_operation');
     }
+    // Offboarding must not be undone by a generic HR profile update.
+    // Restoring any public placement requires an explicit rehire lifecycle.
+    if (Number(profile.include_in_employee_management) === 1 ||
+        Number(profile.show_on_about) === 1) {
+      throw new AppError(409, 'core_hr:offboarded_employee_visibility_locked');
+    }
 
     const startDateChanged = Boolean(
       existingEmployment &&
