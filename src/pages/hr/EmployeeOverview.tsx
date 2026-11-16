@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { attendanceReconciliationMessage } from "../../services/attendanceOperationClient";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -434,6 +434,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
   const [attendanceMessage, setAttendanceMessage] = useState("");
+  // A boundary rejection requires a new GPS fix on the next explicit punch attempt.
+  const forceFreshPositionOnRetry = useRef(false);
   const [attendanceSettings, setAttendanceSettings] = useState(() => AppSettingsService.getCached().attendance);
   const [lastLocation, setLastLocation] = useState<AttendanceLocation | null>(null);
   const [lastWorkZone, setLastWorkZone] = useState<WorkZoneMatch | null>(null);
@@ -1113,13 +1115,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       const location: AttendanceLocation =
         await getBrowserPosition({
           enableHighAccuracy: true,
-          maximumAge: 8000,
+          maximumAge: forceFreshPositionOnRetry.current ? 0 : 8000,
           timeout: 12000,
           targetAccuracyMeters: 50,
           acceptableAccuracyMeters: 150,
           acceptableReadingDelayMs: 400,
-          acceptFirstUsableReading: true,
-          freshCacheMaxAgeMs: 8000,
+          acceptFirstUsableReading: !forceFreshPositionOnRetry.current,
+          freshCacheMaxAgeMs: forceFreshPositionOnRetry.current ? 0 : 8000,
         });
 
       setLastLocation(location);
@@ -1147,11 +1149,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       });
 
       if (response.result !== "allowed") {
+        forceFreshPositionOnRetry.current = response.rejectionReason === "outside_zone";
         throw new Error(
           getAttendanceWorkerMessage(response)
         );
       }
 
+      forceFreshPositionOnRetry.current = false;
       await loadAttendance();
 
       if (attendanceOnly) {
