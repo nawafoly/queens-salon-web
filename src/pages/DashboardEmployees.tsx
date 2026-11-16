@@ -1103,6 +1103,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     specialties: pickEditableArray("specialties", normalizeSpecialties),
     employmentStartDate: pickEditableText("employmentStartDate"),
     employmentEndDate: pickEditableText("employmentEndDate"),
+    employmentStatus: cleanText(primary.employmentStatus || fallback.employmentStatus),
 
     allowedAttendanceZoneId: pickEditableText("allowedAttendanceZoneId"),
     attendanceZoneId: pickEditableText("attendanceZoneId"),
@@ -1271,6 +1272,10 @@ function overlayCoreEmployeeMasterFields(
             corePrimaryAttendanceZoneId,
         }
       : {}),
+    employmentStatus:
+      hasEmploymentField("status") || hasEmploymentField("employment_status")
+        ? cleanText(employment.status ?? employment.employment_status)
+        : cleanText(row.employmentStatus),
     employmentEndDate:
       hasEmploymentField("end_date") ||
       hasEmploymentField("endDate") ||
@@ -4313,6 +4318,7 @@ function DashboardEmployeesContent() {
                 : false,
             employmentStartDate: normalizeLeaveUntil(combined?.employmentStartDate),
             employmentEndDate: normalizeLeaveUntil(combined?.employmentEndDate),
+            employmentStatus: cleanText(combined?.employmentStatus),
             onLeave: !!combined?.onLeave,
             leaveStartDate: normalizeLeaveUntil(
               combined?.leaveStartDate || combined?.leaveFrom || combined?.leaveFromDate
@@ -4451,6 +4457,7 @@ function DashboardEmployeesContent() {
               contractId: cleanText(employment.contract_id ?? employment.contractId),
               employmentStartDate: cleanText(employment.start_date ?? employment.startDate),
               employmentEndDate: cleanText(employment.end_date ?? employment.endDate),
+              employmentStatus: cleanText(employment.status ?? employment.employment_status),
               allowedZoneIds: coreEmployeeMasterTextArray(
                 employment.allowed_zone_ids_json ?? employment.allowedZoneIds
               ),
@@ -4474,6 +4481,7 @@ function DashboardEmployeesContent() {
               name: cleanText(staff.name),
               phone: cleanText(staff.phoneNormalized),
               active: staff.active !== false && cleanText(staff.employmentStatus || "active").toLowerCase() === "active",
+              employmentStatus: cleanText(staff.employmentStatus),
               showOnBooking: staff.showOnBooking !== false,
               specialties: Array.isArray(staff.specialties) ? staff.specialties : [],
               avatarUrl: cleanText(staff.avatarUrl),
