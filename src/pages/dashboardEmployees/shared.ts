@@ -110,6 +110,7 @@ export type StaffPublicDoc = {
   showOnAbout: boolean;
   showOnBooking: boolean;
   onLeave?: boolean;
+  leaveStatusKnown?: boolean;
   leaveStartDate?: string;
   leaveUntil?: string;
   leaveType?: string;
