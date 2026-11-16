@@ -1939,7 +1939,7 @@ function DashboardEmployeesContent() {
 
   const [qText, setQText] = useState("");
   const [employmentFilter, setEmploymentFilter] =
-    useState<"all" | "working" | "leave" | "ended" | "inactive">("all");
+    useState<"all" | "working" | "leave" | "ended" | "inactive" | "unknown">("all");
 
   const [directoryVisibility, setDirectoryVisibility] =
     useState<"visible" | "hidden" | "all">("visible");
