@@ -76,7 +76,7 @@ export default function DashboardInventoryStaffLocations() {
   if (error && !feedback) return <DashboardErrorStateV2 title="تعذر تحميل مواقع الموظفات" description={error} />;
 
   return (
-    <div className="d-grid gap-3">
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">توزيع مواقع التخزين</span><h4>مواقع الموظفات</h4><p>اربط الموظفات بمواقع المخزون المستخدمة عند تأكيد الاستهلاك.</p></div></div><div className="inventory-inner-operation-content">
       <div>
         <h3 className="h6 mb-1">مواقع مخزون الموظفات</h3>
         <p className="small text-muted mb-0">
@@ -151,6 +151,6 @@ export default function DashboardInventoryStaffLocations() {
           </div>
         )}
       </section>
-    </div>
+    </div></div>
   );
 }
