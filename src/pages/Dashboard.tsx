@@ -41,8 +41,8 @@ import Modal from "../components/Modal";
 import DashboardBookings from "../pages/DashboardBookings";
 import DashboardOffers from "../pages/DashboardOffers";
 import DashboardServicePromoPrices from "./DashboardServicePromoPrices";
-import DashboardInventory from "./DashboardInventory";
-import DashboardReports from "./DashboardReports";
+const DashboardInventory = React.lazy(() => import("./DashboardInventory"));
+const DashboardReports = React.lazy(() => import("./DashboardReports"));
 import DashboardClients from "./DashboardClients";
 import DashboardLoyalty from "./DashboardLoyalty";
 import DashboardSettings from "../pages/DashboardSettings";
@@ -53,8 +53,8 @@ import DashboardQueueTv from "../pages/DashboardQueueTv";
 import DashboardDayAudit from "../pages/DashboardDayAudit";
 import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 import DashboardPartners from "../pages/DashboardPartners";
-import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
-import DashboardPayroll from "../pages/DashboardPayroll";
+const DashboardAttendanceSecurity = React.lazy(() => import("../pages/DashboardAttendanceSecurity"));
+const DashboardPayroll = React.lazy(() => import("../pages/DashboardPayroll"));
 import DashboardEmployeeTargets from "../pages/DashboardEmployeeTargets";
 import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
 import DashboardDesignSystemV2 from "../pages/DashboardDesignSystemV2";
@@ -2912,11 +2912,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="service-promo-prices" element={<PermissionRoute permission="offers.manage"><DashboardServicePromoPrices language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers language={dashboardLanguage} /></PermissionRoute>} />
-                <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><DashboardInventory /></PermissionRoute>} />
-                <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports language={dashboardLanguage} /></PermissionRoute>} />
+                <Route path="inventory" element={<PermissionRoute anyOf={["inventory.view", "inventory.items.manage"]}><React.Suspense fallback={<LoadingBrand text="جاري تحميل المخزون..." />}><DashboardInventory /></React.Suspense></PermissionRoute>} />
+                <Route path="reports" element={<PermissionRoute permission="reports.view"><React.Suspense fallback={<LoadingBrand text="جاري تحميل التقارير..." />}><DashboardReports language={dashboardLanguage} /></React.Suspense></PermissionRoute>} />
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome language={dashboardLanguage} /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses language={dashboardLanguage} /></PermissionRoute>} />
-                <Route path="payroll" element={<PermissionRoute permission="payroll.view"><DashboardPayroll /></PermissionRoute>} />
+                <Route path="payroll" element={<PermissionRoute permission="payroll.view"><React.Suspense fallback={<LoadingBrand text="جاري تحميل الرواتب..." />}><DashboardPayroll /></React.Suspense></PermissionRoute>} />
                 <Route path="employee-targets" element={<PermissionRoute anyOf={["targets.view", "targets.view_all", "payroll.view"]}><DashboardEmployeeTargets /></PermissionRoute>} />
                 <Route path="staff-performance" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
                 <Route path="staff-performance/:employeeId" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
@@ -2924,7 +2924,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   path="attendance"
                   element={
                     <PermissionRoute permission="attendance.view">
-                      <DashboardAttendanceSecurity />
+                      <React.Suspense fallback={<LoadingBrand text="جاري تحميل الحضور..." />}><DashboardAttendanceSecurity /></React.Suspense>
                     </PermissionRoute>
                   }
                 />
