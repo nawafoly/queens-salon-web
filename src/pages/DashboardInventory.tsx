@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBoxesStacked, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faBoxesStacked, faPlus, faMagnifyingGlass, faRotate, faTriangleExclamation, faCheckCircle, faLayerGroup, faArrowTrendDown, faArrowLeft, faCircleInfo } from "@fortawesome/free-solid-svg-icons";
+import "../styles/DashboardInventoryCommandCenter.css";
 import {
   DashboardEmptyStateV2,
   DashboardErrorStateV2,
@@ -28,6 +29,22 @@ import DashboardInventoryOps from "./DashboardInventoryOps";
 import DashboardInventoryTrade from "./DashboardInventoryTrade";
 import DashboardInventoryCosts from "./DashboardInventoryCosts";
 import DashboardInventoryStaffLocations from "./DashboardInventoryStaffLocations";
+
+type InventoryTab = "items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po" | "costs" | "staff-locations";
+
+const INVENTORY_TABS: { id: InventoryTab; label: string; group: "core" | "operations" | "supply" | "control" }[] = [
+  { id: "items", label: "المواد", group: "core" },
+  { id: "recipes", label: "وصفات الاستهلاك", group: "core" },
+  { id: "consume", label: "تأكيد الاستهلاك", group: "operations" },
+  { id: "moves", label: "سجل الحركات", group: "operations" },
+  { id: "issue", label: "صرف الموظفات", group: "operations" },
+  { id: "ops", label: "الهدر والجرد", group: "operations" },
+  { id: "po", label: "أوامر الشراء", group: "supply" },
+  { id: "trade", label: "استلام المشتريات", group: "supply" },
+  { id: "suppliers", label: "الموردون", group: "supply" },
+  { id: "costs", label: "رقابة التكلفة", group: "control" },
+  { id: "staff-locations", label: "مواقع الموظفات", group: "control" },
+];
 
 const UNITS = [
   { value: "ml", label: "مل" },
@@ -77,7 +94,7 @@ export default function DashboardInventory() {
   const canAdjust = hasPermission("inventory.adjust");
   const canViewCosts = hasPermission("inventory.movements.view");
 
-  const [tab, setTab] = useState<"items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po" | "costs" | "staff-locations">("items");
+  const [tab, setTab] = useState<InventoryTab>("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -191,38 +208,77 @@ export default function DashboardInventory() {
     }
   }
 
+  const activeItemsCount = items.filter((item) => Number(item.is_active) === 1).length;
+  const inactiveItemsCount = items.length - activeItemsCount;
+  const selectedTab = INVENTORY_TABS.find((item) => item.id === tab);
+  const availableTabs = INVENTORY_TABS.filter((item) =>
+    item.id === "costs" ? canViewCosts : item.id === "staff-locations" ? canManage : true
+  );
+
   return (
-    <section className="dash-card" dir="rtl">
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-        <div>
-          <h2 className="h5 mb-1">
-            <FontAwesomeIcon icon={faBoxesStacked} className="ms-2" />
-            مركز رقابة المخزون
-          </h2>
-          <p className="text-muted mb-0">المواد والرصيد الحالي. الخصم يتم فقط عند تأكيد الاستهلاك لاحقاً.</p>
+    <section className="dash-card inventory-command-center" dir="rtl" aria-label="مركز إدارة المخزون">
+      <div className="inventory-command-hero">
+        <div className="inventory-command-hero-copy">
+          <span className="inventory-command-eyebrow"><FontAwesomeIcon icon={faLayerGroup} /> الإدارة التشغيلية <span aria-hidden="true">/</span> المخزون</span>
+          <div className="inventory-command-heading">
+            <span className="inventory-command-heading-icon"><FontAwesomeIcon icon={faBoxesStacked} /></span>
+            <div>
+              <h2>إدارة المخزون</h2>
+              <p>كل المواد، وحركة الاستهلاك، والمشتريات في مساحة عمل واحدة.</p>
+            </div>
+          </div>
         </div>
-        {canManage && tab === "items" ? (
-          <button type="button" className="btn btn-dark" onClick={openCreate}>
-            <FontAwesomeIcon icon={faPlus} className="ms-2" />
-            مادة جديدة
-          </button>
-        ) : null}
+        <div className="inventory-command-hero-actions">
+          <span className="inventory-command-live"><span /> بيانات المخزون</span>
+          {canManage && tab === "items" ? (
+            <button type="button" className="inventory-command-primary" onClick={openCreate}>
+              <FontAwesomeIcon icon={faPlus} /> إضافة مادة
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="d-flex gap-2 mb-3">
-        <button type="button" className={tab === "items" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("items")}>المواد</button>
-        <button type="button" className={tab === "recipes" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("recipes")}>وصفات الاستهلاك</button>
-        <button type="button" className={tab === "consume" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("consume")}>تأكيد الاستهلاك</button>
-        <button type="button" className={tab === "moves" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("moves")}>الحركات</button>
-        <button type="button" className={tab === "issue" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("issue")}>صرف موظفة</button>
-        <button type="button" className={tab === "ops" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("ops")}>هدر وجرد</button>
-        <button type="button" className={tab === "po" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("po")}>أوامر الشراء</button>
-        <button type="button" className={tab === "trade" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("trade")}>استلام شراء</button>
-        <button type="button" className={tab === "suppliers" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("suppliers")}>الموردون</button>
-        {canViewCosts ? <button type="button" className={tab === "costs" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("costs")}>رقابة التكلفة</button> : null}
-        {canManage ? <button type="button" className={tab === "staff-locations" ? "btn btn-dark" : "btn btn-outline-dark"} onClick={() => setTab("staff-locations")}>مواقع الموظفات</button> : null}
+      <div className="inventory-command-stats" aria-label="ملخص المخزون">
+        <div className="inventory-command-stat">
+          <span className="inventory-command-stat-icon inventory-command-stat-icon--neutral"><FontAwesomeIcon icon={faBoxesStacked} /></span>
+          <div><span className="inventory-command-stat-label">إجمالي المواد</span><strong>{loading ? "—" : items.length.toLocaleString("ar-SA")}</strong><small>المواد المعروضة في القائمة</small></div>
+        </div>
+        <div className="inventory-command-stat">
+          <span className="inventory-command-stat-icon inventory-command-stat-icon--success"><FontAwesomeIcon icon={faCheckCircle} /></span>
+          <div><span className="inventory-command-stat-label">مواد نشطة</span><strong>{loading ? "—" : activeItemsCount.toLocaleString("ar-SA")}</strong><small>{loading ? "جاري التحديث" : `${inactiveItemsCount.toLocaleString("ar-SA")} موقوفة`}</small></div>
+        </div>
+        <div className="inventory-command-stat">
+          <span className="inventory-command-stat-icon inventory-command-stat-icon--warning"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+          <div><span className="inventory-command-stat-label">تحتاج إعادة طلب</span><strong>{loading ? "—" : lowStockItems.length.toLocaleString("ar-SA")}</strong><small>بحسب حدود إعادة الطلب المحددة</small></div>
+        </div>
+        <div className="inventory-command-stat">
+          <span className="inventory-command-stat-icon inventory-command-stat-icon--accent"><FontAwesomeIcon icon={faLayerGroup} /></span>
+          <div><span className="inventory-command-stat-label">مواقع التخزين</span><strong>{loading ? "—" : locations.length.toLocaleString("ar-SA")}</strong><small>مواقع مسجلة</small></div>
+        </div>
       </div>
 
+      <div className="inventory-command-workspace">
+        <div className="inventory-command-workspace-header">
+          <div>
+            <span className="inventory-command-section-kicker">مساحة العمل</span>
+            <h3>{selectedTab?.label || "المواد"}</h3>
+          </div>
+          <span className="inventory-command-workspace-hint"><FontAwesomeIcon icon={faCircleInfo} /> انتقل بين الأقسام لإدارة عمليات المخزون</span>
+        </div>
+        <nav className="inventory-command-tabs" aria-label="أقسام المخزون">
+          {availableTabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`inventory-command-tab ${tab === item.id ? "is-active" : ""}`}
+              aria-current={tab === item.id ? "page" : undefined}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="inventory-command-tab-body">
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
       {tab === "consume" ? <DashboardInventoryConsumption /> : null}
       {tab === "moves" ? <DashboardInventoryMovements /> : null}
@@ -235,88 +291,94 @@ export default function DashboardInventory() {
       {tab === "staff-locations" && canManage ? <DashboardInventoryStaffLocations /> : null}
 
       {tab === "items" ? (
-        <>
-          <div className="d-flex gap-2 mb-3">
-            <input
-              className="form-control"
-              placeholder="بحث بالاسم أو SKU"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load();
-              }}
-            />
-            <button type="button" className="btn btn-outline-secondary" onClick={() => void load()}>
-              تحديث
+        <div className="inventory-command-items">
+          <div className="inventory-command-toolbar">
+            <label className="inventory-command-search">
+              <FontAwesomeIcon icon={faMagnifyingGlass} aria-hidden="true" />
+              <span className="visually-hidden">بحث عن مادة بالاسم أو الرمز</span>
+              <input
+                type="search"
+                placeholder="ابحث عن مادة بالاسم أو SKU..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void load(); }}
+              />
+            </label>
+            <button type="button" className="inventory-command-refresh" onClick={() => void load()} disabled={loading}>
+              <FontAwesomeIcon icon={faRotate} /> تحديث البيانات
             </button>
           </div>
 
-          {!loading && lowStockItems.length ? (
-            <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+          {!loading && lowStockItems.length > 0 ? (
+            <div className="inventory-command-alert" role="status">
+              <span className="inventory-command-alert-icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
               <div>
-                <strong>مواد تحتاج إعادة طلب: {lowStockItems.length}</strong>
-                <div className="small mb-0">{lowStockItems.map((item) => `${item.name} (${qtyByItem.get(item.id)} / حد ${item.min_stock_qty})`).join(" — ")}</div>
+                <strong>{lowStockItems.length.toLocaleString("ar-SA")} مواد تحتاج إعادة طلب</strong>
+                <p>{lowStockItems.slice(0, 3).map((item) => `${item.name} (${qtyByItem.get(item.id) ?? "—"} / الحد ${item.min_stock_qty})`).join(" · ")}{lowStockItems.length > 3 ? " · وغيرها" : ""}</p>
               </div>
+              <FontAwesomeIcon icon={faArrowTrendDown} className="inventory-command-alert-trend" />
             </div>
           ) : null}
+
           {error ? <DashboardErrorStateV2 title="تعذر تحميل المخزون" description={error} /> : null}
           {loading ? <DashboardSkeletonV2 lines={6} /> : null}
 
-          {!loading && !items.length ? (
-            <DashboardEmptyStateV2
-              title="لا توجد مواد بعد"
-              description="أضيفي المواد المستخدمة في الخدمات أولاً، ثم نربط الوصفات."
-            />
-          ) : null}
-
-          {!loading && items.length ? (
-            <div className="table-responsive">
-              <table className="table align-middle">
-                <thead>
-                  <tr>
-                    <th>المادة</th>
-                    <th>الوحدة</th>
-                    <th>السياسة</th>
-                    <th>الرصيد حسب الموقع</th>
-                    <th>حد إعادة الطلب</th>
-                    <th>الحالة</th>
-                    {canManage ? <th></th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => {
-                    const qty = qtyByItem.get(item.id);
-                    const low = qty != null && Number(item.min_stock_qty || 0) > 0 && qty <= Number(item.min_stock_qty);
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <div>{item.name}</div>
-                          {item.sku ? <small className="text-muted">{item.sku}</small> : null}
-                        </td>
-                        <td>{item.unit}</td>
-                        <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
-                        <td>
-                          {locationStockLabel(item.id) + " / الإجمالي: " + (qty == null ? "-" : qty)}
-                          {low ? <span className="badge bg-warning text-dark me-2">منخفض</span> : null}
-                        </td>
-                        <td>{item.min_stock_qty}</td>
-                        <td>{Number(item.is_active) === 1 ? "نشط" : "موقوف"}</td>
-                        {canManage ? (
-                          <td>
-                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(item)}>
-                              تعديل
-                            </button>
-                          </td>
-                        ) : null}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {!loading && !error && items.length === 0 ? (
+            <div className="inventory-command-empty" role="status">
+              <div className="inventory-command-empty-art" aria-hidden="true">
+                <div className="inventory-command-empty-circle"><FontAwesomeIcon icon={faBoxesStacked} /></div>
+                <span className="inventory-command-empty-dot inventory-command-empty-dot--one" />
+                <span className="inventory-command-empty-dot inventory-command-empty-dot--two" />
+              </div>
+              <h4>{search.trim() ? "لا توجد نتائج مطابقة" : "مخزونك يبدأ من هنا"}</h4>
+              <p>{search.trim() ? "جرّب اسمًا أو رمزًا مختلفًا، ثم اضغط بحث أو Enter." : "أضف المواد المستخدمة في الخدمات، وحدد حد إعادة الطلب لكل مادة، ثم اربطها بوصفات الاستهلاك."}</p>
+              {canManage && !search.trim() ? (
+                <button type="button" className="inventory-command-primary" onClick={openCreate}><FontAwesomeIcon icon={faPlus} /> إضافة أول مادة <FontAwesomeIcon icon={faArrowLeft} /></button>
+              ) : null}
+              {search.trim() ? <button type="button" className="inventory-command-link" onClick={() => { setSearch(""); void CoreInventoryService.listItems().then(setItems).catch((err) => setError(errorMessage(err))); }}>مسح البحث وعرض المواد</button> : null}
             </div>
           ) : null}
-        </>
+
+          {!loading && items.length > 0 ? (
+            <div className="inventory-command-table-wrap">
+              <div className="inventory-command-table-heading">
+                <div><h4>قائمة المواد</h4><p>عرض الرصيد والحالة حسب كل مادة</p></div>
+                <span>{items.length.toLocaleString("ar-SA")} مادة</span>
+              </div>
+              <div className="table-responsive">
+                <table className="inventory-command-table">
+                  <thead><tr>
+                    <th scope="col">المادة</th>
+                    <th scope="col">الوحدة</th>
+                    <th scope="col">سياسة الاستهلاك</th>
+                    <th scope="col">الرصيد حسب الموقع</th>
+                    <th scope="col">حد الطلب</th>
+                    <th scope="col">الحالة</th>
+                    {canManage ? <th scope="col">الإجراءات</th> : null}
+                  </tr></thead>
+                  <tbody>{items.map((item) => {
+                    const qty = qtyByItem.get(item.id);
+                    const low = qty != null && Number(item.min_stock_qty || 0) > 0 && qty <= Number(item.min_stock_qty);
+                    const active = Number(item.is_active) === 1;
+                    return <tr key={item.id}>
+                      <td><strong className="inventory-command-item-name">{item.name}</strong>{item.sku ? <span className="inventory-command-sku">{item.sku}</span> : null}</td>
+                      <td>{item.unit}</td>
+                      <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
+                      <td><span className="inventory-command-stock">{locationStockLabel(item.id)}</span><span className="inventory-command-stock-total">الإجمالي: {qty == null ? "—" : qty.toLocaleString("ar-SA")}</span>{low ? <span className="inventory-command-pill inventory-command-pill--warning">مخزون منخفض</span> : null}</td>
+                      <td>{item.min_stock_qty}</td>
+                      <td><span className={`inventory-command-pill ${active ? "inventory-command-pill--success" : "inventory-command-pill--muted"}`}>{active ? "نشط" : "موقوف"}</span></td>
+                      {canManage ? <td><button type="button" className="inventory-command-edit" onClick={() => openEdit(item)}>تعديل</button></td> : null}
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+          <div className="inventory-command-footnote"><FontAwesomeIcon icon={faCircleInfo} /> لا يُخصم المخزون إلا عند تأكيد الاستهلاك وفق السياسة المحددة.</div>
+        </div>
       ) : null}
+      </div>
+      </div>
 
       <DashboardModalV2
         open={modalOpen}
