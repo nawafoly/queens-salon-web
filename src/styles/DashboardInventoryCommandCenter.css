@@ -190,3 +190,31 @@
  .inventory-command-center .inventory-inner-panel-heading p { font-size:11px; }
  .inventory-command-center .inventory-inner-count { width:100%; text-align:center; }
 }
+
+
+/* Consistent treatment for operational inventory workspaces. Keep all business actions unchanged. */
+.inventory-command-center .inventory-inner-operations { gap:16px; }
+.inventory-command-center .inventory-inner-operation-content { min-width:0; display:grid; align-content:start; gap:14px; }
+.inventory-command-center .inventory-inner-operation-content > .text-muted:first-child { display:block; border-inline-start:3px solid #d7b989; padding:13px 16px; background:#fffcf6; color:#7b7469 !important; border-radius:9px; margin:0 !important; font-size:12px; line-height:1.75; }
+.inventory-command-center .inventory-inner-operation-content > .border.rounded,
+.inventory-command-center .inventory-inner-operation-content > .dsv2-card,
+.inventory-command-center .inventory-inner-operation-content > section.dsv2-card { border:1px solid #e4ebf2 !important; border-radius:16px !important; background:#fff; padding:20px !important; box-shadow:0 4px 15px rgba(21,55,77,.035); min-width:0; }
+.inventory-command-center .inventory-inner-operation-content .form-control,
+.inventory-command-center .inventory-inner-operation-content .form-select { min-height:44px; border-radius:11px; border-color:#dae5ed; background-color:#fbfcfe; color:#294257; max-width:100%; }
+.inventory-command-center .inventory-inner-operation-content .form-control:focus,
+.inventory-command-center .inventory-inner-operation-content .form-select:focus { border-color:#81adc0; box-shadow:0 0 0 3px rgba(23,76,98,.08); }
+.inventory-command-center .inventory-inner-operation-content .btn { border-radius:10px; font-size:12px; font-weight:700; min-height:40px; }
+.inventory-command-center .inventory-inner-operation-content .btn-dark { background:#174c62; border-color:#174c62; }
+.inventory-command-center .inventory-inner-operation-content .btn-dark:hover { background:#10394b; border-color:#10394b; }
+.inventory-command-center .inventory-inner-operation-content .table-responsive { min-width:0; border:1px solid #e8edf3; border-radius:14px; }
+.inventory-command-center .inventory-inner-operation-content table.table { min-width:690px; margin-bottom:0; }
+.inventory-command-center .inventory-inner-operation-content table.table th { white-space:nowrap; color:#5f7689; font-size:12px; font-weight:750; background:#f8fafc; padding:14px 15px; }
+.inventory-command-center .inventory-inner-operation-content table.table td { color:#395468; font-size:12px; padding:14px 15px; vertical-align:middle; }
+.inventory-command-center .inventory-inner-operation-content table.table tbody tr:hover { background:#f8fbfd; }
+.inventory-command-center .inventory-inner-operation-content .dsv2-grid { min-width:0; }
+@media(max-width:640px) {
+ .inventory-command-center .inventory-inner-operation-content > .border.rounded,
+ .inventory-command-center .inventory-inner-operation-content > .dsv2-card,
+ .inventory-command-center .inventory-inner-operation-content > section.dsv2-card { padding:15px !important; border-radius:13px !important; }
+ .inventory-command-center .inventory-inner-operation-content table.table { min-width:630px; }
+}
