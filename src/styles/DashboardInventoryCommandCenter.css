@@ -136,3 +136,57 @@
   .inventory-command-empty { min-height:310px; }
 }
 @media (prefers-reduced-motion:reduce) { .inventory-command-center * { transition:none !important; } }
+
+
+/* Shared premium interior workspaces: recipes, purchase orders, suppliers */
+.inventory-command-center .inventory-inner-workspace { display:grid; gap:18px; width:100%; min-width:0; color:var(--inv-ink); }
+.inventory-command-center .inventory-inner-intro { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; padding:22px 25px; background:linear-gradient(112deg,#f0f7f9,#f8fbfd 68%,#fff9ef); border:1px solid #dce8ef; border-radius:17px; }
+.inventory-command-center .inventory-inner-eyebrow { display:block; font-size:11px; font-weight:800; color:#a67f45; margin-bottom:5px; }
+.inventory-command-center .inventory-inner-intro h4 { font-weight:800; font-size:21px; margin:0 0 7px; color:#18384b; }
+.inventory-command-center .inventory-inner-intro p { font-size:12px; color:#708496; line-height:1.8; margin:0; }
+.inventory-command-center .inventory-inner-count { background:white; color:#45677a; border:1px solid #e0e9ee; padding:10px 13px; border-radius:11px; font-weight:700; font-size:12px; }
+.inventory-command-center .inventory-inner-panel { min-width:0; padding:22px 23px; border:1px solid #e6edf2; border-radius:16px; background:#fff; box-shadow:0 3px 12px rgba(24,55,76,.025); }
+.inventory-command-center .inventory-inner-panel-heading { display:flex; align-items:center; gap:12px; margin:0 0 20px; }
+.inventory-command-center .inventory-inner-step { flex:0 0 36px; width:36px; height:36px; display:grid; place-items:center; font-weight:800; font-size:12px; border-radius:11px; background:#e9f3f6; color:#235c75; }
+.inventory-command-center .inventory-inner-panel-heading h5 { margin:0 0 5px; font-size:15px; font-weight:800; color:#234157; }
+.inventory-command-center .inventory-inner-panel-heading p { margin:0; color:#8392a1; font-size:12px; line-height:1.6; }
+.inventory-command-center .inventory-inner-label { display:block; font-size:12px; font-weight:700; color:#53697c; margin-bottom:8px; }
+.inventory-command-center .inventory-inner-panel .form-control,
+.inventory-command-center .inventory-inner-panel .form-select { min-height:44px; border:1px solid #dfe7ee; border-radius:11px; background-color:#fafcfd; padding:10px 13px; color:#253b4d; box-shadow:none; width:100%; max-width:100%; }
+.inventory-command-center .inventory-inner-panel .form-control:focus,
+.inventory-command-center .inventory-inner-panel .form-select:focus { background-color:#fff; border-color:#86b2c4; box-shadow:0 0 0 3px rgba(33,113,144,.08); }
+.inventory-command-center .inventory-inner-panel .btn { border-radius:11px; min-height:43px; font-weight:750; font-size:12px; white-space:normal; }
+.inventory-command-center .inventory-inner-panel .btn-dark { background:#174c62; border-color:#174c62; color:#fff; }
+.inventory-command-center .inventory-inner-panel .btn-dark:hover { background:#10394b; }
+.inventory-command-center .inventory-inner-action-column { display:flex; flex-direction:column; justify-content:flex-end; }
+.inventory-command-center .inventory-inner-panel--list { padding:0; overflow:hidden; }
+.inventory-command-center .inventory-inner-panel--list .inventory-inner-panel-heading { padding:22px 23px 17px; margin:0; border-bottom:1px solid #e9eef3; }
+.inventory-command-center .inventory-inner-table { min-width:560px; margin-bottom:0; font-size:12px; }
+.inventory-command-center .inventory-inner-table thead th { background:#f7fafc; color:#61778a; font-size:12px; padding:14px 16px; font-weight:800; border-bottom:1px solid #e5ecf1; white-space:nowrap; }
+.inventory-command-center .inventory-inner-table tbody td { vertical-align:middle; padding:14px 16px; color:#385268; border-bottom:1px solid #eff3f6; overflow-wrap:anywhere; }
+.inventory-command-center .inventory-inner-table tbody tr { transition:background .14s; }
+.inventory-command-center .inventory-inner-table tbody tr:hover { background:#f1f8fa; }
+.inventory-command-center .inventory-inner-empty { padding:27px; color:#8898a7; text-align:center; font-size:13px; line-height:1.8; }
+.inventory-command-center .inventory-inner-recipe-line { background:#fbfcfe; }
+.inventory-command-center .inventory-inner-recipe-line > .btn { margin-top:9px; }
+.inventory-command-center .inventory-inner-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+.inventory-command-center .inventory-inner-actions .btn { border-radius:10px; min-height:42px; font-weight:700; }
+.inventory-command-center .inventory-inner-supplier-form { display:grid; gap:14px; grid-template-columns:repeat(2,minmax(0,1fr)) auto; align-items:end; }
+.inventory-command-center .inventory-inner-supplier-form > * { min-width:0; }
+.inventory-command-center .inventory-inner-supplier-list { border:0; border-radius:0; }
+.inventory-command-center .inventory-inner-supplier-list .list-group-item { padding:17px 23px; gap:12px; border:0; border-bottom:1px solid #edf1f5; color:#3b5266; background:transparent; flex-wrap:wrap; overflow-wrap:anywhere; }
+.inventory-command-center .inventory-inner-supplier-list .list-group-item:last-child { border:0; }
+@media (max-width:850px) {
+ .inventory-command-center .inventory-inner-supplier-form { grid-template-columns:1fr 1fr; }
+ .inventory-command-center .inventory-inner-supplier-form > div:last-child { grid-column:1/-1; }
+}
+@media (max-width:640px) {
+ .inventory-command-center .inventory-inner-intro { padding:18px 15px; border-radius:13px; }
+ .inventory-command-center .inventory-inner-panel { padding:17px 14px; border-radius:13px; }
+ .inventory-command-center .inventory-inner-panel--list { padding:0; }
+ .inventory-command-center .inventory-inner-panel--list .inventory-inner-panel-heading { padding:17px 14px; }
+ .inventory-command-center .inventory-inner-supplier-form { grid-template-columns:1fr; }
+ .inventory-command-center .inventory-inner-supplier-form > div:last-child { grid-column:auto; }
+ .inventory-command-center .inventory-inner-panel-heading p { font-size:11px; }
+ .inventory-command-center .inventory-inner-count { width:100%; text-align:center; }
+}
