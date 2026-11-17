@@ -84,11 +84,12 @@ export default function DashboardInventorySuppliers() {
   if (loading) return <DashboardSkeletonV2 lines={4} />;
 
   return (
-    <div>
+    <div className="inventory-inner-workspace inventory-inner-suppliers">
+      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">سلسلة التوريد</span><h4>دليل الموردين</h4><p>تابع جهات التوريد وأضف موردين جدد لإدارة المشتريات بسهولة.</p></div><span className="inventory-inner-count">موردون مسجلون: {rows.length.toLocaleString("ar-SA")}</span></div>
       {loadError ? (
         <DashboardErrorStateV2 title="تعذر تحميل قائمة الموردين" description={loadError} compact />
       ) : null}
-      <div className="d-flex gap-2 mb-3 flex-wrap align-items-end">
+      <div className="inventory-inner-panel"><div className="inventory-inner-panel-heading"><span className="inventory-inner-step">01</span><div><h5>إضافة مورد</h5><p>بيانات جهة التوريد الأساسية.</p></div></div><div className="inventory-inner-supplier-form">
         <DashboardFieldV2 id="inventory-supplier-name" label="اسم المورد" required error={nameError || undefined}>
           <input
             className="form-control"
@@ -134,9 +135,10 @@ export default function DashboardInventorySuppliers() {
             </button>
           ) : null}
         </div>
-      </div>
-      {!rows.length ? <p className="text-muted">لا يوجد موردون بعد.</p> : (
-        <ul className="list-group">
+      </div></div>
+      <div className="inventory-inner-panel inventory-inner-panel--list"><div className="inventory-inner-panel-heading"><span className="inventory-inner-step">02</span><div><h5>قائمة الموردين</h5><p>جهات التوريد المسجلة وأرقام التواصل.</p></div></div>
+      {!rows.length ? <div className="inventory-inner-empty">لا يوجد موردون بعد. أضف أول مورد لبدء تنظيم التوريد.</div> : (
+        <ul className="list-group inventory-inner-supplier-list">
           {rows.map((row) => (
             <li key={row.id} className="list-group-item d-flex justify-content-between">
               <span>{row.name}</span>
@@ -144,7 +146,7 @@ export default function DashboardInventorySuppliers() {
             </li>
           ))}
         </ul>
-      )}
+      )}</div>
     </div>
   );
 }

@@ -216,8 +216,9 @@ export default function DashboardInventoryRecipes() {
   }
 
   return (
-    <div>
-      <p className="text-muted">الوصفة هي الاستهلاك القياسي للخدمة. لا يُخصم شيء عند إنشاء الحجز.</p>
+    <div className="inventory-inner-workspace inventory-inner-recipes">
+      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">ضبط الاستهلاك</span><h4>وصفات الخدمات</h4><p>حدد المواد والكميات القياسية لكل خدمة، دون خصم المخزون عند إنشاء الحجز.</p></div><span className="inventory-inner-count">أسطر الوصفة: {lines.length.toLocaleString("ar-SA")}</span></div>
+      <div className="inventory-inner-panel"><div className="inventory-inner-panel-heading"><span className="inventory-inner-step">01</span><div><h5>اختيار الخدمة</h5><p>اختر خدمة لاستعراض وصفتها وتحديث تفاصيلها.</p></div></div>
       <DashboardFieldV2 id="inv-recipe-service" label="الخدمة">
         <DashboardSelectV2
           id="inv-recipe-service"
@@ -227,6 +228,7 @@ export default function DashboardInventoryRecipes() {
           onChange={setServiceId}
         />
       </DashboardFieldV2>
+      </div>
       {recipeLoadError ? (
         <DashboardActionFeedbackV2
           compact
@@ -241,7 +243,8 @@ export default function DashboardInventoryRecipes() {
       ) : (
         <>
           {lines.map((line) => (
-            <div key={line.key} className="border rounded p-3 mb-3">
+            <div key={line.key} className="inventory-inner-panel inventory-inner-recipe-line">
+              <div className="inventory-inner-panel-heading"><span className="inventory-inner-step">•</span><div><h5>مادة أو فئة من الوصفة</h5><p>حدد نوع الاستهلاك والكمية الافتراضية.</p></div></div>
               <DashboardFieldV2 id={`${line.key}-type`} label="نوع السطر">
                 <DashboardSelectV2
                   value={line.lineType}
@@ -318,7 +321,7 @@ export default function DashboardInventoryRecipes() {
             />
           ) : null}
           {canManage ? (
-            <div className="d-flex gap-2">
+            <div className="inventory-inner-actions">
               <button type="button" className="btn btn-outline-dark" onClick={addLine}>إضافة سطر</button>
               <button type="button" className="btn btn-dark" disabled={saving} onClick={() => void save()}>
                 {saving ? "جاري الحفظ..." : "حفظ الوصفة"}
