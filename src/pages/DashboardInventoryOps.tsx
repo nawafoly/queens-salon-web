@@ -153,7 +153,7 @@ export default function DashboardInventoryOps() {
   }
 
   return (
-    <div>
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">الضبط والتسوية</span><h4>الهدر والجرد</h4><p>تحكم في الهدر والتالف والجرد والتحويلات بين مواقع التخزين.</p></div></div><div className="inventory-inner-operation-content">
       <p className="text-muted">استبعاد الهدر والتالف والمنتهي يسجل حركة خصم. الجرد يسجل الفرق، والتحويل يحتاج موقعين مختلفين.</p>
       <DashboardFieldV2 id="inv-ops-item" label="المادة">
         <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: item.name }))} onChange={setItemId} />
@@ -270,6 +270,6 @@ export default function DashboardInventoryOps() {
           </button>
         ) : <p className="text-muted">لا توجد صلاحية تحويل.</p>}
       </div>
-    </div>
+    </div></div>
   );
 }
