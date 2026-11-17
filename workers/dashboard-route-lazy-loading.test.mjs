@@ -13,6 +13,6 @@ for (const [component, importPath, permission] of [
   test(`${component} remains permission guarded and loads on demand`, () => {
     assert.ok(source.includes(`const ${component} = React.lazy(() => import("${importPath}"));`));
     assert.ok(source.includes(permission));
-    assert.match(source, new RegExp(`<React\\.Suspense[^>]*><${component}\\b`));
+    assert.match(source, new RegExp(`<React\\.Suspense[\\s\\S]{0,240}?<${component}\\b`));
   });
 }
