@@ -65,7 +65,7 @@ export default function DashboardInventoryMovements() {
   if (error) return <DashboardErrorStateV2 title="تعذر تحميل الحركات" description={error} />;
 
   return (
-    <div>
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">سجل العمليات</span><h4>الحركات المخزنية</h4><p>تابع الوارد والصادر والرصيد بعد كل حركة حسب موقع التخزين.</p></div></div><div className="inventory-inner-operation-content">
       <div className="d-flex justify-content-end mb-3">
         <select className="form-select" style={{ maxWidth: 240 }} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
           <option value="">كل المواقع</option>
@@ -108,6 +108,6 @@ export default function DashboardInventoryMovements() {
           </table>
         </div>
       )}
-    </div>
+    </div></div>
   );
 }

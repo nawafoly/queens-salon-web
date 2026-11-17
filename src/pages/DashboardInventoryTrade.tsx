@@ -100,7 +100,7 @@ export default function DashboardInventoryTrade() {
   }
 
   return (
-    <div>
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">الوارد إلى المخزون</span><h4>استلام المشتريات</h4><p>أدخل المشتريات الفعلية مع المورد وتكلفة الوحدة والموقع.</p></div></div><div className="inventory-inner-operation-content">
       <p className="text-muted">استلام شراء يضيف للمخزن ويحفظ تكلفة الوحدة. البيع المباشر غير متاح من هذه الواجهة.</p>
       <DashboardFieldV2 id="inv-trade-item" label="المادة">
         <DashboardSelectV2 value={itemId} options={items.map((item) => ({ value: item.id, label: `${item.name} — ${item.consumption_policy}` }))} onChange={setItemId} />
@@ -133,6 +133,6 @@ export default function DashboardInventoryTrade() {
           </button>
         </div>
       ) : <p className="text-muted">لا توجد صلاحية تسوية.</p>}
-    </div>
+    </div></div>
   );
 }

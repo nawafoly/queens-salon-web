@@ -103,7 +103,7 @@ export default function DashboardInventoryIssue() {
   }
 
   return (
-    <div>
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">العهد والمرتجعات</span><h4>صرف الموظفات</h4><p>سجّل صرف المواد للموظفات أو إعادتها وفق السياسة المحددة.</p></div></div><div className="inventory-inner-operation-content">
       <p className="text-muted">للمواد ذات سياسة «صرف للموظفة» فقط. لا تستخدم هذا لتأكيد استهلاك خدمة.</p>
       {!issueItems.length ? (
         <DashboardEmptyStateV2 title="لا توجد مواد قابلة للصرف" description="أنشئ مادة بسياسة صرف للموظفة من تبويب المواد." />
@@ -174,6 +174,6 @@ export default function DashboardInventoryIssue() {
           )}
         </>
       )}
-    </div>
+    </div></div>
   );
 }
