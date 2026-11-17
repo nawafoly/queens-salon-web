@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxesStacked, faPlus, faMagnifyingGlass, faRotate, faTriangleExclamation, faCheckCircle, faLayerGroup, faArrowTrendDown, faArrowLeft, faCircleInfo } from "@fortawesome/free-solid-svg-icons";
 import "../styles/DashboardInventoryCommandCenter.css";
 import {
-  DashboardEmptyStateV2,
   DashboardErrorStateV2,
   DashboardFieldV2,
   DashboardModalV2,
@@ -129,12 +128,12 @@ export default function DashboardInventory() {
     });
   }, [items, qtyByItem]);
 
-  async function load() {
+  async function load(query = search) {
     setLoading(true);
     setError("");
     try {
       const [itemRows, levelRows, locationRows] = await Promise.all([
-        CoreInventoryService.listItems({ search: search || undefined }),
+        CoreInventoryService.listItems({ search: query || undefined }),
         CoreInventoryService.listStockLevels(),
         CoreInventoryService.listLocations(),
       ]);
@@ -335,7 +334,7 @@ export default function DashboardInventory() {
               {canManage && !search.trim() ? (
                 <button type="button" className="inventory-command-primary" onClick={openCreate}><FontAwesomeIcon icon={faPlus} /> إضافة أول مادة <FontAwesomeIcon icon={faArrowLeft} /></button>
               ) : null}
-              {search.trim() ? <button type="button" className="inventory-command-link" onClick={() => { setSearch(""); void CoreInventoryService.listItems().then(setItems).catch((err) => setError(errorMessage(err))); }}>مسح البحث وعرض المواد</button> : null}
+              {search.trim() ? <button type="button" className="inventory-command-link" onClick={() => { setSearch(""); void load(""); }}>مسح البحث وعرض المواد</button> : null}
             </div>
           ) : null}
 
