@@ -72,7 +72,7 @@ export default function DashboardInventoryCosts() {
   }, [days]);
 
   return (
-    <div className="d-grid gap-3" aria-label="تقرير تكلفة استهلاك المواد">
+    <div className="inventory-inner-workspace inventory-inner-operations"><div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">تحليل التكاليف</span><h4>رقابة تكلفة المواد</h4><p>راقب تكلفة الاستهلاك المؤكد حسب الخدمة والموظفة والفترة.</p></div></div><div className="inventory-inner-operation-content">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <h3 className="h6 mb-1">تكلفة استهلاك المواد الفعلية</h3>
@@ -151,6 +151,6 @@ export default function DashboardInventoryCosts() {
           </div>
         </>
       ) : null}
-    </div>
+    </div></div>
   );
 }
