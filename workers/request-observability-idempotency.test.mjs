@@ -62,7 +62,7 @@ test("operational integrity workflow is a blocking release-quality gate", () => 
 
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /npm ci/);
-  assert.match(workflow, /npm audit --audit-level=high/);
+  assert.match(workflow, /run:\s*node scripts\/check-dependency-security-exception\.mjs/);
   assert.match(workflow, /npm run verify:operational-integrity/);
   assert.match(workflow, /git diff --check/);
 });

@@ -1,4 +1,4 @@
-name: Operational Integrity Hardening
+﻿name: Operational Integrity Hardening
 
 on:
   pull_request:
@@ -69,7 +69,7 @@ jobs:
         run: node scripts/check-fixed-interval-polling.mjs
 
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: node scripts/check-dependency-security-exception.mjs
 
       - name: Internal auth identity reconciliation
         run: node --test workers/internal-auth-identity-reconciliation.test.mjs

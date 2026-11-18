@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxesStacked, faPlus, faMagnifyingGlass, faRotate, faTriangleExclamation, faCheckCircle, faLayerGroup, faArrowTrendDown, faArrowLeft, faCircleInfo } from "@fortawesome/free-solid-svg-icons";
 import "../styles/DashboardInventoryCommandCenter.css";
@@ -18,16 +18,16 @@ import {
   type InventoryStockLevel,
 } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
-import DashboardInventoryRecipes from "./DashboardInventoryRecipes";
-import DashboardInventorySuppliers from "./DashboardInventorySuppliers";
-import DashboardInventoryConsumption from "./DashboardInventoryConsumption";
-import DashboardInventoryPurchaseOrders from "./DashboardInventoryPurchaseOrders";
-import DashboardInventoryMovements from "./DashboardInventoryMovements";
-import DashboardInventoryIssue from "./DashboardInventoryIssue";
-import DashboardInventoryOps from "./DashboardInventoryOps";
-import DashboardInventoryTrade from "./DashboardInventoryTrade";
-import DashboardInventoryCosts from "./DashboardInventoryCosts";
-import DashboardInventoryStaffLocations from "./DashboardInventoryStaffLocations";
+const DashboardInventoryRecipes = lazy(() => import("./DashboardInventoryRecipes"));
+const DashboardInventorySuppliers = lazy(() => import("./DashboardInventorySuppliers"));
+const DashboardInventoryConsumption = lazy(() => import("./DashboardInventoryConsumption"));
+const DashboardInventoryPurchaseOrders = lazy(() => import("./DashboardInventoryPurchaseOrders"));
+const DashboardInventoryMovements = lazy(() => import("./DashboardInventoryMovements"));
+const DashboardInventoryIssue = lazy(() => import("./DashboardInventoryIssue"));
+const DashboardInventoryOps = lazy(() => import("./DashboardInventoryOps"));
+const DashboardInventoryTrade = lazy(() => import("./DashboardInventoryTrade"));
+const DashboardInventoryCosts = lazy(() => import("./DashboardInventoryCosts"));
+const DashboardInventoryStaffLocations = lazy(() => import("./DashboardInventoryStaffLocations"));
 
 type InventoryTab = "items" | "recipes" | "consume" | "moves" | "issue" | "ops" | "trade" | "suppliers" | "po" | "costs" | "staff-locations";
 
@@ -278,6 +278,7 @@ export default function DashboardInventory() {
           ))}
         </nav>
         <div className="inventory-command-tab-body">
+          <Suspense fallback={<DashboardSkeletonV2 lines={4} />}>
       {tab === "recipes" ? <DashboardInventoryRecipes /> : null}
       {tab === "consume" ? <DashboardInventoryConsumption /> : null}
       {tab === "moves" ? <DashboardInventoryMovements /> : null}
@@ -376,6 +377,7 @@ export default function DashboardInventory() {
           <div className="inventory-command-footnote"><FontAwesomeIcon icon={faCircleInfo} /> لا يُخصم المخزون إلا عند تأكيد الاستهلاك وفق السياسة المحددة.</div>
         </div>
       ) : null}
+          </Suspense>
       </div>
       </div>
 
