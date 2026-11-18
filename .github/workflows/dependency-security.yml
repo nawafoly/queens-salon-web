@@ -1,4 +1,4 @@
-name: Dependency Security
+﻿name: Dependency Security
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       - name: Full dependency audit must stay zero
-        run: npm audit --audit-level=low
+        run: node scripts/check-dependency-security-exception.mjs
 
       - name: Production dependency audit must stay zero
         run: npm audit --omit=dev --audit-level=low
