@@ -7,8 +7,8 @@ const source = (path) => readFileSync(resolve(path), 'utf8');
 
 test('inventory dashboard retains both newly integrated administrative workspaces', () => {
   const ui = source('src/pages/DashboardInventory.tsx');
-  assert.match(ui, /import DashboardInventoryCosts/);
-  assert.match(ui, /import DashboardInventoryStaffLocations/);
+  assert.match(ui, /const DashboardInventoryCosts = lazy\(\(\) => import\("\.\/DashboardInventoryCosts"\)\)/);
+  assert.match(ui, /const DashboardInventoryStaffLocations = lazy\(\(\) => import\("\.\/DashboardInventoryStaffLocations"\)\)/);
   assert.match(ui, /tab === "costs" && canViewCosts/);
   assert.match(ui, /tab === "staff-locations" && canManage/);
   assert.match(ui, /hasPermission\("inventory\.movements\.view"\)/);
