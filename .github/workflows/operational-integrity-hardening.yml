@@ -69,7 +69,7 @@ jobs:
         run: node scripts/check-fixed-interval-polling.mjs
 
       - name: Dependency audit
-        run: node scripts/check-dependency-security-exception.mjs
+        run: npm audit --audit-level=low
 
       - name: Internal auth identity reconciliation
         run: node --test workers/internal-auth-identity-reconciliation.test.mjs
