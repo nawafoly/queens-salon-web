@@ -1321,7 +1321,7 @@ async function dispatch(ctx, route, method, body, query, env) {
         db,
         ctx.salonId,
         ctx.identity,
-        { createIfMissing: true }
+        { createIfMissing: method !== 'GET', readOnly: method === 'GET' }
       );
       if (method === "GET") {
         return getClientPreferences(db, ctx.salonId, selfClient.id);
@@ -1373,7 +1373,7 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "client-connect:client-conversations": {
       if (ctx.role !== "client") throw new AppError(403, "core_client_connect:client_role_required");
-      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: true });
+      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: method !== 'GET', readOnly: method === 'GET' });
       if (method === "GET") {
         return listClientConnectConversations(db, ctx.salonId, selfClient.id, query);
       }
@@ -1382,7 +1382,7 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "client-connect:client-messages": {
       if (ctx.role !== "client") throw new AppError(403, "core_client_connect:client_role_required");
-      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: true });
+      const selfClient = await resolveSelfClient(db, ctx.salonId, ctx.identity, { createIfMissing: method !== 'GET', readOnly: method === 'GET' });
       const access = { clientId: selfClient.id, actorKind: "client" };
       if (method === "GET") {
         return listConnectMessages(db, ctx.salonId, route.id, access, query);

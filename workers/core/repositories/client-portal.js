@@ -74,7 +74,7 @@ async function uniqueClient(db, sql, params, ambiguousCode) {
   return rows[0] || null;
 }
 
-export async function resolveSelfClient(db, salonId, identity, { createIfMissing = true } = {}) {
+export async function resolveSelfClient(db, salonId, identity, { createIfMissing = true, readOnly = false } = {}) {
   const values = identityValues(identity);
   if (!values.uid) throw new AppError(401, 'core_auth:login_required');
 
@@ -133,6 +133,41 @@ export async function resolveSelfClient(db, salonId, identity, { createIfMissing
 
   if (!client) throw new AppError(404, 'core_client:not_found');
 
+  // Never expose or relink a client owned by another Firebase identity.
+  const existingUid = cleanText(client.firebase_uid);
+  if (existingUid && existingUid !== values.uid) {
+    throw new AppError(
+      409,
+      'core_client:identity_conflict',
+      'Client record belongs to another authenticated identity.'
+    );
+  }
+
+  // Never claim a legacy client using unverified phone or email.
+  // Legacy identity linking requires a separate verified operation.
+  if (!existingUid && !readOnly) {
+    throw new AppError(
+      409,
+      'core_client:identity_link_required',
+      'Existing client identity requires verified account linking.'
+    );
+  }
+
+  // Existing client reads must not modify identity records.
+  if (readOnly) {
+    // A phone or email match alone does not establish account ownership.
+    // Self-service reads require an explicit matching Firebase UID.
+    if (existingUid !== values.uid) {
+      throw new AppError(
+        403,
+        'core_client:identity_link_required',
+        'Client identity must be securely linked before accessing this profile.'
+      );
+    }
+
+    return client;
+  }
+
   if (cleanText(client.firebase_uid) !== values.uid) {
     await dbRun(
       db,
@@ -157,69 +192,13 @@ export async function resolveSelfClient(db, salonId, identity, { createIfMissing
   return (await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, client.id])) || client;
 }
 
-async function relinkSelfClientData(db, salonId, identity, canonicalClient) {
-  const values = identityValues(identity);
-  const canonicalId = cleanText(canonicalClient?.id);
-  if (!canonicalId || !values.uid) return canonicalClient;
-
-  const email = cleanText(canonicalClient?.email || values.email).toLowerCase();
-  const phone = normalizePhone(canonicalClient?.phone_normalized || values.phone);
-  const candidates = await dbAll(
-    db,
-    `SELECT * FROM clients
-      WHERE salon_id = ?
-        AND (
-          id = ?
-          OR firebase_uid = ?
-          OR (? <> '' AND LOWER(COALESCE(email, '')) = ?)
-          OR (? <> '' AND phone_normalized = ?)
-        )`,
-    [salonId, canonicalId, values.uid, email, email, phone, phone]
-  );
-
-  const linkedIds = candidates
-    .filter((candidate) => {
-      const id = cleanText(candidate.id);
-      if (!id) return false;
-      if (id === canonicalId) return true;
-
-      const candidateUid = cleanText(candidate.firebase_uid);
-      if (candidateUid && candidateUid !== values.uid) return false;
-
-      const sameEmail = email && cleanText(candidate.email).toLowerCase() === email;
-      const samePhone = phone && normalizePhone(candidate.phone_normalized) === phone;
-      return Boolean(sameEmail || samePhone);
-    })
-    .map((candidate) => cleanText(candidate.id))
-    .filter(Boolean);
-
-  for (const legacyClientId of linkedIds) {
-    if (legacyClientId === canonicalId) continue;
-
-    // Administrative bookings created before the portal integration could be
-    // attached to a duplicate phone/name client. Move every financial child to
-    // the Firebase-linked canonical client so old and future bookings appear in
-    // one account and are not counted twice.
-    await dbRun(db, 'UPDATE bookings SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
-    await dbRun(db, 'UPDATE invoices SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
-    await dbRun(db, 'UPDATE payments SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
-    await dbRun(db, 'UPDATE refunds SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
-    await dbRun(db, 'UPDATE loyalty_point_transactions SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
-    await dbRun(
-      db,
-      `INSERT OR IGNORE INTO client_aliases
-        (salon_id, alias_id, canonical_client_id, alias_type, created_at)
-       VALUES (?, ?, ?, 'legacy_client_id', ?)`,
-      [salonId, legacyClientId, canonicalId, nowIso()]
-    );
-  }
-
-  return (await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, canonicalId])) || canonicalClient;
-}
-
 async function resolveCanonicalSelfClient(db, salonId, identity, options = {}) {
-  const client = await resolveSelfClient(db, salonId, identity, options);
-  return relinkSelfClientData(db, salonId, identity, client);
+  // Portal reads must not create accounts or modify identity links.
+  return resolveSelfClient(db, salonId, identity, {
+    ...options,
+    createIfMissing: false,
+    readOnly: true,
+  });
 }
 
 function computedBookingStatus(booking, refundedHalalas) {
