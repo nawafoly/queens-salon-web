@@ -197,7 +197,7 @@ export const CoreInventoryService = {
   updateItem(id: string, input: Partial<InventoryItemInput>) {
     return coreApiRequest<InventoryItem>(`/api/core/inventory/items/${encodeURIComponent(id)}`, { method: "PATCH", body: input });
   },
-  listStockLevels(query: { lowOnly?: string } = {}) {
+  listStockLevels(query: { lowOnly?: string; itemId?: string; locationId?: string } = {}) {
     return coreApiRequest<InventoryStockLevel[]>("/api/core/inventory/stock-levels", { query });
   },
   listMovements(query: { itemId?: string; limit?: string } = {}) {
@@ -290,7 +290,7 @@ export const CoreInventoryService = {
   recordWaste(input: { itemId: string; quantity: number; movementType?: InventoryDisposalType; note?: string; locationId?: string }) {
     return coreApiRequest("/api/core/inventory/waste", { method: "POST", body: input });
   },
-  adjustAfterStocktake(input: { itemId: string; countedQty: number; note?: string }) {
+  adjustAfterStocktake(input: { itemId: string; locationId: string; countedQty: number; expectedQty: number; note: string }) {
     return coreApiRequest("/api/core/inventory/stocktake", { method: "POST", body: input });
   },
   issueToEmployee(input: { itemId: string; employeeId: string; quantity: number; note?: string }) {
