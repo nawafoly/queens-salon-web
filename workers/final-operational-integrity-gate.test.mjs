@@ -136,7 +136,7 @@ test("GitHub release gate runs the final aggregate after dependency audit", () =
     ".github/workflows/operational-integrity-hardening.yml"
   );
 
-  assert.match(workflow, /run:\s*node scripts\/check-dependency-security-exception\.mjs/);
+  assert.match(workflow, /run:\s*npm audit --audit-level=low/);
   assert.match(workflow, /npm run verify:operational-integrity/);
   assert.match(workflow, /git diff --check/);
 });
