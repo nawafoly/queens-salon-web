@@ -368,35 +368,37 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
   }
 }
 
+const PACKAGE_SALON_ID =
+  import.meta.env.MODE === "staging" ? "staging" : "main";
 export const PackageOperationsService = {
   newOperationId: operationId,
   listCatalog(includeInactive = false) {
     return invoke<PackageCatalogRecord[]>(
       includeInactive ? "/api/packages/admin/catalog" : "/api/packages/catalog",
-      { salonId: "main", ...(includeInactive ? { includeInactive: true } : {}) },
+      { salonId: PACKAGE_SALON_ID, ...(includeInactive ? { includeInactive: true } : {}) },
       "GET"
     );
   },
   myCatalog() {
-    return invoke<PackageCatalogRecord[]>("/api/packages/my-catalog", { salonId: "main" }, "GET");
+    return invoke<PackageCatalogRecord[]>("/api/packages/my-catalog", { salonId: PACKAGE_SALON_ID }, "GET");
   },
   createCatalog(item: Omit<PackageCatalogRecord, "id"> & { id?: string }) {
-    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: "main", ...item }, "POST");
+    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: PACKAGE_SALON_ID, ...item }, "POST");
   },
   updateCatalog(id: string, patch: Partial<PackageCatalogRecord>) {
-    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: "main", id, ...patch }, "PATCH");
+    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: PACKAGE_SALON_ID, id, ...patch }, "PATCH");
   },
   deleteCatalog(id: string) {
-    return invoke<{ id: string; deleted: boolean; archived?: boolean }>("/api/packages/admin/catalog", { salonId: "main", id }, "DELETE");
+    return invoke<{ id: string; deleted: boolean; archived?: boolean }>("/api/packages/admin/catalog", { salonId: PACKAGE_SALON_ID, id }, "DELETE");
   },
   sessionDashboard() {
-    return invoke<PackageSessionDashboardResult>("/api/packages/admin/session-dashboard", { salonId: "main" }, "GET");
+    return invoke<PackageSessionDashboardResult>("/api/packages/admin/session-dashboard", { salonId: PACKAGE_SALON_ID }, "GET");
   },
   updateClientPackage(args: { clientPackageId: string; packageName: string; remainingSessions: number; expiresAt?: string; status?: string }) {
-    return invoke<{ id: string; updated: boolean }>("/api/packages/admin/client-package", { salonId: "main", ...args }, "PATCH");
+    return invoke<{ id: string; updated: boolean }>("/api/packages/admin/client-package", { salonId: PACKAGE_SALON_ID, ...args }, "PATCH");
   },
   async deleteClientPackage(clientPackageId: string) {
-    const payload = { salonId: "main", clientPackageId };
+    const payload = { salonId: PACKAGE_SALON_ID, clientPackageId };
     try {
       // The DELETE endpoint existed before the POST compatibility alias and is
       // therefore the safest first choice for already-deployed workers.
@@ -418,11 +420,11 @@ export const PackageOperationsService = {
     }
   },
   myWallet() {
-    return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");
+    return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: PACKAGE_SALON_ID }, "GET");
   },
   clientWallet(args: { clientId?: string; clientLookup?: PackageClientLookup }) {
     return invoke<PackageClientWalletResult>("/api/packages/client-wallet", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       ...args,
     });
   },
@@ -437,7 +439,7 @@ export const PackageOperationsService = {
   }) {
     const operation = operationId("package_admin_grant");
     return invoke<PackageAdminGrantResult>("/api/packages/admin/grant-sessions", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       operationId: operation,
       clientId: args.clientId,
       clientName: args.clientName,
@@ -461,7 +463,7 @@ export const PackageOperationsService = {
     invoiceId?: string;
   }) {
     return invoke<PackagePurchaseResult>("/api/packages/purchase", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       ...args,
       invoiceId: args.invoiceId || operationId("package_sale"),
     });
@@ -479,7 +481,7 @@ export const PackageOperationsService = {
     operationId?: string;
   }) {
     return invoke<PackageRedemptionResult>("/api/packages/reserve", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       ...args,
       operationId:
         args.operationId ||
@@ -494,7 +496,7 @@ export const PackageOperationsService = {
     operationId?: string;
   }) {
     return invoke("/api/packages/release", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       ...args,
       operationId:
         args.operationId ||
@@ -513,37 +515,37 @@ export const PackageOperationsService = {
     cartItemId?: string;
   }) {
     return invoke<PackageRedemptionResult>("/api/packages/redeem", {
-      salonId: "main",
+      salonId: PACKAGE_SALON_ID,
       ...args,
       operationId: args.operationId || operationId("package_booking"),
     });
   },
   adjust(clientPackageId: string, sessionsDelta: number, reason: string) {
     return invoke("/api/packages/adjust", {
-      salonId: "main", clientPackageId, sessionsDelta, reason,
+      salonId: PACKAGE_SALON_ID, clientPackageId, sessionsDelta, reason,
       operationId: operationId("package_adjust"),
     });
   },
   cancel(clientPackageId: string, reason: string) {
-    return invoke("/api/packages/cancel", { salonId: "main", clientPackageId, reason });
+    return invoke("/api/packages/cancel", { salonId: PACKAGE_SALON_ID, clientPackageId, reason });
   },
   restoreConsumed(bookingId: string, reason: string) {
     return invoke("/api/packages/redemption/restore", {
-      salonId: "main", bookingId, reason,
+      salonId: PACKAGE_SALON_ID, bookingId, reason,
     });
   },
   reapplyBookingSession(bookingId: string, targetState: "reserved" | "used", reason: string) {
     return invoke("/api/packages/redemption/reapply", {
-      salonId: "main", bookingId, targetState, reason,
+      salonId: PACKAGE_SALON_ID, bookingId, targetState, reason,
     });
   },
   consumeReserved(bookingId: string) {
-    return invoke("/api/packages/redemption/consume", { salonId: "main", bookingId });
+    return invoke("/api/packages/redemption/consume", { salonId: PACKAGE_SALON_ID, bookingId });
   },
   restoreReserved(bookingId: string, reason: string) {
-    return invoke("/api/packages/redemption/restore", { salonId: "main", bookingId, reason });
+    return invoke("/api/packages/redemption/restore", { salonId: PACKAGE_SALON_ID, bookingId, reason });
   },
   cancelRedemptionBooking(bookingId: string, reason: string) {
-    return invoke("/api/packages/redemption/cancel", { salonId: "main", bookingId, reason });
+    return invoke("/api/packages/redemption/cancel", { salonId: PACKAGE_SALON_ID, bookingId, reason });
   },
 };
