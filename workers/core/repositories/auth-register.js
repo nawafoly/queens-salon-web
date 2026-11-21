@@ -130,6 +130,105 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
     }
   }
 
+  // Preserve access to an already linked client without claiming
+  // a different legacy record or copying conflicting contact details.
+  async function establishedClientAccount() {
+    const existingAccount = await getAccountByFirebaseUid(db, salonId, uid);
+
+    if (
+      !existingAccount ||
+      cleanText(existingAccount.primary_role) !== 'client' ||
+      cleanText(existingAccount.status) !== 'active' ||
+      existingAccount.deleted_at
+    ) {
+      return null;
+    }
+
+    // Reject ambiguous Firebase ownership before selecting a client.
+    const identityCount = await dbFirst(
+      db,
+      `SELECT COUNT(*) AS total
+         FROM clients
+        WHERE salon_id = ?
+          AND firebase_uid = ?`,
+      [salonId, uid]
+    );
+
+    if (Number(identityCount?.total || 0) > 1) {
+      throw new AppError(
+        409,
+        'core_client:ambiguous_uid',
+        'Multiple client profiles are linked to this Firebase identity.'
+      );
+    }
+    const existingClient = await dbFirst(
+      db,
+      `SELECT * FROM clients
+         WHERE salon_id = ?
+           AND firebase_uid = ?
+         LIMIT 1`,
+      [salonId, uid]
+    );
+
+    if (
+      !existingClient ||
+      cleanText(existingClient.status) !== 'active'
+    ) {
+      return null;
+    }
+
+    return serializeClientAccount(
+      db,
+      salonId,
+      existingAccount,
+      existingClient
+    );
+  }
+  // Reject unsafe client identity collisions before writing app_users.
+  // Phone and email alone do not authorize linking an existing client.
+  if (phone) {
+    const conflictingPhoneClient = await dbFirst(
+      db,
+      `SELECT id FROM clients
+         WHERE salon_id = ?
+           AND phone_normalized = ?
+           AND (firebase_uid IS NULL OR firebase_uid <> ?)
+         LIMIT 1`,
+      [salonId, phone, uid]
+    );
+
+    if (conflictingPhoneClient) {
+      const established = await establishedClientAccount();
+      if (established) return established;
+      throw new AppError(
+        409,
+        'core_client:identity_link_required',
+        'This phone belongs to a client requiring verified identity linking.'
+      );
+    }
+  }
+
+  if (email) {
+    const conflictingEmailClient = await dbFirst(
+      db,
+      `SELECT id FROM clients
+         WHERE salon_id = ?
+           AND LOWER(TRIM(COALESCE(email, ''))) = ?
+           AND (firebase_uid IS NULL OR firebase_uid <> ?)
+         LIMIT 1`,
+      [salonId, email, uid]
+    );
+
+    if (conflictingEmailClient) {
+      const established = await establishedClientAccount();
+      if (established) return established;
+      throw new AppError(
+        409,
+        'core_client:identity_link_required',
+        'This email belongs to a client requiring verified identity linking.'
+      );
+    }
+  }
   let account = await getAccountByFirebaseUid(db, salonId, uid);
   const now = nowIso();
 
@@ -150,15 +249,13 @@ export async function ensureClientAccount(db, salonId, env, request, data = {}) 
         throw new AppError(409, 'ACCOUNT_EMAIL_ROLE_CONFLICT');
       }
       if (byEmail && cleanText(byEmail.primary_role) === 'client') {
-        await dbRun(
-          db,
-          `UPDATE app_users
-              SET firebase_uid = ?, display_name = COALESCE(NULLIF(display_name, ''), ?),
-                  phone = COALESCE(phone, ?), updated_at = ?
-            WHERE salon_id = ? AND id = ?`,
-          [uid, name, phone, now, salonId, byEmail.id]
+        // Email equality alone does not authorize changing Firebase ownership.
+        // Existing account recovery requires separately verified identity linking.
+        throw new AppError(
+          409,
+          'core_auth:identity_link_required',
+          'This email is already associated with an existing account.'
         );
-        account = await getAccountByFirebaseUid(db, salonId, uid);
       }
     }
   }

@@ -1031,7 +1031,7 @@ test("public booking repairs stale service IDs before creating a Core booking", 
   assert.match(serviceRepo, /normalizedMatches\.length === 1/);
 });
 
-test("administrative bookings attach to the selected canonical client and repair legacy duplicate links", () => {
+test("administrative bookings attach to the selected canonical client without unsafe profile-read relinking", () => {
   const internalBooking = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
   const bookingSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
   const portalRepo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
@@ -1042,11 +1042,14 @@ test("administrative bookings attach to the selected canonical client and repair
   assert.match(internalBooking, /createdByUid:\s*userId/);
   assert.match(bookingSource, /const explicitClientId = String\(booking\.clientId/);
   assert.match(bookingSource, /CoreClientService\.get\(explicitClientId\)/);
-  assert.match(portalRepo, /UPDATE bookings SET client_id = \?/);
-  assert.match(portalRepo, /UPDATE invoices SET client_id = \?/);
-  assert.match(portalRepo, /UPDATE payments SET client_id = \?/);
-  assert.match(portalRepo, /UPDATE refunds SET client_id = \?/);
-  assert.match(portalRepo, /legacy_client_id/);
+  assert.doesNotMatch(
+    portalRepo,
+    /UPDATE (?:bookings|invoices|payments|refunds) SET client_id = \?/
+  );
+  assert.match(
+    portalRepo,
+    /Never claim a legacy client using unverified phone or email/
+  );
 });
 
 test("client mobile routes and bottom navigation expose packages instead of Instagram", () => {

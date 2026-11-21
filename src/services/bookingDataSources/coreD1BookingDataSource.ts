@@ -1,4 +1,5 @@
 import { CoreBookingService } from "../CoreBookingService";
+import { coreApiRequest } from "../coreApiClient";
 import { CoreCatalogService } from "../CoreCatalogService";
 import { CoreClientService } from "../CoreClientService";
 import { CoreInvoiceService } from "../CoreInvoiceService";
@@ -58,38 +59,44 @@ async function resolveClientId(booking: BookingDoc): Promise<string> {
   const guestParticipant = readBookingGuestParticipant(booking);
   if (guestParticipant) return guestParticipant.id;
 
+  // Signed-in client identity is resolved by Core from the authenticated token.
+  const signedClientBooking =
+    booking.channel === "client" &&
+    Boolean(String(booking.userId || "").trim());
+
+  if (signedClientBooking) {
+    const self = await coreApiRequest<{ id: string }>(
+      "/api/core/client/me"
+    );
+
+    const selfId = String(self?.id || "").trim();
+
+    if (!selfId) {
+      throw new Error("CORE_CLIENT_PROFILE_NOT_FOUND");
+    }
+
+    return selfId;
+  }
+
   const explicitClientId = String(booking.clientId || "").trim();
-  const firebaseUid = String(
-    booking.clientFirebaseUid ||
-      (booking.channel === "client" ? booking.userId : "") ||
-      ""
-  ).trim();
+
+  if (explicitClientId) {
+    const exact = await CoreClientService.get(explicitClientId);
+
+    // Booking creation must never change Firebase account ownership.
+    return exact.id;
+  }
 
   const email = String(booking.clientEmail || "")
     .trim()
     .toLowerCase();
 
-  if (explicitClientId) {
-    const exact = await CoreClientService.get(explicitClientId);
-
-    // Administrative booking must link only the selected client account UID.
-    // Never use the operator UID as a client UID.
-    if (firebaseUid && !String(exact.firebaseUid || "").trim()) {
-      await CoreClientService.patch(exact.id, { firebaseUid });
-    }
-
-    return exact.id;
-  }
-
-  // Do not call the administrative GET /clients endpoint from public/client
-  // booking. POST /clients is an idempotent public upsert by UID/phone, and the
-  // worker sanitizes identity fields before writing them.
   const created = await CoreClientService.create({
     name: booking.clientName || "عميلة",
     phone: normalizePhone(booking.clientPhone) || booking.clientPhone,
     email: email || undefined,
-    firebaseUid: firebaseUid || undefined,
   });
+
   return created.id;
 }
 

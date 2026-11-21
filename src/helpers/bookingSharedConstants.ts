@@ -1,4 +1,5 @@
-export const SALON_ID = "main";
+export const SALON_ID =
+  import.meta.env.MODE === "staging" ? "staging" : "main";
 export const DEFAULT_SERVICE_DURATION_MIN = 60;
 export const PACKAGE_SECTION_ID = "service-packages";
 export const PACKAGE_SECTION_TITLE = "البكيجات";
