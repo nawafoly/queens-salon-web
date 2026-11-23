@@ -95,7 +95,26 @@ async function bookedRows(db, salonId, staffId, date) {
 
   return dbAll(
     db,
-    `SELECT
+    `WITH candidate_items AS (
+       SELECT id
+       FROM booking_items
+       WHERE salon_id = ?
+         AND staff_id = ?
+         AND booking_date = ?
+
+       UNION ALL
+
+       SELECT bi2.id
+       FROM booking_items bi2
+       INNER JOIN bookings b2
+         ON b2.id = bi2.booking_id
+        AND b2.salon_id = bi2.salon_id
+       WHERE bi2.salon_id = ?
+         AND (bi2.staff_id IS NULL OR bi2.booking_date IS NULL)
+         AND COALESCE(bi2.staff_id, b2.staff_id) = ?
+         AND COALESCE(bi2.booking_date, b2.booking_date) = ?
+     )
+     SELECT
        b.id AS booking_id,
        b.public_id,
        bi.id AS booking_item_id,
@@ -108,15 +127,13 @@ async function bookedRows(db, salonId, staffId, date) {
        c.name AS client_name,
        c.phone_normalized AS client_phone,
        b.source
-     FROM booking_items bi
+     FROM candidate_items candidate
+     INNER JOIN booking_items bi ON bi.id = candidate.id
      INNER JOIN bookings b ON b.id = bi.booking_id AND b.salon_id = bi.salon_id
      LEFT JOIN clients c ON c.id = b.client_id AND c.salon_id = b.salon_id
-     WHERE bi.salon_id = ?
-       AND COALESCE(bi.staff_id, b.staff_id) = ?
-       AND COALESCE(bi.booking_date, b.booking_date) = ?
-       AND LOWER(b.status) NOT IN ('cancelled', 'canceled', 'rejected')
+     WHERE LOWER(b.status) NOT IN ('cancelled', 'canceled', 'rejected')
      ORDER BY start_time`,
-    [salonId, staffId, date]
+    [salonId, staffId, date, salonId, staffId, date]
   );
 }
 
