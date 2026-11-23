@@ -82,7 +82,7 @@ import {
 import {
   getTodayAttendanceDateKey,
   type StaffAttendanceToday,
-} from "../services/firestoreAttendance";
+} from "../services/attendanceTypes";
 import { listAttendanceForEmployeesDateFromWorker } from "../services/attendanceWorkerService";
 import {
   getAttendanceDayStatus,

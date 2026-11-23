@@ -16,7 +16,7 @@ import {
 import {
   getTodayAttendanceDateKey,
   type StaffAttendanceWithId,
-} from "../services/firestoreAttendance";
+} from "../services/attendanceTypes";
 import {
   type AttendanceRecord,
   type AttendanceStatus,
