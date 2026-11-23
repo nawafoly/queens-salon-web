@@ -2542,8 +2542,31 @@ export async function markClosedCheckInWindowsAbsent(coreDb, attendanceDb, salon
   let created = 0;
   let cleared = 0;
 
-  for (const employee of employees) {
-    const shift = await resolveEmployeeShift(coreDb, salonId, employee.id, clock.dateKey).catch(() => null);
+  // Resolve today's shifts together instead of issuing repeated
+  // per-employee schedule queries on every five-minute cron.
+  // Fail closed if the batch is incomplete: never infer absence
+  // from a missing or failed shift resolution.
+  if (employees.length === 0) {
+    return { checked: 0, created: 0, cleared: 0 };
+  }
+
+  const resolved = await resolveEmployeeShiftsBatch(
+    coreDb,
+    salonId,
+    {
+      employeeIds: employees.map((employee) => employee.id),
+      dateFrom: clock.dateKey,
+      dateTo: clock.dateKey,
+    }
+  );
+
+  if (!Array.isArray(resolved?.rows) || resolved.rows.length !== employees.length) {
+    throw new Error('attendance_cron:incomplete_shift_batch');
+  }
+
+  for (let index = 0; index < employees.length; index += 1) {
+    const employee = employees[index];
+    const shift = resolved.rows[index];
     if (!shift || cleanText(shift.source) === 'none') continue;
     const exceptionType = cleanText(shift.exception_type || shift.exceptionType);
     if (exceptionType === 'off' || Number(shift.active) === 0) continue;
