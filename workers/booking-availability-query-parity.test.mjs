@@ -1,16 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { execFileSync } from "node:child_process";
+
 import { readFileSync } from "node:fs";
 
 const path = "workers/core/repositories/availability.js";
 
-const oldSource = execFileSync(
-  "git",
-  ["show", `HEAD:${path}`],
-  { encoding: "utf8" }
-);
+const originalSql = readFileSync(
+  new URL("./fixtures/booking-availability-original.sql", import.meta.url),
+  "utf8"
+).trim();
 
 const newSource = readFileSync(path, "utf8");
 
@@ -34,7 +33,10 @@ function extractQuery(source) {
   };
 }
 
-const original = extractQuery(oldSource);
+const original = {
+  sql: originalSql,
+  parameterCount: (originalSql.match(/\?/g) || []).length,
+};
 const optimized = extractQuery(newSource);
 
 test("optimized search returns exactly the same appointments", () => {
