@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
+import type { StaffAttendanceWithId } from "../../services/attendanceTypes";
 import { CoreHrService } from "../../services/CoreHrService";
 import { isCanonicalEmployeeIdentityId } from "../../helpers/employeeIdentityId";
 import { clearAttendancePunchTimeFromWorker } from "../../services/attendancePunchAdminService";

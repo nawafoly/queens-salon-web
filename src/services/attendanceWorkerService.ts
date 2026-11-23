@@ -10,7 +10,7 @@ import type {
   AttendanceVerification,
   StaffAttendanceToday,
   StaffAttendanceWithId,
-} from "./firestoreAttendance";
+} from "./attendanceTypes";
 
 const DEFAULT_ATTENDANCE_WORKER_URL =
   "https://malikat-attendance.maedin.workers.dev";

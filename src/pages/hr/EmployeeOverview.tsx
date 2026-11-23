@@ -32,7 +32,7 @@ import {
   getTodayAttendanceDateKey,
   type StaffAttendanceWithId,
   type StaffAttendanceToday,
-} from "../../services/firestoreAttendance";
+} from "../../services/attendanceTypes";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { CoreHrService } from "../../services/CoreHrService";
 import { type BookingDocWithId } from "../../types/bookingRecord";

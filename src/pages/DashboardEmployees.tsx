@@ -56,7 +56,7 @@ import { listWorkZones, type WorkZone } from "../services/attendanceSettingsServ
 import {
   getTodayAttendanceDateKey,
   type StaffAttendanceWithId,
-} from "../services/firestoreAttendance";
+} from "../services/attendanceTypes";
 import {
   listAttendanceByDateRangeForEmployeeFromWorker,
 } from "../services/attendanceWorkerService";

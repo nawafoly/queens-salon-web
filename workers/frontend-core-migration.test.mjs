@@ -1080,7 +1080,7 @@ test("client package wallet and catalog remain Packages D1-only", () => {
   const panel = readFileSync("src/components/packages/MyPackagesPanel.tsx", "utf8");
   const operations = readFileSync("src/services/PackageOperationsService.ts", "utf8");
   const catalog = readFileSync("src/services/PackageService.ts", "utf8");
-  const settings = readFileSync("src/pages/settings/SettingsCatalog.tsx", "utf8");
+  const settings = readFileSync("src/pages/settings/SettingsCatalogV2.tsx", "utf8");
   const routes = readFileSync("workers/packages/routes.js", "utf8");
 
   assert.match(panel, /PackageOperationsService\.myWallet/);
