@@ -4083,6 +4083,31 @@ function structuredRequestLog(fields) {
   );
 }
 
+function observeScheduledTask(task, promise) {
+  const startedAt = Date.now();
+
+  return Promise.resolve(promise).then(
+    () => {
+      console.log(JSON.stringify({
+        event: "core_scheduled_task_completed",
+        task,
+        durationMs: Date.now() - startedAt,
+        ok: true,
+      }));
+    },
+    error => {
+      console.error(JSON.stringify({
+        event: "core_scheduled_task_completed",
+        task,
+        durationMs: Date.now() - startedAt,
+        ok: false,
+        errorType: String(error?.name || "Error").slice(0, 80),
+      }));
+
+      throw error;
+    }
+  );
+}
 export default {
   async fetch(request, env, executionCtx) {
     const startedAt = Date.now();
@@ -4311,23 +4336,52 @@ export default {
     return finalResponse;
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(import('./repositories/hr-payroll-operations.js').then(({recoverHrPayrollOperations}) =>
-      recoverHrPayrollOperations(env.CORE_DB,{externalAttendanceDb:env.ATTENDANCE_DB || null})));
     const salonId = cleanText(env.SALON_ID) || "main";
+
+    ctx.waitUntil(observeScheduledTask(
+      "hr_payroll_recovery",
+      import('./repositories/hr-payroll-operations.js')
+        .then(({ recoverHrPayrollOperations }) =>
+          recoverHrPayrollOperations(env.CORE_DB, {
+            externalAttendanceDb: env.ATTENDANCE_DB || null,
+          })
+        )
+    ));
+
     if (event?.cron === "*/5 * * * *") {
       ctx.waitUntil(Promise.all([
-        markClosedCheckInWindowsAbsent(env.CORE_DB, env.ATTENDANCE_DB, salonId),
-        flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null),
+        observeScheduledTask(
+          "attendance_window_check",
+          markClosedCheckInWindowsAbsent(env.CORE_DB, env.ATTENDANCE_DB, salonId)
+        ),
+        observeScheduledTask(
+          "employee_push_outbox",
+          flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env)
+        ).catch(() => null),
       ]));
       return;
     }
+
     ctx.waitUntil((async () => {
       await Promise.all([
-        expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
-        expireCashbackCredits(env.CORE_DB, salonId),
-        notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
+        observeScheduledTask(
+          "package_expiry",
+          expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB })
+        ),
+        observeScheduledTask(
+          "cashback_expiry",
+          expireCashbackCredits(env.CORE_DB, salonId)
+        ),
+        observeScheduledTask(
+          "overdue_employee_requests",
+          notifyOverdueEmployeeRequests(env.CORE_DB, salonId)
+        ),
       ]);
-      await flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env).catch(() => null);
+
+      await observeScheduledTask(
+        "hourly_employee_push_outbox",
+        flushEmployeeWebPushOutbox(env.CORE_DB, salonId, env)
+      ).catch(() => null);
     })());
   },
 };
