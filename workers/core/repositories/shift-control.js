@@ -2550,23 +2550,38 @@ export async function markClosedCheckInWindowsAbsent(coreDb, attendanceDb, salon
     return { checked: 0, created: 0, cleared: 0 };
   }
 
-  const resolved = await resolveEmployeeShiftsBatch(
-    coreDb,
-    salonId,
-    {
-      employeeIds: employees.map((employee) => employee.id),
-      dateFrom: clock.dateKey,
-      dateTo: clock.dateKey,
-    }
-  );
+  const shifts = [];
 
-  if (!Array.isArray(resolved?.rows) || resolved.rows.length !== employees.length) {
+  // The batch resolver accepts at most 100 employees.
+  // Resolve and validate ALL chunks before writing any absences.
+  // This prevents a failed later chunk from causing partial changes.
+  for (let offset = 0; offset < employees.length; offset += 100) {
+    const chunk = employees.slice(offset, offset + 100);
+
+    const resolved = await resolveEmployeeShiftsBatch(
+      coreDb,
+      salonId,
+      {
+        employeeIds: chunk.map((employee) => employee.id),
+        dateFrom: clock.dateKey,
+        dateTo: clock.dateKey,
+      }
+    );
+
+    if (!Array.isArray(resolved?.rows) || resolved.rows.length !== chunk.length) {
+      throw new Error('attendance_cron:incomplete_shift_batch');
+    }
+
+    shifts.push(...resolved.rows);
+  }
+
+  if (shifts.length !== employees.length) {
     throw new Error('attendance_cron:incomplete_shift_batch');
   }
 
   for (let index = 0; index < employees.length; index += 1) {
     const employee = employees[index];
-    const shift = resolved.rows[index];
+    const shift = shifts[index];
     if (!shift || cleanText(shift.source) === 'none') continue;
     const exceptionType = cleanText(shift.exception_type || shift.exceptionType);
     if (exceptionType === 'off' || Number(shift.active) === 0) continue;
