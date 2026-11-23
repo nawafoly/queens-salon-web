@@ -1,21 +1,19 @@
-import {
-  isRemovedFromStaffRecord as isRemovalFlaggedStaffRecord,
-} from "./staffAccountLinkServiceCore";
+function isRemovalFlaggedStaffRecord(data: unknown): boolean {
+  const row = (data || {}) as Record<string, unknown>;
+  const employmentStatus = String(row.employmentStatus || "").trim().toLowerCase();
+  const status = String(row.status || "").trim().toLowerCase();
 
-export type {
-  AccountUserLinkRow,
-  StaffAccountLinkRow,
-} from "./staffAccountLinkServiceCore";
-
-export {
-  listStaffLinkRows,
-  listEmployeeLinkRows,
-  listUserLinkRows,
-  findStaffMatchesForUser,
-  softDeleteLinkedStaffByUser,
-  repairLegacyStaffUserLinks,
-} from "./staffAccountLinkServiceCore";
-
+  return (
+    Boolean(row.deletedAt) ||
+    row.removedFromStaff === true ||
+    row.archived === true ||
+    row.deleted === true ||
+    employmentStatus === "deleted" ||
+    employmentStatus === "archived" ||
+    status === "deleted" ||
+    status === "archived"
+  );
+}
 function cleanText(value: unknown): string {
   return String(value || "").trim();
 }
