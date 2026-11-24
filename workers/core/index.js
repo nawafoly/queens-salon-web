@@ -4349,6 +4349,20 @@ export default {
     ));
 
     if (event?.cron === "*/5 * * * *") {
+      ctx.waitUntil(observeScheduledTask(
+        "weekly_rest_recovery",
+        import('./repositories/weekly-rest-recovery.js')
+          .then(({ recoverAssignedWeeklyRestWork }) =>
+            recoverAssignedWeeklyRestWork(
+              env.CORE_DB,
+              salonId,
+              env.ATTENDANCE_DB || null,
+              {
+                fromDate: env.WEEKLY_REST_RECOVERY_FROM_DATE,
+              }
+            )
+          )
+      ));
       ctx.waitUntil(Promise.all([
         observeScheduledTask(
           "attendance_window_check",
