@@ -516,42 +516,31 @@ export async function getClientDirectorySummary(db, salonId, query = {}) {
 
   const row = await dbFirst(
     db,
-    `WITH filtered_clients AS (
-       SELECT c.id, c.vip, c.status, c.created_at
-       FROM clients c
-       WHERE c.salon_id = ?${filters.clause}
-     ),
-     booking_metrics AS (
-       SELECT
-         b.client_id,
-         COUNT(*) AS bookings_count
-       FROM bookings b
-       INNER JOIN filtered_clients fc
-         ON fc.id = b.client_id
-       WHERE b.salon_id = ?
-         AND b.deleted_at IS NULL
-       GROUP BY b.client_id
-     )
-     SELECT
+    `SELECT
        COUNT(*) AS total_clients,
-       COALESCE(SUM(CASE WHEN COALESCE(fc.vip, 0) = 1 THEN 1 ELSE 0 END), 0) AS vip_clients,
+       COALESCE(SUM(CASE WHEN COALESCE(c.vip, 0) = 1 THEN 1 ELSE 0 END), 0) AS vip_clients,
        COALESCE(SUM(
          CASE
-           WHEN TRIM(LOWER(COALESCE(fc.status, ''))) IN ('', 'active') THEN 1
+           WHEN TRIM(LOWER(COALESCE(c.status, ''))) IN ('', 'active') THEN 1
            ELSE 0
          END
        ), 0) AS active_clients,
        COALESCE(SUM(
          CASE
-           WHEN date(fc.created_at) >= date('now', 'start of month') THEN 1
+           WHEN date(c.created_at) >= date('now', 'start of month') THEN 1
            ELSE 0
          END
        ), 0) AS new_this_month,
-       COALESCE(SUM(COALESCE(bm.bookings_count, 0)), 0) AS total_bookings
-     FROM filtered_clients fc
-     LEFT JOIN booking_metrics bm
-       ON bm.client_id = fc.id`,
-    [salonId, ...filters.params, salonId]
+       COALESCE(SUM((
+         SELECT COUNT(*)
+         FROM bookings b
+         WHERE b.salon_id = c.salon_id
+           AND b.client_id = c.id
+           AND b.deleted_at IS NULL
+       )), 0) AS total_bookings
+     FROM clients c
+     WHERE c.salon_id = ?${filters.clause}`,
+    [salonId, ...filters.params]
   );
 
   const totalClients = Number(row?.total_clients || 0);
