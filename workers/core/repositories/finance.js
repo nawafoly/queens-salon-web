@@ -124,7 +124,7 @@ async function hydrateIncomeRows(db, salonId, rows) {
       chunkValues(clientIds).map((ids) =>
         dbAll(
           db,
-          `SELECT * FROM clients WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
+          `SELECT * FROM clients INDEXED BY sqlite_autoindex_clients_1 WHERE salon_id = ? AND id IN (${placeholders(ids.length)})`,
           [salonId, ...ids]
         )
       )
