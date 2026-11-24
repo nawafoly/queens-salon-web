@@ -273,3 +273,191 @@ test('concurrent recovery never duplicates the same entitlement', async t => {
 
   assert.equal(Number(events.count), 1);
 });
+
+
+import {
+  creditCompTime,
+} from './core/repositories/comp-time.js';
+
+import {
+  reconcileAssignedWeeklyRestWork,
+} from './core/repositories/leave-rest-workflows.js';
+
+async function prepareRaceFixture(t) {
+  const f = await fixture(t);
+
+  await f.assignment('2026-11-23');
+  await f.punch('2026-11-23', 'check_in', '12:00');
+  await f.punch('2026-11-23', 'check_out', '20:00');
+
+  return f;
+}
+
+async function recoverWithSettlement(f, sourceType, sourceDate) {
+  let injected = false;
+
+  const result = await recoverAssignedWeeklyRestWork(
+    f.core,
+    'main',
+    f.attendance,
+    {
+      fromDate: '2026-11-01',
+      now: new Date('2026-11-24T21:00:00Z'),
+
+      reconcile: async (...args) => {
+        assert.equal(injected, false);
+        injected = true;
+
+        await creditCompTime(
+          f.core,
+          'main',
+          {
+            employeeId: 'test-employee',
+            entitlementType: 'weekly_rest_due',
+            minutes: 1440,
+            sourceType,
+            sourceId: `synthetic-${sourceType}`,
+            sourceDate,
+            note: 'Synthetic concurrent settlement',
+          },
+          { uid: 'test-hr' }
+        );
+
+        return reconcileAssignedWeeklyRestWork(...args);
+      },
+    }
+  );
+
+  assert.equal(injected, true);
+  assert.equal(result.candidates, 1);
+
+  return result;
+}
+
+async function eventCreditCount(f) {
+  const row = await f.core.prepare(`
+    SELECT COUNT(*) AS count
+    FROM employee_comp_time_ledger
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND entitlement_type = 'weekly_rest_due'
+      AND source_type = 'weekly_rest_event'
+      AND entry_kind = 'credit'
+  `).first();
+
+  return Number(row.count);
+}
+
+test('settlement posted after candidate selection cannot duplicate weekly rest credit', async t => {
+  const f = await prepareRaceFixture(t);
+
+  const result = await recoverWithSettlement(
+    f,
+    'manual_adjustment',
+    '2026-11-23'
+  );
+
+  assert.equal(result.credited, 0);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+  assert.equal(await eventCreditCount(f), 0);
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('historical opening posted after selection blocks covered recovery credit', async t => {
+  const f = await prepareRaceFixture(t);
+
+  const result = await recoverWithSettlement(
+    f,
+    'historical_opening_balance',
+    '2026-11-24'
+  );
+
+  assert.equal(result.credited, 0);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+  assert.equal(await eventCreditCount(f), 0);
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('older historical opening does not suppress a later earned entitlement', async t => {
+  const f = await prepareRaceFixture(t);
+
+  const result = await recoverWithSettlement(
+    f,
+    'historical_opening_balance',
+    '2026-11-22'
+  );
+
+  assert.equal(result.failed, 0);
+  assert.equal(result.credited, 1);
+  assert.equal(await f.balance(), 2880);
+  assert.equal(await f.credits(), 2);
+  assert.equal(await eventCreditCount(f), 1);
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 2880);
+  assert.equal(await f.credits(), 2);
+});
+
+test('assignment cancelled immediately before ledger batch cannot receive credit', async t => {
+  const f = await prepareRaceFixture(t);
+
+  const originalBatch = f.core.batch.bind(f.core);
+
+  let injected = false;
+
+  f.core.batch = async statements => {
+    if (!injected) {
+      const event = await f.core.prepare(`
+        SELECT id
+        FROM employee_weekly_rest_events
+        WHERE salon_id = 'main'
+          AND employee_id = 'test-employee'
+          AND rest_date = '2026-11-23'
+      `).first();
+
+      assert.ok(event);
+
+      injected = true;
+
+      await f.core.prepare(`
+        UPDATE employee_weekly_rest_work_assignments
+        SET status = 'cancelled'
+        WHERE id = 'assignment-2026-11-23'
+      `).run();
+    }
+
+    return originalBatch(statements);
+  };
+
+  const result = await f.recover();
+
+  assert.equal(injected, true);
+  assert.equal(result.credited, 0);
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+  assert.equal(await eventCreditCount(f), 0);
+
+  const assignment = await f.core.prepare(`
+    SELECT status
+    FROM employee_weekly_rest_work_assignments
+    WHERE id = 'assignment-2026-11-23'
+  `).first();
+
+  assert.equal(assignment.status, 'cancelled');
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+});

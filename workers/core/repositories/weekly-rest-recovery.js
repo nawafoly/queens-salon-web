@@ -108,7 +108,8 @@ export async function recoverAssignedWeeklyRestWork(
         assignment.employee_id,
         assignment.rest_date,
         { uid: 'system:weekly-rest-recovery' },
-        externalAttendanceDb
+        externalAttendanceDb,
+        { weeklyRestRecoveryAssignmentId: assignment.id }
       );
 
       if (result?.entitlement) {

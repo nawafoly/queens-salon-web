@@ -160,7 +160,8 @@ async function mutateEntitlement(
   salonId,
   data = {},
   actor = {},
-  entryKind
+  entryKind,
+  options = {}
 ) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const type = entitlementType(data.entitlementType || data.entitlement_type);
@@ -274,12 +275,77 @@ async function mutateEntitlement(
   const actorEmail = cleanText(actor.email) || null;
 
 
+  const recoveryAssignmentId = cleanText(
+    options.weeklyRestRecoveryAssignmentId
+  );
+
+  const guardedRecovery = Boolean(recoveryAssignmentId);
+
+  if (
+    guardedRecovery &&
+    (
+      type !== 'weekly_rest_due' ||
+      entryKind !== 'credit' ||
+      sourceTypeValue !== 'weekly_rest_event' ||
+      !sourceDateValue
+    )
+  ) {
+    throw new AppError(
+      400,
+      'core_comp_time:invalid_weekly_rest_recovery'
+    );
+  }
+
+  const recoveryGuard = guardedRecovery
+    ? `AND EXISTS (
+         SELECT 1
+           FROM employee_weekly_rest_work_assignments a
+          WHERE a.salon_id = ?
+            AND a.employee_id = ?
+            AND a.rest_date = ?
+            AND a.id = ?
+            AND a.status = 'assigned'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM employee_comp_time_ledger l
+          WHERE l.salon_id = ?
+            AND l.employee_id = ?
+            AND l.entitlement_type = 'weekly_rest_due'
+            AND l.entry_kind = 'credit'
+            AND (
+              (
+                l.source_type <> 'weekly_rest_event'
+                AND l.source_date = ?
+              )
+              OR (
+                l.source_type = 'historical_opening_balance'
+                AND l.source_date >= ?
+              )
+            )
+       )`
+    : '';
+
+  const recoveryParams = guardedRecovery
+    ? [
+        salonId,
+        employeeId,
+        sourceDateValue,
+        recoveryAssignmentId,
+        salonId,
+        employeeId,
+        sourceDateValue,
+        sourceDateValue,
+      ]
+    : [];
+
   const results = await dbBatch(db, [
     {
       sql: `UPDATE employee_comp_time_balances
                SET balance_minutes = ?, last_entry_id = ?, version = version + 1, updated_at = ?
              WHERE salon_id = ? AND employee_id = ? AND entitlement_type = ?
-               AND version = ? AND balance_minutes = ?`,
+               AND version = ? AND balance_minutes = ?
+                ${recoveryGuard}`,
       params: [
         after,
         entryId,
@@ -289,6 +355,7 @@ async function mutateEntitlement(
         type,
         Number(state.version || 0),
         before,
+        ...recoveryParams,
       ],
     },
     {
@@ -380,8 +447,16 @@ async function mutateEntitlement(
   };
 }
 
-export async function creditCompTime(db, salonId, data = {}, actor = {}) {
-  return mutateEntitlement(db, salonId, data, actor, 'credit');
+export async function creditCompTime(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  return mutateEntitlement(
+    db, salonId, data, actor, 'credit', options
+  );
 }
 
 export async function debitCompTime(db, salonId, data = {}, actor = {}) {

@@ -656,7 +656,8 @@ export async function reconcileAssignedWeeklyRestWork(
   employeeIdValue,
   restDateValue,
   actor = {},
-  externalAttendanceDb = null
+  externalAttendanceDb = null,
+  options = {}
 ) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const restDate = validDate(restDateValue, 'restDate');
@@ -671,7 +672,8 @@ export async function reconcileAssignedWeeklyRestWork(
       salonId,
       result.event.id,
       actor,
-      { note: 'استحقاق راحة بديلة بعد العمل الفعلي في يوم الراحة الأسبوعية' }
+      { note: 'استحقاق راحة بديلة بعد العمل الفعلي في يوم الراحة الأسبوعية' },
+      options
     );
     const now = nowIso();
     await dbRun(
