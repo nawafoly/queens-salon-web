@@ -107,7 +107,7 @@ test('holiday workflow makes work assignment explicit and requires consent befor
 
   assert.match(
     migration,
-    /CREATE TABLE employee_public_holiday_work_assignments/
+    /CREATE TABLE (?:IF NOT EXISTS )?employee_public_holiday_work_assignments/
   );
   assert.match(
     migration,
