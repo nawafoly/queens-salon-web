@@ -86,7 +86,8 @@ export async function confirmWeeklyRestDue(
   salonId,
   eventIdValue,
   actor = {},
-  input = {}
+  input = {},
+  options = {}
 ) {
   const eventId = requiredId(eventIdValue, 'weeklyRestEventId');
   const event = await dbFirst(
@@ -134,7 +135,8 @@ export async function confirmWeeklyRestDue(
         optionalText(input.note) ||
         'استحقاق راحة أسبوعية بديلة لمدة 24 ساعة متصلة',
     },
-    actor
+    actor,
+    options
   );
 
   const now = nowIso();
