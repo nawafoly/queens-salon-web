@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-core-api",
   "main": "workers/core/worker.js",
@@ -34,6 +34,7 @@
   "vars": {
     "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
     "SALON_ID": "main",
+    "WEEKLY_REST_RECOVERY_FROM_DATE": "2026-08-31",
     "ALLOWED_ORIGINS": "http://localhost,https://localhost,capacitor://localhost,https://queens-salon-web.vercel.app,https://queens-salon-web-gnxk.vercel.app"
   }
 }
