@@ -497,12 +497,12 @@ test('client directory summary uses canonical status and directory filters', asy
 
   assert.match(
     observedSql,
-    /SELECT c\.id, c\.vip, c\.status, c\.created_at FROM clients c/
+    /FROM clients c WHERE c\.salon_id = \?/
   );
 
   assert.match(
     observedSql,
-    /TRIM\(LOWER\(COALESCE\(fc\.status, ''\)\)\) IN \('', 'active'\)/
+    /TRIM\(LOWER\(COALESCE\(c\.status, ''\)\)\) IN \('', 'active'\)/
   );
 
   assert.doesNotMatch(
@@ -529,6 +529,18 @@ test('client directory summary uses canonical status and directory filters', asy
     observedParams.includes('0570142717'),
     'directory summary must receive the canonical phone search parameter'
   );
+
+  assert.match(
+    observedSql,
+    /SELECT COUNT\(\*\) FROM bookings b WHERE b\.salon_id = c\.salon_id AND b\.client_id = c\.id AND b\.deleted_at IS NULL/
+  );
+
+  assert.doesNotMatch(
+    observedSql,
+    /WITH filtered_clients AS|booking_metrics AS/
+  );
+
+  assert.equal(observedParams[0], 'main');
 
   assert.equal(result.totalClients, 7);
   assert.equal(result.totalBookings, 21);
