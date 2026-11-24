@@ -602,7 +602,7 @@ class FakeD1 {
         .slice(0, 1)
         .map((row) => ({ id: row.id }));
     }
-    if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id IN (")) {
+    if (normalized.startsWith("SELECT * FROM clients INDEXED BY sqlite_autoindex_clients_1 WHERE salon_id = ? AND id IN (")) {
       const [salonId, ...ids] = params;
       const requestedIds = new Set(ids.map(String));
       return this.rows("clients").filter(
@@ -4280,7 +4280,7 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
   assert.equal(body.data[0].items.length, 1);
   assert.ok(reads <= 12, `expected bounded reads, received ${reads}`);
   assert.ok(
-    bookingQueries.some((sql) => sql.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id IN (")),
+    bookingQueries.some((sql) => sql.startsWith("SELECT * FROM clients INDEXED BY sqlite_autoindex_clients_1 WHERE salon_id = ? AND id IN (")),
     "booking hydration must scope client reads to referenced client ids"
   );
   assert.ok(
