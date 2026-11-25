@@ -33,7 +33,19 @@ export async function prepareAttendanceOperation(db, data) {
   return { ...data, before: before.records, createdAt: new Date().toISOString() };
 }
 
-export async function commitAttendanceOperation(db, op, statements, response) {
+export async function commitAttendanceOperation(
+  db,
+  op,
+  statements,
+  response,
+  options = {}
+) {
+  const requireSingleMutation =
+    options.requireSingleMutation === true;
+
+  if (requireSingleMutation && statements.length === 0) {
+    throw new Error('attendance_operation_mutation_missing');
+  }
   const insert = db.prepare(`INSERT INTO attendance_operations
     (id,salon_id,employee_uid,employee_id,work_date,request_hash,actor_json,
      required_permissions,reason,before_records,response_json,next_attempt_at,created_at,updated_at,snapshot_matches)
@@ -47,8 +59,39 @@ export async function commitAttendanceOperation(db, op, statements, response) {
   // admin corrections for an employee, including corrections in another month.
   const invalidate = db.prepare('DELETE FROM attendance_monthly_summaries WHERE employee_uid=? AND year_month=?')
     .bind(op.employeeUid,op.date.slice(0,7));
-  const results = await db.batch([insert, ...statements, after, invalidate]);
-  return results.slice(1,-2);
+  const batch = [insert];
+
+  if (requireSingleMutation) {
+    batch.push(statements[0]);
+
+    // Must execute immediately after the attendance mutation.
+    // A CHECK violation aborts the entire D1 transaction,
+    // including the operation row and its audit event.
+    batch.push(
+      db.prepare(`
+        UPDATE attendance_operations
+           SET snapshot_matches =
+             CASE WHEN changes() = 1 THEN 1 ELSE 0 END
+         WHERE id = ?
+      `).bind(op.id)
+    );
+
+    batch.push(...statements.slice(1));
+  } else {
+    batch.push(...statements);
+  }
+
+  batch.push(after, invalidate);
+
+  const results = await db.batch(batch);
+  const mutationResults = results.slice(1, -2);
+
+  // Preserve the original result contract for every caller.
+  if (requireSingleMutation) {
+    mutationResults.splice(1, 1);
+  }
+
+  return mutationResults;
 }
 
 export function punchReconciliationStatement(db,{recordId,salonId,employeeId,employeeUid,date,actor,now}) {

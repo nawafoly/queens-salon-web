@@ -1,3 +1,4 @@
+import { reconcileCreditedWeeklyRest } from "./core/repositories/weekly-rest-correction.js";
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
   APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
@@ -2150,6 +2151,18 @@ async function recoverAttendanceOperation(db, directoryDb, op) {
     sourceId: op.id,
     reason: op.reason,
   });
+
+  // Reconcile previously credited weekly rest entitlements for both
+  // ordinary punches and administrative attendance corrections.
+  await reconcileCreditedWeeklyRest(
+    directoryDb,
+    op.salon_id,
+    op.employee_id,
+    op.work_date,
+    db,
+    actor,
+    op.id
+  );
 
   if (op.origin !== "punch") {
     try {

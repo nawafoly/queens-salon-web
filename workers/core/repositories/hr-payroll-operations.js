@@ -21,10 +21,97 @@ async function reconcile(db,op,options) {
   if (source.sourceType === 'employee_leave') {
     return payroll.reconcileLockedPayrollImpactForHrCorrection(db,op.salon_id,{leaveId:source.sourceId},actor,options);
   }
-  return payroll.reconcileLockedPayrollImpactForEmployeeDate(db,op.salon_id,{
+  const payrollResult = await payroll.reconcileLockedPayrollImpactForEmployeeDate(db,op.salon_id,{
     employeeId:op.employee_id,date:op.work_date,sourceType:source.sourceType,sourceId:source.sourceId,
     reason:op.reason || `Canonical ${source.sourceType} reconciliation (${op.id}).`,
   },actor,options);
+
+  if (source.sourceType !== 'core_attendance') {
+    return payrollResult;
+  }
+
+  const {
+    reconcileCreditedWeeklyRest,
+    WEEKLY_REST_CORRECTION_FROM_DATE,
+  } = await import('./weekly-rest-correction.js');
+
+  const before = JSON.parse(op.before_records || 'null');
+  const after = JSON.parse(op.after_records || 'null');
+
+  const targets = new Map();
+
+  for (const record of [before, after]) {
+    if (!record) continue;
+
+    if (!['check_in', 'check_out'].includes(record.record_type)) {
+      continue;
+    }
+
+    const employeeId = record.employee_id || op.employee_id;
+    const date = record.date_key || op.work_date;
+
+    if (!employeeId || !date) {
+      throw new Error('core_attendance_weekly_rest_invalid_target');
+    }
+
+    if (date < WEEKLY_REST_CORRECTION_FROM_DATE) {
+      continue;
+    }
+
+    targets.set(
+      JSON.stringify([employeeId, date]),
+      { employeeId, date }
+    );
+  }
+
+  const weeklyRestCorrections = [];
+
+  for (const target of targets.values()) {
+    const assignment = await dbFirst(
+      db,
+      `SELECT id
+         FROM employee_weekly_rest_work_assignments
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND rest_date = ?
+          AND status = 'completed'
+        LIMIT 1`,
+      [op.salon_id, target.employeeId, target.date]
+    );
+
+    if (!assignment) continue;
+
+    // Financial evidence must include both attendance databases.
+    if (!options.externalAttendanceDb) {
+      throw new Error('core_attendance_weekly_rest_attendance_unavailable');
+    }
+
+    const correction = await reconcileCreditedWeeklyRest(
+      db,
+      op.salon_id,
+      target.employeeId,
+      target.date,
+      options.externalAttendanceDb,
+      actor,
+      `core-outbox:${op.id}:${assignment.id}`
+    );
+
+    if (correction.status === 'not_applicable') {
+      throw new Error('core_attendance_weekly_rest_assignment_conflict');
+    }
+
+    weeklyRestCorrections.push({
+      assignmentId: assignment.id,
+      employeeId: target.employeeId,
+      date: target.date,
+      ...correction,
+    });
+  }
+
+  return {
+    ...payrollResult,
+    weeklyRestCorrections,
+  };
 }
 
 export async function recoverHrPayrollOperations(db,options={}) {

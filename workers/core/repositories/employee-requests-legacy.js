@@ -1217,28 +1217,75 @@ function externalAttendanceRecordId(value) {
 
 async function findExternalAttendanceRecord(externalDb, row, payload, recordType) {
   if (!externalDb) return null;
+
+  const employeeUid = cleanText(row.employee_uid);
+
+  if (!employeeUid || !row.employee_id) {
+    return null;
+  }
+
   const recordId = externalAttendanceRecordId(payload.recordId);
+
   if (recordId) {
     const found = await dbFirst(
       externalDb,
-      `SELECT * FROM attendance_records
-        WHERE id = ? AND employee_uid = ?
-          AND COALESCE(work_date,date(server_time,'+3 hours')) = ? LIMIT 1`,
-      [recordId, row.employee_uid || '',payload.date]
+      `SELECT *
+         FROM attendance_records
+        WHERE id = ?
+          AND employee_uid = ?
+          AND (
+            employee_doc_id = ?
+            OR employee_doc_id IS NULL
+            OR employee_doc_id = ''
+          )
+          AND result = 'allowed'
+          AND type IN ('check_in', 'check_out')
+          AND COALESCE(work_date,date(server_time,'+3 hours')) = ?
+        LIMIT 1`,
+      [
+        recordId,
+        employeeUid,
+        row.employee_id,
+        payload.date,
+      ]
     );
-    return found && (payload.correctionType === 'delete_record' || found.type === recordType) ? found : null;
+
+    return found && (
+      payload.correctionType === 'delete_record' ||
+      found.type === recordType
+    ) ? found : null;
   }
-  if (!payload.currentTime) return null;
-  const target = new Date(`${payload.date}T${payload.currentTime}:00+03:00`).toISOString();
+
+  if (cleanText(payload.recordId) || !payload.currentTime) {
+    return null;
+  }
+
+  const target = new Date(
+    `${payload.date}T${payload.currentTime}:00+03:00`
+  ).toISOString();
+
   return dbFirst(
     externalDb,
-    `SELECT * FROM attendance_records
-      WHERE result = 'allowed' AND type = ?
-        AND (employee_doc_id = ? OR employee_uid = ?)
-        AND COALESCE(work_date,date(server_time, '+3 hours')) = ?
-      ORDER BY ABS(strftime('%s', server_time) - strftime('%s', ?))
+    `SELECT *
+       FROM attendance_records
+      WHERE result = 'allowed'
+        AND type = ?
+        AND employee_uid = ?
+        AND (
+          employee_doc_id = ?
+          OR employee_doc_id IS NULL
+          OR employee_doc_id = ''
+        )
+        AND COALESCE(work_date,date(server_time,'+3 hours')) = ?
+      ORDER BY ABS(strftime('%s',server_time)-strftime('%s',?)), id
       LIMIT 1`,
-    [recordType, row.employee_id, row.employee_uid || '', payload.date, target]
+    [
+      recordType,
+      employeeUid,
+      row.employee_id,
+      payload.date,
+      target,
+    ]
   );
 }
 
@@ -1259,8 +1306,20 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
     const statements=[externalDb.prepare(sql).bind(...params),
       ...attendanceDeviceAssignmentReconcileStatements(row.employee_uid,nowIso()).map(({sql,params})=>externalDb.prepare(sql).bind(...params))];
     try {
-      await commitAttendanceOperation(externalDb,operation,statements,
-        {ok:true,sourceType:'malikat_attendance_record',sourceId:id,operationId});
+      await commitAttendanceOperation(
+        externalDb,
+        operation,
+        statements,
+        {
+          ok: true,
+          sourceType: 'malikat_attendance_record',
+          sourceId: id,
+          operationId,
+        },
+        {
+          requireSingleMutation: true,
+        }
+      );
     } catch (error) {
       if (!await readAttendanceOperation(externalDb,operationId).catch(()=>null)) throw error;
     }
@@ -1286,9 +1345,29 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
               created_by_uid = ?,
               created_by_email = ?,
               created_by_role = ?
-        WHERE id = ? AND result = 'allowed'`,
-      [sourceJson, now, cleanText(actor.uid) || 'system', optionalText(actor.email) || null,
-        cleanText(actor.role) || 'hr', before.id],before.id
+        WHERE id = ?
+          AND result = 'allowed'
+          AND employee_uid = ?
+          AND employee_doc_id IS ?
+          AND type = ?
+          AND server_time = ?
+          AND updated_at IS ?
+          AND COALESCE(work_date,date(server_time,'+3 hours')) = ?`,
+      [
+        sourceJson,
+        now,
+        cleanText(actor.uid) || 'system',
+        optionalText(actor.email) || null,
+        cleanText(actor.role) || 'hr',
+        before.id,
+        row.employee_uid,
+        before.employee_doc_id ?? null,
+        before.type,
+        before.server_time,
+        before.updated_at ?? null,
+        payload.date,
+      ],
+      before.id
     );
     const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
     if (!after || cleanText(after.result).toLowerCase() !== 'rejected') {
@@ -1310,9 +1389,32 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
       `UPDATE attendance_records
           SET server_time = ?, client_time = ?, source = ?, updated_at = ?,
               created_by_uid = ?, created_by_email = ?, created_by_role = ?, work_date = ?
-        WHERE id = ?`,
-      [recordedAt, recordedAt, sourceJson, nowIso(), cleanText(actor.uid) || 'system',
-        optionalText(actor.email) || null, cleanText(actor.role) || 'hr',payload.date,before.id],before.id
+        WHERE id = ?
+          AND result = 'allowed'
+          AND employee_uid = ?
+          AND employee_doc_id IS ?
+          AND type = ?
+          AND server_time = ?
+          AND updated_at IS ?
+          AND COALESCE(work_date,date(server_time,'+3 hours')) = ?`,
+      [
+        recordedAt,
+        recordedAt,
+        sourceJson,
+        nowIso(),
+        cleanText(actor.uid) || 'system',
+        optionalText(actor.email) || null,
+        cleanText(actor.role) || 'hr',
+        payload.date,
+        before.id,
+        row.employee_uid,
+        before.employee_doc_id ?? null,
+        recordType,
+        before.server_time,
+        before.updated_at ?? null,
+        payload.date,
+      ],
+      before.id
     );
     const after = await dbFirst(externalDb, 'SELECT * FROM attendance_records WHERE id = ? LIMIT 1', [before.id]);
     return { sourceType: 'malikat_attendance_record', sourceId: before.id, before, after,operationId };
@@ -1376,10 +1478,53 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
   };
 
   const externalDb = options.externalAttendanceDb || null;
+
+  const explicitExternal = cleanText(payload.recordId)
+    .startsWith('malikat:');
+
+  if (explicitExternal && !externalDb) {
+    throw new AppError(
+      503,
+      'core_employee_request:attendance_database_unavailable'
+    );
+  }
+
   if (externalDb) {
-    const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
-    const externalTarget = await findExternalAttendanceRecord(externalDb, row, payload, recordType);
-    const shouldUseExternal = payload.correctionType.startsWith('add_') || Boolean(externalTarget);
+    const recordType = payload.correctionType.includes('check_in')
+      ? 'check_in'
+      : 'check_out';
+
+    const existingOperation = await readAttendanceOperation(
+      externalDb,
+      `core-request:${row.id}`
+    );
+
+    if (existingOperation && (
+      existingOperation.salon_id !== salonId ||
+      existingOperation.employee_id !== row.employee_id ||
+      existingOperation.employee_uid !== row.employee_uid ||
+      existingOperation.work_date !== payload.date
+    )) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_operation_identity_conflict'
+      );
+    }
+
+    const externalTarget = existingOperation
+      ? null
+      : await findExternalAttendanceRecord(
+          externalDb,
+          row,
+          payload,
+          recordType
+        );
+
+    const shouldUseExternal =
+      Boolean(existingOperation) ||
+      explicitExternal ||
+      payload.correctionType.startsWith('add_') ||
+      Boolean(externalTarget);
     if (shouldUseExternal) {
       const effect = await executeExternalAttendanceCorrection(
         externalDb,
@@ -1398,14 +1543,72 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
 
   const recordType = payload.correctionType.includes('check_in') ? 'check_in' : 'check_out';
   let before = null;
-  if (payload.recordId) before = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, payload.recordId]);
-  if (!before && payload.currentTime) {
+
+  const explicitRecordId = cleanText(payload.recordId);
+  const deleting = payload.correctionType === 'delete_record';
+
+  const readScopedCoreRecord = async (id) => dbFirst(
+    db,
+    `SELECT *
+       FROM attendance_records
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND date_key = ?
+        AND id = ?
+      LIMIT 1`,
+    [salonId, row.employee_id, payload.date, id]
+  );
+
+  if (explicitRecordId) {
+    before = await readScopedCoreRecord(explicitRecordId);
+  } else if (payload.currentTime) {
+    const requestedTimestamp = new Date(
+      `${payload.date}T${payload.currentTime}:00+03:00`
+    ).toISOString();
+
     before = await dbFirst(
       db,
-      `SELECT * FROM attendance_records WHERE salon_id = ? AND employee_id = ? AND date_key = ? AND record_type = ?
-       ORDER BY ABS(strftime('%s', recorded_at) - strftime('%s', ?)) LIMIT 1`,
-      [salonId, row.employee_id, payload.date, recordType, new Date(`${payload.date}T${payload.currentTime}:00+03:00`).toISOString()]
+      `SELECT *
+         FROM attendance_records
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND date_key = ?
+          AND record_type = ?
+        ORDER BY ABS(strftime('%s', recorded_at) - strftime('%s', ?))
+        LIMIT 1`,
+      [
+        salonId,
+        row.employee_id,
+        payload.date,
+        recordType,
+        requestedTimestamp,
+      ]
     );
+  }
+
+  if (deleting || payload.correctionType.startsWith('update_')) {
+    if (!before) {
+      throw new AppError(
+        404,
+        'core_employee_request:attendance_record_not_found'
+      );
+    }
+
+    if (
+      !['check_in', 'check_out'].includes(before.record_type)
+    ) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_record_not_active'
+      );
+    }
+
+    if (!deleting && before.record_type !== recordType) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_record_type_mismatch'
+      );
+    }
   }
   if (payload.correctionType === 'delete_record') {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
@@ -1413,22 +1616,40 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
     if (!['check_in', 'check_out'].includes(originalType)) {
       throw new AppError(409, 'core_employee_request:attendance_record_not_active');
     }
-    await dbRun(
+    const mutation = await dbRun(
       db,
       `UPDATE attendance_records
           SET record_type = ?,
               source = 'employee_request_void',
               note = ?
-        WHERE salon_id = ? AND id = ? AND record_type = ?`,
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND date_key = ?
+          AND id = ?
+          AND record_type = ?
+          AND recorded_at = ?
+          AND employee_uid IS ?`,
       [
         `voided_${originalType}`,
         `${payload.reason} • ${row.request_number} • original:${originalType}`,
         salonId,
+        row.employee_id,
+        payload.date,
         before.id,
         originalType,
+        before.recorded_at,
+        before.employee_uid ?? null,
       ]
     );
-    const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, before.id]);
+
+    if (changes(mutation) !== 1) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_void_failed'
+      );
+    }
+
+    const after = await readScopedCoreRecord(before.id);
     if (!after || cleanText(after.record_type).toLowerCase() !== `voided_${originalType}`) {
       throw new AppError(409, 'core_employee_request:attendance_void_failed');
     }
@@ -1442,13 +1663,51 @@ async function executeAttendanceCorrection(db, salonId, row, payload, actor, inp
   const recordedAt = new Date(`${payload.date}T${payload.requestedTime}:00+03:00`).toISOString();
   if (payload.correctionType.startsWith('update_')) {
     if (!before) throw new AppError(404, 'core_employee_request:attendance_record_not_found');
-    await dbRun(
+    const mutation = await dbRun(
       db,
-      `UPDATE attendance_records SET recorded_at = ?, source = 'employee_request_correction', note = ?
-       WHERE salon_id = ? AND id = ?`,
-      [recordedAt, `${payload.reason} • ${row.request_number}`, salonId, before.id]
+      `UPDATE attendance_records
+          SET recorded_at = ?,
+              source = 'employee_request_correction',
+              note = ?
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND date_key = ?
+          AND id = ?
+          AND record_type = ?
+          AND recorded_at = ?
+          AND employee_uid IS ?`,
+      [
+        recordedAt,
+        `${payload.reason} • ${row.request_number}`,
+        salonId,
+        row.employee_id,
+        payload.date,
+        before.id,
+        recordType,
+        before.recorded_at,
+        before.employee_uid ?? null,
+      ]
     );
-    const after = await dbFirst(db, 'SELECT * FROM attendance_records WHERE salon_id = ? AND id = ?', [salonId, before.id]);
+
+    if (changes(mutation) !== 1) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_update_conflict'
+      );
+    }
+
+    const after = await readScopedCoreRecord(before.id);
+
+    if (
+      !after ||
+      after.record_type !== recordType ||
+      after.recorded_at !== recordedAt
+    ) {
+      throw new AppError(
+        409,
+        'core_employee_request:attendance_update_conflict'
+      );
+    }
     return reconcileEffect({
       sourceType: 'attendance_record',
       sourceId: before.id,
