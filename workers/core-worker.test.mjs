@@ -7899,3 +7899,77 @@ test("booking discount edit cannot reduce total below collected money", async ()
     7500
   );
 });
+
+test("retired Core attendance endpoints return 410 without attendance writes", async () => {
+  const fake = new FakeD1();
+
+  const recordsBefore = JSON.stringify(
+    [...fake.tables.attendance_records.entries()]
+  );
+
+  const payrollOperationsBefore = JSON.stringify(
+    [...fake.tables.hr_payroll_operations.entries()]
+  );
+
+  const cases = [
+    {
+      path: "/api/core/hr/attendance/check-in",
+      method: "POST",
+      error: "core_attendance:legacy_write_endpoint_retired",
+    },
+    {
+      path: "/api/core/hr/attendance/check-out",
+      method: "POST",
+      error: "core_attendance:legacy_write_endpoint_retired",
+    },
+    {
+      path: "/api/core/hr/attendance/state/emp-a",
+      method: "GET",
+      error: "core_attendance:legacy_state_endpoint_retired",
+    },
+  ];
+
+  for (const item of cases) {
+    const options = {
+      method: item.method,
+      token: "test:owner1:owner",
+    };
+
+    if (item.method === "POST") {
+      options.body = {
+        employeeId: "emp-a",
+        date: "2026-09-01",
+      };
+    }
+
+    const response = await worker.fetch(
+      request(item.path, options),
+      env(fake)
+    );
+
+    const body = await json(response);
+
+    assert.equal(
+      response.status,
+      410,
+      `${item.path}: ${JSON.stringify(body)}`
+    );
+
+    assert.equal(body.error, item.error);
+
+    console.log("VERIFIED_RETIRED_HTTP_ENDPOINT:", item.path);
+  }
+
+  assert.equal(
+    JSON.stringify([...fake.tables.attendance_records.entries()]),
+    recordsBefore
+  );
+
+  assert.equal(
+    JSON.stringify([...fake.tables.hr_payroll_operations.entries()]),
+    payrollOperationsBefore
+  );
+
+  console.log("VERIFIED_NO_LEGACY_ATTENDANCE_WRITES");
+  console.log("VERIFIED_NO_LEGACY_PAYROLL_OPERATIONS");
+});

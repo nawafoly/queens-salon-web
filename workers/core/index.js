@@ -190,9 +190,7 @@ import {
 } from './repositories/hr-employees.js';
 import { offboardHrEmployee } from './repositories/employee-offboarding.js';
 import {
-  getAttendanceState,
   listAttendance,
-  recordAttendance,
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
 import { FINAL_LEAVE_APPROVAL_KEY, getApprovalAuthority, assignApprovalAuthority, requireFinalLeaveAuthority } from './repositories/approval-authorities.js';
@@ -2820,41 +2818,17 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "attendance:state":
-      return getAttendanceState(db, ctx.salonId, route.id);
+      throw new AppError(
+        410,
+        "core_attendance:legacy_state_endpoint_retired"
+      );
 
     case "attendance:check-in":
-      return recordAttendance(db, ctx.salonId, { ...body, type: "check_in" }, actorInfo);
-
     case "attendance:check-out":
-      const attendance = await recordAttendance(db, ctx.salonId, { ...body, type: "check_out" }, actorInfo);
-      const employeeId = attendance.employee_id || body.employeeId || body.employee_id;
-      const restDate = attendance.date_key || body.date || body.dateKey || body.date_key;
-      if (employeeId && restDate) {
-        try {
-          await createWeeklyRestWorkAssignment(db, ctx.salonId, {
-            employeeId,
-            restDate,
-            reason: "حضور مسجل في يوم الراحة الأسبوعية",
-          }, actorInfo);
-        } catch (error) {
-          if (!String(error?.code || "").includes("not_weekly_rest_day")) {
-            console.warn("weekly-rest assignment after checkout", error?.code || error?.message);
-          }
-        }
-        try {
-          await reconcileAssignedWeeklyRestWork(
-            db,
-            ctx.salonId,
-            employeeId,
-            restDate,
-            actorInfo,
-            env.ATTENDANCE_DB || null
-          );
-        } catch (error) {
-          console.warn("weekly-rest reconcile after checkout", error?.code || error?.message);
-        }
-      }
-      return attendance;
+      throw new AppError(
+        410,
+        "core_attendance:legacy_write_endpoint_retired"
+      );
 
     case "leaves":
       if (method === "GET") {

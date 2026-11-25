@@ -5,7 +5,6 @@ import { normalizeEmployeeIdentityId, normalizeEmployeeIdentityIds } from "../he
 import type {
   CoreAbsence,
   CoreAttendanceRecord,
-  CoreAttendanceState,
   CoreHrEmployee,
   CoreHrSchedule,
   CoreResolvedShift,
@@ -750,15 +749,6 @@ export const CoreHrService = {
   async listAttendance(query: { employeeId?: string; date?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/attendance", { query });
     return rows.map((row) => camel<CoreAttendanceRecord>(row));
-  },
-  async attendanceState(employeeId: string) {
-    return camel<CoreAttendanceState>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/attendance/state/${encodeURIComponent(employeeId)}`));
-  },
-  async checkIn(input: Record<string, unknown>) {
-    return camel<CoreAttendanceRecord>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/attendance/check-in", { method: "POST", body: input }));
-  },
-  async checkOut(input: Record<string, unknown>) {
-    return camel<CoreAttendanceRecord>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/attendance/check-out", { method: "POST", body: input }));
   },
   async listMyLeaves(
     query: {
