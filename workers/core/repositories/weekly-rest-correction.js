@@ -79,13 +79,23 @@ export async function reconcileCreditedWeeklyRest(
     db,
     `SELECT * FROM employee_weekly_rest_events
       WHERE salon_id = ? AND employee_id = ?
-        AND rest_date = ? AND entitlement_ledger_entry_id IS NOT NULL
+        AND rest_date = ?
       LIMIT 1`,
     [salonId, employeeId, restDate]
   );
 
-  if (!event || event.status !== 'open') {
-    return { status: 'not_applicable' };
+  // A completed assignment is not an ordinary non-applicable case.
+  // Keep durable pending state when its financial evidence is invalid.
+  if (!event) {
+    throw new Error('weekly_rest_correction_event_missing');
+  }
+
+  if (event.status !== 'open') {
+    throw new Error('weekly_rest_correction_event_not_open');
+  }
+
+  if (!event.entitlement_ledger_entry_id) {
+    throw new Error('weekly_rest_correction_ledger_link_missing');
   }
 
   const attendance = attendanceWorkedMinutes(

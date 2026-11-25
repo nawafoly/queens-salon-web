@@ -2238,3 +2238,330 @@ test('weekly rest correction survives interruption after committed reversal', as
   console.log('VERIFIED_NO_DUPLICATE_REVERSAL');
   console.log('VERIFIED_LEDGER_BALANCE_INTEGRITY');
 });
+
+test('superseded weekly rest correction cannot create a stale compliance alert', async t => {
+  const f = await fixture(t);
+  const date = '2026-09-01';
+
+  await createCorrectionEntitlement(
+    f,
+    'stale-alert-protection'
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  await debitCompTime(
+    f.core,
+    'main',
+    {
+      employeeId: 'test-employee',
+      entitlementType: 'weekly_rest_due',
+      minutes: 1440,
+      sourceType: 'leave_request',
+      sourceId: 'synthetic-stale-alert-consumption',
+      sourceDate: '2026-09-02',
+      note: 'Synthetic consumed entitlement',
+    },
+    { uid: 'test-hr' }
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  const deleted = await adminAdjust(f, {
+    date,
+    clearCheckOut: true,
+    operationId: 'stale-alert-initial-deletion',
+  });
+
+  assert.equal(
+    deleted.status,
+    200,
+    await deleted.clone().text()
+  );
+
+  const initialAlerts = await correctionReviewCount(f);
+
+  assert.equal(initialAlerts, 1);
+
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  let intercepted = false;
+  let newerCorrectionCompleted = false;
+
+  f.core.prepare = sql => {
+    const statement = originalPrepare(sql);
+
+    if (
+      !intercepted &&
+      /INSERT OR IGNORE INTO employee_labor_compliance_events/i.test(sql) &&
+      /weekly_rest_attendance_correction/i.test(sql)
+    ) {
+      intercepted = true;
+
+      return {
+        bind(...params) {
+          const bound = statement.bind(...params);
+
+          return {
+            async run() {
+              f.core.prepare = originalPrepare;
+
+              const restored = await adminAdjust(f, {
+                date,
+                checkOutTime: '23:00',
+                operationId: 'stale-alert-newer-restoration',
+              });
+
+              assert.equal(
+                restored.status,
+                200,
+                await restored.clone().text()
+              );
+
+              const checkout = await f.attendance.prepare(`
+                SELECT COUNT(*) AS count
+                FROM attendance_records
+                WHERE employee_uid = 'test-uid'
+                  AND work_date = ?
+                  AND type = 'check_out'
+                  AND result = 'allowed'
+              `).bind(date).first();
+
+              assert.equal(Number(checkout.count), 1);
+
+              newerCorrectionCompleted = true;
+
+              console.log(
+                'VERIFIED_NEWER_CORRECTION_COMPLETED_BEFORE_ALERT'
+              );
+
+              return bound.run();
+            },
+          };
+        },
+      };
+    }
+
+    return statement;
+  };
+
+  try {
+    await assert.rejects(
+      reconcileCreditedWeeklyRest(
+        f.core,
+        'main',
+        'test-employee',
+        date,
+        f.attendance,
+        { uid: 'test-hr' },
+        'stale-alert-superseded-operation'
+      ),
+      /weekly_rest_correction_revision_conflict/
+    );
+  } finally {
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(intercepted, true);
+  assert.equal(newerCorrectionCompleted, true);
+
+  assert.equal(
+    await correctionReviewCount(f),
+    initialAlerts,
+    'Superseded correction must not create another compliance alert'
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    0
+  );
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_restore'),
+    0
+  );
+
+  const assignment = await f.core.prepare(`
+    SELECT status, correction_pending, correction_revision
+    FROM employee_weekly_rest_work_assignments
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rest_date = ?
+  `).bind(date).first();
+
+  assert.equal(assignment.status, 'completed');
+  assert.equal(Number(assignment.correction_pending), 0);
+
+  console.log('VERIFIED_STALE_ALERT_REJECTED');
+  console.log('VERIFIED_CONSUMED_ENTITLEMENT_PRESERVED');
+  console.log('VERIFIED_FINAL_CORRECTION_PENDING:', assignment.correction_pending);
+});
+
+for (const scenario of [
+  {
+    name: 'missing event',
+    error: 'weekly_rest_correction_event_missing',
+  },
+  {
+    name: 'missing ledger link',
+    error: 'weekly_rest_correction_ledger_link_missing',
+  },
+  {
+    name: 'non-open event',
+    error: 'weekly_rest_correction_event_not_open',
+  },
+]) {
+  test(`completed weekly rest correction preserves invalid financial evidence: ${scenario.name}`, async t => {
+    const f = await fixture(t);
+    const date = '2026-09-01';
+
+    await createCorrectionEntitlement(
+      f,
+      `invalid-event-${scenario.name.replaceAll(' ', '-')}`
+    );
+
+    assert.equal(await f.balance(), 1440);
+    assert.equal(await f.credits(), 1);
+
+    const originalPrepare = f.core.prepare.bind(f.core);
+
+    let intercepted = false;
+
+    // Simulate the invalid event lookup without deleting records
+    // or modifying the real fixture's ledger relationships.
+    f.core.prepare = sql => {
+      const statement = originalPrepare(sql);
+
+      if (
+        /SELECT \* FROM employee_weekly_rest_events/i.test(sql) &&
+        /rest_date\s*=\s*\?/i.test(sql)
+      ) {
+        return {
+          bind(...params) {
+            const bound = statement.bind(...params);
+
+            return {
+              async first(...args) {
+                const row = await bound.first(...args);
+
+                assert.ok(row);
+                intercepted = true;
+
+                if (scenario.name === 'missing event') {
+                  return null;
+                }
+
+                if (scenario.name === 'missing ledger link') {
+                  return {
+                    ...row,
+                    entitlement_ledger_entry_id: null,
+                  };
+                }
+
+                return {
+                  ...row,
+                  status: 'closed',
+                };
+              },
+            };
+          },
+        };
+      }
+
+      return statement;
+    };
+
+    try {
+      await assert.rejects(
+        reconcileCreditedWeeklyRest(
+          f.core,
+          'main',
+          'test-employee',
+          date,
+          f.attendance,
+          { uid: 'test-hr' },
+          `invalid-financial-event:${scenario.name}`
+        ),
+        new RegExp(scenario.error)
+      );
+    } finally {
+      f.core.prepare = originalPrepare;
+    }
+
+    assert.equal(intercepted, true);
+
+    const pending = await f.core.prepare(`
+      SELECT status, correction_pending
+      FROM employee_weekly_rest_work_assignments
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+        AND rest_date = ?
+    `).bind(date).first();
+
+    assert.equal(pending.status, 'completed');
+    assert.equal(Number(pending.correction_pending), 1);
+
+    assert.equal(await f.balance(), 1440);
+    assert.equal(await f.credits(), 1);
+
+    assert.equal(
+      await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+      0
+    );
+
+    assert.equal(
+      await correctionLedgerCount(f, 'weekly_rest_correction_restore'),
+      0
+    );
+
+    console.log(
+      'VERIFIED_INVALID_FINANCIAL_EVIDENCE_PRESERVED:',
+      scenario.name
+    );
+
+    // Once valid financial evidence is available again,
+    // scheduled recovery must safely complete the operation.
+    const recovery = await recoverAssignedWeeklyRestWork(
+      f.core,
+      'main',
+      f.attendance,
+      {
+        fromDate: '2026-08-31',
+        now: new Date('2026-09-02T01:00:00Z'),
+        employeeId: 'test-employee',
+        restDate: date,
+      }
+    );
+
+    assert.equal(recovery.failed, 0);
+
+    const recovered = await f.core.prepare(`
+      SELECT correction_pending
+      FROM employee_weekly_rest_work_assignments
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+        AND rest_date = ?
+    `).bind(date).first();
+
+    assert.equal(Number(recovered.correction_pending), 0);
+    assert.equal(await f.balance(), 1440);
+    assert.equal(await f.credits(), 1);
+
+    assert.equal(
+      await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+      0
+    );
+
+    assert.equal(
+      await correctionLedgerCount(f, 'weekly_rest_correction_restore'),
+      0
+    );
+
+    console.log(
+      'VERIFIED_FINANCIAL_EVENT_RECOVERY:',
+      scenario.name
+    );
+  });
+}
