@@ -28,8 +28,9 @@ import { listAttendance } from './attendance.js';
 import { statutorySickPayrollAdjustment } from './sick-payroll-adjustment.js';
 import { listAbsences } from './absences.js';
 import {
-  loadAttendancePolicyPeriods,
-  buildPayrollAttendancePolicySnapshot,
+  loadStablePayrollAttendancePolicy,
+  validateAttendancePolicyRevision,
+  readAttendancePolicyRevision,
   validatePayrollAttendancePolicySnapshot,
   payrollAttendancePolicyMap,
   filterPayrollAttendanceAbsences,
@@ -405,6 +406,7 @@ async function buildCanonicalAttendanceSummary(
     !shiftRuntime.attendancePolicySnapshot;
 
   let attendancePolicySnapshot = null;
+  let attendancePolicyRevision = null;
 
   if (servicePeriod.hasServiceInMonth && !historicalLegacyPolicy) {
     if (shiftRuntime.attendancePolicySnapshot) {
@@ -415,19 +417,20 @@ async function buildCanonicalAttendanceSummary(
           servicePeriod.periodEnd
         );
     } else {
-      const periods = await loadAttendancePolicyPeriods(
-        db,
-        salonId,
-        employeeId
-      );
-
-      attendancePolicySnapshot =
-        buildPayrollAttendancePolicySnapshot(
-          employment,
-          periods,
+      const stablePolicy =
+        await loadStablePayrollAttendancePolicy(
+          db,
+          salonId,
+          employeeId,
           servicePeriod.periodStart,
           servicePeriod.periodEnd
         );
+
+      attendancePolicySnapshot =
+        stablePolicy.snapshot;
+
+      attendancePolicyRevision =
+        stablePolicy.revision;
     }
   }
 
@@ -596,6 +599,7 @@ async function buildCanonicalAttendanceSummary(
         attendancePayrollMode: 'exempt',
         attendancePayrollExemptionReason: attendanceExemptionReason,
         attendancePolicySnapshot,
+        attendancePolicyRevision,
         attendancePolicyCoverage: attendancePolicySnapshot?.coverage || 'exempt',
         attendanceExemptDayCount: attendancePolicySnapshot?.exemptDayCount ?? null,
         attendanceRequiredDayCount: attendancePolicySnapshot?.requiredDayCount ?? null,
@@ -764,6 +768,7 @@ async function buildCanonicalAttendanceSummary(
       attendancePayrollMode: 'required',
       attendancePayrollExemptionReason: attendanceExemptionReason,
       attendancePolicySnapshot,
+      attendancePolicyRevision,
       attendancePolicyCoverage: attendancePolicySnapshot?.coverage || 'required',
       attendanceExemptDayCount: attendancePolicySnapshot?.exemptDayCount ?? null,
       attendanceRequiredDayCount: attendancePolicySnapshot?.requiredDayCount ?? null,
@@ -780,6 +785,28 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   const employment = await canonicalEmployment(db, salonId, employeeId);
   const attendance = await buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollMonth, employment, options);
   const summary = attendance.summary;
+
+  if (summary.attendancePolicySnapshot) {
+    const calculatedRevision =
+      validateAttendancePolicyRevision(
+        summary.attendancePolicyRevision
+      );
+
+    const latestRevision =
+      await readAttendancePolicyRevision(
+        db,
+        salonId,
+        employeeId
+      );
+
+    if (calculatedRevision !== latestRevision) {
+      throw new AppError(
+        409,
+        'core_payroll:attendance_policy_revision_mismatch'
+      );
+    }
+  }
+
   const baseSalaryHalalas = payrollRoundMoney(employment.base_salary_halalas);
   const allowancesHalalas = payrollRoundMoney(employment.housing_allowance_halalas) + payrollRoundMoney(employment.transportation_allowance_halalas) + payrollRoundMoney(employment.other_allowances_halalas);
   const hasServiceInMonth = summary.hasServiceInMonth !== false;
@@ -1366,20 +1393,28 @@ async function assertPayrollApprovalReady(
         servicePeriod.periodEnd
       );
 
-      const periods =
-        await loadAttendancePolicyPeriods(
-          db,
-          salonId,
-          row.employee_id
+      const savedRevision =
+        validateAttendancePolicyRevision(
+          snapshot.attendancePolicyRevision
         );
 
-      const currentPolicy =
-        buildPayrollAttendancePolicySnapshot(
-          currentEmployment,
-          periods,
+      const stablePolicy =
+        await loadStablePayrollAttendancePolicy(
+          db,
+          salonId,
+          row.employee_id,
           servicePeriod.periodStart,
           servicePeriod.periodEnd
         );
+
+      if (savedRevision !== stablePolicy.revision) {
+        throw new AppError(
+          409,
+          'core_payroll:attendance_policy_revision_mismatch'
+        );
+      }
+
+      const currentPolicy = stablePolicy.snapshot;
 
       if (
         !payrollAttendancePolicySnapshotsMatch(
@@ -3409,6 +3444,7 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
       attendancePayrollExemptionReason: authority.summary.attendancePayrollExemptionReason || null,
       attendancePolicyCoverage: authority.summary.attendancePolicyCoverage || null,
       attendancePolicySnapshot: authority.summary.attendancePolicySnapshot || null,
+      attendancePolicyRevision: authority.summary.attendancePolicyRevision ?? null,
       laborPolicyVersion: authority.laborPolicyVersion,
       fixedActualWageHalalas: authority.fixedActualWageHalalas,
       wageSourceUpdatedAt: authority.wageSourceUpdatedAt,
