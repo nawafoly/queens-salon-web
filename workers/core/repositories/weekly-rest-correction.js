@@ -9,6 +9,9 @@ import {
 
 import { listAttendance } from './attendance.js';
 import { attendanceWorkedMinutes } from './rest-holiday-compliance.js';
+import {
+  SA_LABOR_POLICY_VERSION,
+} from '../../../src/helpers/hr/saLaborPolicy.js';
 
 const TYPE = 'weekly_rest_due';
 const MINUTES = 1440;
@@ -57,16 +60,146 @@ export async function reconcileCreditedWeeklyRest(
 
   const revision = Number(claim.correction_revision);
 
-  async function finishCorrection(status, extra = {}) {
+  const escalationId =
+    'weekly-rest-invalid-evidence:' +
+    JSON.stringify([salonId, assignment.id]);
+
+  async function failInvalidEvidence(reason, event = null) {
+    const now = nowIso();
+
+    const details = JSON.stringify({
+      reason,
+      assignmentId: assignment.id,
+      restDate,
+      operationId: operationId || null,
+      correctionRevision: revision,
+      eventId: event?.id || null,
+    });
+
     const result = await dbRun(
       db,
-      `UPDATE employee_weekly_rest_work_assignments
-          SET correction_pending = 0
-        WHERE salon_id = ? AND id = ?
-          AND status = 'completed'
-          AND correction_revision = ?`,
-      [salonId, assignment.id, revision]
+      `INSERT INTO employee_labor_compliance_events (
+         id, salon_id, employee_id, rule_code,
+         severity, status, source_type, source_id,
+         details_json, policy_version,
+         created_by_uid, created_at
+       )
+       SELECT
+         ?, ?, ?, 'weekly_rest_correction_invalid_evidence',
+         'warning', 'open', 'weekly_rest_work_assignment',
+         ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1
+           FROM employee_weekly_rest_work_assignments a
+          WHERE a.salon_id = ?
+            AND a.employee_id = ?
+            AND a.id = ?
+            AND a.rest_date = ?
+            AND a.status = 'completed'
+            AND a.correction_pending = 1
+            AND a.correction_revision = ?
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         status = 'open',
+         details_json = excluded.details_json,
+         policy_version = excluded.policy_version,
+         resolved_at = NULL,
+         resolved_by_uid = NULL,
+         resolution_note = NULL
+       WHERE employee_labor_compliance_events.salon_id =
+               excluded.salon_id
+         AND employee_labor_compliance_events.employee_id =
+               excluded.employee_id
+         AND employee_labor_compliance_events.rule_code =
+               excluded.rule_code
+         AND employee_labor_compliance_events.source_type =
+               excluded.source_type
+         AND employee_labor_compliance_events.source_id =
+               excluded.source_id`,
+      [
+        escalationId,
+        salonId,
+        employeeId,
+        assignment.id,
+        details,
+        event?.policy_version || SA_LABOR_POLICY_VERSION,
+        cleanText(actor.uid) || null,
+        now,
+        salonId,
+        employeeId,
+        assignment.id,
+        restDate,
+        revision,
+      ]
     );
+
+    if (Number(result?.meta?.changes ?? result?.changes ?? 0) !== 1) {
+      throw new Error('weekly_rest_correction_revision_conflict');
+    }
+
+    // Evidence failure is not a completed financial correction.
+    // Retain correction_pending and allow durable recovery.
+    throw new Error(reason);
+  }
+
+  async function finishCorrection(status, extra = {}) {
+    const statements = [
+      {
+        sql: `UPDATE employee_weekly_rest_work_assignments
+                 SET correction_pending = 0
+               WHERE salon_id = ? AND id = ?
+                 AND status = 'completed'
+                 AND correction_revision = ?`,
+        params: [salonId, assignment.id, revision],
+      },
+    ];
+
+    // Do not resolve invalid-evidence escalations merely because
+    // an operation was handed over for another manual review.
+    if (['unchanged', 'reversed', 'restored'].includes(status)) {
+      statements.push({
+        sql: `UPDATE employee_labor_compliance_events
+                 SET status = 'resolved',
+                     resolved_at = ?,
+                     resolved_by_uid = ?,
+                     resolution_note = ?
+               WHERE id = ?
+                 AND salon_id = ?
+                 AND employee_id = ?
+                 AND rule_code =
+                     'weekly_rest_correction_invalid_evidence'
+                 AND source_type = 'weekly_rest_work_assignment'
+                 AND source_id = ?
+                 AND status = 'open'
+                 AND EXISTS (
+                   SELECT 1
+                     FROM employee_weekly_rest_work_assignments a
+                    WHERE a.salon_id = ?
+                      AND a.employee_id = ?
+                      AND a.id = ?
+                      AND a.status = 'completed'
+                      AND a.correction_pending = 0
+                      AND a.correction_revision = ?
+                 )`,
+        params: [
+          nowIso(),
+          cleanText(actor.uid) || 'system',
+          'Canonical weekly rest reconciliation completed: ' + status,
+          escalationId,
+          salonId,
+          employeeId,
+          assignment.id,
+          salonId,
+          employeeId,
+          assignment.id,
+          revision,
+        ],
+      });
+    }
+
+    const results = await dbBatch(db, statements);
+
+    const result = results[0];
 
     if (Number(result?.meta?.changes ?? result?.changes ?? 0) !== 1) {
       throw new Error('weekly_rest_correction_revision_conflict');
@@ -87,15 +220,23 @@ export async function reconcileCreditedWeeklyRest(
   // A completed assignment is not an ordinary non-applicable case.
   // Keep durable pending state when its financial evidence is invalid.
   if (!event) {
-    throw new Error('weekly_rest_correction_event_missing');
+    return failInvalidEvidence(
+      'weekly_rest_correction_event_missing'
+    );
   }
 
   if (event.status !== 'open') {
-    throw new Error('weekly_rest_correction_event_not_open');
+    return failInvalidEvidence(
+      'weekly_rest_correction_event_not_open',
+      event
+    );
   }
 
   if (!event.entitlement_ledger_entry_id) {
-    throw new Error('weekly_rest_correction_ledger_link_missing');
+    return failInvalidEvidence(
+      'weekly_rest_correction_ledger_link_missing',
+      event
+    );
   }
 
   const attendance = attendanceWorkedMinutes(

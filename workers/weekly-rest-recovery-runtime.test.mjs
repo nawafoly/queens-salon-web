@@ -2473,18 +2473,133 @@ for (const scenario of [
       return statement;
     };
 
+    const readEscalations = async () => {
+      const result = await originalPrepare(`
+        SELECT id, salon_id, employee_id,
+               rule_code, severity, status,
+               source_type, source_id, details_json,
+               policy_version
+        FROM employee_labor_compliance_events
+        WHERE salon_id = 'main'
+          AND employee_id = 'test-employee'
+          AND rule_code = 'weekly_rest_correction_invalid_evidence'
+          AND source_type = 'weekly_rest_work_assignment'
+          AND source_id = 'assignment-2026-09-01'
+        ORDER BY id
+      `).all();
+
+      return result.results;
+    };
+
+    let escalationId;
+
     try {
-      await assert.rejects(
-        reconcileCreditedWeeklyRest(
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await assert.rejects(
+          reconcileCreditedWeeklyRest(
+            f.core,
+            'main',
+            'test-employee',
+            date,
+            f.attendance,
+            { uid: 'test-hr' },
+            `invalid-financial-event:${scenario.name}:${attempt}`
+          ),
+          new RegExp(scenario.error)
+        );
+
+        const alerts = await readEscalations();
+
+        console.log(
+          'HR25_PERSISTENT_ESCALATION:',
+          scenario.name,
+          attempt,
+          JSON.stringify(alerts)
+        );
+
+        assert.equal(
+          alerts.length,
+          1,
+          'Invalid financial evidence must create exactly one persistent escalation'
+        );
+
+        const alert = alerts[0];
+
+        assert.equal(alert.status, 'open');
+        assert.equal(alert.severity, 'warning');
+        assert.equal(alert.employee_id, 'test-employee');
+        assert.equal(alert.source_id, 'assignment-2026-09-01');
+
+        assert.ok(alert.policy_version);
+
+        const details = JSON.parse(alert.details_json);
+
+        assert.equal(details.reason, scenario.error);
+        assert.equal(details.restDate, date);
+        assert.equal(
+          details.assignmentId,
+          'assignment-2026-09-01'
+        );
+
+        if (attempt === 1) {
+          escalationId = alert.id;
+        } else {
+          assert.equal(alert.id, escalationId);
+        }
+
+        assert.equal(await f.balance(), 1440);
+        assert.equal(await f.credits(), 1);
+
+        assert.equal(
+          await correctionLedgerCount(
+            f,
+            'weekly_rest_correction_reversal'
+          ),
+          0
+        );
+
+        const state = await originalPrepare(`
+          SELECT correction_pending
+          FROM employee_weekly_rest_work_assignments
+          WHERE salon_id = 'main'
+            AND employee_id = 'test-employee'
+            AND rest_date = ?
+        `).bind(date).first();
+
+        assert.equal(
+          Number(state.correction_pending),
+          1
+        );
+      }
+
+      // Scheduled recovery must preserve the same escalation
+      // when the financial evidence is still unavailable.
+      const failedRecovery =
+        await recoverAssignedWeeklyRestWork(
           f.core,
           'main',
-          'test-employee',
-          date,
           f.attendance,
-          { uid: 'test-hr' },
-          `invalid-financial-event:${scenario.name}`
-        ),
-        new RegExp(scenario.error)
+          {
+            fromDate: '2026-08-31',
+            now: new Date('2026-09-02T01:00:00Z'),
+            employeeId: 'test-employee',
+            restDate: date,
+          }
+        );
+
+      assert.equal(failedRecovery.failed, 1);
+
+      const alertsAfterRecovery = await readEscalations();
+
+      assert.equal(alertsAfterRecovery.length, 1);
+      assert.equal(alertsAfterRecovery[0].id, escalationId);
+      assert.equal(alertsAfterRecovery[0].status, 'open');
+
+      assert.equal(await f.balance(), 1440);
+
+      console.log(
+        'VERIFIED_HR25_ESCALATION_DEDUPLICATION:',
+        scenario.name
       );
     } finally {
       f.core.prepare = originalPrepare;
@@ -2549,6 +2664,34 @@ for (const scenario of [
     assert.equal(await f.balance(), 1440);
     assert.equal(await f.credits(), 1);
 
+    const resolvedAlerts = await readEscalations();
+
+    assert.equal(resolvedAlerts.length, 1);
+    assert.equal(resolvedAlerts[0].id, escalationId);
+    assert.equal(resolvedAlerts[0].status, 'resolved');
+
+    await recoverAssignedWeeklyRestWork(
+      f.core,
+      'main',
+      f.attendance,
+      {
+        fromDate: '2026-08-31',
+        now: new Date('2026-09-02T01:00:00Z'),
+        employeeId: 'test-employee',
+        restDate: date,
+      }
+    );
+
+    assert.deepEqual(
+      await readEscalations(),
+      resolvedAlerts
+    );
+
+    console.log(
+      'VERIFIED_HR25_ESCALATION_RESOLVED:',
+      scenario.name
+    );
+
     assert.equal(
       await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
       0
@@ -2565,3 +2708,911 @@ for (const scenario of [
     );
   });
 }
+
+async function hr24InsertCorePunch(f, type) {
+  const date = '2026-09-01';
+  const id = `hr24-core-${type}`;
+  const time = type === 'check_in'
+    ? '2026-09-01T12:00:00.000Z'
+    : '2026-09-01T20:00:00.000Z';
+
+  await f.core.prepare(`
+    INSERT INTO attendance_records (
+      id, salon_id, employee_id, employee_uid,
+      date_key, record_type, recorded_at,
+      source, note, idempotency_key, created_at
+    )
+    VALUES (
+      ?, 'main', 'test-employee', 'test-uid',
+      ?, ?, ?, 'manual', 'Synthetic HR24 test', ?, ?
+    )
+  `).bind(
+    id, date, type, time, id, time
+  ).run();
+
+  return id;
+}
+
+async function hr24CoreOperations(f, id) {
+  const result = await f.core.prepare(`
+    SELECT id, status, response_json, before_records, after_records
+    FROM hr_payroll_operations
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND json_extract(response_json, '$.sourceType') = 'core_attendance'
+      AND json_extract(response_json, '$.sourceId') = ?
+  `).bind(id).all();
+
+  return result.results;
+}
+
+for (const type of ['check_in', 'check_out']) {
+  test(`HR24 core attendance outbox: voiding ${type} persists recovery work`, async t => {
+    const f = await fixture(t);
+
+    const id = await hr24InsertCorePunch(f, type);
+
+    const before = await hr24CoreOperations(f, id);
+
+    assert.equal(before.length, 1);
+
+    const result = await f.core.prepare(`
+      UPDATE attendance_records
+      SET record_type = ?,
+          source = 'employee_request_void',
+          note = 'Synthetic HR24 administrative correction'
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+        AND id = ?
+        AND record_type = ?
+    `).bind(
+      `voided_${type}`, id, type
+    ).run();
+
+    assert.equal(result.meta.changes, 1);
+
+    const after = await hr24CoreOperations(f, id);
+
+    console.log(`HR24_RECORD_TYPE: ${type}`);
+    console.log(`HR24_OUTBOX_BEFORE_VOID: ${before.length}`);
+    console.log(`HR24_OUTBOX_AFTER_VOID: ${after.length}`);
+
+    assert.equal(
+      after.length,
+      before.length + 1,
+      'Voiding an active Core punch must persist a new recovery operation'
+    );
+
+    const originalIds = new Set(before.map(row => row.id));
+    const added = after.filter(row => !originalIds.has(row.id));
+
+    assert.equal(added.length, 1);
+
+    assert.equal(
+      JSON.parse(added[0].before_records).record_type,
+      type
+    );
+
+    assert.equal(
+      JSON.parse(added[0].after_records).record_type,
+      `voided_${type}`
+    );
+
+    assert.equal(added[0].status, 'pending');
+  });
+}
+
+async function hr26AssignmentState(f) {
+  return f.core.prepare(`
+    SELECT status, correction_pending, correction_revision
+    FROM employee_weekly_rest_work_assignments
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rest_date = '2026-09-01'
+  `).first();
+}
+
+for (const mutation of ['insert', 'void', 'restore', 'delete', 'time_update']) {
+  test(`HR26 weekly rest invalidation: ${mutation} marks completed assignment pending`, async t => {
+    const f = await fixture(t);
+
+    await createCorrectionEntitlement(f, `hr26-${mutation}`);
+
+    let id;
+
+    if (mutation !== 'insert') {
+      id = await hr24InsertCorePunch(f, 'check_out');
+    }
+
+    if (mutation === 'restore') {
+      await f.core.prepare(`
+        UPDATE attendance_records
+        SET record_type = 'voided_check_out'
+        WHERE id = ?
+      `).bind(id).run();
+    }
+
+    // Establish an already reconciled checkpoint before testing
+    // the next isolated Core mutation.
+    await f.core.prepare(`
+      UPDATE employee_weekly_rest_work_assignments
+      SET correction_pending = 0
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+        AND rest_date = '2026-09-01'
+    `).run();
+
+    const before = await hr26AssignmentState(f);
+
+    assert.equal(before.status, 'completed');
+    assert.equal(before.correction_pending, 0);
+
+    if (mutation === 'insert') {
+      await hr24InsertCorePunch(f, 'check_out');
+    }
+
+    if (mutation === 'void') {
+      await f.core.prepare(`
+        UPDATE attendance_records
+        SET record_type = 'voided_check_out'
+        WHERE id = ?
+      `).bind(id).run();
+    }
+
+    if (mutation === 'restore') {
+      await f.core.prepare(`
+        UPDATE attendance_records
+        SET record_type = 'check_out'
+        WHERE id = ?
+      `).bind(id).run();
+    }
+
+    if (mutation === 'delete') {
+      await f.core.prepare(`
+        DELETE FROM attendance_records
+        WHERE id = ?
+      `).bind(id).run();
+    }
+
+    if (mutation === 'time_update') {
+      await f.core.prepare(`
+        UPDATE attendance_records
+        SET recorded_at = '2026-09-01T19:00:00.000Z'
+        WHERE id = ?
+      `).bind(id).run();
+    }
+
+    const after = await hr26AssignmentState(f);
+
+    assert.equal(after.status, 'completed');
+    assert.equal(after.correction_pending, 1);
+    assert.equal(
+      after.correction_revision,
+      before.correction_revision + 1
+    );
+
+    // Trigger invalidates the snapshot but does not mutate money.
+    assert.equal(await f.balance(), 1440);
+    assert.equal(await f.credits(), 1);
+
+    console.log(`VERIFIED_HR26_INVALIDATION: ${mutation}`);
+  });
+}
+
+test('HR26 weekly rest invalidation: metadata-only update does not invalidate entitlement', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr26-metadata');
+
+  const id = await hr24InsertCorePunch(f, 'check_out');
+
+  const before = await hr26AssignmentState(f);
+  const operationsBefore = await hr24CoreOperations(f, id);
+
+  await f.core.prepare(`
+    UPDATE attendance_records
+    SET note = 'Metadata-only update'
+    WHERE id = ?
+  `).bind(id).run();
+
+  assert.deepEqual(await hr26AssignmentState(f), before);
+
+  assert.equal(
+    (await hr24CoreOperations(f, id)).length,
+    operationsBefore.length
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  console.log('VERIFIED_HR26_METADATA_UPDATE_IGNORED');
+});
+
+async function hr24PrepareCoreEntitlement(f) {
+  await f.assignment('2026-09-01');
+
+  const checkIn = await hr24InsertCorePunch(f, 'check_in');
+  const checkOut = await hr24InsertCorePunch(f, 'check_out');
+
+  const { recoverAssignedWeeklyRestWork } = await import(
+    './core/repositories/weekly-rest-recovery.js'
+  );
+
+  const initialRecovery = await recoverAssignedWeeklyRestWork(
+    f.core,
+    'main',
+    f.attendance,
+    {
+      fromDate: '2026-08-31',
+      now: new Date('2026-09-02T12:00:00.000Z'),
+      employeeId: 'test-employee',
+      restDate: '2026-09-01',
+    }
+  );
+
+  console.log(
+    'HR24_INITIAL_RECOVERY:',
+    JSON.stringify(initialRecovery)
+  );
+
+  assert.equal(initialRecovery.candidates, 1);
+  assert.equal(initialRecovery.credited, 1);
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const state = await hr26AssignmentState(f);
+
+  assert.equal(state.status, 'completed');
+  assert.equal(state.correction_pending, 0);
+
+  return { checkIn, checkOut };
+}
+
+async function hr24VoidCoreCheckout(f, id) {
+  const result = await f.core.prepare(`
+    UPDATE attendance_records
+    SET record_type = 'voided_check_out',
+        source = 'employee_request_void',
+        note = 'Synthetic HR24 financial correction'
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND id = ?
+      AND record_type = 'check_out'
+  `).bind(id).run();
+
+  assert.equal(result.meta.changes, 1);
+
+  const record = await f.core.prepare(`
+    SELECT record_type
+    FROM attendance_records
+    WHERE id = ?
+  `).bind(id).first();
+
+  assert.equal(record.record_type, 'voided_check_out');
+
+  const state = await hr26AssignmentState(f);
+
+  assert.equal(state.correction_pending, 1);
+}
+
+test('HR24 financial recovery: immediate Core outbox reconciliation reverses unused entitlement', async t => {
+  const f = await fixture(t);
+
+  const { checkOut } = await hr24PrepareCoreEntitlement(f);
+
+  const {
+    reconcileHrPayrollSource,
+    recoverHrPayrollOperations,
+  } = await import('./core/repositories/hr-payroll-operations.js');
+
+  // Finish pre-existing insertion operations before the void.
+  // The next operation must independently reconcile the correction.
+  await recoverHrPayrollOperations(f.core, {
+    externalAttendanceDb: f.attendance,
+  });
+
+  await hr24VoidCoreCheckout(f, checkOut);
+
+  assert.equal(await f.balance(), 1440);
+
+  const result = await reconcileHrPayrollSource(
+    f.core,
+    'main',
+    'core_attendance',
+    checkOut,
+    { externalAttendanceDb: f.attendance },
+    () => {
+      throw new Error('HR24_UNEXPECTED_FALLBACK');
+    }
+  );
+
+  console.log('HR24_IMMEDIATE_RESULT:', JSON.stringify(result));
+  console.log('HR24_IMMEDIATE_BALANCE:', await f.balance());
+  console.log(
+    'HR24_IMMEDIATE_PENDING:',
+    (await hr26AssignmentState(f)).correction_pending
+  );
+
+  assert.equal(result.fullyCompleted, true);
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 1);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+});
+
+test('HR24 financial recovery: durable Core outbox recovers void and restore exactly once', async t => {
+  const f = await fixture(t);
+
+  const { checkOut } = await hr24PrepareCoreEntitlement(f);
+
+  const {
+    recoverHrPayrollOperations,
+  } = await import('./core/repositories/hr-payroll-operations.js');
+
+  const options = {
+    externalAttendanceDb: f.attendance,
+  };
+
+  await recoverHrPayrollOperations(f.core, options);
+
+  // Simulate interruption after committing the Core mutation:
+  // no immediate application-level reconciliation is invoked.
+  await hr24VoidCoreCheckout(f, checkOut);
+
+  assert.equal(await f.balance(), 1440);
+
+  await recoverHrPayrollOperations(f.core, options);
+
+  console.log('HR24_RECOVERY_BALANCE:', await f.balance());
+  console.log(
+    'HR24_RECOVERY_PENDING:',
+    (await hr26AssignmentState(f)).correction_pending
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  await recoverHrPayrollOperations(f.core, options);
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  // Restore the historical punch without replacing its identity.
+  await f.core.prepare(`
+    UPDATE attendance_records
+    SET record_type = 'check_out',
+        source = 'employee_request_correction'
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND id = ?
+      AND record_type = 'voided_check_out'
+  `).bind(checkOut).run();
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    1
+  );
+
+  await recoverHrPayrollOperations(f.core, options);
+
+  assert.equal(await f.balance(), 1440);
+
+  // Original entitlement and restoration are separate credit entries.
+  assert.equal(await f.credits(), 2);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_event'),
+    1
+  );
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  const readLedger = async () => {
+    const result = await f.core.prepare(`
+      SELECT id, entry_kind, minutes, source_type,
+             source_id, balance_before_minutes,
+             balance_after_minutes
+      FROM employee_comp_time_ledger
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+        AND entitlement_type = 'weekly_rest_due'
+      ORDER BY id
+    `).all();
+
+    return result.results;
+  };
+
+  const ledgerBeforeReplay = await readLedger();
+
+  assert.equal(ledgerBeforeReplay.length, 3);
+
+  const original = ledgerBeforeReplay.find(
+    row => row.source_type === 'weekly_rest_event'
+  );
+
+  const reversal = ledgerBeforeReplay.find(
+    row => row.source_type === 'weekly_rest_correction_reversal'
+  );
+
+  const restoration = ledgerBeforeReplay.find(
+    row => row.source_type === 'weekly_rest_correction_restore'
+  );
+
+  assert.ok(original);
+  assert.ok(reversal);
+  assert.ok(restoration);
+
+  assert.equal(original.entry_kind, 'credit');
+  assert.equal(original.minutes, 1440);
+  assert.equal(original.balance_before_minutes, 0);
+  assert.equal(original.balance_after_minutes, 1440);
+
+  assert.equal(reversal.entry_kind, 'debit');
+  assert.equal(reversal.minutes, 1440);
+  assert.equal(reversal.source_id, original.id);
+  assert.equal(reversal.balance_before_minutes, 1440);
+  assert.equal(reversal.balance_after_minutes, 0);
+
+  assert.equal(restoration.entry_kind, 'credit');
+  assert.equal(restoration.minutes, 1440);
+  assert.equal(restoration.source_id, reversal.id);
+  assert.equal(restoration.balance_before_minutes, 0);
+  assert.equal(restoration.balance_after_minutes, 1440);
+
+  console.log('VERIFIED_HR24_EXACT_LEDGER_CHAIN');
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_restore'
+    ),
+    1
+  );
+
+  await recoverHrPayrollOperations(f.core, options);
+
+  assert.equal(await f.balance(), 1440);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_restore'
+    ),
+    1
+  );
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  assert.deepEqual(
+    await readLedger(),
+    ledgerBeforeReplay
+  );
+
+  assert.equal(await f.credits(), 2);
+
+  console.log('VERIFIED_HR24_LEDGER_UNCHANGED_AFTER_REPLAY');
+
+  console.log('VERIFIED_HR24_DURABLE_REVERSAL');
+  console.log('VERIFIED_HR24_DURABLE_RESTORATION');
+  console.log('VERIFIED_HR24_NO_DUPLICATE_LEDGER_MOVEMENT');
+});
+
+test('HR24 financial recovery: missing attendance binding preserves pending work and balance', async t => {
+  const f = await fixture(t);
+
+  const { checkOut } = await hr24PrepareCoreEntitlement(f);
+
+  const {
+    reconcileHrPayrollSource,
+    recoverHrPayrollOperations,
+  } = await import('./core/repositories/hr-payroll-operations.js');
+
+  await recoverHrPayrollOperations(f.core, {
+    externalAttendanceDb: f.attendance,
+  });
+
+  await hr24VoidCoreCheckout(f, checkOut);
+
+  const result = await reconcileHrPayrollSource(
+    f.core,
+    'main',
+    'core_attendance',
+    checkOut,
+    {},
+    () => {
+      throw new Error('HR24_UNEXPECTED_FALLBACK');
+    }
+  );
+
+  assert.equal(result.fullyCompleted, false);
+  assert.equal(result.status, 'pending');
+
+  assert.equal(await f.balance(), 1440);
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    1
+  );
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    0
+  );
+
+  const operation = await f.core.prepare(`
+    SELECT status, last_error
+    FROM hr_payroll_operations
+    WHERE id = ?
+  `).bind(result.operationId).first();
+
+  assert.equal(operation.status, 'pending');
+
+  assert.match(
+    operation.last_error,
+    /core_attendance_weekly_rest_attendance_unavailable/
+  );
+
+  await f.core.prepare(`
+    UPDATE hr_payroll_operations
+    SET next_attempt_at = '1970-01-01T00:00:00.000Z'
+    WHERE id = ?
+  `).bind(result.operationId).run();
+
+  await recoverHrPayrollOperations(f.core, {
+    externalAttendanceDb: f.attendance,
+  });
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  const recovered = await f.core.prepare(`
+    SELECT status, last_error
+    FROM hr_payroll_operations
+    WHERE id = ?
+  `).bind(result.operationId).first();
+
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.last_error, null);
+
+  await recoverHrPayrollOperations(f.core, {
+    externalAttendanceDb: f.attendance,
+  });
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  console.log('VERIFIED_HR24_MISSING_ATTENDANCE_BINDING_FAIL_CLOSED');
+  console.log('VERIFIED_HR24_PENDING_OPERATION_RECOVERED');
+});
+
+async function hr25ReadAlerts(f) {
+  const result = await f.core.prepare(`
+    SELECT *
+    FROM employee_labor_compliance_events
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rule_code = 'weekly_rest_correction_invalid_evidence'
+      AND source_type = 'weekly_rest_work_assignment'
+      AND source_id = 'assignment-2026-09-01'
+    ORDER BY id
+  `).all();
+
+  return result.results;
+}
+
+async function hr25Reconcile(f, operationId) {
+  return reconcileCreditedWeeklyRest(
+    f.core,
+    'main',
+    'test-employee',
+    '2026-09-01',
+    f.attendance,
+    { uid: 'test-hr' },
+    operationId
+  );
+}
+
+function hr25SimulateMissingEvent(f) {
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  f.core.prepare = sql => {
+    const statement = originalPrepare(sql);
+
+    if (
+      /SELECT \* FROM employee_weekly_rest_events/i.test(sql) &&
+      /rest_date\s*=\s*\?/i.test(sql)
+    ) {
+      return {
+        bind() {
+          return {
+            async first() {
+              return null;
+            },
+          };
+        },
+      };
+    }
+
+    return statement;
+  };
+
+  return () => {
+    f.core.prepare = originalPrepare;
+  };
+}
+
+test('HR25 escalation lifecycle: resolved alert reopens without duplicate rows', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr25-reopen');
+
+  let restore = hr25SimulateMissingEvent(f);
+
+  try {
+    await assert.rejects(
+      hr25Reconcile(f, 'hr25-first-failure'),
+      /weekly_rest_correction_event_missing/
+    );
+  } finally {
+    restore();
+  }
+
+  const firstAlerts = await hr25ReadAlerts(f);
+
+  assert.equal(firstAlerts.length, 1);
+  assert.equal(firstAlerts[0].status, 'open');
+
+  const firstId = firstAlerts[0].id;
+  const firstCreatedAt = firstAlerts[0].created_at;
+
+  await hr25Reconcile(f, 'hr25-first-resolution');
+
+  const resolved = await hr25ReadAlerts(f);
+
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].id, firstId);
+  assert.equal(resolved[0].status, 'resolved');
+  assert.ok(resolved[0].resolved_at);
+  assert.equal(resolved[0].resolved_by_uid, 'test-hr');
+
+  restore = hr25SimulateMissingEvent(f);
+
+  try {
+    await assert.rejects(
+      hr25Reconcile(f, 'hr25-second-failure'),
+      /weekly_rest_correction_event_missing/
+    );
+  } finally {
+    restore();
+  }
+
+  const reopened = await hr25ReadAlerts(f);
+
+  assert.equal(reopened.length, 1);
+  assert.equal(reopened[0].id, firstId);
+  assert.equal(reopened[0].status, 'open');
+  assert.equal(reopened[0].created_at, firstCreatedAt);
+  assert.equal(reopened[0].resolved_at, null);
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    1
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  await hr25Reconcile(f, 'hr25-second-resolution');
+
+  const finalAlerts = await hr25ReadAlerts(f);
+
+  assert.equal(finalAlerts.length, 1);
+  assert.equal(finalAlerts[0].id, firstId);
+  assert.equal(finalAlerts[0].status, 'resolved');
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_HR25_ALERT_REOPENED_WITH_SAME_ID');
+  console.log('VERIFIED_HR25_SECOND_RESOLUTION');
+});
+
+test('HR25 escalation lifecycle: superseded evidence failure cannot create stale alert', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr25-concurrent');
+
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  let injected = false;
+  let newerResult;
+
+  f.core.prepare = sql => {
+    const statement = originalPrepare(sql);
+
+    if (
+      !injected &&
+      /SELECT \* FROM employee_weekly_rest_events/i.test(sql) &&
+      /rest_date\s*=\s*\?/i.test(sql)
+    ) {
+      return {
+        bind() {
+          return {
+            async first() {
+              injected = true;
+
+              f.core.prepare = originalPrepare;
+
+              newerResult = await hr25Reconcile(
+                f,
+                'hr25-newer-success'
+              );
+
+              return null;
+            },
+          };
+        },
+      };
+    }
+
+    return statement;
+  };
+
+  try {
+    await assert.rejects(
+      hr25Reconcile(f, 'hr25-stale-failure'),
+      /weekly_rest_correction_revision_conflict/
+    );
+  } finally {
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(injected, true);
+  assert.equal(newerResult.status, 'unchanged');
+
+  assert.equal((await hr25ReadAlerts(f)).length, 0);
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_HR25_NEWER_REVISION_PROTECTED');
+  console.log('VERIFIED_HR25_STALE_ESCALATION_REJECTED');
+});
+
+test('HR25 escalation lifecycle: failed alert write retains recoverable financial state', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr25-write-failure');
+
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  let injected = false;
+
+  const restore = hr25SimulateMissingEvent(f);
+
+  const missingEventPrepare = f.core.prepare.bind(f.core);
+
+  f.core.prepare = sql => {
+    if (
+      /INSERT INTO employee_labor_compliance_events/i.test(sql) &&
+      /weekly_rest_correction_invalid_evidence/i.test(sql)
+    ) {
+      injected = true;
+      throw new Error('HR25_SIMULATED_ALERT_WRITE_FAILURE');
+    }
+
+    return missingEventPrepare(sql);
+  };
+
+  try {
+    await assert.rejects(
+      hr25Reconcile(f, 'hr25-failed-alert-write'),
+      /HR25_SIMULATED_ALERT_WRITE_FAILURE/
+    );
+  } finally {
+    restore();
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(injected, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+  assert.equal((await hr25ReadAlerts(f)).length, 0);
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    1
+  );
+
+  const restoreAgain = hr25SimulateMissingEvent(f);
+
+  try {
+    await assert.rejects(
+      hr25Reconcile(f, 'hr25-alert-write-retry'),
+      /weekly_rest_correction_event_missing/
+    );
+  } finally {
+    restoreAgain();
+  }
+
+  const alerts = await hr25ReadAlerts(f);
+
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].status, 'open');
+
+  await hr25Reconcile(f, 'hr25-successful-recovery');
+
+  assert.equal((await hr25ReadAlerts(f))[0].status, 'resolved');
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_HR25_FAILED_WRITE_PRESERVES_PENDING');
+  console.log('VERIFIED_HR25_FAILED_WRITE_RECOVERED');
+});
