@@ -116,6 +116,26 @@ function createFixture() {
       date_key TEXT NOT NULL,
       absence_type TEXT NOT NULL
     );
+    CREATE TABLE employee_weekly_rest_work_assignments (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      rest_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      status TEXT NOT NULL
+    );
+
+    CREATE TABLE employee_comp_time_ledger (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      entitlement_type TEXT NOT NULL,
+      entry_kind TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_date TEXT
+    );
+
     CREATE TABLE payroll_entries (
       id TEXT PRIMARY KEY,
       salon_id TEXT NOT NULL,

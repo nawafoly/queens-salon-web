@@ -3,6 +3,8 @@ import {
   reconcileAssignedWeeklyRestWork,
 } from './leave-rest-workflows.js';
 
+export const APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE = '2026-08-31';
+
 export async function recoverAssignedWeeklyRestWork(
   db,
   salonId,
@@ -29,11 +31,25 @@ export async function recoverAssignedWeeklyRestWork(
 
   const today = localNow.slice(0, 10);
 
+  const employeeId = cleanText(options.employeeId);
+  const restDate = cleanText(options.restDate);
+
+  if (Boolean(employeeId) !== Boolean(restDate)) {
+    throw new Error('weekly_rest_recovery_invalid_target');
+  }
+
+  if (restDate) validDate(restDate, 'restDate');
+
+  const targetSql = employeeId
+    ? 'AND a.employee_id = ? AND a.rest_date = ?'
+    : '';
+
   const candidateSql = `FROM employee_weekly_rest_work_assignments a
       WHERE a.salon_id = ?
         AND a.status = 'assigned'
         AND a.rest_date >= ?
         AND a.rest_date <= ?
+        ${targetSql}
         AND datetime(
           a.rest_date || ' ' || a.end_time,
           CASE
@@ -62,7 +78,13 @@ export async function recoverAssignedWeeklyRestWork(
         )
   `;
 
-  const params = [salonId, fromDate, today, localNow];
+  const params = [
+    salonId,
+    fromDate,
+    today,
+    ...(employeeId ? [employeeId, restDate] : []),
+    localNow,
+  ];
   const batchSize = 20;
 
   const counts = await dbAll(

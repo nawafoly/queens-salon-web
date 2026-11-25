@@ -1,5 +1,9 @@
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
+  APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+  recoverAssignedWeeklyRestWork,
+} from "./core/repositories/weekly-rest-recovery.js";
+import {
   attendanceRequestHash, readAttendanceOperation, prepareAttendanceOperation,
   commitAttendanceOperation, processAttendanceOperation, attendanceOperationPayload,
   retryAttendanceOperations,
@@ -2136,8 +2140,48 @@ async function recoverAttendanceOperation(db, directoryDb, op) {
   if (!directoryDb) throw new Error("attendance_core_reconciliation_unavailable");
   if (checkIn) await clearAutomaticLockAbsence(directoryDb,op.salon_id,op.employee_id,op.work_date);
   const actor = JSON.parse(op.actor_json);
-  return reconcileAdminAttendancePayroll({directoryDb,attendanceDb:db,salonId:op.salon_id,
-    employeeId:op.employee_id,date:op.work_date,requester:actor,sourceId:op.id,reason:op.reason});
+  const payrollResult = await reconcileAdminAttendancePayroll({
+    directoryDb,
+    attendanceDb: db,
+    salonId: op.salon_id,
+    employeeId: op.employee_id,
+    date: op.work_date,
+    requester: actor,
+    sourceId: op.id,
+    reason: op.reason,
+  });
+
+  if (op.origin !== "punch") {
+    try {
+      const recovery = await recoverAssignedWeeklyRestWork(
+        directoryDb,
+        op.salon_id,
+        db,
+        {
+          fromDate: APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+          employeeId: op.employee_id,
+          restDate: op.work_date,
+        }
+      );
+
+      if (recovery.failed > 0) {
+        console.error(
+          "[attendance] weekly rest reconciliation pending",
+          op.id
+        );
+      }
+    } catch (error) {
+      // The attendance mutation is already committed.
+      // Core scheduled recovery remains the fallback.
+      console.error(
+        "[attendance] weekly rest reconciliation failed",
+        op.id,
+        error
+      );
+    }
+  }
+
+  return payrollResult;
 }
 
 export async function recoverPendingAttendanceOperations(db, directoryDb) {

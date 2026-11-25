@@ -345,6 +345,15 @@ async function mutateEntitlement(
                SET balance_minutes = ?, last_entry_id = ?, version = version + 1, updated_at = ?
              WHERE salon_id = ? AND employee_id = ? AND entitlement_type = ?
                AND version = ? AND balance_minutes = ?
+               AND NOT EXISTS (
+                 SELECT 1
+                   FROM employee_comp_time_ledger existing
+                  WHERE existing.salon_id = ?
+                    AND existing.entitlement_type = ?
+                    AND existing.source_type = ?
+                    AND existing.source_id = ?
+                    AND existing.entry_kind = ?
+               )
                 ${recoveryGuard}`,
       params: [
         after,
@@ -355,6 +364,11 @@ async function mutateEntitlement(
         type,
         Number(state.version || 0),
         before,
+        salonId,
+        type,
+        sourceTypeValue,
+        sourceIdValue,
+        entryKind,
         ...recoveryParams,
       ],
     },
