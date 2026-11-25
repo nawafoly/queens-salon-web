@@ -770,3 +770,621 @@ test('HR05B legacy guard: managed employee rejects legacy reason changes', t => 
     /attendance_policy_legacy_write_forbidden/
   );
 });
+
+test('HR05B adoption: creating a period transfers ownership', t => {
+  const db = fixture(t);
+
+  insertPolicy(db);
+
+  const row = db.prepare(`
+    SELECT attendance_policy_authority
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).get();
+
+  assert.equal(
+    row.attendance_policy_authority,
+    'effective_dated'
+  );
+});
+
+test('HR05B adoption: unrelated employees remain legacy', t => {
+  const db = fixture(t);
+
+  insertPolicy(db);
+
+  const rows = db.prepare(`
+    SELECT salon_id,
+           employee_id,
+           attendance_policy_authority
+    FROM employee_employment
+    ORDER BY salon_id, employee_id
+  `).all();
+
+  assert.deepEqual(
+    rows.map(row => [
+      row.salon_id,
+      row.employee_id,
+      row.attendance_policy_authority,
+    ]),
+    [
+      ['main', 'employee-1', 'effective_dated'],
+      ['main', 'employee-2', 'legacy'],
+      ['other', 'employee-1', 'legacy'],
+    ]
+  );
+});
+
+test('HR05B adoption: failed insertion leaves legacy ownership intact', t => {
+  const db = fixture(t);
+
+  assert.throws(() => insertPolicy(db, {
+    from: '2026-02-30',
+  }));
+
+  const row = db.prepare(`
+    SELECT attendance_policy_authority
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).get();
+
+  assert.equal(row.attendance_policy_authority, 'legacy');
+
+  assert.equal(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM employee_attendance_policy_events
+    `).get().count,
+    0
+  );
+});
+
+test('HR05B adoption: audit failure rolls back policy and ownership', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    CREATE TRIGGER simulate_policy_audit_failure
+    BEFORE INSERT ON employee_attendance_policy_events
+    BEGIN
+      SELECT RAISE(ABORT, 'simulated_policy_audit_failure');
+    END;
+  `);
+
+  assert.throws(
+    () => insertPolicy(db),
+    /simulated_policy_audit_failure/
+  );
+
+  assert.equal(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM employee_attendance_policy_periods
+    `).get().count,
+    0
+  );
+
+  assert.equal(
+    db.prepare(`
+      SELECT attendance_policy_authority
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-1'
+    `).get().attendance_policy_authority,
+    'legacy'
+  );
+});
+
+test('HR05B adoption: cancellation never restores legacy exemption', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_payroll_mode = 'exempt'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  insertPolicy(db);
+
+  db.exec(`
+    UPDATE employee_attendance_policy_periods
+    SET status = 'cancelled',
+        cancelled_at = '2026-11-26T12:00:00Z',
+        cancelled_by_uid = 'admin',
+        cancellation_reason = 'Retroactive cancellation',
+        updated_at = '2026-11-26T12:00:00Z',
+        updated_by_uid = 'admin',
+        version = version + 1
+    WHERE id = 'p1';
+  `);
+
+  const employment = db.prepare(`
+    SELECT *
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).get();
+
+  const periods = db.prepare(`
+    SELECT *
+    FROM employee_attendance_policy_periods
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).all();
+
+  assert.equal(
+    employment.attendance_policy_authority,
+    'effective_dated'
+  );
+
+  assert.equal(
+    employment.attendance_payroll_mode,
+    'exempt'
+  );
+
+  assert.equal(
+    resolveAttendancePolicyForDate(
+      employment,
+      periods,
+      '2026-11-20'
+    ).mode,
+    'required'
+  );
+});
+
+import {
+  createAttendancePolicyPeriod,
+  updateAttendancePolicyPeriod,
+  cancelAttendancePolicyPeriod,
+  resolveEmployeeAttendancePolicy,
+  loadAttendancePolicyPeriods,
+} from './core/repositories/attendance-policy.js';
+
+function hr05CommandDb(database) {
+  return {
+    prepare(sql) {
+      function statement(params = []) {
+        return {
+          bind(...values) {
+            return statement(values);
+          },
+
+          async first(column) {
+            const row = database.prepare(sql).get(...params);
+            if (!row) return null;
+            return column ? row[column] : row;
+          },
+
+          async all() {
+            return {
+              success: true,
+              results: database.prepare(sql).all(...params),
+              meta: {},
+            };
+          },
+
+          async run() {
+            const result = database.prepare(sql).run(...params);
+
+            return {
+              success: true,
+              meta: {
+                changes: Number(result.changes),
+              },
+            };
+          },
+
+          async raw() {
+            const prepared = database.prepare(sql);
+            prepared.setReturnArrays(true);
+            return prepared.all(...params);
+          },
+        };
+      }
+
+      return statement();
+    },
+  };
+}
+
+const hr05Admin = {
+  uid: 'synthetic-admin',
+  role: 'owner',
+};
+
+const hr05Input = {
+  mode: 'exempt',
+  effectiveFrom: '2026-11-15',
+  effectiveTo: '2026-11-25',
+  reason: 'Synthetic administrative exemption',
+};
+
+function hr05CommandSnapshot(database) {
+  return {
+    employment: database.prepare(`
+      SELECT *
+      FROM employee_employment
+      ORDER BY salon_id, employee_id
+    `).all(),
+
+    periods: database.prepare(`
+      SELECT *
+      FROM employee_attendance_policy_periods
+      ORDER BY id
+    `).all(),
+
+    events: database.prepare(`
+      SELECT *
+      FROM employee_attendance_policy_events
+      ORDER BY policy_id, version
+    `).all(),
+  };
+}
+
+test('HR05B commands: complete exemption lifecycle', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input,
+    hr05Admin
+  );
+
+  assert.equal(created.status, 'active');
+  assert.equal(created.version, 1);
+  assert.equal(created.created_by_uid, hr05Admin.uid);
+
+  for (const [date, mode] of [
+    ['2026-11-14', 'required'],
+    ['2026-11-15', 'exempt'],
+    ['2026-11-25', 'exempt'],
+    ['2026-11-26', 'required'],
+  ]) {
+    const policy = await resolveEmployeeAttendancePolicy(
+      db, 'main', 'employee-1', date
+    );
+
+    assert.equal(policy.mode, mode);
+  }
+
+  const updated = await updateAttendancePolicyPeriod(
+    db, 'main', 'employee-1', created.id,
+    {
+      version: 1,
+      effectiveTo: '2026-11-20',
+    },
+    hr05Admin
+  );
+
+  assert.equal(updated.version, 2);
+  assert.equal(updated.effective_to, '2026-11-20');
+
+  assert.equal(
+    (await resolveEmployeeAttendancePolicy(
+      db, 'main', 'employee-1', '2026-11-21'
+    )).mode,
+    'required'
+  );
+
+  const cancelled = await cancelAttendancePolicyPeriod(
+    db, 'main', 'employee-1', created.id,
+    {
+      version: 2,
+      reason: 'Synthetic retroactive cancellation',
+    },
+    hr05Admin
+  );
+
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.version, 3);
+
+  assert.equal(
+    (await resolveEmployeeAttendancePolicy(
+      db, 'main', 'employee-1', '2026-11-16'
+    )).mode,
+    'required'
+  );
+
+  const history = await loadAttendancePolicyPeriods(
+    db, 'main', 'employee-1'
+  );
+
+  assert.equal(history.length, 1);
+  assert.equal(history[0].status, 'cancelled');
+
+  const events = database.prepare(`
+    SELECT event_type, version
+    FROM employee_attendance_policy_events
+    WHERE policy_id = ?
+    ORDER BY version
+  `).all(created.id);
+
+  assert.deepEqual(
+    events.map(row => [row.event_type, row.version]),
+    [
+      ['created', 1],
+      ['updated', 2],
+      ['cancelled', 3],
+    ]
+  );
+});
+
+test('HR05B commands: stale version cannot mutate policy', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1', hr05Input, hr05Admin
+  );
+
+  await updateAttendancePolicyPeriod(
+    db, 'main', 'employee-1', created.id,
+    { version: 1, effectiveTo: '2026-11-20' },
+    hr05Admin
+  );
+
+  const before = hr05CommandSnapshot(database);
+
+  await assert.rejects(
+    () => updateAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 1, effectiveTo: '2026-11-19' },
+      hr05Admin
+    ),
+    error => error.code ===
+      'core_attendance_policy:version_conflict'
+  );
+
+  await assert.rejects(
+    () => cancelAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 1, reason: 'Stale cancellation' },
+      hr05Admin
+    ),
+    error => error.code ===
+      'core_attendance_policy:version_conflict'
+  );
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+});
+
+test('HR05B commands: employee and salon isolation', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1', hr05Input, hr05Admin
+  );
+
+  const before = hr05CommandSnapshot(database);
+
+  for (const [salon, employee] of [
+    ['main', 'employee-2'],
+    ['other', 'employee-1'],
+  ]) {
+    await assert.rejects(
+      () => updateAttendancePolicyPeriod(
+        db, salon, employee, created.id,
+        { version: 1, reason: 'Unauthorized target' },
+        hr05Admin
+      ),
+      error => error.code ===
+        'core_attendance_policy:period_not_found'
+    );
+
+    await assert.rejects(
+      () => cancelAttendancePolicyPeriod(
+        db, salon, employee, created.id,
+        { version: 1, reason: 'Unauthorized target' },
+        hr05Admin
+      ),
+      error => error.code ===
+        'core_attendance_policy:period_not_found'
+    );
+
+    assert.deepEqual(
+      await loadAttendancePolicyPeriods(
+        db, salon, employee
+      ),
+      []
+    );
+  }
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+});
+
+test('HR05B commands: legacy exemption requires explicit adoption', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  database.exec(`
+    UPDATE employee_employment
+    SET attendance_payroll_mode = 'exempt',
+        attendance_payroll_exemption_reason = 'Legacy exemption'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  const before = hr05CommandSnapshot(database);
+
+  await assert.rejects(
+    () => createAttendancePolicyPeriod(
+      db, 'main', 'employee-1',
+      hr05Input,
+      hr05Admin
+    ),
+    error => error.code ===
+      'core_attendance_policy:legacy_adoption_confirmation_required'
+  );
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    {
+      ...hr05Input,
+      confirmLegacyAdoption: true,
+    },
+    hr05Admin
+  );
+
+  assert.equal(created.status, 'active');
+
+  assert.equal(
+    (await resolveEmployeeAttendancePolicy(
+      db, 'main', 'employee-1', '2026-11-14'
+    )).mode,
+    'required'
+  );
+});
+
+test('HR05B commands: invalid input leaves all evidence unchanged', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const before = hr05CommandSnapshot(database);
+
+  for (const input of [
+    { ...hr05Input, effectiveFrom: '2026-02-30' },
+    { ...hr05Input, effectiveTo: '2026-11-14' },
+    { ...hr05Input, reason: ' ' },
+    { ...hr05Input, mode: 'invalid' },
+  ]) {
+    await assert.rejects(
+      () => createAttendancePolicyPeriod(
+        db, 'main', 'employee-1',
+        input, hr05Admin
+      )
+    );
+  }
+
+  await assert.rejects(
+    () => createAttendancePolicyPeriod(
+      db, 'main', 'missing-employee',
+      hr05Input, hr05Admin
+    )
+  );
+
+  await assert.rejects(
+    () => createAttendancePolicyPeriod(
+      db, 'main', 'employee-1',
+      hr05Input, { uid: '' }
+    )
+  );
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+});
+
+test('HR05B commands: overlapping creation leaves history unchanged', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  const before = hr05CommandSnapshot(database);
+
+  await assert.rejects(
+    () => createAttendancePolicyPeriod(
+      db, 'main', 'employee-1',
+      {
+        ...hr05Input,
+        effectiveFrom: '2026-11-20',
+        effectiveTo: null,
+      },
+      hr05Admin
+    ),
+    /attendance_policy_period_overlap/
+  );
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+});
+
+test('HR05B commands: concurrent updates allow one revision only', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  const results = await Promise.allSettled([
+    updateAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 1, effectiveTo: '2026-11-20' },
+      hr05Admin
+    ),
+
+    updateAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 1, effectiveTo: '2026-11-21' },
+      hr05Admin
+    ),
+  ]);
+
+  assert.equal(
+    results.filter(result =>
+      result.status === 'fulfilled'
+    ).length,
+    1
+  );
+
+  assert.equal(
+    results.filter(result =>
+      result.status === 'rejected'
+    ).length,
+    1
+  );
+
+  const snapshot = hr05CommandSnapshot(database);
+
+  assert.equal(snapshot.periods.length, 1);
+  assert.equal(snapshot.periods[0].version, 2);
+  assert.equal(snapshot.events.length, 2);
+});
+
+test('HR05B commands: cancelled period cannot be changed or cancelled again', async t => {
+  const database = fixture(t);
+  const db = hr05CommandDb(database);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  await cancelAttendancePolicyPeriod(
+    db, 'main', 'employee-1', created.id,
+    { version: 1, reason: 'Cancelled once' },
+    hr05Admin
+  );
+
+  const before = hr05CommandSnapshot(database);
+
+  await assert.rejects(
+    () => updateAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 2, reason: 'Forbidden update' },
+      hr05Admin
+    ),
+    error => error.code ===
+      'core_attendance_policy:period_not_active'
+  );
+
+  await assert.rejects(
+    () => cancelAttendancePolicyPeriod(
+      db, 'main', 'employee-1', created.id,
+      { version: 2, reason: 'Duplicate cancellation' },
+      hr05Admin
+    ),
+    error => error.code ===
+      'core_attendance_policy:period_not_active'
+  );
+
+  assert.deepEqual(hr05CommandSnapshot(database), before);
+});

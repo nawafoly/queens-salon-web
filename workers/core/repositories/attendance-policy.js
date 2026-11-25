@@ -192,3 +192,332 @@ export function attendanceAbsenceApplies(row, policy) {
     isAutomaticAttendanceAbsence(row)
   );
 }
+
+function requiredPolicyText(value, field, maxLength = 500) {
+  if (typeof value !== 'string') {
+    throw new AppError(
+      400,
+      `core_attendance_policy:invalid_${field}`
+    );
+  }
+
+  const text = value.trim();
+
+  if (!text || text.length > maxLength) {
+    throw new AppError(
+      400,
+      `core_attendance_policy:invalid_${field}`
+    );
+  }
+
+  return text;
+}
+
+function validatePolicyVersion(value) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_version'
+    );
+  }
+
+  return value;
+}
+
+function normalizePolicyPeriod(input) {
+  const mode = input.mode;
+
+  if (!['required', 'exempt'].includes(mode)) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_mode'
+    );
+  }
+
+  const effectiveFrom =
+    attendancePolicyDate(input.effectiveFrom);
+
+  const effectiveTo = input.effectiveTo == null
+    ? null
+    : attendancePolicyDate(input.effectiveTo);
+
+  if (effectiveTo && effectiveTo < effectiveFrom) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_period'
+    );
+  }
+
+  return {
+    mode,
+    effectiveFrom,
+    effectiveTo,
+    reason: requiredPolicyText(input.reason, 'reason'),
+  };
+}
+
+async function readScopedPolicy(
+  db,
+  salonId,
+  employeeId,
+  policyId
+) {
+  const row = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_attendance_policy_periods
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND id = ?`,
+    [salonId, employeeId, policyId]
+  );
+
+  if (!row) {
+    throw new AppError(
+      404,
+      'core_attendance_policy:period_not_found'
+    );
+  }
+
+  return row;
+}
+
+function assertMutablePolicy(row, version) {
+  validatePolicyVersion(version);
+
+  if (row.status !== 'active') {
+    throw new AppError(
+      409,
+      'core_attendance_policy:period_not_active'
+    );
+  }
+
+  if (Number(row.version) !== version) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:version_conflict'
+    );
+  }
+}
+
+function requirePolicyMutation(result) {
+  if (Number(result?.meta?.changes) !== 1) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:mutation_conflict'
+    );
+  }
+}
+
+export async function createAttendancePolicyPeriod(
+  db,
+  salonId,
+  employeeId,
+  input,
+  actor
+) {
+  const actorUid =
+    requiredPolicyText(actor?.uid, 'actor', 256);
+
+  const policy = normalizePolicyPeriod(input);
+
+  const employment = await dbFirst(
+    db,
+    `SELECT attendance_policy_authority,
+            attendance_payroll_mode
+       FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?`,
+    [salonId, employeeId]
+  );
+
+  if (!employment) {
+    throw new AppError(
+      404,
+      'core_attendance_policy:employee_not_found'
+    );
+  }
+
+  if (
+    employment.attendance_policy_authority === 'legacy' &&
+    employment.attendance_payroll_mode === 'exempt' &&
+    input.confirmLegacyAdoption !== true
+  ) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:legacy_adoption_confirmation_required'
+    );
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const result = await db.prepare(`
+    INSERT INTO employee_attendance_policy_periods (
+      id,
+      salon_id,
+      employee_id,
+      policy_mode,
+      effective_from,
+      effective_to,
+      reason,
+      created_by_uid,
+      created_at,
+      updated_at,
+      updated_by_uid
+    )
+    SELECT ?,?,?,?,?,?,?,?,?,?,?
+    WHERE EXISTS (
+      SELECT 1
+      FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND attendance_policy_authority = ?
+        AND attendance_payroll_mode IS ?
+    )
+  `).bind(
+    id,
+    salonId,
+    employeeId,
+    policy.mode,
+    policy.effectiveFrom,
+    policy.effectiveTo,
+    policy.reason,
+    actorUid,
+    now,
+    now,
+    actorUid,
+    salonId,
+    employeeId,
+    employment.attendance_policy_authority,
+    employment.attendance_payroll_mode
+  ).run();
+
+  requirePolicyMutation(result);
+
+  return readScopedPolicy(
+    db, salonId, employeeId, id
+  );
+}
+
+export async function updateAttendancePolicyPeriod(
+  db,
+  salonId,
+  employeeId,
+  policyId,
+  input,
+  actor
+) {
+  const actorUid =
+    requiredPolicyText(actor?.uid, 'actor', 256);
+
+  const version = validatePolicyVersion(input.version);
+
+  const current = await readScopedPolicy(
+    db, salonId, employeeId, policyId
+  );
+
+  assertMutablePolicy(current, version);
+
+  const policy = normalizePolicyPeriod({
+    mode: input.mode ?? current.policy_mode,
+    effectiveFrom:
+      input.effectiveFrom ?? current.effective_from,
+    effectiveTo: Object.hasOwn(input, 'effectiveTo')
+      ? input.effectiveTo
+      : current.effective_to,
+    reason: input.reason ?? current.reason,
+  });
+
+  const now = new Date().toISOString();
+
+  const result = await db.prepare(`
+    UPDATE employee_attendance_policy_periods
+    SET policy_mode = ?,
+        effective_from = ?,
+        effective_to = ?,
+        reason = ?,
+        updated_by_uid = ?,
+        updated_at = ?,
+        version = version + 1
+    WHERE salon_id = ?
+      AND employee_id = ?
+      AND id = ?
+      AND status = 'active'
+      AND version = ?
+  `).bind(
+    policy.mode,
+    policy.effectiveFrom,
+    policy.effectiveTo,
+    policy.reason,
+    actorUid,
+    now,
+    salonId,
+    employeeId,
+    policyId,
+    version
+  ).run();
+
+  requirePolicyMutation(result);
+
+  return readScopedPolicy(
+    db, salonId, employeeId, policyId
+  );
+}
+
+export async function cancelAttendancePolicyPeriod(
+  db,
+  salonId,
+  employeeId,
+  policyId,
+  input,
+  actor
+) {
+  const actorUid =
+    requiredPolicyText(actor?.uid, 'actor', 256);
+
+  const version = validatePolicyVersion(input.version);
+
+  const reason =
+    requiredPolicyText(input.reason, 'cancellation_reason');
+
+  const current = await readScopedPolicy(
+    db, salonId, employeeId, policyId
+  );
+
+  assertMutablePolicy(current, version);
+
+  const now = new Date().toISOString();
+
+  const result = await db.prepare(`
+    UPDATE employee_attendance_policy_periods
+    SET status = 'cancelled',
+        cancelled_at = ?,
+        cancelled_by_uid = ?,
+        cancellation_reason = ?,
+        updated_at = ?,
+        updated_by_uid = ?,
+        version = version + 1
+    WHERE salon_id = ?
+      AND employee_id = ?
+      AND id = ?
+      AND status = 'active'
+      AND version = ?
+  `).bind(
+    now,
+    actorUid,
+    reason,
+    now,
+    actorUid,
+    salonId,
+    employeeId,
+    policyId,
+    version
+  ).run();
+
+  requirePolicyMutation(result);
+
+  return readScopedPolicy(
+    db, salonId, employeeId, policyId
+  );
+}

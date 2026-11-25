@@ -298,3 +298,29 @@ BEGIN
     'attendance_policy_legacy_write_forbidden'
   );
 END;
+
+-- Creating an explicit period transfers policy ownership atomically.
+-- Cancellation never restores legacy ownership.
+
+CREATE TRIGGER IF NOT EXISTS
+  trg_attendance_policy_adopt_after_insert
+AFTER INSERT ON employee_attendance_policy_periods
+WHEN NEW.status = 'active'
+BEGIN
+  UPDATE employee_employment
+  SET attendance_policy_authority = 'effective_dated'
+  WHERE salon_id = NEW.salon_id
+    AND employee_id = NEW.employee_id
+    AND attendance_policy_authority = 'legacy';
+
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM employee_employment
+      WHERE salon_id = NEW.salon_id
+        AND employee_id = NEW.employee_id
+        AND attendance_policy_authority = 'effective_dated'
+    )
+    THEN RAISE(ABORT, 'attendance_policy_adoption_failed')
+  END;
+END;
