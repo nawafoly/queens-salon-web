@@ -1,4 +1,4 @@
-import { recordAutomaticAttendanceAbsence } from "./core/repositories/attendance-policy.js";
+import { recordAutomaticAttendanceAbsence, clearAutomaticAttendanceAbsence } from "./core/repositories/attendance-policy.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -68,6 +68,7 @@ function createHarness(employeeCount, failChunk = 0) {
 
   const context = {
     recordAutomaticAttendanceAbsence,
+    clearAutomaticAttendanceAbsence,
     dbAll: async () => employees,
     dbFirst: async () => null,
 

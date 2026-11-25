@@ -1047,3 +1047,77 @@ export async function loadStablePayrollAttendancePolicy(
     snapshot,
   };
 }
+
+/**
+ * Clear an automatic absence only when attendance is required
+ * on the actual work date.
+ *
+ * Keep suppressed evidence while an exemption is active.
+ * Evaluate policy and deletion within one SQL statement.
+ */
+export async function clearAutomaticAttendanceAbsence(
+  db,
+  salonId,
+  employeeId,
+  dateValue
+) {
+  const date = attendancePolicyDate(dateValue);
+
+  if (!db || !salonId || !employeeId) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_absence_target'
+    );
+  }
+
+  const result = await db.prepare(`
+    DELETE FROM employee_absences
+     WHERE salon_id = ?
+       AND employee_id = ?
+       AND date_key = ?
+       AND absence_type = 'automatic_check_in_lock'
+
+       AND EXISTS (
+         SELECT 1
+           FROM employee_employment e
+          WHERE e.salon_id = ?
+            AND e.employee_id = ?
+            AND (
+              e.attendance_policy_authority = 'effective_dated'
+              OR (
+                e.attendance_policy_authority = 'legacy'
+                AND e.attendance_payroll_mode = 'required'
+              )
+            )
+       )
+
+       AND NOT EXISTS (
+         SELECT 1
+           FROM employee_attendance_policy_periods p
+          WHERE p.salon_id = ?
+            AND p.employee_id = ?
+            AND p.status = 'active'
+            AND p.policy_mode = 'exempt'
+            AND p.effective_from <= ?
+            AND (
+              p.effective_to IS NULL
+              OR p.effective_to >= ?
+            )
+       )
+  `).bind(
+    salonId,
+    employeeId,
+    date,
+    salonId,
+    employeeId,
+    salonId,
+    employeeId,
+    date,
+    date
+  ).run();
+
+  return {
+    cleared: Number(result?.meta?.changes ?? 0),
+    date,
+  };
+}

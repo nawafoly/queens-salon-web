@@ -1,4 +1,4 @@
-import { recordAutomaticAttendanceAbsence } from "./core/repositories/attendance-policy.js";
+import { recordAutomaticAttendanceAbsence, clearAutomaticAttendanceAbsence } from "./core/repositories/attendance-policy.js";
 
 import { reconcileCreditedWeeklyRest } from "./core/repositories/weekly-rest-correction.js";
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
@@ -635,10 +635,13 @@ async function markAutomaticLockAbsence(directoryDb, salonId, employeeId, employ
 
 async function clearAutomaticLockAbsence(directoryDb, salonId, employeeId, dateKey) {
   if (!directoryDb || !employeeId || !dateKey) return;
-  await directoryDb.prepare(
-    `DELETE FROM employee_absences
-     WHERE salon_id=? AND employee_id=? AND date_key=? AND absence_type='automatic_check_in_lock'`
-  ).bind(salonId, employeeId, dateKey).run();
+
+  return clearAutomaticAttendanceAbsence(
+    directoryDb,
+    salonId,
+    employeeId,
+    dateKey
+  );
 }
 
 export async function handleAttendanceRequest({

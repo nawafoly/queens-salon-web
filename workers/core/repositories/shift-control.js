@@ -1,4 +1,4 @@
-import { recordAutomaticAttendanceAbsence } from './attendance-policy.js';
+import { recordAutomaticAttendanceAbsence, clearAutomaticAttendanceAbsence } from './attendance-policy.js';
 
 // CORE D1 ONLY - reusable shift templates and date-effective assignments.
 import {
@@ -2603,10 +2603,14 @@ export async function markClosedCheckInWindowsAbsent(coreDb, attendanceDb, salon
       .bind(bounds.start, bounds.end, employee.id, employee.firebase_uid || '').first();
 
     if (attendance) {
-      const result = await coreDb.prepare(`DELETE FROM employee_absences
-        WHERE salon_id=? AND employee_id=? AND date_key=? AND absence_type='automatic_check_in_lock'`)
-        .bind(salonId, employee.id, clock.dateKey).run();
-      cleared += Number(result?.meta?.changes || 0);
+      const result = await clearAutomaticAttendanceAbsence(
+        coreDb,
+        salonId,
+        employee.id,
+        clock.dateKey
+      );
+
+      cleared += result.cleared;
       continue;
     }
 
