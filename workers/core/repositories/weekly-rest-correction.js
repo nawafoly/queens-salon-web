@@ -12,7 +12,7 @@ import { attendanceWorkedMinutes } from './rest-holiday-compliance.js';
 
 const TYPE = 'weekly_rest_due';
 const MINUTES = 1440;
-const WEEKLY_REST_CORRECTION_FROM_DATE = '2026-08-31';
+export const WEEKLY_REST_CORRECTION_FROM_DATE = '2026-08-31';
 
 export async function reconcileCreditedWeeklyRest(
   db,
@@ -37,6 +37,43 @@ export async function reconcileCreditedWeeklyRest(
   );
 
   if (!assignment) return { status: 'not_applicable' };
+
+  // Every reconciliation owns a monotonically increasing generation.
+  // A newer reconciliation invalidates all older financial snapshots.
+  const claim = await dbFirst(
+    db,
+    `UPDATE employee_weekly_rest_work_assignments
+        SET correction_revision = correction_revision + 1,
+            correction_pending = 1
+      WHERE salon_id = ? AND id = ?
+        AND status = 'completed'
+      RETURNING correction_revision`,
+    [salonId, assignment.id]
+  );
+
+  if (!claim) {
+    throw new Error('weekly_rest_correction_claim_conflict');
+  }
+
+  const revision = Number(claim.correction_revision);
+
+  async function finishCorrection(status, extra = {}) {
+    const result = await dbRun(
+      db,
+      `UPDATE employee_weekly_rest_work_assignments
+          SET correction_pending = 0
+        WHERE salon_id = ? AND id = ?
+          AND status = 'completed'
+          AND correction_revision = ?`,
+      [salonId, assignment.id, revision]
+    );
+
+    if (Number(result?.meta?.changes ?? result?.changes ?? 0) !== 1) {
+      throw new Error('weekly_rest_correction_revision_conflict');
+    }
+
+    return { status, ...extra };
+  }
 
   const event = await dbFirst(
     db,
@@ -82,10 +119,18 @@ export async function reconcileCreditedWeeklyRest(
          id, salon_id, employee_id, rule_code,
          severity, status, source_type, source_id,
          details_json, policy_version, created_by_uid, created_at
-       ) VALUES (
+       )
+       SELECT
          ?, ?, ?, 'weekly_rest_attendance_correction',
          'warning', 'open', 'weekly_rest_event', ?,
          ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1
+         FROM employee_weekly_rest_work_assignments a
+         WHERE a.salon_id = ?
+           AND a.id = ?
+           AND a.status = 'completed'
+           AND a.correction_revision = ?
        )`,
       [
         'weekly-rest-correction:' + operationId,
@@ -96,14 +141,15 @@ export async function reconcileCreditedWeeklyRest(
         event.policy_version,
         cleanText(actor.uid) || null,
         now,
+        salonId, assignment.id, revision,
       ]
     );
 
-    return { status: 'review_required', reason };
+    return finishCorrection('review_required', { reason });
   }
 
   if ((complete && active) || (!complete && reversed)) {
-    await dbRun(
+    const result = await dbRun(
       db,
       `UPDATE employee_weekly_rest_events
           SET attendance_evidence_json = ?,
@@ -111,7 +157,15 @@ export async function reconcileCreditedWeeklyRest(
         WHERE salon_id = ? AND id = ?
           AND entitlement_ledger_entry_id = ?
           AND restoration_status = ?
-          AND substitute_rest_minutes = ?`,
+          AND substitute_rest_minutes = ?
+          AND EXISTS (
+            SELECT 1
+              FROM employee_weekly_rest_work_assignments a
+             WHERE a.salon_id = ?
+               AND a.id = ?
+               AND a.status = 'completed'
+               AND a.correction_revision = ?
+          )`,
       [
         evidence,
         attendance.workedMinutes,
@@ -121,10 +175,15 @@ export async function reconcileCreditedWeeklyRest(
         event.entitlement_ledger_entry_id,
         event.restoration_status,
         event.substitute_rest_minutes,
+        salonId, assignment.id, revision,
       ]
     );
 
-    return { status: 'unchanged' };
+    if (Number(result?.meta?.changes ?? result?.changes ?? 0) !== 1) {
+      throw new Error('weekly_rest_correction_revision_conflict');
+    }
+
+    return finishCorrection('unchanged');
   }
 
   if (!active && !reversed) {
@@ -212,6 +271,14 @@ export async function reconcileCreditedWeeklyRest(
                    AND e.restoration_status = ?
                    AND e.substitute_rest_minutes = ?
               )
+              AND EXISTS (
+                SELECT 1
+                  FROM employee_weekly_rest_work_assignments a
+                 WHERE a.salon_id = ?
+                   AND a.id = ?
+                   AND a.status = 'completed'
+                   AND a.correction_revision = ?
+              )
               AND NOT EXISTS (
                 SELECT 1 FROM employee_comp_time_ledger l
                  WHERE l.salon_id = ?
@@ -228,6 +295,7 @@ export async function reconcileCreditedWeeklyRest(
         event.entitlement_ledger_entry_id,
         event.restoration_status,
         event.substitute_rest_minutes,
+        salonId, assignment.id, revision,
         salonId, TYPE, sourceType, sourceId, entryKind,
       ],
     },
@@ -286,7 +354,7 @@ export async function reconcileCreditedWeeklyRest(
   );
 
   if (counts.every(count => count === 1)) {
-    return { status: restoring ? 'restored' : 'reversed' };
+    return finishCorrection(restoring ? 'restored' : 'reversed');
   }
 
   throw new Error('weekly_rest_correction_concurrency_conflict');

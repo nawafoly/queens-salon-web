@@ -152,14 +152,7 @@ export async function recoverAssignedWeeklyRestWork(
           throw new Error('weekly_rest_pending_event_missing');
         }
 
-        await dbRun(
-          db,
-          `UPDATE employee_weekly_rest_work_assignments
-              SET correction_pending = 0
-            WHERE salon_id = ? AND id = ?
-              AND status = 'completed'`,
-          [salonId, assignment.id]
-        );
+        // Pending state is finalized by the correction engine.
 
         summary.corrected = (summary.corrected || 0) + 1;
         continue;
@@ -296,14 +289,7 @@ export async function recoverAssignedWeeklyRestWork(
             throw new Error('weekly_rest_unfinished_event_missing');
           }
 
-          await dbRun(
-            db,
-            `UPDATE employee_weekly_rest_work_assignments
-                SET correction_pending = 0
-              WHERE salon_id = ? AND id = ?
-                AND status = 'completed'`,
-            [salonId, assignment.id]
-          );
+          // Pending state is finalized by the correction engine.
 
           summary.corrected = (summary.corrected || 0) + 1;
           continue;
