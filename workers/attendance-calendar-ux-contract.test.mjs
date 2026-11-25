@@ -88,17 +88,20 @@ test("past resolved Core workdays without punches are inferred as absence", () =
 
 
 test("empty attendance months preserve the calendar toolbar target and controls", () => {
+  const emptyState = source.match(/viewState === "empty"\s*\?\s*\(([\s\S]*?)\)\s*:\s*null\}/);
+  assert.ok(emptyState, "Empty calendar state must remain available");
+  const emptySource = emptyState[1];
   assert.match(
-    source,
-    /viewState === "empty"[\s\S]*className="dsv2-ew-attendance-calendar-card"/
+    emptySource,
+    /className="dsv2-ew-attendance-calendar-card"/
   );
   assert.match(
-    source,
-    /viewState === "empty"[\s\S]*onClick=\{goToToday\}[\s\S]*>اليوم<\/button>/
+    emptySource,
+    /<button\b[^>]*onClick=\{goToToday\}[^>]*>\s*\{tr\("اليوم",\s*"Today"\)\}\s*<\/button>/
   );
   assert.match(
-    source,
-    /viewState === "empty"[\s\S]*onClick=\{onReload\}[\s\S]*>تحديث<\/button>/
+    emptySource,
+    /<button\b[^>]*onClick=\{onReload\}[^>]*>\s*\{t\("تحديث"\)\}\s*<\/button>/
   );
 });
 
@@ -131,7 +134,7 @@ test("attendance calendar bounds month navigation to employee service window", (
   assert.match(source, /monthKeyFromDate\(endDate\) \|\| todayMonth/);
   assert.match(source, /const normalizedMonth = clampMonthKeyToEmployment\(monthKey, employmentStartDate, employmentEndDate\)/);
   assert.match(source, /const firstSelectableDate = firstServiceDateForMonth\(normalizedMonth, employmentStartDate, employmentEndDate\)/);
-  assert.match(source, /buildMonthOptions\(normalizedMonth\)\.filter/);
+  assert.match(source, /buildMonthOptions\(normalizedMonth\)\s*\.filter\(\(option\)\s*=>\s*option\.value\s*===\s*clampMonthKeyToEmployment\(option\.value,\s*employmentStartDate,\s*employmentEndDate\)\)/);
 });
 
 test("attendance calendar service-window fixture covers September 2026 start boundary", () => {

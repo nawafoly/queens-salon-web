@@ -1740,7 +1740,7 @@ async function activeWeeklyRestWorkAssignmentForShift(
               row.salon_id === salonId &&
               cleanText(row.employee_id) === employeeId &&
               cleanText(row.rest_date) === date &&
-              cleanText(row.status).toLowerCase() === 'assigned'
+              ['assigned', 'completed'].includes(cleanText(row.status).toLowerCase())
           )
           .slice()
           .sort(
@@ -1758,7 +1758,7 @@ async function activeWeeklyRestWorkAssignmentForShift(
   return dbFirst(
     db,
     'SELECT * FROM employee_weekly_rest_work_assignments ' +
-      'WHERE salon_id=? AND employee_id=? AND rest_date=? AND status=\'assigned\' ' +
+      'WHERE salon_id=? AND employee_id=? AND rest_date=? AND status IN (\'assigned\',\'completed\') ' +
       'ORDER BY created_at DESC LIMIT 1',
     [salonId, employeeId, date]
   );
@@ -2345,7 +2345,7 @@ export async function resolveEmployeeShiftsBatch(
         db,
         'SELECT * FROM employee_weekly_rest_work_assignments ' +
           'WHERE salon_id=? AND employee_id IN (' + marks + ') ' +
-          'AND rest_date>=? AND rest_date<=? AND status=\'assigned\' ' +
+          'AND rest_date>=? AND rest_date<=? AND status IN (\'assigned\',\'completed\') ' +
           'ORDER BY employee_id, rest_date, created_at DESC',
         [
           salonId,
@@ -2472,7 +2472,7 @@ export async function resolveEmployeeShiftsBatch(
         weeklyRestWorkRows.find(
           (row) =>
             cleanText(row.rest_date) === date &&
-            cleanText(row.status).toLowerCase() === 'assigned'
+            ['assigned', 'completed'].includes(cleanText(row.status).toLowerCase())
         ) || null;
 
       rows.push(

@@ -4794,3 +4794,185 @@ test('HR29 final recovery: lost acknowledgement after checkout void reverses ent
   console.log('VERIFIED_HR29_VOID_ACK_LOSS_RECOVERED');
   console.log('VERIFIED_HR29_FINANCIAL_REPLAY_IDEMPOTENT');
 });
+
+test('completed weekly rest assignment remains visible in canonical shift resolution', async t => {
+  const f = await fixture(t);
+
+  const date = '2026-09-01';
+  const employeeId = 'test-employee';
+
+  const {
+    resolveEmployeeShift,
+    resolveEmployeeShiftsBatch,
+  } = await import('./core/repositories/shift-control.js');
+
+  async function resolveBoth() {
+    const single = await resolveEmployeeShift(
+      f.core,
+      'main',
+      employeeId,
+      date
+    );
+
+    const batch = await resolveEmployeeShiftsBatch(
+      f.core,
+      'main',
+      {
+        employeeIds: [employeeId],
+        dateFrom: date,
+        dateTo: date,
+      }
+    );
+
+    assert.equal(batch.rows.length, 1);
+
+    return {
+      single,
+      batch: batch.rows[0],
+    };
+  }
+
+  function assertAssignedShift(shift, label) {
+    assert.equal(
+      shift.source,
+      'weekly_rest_work_assignment',
+      label
+    );
+
+    assert.equal(Number(shift.active), 1);
+    assert.equal(shift.exception_type, 'work');
+    assert.equal(shift.start_time, '15:00');
+    assert.equal(shift.end_time, '23:00');
+
+    assert.equal(
+      shift.weekly_rest_work_assignment_id,
+      `assignment-${date}`
+    );
+  }
+
+  await f.assignment(date);
+
+  const assigned = await resolveBoth();
+
+  assertAssignedShift(
+    assigned.single,
+    'Assigned single shift'
+  );
+
+  assertAssignedShift(
+    assigned.batch,
+    'Assigned batch shift'
+  );
+
+  console.log('VERIFIED_ASSIGNED_SINGLE_AND_BATCH');
+
+  const response = await adminAdjust(f, {
+    date,
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'completed-shift-resolution',
+  });
+
+  assert.equal(
+    response.status,
+    200,
+    await response.clone().text()
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  const assignment = await f.core.prepare(`
+    SELECT status
+    FROM employee_weekly_rest_work_assignments
+    WHERE salon_id = 'main'
+      AND employee_id = ?
+      AND rest_date = ?
+  `).bind(employeeId, date).first();
+
+  assert.equal(assignment.status, 'completed');
+
+  console.log('VERIFIED_COMPLETED_ASSIGNMENT');
+  console.log('VERIFIED_ENTITLEMENT_BALANCE:', await f.balance());
+
+  const completed = await resolveBoth();
+
+  console.log('COMPLETED_SINGLE_SOURCE:', completed.single.source);
+  console.log('COMPLETED_BATCH_SOURCE:', completed.batch.source);
+
+  assertAssignedShift(
+    completed.single,
+    'HR02_REGRESSION: completed assignment must remain visible in single shift'
+  );
+
+  assertAssignedShift(
+    completed.batch,
+    'HR02_REGRESSION: completed assignment must remain visible in batch shift'
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('cancelled weekly rest assignment is excluded from both shift resolvers', async t => {
+  const f = await fixture(t);
+
+  const date = '2026-09-01';
+  const employeeId = 'test-employee';
+
+  const {
+    resolveEmployeeShift,
+    resolveEmployeeShiftsBatch,
+  } = await import('./core/repositories/shift-control.js');
+
+  const {
+    cancelWeeklyRestWorkAssignment,
+  } = await import('./core/repositories/leave-rest-workflows.js');
+
+  await f.assignment(date);
+
+  await cancelWeeklyRestWorkAssignment(
+    f.core,
+    'main',
+    `assignment-${date}`,
+    {
+      reason: 'Synthetic cancellation test',
+    },
+    {
+      uid: 'test-admin',
+    }
+  );
+
+  const single = await resolveEmployeeShift(
+    f.core,
+    'main',
+    employeeId,
+    date
+  );
+
+  const batch = await resolveEmployeeShiftsBatch(
+    f.core,
+    'main',
+    {
+      employeeIds: [employeeId],
+      dateFrom: date,
+      dateTo: date,
+    }
+  );
+
+  assert.equal(batch.rows.length, 1);
+
+  assert.notEqual(
+    single.source,
+    'weekly_rest_work_assignment'
+  );
+
+  assert.notEqual(
+    batch.rows[0].source,
+    'weekly_rest_work_assignment'
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_CANCELLED_ASSIGNMENT_EXCLUDED');
+});
