@@ -27,6 +27,56 @@ import type {
   CorePayrollObligationDeduction,
 } from "../types/hrCoreApi";
 
+export type CoreAttendancePolicyPeriod = {
+  id: string;
+  salon_id: string;
+  employee_id: string;
+  policy_mode: "required" | "exempt";
+  effective_from: string;
+  effective_to: string | null;
+  reason: string;
+  status: "active" | "cancelled";
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CoreAttendancePolicyDay = {
+  date: string;
+  mode: "required" | "exempt";
+  reason: string | null;
+  policyId: string | null;
+  version: number | null;
+  source: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+};
+
+export type CoreAttendancePolicyState = {
+  employeeId: string;
+  authority: "legacy" | "effective_dated";
+  revision: number;
+  legacyMode: "required" | "exempt";
+  legacyReason: string | null;
+  periods: CoreAttendancePolicyPeriod[];
+  snapshot: {
+    from: string;
+    to: string;
+    coverage: "required" | "exempt" | "mixed";
+    requiredDayCount: number;
+    exemptDayCount: number;
+    days: CoreAttendancePolicyDay[];
+  } | null;
+};
+
+export type CoreAttendancePolicyInput = {
+  mode: "required" | "exempt";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reason: string;
+  confirmLegacyAdoption?: boolean;
+};
+
 function camel<T>(row: Record<string, unknown>): T {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
@@ -290,6 +340,60 @@ export const CoreHrService = {
     invalidateResolvedShiftRangeCache(employeeId);
     return camel<CoreHrEmployee>(row);
   },
+  async getAttendancePolicy(
+    employeeId: string,
+    query: { dateFrom?: string; dateTo?: string } = {}
+  ) {
+    return coreApiRequest<CoreAttendancePolicyState>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/attendance-policy`,
+      { query }
+    );
+  },
+
+  async createAttendancePolicy(
+    employeeId: string,
+    input: CoreAttendancePolicyInput
+  ) {
+    const row = await coreApiRequest<CoreAttendancePolicyPeriod>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/attendance-policy`,
+      { method: "POST", body: input }
+    );
+
+    invalidateResolvedShiftRangeCache(employeeId);
+
+    return row;
+  },
+
+  async updateAttendancePolicy(
+    employeeId: string,
+    policyId: string,
+    input: Partial<CoreAttendancePolicyInput> & { version: number }
+  ) {
+    const row = await coreApiRequest<CoreAttendancePolicyPeriod>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/attendance-policy/${encodeURIComponent(policyId)}`,
+      { method: "PATCH", body: input }
+    );
+
+    invalidateResolvedShiftRangeCache(employeeId);
+
+    return row;
+  },
+
+  async cancelAttendancePolicy(
+    employeeId: string,
+    policyId: string,
+    input: { version: number; reason: string }
+  ) {
+    const row = await coreApiRequest<CoreAttendancePolicyPeriod>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/attendance-policy/${encodeURIComponent(policyId)}`,
+      { method: "DELETE", body: input }
+    );
+
+    invalidateResolvedShiftRangeCache(employeeId);
+
+    return row;
+  },
+
   async listShiftTemplates(query: { active?: "all" } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/shift-templates", { query });
     return rows.map((row) => camel<CoreShiftTemplate>(row));

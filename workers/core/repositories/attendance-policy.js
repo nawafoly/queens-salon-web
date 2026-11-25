@@ -1121,3 +1121,88 @@ export async function clearAutomaticAttendanceAbsence(
     date,
   };
 }
+
+/**
+ * Canonical attendance policy state for authorized HR consumers.
+ * Returns policy history and optional daily resolution.
+ */
+export async function getEmployeeAttendancePolicyState(
+  db,
+  salonId,
+  employeeId,
+  query = {}
+) {
+  const employment = await dbFirst(
+    db,
+    `SELECT employee_id,
+            attendance_policy_authority,
+            attendance_policy_revision,
+            attendance_payroll_mode,
+            attendance_payroll_exemption_reason
+       FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  if (!employment) {
+    throw new AppError(
+      404,
+      'core_attendance_policy:employee_not_found'
+    );
+  }
+
+  const revision = validateAttendancePolicyRevision(
+    employment.attendance_policy_revision
+  );
+
+  const periods = await loadAttendancePolicyPeriods(
+    db,
+    salonId,
+    employeeId
+  );
+
+  const from = query.dateFrom ?? query.date_from;
+  const to = query.dateTo ?? query.date_to;
+
+  if (Boolean(from) !== Boolean(to)) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_period'
+    );
+  }
+
+  const snapshot = from && to
+    ? buildPayrollAttendancePolicySnapshot(
+        employment,
+        periods,
+        from,
+        to
+      )
+    : null;
+
+  const finalRevision = await readAttendancePolicyRevision(
+    db,
+    salonId,
+    employeeId
+  );
+
+  if (revision !== finalRevision) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:concurrent_policy_change'
+    );
+  }
+
+  return {
+    employeeId,
+    authority: employment.attendance_policy_authority,
+    revision,
+    legacyMode: employment.attendance_payroll_mode,
+    legacyReason:
+      employment.attendance_payroll_exemption_reason,
+    periods,
+    snapshot,
+  };
+}

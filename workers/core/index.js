@@ -228,6 +228,12 @@ import {
 } from './repositories/permissions.js';
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
+  getEmployeeAttendancePolicyState,
+  createAttendancePolicyPeriod,
+  updateAttendancePolicyPeriod,
+  cancelAttendancePolicyPeriod,
+} from './repositories/attendance-policy.js';
+import {
   approvePayrollEntry,
   recordLatePayrollApproval,
   deferPayrollDeductions,
@@ -892,6 +898,30 @@ function match(url, method) {
 
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+
+  const attendancePolicyRoute = path.match(
+    /^\/api\/core\/hr\/employees\/([^/]+)\/attendance-policy(?:\/([^/]+))?$/
+  );
+
+  if (attendancePolicyRoute) {
+    const id = attendancePolicyRoute[1];
+    const policyId = attendancePolicyRoute[2] || null;
+
+    if (!policyId && ["GET", "POST"].includes(method)) {
+      return {
+        name: "hr-employee:attendance-policy",
+        id,
+      };
+    }
+
+    if (policyId && ["PATCH", "DELETE"].includes(method)) {
+      return {
+        name: "hr-employee:attendance-policy",
+        id,
+        policyId,
+      };
+    }
+  }
   if (
     path === "/api/core/hr/resolved-shifts/batch" &&
     method === "POST"
@@ -2713,6 +2743,63 @@ async function dispatch(ctx, route, method, body, query, env) {
           "",
         actorInfo
       );
+
+    case "hr-employee:attendance-policy": {
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "employees.manage",
+          "attendance.view",
+          "payroll.view",
+          "payroll.manage",
+        ]);
+
+        return getEmployeeAttendancePolicyState(
+          db,
+          ctx.salonId,
+          route.id,
+          query
+        );
+      }
+
+      requirePermission(ctx, "employees.manage");
+      requirePermission(ctx, "payroll.manage");
+
+      if (method === "POST" && !route.policyId) {
+        return createAttendancePolicyPeriod(
+          db,
+          ctx.salonId,
+          route.id,
+          body,
+          actorInfo
+        );
+      }
+
+      if (method === "PATCH" && route.policyId) {
+        return updateAttendancePolicyPeriod(
+          db,
+          ctx.salonId,
+          route.id,
+          route.policyId,
+          body,
+          actorInfo
+        );
+      }
+
+      if (method === "DELETE" && route.policyId) {
+        return cancelAttendancePolicyPeriod(
+          db,
+          ctx.salonId,
+          route.id,
+          route.policyId,
+          body,
+          actorInfo
+        );
+      }
+
+      break;
+    }
 
     case "hr-employee:schedules":
       requirePermission(ctx, "employees.schedule.manage");
