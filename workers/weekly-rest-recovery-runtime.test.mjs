@@ -3977,3 +3977,227 @@ test('HR27 request isolation: inactive historical punch cannot be edited', async
 
   await hr27VerifyRejectedExecution(f, 'voided-punch');
 });
+
+async function hr28SeedExternalPunch(f, {
+  id,
+  employeeId = 'test-employee',
+  employeeUid = 'test-uid',
+  date = '2026-09-01',
+  type = 'check_out',
+  result = 'allowed',
+}) {
+  const timestamp = `${date}T20:00:00.000Z`;
+
+  await f.attendance.prepare(`
+    INSERT INTO attendance_records (
+      id, employee_uid, employee_doc_id,
+      type, server_time, work_date,
+      location_lat, location_lng,
+      location_accuracy, result,
+      accuracy_accepted, created_by_uid,
+      created_by_role, created_at, updated_at
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?,
+      0, 0, 10, ?,
+      1, ?, 'employee', ?, ?
+    )
+  `).bind(
+    id,
+    employeeUid,
+    employeeId,
+    type,
+    timestamp,
+    date,
+    result,
+    employeeUid,
+    timestamp,
+    timestamp
+  ).run();
+}
+
+async function hr28ReadExternalOperations(f) {
+  const result = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_operations
+    ORDER BY id
+  `).all();
+
+  return result.results;
+}
+
+async function hr28VerifyRejectedRequest(f, requestId) {
+  const operationsBefore = await hr28ReadExternalOperations(f);
+
+  await hr27VerifyRejectedExecution(f, requestId);
+
+  assert.deepEqual(
+    await hr28ReadExternalOperations(f),
+    operationsBefore,
+    'Rejected request must not commit external attendance operations'
+  );
+}
+
+test('HR28 external attendance isolation: valid checkout correction succeeds', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr28-positive');
+
+  const checkout = await f.attendance.prepare(`
+    SELECT id
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_out'
+      AND result = 'allowed'
+    LIMIT 1
+  `).first();
+
+  assert.ok(checkout?.id);
+  assert.equal(await f.balance(), 1440);
+
+  await hr27SeedApprovedRequest(f, 'hr28-valid-external', {
+    correctionType: 'delete_record',
+    recordId: `malikat:${checkout.id}`,
+  });
+
+  const result = await hr27ExecuteRequest(f, 'hr28-valid-external');
+
+  console.log(
+    'HR28_POSITIVE_RESULT:',
+    JSON.stringify(result)
+  );
+
+  const record = await f.attendance.prepare(`
+    SELECT result, rejection_reason
+    FROM attendance_records
+    WHERE id = ?
+  `).bind(checkout.id).first();
+
+  assert.equal(record.result, 'rejected');
+
+  assert.equal(
+    record.rejection_reason,
+    'voided_by_employee_request'
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  console.log('VERIFIED_HR28_VALID_EXTERNAL_CORRECTION');
+});
+
+test('HR28 external attendance isolation: rejected punch cannot be updated', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-rejected-punch',
+    result: 'rejected',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-rejected-update', {
+    correctionType: 'update_check_out',
+    recordId: 'malikat:hr28-rejected-punch',
+    requestedTime: '21:00',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-rejected-update');
+});
+
+test('HR28 external attendance isolation: rejected punch cannot create another void operation', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-already-voided',
+    result: 'rejected',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-repeated-void', {
+    correctionType: 'delete_record',
+    recordId: 'malikat:hr28-already-voided',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-repeated-void');
+});
+
+test('HR28 external attendance isolation: another employee UID cannot be corrected', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedEmployee(
+    f,
+    'hr28-other-employee',
+    'hr28-other-uid'
+  );
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-other-punch',
+    employeeId: 'hr28-other-employee',
+    employeeUid: 'hr28-other-uid',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-other-employee', {
+    correctionType: 'update_check_out',
+    recordId: 'malikat:hr28-other-punch',
+    requestedTime: '21:00',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-other-employee');
+});
+
+test('HR28 external attendance isolation: another work date cannot be corrected', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-other-date',
+    date: '2026-09-02',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-date-mismatch', {
+    correctionType: 'update_check_out',
+    recordId: 'malikat:hr28-other-date',
+    requestedTime: '21:00',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-date-mismatch');
+});
+
+test('HR28 external attendance isolation: mismatched punch type cannot be updated', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-wrong-type',
+    type: 'check_in',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-type-mismatch', {
+    correctionType: 'update_check_out',
+    recordId: 'malikat:hr28-wrong-type',
+    requestedTime: '21:00',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-type-mismatch');
+});
+
+test('HR28 external attendance isolation: invalid explicit ID cannot select another punch', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-existing-punch',
+  });
+
+  await hr27SeedApprovedRequest(f, 'hr28-invalid-id', {
+    correctionType: 'update_check_out',
+    recordId: 'malikat:hr28-missing-punch',
+    currentTime: '23:00',
+    requestedTime: '21:00',
+  });
+
+  await hr28VerifyRejectedRequest(f, 'hr28-invalid-id');
+});
