@@ -1524,3 +1524,216 @@ test('weekly rest reversal recovers unlinked committed ledger credit', async t =
     1
   );
 });
+
+
+test('ordinary employee checkout restores reversed weekly rest entitlement', async t => {
+  const f = await fixture(t);
+
+  const date = '2026-09-01';
+
+  await createCorrectionEntitlement(
+    f,
+    'ordinary-punch-restoration'
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  const deleted = await adminAdjust(f, {
+    clearCheckOut: true,
+    operationId: 'ordinary-punch-delete-checkout',
+  });
+
+  assert.equal(
+    deleted.status,
+    200,
+    await deleted.clone().text()
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  const assignment = await f.core.prepare(`
+    SELECT status, correction_pending
+    FROM employee_weekly_rest_work_assignments
+    WHERE rest_date = ?
+  `).bind(date).first();
+
+  assert.equal(assignment.status, 'completed');
+  assert.equal(Number(assignment.correction_pending), 0);
+
+  await f.core.prepare(`
+    UPDATE employee_employment
+    SET allowed_zone_ids_json = '["test-zone"]'
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+  `).run();
+
+  await f.attendance.prepare(`
+    INSERT INTO work_zones (
+      id, name, type, center_lat, center_lng,
+      radius_meters, active, created_at, updated_at,
+      created_by_uid, updated_by_uid
+    )
+    VALUES (
+      'test-zone', 'Isolated zone', 'radius',
+      24.7, 46.6, 1000, 1,
+      '2026-01-01', '2026-01-01',
+      'test-admin', 'test-admin'
+    )
+  `).run();
+
+  t.mock.timers.enable({
+    apis: ['Date'],
+    now: new Date(`${date}T20:15:00.000Z`),
+  });
+
+  const {
+    handleAttendanceRequest,
+  } = await import('./attendance-worker.js');
+
+  async function employeeCheckout() {
+    const request = new Request(
+      'https://test.invalid/attendance/record',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'check_out',
+          operationId: 'ordinary-rest-checkout',
+          employeeId: 'test-employee',
+          location: {
+            lat: 24.7,
+            lng: 46.6,
+            accuracy: 10,
+          },
+          deviceInfo: {},
+        }),
+      }
+    );
+
+    return handleAttendanceRequest({
+      request,
+      url: new URL(request.url),
+      db: f.attendance,
+      directoryDb: f.core,
+      salonId: 'main',
+
+      resolveRequesterContext: async () => ({
+        ok: true,
+        uid: 'test-uid',
+        email: 'staff@example.invalid',
+        userData: {
+          employeeId: 'test-employee',
+        },
+        runtime: {
+          isActive: true,
+          role: 'staff',
+          permissionsAllow: [
+            'attendance.own.view',
+          ],
+        },
+      }),
+
+      fetchFirestoreDocument: async () => null,
+      queryFirestoreDocuments: async () => [],
+    });
+  }
+
+  const response = await employeeCheckout();
+
+  assert.equal(
+    response.status,
+    200,
+    await response.clone().text()
+  );
+
+  const payload = await response.json();
+
+  assert.equal(
+    payload.result,
+    'allowed',
+    JSON.stringify(payload)
+  );
+
+  const checkout = await f.attendance.prepare(`
+    SELECT id, result, work_date
+    FROM attendance_records
+    WHERE id = 'ordinary-rest-checkout'
+  `).first();
+
+  assert.ok(checkout);
+  assert.equal(checkout.result, 'allowed');
+  assert.equal(checkout.work_date, date);
+
+  const operation = await f.attendance.prepare(`
+    SELECT origin, status
+    FROM attendance_operations
+    WHERE id = 'punch:ordinary-rest-checkout'
+  `).first();
+
+  assert.ok(operation);
+  assert.equal(operation.origin, 'punch');
+  assert.equal(operation.status, 'completed');
+
+  console.log('VERIFIED_REAL_EMPLOYEE_CHECKOUT_ALLOWED');
+  console.log('VERIFIED_ORDINARY_PUNCH_OUTBOX_COMPLETED');
+  console.log('BALANCE_AFTER_ORDINARY_CHECKOUT:', await f.balance());
+
+  assert.equal(
+    await f.balance(),
+    1440,
+    'P2_REGRESSION: ordinary checkout must restore reversed entitlement'
+  );
+
+  const replay = await employeeCheckout();
+
+  assert.equal(
+    replay.status,
+    200,
+    await replay.clone().text()
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  await recoverAssignedWeeklyRestWork(
+    f.core,
+    'main',
+    f.attendance,
+    {
+      fromDate: '2026-08-31',
+      now: new Date('2026-09-02T01:00:00Z'),
+      employeeId: 'test-employee',
+      restDate: date,
+    }
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_restore'
+    ),
+    1
+  );
+
+  const checkoutCount = await f.attendance.prepare(`
+    SELECT COUNT(*) AS count
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = ?
+      AND type = 'check_out'
+      AND result = 'allowed'
+  `).bind(date).first();
+
+  assert.equal(Number(checkoutCount.count), 1);
+});

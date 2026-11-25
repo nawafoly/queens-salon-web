@@ -2152,17 +2152,19 @@ async function recoverAttendanceOperation(db, directoryDb, op) {
     reason: op.reason,
   });
 
-  if (op.origin !== "punch") {
-    await reconcileCreditedWeeklyRest(
-      directoryDb,
-      op.salon_id,
-      op.employee_id,
-      op.work_date,
-      db,
-      actor,
-      op.id
-    );
+  // Reconcile previously credited weekly rest entitlements for both
+  // ordinary punches and administrative attendance corrections.
+  await reconcileCreditedWeeklyRest(
+    directoryDb,
+    op.salon_id,
+    op.employee_id,
+    op.work_date,
+    db,
+    actor,
+    op.id
+  );
 
+  if (op.origin !== "punch") {
     try {
       const recovery = await recoverAssignedWeeklyRestWork(
         directoryDb,
