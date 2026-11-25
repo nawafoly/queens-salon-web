@@ -27,6 +27,13 @@ import {
 import { listAttendance } from './attendance.js';
 import { statutorySickPayrollAdjustment } from './sick-payroll-adjustment.js';
 import { listAbsences } from './absences.js';
+import {
+  loadAttendancePolicyPeriods,
+  buildPayrollAttendancePolicySnapshot,
+  validatePayrollAttendancePolicySnapshot,
+  payrollAttendancePolicyMap,
+  filterPayrollAttendanceAbsences,
+} from './attendance-policy.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
 import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.js';
 import { payrollAttendanceReadiness } from '../../../src/helpers/hr/payrollReadiness.js';
@@ -385,7 +392,55 @@ async function buildCanonicalAttendanceSummary(
     completedPeriodEnd < servicePeriod.periodEnd
       ? completedPeriodEnd
       : servicePeriod.periodEnd;
-  const attendanceMode = cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt' ? 'exempt' : 'required';
+  const legacyAttendanceMode =
+    cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt'
+      ? 'exempt'
+      : 'required';
+
+  // Preserve the original calculation contract for locked payroll
+  // created before effective-dated attendance policy existed.
+  const historicalLegacyPolicy =
+    shiftRuntime.allowInactiveHistoricalPayroll === true &&
+    !shiftRuntime.attendancePolicySnapshot;
+
+  let attendancePolicySnapshot = null;
+
+  if (servicePeriod.hasServiceInMonth && !historicalLegacyPolicy) {
+    if (shiftRuntime.attendancePolicySnapshot) {
+      attendancePolicySnapshot =
+        validatePayrollAttendancePolicySnapshot(
+          shiftRuntime.attendancePolicySnapshot,
+          servicePeriod.periodStart,
+          servicePeriod.periodEnd
+        );
+    } else {
+      const periods = await loadAttendancePolicyPeriods(
+        db,
+        salonId,
+        employeeId
+      );
+
+      attendancePolicySnapshot =
+        buildPayrollAttendancePolicySnapshot(
+          employment,
+          periods,
+          servicePeriod.periodStart,
+          servicePeriod.periodEnd
+        );
+    }
+  }
+
+  const attendancePolicies = attendancePolicySnapshot
+    ? payrollAttendancePolicyMap(attendancePolicySnapshot)
+    : null;
+
+  const attendanceMode =
+    attendancePolicySnapshot?.mode || legacyAttendanceMode;
+
+  const attendanceExemptionReason =
+    attendancePolicySnapshot
+      ? attendancePolicySnapshot.exemptionReasons.join(' / ') || null
+      : optionalText(employment.attendance_payroll_exemption_reason) || null;
   if (!servicePeriod.hasServiceInMonth) {
     return {
       summary: {
@@ -493,7 +548,15 @@ async function buildCanonicalAttendanceSummary(
       }
     }
   }
-  for (const absence of absenceRows || []) {
+  // This is a financial projection only. Never mutate source absence rows.
+  const applicableAbsenceRows = attendancePolicySnapshot
+    ? filterPayrollAttendanceAbsences(
+        absenceRows,
+        attendancePolicySnapshot
+      )
+    : (absenceRows || []);
+
+  for (const absence of applicableAbsenceRows) {
     const dateKey = cleanText(absence.date_key);
     if (dateKey < servicePeriod.periodStart || dateKey > effectiveCompletedEnd) continue;
     approvedAbsenceDays += payrollAbsenceUnit(absence.absence_type);
@@ -530,10 +593,15 @@ async function buildCanonicalAttendanceSummary(
         attendanceRecordCount: punchRecordCount,
         attendanceLinkStatus: 'exempt',
         attendancePayrollMode: 'exempt',
-        attendancePayrollExemptionReason: optionalText(employment.attendance_payroll_exemption_reason) || null,
+        attendancePayrollExemptionReason: attendanceExemptionReason,
+        attendancePolicySnapshot,
+        attendancePolicyCoverage: attendancePolicySnapshot?.coverage || 'exempt',
+        attendanceExemptDayCount: attendancePolicySnapshot?.exemptDayCount ?? null,
+        attendanceRequiredDayCount: attendancePolicySnapshot?.requiredDayCount ?? null,
+        requiredAttendanceRecordCount: 0,
         attendanceDeductionEligible: false,
-        attendanceDeductionNote: optionalText(employment.attendance_payroll_exemption_reason)
-          ? `معفى من البصمة للراتب: ${cleanText(employment.attendance_payroll_exemption_reason)}`
+        attendanceDeductionNote: attendanceExemptionReason
+          ? `معفى من البصمة للراتب: ${attendanceExemptionReason}`
           : 'معفى من البصمة للراتب.',
         attendanceNotes: ['Canonical Core attendance exemption applied.'],
       },
@@ -573,10 +641,16 @@ async function buildCanonicalAttendanceSummary(
       scheduleHours.push(scheduledHours);
       totalScheduledMinutes += scheduledMinutes;
 
+      // Scheduled service remains evidence of employment.
+      // Exempt days do not produce punch-derived deductions.
+      if (attendancePolicies?.get(dateKey)?.mode === 'exempt') {
+        continue;
+      }
+
       if (paidFullDayLeaveDates.has(dateKey)) continue;
 
       const fullUnpaidLeave = (leaveRows || []).some((row) => payrollLeaveCoversDate(row, dateKey, recalledLeaveDates) && payrollLeaveIsUnpaid(row) && !payrollLeaveIsPartial(row));
-      const recordedAbsenceUnit = (absenceRows || [])
+      const recordedAbsenceUnit = applicableAbsenceRows
         .filter((row) => cleanText(row.date_key) === dateKey)
         .reduce((total, row) => Math.max(total, payrollAbsenceUnit(row.absence_type)), 0);
       const absenceUnit = Math.max(fullUnpaidLeave ? 1 : 0, recordedAbsenceUnit);
@@ -649,7 +723,16 @@ async function buildCanonicalAttendanceSummary(
   const dailyScheduledHours = scheduleHours.length
     ? payrollRoundHours(scheduleHours.reduce((sum, value) => sum + value, 0) / scheduleHours.length)
     : payrollRoundHours(employment.daily_scheduled_hours);
-  const deductionEligible = punchRecordCount > 0;
+  const requiredPunchRecordCount = attendancePolicies
+    ? periodAttendance.filter(row =>
+        attendancePolicies.get(cleanText(row.date_key))?.mode === 'required' &&
+        ['check_in', 'check_out'].includes(
+          cleanText(row.record_type).toLowerCase()
+        )
+      ).length
+    : punchRecordCount;
+
+  const deductionEligible = requiredPunchRecordCount > 0;
   return {
     summary: {
       totalScheduledHours: payrollRoundHours(totalScheduledMinutes / 60),
@@ -678,7 +761,12 @@ async function buildCanonicalAttendanceSummary(
       attendanceRecordCount: punchRecordCount,
       attendanceLinkStatus: deductionEligible ? 'confirmed' : 'unlinked',
       attendancePayrollMode: 'required',
-      attendancePayrollExemptionReason: null,
+      attendancePayrollExemptionReason: attendanceExemptionReason,
+      attendancePolicySnapshot,
+      attendancePolicyCoverage: attendancePolicySnapshot?.coverage || 'required',
+      attendanceExemptDayCount: attendancePolicySnapshot?.exemptDayCount ?? null,
+      attendanceRequiredDayCount: attendancePolicySnapshot?.requiredDayCount ?? null,
+      requiredAttendanceRecordCount: requiredPunchRecordCount,
       attendanceDeductionEligible: deductionEligible,
       attendanceDeductionNote: deductionEligible ? null : 'لم يتم تطبيق خصم ساعات تلقائي لأن سجلات الحضور غير مرتبطة أو غير متاحة.',
       attendanceNotes: ['Canonical Core D1 attendance summary.'],
@@ -1868,7 +1956,11 @@ async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, 
     // This bypass is internal-only and scoped to immutable locked payroll.
     // It preserves shifts effective before a former employee's end date while
     // every normal scheduling/payroll path still requires active employment.
-    { allowInactiveHistoricalPayroll: true }
+    {
+      allowInactiveHistoricalPayroll: true,
+      attendancePolicySnapshot:
+        sourceAttendance.attendancePolicySnapshot || null,
+    }
   );
   const summary = attendance.summary;
   const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
@@ -3210,6 +3302,8 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
       monthlyHoursSource: authority.monthlyHoursSource,
       attendancePayrollMode: authority.summary.attendancePayrollMode || 'required',
       attendancePayrollExemptionReason: authority.summary.attendancePayrollExemptionReason || null,
+      attendancePolicyCoverage: authority.summary.attendancePolicyCoverage || null,
+      attendancePolicySnapshot: authority.summary.attendancePolicySnapshot || null,
       laborPolicyVersion: authority.laborPolicyVersion,
       fixedActualWageHalalas: authority.fixedActualWageHalalas,
       wageSourceUpdatedAt: authority.wageSourceUpdatedAt,
