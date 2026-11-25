@@ -4499,3 +4499,298 @@ for (const correctionType of [
     );
   });
 }
+
+test('HR29 final recovery: approved request adds exactly one attendance record', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr29-add-check-in',
+    {
+      correctionType: 'add_check_in',
+      requestedTime: '15:00',
+    }
+  );
+
+  const result = await hr27ExecuteRequest(
+    f,
+    'hr29-add-check-in'
+  );
+
+  console.log(
+    'HR29_ADD_RESULT:',
+    JSON.stringify(result)
+  );
+
+  assert.equal(result.execution_status, 'completed');
+
+  const records = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_in'
+      AND result = 'allowed'
+  `).all();
+
+  assert.equal(records.results.length, 1);
+
+  assert.equal(
+    records.results[0].server_time,
+    '2026-09-01T12:00:00.000Z'
+  );
+
+  const operations = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_operations
+    WHERE id = 'core-request:hr29-add-check-in'
+  `).all();
+
+  assert.equal(operations.results.length, 1);
+  assert.equal(operations.results[0].status, 'completed');
+
+  const before = JSON.parse(
+    operations.results[0].before_records
+  );
+
+  const after = JSON.parse(
+    operations.results[0].after_records
+  );
+
+  assert.equal(before.length, 0);
+  assert.equal(after.length, 1);
+
+  assert.equal(
+    after[0].id,
+    records.results[0].id
+  );
+
+  console.log('VERIFIED_HR29_SINGLE_INSERT');
+});
+
+test('HR29 final recovery: lost acknowledgement after insert does not duplicate attendance', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr29-lost-insert-ack',
+    {
+      correctionType: 'add_check_in',
+      requestedTime: '15:00',
+    }
+  );
+
+  const originalBatch =
+    f.attendance.batch.bind(f.attendance);
+
+  let injected = false;
+
+  f.attendance.batch = async statements => {
+    const result = await originalBatch(statements);
+
+    if (!injected) {
+      const saved = await f.attendance.prepare(`
+        SELECT id
+        FROM attendance_operations
+        WHERE id = 'core-request:hr29-lost-insert-ack'
+      `).first();
+
+      if (saved) {
+        injected = true;
+
+        throw new Error(
+          'HR29_SIMULATED_ACK_LOSS_AFTER_INSERT'
+        );
+      }
+    }
+
+    return result;
+  };
+
+  let result;
+
+  try {
+    result = await hr27ExecuteRequest(
+      f,
+      'hr29-lost-insert-ack'
+    );
+  } finally {
+    f.attendance.batch = originalBatch;
+  }
+
+  assert.equal(injected, true);
+  assert.equal(result.execution_status, 'completed');
+
+  const records = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_in'
+  `).all();
+
+  assert.equal(records.results.length, 1);
+
+  const operations = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_operations
+    WHERE id = 'core-request:hr29-lost-insert-ack'
+  `).all();
+
+  assert.equal(operations.results.length, 1);
+  assert.equal(operations.results[0].status, 'completed');
+
+  assert.equal(
+    JSON.parse(operations.results[0].after_records).length,
+    1
+  );
+
+  console.log('VERIFIED_HR29_INSERT_ACK_LOSS_RECOVERED');
+  console.log('VERIFIED_HR29_NO_DUPLICATE_ATTENDANCE');
+});
+
+test('HR29 final recovery: lost acknowledgement after checkout void reverses entitlement exactly once', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(
+    f,
+    'hr29-financial-replay'
+  );
+
+  assert.equal(await f.balance(), 1440);
+
+  const checkout = await f.attendance.prepare(`
+    SELECT id
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_out'
+      AND result = 'allowed'
+    LIMIT 1
+  `).first();
+
+  assert.ok(checkout?.id);
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr29-lost-void-ack',
+    {
+      correctionType: 'delete_record',
+      recordId: `malikat:${checkout.id}`,
+    }
+  );
+
+  const originalBatch =
+    f.attendance.batch.bind(f.attendance);
+
+  let injected = false;
+
+  f.attendance.batch = async statements => {
+    const result = await originalBatch(statements);
+
+    if (!injected) {
+      const saved = await f.attendance.prepare(`
+        SELECT id
+        FROM attendance_operations
+        WHERE id = 'core-request:hr29-lost-void-ack'
+      `).first();
+
+      if (saved) {
+        injected = true;
+
+        throw new Error(
+          'HR29_SIMULATED_ACK_LOSS_AFTER_VOID'
+        );
+      }
+    }
+
+    return result;
+  };
+
+  let result;
+
+  try {
+    result = await hr27ExecuteRequest(
+      f,
+      'hr29-lost-void-ack'
+    );
+  } finally {
+    f.attendance.batch = originalBatch;
+  }
+
+  assert.equal(injected, true);
+  assert.equal(result.execution_status, 'completed');
+
+  const record = await f.attendance.prepare(`
+    SELECT result, rejection_reason
+    FROM attendance_records
+    WHERE id = ?
+  `).bind(checkout.id).first();
+
+  assert.equal(record.result, 'rejected');
+
+  assert.equal(
+    record.rejection_reason,
+    'voided_by_employee_request'
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  const operations = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_operations
+    WHERE id = 'core-request:hr29-lost-void-ack'
+  `).all();
+
+  assert.equal(operations.results.length, 1);
+  assert.equal(operations.results[0].status, 'completed');
+
+  const {
+    finishAttendanceOperation,
+  } = await import('./attendance-worker.js');
+
+  const ledgerBefore = await f.core.prepare(`
+    SELECT *
+    FROM employee_comp_time_ledger
+    ORDER BY id
+  `).all();
+
+  const replay = await finishAttendanceOperation(
+    f.attendance,
+    f.core,
+    'core-request:hr29-lost-void-ack'
+  );
+
+  const replayPayload = await replay.json();
+
+  assert.equal(replayPayload.fullyCompleted, true);
+  assert.equal(await f.balance(), 0);
+
+  assert.deepEqual(
+    await f.core.prepare(`
+      SELECT *
+      FROM employee_comp_time_ledger
+      ORDER BY id
+    `).all(),
+    ledgerBefore
+  );
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  console.log('VERIFIED_HR29_VOID_ACK_LOSS_RECOVERED');
+  console.log('VERIFIED_HR29_FINANCIAL_REPLAY_IDEMPOTENT');
+});
