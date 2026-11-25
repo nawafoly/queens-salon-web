@@ -1637,3 +1637,373 @@ test('HR05C: policy lookup failure cannot create an absence', async t => {
 
   assert.deepEqual(hr05AbsenceRows(database), []);
 });
+
+import {
+  buildPayrollAttendancePolicySnapshot,
+  validatePayrollAttendancePolicySnapshot,
+  payrollAttendancePolicyMap,
+  payrollAttendancePolicySnapshotsMatch,
+  filterPayrollAttendanceAbsences,
+} from './core/repositories/attendance-policy.js';
+
+const hr05ManagedEmployment = {
+  attendance_policy_authority: 'effective_dated',
+  attendance_payroll_mode: 'required',
+};
+
+test('HR05D1: mixed payroll month resolves each date independently', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(snapshot.schemaVersion, 1);
+  assert.equal(snapshot.coverage, 'mixed');
+  assert.equal(snapshot.mode, 'required');
+  assert.equal(snapshot.requiredDayCount, 19);
+  assert.equal(snapshot.exemptDayCount, 11);
+
+  const map = payrollAttendancePolicyMap(snapshot);
+
+  assert.equal(map.get('2026-11-14').mode, 'required');
+  assert.equal(map.get('2026-11-15').mode, 'exempt');
+  assert.equal(map.get('2026-11-25').mode, 'exempt');
+  assert.equal(map.get('2026-11-26').mode, 'required');
+});
+
+test('HR05D1: fully exempt month remains exempt', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [{
+      ...period,
+      effective_from: '2026-11-01',
+      effective_to: null,
+    }],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(snapshot.coverage, 'exempt');
+  assert.equal(snapshot.mode, 'exempt');
+  assert.equal(snapshot.requiredDayCount, 0);
+  assert.equal(snapshot.exemptDayCount, 30);
+  assert.equal(snapshot.exemptionReasonComplete, true);
+});
+
+test('HR05D1: legacy exemption remains compatible', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    legacyExempt,
+    [],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(snapshot.authority, 'legacy');
+  assert.equal(snapshot.mode, 'exempt');
+  assert.equal(snapshot.exemptDayCount, 30);
+
+  assert.ok(snapshot.days.every(
+    day => day.effectiveFrom === null
+  ));
+});
+
+test('HR05D1: missing exemption reason remains visible to readiness', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    {
+      attendance_payroll_mode: 'exempt',
+    },
+    [],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(snapshot.exemptionReasonComplete, false);
+  assert.deepEqual(snapshot.exemptionReasons, []);
+});
+
+test('HR05D1: payroll snapshot preserves exact policy revision', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const map = payrollAttendancePolicyMap(snapshot);
+
+  const day = map.get('2026-11-20');
+
+  assert.equal(day.policyId, period.id);
+  assert.equal(day.version, 1);
+  assert.equal(day.source, 'effective_period');
+  assert.equal(day.effectiveFrom, '2026-11-15');
+  assert.equal(day.effectiveTo, '2026-11-25');
+});
+
+test('HR05D1: locked snapshot does not change after policy cancellation', () => {
+  const locked = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const persisted = JSON.parse(
+    JSON.stringify(locked)
+  );
+
+  const current = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [{
+      ...period,
+      status: 'cancelled',
+      version: 2,
+    }],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(
+    payrollAttendancePolicyMap(persisted)
+      .get('2026-11-20').mode,
+    'exempt'
+  );
+
+  assert.equal(
+    payrollAttendancePolicyMap(current)
+      .get('2026-11-20').mode,
+    'required'
+  );
+
+  assert.equal(
+    payrollAttendancePolicySnapshotsMatch(
+      persisted,
+      current
+    ),
+    false
+  );
+});
+
+test('HR05D1: changed exemption revision invalidates a draft snapshot', () => {
+  const before = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const after = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [{
+      ...period,
+      reason: 'Updated administrative reason',
+      version: 2,
+    }],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(before.mode, after.mode);
+  assert.equal(before.exemptDayCount, after.exemptDayCount);
+
+  assert.equal(
+    payrollAttendancePolicySnapshotsMatch(before, after),
+    false
+  );
+});
+
+test('HR05D1: identical snapshots survive JSON serialization', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.equal(
+    payrollAttendancePolicySnapshotsMatch(
+      snapshot,
+      JSON.parse(JSON.stringify(snapshot))
+    ),
+    true
+  );
+});
+
+test('HR05D1: exemption removes automatic absence only', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const absences = [
+    {
+      id: 'required-automatic',
+      date_key: '2026-11-14',
+      absence_type: 'automatic_check_in_lock',
+    },
+    {
+      id: 'exempt-automatic',
+      date_key: '2026-11-16',
+      absence_type: 'automatic_check_in_lock',
+    },
+    {
+      id: 'exempt-manual',
+      date_key: '2026-11-17',
+      absence_type: 'full_day',
+    },
+    {
+      id: 'exempt-half-day',
+      date_key: '2026-11-18',
+      absence_type: 'half_day',
+    },
+    {
+      id: 'after-exemption',
+      date_key: '2026-11-26',
+      absence_type: 'automatic_check_in_lock',
+    },
+    {
+      id: 'outside-month',
+      date_key: '2026-10-30',
+      absence_type: 'full_day',
+    },
+  ];
+
+  const original = structuredClone(absences);
+
+  const applicable = filterPayrollAttendanceAbsences(
+    absences,
+    snapshot
+  );
+
+  assert.deepEqual(
+    applicable.map(row => row.id),
+    [
+      'required-automatic',
+      'exempt-manual',
+      'exempt-half-day',
+      'after-exemption',
+    ]
+  );
+
+  assert.deepEqual(absences, original);
+});
+
+test('HR05D1: cancellation restores original automatic absence classification', () => {
+  const absences = [{
+    id: 'historical',
+    date_key: '2026-11-20',
+    absence_type: 'automatic_check_in_lock',
+  }];
+
+  const active = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const cancelled = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [{
+      ...period,
+      status: 'cancelled',
+      version: 2,
+    }],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.deepEqual(
+    filterPayrollAttendanceAbsences(absences, active),
+    []
+  );
+
+  assert.deepEqual(
+    filterPayrollAttendanceAbsences(absences, cancelled),
+    absences
+  );
+});
+
+test('HR05D1: missing or duplicate snapshot dates fail closed', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  const missing = structuredClone(snapshot);
+  missing.days.pop();
+
+  const duplicate = structuredClone(snapshot);
+  duplicate.days[1] = duplicate.days[0];
+
+  for (const invalid of [missing, duplicate]) {
+    assert.throws(
+      () => validatePayrollAttendancePolicySnapshot(
+        invalid,
+        '2026-11-01',
+        '2026-11-30'
+      )
+    );
+  }
+});
+
+test('HR05D1: tampered coverage and day counts fail closed', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  for (const change of [
+    { mode: 'exempt' },
+    { coverage: 'exempt' },
+    { requiredDayCount: 0 },
+    { exemptDayCount: 30 },
+    { exemptionReasonComplete: false },
+  ]) {
+    assert.throws(
+      () => validatePayrollAttendancePolicySnapshot(
+        { ...snapshot, ...change },
+        '2026-11-01',
+        '2026-11-30'
+      )
+    );
+  }
+});
+
+test('HR05D1: mismatched payroll month cannot reuse another snapshot', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [period],
+    '2026-11-01',
+    '2026-11-30'
+  );
+
+  assert.throws(
+    () => validatePayrollAttendancePolicySnapshot(
+      snapshot,
+      '2026-10-01',
+      '2026-10-31'
+    )
+  );
+});
+
+test('HR05D1: leap-year date coverage remains exact', () => {
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    hr05ManagedEmployment,
+    [],
+    '2028-02-01',
+    '2028-02-29'
+  );
+
+  assert.equal(snapshot.days.length, 29);
+  assert.equal(snapshot.requiredDayCount, 29);
+  assert.equal(snapshot.mode, 'required');
+});

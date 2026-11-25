@@ -625,3 +625,317 @@ export async function recordAutomaticAttendanceAbsence(
     date,
   };
 }
+
+export const PAYROLL_ATTENDANCE_POLICY_SNAPSHOT_VERSION = 1;
+
+function policyDateRange(fromValue, toValue) {
+  const from = attendancePolicyDate(fromValue);
+  const to = attendancePolicyDate(toValue);
+
+  if (from > to) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_period'
+    );
+  }
+
+  const dates = [];
+
+  const current = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+
+  while (current <= end) {
+    dates.push(current.toISOString().slice(0, 10));
+
+    if (dates.length > 366) {
+      throw new AppError(
+        400,
+        'core_attendance_policy:period_too_large'
+      );
+    }
+
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+export function buildPayrollAttendancePolicySnapshot(
+  employment,
+  periods,
+  fromValue,
+  toValue
+) {
+  const dates = policyDateRange(fromValue, toValue);
+
+  const days = dates.map(date =>
+    resolveAttendancePolicyForDate(
+      employment,
+      periods,
+      date
+    )
+  );
+
+  const exemptDays = days.filter(
+    day => day.mode === 'exempt'
+  );
+
+  const requiredDays = days.filter(
+    day => day.mode === 'required'
+  );
+
+  const reasons = [
+    ...new Set(
+      exemptDays
+        .map(day => String(day.reason ?? '').trim())
+        .filter(Boolean)
+    ),
+  ].sort();
+
+  return {
+    schemaVersion:
+      PAYROLL_ATTENDANCE_POLICY_SNAPSHOT_VERSION,
+
+    authority:
+      employment.attendance_policy_authority ?? 'legacy',
+
+    from: dates[0],
+    to: dates[dates.length - 1],
+
+    coverage: exemptDays.length === 0
+      ? 'required'
+      : requiredDays.length === 0
+        ? 'exempt'
+        : 'mixed',
+
+    mode: requiredDays.length > 0
+      ? 'required'
+      : 'exempt',
+
+    requiredDayCount: requiredDays.length,
+    exemptDayCount: exemptDays.length,
+
+    exemptionReasons: reasons,
+
+    exemptionReasonComplete:
+      exemptDays.every(
+        day => Boolean(String(day.reason ?? '').trim())
+      ),
+
+    days,
+  };
+}
+
+export function validatePayrollAttendancePolicySnapshot(
+  snapshot,
+  fromValue,
+  toValue
+) {
+  const expectedDates =
+    policyDateRange(fromValue, toValue);
+
+  const invalid = () => {
+    throw new AppError(
+      409,
+      'core_attendance_policy:invalid_payroll_snapshot'
+    );
+  };
+
+  if (
+    !snapshot ||
+    snapshot.schemaVersion !==
+      PAYROLL_ATTENDANCE_POLICY_SNAPSHOT_VERSION ||
+    !['legacy', 'effective_dated'].includes(
+      snapshot.authority
+    ) ||
+    snapshot.from !== expectedDates[0] ||
+    snapshot.to !== expectedDates[expectedDates.length - 1] ||
+    !Array.isArray(snapshot.days) ||
+    snapshot.days.length !== expectedDates.length
+  ) {
+    invalid();
+  }
+
+  let requiredDayCount = 0;
+  let exemptDayCount = 0;
+
+  for (let index = 0; index < expectedDates.length; index++) {
+    const day = snapshot.days[index];
+
+    if (
+      !day ||
+      day.date !== expectedDates[index] ||
+      !['required', 'exempt'].includes(day.mode) ||
+      ![
+        'effective_period',
+        'effective_dated_default',
+        'legacy_employment_baseline',
+      ].includes(day.source)
+    ) {
+      invalid();
+    }
+
+    if (day.source === 'effective_period') {
+      if (
+        typeof day.policyId !== 'string' ||
+        !day.policyId.trim() ||
+        !Number.isSafeInteger(day.version) ||
+        day.version < 1 ||
+        typeof day.effectiveFrom !== 'string'
+      ) {
+        invalid();
+      }
+
+      const from = attendancePolicyDate(
+        day.effectiveFrom
+      );
+
+      const to = day.effectiveTo == null
+        ? null
+        : attendancePolicyDate(day.effectiveTo);
+
+      if (
+        from > day.date ||
+        (to && to < day.date) ||
+        (to && to < from)
+      ) {
+        invalid();
+      }
+    } else if (
+      day.policyId !== null ||
+      day.version !== null ||
+      day.effectiveFrom !== null ||
+      day.effectiveTo !== null
+    ) {
+      invalid();
+    }
+
+    if (
+      day.source === 'effective_dated_default' &&
+      (
+        snapshot.authority !== 'effective_dated' ||
+        day.mode !== 'required'
+      )
+    ) {
+      invalid();
+    }
+
+    if (
+      day.source === 'legacy_employment_baseline' &&
+      snapshot.authority !== 'legacy'
+    ) {
+      invalid();
+    }
+
+    if (day.mode === 'exempt') exemptDayCount++;
+    else requiredDayCount++;
+  }
+
+  const coverage = exemptDayCount === 0
+    ? 'required'
+    : requiredDayCount === 0
+      ? 'exempt'
+      : 'mixed';
+
+  const mode = requiredDayCount > 0
+    ? 'required'
+    : 'exempt';
+
+  const exemptDays = snapshot.days.filter(
+    day => day.mode === 'exempt'
+  );
+
+  const reasons = [
+    ...new Set(
+      exemptDays
+        .map(day => String(day.reason ?? '').trim())
+        .filter(Boolean)
+    ),
+  ].sort();
+
+  const reasonComplete = exemptDays.every(
+    day => Boolean(String(day.reason ?? '').trim())
+  );
+
+  if (
+    snapshot.requiredDayCount !== requiredDayCount ||
+    snapshot.exemptDayCount !== exemptDayCount ||
+    snapshot.coverage !== coverage ||
+    snapshot.mode !== mode ||
+    snapshot.exemptionReasonComplete !== reasonComplete ||
+    JSON.stringify(snapshot.exemptionReasons) !==
+      JSON.stringify(reasons)
+  ) {
+    invalid();
+  }
+
+  return snapshot;
+}
+
+export function payrollAttendancePolicyMap(snapshot) {
+  const valid = validatePayrollAttendancePolicySnapshot(
+    snapshot,
+    snapshot?.from,
+    snapshot?.to
+  );
+
+  return new Map(
+    valid.days.map(day => [day.date, day])
+  );
+}
+
+export function payrollAttendancePolicySnapshotsMatch(
+  previous,
+  current
+) {
+  const left =
+    validatePayrollAttendancePolicySnapshot(
+      previous,
+      previous?.from,
+      previous?.to
+    );
+
+  const right =
+    validatePayrollAttendancePolicySnapshot(
+      current,
+      current?.from,
+      current?.to
+    );
+
+  const comparable = snapshot => JSON.stringify({
+    schemaVersion: snapshot.schemaVersion,
+    authority: snapshot.authority,
+    from: snapshot.from,
+    to: snapshot.to,
+    days: snapshot.days.map(day => [
+      day.date,
+      day.mode,
+      day.reason ?? null,
+      day.policyId ?? null,
+      day.version ?? null,
+      day.source,
+      day.effectiveFrom ?? null,
+      day.effectiveTo ?? null,
+    ]),
+  });
+
+  return comparable(left) === comparable(right);
+}
+
+export function filterPayrollAttendanceAbsences(
+  absenceRows,
+  snapshot
+) {
+  const policies =
+    payrollAttendancePolicyMap(snapshot);
+
+  return (absenceRows || []).filter(row => {
+    const date = String(row?.date_key ?? '').trim();
+
+    const policy = policies.get(date);
+
+    if (!policy) return false;
+
+    return attendanceAbsenceApplies(row, policy);
+  });
+}
