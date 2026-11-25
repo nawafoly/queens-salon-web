@@ -437,3 +437,357 @@ test('HR05D3B2A: repeated policy changes never reuse a previous revision', t => 
 
   assert.equal(observed.size, 5);
 });
+
+import {
+  validateAttendancePolicyRevision,
+  readAttendancePolicyRevision,
+  loadStablePayrollAttendancePolicy,
+} from './core/repositories/attendance-policy.js';
+
+function stablePolicyDb(database, hooks = {}) {
+  return {
+    prepare(sql) {
+      const statement = database.prepare(sql);
+
+      function bound(args = []) {
+        return {
+          bind(...values) {
+            return bound(values);
+          },
+
+          async first(column) {
+            if (hooks.beforeRead) {
+              await hooks.beforeRead(sql);
+            }
+
+            const row = statement.get(...args) ?? null;
+
+            if (hooks.afterRead) {
+              await hooks.afterRead(sql);
+            }
+
+            return column
+              ? row?.[column] ?? null
+              : row;
+          },
+
+          async all() {
+            if (hooks.beforeRead) {
+              await hooks.beforeRead(sql);
+            }
+
+            const results = statement.all(...args);
+
+            if (hooks.afterRead) {
+              await hooks.afterRead(sql);
+            }
+
+            return {
+              success: true,
+              results,
+            };
+          },
+
+          async raw(options = {}) {
+            if (hooks.beforeRead) {
+              await hooks.beforeRead(sql);
+            }
+
+            const columns = statement.columns().map(
+              column => column.name
+            );
+
+            const results = statement.all(...args).map(
+              row => columns.map(column => row[column])
+            );
+
+            if (hooks.afterRead) {
+              await hooks.afterRead(sql);
+            }
+
+            return options.columnNames
+              ? [columns, ...results]
+              : results;
+          },
+        };
+      }
+
+      return bound();
+    },
+  };
+}
+
+function stableNovemberPolicy(
+  db,
+  employeeId = 'employee-1',
+  salonId = 'main'
+) {
+  return loadStablePayrollAttendancePolicy(
+    db,
+    salonId,
+    employeeId,
+    '2026-11-01',
+    '2026-11-30'
+  );
+}
+
+test('HR05D3B2B1: invalid policy revisions fail closed', () => {
+  for (const value of [
+    null,
+    undefined,
+    '0',
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
+  ]) {
+    assert.throws(
+      () => validateAttendancePolicyRevision(value)
+    );
+  }
+
+  assert.equal(
+    validateAttendancePolicyRevision(0),
+    0
+  );
+
+  assert.equal(
+    validateAttendancePolicyRevision(3),
+    3
+  );
+});
+
+test('HR05D3B2B1: stable legacy policy captures revision zero', async t => {
+  const database = fixture(t);
+  const db = stablePolicyDb(database);
+
+  const result = await stableNovemberPolicy(db);
+
+  assert.equal(result.revision, 0);
+  assert.equal(result.snapshot.mode, 'required');
+  assert.equal(result.snapshot.requiredDayCount, 30);
+});
+
+test('HR05D3B2B1: stable dated policy captures its actual revision', async t => {
+  const database = fixture(t);
+
+  insertPolicy(database, {
+    from: '2026-11-15',
+    to: '2026-11-25',
+  });
+
+  const db = stablePolicyDb(database);
+
+  const result = await stableNovemberPolicy(db);
+
+  assert.equal(
+    result.revision,
+    revision(database)
+  );
+
+  assert.equal(result.snapshot.coverage, 'mixed');
+  assert.equal(result.snapshot.exemptDayCount, 11);
+  assert.equal(result.snapshot.requiredDayCount, 19);
+});
+
+test('HR05D3B2B1: policy change after employment read rejects mixed evidence', async t => {
+  const database = fixture(t);
+
+  let changed = false;
+
+  const db = stablePolicyDb(database, {
+    afterRead(sql) {
+      if (
+        !changed &&
+        sql.includes('attendance_policy_authority') &&
+        sql.includes('FROM employee_employment')
+      ) {
+        changed = true;
+
+        insertPolicy(database, {
+          from: '2026-11-15',
+        });
+      }
+    },
+  });
+
+  await assert.rejects(
+    () => stableNovemberPolicy(db)
+  );
+
+  assert.equal(changed, true);
+  assert.equal(evidence(database).policies.length, 1);
+});
+
+test('HR05D3B2B1: policy change after period read rejects stale snapshot', async t => {
+  const database = fixture(t);
+
+  insertPolicy(database);
+
+  let changed = false;
+
+  const db = stablePolicyDb(database, {
+    afterRead(sql) {
+      if (
+        !changed &&
+        sql.includes('FROM employee_attendance_policy_periods')
+      ) {
+        changed = true;
+
+        database.exec(`
+          UPDATE employee_attendance_policy_periods
+          SET effective_to = '2026-11-15',
+              version = version + 1
+          WHERE id = 'policy-1';
+        `);
+      }
+    },
+  });
+
+  await assert.rejects(
+    () => stableNovemberPolicy(db)
+  );
+
+  assert.equal(changed, true);
+});
+
+test('HR05D3B2B1: legacy policy change during read rejects stale evidence', async t => {
+  const database = fixture(t);
+
+  let changed = false;
+
+  const db = stablePolicyDb(database, {
+    afterRead(sql) {
+      if (
+        !changed &&
+        sql.includes('FROM employee_attendance_policy_periods')
+      ) {
+        changed = true;
+
+        database.exec(`
+          UPDATE employee_employment
+          SET attendance_payroll_mode = 'exempt',
+              attendance_payroll_exemption_reason = 'Administrative'
+          WHERE salon_id = 'main'
+            AND employee_id = 'employee-1';
+        `);
+      }
+    },
+  });
+
+  await assert.rejects(
+    () => stableNovemberPolicy(db)
+  );
+
+  assert.equal(changed, true);
+  assert.equal(revision(database), 1);
+});
+
+test('HR05D3B2B1: another employee policy does not invalidate snapshot', async t => {
+  const database = fixture(t);
+
+  let changed = false;
+
+  const db = stablePolicyDb(database, {
+    afterRead(sql) {
+      if (
+        !changed &&
+        sql.includes('FROM employee_attendance_policy_periods')
+      ) {
+        changed = true;
+
+        insertPolicy(database, {
+          employeeId: 'employee-2',
+        });
+      }
+    },
+  });
+
+  const result = await stableNovemberPolicy(db);
+
+  assert.equal(changed, true);
+  assert.equal(result.revision, 0);
+  assert.equal(result.snapshot.mode, 'required');
+});
+
+test('HR05D3B2B1: another salon policy does not invalidate snapshot', async t => {
+  const database = fixture(t);
+
+  let changed = false;
+
+  const db = stablePolicyDb(database, {
+    afterRead(sql) {
+      if (
+        !changed &&
+        sql.includes('FROM employee_attendance_policy_periods')
+      ) {
+        changed = true;
+
+        insertPolicy(database, {
+          salonId: 'other',
+        });
+      }
+    },
+  });
+
+  const result = await stableNovemberPolicy(db);
+
+  assert.equal(changed, true);
+  assert.equal(result.revision, 0);
+});
+
+test('HR05D3B2B1: missing employment cannot produce payroll policy evidence', async t => {
+  const database = fixture(t);
+  const db = stablePolicyDb(database);
+
+  await assert.rejects(
+    () => stableNovemberPolicy(
+      db,
+      'unknown-employee'
+    )
+  );
+
+  await assert.rejects(
+    () => readAttendancePolicyRevision(
+      db,
+      'main',
+      'unknown-employee'
+    )
+  );
+});
+
+test('HR05D3B2B1: failed policy read cannot produce payroll evidence', async t => {
+  const database = fixture(t);
+
+  const db = stablePolicyDb(database, {
+    beforeRead(sql) {
+      if (
+        sql.includes('FROM employee_attendance_policy_periods')
+      ) {
+        throw new Error('SYNTHETIC_POLICY_READ_FAILURE');
+      }
+    },
+  });
+
+  await assert.rejects(
+    () => stableNovemberPolicy(db),
+    /SYNTHETIC_POLICY_READ_FAILURE/
+  );
+});
+
+test('HR05D3B2B1: stable policy reader never mutates evidence', async t => {
+  const database = fixture(t);
+
+  insertPolicy(database);
+
+  const before = evidence(database);
+
+  const db = stablePolicyDb(database);
+
+  const first = await stableNovemberPolicy(db);
+  const second = await stableNovemberPolicy(db);
+
+  assert.deepEqual(first, second);
+  assert.deepEqual(evidence(database), before);
+});

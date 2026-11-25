@@ -939,3 +939,111 @@ export function filterPayrollAttendanceAbsences(
     return attendanceAbsenceApplies(row, policy);
   });
 }
+
+export function validateAttendancePolicyRevision(value) {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:invalid_revision'
+    );
+  }
+
+  return value;
+}
+
+export async function readAttendancePolicyRevision(
+  db,
+  salonId,
+  employeeId
+) {
+  const row = await dbFirst(
+    db,
+    `SELECT attendance_policy_revision
+       FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  if (!row) {
+    throw new AppError(
+      404,
+      'core_attendance_policy:employment_not_found'
+    );
+  }
+
+  return validateAttendancePolicyRevision(
+    row.attendance_policy_revision
+  );
+}
+
+export async function loadStablePayrollAttendancePolicy(
+  db,
+  salonId,
+  employeeId,
+  fromValue,
+  toValue
+) {
+  const employment = await dbFirst(
+    db,
+    `SELECT
+        attendance_policy_authority,
+        attendance_policy_revision,
+        attendance_payroll_mode,
+        attendance_payroll_exemption_reason
+       FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  if (!employment) {
+    throw new AppError(
+      404,
+      'core_attendance_policy:employment_not_found'
+    );
+  }
+
+  const initialRevision =
+    validateAttendancePolicyRevision(
+      employment.attendance_policy_revision
+    );
+
+  const periods = await loadAttendancePolicyPeriods(
+    db,
+    salonId,
+    employeeId
+  );
+
+  const snapshot = buildPayrollAttendancePolicySnapshot(
+    employment,
+    periods,
+    fromValue,
+    toValue
+  );
+
+  const finalRevision =
+    await readAttendancePolicyRevision(
+      db,
+      salonId,
+      employeeId
+    );
+
+  if (initialRevision !== finalRevision) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:concurrent_policy_change'
+    );
+  }
+
+  return {
+    revision: initialRevision,
+    snapshot,
+  };
+}
