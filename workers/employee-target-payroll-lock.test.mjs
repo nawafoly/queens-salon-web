@@ -364,3 +364,67 @@ test('reopened payroll permits draft target recalculation', t => {
 
   assert.equal(target(db).earned_bonus_amount, 70000);
 });
+
+for (const status of ['approved', 'paid']) {
+  test(`${status} payroll rejects incoming target reassignment`, t => {
+    const db = fixture(t);
+
+    db.exec(`
+      INSERT INTO employee_target_period_summaries (
+        id, salon_id, employee_id, payroll_month,
+        period_start, period_end, status,
+        earned_bonus_amount
+      ) VALUES (
+        'incoming-target', 'salon-1', 'employee-1',
+        '2026-12', '2026-12-01', '2026-12-31',
+        'open', 25000
+      )
+    `);
+
+    lockPayroll(db, status);
+
+    const readIncoming = () => db.prepare(`
+      SELECT *
+        FROM employee_target_period_summaries
+       WHERE id = 'incoming-target'
+    `).get();
+
+    const before = readIncoming();
+
+    assert.throws(
+      () => db.exec(`
+        UPDATE employee_target_period_summaries
+           SET payroll_month = '2026-11'
+         WHERE id = 'incoming-target'
+      `),
+      /employee_target_locked_payroll_destination/
+    );
+
+    assert.throws(
+      () => db.exec(`
+        UPDATE employee_target_period_summaries
+           SET payroll_entry_id = 'payroll-1'
+         WHERE id = 'incoming-target'
+      `),
+      /employee_target_locked_payroll_destination/
+    );
+
+    assert.deepEqual(readIncoming(), before);
+  });
+}
+
+test('unlocked destination permits valid target reassignment', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_target_period_summaries
+       SET payroll_entry_id = NULL,
+           payroll_month = '2026-12',
+           period_start = '2026-12-01',
+           period_end = '2026-12-31'
+     WHERE id = 'target-1'
+  `);
+
+  assert.equal(target(db).payroll_month, '2026-12');
+  assert.equal(target(db).earned_bonus_amount, 50000);
+});

@@ -1,3 +1,4 @@
+import { auditInsertStatement } from './audit.js';
 // CORE D1 ONLY — do not add Firestore fallback.
 // Firebase is allowed only for authentication token verification.
 
@@ -3165,6 +3166,26 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
   if (existing && lockedStatus(existing.status) && data.allowLockedUpdate !== true) {
     throw new AppError(409, 'core_payroll:locked_entry');
   }
+  // The requested payroll month is authoritative. Never calculate a
+  // target bonus against a period belonging to a different month.
+  const canonicalPeriod = await dbFirst(
+    db,
+    `SELECT id, payroll_month
+       FROM payroll_periods
+      WHERE salon_id = ?
+        AND payroll_month = ?
+      LIMIT 1`,
+    [salonId, payrollMonth]
+  );
+
+  data = {
+    ...data,
+    periodId: canonicalPeriod?.id || null,
+    period_id: canonicalPeriod?.id || null,
+    payrollMonth,
+    payroll_month: payrollMonth,
+  };
+
   const now = nowIso();
   const status = cleanStatus(data.status || existing?.status || 'draft');
   let targetBonus = null;
@@ -4365,6 +4386,49 @@ async function appendAtomicPayrollTargetApproval(
       targetGuardId
     )
   );
+
+  const audit = auditInsertStatement(
+    salonId,
+    {
+      action: 'employee_target_bonus_posted_to_payroll',
+      entityType: 'employee_target_period_summary',
+      entityId: summary.id,
+      source: 'payroll',
+      before: summary,
+      after: {
+        ...summary,
+        status: 'posted_to_payroll',
+        approved_at: now,
+        approved_by_uid: optionalText(actor.uid) || null,
+        updated_at: now,
+      },
+      meta: {
+        payrollEntryId: entry.id,
+        employeeId: entry.employee_id,
+        payrollMonth: entry.payroll_month,
+        earnedBonusHalalas: bonus,
+        atomicApproval: true,
+      },
+      createdAt: now,
+    },
+    actor
+  );
+
+  statements.push(audit.statement);
+
+  const auditGuardId = generatedId(
+    'payroll_approval_target_audit_guard'
+  );
+
+  guardIds.push(auditGuardId);
+
+  statements.push(
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      entry.id,
+      auditGuardId
+    )
+  );
 }
 
 export async function approvePayrollEntry(db, salonId, id, actor = {}, options = {}) {
@@ -4954,6 +5018,142 @@ export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {})
       ],
     },
   ];
+
+  // Reopening an approved payroll releases its target projection.
+  // Previous approval evidence remains available in immutable audit logs.
+  const reopenGuardId = generatedId(
+    'payroll_reopen_target_guard'
+  );
+
+  statements.splice(
+    1,
+    0,
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      existing.id,
+      reopenGuardId
+    )
+  );
+
+  const linkedTargets = await dbAll(
+    db,
+    `SELECT *
+       FROM employee_target_period_summaries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_entry_id = ?
+        AND payroll_month = ?`,
+    [
+      salonId,
+      existing.employee_id,
+      existing.id,
+      existing.payroll_month,
+    ]
+  );
+
+  if (linkedTargets.length > 1) {
+    throw new AppError(
+      409,
+      'core_payroll:ambiguous_target_summary'
+    );
+  }
+
+  const reopenGuardIds = [reopenGuardId];
+
+  for (const targetSummary of linkedTargets) {
+    if (targetSummary.status !== 'posted_to_payroll') continue;
+
+    statements.push({
+      sql: `UPDATE employee_target_period_summaries
+               SET status = 'open',
+                   approved_at = NULL,
+                   approved_by_uid = NULL,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND employee_id = ?
+               AND id = ?
+               AND payroll_entry_id = ?
+               AND status = 'posted_to_payroll'
+               AND approved_at IS ?
+               AND approved_by_uid IS ?
+               AND updated_at IS ?
+               AND earned_bonus_amount IS ?`,
+      params: [
+        now,
+        salonId,
+        existing.employee_id,
+        targetSummary.id,
+        existing.id,
+        targetSummary.approved_at,
+        targetSummary.approved_by_uid,
+        targetSummary.updated_at,
+        targetSummary.earned_bonus_amount,
+      ],
+    });
+
+    const targetGuardId = generatedId(
+      'payroll_reopen_target_transition'
+    );
+
+    reopenGuardIds.push(targetGuardId);
+
+    statements.push(
+      buildPayrollApprovalTransactionAssertion(
+        salonId,
+        existing.id,
+        targetGuardId
+      )
+    );
+
+    const audit = auditInsertStatement(
+      salonId,
+      {
+        action: 'employee_target_summary_reopened',
+        entityType: 'employee_target_period_summary',
+        entityId: targetSummary.id,
+        source: 'payroll',
+        before: targetSummary,
+        after: {
+          ...targetSummary,
+          status: 'open',
+          approved_at: null,
+          approved_by_uid: null,
+          updated_at: now,
+        },
+        meta: {
+          payrollEntryId: existing.id,
+          payrollMonth: existing.payroll_month,
+          reason,
+        },
+        createdAt: now,
+      },
+      actor
+    );
+
+    statements.push(audit.statement);
+
+    const auditGuardId = generatedId(
+      'payroll_reopen_target_audit'
+    );
+
+    reopenGuardIds.push(auditGuardId);
+
+    statements.push(
+      buildPayrollApprovalTransactionAssertion(
+        salonId,
+        existing.id,
+        auditGuardId
+      )
+    );
+  }
+
+  statements.push(
+    buildPayrollApprovalTransactionCleanup(
+      salonId,
+      existing.id,
+      reopenGuardIds
+    )
+  );
 
   await dbBatch(db, statements);
 

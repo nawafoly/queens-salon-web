@@ -1382,6 +1382,18 @@ export async function upsertTargetSummarySnapshot(db, salonId, summary, status =
 export async function applyTargetBonusToPayrollData(db, salonId, data = {}, actor = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const period = await resolvePayrollPeriodForTargets(db, salonId, data);
+  const requestedMonth = optionalText(data.payrollMonth || data.payroll_month);
+
+  if (
+    requestedMonth &&
+    cleanText(period.payroll_month) !== requestedMonth
+  ) {
+    throw new AppError(
+      409,
+      'employee_targets:payroll_period_month_mismatch'
+    );
+  }
+
   await rebuildEmployeeTargetLedgerForPeriod(db, salonId, {
     periodId: period.id,
     payrollMonth: period.payroll_month,

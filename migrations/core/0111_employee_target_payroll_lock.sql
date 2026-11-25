@@ -112,3 +112,32 @@ WHEN EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'employee_target_locked_payroll_insert');
 END;
+
+-- Prevent moving an existing summary into a financially locked period.
+
+CREATE TRIGGER employee_target_locked_payroll_destination_guard
+BEFORE UPDATE ON employee_target_period_summaries
+FOR EACH ROW
+WHEN (
+    NEW.salon_id IS NOT OLD.salon_id
+    OR NEW.employee_id IS NOT OLD.employee_id
+    OR NEW.payroll_month IS NOT OLD.payroll_month
+    OR NEW.payroll_period_id IS NOT OLD.payroll_period_id
+    OR NEW.payroll_entry_id IS NOT OLD.payroll_entry_id
+    OR NEW.period_start IS NOT OLD.period_start
+    OR NEW.period_end IS NOT OLD.period_end
+)
+AND EXISTS (
+    SELECT 1
+      FROM payroll_entries AS pe
+     WHERE pe.salon_id = NEW.salon_id
+       AND pe.employee_id = NEW.employee_id
+       AND pe.status IN ('approved', 'paid')
+       AND (
+           pe.id = NEW.payroll_entry_id
+           OR pe.payroll_month = NEW.payroll_month
+       )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'employee_target_locked_payroll_destination');
+END;
