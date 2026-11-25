@@ -1411,3 +1411,116 @@ test('weekly rest reversal refuses dates before approved cutoff', async () => {
 
   assert.equal(result.status, 'not_applicable');
 });
+
+test('weekly rest reversal recovers unlinked committed ledger credit', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+  await f.punch('2026-09-01', 'check_in', '12:00');
+  await f.punch('2026-09-01', 'check_out', '20:00');
+
+  const originalPrepare = f.core.prepare.bind(f.core);
+  let interrupted = false;
+
+  f.core.prepare = sql => {
+    if (
+      !interrupted &&
+      /UPDATE employee_weekly_rest_events/i.test(sql) &&
+      /entitlement_ledger_entry_id\s*=\s*\?/i.test(sql) &&
+      /entitlement_ledger_entry_id IS NULL/i.test(sql)
+    ) {
+      interrupted = true;
+      throw new Error('SIMULATED_LEDGER_LINK_INTERRUPTION');
+    }
+
+    return originalPrepare(sql);
+  };
+
+  const options = {
+    fromDate: '2026-08-31',
+    now: new Date('2026-11-24T21:00:00Z'),
+  };
+
+  try {
+    await recoverAssignedWeeklyRestWork(
+      f.core, 'main', f.attendance, options
+    );
+  } finally {
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(interrupted, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const event = await f.core.prepare(`
+    SELECT entitlement_ledger_entry_id
+    FROM employee_weekly_rest_events
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rest_date = '2026-09-01'
+  `).first();
+
+  assert.ok(event);
+  assert.equal(event.entitlement_ledger_entry_id, null);
+
+  console.log('VERIFIED_UNLINKED_LEDGER_CREDIT: 1440');
+
+  f.core.prepare = sql => {
+    if (
+      /FROM employee_weekly_rest_work_assignments a/i.test(sql) &&
+      /a\.status/i.test(sql)
+    ) {
+      throw new Error('SIMULATED_RECOVERY_UNAVAILABLE');
+    }
+
+    return originalPrepare(sql);
+  };
+
+  let deleted;
+
+  try {
+    deleted = await adminAdjust(f, {
+      clearCheckOut: true,
+      operationId: 'unlinked-credit-delete',
+    });
+  } finally {
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(deleted.status, 200, await deleted.clone().text());
+  assert.equal(await f.balance(), 1440);
+
+  const checkout = await f.attendance.prepare(`
+    SELECT COUNT(*) AS count
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_out'
+      AND result = 'allowed'
+  `).first();
+
+  assert.equal(Number(checkout.count), 0);
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(
+    await f.balance(),
+    0,
+    'An unlinked committed credit must be reconciled after attendance deletion'
+  );
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 1);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    1
+  );
+});

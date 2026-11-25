@@ -168,12 +168,17 @@ export async function recoverAssignedWeeklyRestWork(
       if (!options.reconcile && assignment.status === 'assigned') {
         const confirmed = await dbAll(
           db,
-          `SELECT e.id
+          `SELECT e.id, e.entitlement_ledger_entry_id, l.id AS ledger_id
              FROM employee_weekly_rest_events e
              JOIN employee_comp_time_ledger l
-               ON l.id = e.entitlement_ledger_entry_id
-              AND l.salon_id = e.salon_id
+               ON l.salon_id = e.salon_id
               AND l.employee_id = e.employee_id
+              AND l.source_id = e.id
+              AND l.source_date = e.rest_date
+              AND (
+                e.entitlement_ledger_entry_id IS NULL
+                OR l.id = e.entitlement_ledger_entry_id
+              )
             WHERE e.salon_id = ?
               AND e.employee_id = ?
               AND e.rest_date = ?
@@ -181,12 +186,85 @@ export async function recoverAssignedWeeklyRestWork(
               AND l.entitlement_type = 'weekly_rest_due'
               AND l.entry_kind = 'credit'
               AND l.source_type = 'weekly_rest_event'
+              AND l.minutes = 1440
               AND l.source_id = e.id
             LIMIT 1`,
           [salonId, assignment.employee_id, assignment.rest_date]
         );
 
         if (confirmed.length) {
+          const existingCredit = confirmed[0];
+
+          if (!existingCredit.entitlement_ledger_entry_id) {
+            await dbRun(
+              db,
+              `UPDATE employee_weekly_rest_events
+                  SET entitlement_ledger_entry_id = ?,
+                      restoration_status = 'owed',
+                      substitute_rest_minutes = 1440,
+                      restoration_confirmed_at = COALESCE(
+                        restoration_confirmed_at, ?
+                      ),
+                      restoration_confirmed_by_uid = COALESCE(
+                        restoration_confirmed_by_uid,
+                        'system:weekly-rest-recovery'
+                      ),
+                      updated_at = ?
+                WHERE salon_id = ?
+                  AND id = ?
+                  AND employee_id = ?
+                  AND rest_date = ?
+                  AND status = 'open'
+                  AND entitlement_ledger_entry_id IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM employee_comp_time_ledger l
+                    WHERE l.id = ?
+                      AND l.salon_id = ?
+                      AND l.employee_id = ?
+                      AND l.entitlement_type = 'weekly_rest_due'
+                      AND l.entry_kind = 'credit'
+                      AND l.source_type = 'weekly_rest_event'
+                      AND l.source_id = ?
+                      AND l.source_date = ?
+                      AND l.minutes = 1440
+                  )`,
+              [
+                existingCredit.ledger_id,
+                now.toISOString(),
+                now.toISOString(),
+                salonId,
+                existingCredit.id,
+                assignment.employee_id,
+                assignment.rest_date,
+                existingCredit.ledger_id,
+                salonId,
+                assignment.employee_id,
+                existingCredit.id,
+                assignment.rest_date,
+              ]
+            );
+
+            const linked = await dbAll(
+              db,
+              `SELECT id
+                 FROM employee_weekly_rest_events
+                WHERE salon_id = ?
+                  AND id = ?
+                  AND entitlement_ledger_entry_id = ?
+                LIMIT 1`,
+              [
+                salonId,
+                existingCredit.id,
+                existingCredit.ledger_id,
+              ]
+            );
+
+            if (!linked.length) {
+              throw new Error('weekly_rest_ledger_link_conflict');
+            }
+          }
+
           await dbRun(
             db,
             `UPDATE employee_weekly_rest_work_assignments
