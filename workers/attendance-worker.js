@@ -1,3 +1,5 @@
+import { recordAutomaticAttendanceAbsence } from "./core/repositories/attendance-policy.js";
+
 import { reconcileCreditedWeeklyRest } from "./core/repositories/weekly-rest-correction.js";
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
@@ -621,14 +623,14 @@ async function resolveAttendanceCheckInPolicy({
 
 async function markAutomaticLockAbsence(directoryDb, salonId, employeeId, employeeUid, dateKey) {
   if (!directoryDb || !employeeId || !dateKey) return;
-  const now = new Date().toISOString();
-  const id = `auto-check-in-lock-${salonId}-${employeeId}-${dateKey}`;
-  await directoryDb.prepare(
-    `INSERT OR IGNORE INTO employee_absences
-      (id,salon_id,employee_id,employee_uid,date_key,absence_type,note,created_by_uid,created_at,updated_at)
-     VALUES (?,?,?,?,?,'automatic_check_in_lock',?,'system',?,?)`
-  ).bind(id, salonId, employeeId, normalizeText(employeeUid) || null, dateKey,
-    "غياب تلقائي بعد انتهاء مهلة بصمة الحضور", now, now).run();
+
+  await recordAutomaticAttendanceAbsence(
+    directoryDb,
+    salonId,
+    employeeId,
+    normalizeText(employeeUid) || null,
+    dateKey
+  );
 }
 
 async function clearAutomaticLockAbsence(directoryDb, salonId, employeeId, dateKey) {

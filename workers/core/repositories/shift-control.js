@@ -1,3 +1,5 @@
+import { recordAutomaticAttendanceAbsence } from './attendance-policy.js';
+
 // CORE D1 ONLY - reusable shift templates and date-effective assignments.
 import {
   activeFlag,
@@ -2608,13 +2610,16 @@ export async function markClosedCheckInWindowsAbsent(coreDb, attendanceDb, salon
       continue;
     }
 
-    const id = `auto-check-in-lock-${salonId}-${employee.id}-${clock.dateKey}`;
-    const result = await coreDb.prepare(`INSERT OR IGNORE INTO employee_absences
-      (id,salon_id,employee_id,employee_uid,date_key,absence_type,note,created_by_uid,created_at,updated_at)
-      VALUES (?,?,?,?,?,'automatic_check_in_lock',?,'system',?,?)`)
-      .bind(id, salonId, employee.id, employee.firebase_uid || null, clock.dateKey,
-        'غياب تلقائي بعد انتهاء مهلة بصمة الحضور', nowValue, nowValue).run();
-    created += Number(result?.meta?.changes || 0);
+    const result = await recordAutomaticAttendanceAbsence(
+      coreDb,
+      salonId,
+      employee.id,
+      employee.firebase_uid || null,
+      clock.dateKey,
+      nowValue
+    );
+
+    created += result.created;
   }
 
   return { checked: employees.length, created, cleared };

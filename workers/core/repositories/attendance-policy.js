@@ -521,3 +521,107 @@ export async function cancelAttendancePolicyPeriod(
     db, salonId, employeeId, policyId
   );
 }
+
+/**
+ * Record automatic check-in-lock absence only when attendance
+ * is required on the actual work date.
+ *
+ * Policy evaluation and insertion happen in one SQL statement.
+ * Existing absence evidence is never deleted by this function.
+ */
+export async function recordAutomaticAttendanceAbsence(
+  db,
+  salonId,
+  employeeId,
+  employeeUid,
+  dateValue,
+  now = new Date().toISOString()
+) {
+  const date = attendancePolicyDate(dateValue);
+
+  if (!db || !salonId || !employeeId) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:invalid_absence_target'
+    );
+  }
+
+  const id =
+    `auto-check-in-lock-${salonId}-${employeeId}-${date}`;
+
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO employee_absences (
+      id,
+      salon_id,
+      employee_id,
+      employee_uid,
+      date_key,
+      absence_type,
+      note,
+      created_by_uid,
+      created_at,
+      updated_at
+    )
+    SELECT ?,?,?,?,?,
+           'automatic_check_in_lock',
+           ?,
+           'system',
+           ?,?
+    WHERE EXISTS (
+      SELECT 1
+      FROM employee_employment e
+      WHERE e.salon_id = ?
+        AND e.employee_id = ?
+        AND (
+          e.attendance_policy_authority = 'effective_dated'
+          OR (
+            e.attendance_policy_authority = 'legacy'
+            AND e.attendance_payroll_mode = 'required'
+          )
+        )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM employee_attendance_policy_periods p
+      WHERE p.salon_id = ?
+        AND p.employee_id = ?
+        AND p.status = 'active'
+        AND p.policy_mode = 'exempt'
+        AND p.effective_from <= ?
+        AND (
+          p.effective_to IS NULL
+          OR p.effective_to >= ?
+        )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM employee_absences a
+      WHERE a.salon_id = ?
+        AND a.employee_id = ?
+        AND a.date_key = ?
+    )
+  `).bind(
+    id,
+    salonId,
+    employeeId,
+    employeeUid || null,
+    date,
+    'غياب تلقائي بعد انتهاء مهلة بصمة الحضور',
+    now,
+    now,
+    salonId,
+    employeeId,
+    salonId,
+    employeeId,
+    date,
+    date,
+    salonId,
+    employeeId,
+    date
+  ).run();
+
+  return {
+    created: Number(result?.meta?.changes ?? 0),
+    date,
+  };
+}

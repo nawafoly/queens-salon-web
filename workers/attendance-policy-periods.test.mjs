@@ -1388,3 +1388,252 @@ test('HR05B commands: cancelled period cannot be changed or cancelled again', as
 
   assert.deepEqual(hr05CommandSnapshot(database), before);
 });
+
+import {
+  recordAutomaticAttendanceAbsence,
+} from './core/repositories/attendance-policy.js';
+
+function hr05AbsenceFixture(t) {
+  const database = fixture(t);
+
+  database.exec(`
+    CREATE TABLE employee_absences (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      employee_uid TEXT,
+      date_key TEXT NOT NULL,
+      absence_type TEXT NOT NULL,
+      note TEXT,
+      created_by_uid TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    );
+  `);
+
+  return {
+    database,
+    db: hr05CommandDb(database),
+  };
+}
+
+function hr05RecordAbsence(
+  db,
+  date,
+  employeeId = 'employee-1',
+  salonId = 'main'
+) {
+  return recordAutomaticAttendanceAbsence(
+    db,
+    salonId,
+    employeeId,
+    'synthetic-uid',
+    date,
+    '2026-11-25T12:00:00Z'
+  );
+}
+
+function hr05AbsenceRows(database) {
+  return database.prepare(`
+    SELECT *
+    FROM employee_absences
+    ORDER BY id
+  `).all();
+}
+
+test('HR05C: required attendance still records automatic absence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  const first = await hr05RecordAbsence(db, '2026-11-20');
+  const replay = await hr05RecordAbsence(db, '2026-11-20');
+
+  assert.equal(first.created, 1);
+  assert.equal(replay.created, 0);
+
+  const rows = hr05AbsenceRows(database);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].absence_type, 'automatic_check_in_lock');
+  assert.equal(rows[0].created_by_uid, 'system');
+});
+
+test('HR05C: legacy exempt employee receives no automatic absence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  database.exec(`
+    UPDATE employee_employment
+    SET attendance_payroll_mode = 'exempt'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  const result = await hr05RecordAbsence(db, '2026-11-20');
+
+  assert.equal(result.created, 0);
+  assert.deepEqual(hr05AbsenceRows(database), []);
+});
+
+test('HR05C: dated exemption applies only within its boundaries', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  for (const [date, expected] of [
+    ['2026-11-14', 1],
+    ['2026-11-15', 0],
+    ['2026-11-20', 0],
+    ['2026-11-25', 0],
+    ['2026-11-26', 1],
+  ]) {
+    const result = await hr05RecordAbsence(db, date);
+
+    assert.equal(result.created, expected, date);
+  }
+
+  assert.deepEqual(
+    hr05AbsenceRows(database).map(row => row.date_key),
+    ['2026-11-14', '2026-11-26']
+  );
+});
+
+test('HR05C: retroactive exemption preserves existing absence evidence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  await hr05RecordAbsence(db, '2026-11-20');
+
+  const original = hr05AbsenceRows(database);
+
+  await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  const result = await hr05RecordAbsence(db, '2026-11-20');
+
+  assert.equal(result.created, 0);
+  assert.deepEqual(hr05AbsenceRows(database), original);
+
+  const policy = await resolveEmployeeAttendancePolicy(
+    db, 'main', 'employee-1', '2026-11-20'
+  );
+
+  assert.equal(
+    attendanceAbsenceApplies(original[0], policy),
+    false
+  );
+});
+
+test('HR05C: cancelled exemption allows absence classification again', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  const created = await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  assert.equal(
+    (await hr05RecordAbsence(db, '2026-11-20')).created,
+    0
+  );
+
+  await cancelAttendancePolicyPeriod(
+    db, 'main', 'employee-1', created.id,
+    {
+      version: 1,
+      reason: 'Synthetic exemption cancellation',
+    },
+    hr05Admin
+  );
+
+  assert.equal(
+    (await hr05RecordAbsence(db, '2026-11-20')).created,
+    1
+  );
+
+  assert.equal(hr05AbsenceRows(database).length, 1);
+});
+
+test('HR05C: exemption does not affect other employees or salons', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  await createAttendancePolicyPeriod(
+    db, 'main', 'employee-1',
+    hr05Input, hr05Admin
+  );
+
+  assert.equal(
+    (await hr05RecordAbsence(db, '2026-11-20')).created,
+    0
+  );
+
+  assert.equal(
+    (await hr05RecordAbsence(
+      db, '2026-11-20', 'employee-2'
+    )).created,
+    1
+  );
+
+  assert.equal(
+    (await hr05RecordAbsence(
+      db, '2026-11-20', 'employee-1', 'other'
+    )).created,
+    1
+  );
+
+  assert.equal(hr05AbsenceRows(database).length, 2);
+});
+
+test('HR05C: administrative absence is not replaced by automatic absence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  database.exec(`
+    INSERT INTO employee_absences (
+      id, salon_id, employee_id,
+      date_key, absence_type, created_by_uid
+    ) VALUES (
+      'manual-absence',
+      'main',
+      'employee-1',
+      '2026-11-20',
+      'full_day',
+      'admin'
+    );
+  `);
+
+  const before = hr05AbsenceRows(database);
+
+  const result = await hr05RecordAbsence(db, '2026-11-20');
+
+  assert.equal(result.created, 0);
+
+  assert.deepEqual(hr05AbsenceRows(database), before);
+});
+
+test('HR05C: missing employment evidence does not create absence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  const result = await hr05RecordAbsence(
+    db, '2026-11-20', 'unknown-employee'
+  );
+
+  assert.equal(result.created, 0);
+
+  assert.deepEqual(hr05AbsenceRows(database), []);
+});
+
+test('HR05C: policy lookup failure cannot create an absence', async t => {
+  const { database, db } = hr05AbsenceFixture(t);
+
+  database.exec(`
+    DROP TABLE employee_attendance_policy_periods;
+  `);
+
+  await assert.rejects(
+    () => hr05RecordAbsence(db, '2026-11-20')
+  );
+
+  assert.deepEqual(hr05AbsenceRows(database), []);
+});
