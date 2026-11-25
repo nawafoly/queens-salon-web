@@ -1,3 +1,4 @@
+import { applyCoreTestMigrations } from './test-support/miniflare-core-migrations.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -68,27 +69,6 @@ import {
   patchRecruitmentApplication,
 } from './core/repositories/workforce-communications.js';
 
-function splitMigrationStatements(sql) {
-  const statements = [];
-  const pushPlainStatements = (chunk) => {
-    for (const statement of chunk.split(';').map((value) => value.trim()).filter(Boolean)) {
-      statements.push(statement);
-    }
-  };
-
-  // Keep CREATE TRIGGER ... BEGIN ... END; intact. A plain semicolon split
-  // corrupts trigger bodies, while D1 exec treats multiline CREATE TABLE
-  // scripts as separate lines in Miniflare. This splitter preserves both.
-  const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
-  let cursor = 0;
-  for (const match of sql.matchAll(triggerPattern)) {
-    pushPlainStatements(sql.slice(cursor, match.index));
-    statements.push(match[0].trim());
-    cursor = match.index + match[0].length;
-  }
-  pushPlainStatements(sql.slice(cursor));
-  return statements;
-}
 
 async function setup() {
   const script = 'export default { fetch(){ return new Response("ok") } }';
@@ -116,76 +96,11 @@ async function setup() {
     ],
   });
   const db = await mf.getD1Database('CORE_DB');
-  for (const name of [
-    '0001_core_schema.sql',
-    '0002_frontend_cutover.sql',
-    '0003_booking_availability.sql',
-    '0004_admin_operations.sql',
-    '0005_hr_settings_files.sql',
-    '0006_booking_discount_snapshots.sql',
-    '0007_booking_soft_delete.sql',
-    '0008_booking_reference_sequence.sql',
-    '0014_app_users_permissions.sql',
-    '0015_employee_type.sql',
-    '0016_payroll_snapshots.sql',
-    '0016_employee_permissions.sql',
-    '0017_shift_control.sql',
-    '0018_employee_payroll_settings.sql',
-    '0020_employee_requests.sql',
-    '0022_shift_attendance_policy.sql',
-    '0023_exceptional_financial_payment_requests.sql',
-    '0024_employee_leave_balance_ledger.sql',
-    '0025_employee_request_reference_integrity.sql',
-    '0026_employee_master_profile_fields.sql',
-    '0027_employee_attendance_payroll_mode.sql',
-    '0028_payroll_approval_snapshots_carryovers.sql',
-    '0029_payroll_social_insurance_snapshots.sql',
-    '0030_employee_payroll_obligations.sql',
-    '0031_workforce_communications_recruitment.sql',
-    '0032_service_season_price.sql',
-    '0033_app_user_profile_photo.sql',
-    '0034_employee_offboarding_invariants.sql',
-    '0035_salary_advance_installment_deferrals.sql',
-    '0036_attendance_deduction_deferral_integrity.sql',
-    '0037_payroll_obligation_settlement_concurrency.sql',
-    '0038_sa_labor_compliance_foundation.sql',
-    '0039_sa_leave_rest_holiday_runtime.sql',
-    '0040_sa_annual_leave_opening_anchor.sql',
-    '0041_sa_sick_leave_runtime_lifecycle.sql',
-    '0042_sa_weekly_rest_public_holiday_workflow.sql',
-    '0043_sa_overtime_request_runtime.sql',
-    '0044_sa_overtime_reconciliation_comp_time.sql',
-    '0045_payroll_reconciled_overtime_authority.sql',
-    '0046_payroll_reconciled_overtime_approval_guards.sql',
-    '0047_leave_time_entitlement_consumption.sql',
-    '0048_sa_special_statutory_leave_validation.sql',
-    '0049_public_holiday_leave_overlap.sql',
-    '0050_sa_sensitive_family_leave_runtime.sql',
-    '0051_sa_payroll_deduction_compliance.sql',
-    '0052_sa_payroll_deduction_classification_audit.sql',
-    '0053_sa_disciplinary_fine_runtime.sql',
-    '0054_sa_disciplinary_fine_fund_custody.sql',
-
-    '0055_attendance_deferral_recreate_after_cancel.sql',
-    '0057_leave_rest_workflows.sql',
-    '0059_payroll_carryover_compliance_authority.sql',
-    '0068_file_metadata_document_type.sql',
-    '0077_payroll_historical_settlements.sql',
-    '0078_staff_services_specialties_backfill.sql',
-    '0079_client_cashback_wallet.sql',
-    '0083_internal_booking_price_adjustments.sql',
-    '0084_service_promo_prices.sql',
-    '0088_internal_booking_parties.sql',
-    '0100_hr_payroll_operations.sql',
-  ]) {
-    const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
-      .replace(/\r/g, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--'))
-      .join('\n');
-    for (const statement of splitMigrationStatements(sql)) {
-      await db.prepare(statement).run();
-    }
+  try {
+    await applyCoreTestMigrations(db);
+  } catch (error) {
+    await mf.dispose();
+    throw error;
   }
   return { mf, db, bucket: await mf.getR2Bucket('FILES_BUCKET') };
 }
@@ -5160,9 +5075,7 @@ test('staff service backfill migrates valid legacy specialties into canonical as
     .filter((line) => !line.trim().startsWith('--'))
     .join('\n');
 
-  for (const statement of splitMigrationStatements(sql)) {
-    await db.prepare(statement).run();
-  }
+  await db.prepare(sql).run();
 
   const rows = await db.prepare(
     "SELECT service_id, active FROM staff_services WHERE salon_id='main' AND staff_id='staff-backfill' ORDER BY service_id"

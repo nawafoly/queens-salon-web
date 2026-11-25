@@ -1209,7 +1209,74 @@ export async function createTargetAdjustment(db, salonId, data = {}, actor = {})
 
 export async function upsertTargetSummarySnapshot(db, salonId, summary, status = 'open', actor = {}, payrollEntryId = null) {
   const now = nowIso();
-  const id = requiredId(summary.id || `target_summary_${summary.employee_id}_${summary.payroll_period_id || summary.payroll_month || `${summary.period_start}_${summary.period_end}`}`.replace(/[^A-Za-z0-9_-]/g, '_'));
+  const employeeId = requiredId(summary.employee_id, 'employeeId');
+  const periodId = optionalText(summary.payroll_period_id) || null;
+  const payrollMonth = optionalText(summary.payroll_month) || null;
+  const periodStart = validDate(summary.period_start, 'periodStart');
+  const periodEnd = validDate(summary.period_end, 'periodEnd');
+
+  if (periodStart > periodEnd) {
+    throw new AppError(400, 'employee_targets:invalid_period_range');
+  }
+
+  const matching = await dbAll(
+    db,
+    `SELECT *
+       FROM employee_target_period_summaries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND (
+          (? IS NOT NULL AND payroll_period_id = ?)
+          OR (
+            payroll_period_id IS NULL
+            AND payroll_month IS ?
+            AND period_start = ?
+            AND period_end = ?
+          )
+        )
+      LIMIT 2`,
+    [
+      salonId,
+      employeeId,
+      periodId,
+      periodId,
+      payrollMonth,
+      periodStart,
+      periodEnd,
+    ]
+  );
+
+  if (matching.length > 1) {
+    throw new AppError(409, 'employee_targets:ambiguous_summary_identity');
+  }
+
+  const existing = matching[0] || null;
+
+  if (summary.id && existing && summary.id !== existing.id) {
+    throw new AppError(409, 'employee_targets:summary_identity_mismatch');
+  }
+
+  const identity = JSON.stringify([
+    salonId,
+    employeeId,
+    payrollMonth,
+    periodStart,
+    periodEnd,
+  ]);
+
+  const bytes = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(identity)
+  );
+
+  const digest = Array.from(
+    new Uint8Array(bytes),
+    value => value.toString(16).padStart(2, '0')
+  ).join('');
+
+  const id = requiredId(
+    existing?.id || `target_summary_v2_${digest}`
+  );
   const row = {
     id,
     salon_id: salonId,
@@ -1241,7 +1308,11 @@ export async function upsertTargetSummarySnapshot(db, salonId, summary, status =
        achieved_tier_id, achieved_tier_snapshot_json, earned_bonus_amount, status,
        approved_at, approved_by_uid, payroll_entry_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(salon_id, employee_id, payroll_period_id) DO UPDATE SET
+     ON CONFLICT DO UPDATE SET
+       payroll_period_id = COALESCE(
+         excluded.payroll_period_id,
+         employee_target_period_summaries.payroll_period_id
+       ),
        payroll_month = excluded.payroll_month,
        period_start = excluded.period_start,
        period_end = excluded.period_end,
@@ -1257,10 +1328,55 @@ export async function upsertTargetSummarySnapshot(db, salonId, summary, status =
        approved_at = COALESCE(excluded.approved_at, employee_target_period_summaries.approved_at),
        approved_by_uid = COALESCE(excluded.approved_by_uid, employee_target_period_summaries.approved_by_uid),
        payroll_entry_id = COALESCE(excluded.payroll_entry_id, employee_target_period_summaries.payroll_entry_id),
-       updated_at = excluded.updated_at`,
+       updated_at = excluded.updated_at
+     WHERE employee_target_period_summaries.salon_id = excluded.salon_id
+       AND employee_target_period_summaries.employee_id = excluded.employee_id
+       AND (
+         (
+           excluded.payroll_period_id IS NOT NULL
+           AND employee_target_period_summaries.payroll_period_id = excluded.payroll_period_id
+         )
+         OR (
+           employee_target_period_summaries.payroll_period_id IS NULL
+           AND employee_target_period_summaries.payroll_month IS excluded.payroll_month
+           AND employee_target_period_summaries.period_start = excluded.period_start
+           AND employee_target_period_summaries.period_end = excluded.period_end
+         )
+       )`,
     Object.values(row)
   );
-  return dbFirst(db, 'SELECT * FROM employee_target_period_summaries WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);
+  const saved = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_target_period_summaries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND (
+          (? IS NOT NULL AND payroll_period_id = ?)
+          OR (
+            payroll_period_id IS NULL
+            AND payroll_month IS ?
+            AND period_start = ?
+            AND period_end = ?
+          )
+        )
+      LIMIT 1`,
+    [
+      salonId,
+      employeeId,
+      periodId,
+      periodId,
+      payrollMonth,
+      periodStart,
+      periodEnd,
+    ]
+  );
+
+  if (!saved) {
+    throw new AppError(409, 'employee_targets:summary_identity_conflict');
+  }
+
+  return saved;
 }
 
 export async function applyTargetBonusToPayrollData(db, salonId, data = {}, actor = {}) {

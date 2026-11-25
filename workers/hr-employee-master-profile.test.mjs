@@ -1,3 +1,4 @@
+import { applyCoreTestMigrations } from './test-support/miniflare-core-migrations.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -5,24 +6,6 @@ import { Miniflare } from 'miniflare';
 
 import { getHrEmployee, upsertHrEmployee } from './core/repositories/hr-employees.js';
 
-function splitMigrationStatements(sql) {
-  const statements = [];
-  const pushPlainStatements = (chunk) => {
-    for (const statement of chunk.split(';').map((value) => value.trim()).filter(Boolean)) {
-      statements.push(statement);
-    }
-  };
-
-  const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
-  let cursor = 0;
-  for (const match of sql.matchAll(triggerPattern)) {
-    pushPlainStatements(sql.slice(cursor, match.index));
-    statements.push(match[0].trim());
-    cursor = match.index + match[0].length;
-  }
-  pushPlainStatements(sql.slice(cursor));
-  return statements;
-}
 
 async function setup() {
   const script = 'export default { fetch(){ return new Response("ok") } }';
@@ -49,25 +32,11 @@ async function setup() {
     ],
   });
   const db = await mf.getD1Database('CORE_DB');
-  for (const name of [
-    '0001_core_schema.sql',
-    '0005_hr_settings_files.sql',
-    '0017_shift_control.sql',
-    '0018_employee_payroll_settings.sql',
-    '0022_shift_attendance_policy.sql',
-    '0026_employee_master_profile_fields.sql',
-    '0027_employee_attendance_payroll_mode.sql',
-    '0028_payroll_approval_snapshots_carryovers.sql',
-    '0029_payroll_social_insurance_snapshots.sql',
-  ]) {
-    const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
-      .replace(/\r/g, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--'))
-      .join('\n');
-    for (const statement of splitMigrationStatements(sql)) {
-      await db.prepare(statement).run();
-    }
+  try {
+    await applyCoreTestMigrations(db);
+  } catch (error) {
+    await mf.dispose();
+    throw error;
   }
   return { mf, db };
 }

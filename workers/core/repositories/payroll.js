@@ -51,7 +51,7 @@ import {
 } from '../../../src/helpers/hr/payrollObligationPolicy.js';
 import {
   applyTargetBonusToPayrollData,
-  approveEmployeeTargetSummary,
+
 } from './employee-targets.js';
 import {
   assertPayrollObligationSnapshotCurrent,
@@ -3602,7 +3602,7 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     await dbRun(
       db,
       `UPDATE employee_target_period_summaries
-          SET payroll_entry_id = ?, status = CASE WHEN status = 'open' THEN 'posted_to_payroll' ELSE status END,
+          SET payroll_entry_id = ?,
               updated_at = ?
         WHERE salon_id = ? AND id = ?`,
       [saved.id, nowIso(), salonId, targetBonus.targetSummary.id]
@@ -4144,6 +4144,229 @@ export async function togglePayrollOvertime(db, salonId, id, data, actor = {}, o
   throw new AppError(409, 'core_payroll:overtime_policy_managed_on_employment');
 }
 
+export function buildPayrollApprovalRowGuard(entry) {
+  if (
+    !entry ||
+    !['draft', 'reviewed'].includes(entry.status)
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:approval_concurrent_mutation'
+    );
+  }
+
+  const columns = PAYROLL_ENTRY_MUTATION_COLUMNS;
+
+  const params = columns.map(column => {
+    if (
+      !Object.prototype.hasOwnProperty.call(entry, column) ||
+      entry[column] === undefined
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:approval_evidence_incomplete'
+      );
+    }
+
+    return entry[column];
+  });
+
+  return {
+    sql: columns.map(column => `${column} IS ?`).join(' AND '),
+    params,
+  };
+}
+
+export function buildPayrollApprovalTransactionAssertion(
+  salonId,
+  payrollEntryId,
+  guardId
+) {
+  return {
+    sql: `INSERT INTO payroll_approval_transaction_guards (
+            id,
+            salon_id,
+            payroll_entry_id,
+            transition_matches
+          ) VALUES (
+            ?, ?, ?,
+            CASE WHEN changes() = 1 THEN 1 ELSE 0 END
+          )`,
+    params: [
+      guardId,
+      salonId,
+      payrollEntryId,
+    ],
+  };
+}
+
+export function buildPayrollApprovalTransactionCleanup(
+  salonId,
+  payrollEntryId,
+  guardIds
+) {
+  return {
+    sql: `DELETE FROM payroll_approval_transaction_guards
+           WHERE salon_id = ?
+             AND payroll_entry_id = ?
+             AND id IN (${guardIds.map(() => '?').join(', ')})`,
+    params: [
+      salonId,
+      payrollEntryId,
+      ...guardIds,
+    ],
+  };
+}
+
+async function appendAtomicPayrollTargetApproval(
+  db,
+  salonId,
+  entry,
+  actor,
+  now,
+  statements,
+  guardIds
+) {
+  let summaries;
+
+  try {
+    summaries = await dbAll(
+      db,
+      `SELECT *
+         FROM employee_target_period_summaries
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND payroll_entry_id = ?
+        LIMIT 2`,
+      [salonId, entry.employee_id, entry.id]
+    );
+  } catch (error) {
+    if (!targetSchemaUnavailable(error)) throw error;
+
+    const targetItems = parseJsonArray(entry.additions_json)
+      .filter(item =>
+        cleanText(item.source || item.sourceType || item.source_type)
+          === 'employee_target_bonus'
+      );
+
+    if (targetItems.length) throw error;
+    return;
+  }
+
+  const items = parseJsonArray(entry.additions_json)
+    .filter(item =>
+      cleanText(item.source || item.sourceType || item.source_type)
+        === 'employee_target_bonus'
+    );
+
+  if (summaries.length > 1 || items.length > 1) {
+    throw new AppError(
+      409,
+      'core_payroll:ambiguous_target_summary'
+    );
+  }
+
+  const summary = summaries[0];
+
+  if (!summary) {
+    if (items.length) {
+      throw new AppError(
+        409,
+        'core_payroll:target_summary_missing'
+      );
+    }
+    return;
+  }
+
+  const bonus = Number(summary.earned_bonus_amount || 0);
+  const itemBonus = items.length
+    ? Number(items[0].amountHalalas ?? items[0].amount_halalas ?? 0)
+    : 0;
+
+  const itemReference = items.length
+    ? cleanText(items[0].targetSummaryId || items[0].sourceReference)
+    : null;
+
+  if (
+    bonus !== itemBonus ||
+    (items.length && itemReference !== summary.id) ||
+    cleanText(summary.payroll_month) !== cleanText(entry.payroll_month) ||
+    !['open', 'under_review', 'posted_to_payroll'].includes(summary.status)
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:target_summary_mismatch'
+    );
+  }
+
+  const evidenceColumns = [
+    'id',
+    'salon_id',
+    'employee_id',
+    'payroll_period_id',
+    'payroll_month',
+    'period_start',
+    'period_end',
+    'plan_id',
+    'plan_snapshot_json',
+    'total_eligible_services',
+    'total_refunds',
+    'net_target_amount',
+    'achieved_tier_id',
+    'achieved_tier_snapshot_json',
+    'earned_bonus_amount',
+    'status',
+    'approved_at',
+    'approved_by_uid',
+    'payroll_entry_id',
+    'created_at',
+    'updated_at',
+  ];
+
+  const evidenceParams = evidenceColumns.map(column => {
+    if (
+      !Object.prototype.hasOwnProperty.call(summary, column) ||
+      summary[column] === undefined
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:target_evidence_incomplete'
+      );
+    }
+
+    return summary[column];
+  });
+
+  const targetGuardId = generatedId(
+    'payroll_approval_target_guard'
+  );
+
+  guardIds.push(targetGuardId);
+
+  statements.push({
+    sql: `UPDATE employee_target_period_summaries
+             SET status = 'posted_to_payroll',
+                 approved_at = ?,
+                 approved_by_uid = ?,
+                 updated_at = ?
+           WHERE ${evidenceColumns.map(column => `${column} IS ?`).join(' AND ')}`,
+    params: [
+      now,
+      optionalText(actor.uid) || null,
+      now,
+      ...evidenceParams,
+    ],
+  });
+
+  statements.push(
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      entry.id,
+      targetGuardId
+    )
+  );
+}
+
 export async function approvePayrollEntry(db, salonId, id, actor = {}, options = {}) {
   let existing = await getPayrollEntry(db, salonId, id);
   if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
@@ -4181,15 +4404,7 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
   );
   await assertPayrollObligationSnapshotCurrent(db, salonId, existing);
   const now = nowIso();
-  try {
-    await approveEmployeeTargetSummary(db, salonId, {
-      employeeId: existing.employee_id,
-      payrollMonth: existing.payroll_month,
-      periodId: existing.period_id,
-    }, actor, existing.id);
-  } catch (error) {
-    if (!targetSchemaUnavailable(error)) throw error;
-  }
+
 
   const approvalAuditLog = appendAudit(existing, 'approved', actor);
   const snapshotStatement = await buildApprovalSnapshotStatement(
@@ -4206,6 +4421,17 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
       },
     }
   );
+  const approvalRowGuard =
+    buildPayrollApprovalRowGuard(existing);
+
+  const transitionGuardId =
+    generatedId('payroll_approval_transition');
+
+  const snapshotGuardId =
+    generatedId('payroll_approval_snapshot_guard');
+
+  const guardIds = [transitionGuardId, snapshotGuardId];
+
   const statements = [
     {
       sql: `UPDATE payroll_entries
@@ -4216,7 +4442,8 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
              updated_at = ?
        WHERE salon_id = ?
          AND id = ?
-         AND status IN ('draft', 'reviewed')`,
+         AND status IN ('draft', 'reviewed')
+         AND ${approvalRowGuard.sql}`,
       params: [
         now,
         optionalText(actor.uid) || null,
@@ -4224,10 +4451,31 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
         now,
         salonId,
         existing.id,
+        ...approvalRowGuard.params,
       ],
     },
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      existing.id,
+      transitionGuardId
+    ),
     { sql: snapshotStatement.sql, params: snapshotStatement.params },
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      existing.id,
+      snapshotGuardId
+    ),
   ];
+
+  await appendAtomicPayrollTargetApproval(
+    db,
+    salonId,
+    existing,
+    actor,
+    now,
+    statements,
+    guardIds
+  );
 
   for (const carryoverId of carryoverSourceIds(existing)) {
     statements.push({
@@ -4239,9 +4487,30 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}, options =
                AND status = 'pending'`,
       params: [existing.id, now, now, salonId, carryoverId, existing.payroll_month],
     });
+    const carryoverGuardId = generatedId(
+      'payroll_approval_carryover_guard'
+    );
+
+    guardIds.push(carryoverGuardId);
+
+    statements.push(
+      buildPayrollApprovalTransactionAssertion(
+        salonId,
+        existing.id,
+        carryoverGuardId
+      )
+    );
   }
 
   try {
+    statements.push(
+      buildPayrollApprovalTransactionCleanup(
+        salonId,
+        existing.id,
+        guardIds
+      )
+    );
+
     await dbBatch(db, statements);
   } catch (error) {
     const current = await getPayrollEntry(db, salonId, existing.id);
@@ -4451,6 +4720,17 @@ export async function recordLatePayrollApproval(
     }
   );
 
+  const approvalRowGuard =
+    buildPayrollApprovalRowGuard(existing);
+
+  const transitionGuardId =
+    generatedId('payroll_approval_transition');
+
+  const snapshotGuardId =
+    generatedId('payroll_approval_snapshot_guard');
+
+  const guardIds = [transitionGuardId, snapshotGuardId];
+
   const statements = [
     {
       sql: `UPDATE payroll_entries
@@ -4461,7 +4741,8 @@ export async function recordLatePayrollApproval(
                    updated_at = ?
              WHERE salon_id = ?
                AND id = ?
-               AND status IN ('draft', 'reviewed')`,
+               AND status IN ('draft', 'reviewed')
+               AND ${approvalRowGuard.sql}`,
       params: [
         approvalDate,
         optionalText(actor.uid) || null,
@@ -4469,13 +4750,34 @@ export async function recordLatePayrollApproval(
         now,
         salonId,
         existing.id,
+        ...approvalRowGuard.params,
       ],
     },
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      existing.id,
+      transitionGuardId
+    ),
     { sql: snapshotStatement.sql, params: snapshotStatement.params },
+    buildPayrollApprovalTransactionAssertion(
+      salonId,
+      existing.id,
+      snapshotGuardId
+    ),
   ];
 
   // Carryovers already present in this payroll month are considered applied by
   // the historical approval, but the system records that application now.
+  await appendAtomicPayrollTargetApproval(
+    db,
+    salonId,
+    existing,
+    actor,
+    now,
+    statements,
+    guardIds
+  );
+
   for (const carryoverId of carryoverSourceIds(existing)) {
     statements.push({
       sql: `UPDATE payroll_carryover_adjustments
@@ -4496,9 +4798,30 @@ export async function recordLatePayrollApproval(
         existing.payroll_month,
       ],
     });
+    const carryoverGuardId = generatedId(
+      'payroll_approval_carryover_guard'
+    );
+
+    guardIds.push(carryoverGuardId);
+
+    statements.push(
+      buildPayrollApprovalTransactionAssertion(
+        salonId,
+        existing.id,
+        carryoverGuardId
+      )
+    );
   }
 
-  await dbBatch(db, statements);
+  statements.push(
+      buildPayrollApprovalTransactionCleanup(
+        salonId,
+        existing.id,
+        guardIds
+      )
+    );
+
+    await dbBatch(db, statements);
 
   const current = await getPayrollEntry(db, salonId, existing.id);
   const transitionSnapshot = await getPayrollApprovalSnapshot(

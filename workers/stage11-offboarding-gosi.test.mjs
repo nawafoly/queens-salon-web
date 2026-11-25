@@ -1,3 +1,4 @@
+import { applyCoreTestMigrations } from './test-support/miniflare-core-migrations.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -11,7 +12,11 @@ import { upsertHrEmployee } from './core/repositories/hr-employees.js';
 import { recordAttendance } from './core/repositories/attendance.js';
 import { resolveEmployeeShift } from './core/repositories/shift-control.js';
 import { getStaff, staffIsPubliclyBookable } from './core/repositories/staff.js';
-import { previewPayrollEntry } from './core/repositories/payroll.js';
+import {
+  previewPayrollEntry,
+  upsertPayrollEntry,
+  approvePayrollEntry,
+} from './core/repositories/payroll.js';
 import {
   classifyStage11PayrollReadiness,
   payrollApprovalReadiness,
@@ -22,35 +27,7 @@ const TEST_NOW = '2026-08-25T12:00:00.000Z';
 const TEST_BUSINESS_DATE = '2026-08-25';
 const OFFBOARD_OPTIONS = { now: TEST_NOW };
 
-function splitMigrationStatements(sql) {
-  const statements = [];
-  const pushPlain = (chunk) => chunk.split(';').map((v) => v.trim()).filter(Boolean).forEach((v) => statements.push(v));
-  const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
-  let cursor = 0;
-  for (const match of sql.matchAll(triggerPattern)) {
-    pushPlain(sql.slice(cursor, match.index));
-    statements.push(match[0].trim());
-    cursor = match.index + match[0].length;
-  }
-  pushPlain(sql.slice(cursor));
-  return statements;
-}
 
-const MIGRATIONS = [
-  '0001_core_schema.sql','0002_frontend_cutover.sql','0003_booking_availability.sql','0004_admin_operations.sql','0005_hr_settings_files.sql',
-  '0006_booking_discount_snapshots.sql','0007_booking_soft_delete.sql','0008_booking_reference_sequence.sql','0014_app_users_permissions.sql','0015_employee_type.sql',
-  '0016_payroll_snapshots.sql','0016_employee_permissions.sql','0017_shift_control.sql','0018_employee_payroll_settings.sql','0020_employee_requests.sql',
-  '0021_employee_target_bonus.sql',
-  '0022_shift_attendance_policy.sql','0023_exceptional_financial_payment_requests.sql','0024_employee_leave_balance_ledger.sql','0025_employee_request_reference_integrity.sql',
-  '0026_employee_master_profile_fields.sql','0027_employee_attendance_payroll_mode.sql','0028_payroll_approval_snapshots_carryovers.sql','0029_payroll_social_insurance_snapshots.sql',
-  '0030_employee_payroll_obligations.sql','0031_workforce_communications_recruitment.sql','0032_service_season_price.sql','0033_app_user_profile_photo.sql',
-  '0034_employee_offboarding_invariants.sql',
-  // Payroll authority reads overtime compensation fields introduced by this migration.
-  '0043_sa_overtime_request_runtime.sql',
-  // Shift control and payroll previews read these canonical 0057 tables.
-  '0057_leave_rest_workflows.sql',
-  '0094_day_audit_closings.sql',
-];
 
 async function setup() {
   const mf = new Miniflare({
@@ -59,13 +36,11 @@ async function setup() {
     }, env: { CORE_DB: { type: 'd1', id: 'stage11-core-test' } }, exports: {} }, dev: { rootPath: process.cwd() } }],
   });
   const db = await mf.getD1Database('CORE_DB');
-  for (const name of MIGRATIONS) {
-    const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
-      .replace(/\r/g, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--'))
-      .join('\n');
-    for (const statement of splitMigrationStatements(sql)) await db.prepare(statement).run();
+  try {
+    await applyCoreTestMigrations(db);
+  } catch (error) {
+    await mf.dispose();
+    throw error;
   }
   return {
     mf,
@@ -1281,10 +1256,20 @@ test('historical staff CAS rejects payroll approved after precheck but before at
       // Simulate payroll finalization after the initial SELECT but before
       // the atomic UPDATE: the SQL write guard must independently refuse it.
       approvalInterleaved = true;
-      await db.prepare(`INSERT INTO payroll_entries
-        (id,salon_id,employee_id,payroll_month,status,created_at,updated_at)
-        VALUES ('approved-between-checks','main','payroll-race-from','2026-08','approved',
-                '2026-08-31','2026-08-31')`).run();
+      const draft = await upsertPayrollEntry(db, 'main', {
+        id: 'approved-between-checks',
+        employeeId: 'payroll-race-from',
+        payrollMonth: '2026-08',
+      }, actor);
+
+      const approved = await approvePayrollEntry(
+        db,
+        'main',
+        draft.id,
+        actor
+      );
+
+      assert.equal(approved.status, 'approved');
       return db.batch(statements);
     },
   };
