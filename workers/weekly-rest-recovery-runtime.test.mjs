@@ -800,3 +800,614 @@ test('concurrent source replay cannot increment balance without a ledger entry',
   assert.equal(projection.last_entry_id, ledger.id);
   assert.equal(projection.version, 1);
 });
+
+
+test('weekly rest reversal preserves entitlement after a valid time correction', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const created = await adminAdjust(f, {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'rest-reversal-valid-create',
+  });
+
+  assert.equal(created.status, 200, await created.clone().text());
+  assert.equal(await f.balance(), 1440);
+
+  const edited = await adminAdjust(f, {
+    checkOutTime: '23:15',
+    operationId: 'rest-reversal-valid-edit',
+  });
+
+  assert.equal(edited.status, 200, await edited.clone().text());
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('weekly rest reversal removes unused entitlement after checkout deletion', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const created = await adminAdjust(f, {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'rest-reversal-delete-create',
+  });
+
+  assert.equal(created.status, 200, await created.clone().text());
+  assert.equal(await f.balance(), 1440);
+
+  const input = {
+    clearCheckOut: true,
+    operationId: 'rest-reversal-delete-checkout',
+  };
+
+  const deleted = await adminAdjust(f, input);
+
+  assert.equal(deleted.status, 200, await deleted.clone().text());
+
+  const replay = await adminAdjust(f, input);
+
+  assert.equal(replay.status, 200);
+
+  assert.equal(
+    await f.balance(),
+    0,
+    'Unused weekly rest entitlement must be reversed'
+  );
+
+  assert.equal(await f.credits(), 1);
+});
+
+test('weekly rest reversal restores entitlement exactly once after checkout restoration', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const created = await adminAdjust(f, {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'rest-reversal-restore-create',
+  });
+
+  assert.equal(created.status, 200, await created.clone().text());
+  assert.equal(await f.balance(), 1440);
+
+  const deleted = await adminAdjust(f, {
+    clearCheckOut: true,
+    operationId: 'rest-reversal-restore-delete',
+  });
+
+  assert.equal(deleted.status, 200, await deleted.clone().text());
+  assert.equal(await f.balance(), 0);
+
+  const input = {
+    checkOutTime: '23:00',
+    operationId: 'rest-reversal-restore-checkout',
+  };
+
+  const restored = await adminAdjust(f, input);
+
+  assert.equal(restored.status, 200, await restored.clone().text());
+  assert.equal(await f.balance(), 1440);
+
+  const replay = await adminAdjust(f, input);
+
+  assert.equal(replay.status, 200);
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 1440);
+});
+
+import {
+  debitCompTime,
+} from './core/repositories/comp-time.js';
+
+async function createCorrectionEntitlement(f, prefix) {
+  await f.assignment('2026-09-01');
+
+  const response = await adminAdjust(f, {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: prefix + '-create',
+  });
+
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(await f.balance(), 1440);
+}
+
+async function correctionReviewCount(f) {
+  const row = await f.core.prepare(`
+    SELECT COUNT(*) AS count
+    FROM employee_labor_compliance_events
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rule_code = 'weekly_rest_attendance_correction'
+      AND status = 'open'
+  `).first();
+
+  return Number(row.count);
+}
+
+async function correctionLedgerCount(f, sourceType) {
+  const row = await f.core.prepare(`
+    SELECT COUNT(*) AS count
+    FROM employee_comp_time_ledger
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND entitlement_type = 'weekly_rest_due'
+      AND source_type = ?
+  `).bind(sourceType).first();
+
+  return Number(row.count);
+}
+
+test('weekly rest reversal protects consumed entitlement', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'consumed-rest');
+
+  await debitCompTime(
+    f.core,
+    'main',
+    {
+      employeeId: 'test-employee',
+      entitlementType: 'weekly_rest_due',
+      minutes: 1440,
+      sourceType: 'leave_request',
+      sourceId: 'synthetic-consumed-rest',
+      sourceDate: '2026-09-02',
+      note: 'Synthetic consumed entitlement',
+    },
+    { uid: 'test-hr' }
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  const input = {
+    clearCheckOut: true,
+    operationId: 'consumed-rest-delete',
+  };
+
+  const response = await adminAdjust(f, input);
+
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(await f.balance(), 0);
+  assert.equal(await correctionReviewCount(f), 1);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    0
+  );
+
+  const replay = await adminAdjust(f, input);
+
+  assert.equal(replay.status, 200);
+  assert.equal(await correctionReviewCount(f), 1);
+  assert.equal(await f.balance(), 0);
+});
+
+test('weekly rest reversal protects unrelated balance movements', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'unrelated-rest');
+
+  await creditCompTime(
+    f.core,
+    'main',
+    {
+      employeeId: 'test-employee',
+      entitlementType: 'weekly_rest_due',
+      minutes: 1440,
+      sourceType: 'manual_adjustment',
+      sourceId: 'synthetic-unrelated-credit',
+      sourceDate: '2026-09-03',
+      note: 'Unrelated manual entitlement',
+    },
+    { uid: 'test-hr' }
+  );
+
+  assert.equal(await f.balance(), 2880);
+
+  const response = await adminAdjust(f, {
+    clearCheckOut: true,
+    operationId: 'unrelated-rest-delete',
+  });
+
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(await f.balance(), 2880);
+  assert.equal(await correctionReviewCount(f), 1);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    0
+  );
+});
+
+test('weekly rest reversal supports repeated delete and restore cycles', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'repeated-rest');
+
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    const deletion = {
+      clearCheckOut: true,
+      operationId: `repeated-rest-delete-${cycle}`,
+    };
+
+    const deleted = await adminAdjust(f, deletion);
+
+    assert.equal(deleted.status, 200, await deleted.clone().text());
+    assert.equal(await f.balance(), 0);
+
+    await adminAdjust(f, deletion);
+
+    assert.equal(await f.balance(), 0);
+
+    const restoration = {
+      checkOutTime: '23:00',
+      operationId: `repeated-rest-restore-${cycle}`,
+    };
+
+    const restored = await adminAdjust(f, restoration);
+
+    assert.equal(restored.status, 200, await restored.clone().text());
+    assert.equal(await f.balance(), 1440);
+
+    await adminAdjust(f, restoration);
+    await f.recover();
+
+    assert.equal(await f.balance(), 1440);
+  }
+
+  assert.equal(await f.credits(), 4);
+  assert.equal(await correctionReviewCount(f), 0);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    3
+  );
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_restore'),
+    3
+  );
+
+  const ledger = await f.core.prepare(`
+    SELECT SUM(
+      balance_after_minutes - balance_before_minutes
+    ) AS net_minutes
+    FROM employee_comp_time_ledger
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND entitlement_type = 'weekly_rest_due'
+  `).first();
+
+  assert.equal(Number(ledger.net_minutes), await f.balance());
+
+  const state = await f.core.prepare(`
+    SELECT version, last_entry_id
+    FROM employee_comp_time_balances
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND entitlement_type = 'weekly_rest_due'
+  `).first();
+
+  assert.equal(Number(state.version), 7);
+
+  const event = await f.core.prepare(`
+    SELECT entitlement_ledger_entry_id,
+           restoration_status,
+           substitute_rest_minutes
+    FROM employee_weekly_rest_events
+  `).first();
+
+  assert.equal(event.entitlement_ledger_entry_id, state.last_entry_id);
+  assert.equal(event.restoration_status, 'owed');
+  assert.equal(Number(event.substitute_rest_minutes), 1440);
+});
+
+test('weekly rest reversal handles concurrent attendance deletion during scheduled credit', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+  await f.punch('2026-09-01', 'check_in', '12:00');
+  await f.punch('2026-09-01', 'check_out', '20:00');
+
+  const originalBatch = f.core.batch.bind(f.core);
+
+  let injected = false;
+
+  f.core.batch = async statements => {
+    if (!injected) {
+      const event = await f.core.prepare(`
+        SELECT id
+        FROM employee_weekly_rest_events
+        WHERE salon_id = 'main'
+          AND employee_id = 'test-employee'
+          AND rest_date = '2026-09-01'
+      `).first();
+
+      if (event) {
+        injected = true;
+
+        const deleted = await adminAdjust(f, {
+          clearCheckOut: true,
+          operationId: 'concurrent-rest-checkout-deletion',
+        });
+
+        assert.equal(
+          deleted.status,
+          200,
+          await deleted.clone().text()
+        );
+      }
+    }
+
+    return originalBatch(statements);
+  };
+
+  const options = {
+    fromDate: '2026-08-31',
+    now: new Date('2026-11-24T21:00:00Z'),
+  };
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(injected, true);
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  const checkout = await f.attendance.prepare(`
+    SELECT COUNT(*) AS count
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_out'
+      AND result = 'allowed'
+  `).first();
+
+  assert.equal(Number(checkout.count), 0);
+
+  assert.equal(
+    await f.balance(),
+    0,
+    'Concurrent attendance deletion must not leave an invalid entitlement'
+  );
+});
+
+test('weekly rest reversal recovers interrupted post-credit correction', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+  await f.punch('2026-09-01', 'check_in', '12:00');
+  await f.punch('2026-09-01', 'check_out', '20:00');
+
+  const originalBatch = f.core.batch.bind(f.core);
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  let deleted = false;
+  let creditCommitted = false;
+  let interrupted = false;
+
+  f.core.batch = async statements => {
+    if (!deleted) {
+      const event = await originalPrepare(`
+        SELECT id
+        FROM employee_weekly_rest_events
+        WHERE salon_id = 'main'
+          AND employee_id = 'test-employee'
+          AND rest_date = '2026-09-01'
+      `).first();
+
+      if (event) {
+        deleted = true;
+
+        const response = await adminAdjust(f, {
+          clearCheckOut: true,
+          operationId: 'interrupted-rest-delete',
+        });
+
+        assert.equal(
+          response.status,
+          200,
+          await response.clone().text()
+        );
+
+        const result = await originalBatch(statements);
+
+        creditCommitted = (await f.balance()) === 1440;
+
+        return result;
+      }
+    }
+
+    return originalBatch(statements);
+  };
+
+  f.core.prepare = sql => {
+    if (
+      creditCommitted &&
+      !interrupted &&
+      /SELECT id FROM employee_weekly_rest_work_assignments/i.test(sql) &&
+      /status\s*=\s*'completed'/i.test(sql)
+    ) {
+      interrupted = true;
+      throw new Error('SIMULATED_POST_CREDIT_INTERRUPTION');
+    }
+
+    return originalPrepare(sql);
+  };
+
+  const options = {
+    fromDate: '2026-08-31',
+    now: new Date('2026-11-24T21:00:00Z'),
+  };
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  f.core.prepare = originalPrepare;
+  f.core.batch = originalBatch;
+
+  assert.equal(deleted, true);
+  assert.equal(creditCommitted, true);
+  assert.equal(interrupted, true);
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const assignment = await f.core.prepare(`
+    SELECT status, correction_pending
+    FROM employee_weekly_rest_work_assignments
+    WHERE rest_date = '2026-09-01'
+  `).first();
+
+  assert.equal(assignment.status, 'completed');
+  assert.equal(Number(assignment.correction_pending), 1);
+
+  console.log('VERIFIED_INTERRUPTED_CREDIT_BALANCE: 1440');
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(
+    await f.balance(),
+    0,
+    'Scheduled recovery must finish an interrupted correction'
+  );
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 1);
+
+  const recovered = await f.core.prepare(`
+    SELECT correction_pending
+    FROM employee_weekly_rest_work_assignments
+    WHERE rest_date = '2026-09-01'
+  `).first();
+
+  assert.equal(Number(recovered.correction_pending), 0);
+
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    1
+  );
+});
+
+test('weekly rest reversal recovers confirmed but unfinished assignment', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'unfinished-confirmation');
+
+  await f.core.prepare(`
+    UPDATE employee_weekly_rest_work_assignments
+       SET status = 'assigned',
+           correction_pending = 0,
+           completed_at = NULL
+     WHERE salon_id = 'main'
+       AND rest_date = '2026-09-01'
+  `).run();
+
+  const originalPrepare = f.core.prepare.bind(f.core);
+
+  let recoveryBlocked = false;
+
+  f.core.prepare = sql => {
+    if (
+      /FROM employee_weekly_rest_work_assignments a/i.test(sql) &&
+      /a\.status/i.test(sql)
+    ) {
+      recoveryBlocked = true;
+      throw new Error('SIMULATED_RECOVERY_UNAVAILABLE');
+    }
+
+    return originalPrepare(sql);
+  };
+
+  let deleted;
+
+  try {
+    deleted = await adminAdjust(f, {
+      clearCheckOut: true,
+      operationId: 'unfinished-confirmation-delete',
+    });
+  } finally {
+    f.core.prepare = originalPrepare;
+  }
+
+  assert.equal(
+    deleted.status,
+    200,
+    await deleted.clone().text()
+  );
+
+  assert.equal(recoveryBlocked, true);
+
+  const checkout = await f.attendance.prepare(`
+    SELECT COUNT(*) AS count
+    FROM attendance_records
+    WHERE employee_uid = 'test-uid'
+      AND work_date = '2026-09-01'
+      AND type = 'check_out'
+      AND result = 'allowed'
+  `).first();
+
+  assert.equal(Number(checkout.count), 0);
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const options = {
+    fromDate: '2026-08-31',
+    now: new Date('2026-11-24T21:00:00Z'),
+  };
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 1);
+  assert.equal(
+    await correctionLedgerCount(f, 'weekly_rest_correction_reversal'),
+    1
+  );
+});
+
+import {
+  reconcileCreditedWeeklyRest,
+} from './core/repositories/weekly-rest-correction.js';
+
+test('weekly rest reversal refuses dates before approved cutoff', async () => {
+  const result = await reconcileCreditedWeeklyRest(
+    null,
+    'main',
+    'test-employee',
+    '2026-08-30',
+    null,
+    { uid: 'test-admin' },
+    'historical-protection'
+  );
+
+  assert.equal(result.status, 'not_applicable');
+});

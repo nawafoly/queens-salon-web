@@ -123,7 +123,8 @@ function createFixture() {
       rest_date TEXT NOT NULL,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
-      status TEXT NOT NULL
+      status TEXT NOT NULL,
+      correction_pending INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE employee_comp_time_ledger (

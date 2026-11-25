@@ -1,3 +1,4 @@
+import { reconcileCreditedWeeklyRest } from "./core/repositories/weekly-rest-correction.js";
 import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
 import {
   APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
@@ -2152,6 +2153,16 @@ async function recoverAttendanceOperation(db, directoryDb, op) {
   });
 
   if (op.origin !== "punch") {
+    await reconcileCreditedWeeklyRest(
+      directoryDb,
+      op.salon_id,
+      op.employee_id,
+      op.work_date,
+      db,
+      actor,
+      op.id
+    );
+
     try {
       const recovery = await recoverAssignedWeeklyRestWork(
         directoryDb,

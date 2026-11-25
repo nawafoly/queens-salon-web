@@ -1,4 +1,5 @@
-import { dbAll, cleanText, validDate } from '../d1.js';
+import { reconcileCreditedWeeklyRest } from './weekly-rest-correction.js';
+import { dbAll, dbRun, cleanText, validDate } from '../d1.js';
 import {
   reconcileAssignedWeeklyRestWork,
 } from './leave-rest-workflows.js';
@@ -46,7 +47,13 @@ export async function recoverAssignedWeeklyRestWork(
 
   const candidateSql = `FROM employee_weekly_rest_work_assignments a
       WHERE a.salon_id = ?
-        AND a.status = 'assigned'
+        AND (
+          a.status = 'assigned'
+          OR (
+            a.status = 'completed'
+            AND a.correction_pending = 1
+          )
+        )
         AND a.rest_date >= ?
         AND a.rest_date <= ?
         ${targetSql}
@@ -58,7 +65,9 @@ export async function recoverAssignedWeeklyRestWork(
             ELSE '+0 day'
           END
         ) <= datetime(?)
-        AND NOT EXISTS (
+        AND (
+          (a.status = 'completed' AND a.correction_pending = 1)
+          OR NOT EXISTS (
           SELECT 1
             FROM employee_comp_time_ledger l
            WHERE l.salon_id = a.salon_id
@@ -75,6 +84,7 @@ export async function recoverAssignedWeeklyRestWork(
                  AND l.source_date >= a.rest_date
                )
              )
+          )
         )
   `;
 
@@ -100,7 +110,7 @@ export async function recoverAssignedWeeklyRestWork(
 
   const assignments = await dbAll(
     db,
-    `SELECT a.id, a.employee_id, a.rest_date
+    `SELECT a.id, a.employee_id, a.rest_date, a.status, a.correction_pending
      ${candidateSql}
      ORDER BY a.rest_date DESC, a.id
      LIMIT ? OFFSET ?`,
@@ -124,6 +134,104 @@ export async function recoverAssignedWeeklyRestWork(
     summary.processed += 1;
 
     try {
+      if (
+        assignment.status === 'completed' &&
+        Number(assignment.correction_pending) === 1
+      ) {
+        const correction = await reconcileCreditedWeeklyRest(
+          db,
+          salonId,
+          assignment.employee_id,
+          assignment.rest_date,
+          externalAttendanceDb,
+          { uid: 'system:weekly-rest-recovery' },
+          `pending-correction:${assignment.id}`
+        );
+
+        if (correction.status === 'not_applicable') {
+          throw new Error('weekly_rest_pending_event_missing');
+        }
+
+        await dbRun(
+          db,
+          `UPDATE employee_weekly_rest_work_assignments
+              SET correction_pending = 0
+            WHERE salon_id = ? AND id = ?
+              AND status = 'completed'`,
+          [salonId, assignment.id]
+        );
+
+        summary.corrected = (summary.corrected || 0) + 1;
+        continue;
+      }
+
+      if (!options.reconcile && assignment.status === 'assigned') {
+        const confirmed = await dbAll(
+          db,
+          `SELECT e.id
+             FROM employee_weekly_rest_events e
+             JOIN employee_comp_time_ledger l
+               ON l.id = e.entitlement_ledger_entry_id
+              AND l.salon_id = e.salon_id
+              AND l.employee_id = e.employee_id
+            WHERE e.salon_id = ?
+              AND e.employee_id = ?
+              AND e.rest_date = ?
+              AND e.status = 'open'
+              AND l.entitlement_type = 'weekly_rest_due'
+              AND l.entry_kind = 'credit'
+              AND l.source_type = 'weekly_rest_event'
+              AND l.source_id = e.id
+            LIMIT 1`,
+          [salonId, assignment.employee_id, assignment.rest_date]
+        );
+
+        if (confirmed.length) {
+          await dbRun(
+            db,
+            `UPDATE employee_weekly_rest_work_assignments
+                SET status = 'completed',
+                    correction_pending = 1,
+                    completed_at = ?,
+                    updated_at = ?
+              WHERE salon_id = ? AND id = ?
+                AND status = 'assigned'`,
+            [
+              now.toISOString(),
+              now.toISOString(),
+              salonId,
+              assignment.id,
+            ]
+          );
+
+          const correction = await reconcileCreditedWeeklyRest(
+            db,
+            salonId,
+            assignment.employee_id,
+            assignment.rest_date,
+            externalAttendanceDb,
+            { uid: 'system:weekly-rest-recovery' },
+            `unfinished-confirmation:${assignment.id}`
+          );
+
+          if (correction.status === 'not_applicable') {
+            throw new Error('weekly_rest_unfinished_event_missing');
+          }
+
+          await dbRun(
+            db,
+            `UPDATE employee_weekly_rest_work_assignments
+                SET correction_pending = 0
+              WHERE salon_id = ? AND id = ?
+                AND status = 'completed'`,
+            [salonId, assignment.id]
+          );
+
+          summary.corrected = (summary.corrected || 0) + 1;
+          continue;
+        }
+      }
+
       const result = await reconcile(
         db,
         salonId,

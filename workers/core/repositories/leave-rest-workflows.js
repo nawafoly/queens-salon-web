@@ -1,3 +1,4 @@
+import { reconcileCreditedWeeklyRest } from './weekly-rest-correction.js';
 // CORE D1 ONLY — annual-leave recall + weekly-rest work authorization.
 // Keep original leave/rest facts immutable; exceptions are separate audited facts.
 
@@ -679,12 +680,39 @@ export async function reconcileAssignedWeeklyRestWork(
     await dbRun(
       db,
       `UPDATE employee_weekly_rest_work_assignments
-          SET status = 'completed', completed_at = ?, updated_at = ?
+          SET status = 'completed', completed_at = ?, updated_at = ?, correction_pending = 1
         WHERE salon_id = ? AND id = ? AND status = 'assigned'`,
       [now, now, salonId, assignment.id]
     );
   }
-  return { ...result, assignment, entitlement };
+  let correction = null;
+
+  if (assignment && entitlement && externalAttendanceDb) {
+    correction = await reconcileCreditedWeeklyRest(
+      db,
+      salonId,
+      employeeId,
+      restDate,
+      externalAttendanceDb,
+      actor,
+      `post-credit:${assignment.id}:${result.event.id}`
+    );
+
+    if (correction.status === 'not_applicable') {
+      throw new Error('weekly_rest_post_credit_event_missing');
+    }
+
+    await dbRun(
+      db,
+      `UPDATE employee_weekly_rest_work_assignments
+          SET correction_pending = 0
+        WHERE salon_id = ? AND id = ?
+          AND status = 'completed'`,
+      [salonId, assignment.id]
+    );
+  }
+
+  return { ...result, assignment, entitlement, correction };
 }
 
 export async function getLeaveRestOverview(db, salonId, employeeIdValue) {

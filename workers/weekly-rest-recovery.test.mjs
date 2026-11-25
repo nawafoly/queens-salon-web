@@ -18,7 +18,8 @@ function fixture(t) {
       rest_date TEXT,
       start_time TEXT,
       end_time TEXT,
-      status TEXT
+      status TEXT,
+      correction_pending INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE employee_comp_time_ledger (
@@ -58,7 +59,7 @@ function fixture(t) {
     } = {}
   ) {
     sqlite.prepare(`
-      INSERT INTO employee_weekly_rest_work_assignments
+      INSERT INTO employee_weekly_rest_work_assignments (id, salon_id, employee_id, rest_date, start_time, end_time, status)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, salon, id, date, start, end, status);
   }
