@@ -4976,3 +4976,368 @@ test('cancelled weekly rest assignment is excluded from both shift resolvers', a
 
   console.log('VERIFIED_CANCELLED_ASSIGNMENT_EXCLUDED');
 });
+
+async function hr12AssignmentRows(f, date = '2026-09-01') {
+  const result = await f.core.prepare(`
+    SELECT id, status, reason, start_time, end_time
+    FROM employee_weekly_rest_work_assignments
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+      AND rest_date = ?
+    ORDER BY id
+  `).bind(date).all();
+
+  return result.results;
+}
+
+async function hr12CreateAssignment(f, id) {
+  const {
+    createWeeklyRestWorkAssignment,
+  } = await import('./core/repositories/leave-rest-workflows.js');
+
+  return createWeeklyRestWorkAssignment(
+    f.core,
+    'main',
+    {
+      id,
+      employeeId: 'test-employee',
+      restDate: '2026-09-01',
+      startTime: '15:00',
+      endTime: '23:00',
+      reason: 'Synthetic assignment integrity test',
+    },
+    { uid: 'test-admin' }
+  );
+}
+
+test('HR12 assignment integrity: assigned replay preserves original assignment', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const result = await hr12CreateAssignment(
+    f,
+    'duplicate-assigned-request'
+  );
+
+  assert.equal(result.idempotent, true);
+  assert.equal(result.assignment.id, 'assignment-2026-09-01');
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_ASSIGNED_REPLAY_IDEMPOTENT');
+});
+
+test('HR12 assignment integrity: completed assignment rejects duplicate creation', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr12-completed');
+
+  const before = await hr12AssignmentRows(f);
+
+  assert.equal(before.length, 1);
+  assert.equal(before[0].status, 'completed');
+
+  await assert.rejects(
+    hr12CreateAssignment(f, 'duplicate-completed-request'),
+    /completed_assignment_exists/
+  );
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_COMPLETED_DUPLICATE_REJECTED');
+  console.log('VERIFIED_COMPLETED_BALANCE_PRESERVED');
+});
+
+test('HR12 assignment integrity: concurrent assigned replays never duplicate rows', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const results = await Promise.all(
+    Array.from(
+      { length: 10 },
+      (_, index) => hr12CreateAssignment(
+        f,
+        `concurrent-assigned-request-${index}`
+      )
+    )
+  );
+
+  for (const result of results) {
+    assert.equal(result.idempotent, true);
+    assert.equal(result.assignment.id, 'assignment-2026-09-01');
+  }
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_CONCURRENT_REPLAYS_SINGLE_ASSIGNMENT');
+});
+
+test('HR12 assignment integrity: reversed completed entitlement cannot create a second assignment', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr12-reversed');
+
+  const deleted = await adminAdjust(f, {
+    clearCheckOut: true,
+    operationId: 'hr12-reversed-checkout-deletion',
+  });
+
+  assert.equal(
+    deleted.status,
+    200,
+    await deleted.clone().text()
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  const before = await hr12AssignmentRows(f);
+
+  assert.equal(before.length, 1);
+  assert.equal(before[0].status, 'completed');
+
+  await assert.rejects(
+    hr12CreateAssignment(f, 'duplicate-reversed-assignment'),
+    /completed_assignment_exists/
+  );
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 1);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_restore'
+    ),
+    0
+  );
+
+  console.log('VERIFIED_REVERSED_ASSIGNMENT_DUPLICATE_REJECTED');
+  console.log('VERIFIED_REVERSAL_LEDGER_PRESERVED');
+});
+
+test('HR12 assignment integrity: cancellation preserves history without creating credit', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const {
+    cancelWeeklyRestWorkAssignment,
+  } = await import('./core/repositories/leave-rest-workflows.js');
+
+  await cancelWeeklyRestWorkAssignment(
+    f.core,
+    'main',
+    'assignment-2026-09-01',
+    { reason: 'Synthetic cancellation integrity test' },
+    { uid: 'test-admin' }
+  );
+
+  const rows = await hr12AssignmentRows(f);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'assignment-2026-09-01');
+  assert.equal(rows[0].status, 'cancelled');
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    rows
+  );
+
+  console.log('VERIFIED_CANCELLED_ASSIGNMENT_HISTORY_PRESERVED');
+});
+
+async function hr12InsertRawAssignment(f, id, status, date = '2026-09-01') {
+  return f.core.prepare(`
+    INSERT INTO employee_weekly_rest_work_assignments (
+      id, salon_id, employee_id,
+      rest_date, start_time, end_time,
+      reason, schedule_source_type,
+      status, created_at, updated_at
+    )
+    VALUES (
+      ?, 'main', 'test-employee',
+      ?, '15:00', '23:00',
+      'Synthetic constraint test', 'weekly_schedule',
+      ?, ?, ?
+    )
+  `).bind(
+    id, date, status, date, date
+  ).run();
+}
+
+test('HR12 database constraint: completed assignment rejects direct assigned insert', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr12-db-completed');
+
+  const before = await hr12AssignmentRows(f);
+
+  await assert.rejects(
+    hr12InsertRawAssignment(
+      f,
+      'direct-duplicate-assigned',
+      'assigned'
+    ),
+    /UNIQUE constraint failed/i
+  );
+
+  assert.deepEqual(await hr12AssignmentRows(f), before);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_DATABASE_REJECTS_ASSIGNED_AFTER_COMPLETED');
+});
+
+test('HR12 database constraint: completed assignment rejects another completed record', async t => {
+  const f = await fixture(t);
+
+  await createCorrectionEntitlement(f, 'hr12-db-double-completed');
+
+  const before = await hr12AssignmentRows(f);
+
+  await assert.rejects(
+    hr12InsertRawAssignment(
+      f,
+      'direct-duplicate-completed',
+      'completed'
+    ),
+    /UNIQUE constraint failed/i
+  );
+
+  assert.deepEqual(await hr12AssignmentRows(f), before);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('VERIFIED_DATABASE_REJECTS_DOUBLE_COMPLETED');
+});
+
+test('HR12 database constraint: assigned record rejects a second completed record', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  await assert.rejects(
+    hr12InsertRawAssignment(
+      f,
+      'direct-completed-conflict',
+      'completed'
+    ),
+    /UNIQUE constraint failed/i
+  );
+
+  const rows = await hr12AssignmentRows(f);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, 'assigned');
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_DATABASE_REJECTS_COMPLETED_AFTER_ASSIGNED');
+});
+
+test('HR12 database constraint: cancelled history permits a new assignment', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const {
+    cancelWeeklyRestWorkAssignment,
+  } = await import('./core/repositories/leave-rest-workflows.js');
+
+  await cancelWeeklyRestWorkAssignment(
+    f.core,
+    'main',
+    'assignment-2026-09-01',
+    { reason: 'Synthetic database lifecycle test' },
+    { uid: 'test-admin' }
+  );
+
+  await hr12InsertRawAssignment(
+    f,
+    'replacement-assignment',
+    'assigned'
+  );
+
+  const rows = await hr12AssignmentRows(f);
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].status, 'cancelled');
+  assert.equal(rows[1].status, 'assigned');
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_DATABASE_PRESERVES_CANCELLED_HISTORY');
+  console.log('VERIFIED_DATABASE_PERMITS_REASSIGNMENT');
+});
+
+test('HR12 database constraint: separate dates remain independent', async t => {
+  const f = await fixture(t);
+
+  await hr12InsertRawAssignment(
+    f,
+    'first-date-assignment',
+    'assigned',
+    '2026-09-01'
+  );
+
+  await hr12InsertRawAssignment(
+    f,
+    'second-date-assignment',
+    'assigned',
+    '2026-09-02'
+  );
+
+  assert.equal((await hr12AssignmentRows(f, '2026-09-01')).length, 1);
+  assert.equal((await hr12AssignmentRows(f, '2026-09-02')).length, 1);
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('VERIFIED_DATABASE_PERMITS_INDEPENDENT_DATES');
+});

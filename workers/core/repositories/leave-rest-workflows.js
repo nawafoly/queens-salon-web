@@ -558,6 +558,22 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
   const restDate = validDate(data.restDate || data.rest_date, 'restDate');
   const reason = requiredReason(data.reason || data.note, 'core_weekly_rest_work:reason_required');
 
+  const completed = await dbFirst(
+    db,
+    `SELECT id FROM employee_weekly_rest_work_assignments
+      WHERE salon_id = ? AND employee_id = ?
+        AND rest_date = ? AND status = 'completed'
+      LIMIT 1`,
+    [salonId, employeeId, restDate]
+  );
+
+  if (completed) {
+    throw new AppError(
+      409,
+      'core_weekly_rest_work:completed_assignment_exists'
+    );
+  }
+
   const existing = await activeWeeklyRestWorkAssignment(db, salonId, employeeId, restDate);
   if (existing) return { assignment: existing, idempotent: true };
 
@@ -585,7 +601,16 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
        attendance_lock_enabled, attendance_lock_after_minutes,
        reason, schedule_source_type, schedule_source_id, schedule_snapshot_json,
        status, assigned_by_uid, assigned_by_email, assigned_by_name, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?)`,
+     )
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1
+          FROM employee_weekly_rest_work_assignments
+         WHERE salon_id = ?
+           AND employee_id = ?
+           AND rest_date = ?
+           AND status IN ('assigned', 'completed')
+      )`,
     [
       id, salonId, employeeId, restDate, startTime, endTime,
       lockEnabled, lockAfter, reason,
@@ -593,8 +618,26 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
       JSON.stringify(shiftSnapshot(shift)),
       actorField(actor, 'uid'), actorField(actor, 'email'),
       actorField(actor, 'name') || actorField(actor, 'displayName'), now, now,
+      salonId, employeeId, restDate,
     ]
   );
+
+  const completedAfterInsert = await dbFirst(
+    db,
+    `SELECT id FROM employee_weekly_rest_work_assignments
+      WHERE salon_id = ? AND employee_id = ?
+        AND rest_date = ? AND status = 'completed'
+      LIMIT 1`,
+    [salonId, employeeId, restDate]
+  );
+
+  if (completedAfterInsert) {
+    throw new AppError(
+      409,
+      'core_weekly_rest_work:completed_assignment_exists'
+    );
+  }
+
   const assignment = await activeWeeklyRestWorkAssignment(db, salonId, employeeId, restDate);
   if (!assignment) throw new AppError(409, 'core_weekly_rest_work:assignment_concurrency_conflict');
   return { assignment, idempotent: changes(result) !== 1 };
