@@ -41,6 +41,16 @@ export function resolveAttendancePolicyForDate(
     );
   }
 
+  const authority =
+    employment.attendance_policy_authority ?? 'legacy';
+
+  if (!['legacy', 'effective_dated'].includes(authority)) {
+    throw new AppError(
+      409,
+      'core_attendance_policy:invalid_authority'
+    );
+  }
+
   const matching = periods.filter(period =>
     period.status === 'active' &&
     period.effective_from <= date &&
@@ -76,6 +86,19 @@ export function resolveAttendancePolicyForDate(
       source: 'effective_period',
       effectiveFrom: period.effective_from,
       effectiveTo: period.effective_to ?? null,
+    };
+  }
+
+  if (authority === 'effective_dated') {
+    return {
+      date,
+      mode: 'required',
+      reason: null,
+      policyId: null,
+      version: null,
+      source: 'effective_dated_default',
+      effectiveFrom: null,
+      effectiveTo: null,
     };
   }
 
@@ -131,7 +154,8 @@ export async function resolveEmployeeAttendancePolicy(
     dbFirst(
       db,
       `SELECT attendance_payroll_mode,
-              attendance_payroll_exemption_reason
+              attendance_payroll_exemption_reason,
+              attendance_policy_authority
          FROM employee_employment
         WHERE salon_id = ?
           AND employee_id = ?

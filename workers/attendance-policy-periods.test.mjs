@@ -479,3 +479,193 @@ test('HR05A SQL: overlapping updates roll back without audit changes', t => {
     2
   );
 });
+
+test('HR05B: managed policy never falls back to legacy exemption', () => {
+  const employment = {
+    ...legacyExempt,
+    attendance_policy_authority: 'effective_dated',
+  };
+
+  assert.equal(
+    resolveAttendancePolicyForDate(
+      employment,
+      [period],
+      '2026-11-14'
+    ).mode,
+    'required'
+  );
+
+  assert.equal(
+    resolveAttendancePolicyForDate(
+      employment,
+      [period],
+      '2026-11-20'
+    ).mode,
+    'exempt'
+  );
+
+  assert.equal(
+    resolveAttendancePolicyForDate(
+      employment,
+      [period],
+      '2026-11-26'
+    ).mode,
+    'required'
+  );
+});
+
+test('HR05B: cancelling managed exemption restores required attendance', () => {
+  const employment = {
+    ...legacyExempt,
+    attendance_policy_authority: 'effective_dated',
+  };
+
+  const result = resolveAttendancePolicyForDate(
+    employment,
+    [{ ...period, status: 'cancelled' }],
+    '2026-11-20'
+  );
+
+  assert.equal(result.mode, 'required');
+  assert.equal(result.source, 'effective_dated_default');
+});
+
+test('HR05B: legacy employee without managed periods remains compatible', () => {
+  const employment = {
+    ...legacyExempt,
+    attendance_policy_authority: 'legacy',
+  };
+
+  assert.equal(
+    resolveAttendancePolicyForDate(
+      employment, [], '2026-11-20'
+    ).mode,
+    'exempt'
+  );
+});
+
+test('HR05B: changing legacy employment fields cannot override managed policy', () => {
+  for (const baseline of ['required', 'exempt']) {
+    const employment = {
+      attendance_payroll_mode: baseline,
+      attendance_payroll_exemption_reason: 'Legacy value',
+      attendance_policy_authority: 'effective_dated',
+    };
+
+    assert.equal(
+      resolveAttendancePolicyForDate(
+        employment, [], '2026-11-20'
+      ).mode,
+      'required'
+    );
+  }
+});
+
+test('HR05B: invalid policy authority fails closed', () => {
+  assert.throws(
+    () => resolveAttendancePolicyForDate(
+      {
+        ...legacyExempt,
+        attendance_policy_authority: 'invalid',
+      },
+      [],
+      '2026-11-20'
+    ),
+    error => error.code ===
+      'core_attendance_policy:invalid_authority'
+  );
+});
+
+test('HR05B SQL: existing employees remain legacy by default', t => {
+  const db = fixture(t);
+
+  const rows = db.prepare(`
+    SELECT attendance_policy_authority
+    FROM employee_employment
+  `).all();
+
+  assert.equal(rows.length, 3);
+
+  for (const row of rows) {
+    assert.equal(
+      row.attendance_policy_authority,
+      'legacy'
+    );
+  }
+});
+
+test('HR05B SQL: invalid authority is rejected', t => {
+  const db = fixture(t);
+
+  assert.throws(() => db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'invalid'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `));
+});
+
+test('HR05B SQL: managed ownership cannot be downgraded', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'effective_dated'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  assert.throws(
+    () => db.exec(`
+      UPDATE employee_employment
+      SET attendance_policy_authority = 'legacy'
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-1'
+    `),
+    /attendance_policy_authority_downgrade_forbidden/
+  );
+
+  const row = db.prepare(`
+    SELECT attendance_policy_authority
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).get();
+
+  assert.equal(
+    row.attendance_policy_authority,
+    'effective_dated'
+  );
+});
+
+test('HR05B SQL: ownership transition remains employee-scoped', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'effective_dated'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  const rows = db.prepare(`
+    SELECT salon_id,
+           employee_id,
+           attendance_policy_authority
+    FROM employee_employment
+    ORDER BY salon_id, employee_id
+  `).all();
+
+  assert.deepEqual(
+    rows.map(row => [
+      row.salon_id,
+      row.employee_id,
+      row.attendance_policy_authority,
+    ]),
+    [
+      ['main', 'employee-1', 'effective_dated'],
+      ['main', 'employee-2', 'legacy'],
+      ['other', 'employee-1', 'legacy'],
+    ]
+  );
+});

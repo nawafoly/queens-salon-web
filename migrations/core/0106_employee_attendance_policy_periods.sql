@@ -250,3 +250,29 @@ BEGIN
     )
   );
 END;
+
+-- Explicit policy ownership.
+-- Legacy exemptions remain unchanged until administrative adoption.
+
+ALTER TABLE employee_employment
+  ADD COLUMN attendance_policy_authority TEXT NOT NULL
+  DEFAULT 'legacy'
+  CHECK (
+    attendance_policy_authority IN (
+      'legacy',
+      'effective_dated'
+    )
+  );
+
+CREATE TRIGGER IF NOT EXISTS
+  trg_attendance_policy_authority_no_downgrade
+BEFORE UPDATE OF attendance_policy_authority
+ON employee_employment
+WHEN OLD.attendance_policy_authority = 'effective_dated'
+AND NEW.attendance_policy_authority <> 'effective_dated'
+BEGIN
+  SELECT RAISE(
+    ABORT,
+    'attendance_policy_authority_downgrade_forbidden'
+  );
+END;
