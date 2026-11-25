@@ -33,6 +33,7 @@ import {
   validatePayrollAttendancePolicySnapshot,
   payrollAttendancePolicyMap,
   filterPayrollAttendanceAbsences,
+  payrollAttendancePolicySnapshotsMatch,
 } from './attendance-policy.js';
 import { resolveEmployeeShiftsBatch } from './shift-control.js';
 import { listReconciledCashOvertimeForPayroll } from './overtime-reconciliation.js';
@@ -1259,6 +1260,7 @@ async function assertPayrollApprovalReady(
       db,
       `SELECT attendance_payroll_mode,
               attendance_payroll_exemption_reason,
+              attendance_policy_authority,
               employment_status,
               base_salary_halalas,
               housing_allowance_halalas,
@@ -1317,12 +1319,117 @@ async function assertPayrollApprovalReady(
       );
     }
 
-    const canonicalMode =
+    let canonicalMode =
       cleanText(
         employment?.attendance_payroll_mode
       ).toLowerCase() === 'exempt'
         ? 'exempt'
         : 'required';
+
+    let canonicalExemptionReason =
+      optionalText(
+        employment.attendance_payroll_exemption_reason
+      ) || null;
+
+    const savedPolicy =
+      snapshot.attendancePolicySnapshot;
+
+    if (savedPolicy) {
+      const currentEmployment =
+        await canonicalEmployment(
+          db,
+          salonId,
+          row.employee_id
+        );
+
+      const bounds =
+        payrollMonthBoundsCanonical(
+          row.payroll_month
+        );
+
+      const servicePeriod =
+        payrollServicePeriod(
+          bounds,
+          currentEmployment
+        );
+
+      if (!servicePeriod.hasServiceInMonth) {
+        throw new AppError(
+          409,
+          'core_payroll:attendance_policy_mismatch'
+        );
+      }
+
+      validatePayrollAttendancePolicySnapshot(
+        savedPolicy,
+        servicePeriod.periodStart,
+        servicePeriod.periodEnd
+      );
+
+      const periods =
+        await loadAttendancePolicyPeriods(
+          db,
+          salonId,
+          row.employee_id
+        );
+
+      const currentPolicy =
+        buildPayrollAttendancePolicySnapshot(
+          currentEmployment,
+          periods,
+          servicePeriod.periodStart,
+          servicePeriod.periodEnd
+        );
+
+      if (
+        !payrollAttendancePolicySnapshotsMatch(
+          savedPolicy,
+          currentPolicy
+        )
+      ) {
+        throw new AppError(
+          409,
+          'core_payroll:attendance_policy_mismatch'
+        );
+      }
+
+      if (!currentPolicy.exemptionReasonComplete) {
+        throw new AppError(
+          409,
+          'core_payroll:payroll_attendance_exemption_reason_required'
+        );
+      }
+
+      canonicalMode = currentPolicy.mode;
+
+      canonicalExemptionReason =
+        currentPolicy.exemptionReasons.join(' / ') ||
+        null;
+
+      if (
+        snapshot.attendancePolicyCoverage !==
+          currentPolicy.coverage ||
+        snapshot.attendanceExemptDayCount !==
+          currentPolicy.exemptDayCount ||
+        snapshot.attendanceRequiredDayCount !==
+          currentPolicy.requiredDayCount
+      ) {
+        throw new AppError(
+          409,
+          'core_payroll:attendance_policy_mismatch'
+        );
+      }
+    } else if (
+      employment.attendance_policy_authority ===
+        'effective_dated'
+    ) {
+      // A draft calculated by the old engine cannot be
+      // approved after effective-dated policy adoption.
+      throw new AppError(
+        409,
+        'core_payroll:attendance_policy_snapshot_required'
+      );
+    }
 
     if (canonicalMode !== snapshotMode) {
       throw new AppError(
@@ -1407,9 +1514,7 @@ async function assertPayrollApprovalReady(
     effectiveMode = canonicalMode;
     if (canonicalMode === 'exempt') {
       snapshot.attendancePayrollExemptionReason =
-        optionalText(
-          employment?.attendance_payroll_exemption_reason
-        ) || null;
+        canonicalExemptionReason;
       snapshot.attendanceLinkStatus = 'exempt';
       snapshot.attendanceDeductionEligible = false;
     }
