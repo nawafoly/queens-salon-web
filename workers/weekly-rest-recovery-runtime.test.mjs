@@ -3616,3 +3616,364 @@ test('HR25 escalation lifecycle: failed alert write retains recoverable financia
   console.log('VERIFIED_HR25_FAILED_WRITE_PRESERVES_PENDING');
   console.log('VERIFIED_HR25_FAILED_WRITE_RECOVERED');
 });
+
+async function hr27SeedEmployee(f, id, uid, salonId = 'main') {
+  await f.core.prepare(`
+    INSERT INTO employee_profiles (
+      id, salon_id, firebase_uid, name,
+      status, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, 'active', ?, ?)
+  `).bind(
+    id,
+    salonId,
+    uid,
+    `Synthetic ${id}`,
+    '2026-01-01',
+    '2026-01-01'
+  ).run();
+}
+
+async function hr27SeedPunch(f, {
+  id,
+  employeeId = 'test-employee',
+  employeeUid = 'test-uid',
+  salonId = 'main',
+  date = '2026-09-01',
+  type = 'check_out',
+}) {
+  const timestamp = `${date}T20:00:00.000Z`;
+
+  await f.core.prepare(`
+    INSERT INTO attendance_records (
+      id, salon_id, employee_id, employee_uid,
+      date_key, record_type, recorded_at,
+      source, note, idempotency_key, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?)
+  `).bind(
+    id,
+    salonId,
+    employeeId,
+    employeeUid,
+    date,
+    type,
+    timestamp,
+    'Synthetic HR27 test record',
+    id,
+    timestamp
+  ).run();
+}
+
+async function hr27SeedApprovedRequest(f, id, payload) {
+  const timestamp = '2026-11-25T10:00:00.000Z';
+
+  await f.core.prepare(`
+    INSERT INTO employee_requests (
+      id, request_number, salon_id,
+      employee_id, employee_uid,
+      employee_name_snapshot,
+      request_type, status, title,
+      payload_json, execution_status,
+      idempotency_key, version,
+      submitted_at, approved_at,
+      created_at, updated_at,
+      created_by_uid, decided_by_uid
+    )
+    VALUES (
+      ?, ?, 'main',
+      'test-employee', 'test-uid',
+      'Synthetic employee',
+      'attendance_correction', 'approved',
+      'Synthetic HR27 correction',
+      ?, 'pending',
+      ?, 1,
+      ?, ?, ?, ?,
+      'test-uid', 'test-admin'
+    )
+  `).bind(
+    id,
+    `HR27-${id}`,
+    JSON.stringify({
+      date: '2026-09-01',
+      correctionType: 'delete_record',
+      reason: 'Synthetic attendance authorization test',
+      ...payload,
+    }),
+    `request-${id}`,
+    timestamp,
+    timestamp,
+    timestamp,
+    timestamp
+  ).run();
+}
+
+async function hr27ExecuteRequest(f, id) {
+  const { transitionEmployeeRequest } = await import(
+    './core/repositories/employee-requests.js'
+  );
+
+  return transitionEmployeeRequest(
+    f.core,
+    'main',
+    id,
+    'execute',
+    {
+      version: 1,
+      note: 'Synthetic authorized execution',
+      idempotencyKey: `execute-${id}`,
+    },
+    {
+      uid: 'test-admin',
+      email: 'admin@example.test',
+      name: 'Synthetic administrator',
+      role: 'owner',
+    },
+    {
+      externalAttendanceDb: f.attendance,
+    }
+  );
+}
+
+async function hr27Snapshot(f) {
+  const attendance = await f.core.prepare(`
+    SELECT *
+    FROM attendance_records
+    ORDER BY id
+  `).all();
+
+  const externalAttendance = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_records
+    ORDER BY id
+  `).all();
+
+  const operations = await f.core.prepare(`
+    SELECT *
+    FROM hr_payroll_operations
+    ORDER BY id
+  `).all();
+
+  const ledger = await f.core.prepare(`
+    SELECT *
+    FROM employee_comp_time_ledger
+    ORDER BY id
+  `).all();
+
+  return {
+    attendance: attendance.results,
+    externalAttendance: externalAttendance.results,
+    operations: operations.results,
+    ledger: ledger.results,
+    balance: await f.balance(),
+  };
+}
+
+async function hr27VerifyRejectedExecution(f, id) {
+  const before = await hr27Snapshot(f);
+
+  let error = null;
+  let result = null;
+
+  try {
+    result = await hr27ExecuteRequest(f, id);
+  } catch (caught) {
+    error = caught;
+  }
+
+  const after = await hr27Snapshot(f);
+
+  const request = await f.core.prepare(`
+    SELECT status, execution_status, execution_error
+    FROM employee_requests
+    WHERE salon_id = 'main' AND id = ?
+  `).bind(id).first();
+
+  console.log('HR27_REQUEST:', id);
+  console.log('HR27_RESULT:', JSON.stringify(result));
+  console.log('HR27_ERROR:', error?.code || error?.message || null);
+  console.log('HR27_REQUEST_STATE:', JSON.stringify(request));
+
+  console.log(
+    'HR27_ATTENDANCE_CHANGED:',
+    JSON.stringify(before.attendance) !==
+      JSON.stringify(after.attendance)
+  );
+
+  assert.deepEqual(
+    after.attendance,
+    before.attendance,
+    'Rejected request must not mutate Core attendance'
+  );
+
+  assert.deepEqual(
+    after.externalAttendance,
+    before.externalAttendance,
+    'Rejected request must not mutate external attendance'
+  );
+
+  assert.deepEqual(
+    after.operations,
+    before.operations,
+    'Rejected request must not mutate financial outbox'
+  );
+
+  assert.deepEqual(after.ledger, before.ledger);
+  assert.equal(after.balance, before.balance);
+
+  assert.notEqual(request.execution_status, 'completed');
+
+  assert.ok(
+    error || request.execution_status === 'failed',
+    'Invalid attendance target must be rejected'
+  );
+}
+
+test('HR27 request isolation: valid historical checkout correction succeeds', async t => {
+  const f = await fixture(t);
+
+  const { checkOut } = await hr24PrepareCoreEntitlement(f);
+
+  const {
+    recoverHrPayrollOperations,
+  } = await import('./core/repositories/hr-payroll-operations.js');
+
+  await recoverHrPayrollOperations(f.core, {
+    externalAttendanceDb: f.attendance,
+  });
+
+  await hr27SeedApprovedRequest(
+    f,
+    'valid-checkout',
+    { recordId: checkOut }
+  );
+
+  const result = await hr27ExecuteRequest(f, 'valid-checkout');
+
+  console.log('HR27_VALID_RESULT:', JSON.stringify(result));
+
+  const record = await f.core.prepare(`
+    SELECT record_type
+    FROM attendance_records
+    WHERE id = ?
+  `).bind(checkOut).first();
+
+  assert.equal(record.record_type, 'voided_check_out');
+  assert.equal(await f.balance(), 0);
+
+  assert.equal(
+    await correctionLedgerCount(
+      f,
+      'weekly_rest_correction_reversal'
+    ),
+    1
+  );
+
+  assert.equal(
+    (await hr26AssignmentState(f)).correction_pending,
+    0
+  );
+
+  console.log('VERIFIED_HR27_VALID_REQUEST_FINANCIAL_CORRECTION');
+});
+
+for (const correctionType of ['delete_record', 'update_check_out']) {
+  test(`HR27 request isolation: ${correctionType} rejects another employee`, async t => {
+    const f = await fixture(t);
+
+    await hr27SeedEmployee(
+      f,
+      'hr27-other-employee',
+      'hr27-other-uid'
+    );
+
+    await hr27SeedPunch(f, {
+      id: 'hr27-other-punch',
+      employeeId: 'hr27-other-employee',
+      employeeUid: 'hr27-other-uid',
+    });
+
+    const requestId = `other-employee-${correctionType}`;
+
+    await hr27SeedApprovedRequest(f, requestId, {
+      correctionType,
+      recordId: 'hr27-other-punch',
+      requestedTime: '21:00',
+    });
+
+    await hr27VerifyRejectedExecution(f, requestId);
+  });
+
+  test(`HR27 request isolation: ${correctionType} rejects another date`, async t => {
+    const f = await fixture(t);
+
+    await hr27SeedPunch(f, {
+      id: 'hr27-other-date',
+      date: '2026-09-02',
+    });
+
+    const requestId = `other-date-${correctionType}`;
+
+    await hr27SeedApprovedRequest(f, requestId, {
+      correctionType,
+      recordId: 'hr27-other-date',
+      requestedTime: '21:00',
+    });
+
+    await hr27VerifyRejectedExecution(f, requestId);
+  });
+}
+
+test('HR27 request isolation: update cannot change a mismatched punch type', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedPunch(f, {
+    id: 'hr27-wrong-type',
+    type: 'check_in',
+  });
+
+  await hr27SeedApprovedRequest(f, 'wrong-type', {
+    correctionType: 'update_check_out',
+    recordId: 'hr27-wrong-type',
+    requestedTime: '21:00',
+  });
+
+  await hr27VerifyRejectedExecution(f, 'wrong-type');
+});
+
+test('HR27 request isolation: explicit invalid record ID must not fall back to matching time', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedPunch(f, {
+    id: 'hr27-existing-checkout',
+  });
+
+  await hr27SeedApprovedRequest(f, 'invalid-explicit-id', {
+    correctionType: 'update_check_out',
+    recordId: 'hr27-does-not-exist',
+    currentTime: '23:00',
+    requestedTime: '21:00',
+  });
+
+  await hr27VerifyRejectedExecution(
+    f,
+    'invalid-explicit-id'
+  );
+});
+
+test('HR27 request isolation: inactive historical punch cannot be edited', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedPunch(f, {
+    id: 'hr27-voided-punch',
+    type: 'voided_check_out',
+  });
+
+  await hr27SeedApprovedRequest(f, 'voided-punch', {
+    correctionType: 'update_check_out',
+    recordId: 'hr27-voided-punch',
+    requestedTime: '21:00',
+  });
+
+  await hr27VerifyRejectedExecution(f, 'voided-punch');
+});
