@@ -461,3 +461,342 @@ test('assignment cancelled immediately before ledger batch cannot receive credit
   assert.equal(await f.balance(), 0);
   assert.equal(await f.credits(), 0);
 });
+
+
+test('targeted attendance recovery credits only the edited day', async t => {
+  const f = await fixture(t);
+
+  for (const date of ['2026-11-22', '2026-11-23']) {
+    await f.assignment(date);
+    await f.punch(date, 'check_in', '12:00');
+    await f.punch(date, 'check_out', '20:00');
+  }
+
+  const options = {
+    fromDate: '2026-08-31',
+    now: new Date('2026-11-24T21:00:00Z'),
+    employeeId: 'test-employee',
+    restDate: '2026-11-23',
+  };
+
+  const result = await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(result.failed, 0);
+  assert.equal(result.candidates, 1);
+  assert.equal(result.credited, 1);
+  assert.equal(await f.balance(), 1440);
+
+  await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance, options
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const other = await f.core.prepare(`
+    SELECT status
+    FROM employee_weekly_rest_work_assignments
+    WHERE rest_date = '2026-11-22'
+  `).first();
+
+  assert.equal(other.status, 'assigned');
+
+  await f.recover();
+
+  assert.equal(await f.balance(), 2880);
+  assert.equal(await f.credits(), 2);
+});
+
+test('targeted recovery rejects incomplete target parameters', async t => {
+  const f = await fixture(t);
+
+  await assert.rejects(
+    recoverAssignedWeeklyRestWork(
+      f.core, 'main', f.attendance,
+      {
+        fromDate: '2026-08-31',
+        employeeId: 'test-employee',
+      }
+    ),
+    /weekly_rest_recovery_invalid_target/
+  );
+
+  assert.equal(await f.balance(), 0);
+});
+
+test('targeted recovery does not credit a shift before its scheduled end', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-11-24');
+  await f.punch('2026-11-24', 'check_in', '12:00');
+  await f.punch('2026-11-24', 'check_out', '20:00');
+
+  const result = await recoverAssignedWeeklyRestWork(
+    f.core, 'main', f.attendance,
+    {
+      fromDate: '2026-08-31',
+      now: new Date('2026-11-24T19:00:00Z'),
+      employeeId: 'test-employee',
+      restDate: '2026-11-24',
+    }
+  );
+
+  assert.equal(result.candidates, 0);
+  assert.equal(await f.balance(), 0);
+});
+
+
+import {
+  adjustAttendanceRecords,
+} from './attendance-worker.js';
+
+const attendanceAdmin = {
+  uid: 'test-admin',
+  email: 'admin@example.invalid',
+  runtime: {
+    isActive: true,
+    role: 'owner',
+    permissionsAllow: [
+      'attendance.records.create',
+      'attendance.records.update',
+      'attendance.records.delete',
+    ],
+  },
+};
+
+async function adminAdjust(f, input) {
+  const request = new Request(
+    'https://test.invalid/attendance/admin-adjustment',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        employeeUid: 'test-uid',
+        employeeDocId: 'test-employee',
+        date: '2026-09-01',
+        ...input,
+      }),
+    }
+  );
+
+  return adjustAttendanceRecords(
+    request,
+    f.attendance,
+    f.core,
+    'main',
+    attendanceAdmin
+  );
+}
+
+test('admin attendance correction immediately credits completed weekly rest work', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  assert.equal(await f.balance(), 0);
+
+  const input = {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'weekly-rest-admin-create',
+  };
+
+  const response = await adminAdjust(f, input);
+
+  assert.equal(
+    response.status,
+    200,
+    await response.clone().text()
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const assignment = await f.core.prepare(`
+    SELECT status
+    FROM employee_weekly_rest_work_assignments
+    WHERE rest_date = '2026-09-01'
+  `).first();
+
+  assert.equal(assignment.status, 'completed');
+
+  const replay = await adminAdjust(f, input);
+
+  assert.equal(replay.status, 200);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('admin attendance correction grants nothing until both punches exist', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const first = await adminAdjust(f, {
+    checkInTime: '15:00',
+    operationId: 'weekly-rest-admin-in',
+  });
+
+  assert.equal(
+    first.status,
+    200,
+    await first.clone().text()
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  const second = await adminAdjust(f, {
+    checkOutTime: '23:00',
+    operationId: 'weekly-rest-admin-out',
+  });
+
+  assert.equal(
+    second.status,
+    200,
+    await second.clone().text()
+  );
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+});
+
+test('ordinary admin attendance does not create a weekly rest entitlement', async t => {
+  const f = await fixture(t);
+
+  const response = await adminAdjust(f, {
+    checkInTime: '15:00',
+    checkOutTime: '23:00',
+    operationId: 'ordinary-admin-attendance',
+  });
+
+  assert.equal(
+    response.status,
+    200,
+    await response.clone().text()
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+});
+
+
+test('attendance and Core use the same approved recovery cutoff', async () => {
+  const { readFileSync } = await import('node:fs');
+
+  const {
+    APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const config = JSON.parse(
+    readFileSync(
+      new URL('../wrangler.core.jsonc', import.meta.url),
+      'utf8'
+    )
+  );
+
+  assert.equal(
+    APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+    config.vars.WEEKLY_REST_RECOVERY_FROM_DATE
+  );
+
+  assert.equal(
+    APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+    '2026-08-31'
+  );
+});
+
+
+test('concurrent source replay cannot increment balance without a ledger entry', async t => {
+  const f = await fixture(t);
+
+  const data = {
+    employeeId: 'test-employee',
+    entitlementType: 'weekly_rest_due',
+    minutes: 1440,
+    sourceType: 'manual_adjustment',
+    sourceId: 'synthetic-concurrent-credit',
+    sourceDate: '2026-11-23',
+    note: 'Synthetic concurrency test',
+  };
+
+  const actor = { uid: 'test-admin' };
+  let injected = false;
+
+  const racingCore = {
+    ...f.core,
+
+    prepare(sql) {
+      const statement = f.core.prepare(sql);
+
+      if (
+        !sql.includes('SELECT * FROM employee_comp_time_ledger') ||
+        !sql.includes('source_type = ? AND source_id = ?')
+      ) {
+        return statement;
+      }
+
+      return {
+        ...statement,
+
+        bind(...params) {
+          const bound = statement.bind(...params);
+
+          return {
+            ...bound,
+
+            async first() {
+              const snapshot = await bound.first();
+
+              if (!snapshot && !injected) {
+                injected = true;
+
+                await creditCompTime(
+                  f.core,
+                  'main',
+                  data,
+                  actor
+                );
+              }
+
+              return snapshot;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const result = await creditCompTime(
+    racingCore,
+    'main',
+    data,
+    actor
+  );
+
+  assert.equal(injected, true);
+  assert.equal(result.idempotent, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const projection = await f.core.prepare(`
+    SELECT balance_minutes, last_entry_id, version
+    FROM employee_comp_time_balances
+    WHERE employee_id = 'test-employee'
+      AND entitlement_type = 'weekly_rest_due'
+  `).first();
+
+  const ledger = await f.core.prepare(`
+    SELECT id, balance_after_minutes
+    FROM employee_comp_time_ledger
+    WHERE source_id = 'synthetic-concurrent-credit'
+  `).first();
+
+  assert.equal(projection.balance_minutes, ledger.balance_after_minutes);
+  assert.equal(projection.last_entry_id, ledger.id);
+  assert.equal(projection.version, 1);
+});
