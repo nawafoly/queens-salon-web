@@ -276,3 +276,25 @@ BEGIN
     'attendance_policy_authority_downgrade_forbidden'
   );
 END;
+
+-- Legacy policy columns become read-only after effective-dated adoption.
+-- Unchanged compatibility writes remain allowed.
+
+CREATE TRIGGER IF NOT EXISTS
+  trg_attendance_policy_legacy_write_guard
+BEFORE UPDATE OF
+  attendance_payroll_mode,
+  attendance_payroll_exemption_reason
+ON employee_employment
+WHEN OLD.attendance_policy_authority = 'effective_dated'
+AND (
+  NEW.attendance_payroll_mode IS NOT OLD.attendance_payroll_mode
+  OR NEW.attendance_payroll_exemption_reason
+     IS NOT OLD.attendance_payroll_exemption_reason
+)
+BEGIN
+  SELECT RAISE(
+    ABORT,
+    'attendance_policy_legacy_write_forbidden'
+  );
+END;

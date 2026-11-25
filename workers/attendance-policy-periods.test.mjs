@@ -167,6 +167,7 @@ function fixture(t) {
       salon_id TEXT NOT NULL,
       employee_id TEXT NOT NULL,
       attendance_payroll_mode TEXT DEFAULT 'required',
+      attendance_payroll_exemption_reason TEXT,
       PRIMARY KEY(salon_id, employee_id)
     );
 
@@ -667,5 +668,105 @@ test('HR05B SQL: ownership transition remains employee-scoped', t => {
       ['main', 'employee-2', 'legacy'],
       ['other', 'employee-1', 'legacy'],
     ]
+  );
+});
+
+test('HR05B legacy guard: managed employee rejects legacy mode changes', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'effective_dated'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  assert.throws(
+    () => db.exec(`
+      UPDATE employee_employment
+      SET attendance_payroll_mode = 'exempt'
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-1'
+    `),
+    /attendance_policy_legacy_write_forbidden/
+  );
+
+  const row = db.prepare(`
+    SELECT attendance_payroll_mode
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `).get();
+
+  assert.equal(row.attendance_payroll_mode, 'required');
+});
+
+test('HR05B legacy guard: unchanged legacy field remains compatible', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'effective_dated'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_payroll_mode = 'required'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  assert.equal(
+    db.prepare(`
+      SELECT attendance_payroll_mode
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-1'
+    `).get().attendance_payroll_mode,
+    'required'
+  );
+});
+
+test('HR05B legacy guard: unmanaged employee remains compatible', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_payroll_mode = 'exempt'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-2'
+  `);
+
+  assert.equal(
+    db.prepare(`
+      SELECT attendance_payroll_mode
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-2'
+    `).get().attendance_payroll_mode,
+    'exempt'
+  );
+});
+
+test('HR05B legacy guard: managed employee rejects legacy reason changes', t => {
+  const db = fixture(t);
+
+  db.exec(`
+    UPDATE employee_employment
+    SET attendance_policy_authority = 'effective_dated'
+    WHERE salon_id = 'main'
+      AND employee_id = 'employee-1'
+  `);
+
+  assert.throws(
+    () => db.exec(`
+      UPDATE employee_employment
+      SET attendance_payroll_exemption_reason = 'Unexpected legacy change'
+      WHERE salon_id = 'main'
+        AND employee_id = 'employee-1'
+    `),
+    /attendance_policy_legacy_write_forbidden/
   );
 });
