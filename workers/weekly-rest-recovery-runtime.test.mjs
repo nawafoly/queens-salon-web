@@ -4201,3 +4201,301 @@ test('HR28 external attendance isolation: invalid explicit ID cannot select anot
 
   await hr28VerifyRejectedRequest(f, 'hr28-invalid-id');
 });
+
+test('HR28 final boundary: matching UID cannot authorize a conflicting employee document ID', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-conflicting-document',
+    employeeUid: 'test-uid',
+    employeeId: 'another-employee',
+  });
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr28-document-conflict',
+    {
+      correctionType: 'update_check_out',
+      recordId: 'malikat:hr28-conflicting-document',
+      requestedTime: '21:00',
+    }
+  );
+
+  await hr28VerifyRejectedRequest(
+    f,
+    'hr28-document-conflict'
+  );
+
+  console.log('VERIFIED_HR28_DOCUMENT_ID_ISOLATION');
+});
+
+test('HR28 final boundary: external ID cannot fall through to an identical Core ID', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedPunch(f, {
+    id: 'malikat:hr28-cross-database-id',
+  });
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr28-cross-database',
+    {
+      correctionType: 'update_check_out',
+      recordId: 'malikat:hr28-cross-database-id',
+      requestedTime: '21:00',
+    }
+  );
+
+  await hr28VerifyRejectedRequest(
+    f,
+    'hr28-cross-database'
+  );
+
+  console.log('VERIFIED_HR28_NO_CROSS_DATABASE_FALLBACK');
+});
+
+test('HR28 final boundary: external correction fails closed when attendance binding is missing', async t => {
+  const f = await fixture(t);
+
+  await hr27SeedPunch(f, {
+    id: 'malikat:hr28-missing-binding',
+  });
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-missing-binding',
+  });
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr28-unavailable-database',
+    {
+      correctionType: 'update_check_out',
+      recordId: 'malikat:hr28-missing-binding',
+      requestedTime: '21:00',
+    }
+  );
+
+  const before = await hr27Snapshot(f);
+  const operationsBefore = await hr28ReadExternalOperations(f);
+
+  const { transitionEmployeeRequest } = await import(
+    './core/repositories/employee-requests.js'
+  );
+
+  await assert.rejects(
+    transitionEmployeeRequest(
+      f.core,
+      'main',
+      'hr28-unavailable-database',
+      'execute',
+      {
+        version: 1,
+        note: 'Synthetic missing binding test',
+      },
+      {
+        uid: 'test-admin',
+        role: 'owner',
+        email: 'admin@example.test',
+      },
+      {}
+    ),
+    error =>
+      error.code ===
+      'core_employee_request:attendance_database_unavailable'
+  );
+
+  assert.deepEqual(await hr27Snapshot(f), before);
+
+  assert.deepEqual(
+    await hr28ReadExternalOperations(f),
+    operationsBefore
+  );
+
+  console.log('VERIFIED_HR28_MISSING_BINDING_FAIL_CLOSED');
+});
+
+test('HR28 final boundary: historical record without employee document ID remains correctable by matching UID', async t => {
+  const f = await fixture(t);
+
+  await hr28SeedExternalPunch(f, {
+    id: 'hr28-historical-compatible',
+    employeeUid: 'test-uid',
+    employeeId: '',
+  });
+
+  await hr27SeedApprovedRequest(
+    f,
+    'hr28-legacy-compatible',
+    {
+      correctionType: 'update_check_out',
+      recordId: 'malikat:hr28-historical-compatible',
+      requestedTime: '21:00',
+    }
+  );
+
+  const result = await hr27ExecuteRequest(
+    f,
+    'hr28-legacy-compatible'
+  );
+
+  assert.equal(result.execution_status, 'completed');
+
+  const updated = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_records
+    WHERE id = ?
+  `).bind('hr28-historical-compatible').first();
+
+  assert.equal(updated.employee_uid, 'test-uid');
+  assert.equal(updated.result, 'allowed');
+
+  assert.equal(
+    updated.server_time,
+    '2026-09-01T18:00:00.000Z'
+  );
+
+  console.log('VERIFIED_HR28_HISTORICAL_UID_COMPATIBILITY');
+});
+
+async function hr29ReadAudit(f) {
+  const result = await f.attendance.prepare(`
+    SELECT *
+    FROM attendance_operation_events
+    ORDER BY rowid
+  `).all();
+
+  return result.results;
+}
+
+for (const correctionType of [
+  'update_check_out',
+  'delete_record',
+]) {
+  test(`HR29 atomic mutation: ${correctionType} rolls back outbox when attendance write affects zero rows`, async t => {
+    const f = await fixture(t);
+
+    const punchId = `hr29-punch-${correctionType}`;
+    const requestId = `hr29-request-${correctionType}`;
+
+    await hr28SeedExternalPunch(f, {
+      id: punchId,
+      type: 'check_out',
+      result: 'allowed',
+    });
+
+    await hr27SeedApprovedRequest(f, requestId, {
+      correctionType,
+      recordId: `malikat:${punchId}`,
+      requestedTime: '21:00',
+    });
+
+    // SQLite accepts the UPDATE statement but deliberately
+    // performs no attendance mutation.
+    f.attendance.database.exec(`
+      CREATE TRIGGER hr29_ignore_attendance_mutation
+      BEFORE UPDATE ON attendance_records
+      WHEN OLD.id = '${punchId}'
+      BEGIN
+        SELECT RAISE(IGNORE);
+      END;
+    `);
+
+    const before = await hr27Snapshot(f);
+    const operationsBefore =
+      await hr28ReadExternalOperations(f);
+    const auditBefore = await hr29ReadAudit(f);
+
+    let result = null;
+    let failure = null;
+
+    try {
+      result = await hr27ExecuteRequest(f, requestId);
+    } catch (error) {
+      failure = error;
+    }
+
+    const after = await hr27Snapshot(f);
+
+    const operationsAfter =
+      await hr28ReadExternalOperations(f);
+
+    const auditAfter = await hr29ReadAudit(f);
+
+    const request = await f.core.prepare(`
+      SELECT status, execution_status, execution_error
+      FROM employee_requests
+      WHERE salon_id = 'main' AND id = ?
+    `).bind(requestId).first();
+
+    console.log('HR29_CORRECTION_TYPE:', correctionType);
+
+    console.log(
+      'HR29_REQUEST_STATE:',
+      JSON.stringify(request)
+    );
+
+    console.log(
+      'HR29_EXECUTION_ERROR:',
+      failure?.code || failure?.message || null
+    );
+
+    console.log(
+      'HR29_EXECUTION_RESULT:',
+      JSON.stringify(result)
+    );
+
+    console.log(
+      'HR29_OUTBOX_BEFORE:',
+      operationsBefore.length
+    );
+
+    console.log(
+      'HR29_OUTBOX_AFTER:',
+      operationsAfter.length
+    );
+
+    console.log(
+      'HR29_AUDIT_BEFORE:',
+      auditBefore.length
+    );
+
+    console.log(
+      'HR29_AUDIT_AFTER:',
+      auditAfter.length
+    );
+
+    assert.deepEqual(
+      after.externalAttendance,
+      before.externalAttendance,
+      'Ignored SQL mutation must preserve attendance'
+    );
+
+    assert.deepEqual(
+      operationsAfter,
+      operationsBefore,
+      'Zero-row mutation must not commit a durable outbox'
+    );
+
+    assert.deepEqual(
+      auditAfter,
+      auditBefore,
+      'Zero-row mutation must not commit an attendance audit'
+    );
+
+    assert.deepEqual(after, before);
+
+    assert.notEqual(
+      request.execution_status,
+      'completed'
+    );
+
+    assert.ok(
+      failure || request.execution_status === 'failed'
+    );
+
+    console.log(
+      'VERIFIED_HR29_ATOMIC_ROLLBACK:',
+      correctionType
+    );
+  });
+}

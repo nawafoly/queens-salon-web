@@ -1306,8 +1306,20 @@ async function executeExternalAttendanceCorrection(externalDb, row, payload, act
     const statements=[externalDb.prepare(sql).bind(...params),
       ...attendanceDeviceAssignmentReconcileStatements(row.employee_uid,nowIso()).map(({sql,params})=>externalDb.prepare(sql).bind(...params))];
     try {
-      await commitAttendanceOperation(externalDb,operation,statements,
-        {ok:true,sourceType:'malikat_attendance_record',sourceId:id,operationId});
+      await commitAttendanceOperation(
+        externalDb,
+        operation,
+        statements,
+        {
+          ok: true,
+          sourceType: 'malikat_attendance_record',
+          sourceId: id,
+          operationId,
+        },
+        {
+          requireSingleMutation: true,
+        }
+      );
     } catch (error) {
       if (!await readAttendanceOperation(externalDb,operationId).catch(()=>null)) throw error;
     }
