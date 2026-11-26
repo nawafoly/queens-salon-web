@@ -11,7 +11,21 @@ export async function getApprovalAuthority(db, salonId, authorityKey = FINAL_LEA
   return dbFirst(db,
     `SELECT a.salon_id, a.authority_key, a.approver_user_id,
             a.assigned_by_user_id, a.assigned_at, a.updated_at,
-            u.display_name AS approver_name, u.email AS approver_email,
+            COALESCE(
+              (
+                SELECT NULLIF(TRIM(ep.name), '')
+                  FROM user_employee_links l
+                  JOIN employee_profiles ep
+                    ON ep.salon_id = l.salon_id
+                   AND ep.id = l.employee_id
+                 WHERE l.salon_id = u.salon_id
+                   AND l.user_id = u.id
+                   AND l.link_status = 'active'
+                 LIMIT 1
+              ),
+              u.display_name
+            ) AS approver_name,
+            u.email AS approver_email,
             u.firebase_uid AS approver_uid,
             u.status AS approver_status, u.primary_role AS approver_role
        FROM approval_authorities a

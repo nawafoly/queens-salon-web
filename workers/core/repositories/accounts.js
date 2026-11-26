@@ -337,6 +337,20 @@ export function serializeEmployeeLink(link) {
   };
 }
 
+// Linked employee profiles own the operational display name.
+// Unlinked accounts retain their independent account display name.
+export function resolveAccountDisplayName(row, link = null) {
+  const linkedEmployeeName =
+    link?.link_status === ACTIVE_LINK_STATUS &&
+    link.salon_id === row.salon_id &&
+    link.user_id === row.id &&
+    cleanText(link.employee_id)
+      ? cleanText(link.employee_name)
+      : '';
+
+  return linkedEmployeeName || row.display_name || '';
+}
+
 export function serializeAccount(row, permissionBundle = null, link = null) {
   const status = resolveAccountStatus(row);
   return {
@@ -346,7 +360,7 @@ export function serializeAccount(row, permissionBundle = null, link = null) {
     salonId: row.salon_id,
     email: row.email || '',
     phone: row.phone || '',
-    displayName: row.display_name || '',
+    displayName: resolveAccountDisplayName(row, link),
     photoUrl: row.photo_url || '',
     primaryRole: row.primary_role,
     role: row.primary_role,

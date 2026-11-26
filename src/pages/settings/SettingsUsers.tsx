@@ -1,5 +1,5 @@
 // src/pages/settings/SettingsUsers.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import {
@@ -309,8 +309,14 @@ export default function SettingsUsers({
   const canManageLinks = hasPermission("employee_links.manage");
   const canResetPassword = hasPermission("accounts.reset_password") || hasPermission("admin_accounts.manage");
 
+  const accountLoadRevision = useRef(0);
+
   async function loadAccounts() {
-    if (!canReadAccounts && authReady === false) return;
+    const revision = ++accountLoadRevision.current;
+    if (!canReadAccounts || authReady === false) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -320,21 +326,48 @@ export default function SettingsUsers({
         CoreAccountService.roles().catch(() => FALLBACK_ROLES),
         CoreAccountService.permissions().catch(() => []),
       ]);
+      if (revision !== accountLoadRevision.current) return;
+
       setMe(mePayload.user);
       setAccounts(accountRows);
       setRoles(roleRows.length ? roleRows : FALLBACK_ROLES);
       setRemotePermissions(permissionRows);
       setSelectedId((current) => current || accountRows[0]?.id || "");
     } catch (loadError) {
-      setError(errorMessage(loadError, language));
+      if (revision === accountLoadRevision.current) {
+        setError(errorMessage(loadError, language));
+      }
     } finally {
-      setLoading(false);
+      if (revision === accountLoadRevision.current) {
+        setLoading(false);
+      }
     }
   }
 
+  const [identityRefreshKey, setIdentityRefreshKey] = useState(0);
+
   useEffect(() => {
     void loadAccounts();
-    // PermissionContext changes after /api/auth/me; reload when it does.
+
+    return () => {
+      accountLoadRevision.current += 1;
+    };
+  }, [authReady, canReadAccounts, identityRefreshKey]);
+
+  useEffect(() => {
+    if (authReady === false || !canReadAccounts) return;
+
+    const refreshIdentity = () => {
+      setIdentityRefreshKey(value => value + 1);
+    };
+
+    window.addEventListener("queens:staff-updated", refreshIdentity);
+    window.addEventListener("focus", refreshIdentity);
+
+    return () => {
+      window.removeEventListener("queens:staff-updated", refreshIdentity);
+      window.removeEventListener("focus", refreshIdentity);
+    };
   }, [authReady, canReadAccounts]);
 
   useEffect(() => {
@@ -357,7 +390,7 @@ export default function SettingsUsers({
         if (live) setLeaveAuthorityLoaded(true);
       });
     return () => { live = false; };
-  }, [authReady, canReadAccounts, language]);
+  }, [authReady, canReadAccounts, language, identityRefreshKey]);
 
   const saveLeaveAuthority = async () => {
     if (!canAssignLeaveAuthority || !targetApproverUserId || leaveAuthoritySaving) return;
@@ -543,6 +576,12 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
     }
   }
 
+  const editAccountHasEmployeeLink = Boolean(
+    editDraft &&
+    accounts.find(account => account.id === editDraft.id)
+      ?.employeeLink?.employeeId
+  );
+
   async function handleSaveEdit() {
     if (!editDraft) return;
     setSaving(true);
@@ -551,7 +590,9 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
     try {
       await CoreAccountService.update(editDraft.id, {
         firebaseUid: editDraft.firebaseUid,
-        displayName: editDraft.displayName,
+        ...(!editAccountHasEmployeeLink && !editDraft.employeeId.trim()
+          ? { displayName: editDraft.displayName }
+          : {}),
         email: editDraft.email,
         phone: editDraft.phone,
         role: editDraft.role,
@@ -1367,11 +1408,26 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
                 />
               </DashboardFieldV2>
 
-              <DashboardFieldV2 id="edit-name" label={t("الاسم")}>
+              <DashboardFieldV2
+                id="edit-name"
+                label={
+                  editAccountHasEmployeeLink || editDraft.employeeId.trim()
+                    ? (
+                        language === "en"
+                          ? "Name managed in Staff Management"
+                          : "الاسم معتمد من إدارة الموظفين"
+                      )
+                    : t("الاسم")
+                }
+              >
                 <input
                   id="edit-name"
                   className="dsv2-input"
                   value={editDraft.displayName}
+                  readOnly={
+                    editAccountHasEmployeeLink ||
+                    Boolean(editDraft.employeeId.trim())
+                  }
                   onChange={(event) =>
                     setEditDraft((draft) =>
                       draft ? { ...draft, displayName: event.target.value } : draft
@@ -1725,6 +1781,3 @@ if (statusFilter !== "all" && account.status !== statusFilter) return false; con
     </main>
   );
 }
-
-
-
