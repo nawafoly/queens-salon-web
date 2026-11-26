@@ -407,19 +407,19 @@
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status.is-partial,
 .attendance-month.attendance-month--premium-v3 .attendance-month__badge.is-partial {
-  color: #075985;
-  background: #e0f2fe;
+  color: #ea580c;
+  background: #fff7ed;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status.is-late,
 .attendance-month.attendance-month--premium-v3 .attendance-month__badge.is-late {
-  color: #92400e;
-  background: #ffedd5;
+  color: #d97706;
+  background: #fffbeb;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status.is-absent,
 .attendance-month.attendance-month--premium-v3 .attendance-month__badge.is-absent {
-  color: #991b1b;
+  color: #dc2626;
   background: #fee2e2;
 }
 
@@ -558,27 +558,27 @@
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-complete .attendance-month__day-marker {
-  background: #10b981;
+  background: #15803d;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-partial .attendance-month__day-marker {
-  background: #0ea5e9;
+  background: #ea580c;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-late .attendance-month__day-marker {
-  background: #f59e0b;
+  background: #d97706;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-absent .attendance-month__day-marker {
-  background: #ef4444;
+  background: #dc2626;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-leave .attendance-month__day-marker {
-  background: #a855f7;
+  background: #ca8a04;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-off-day .attendance-month__day-marker {
-  background: #94a3b8;
+  background: #2563eb;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-today {
@@ -594,8 +594,8 @@
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-late {
-  border-color: #f59e0b;
-  background: #fff7ed;
+  border-color: #fcd34d;
+  background: #fffbeb;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__day.is-selected.is-late {
@@ -656,33 +656,33 @@
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-complete::before {
-  background: #10b981;
+  background: #15803d;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-partial::before {
-  background: #0ea5e9;
+  background: #ea580c;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-absent::before {
-  background: #ef4444;
+  background: #dc2626;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-leave::before {
-  background: #a855f7;
+  background: #ca8a04;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-off-day::before {
-  background: #0e7490;
+  background: #2563eb;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-late {
-  color: #92400e;
+  color: #d97706;
   background: transparent;
   border-color: transparent;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__legend .is-late::before {
-  background: #f59e0b;
+  background: #d97706;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__detail {
@@ -890,8 +890,8 @@
 .attendance-month.attendance-month--premium-v3
 .attendance-month__day.is-exempt {
   background: #f3e8ff;
-  border-color: #c4b5fd;
-  color: #6b21a8;
+  border-color: #d8b4fe;
+  color: #9333ea;
 }
 
 .attendance-month.attendance-month--premium-v3
@@ -911,7 +911,7 @@
 .attendance-month__selected-status.is-exempt,
 .attendance-month.attendance-month--premium-v3
 .attendance-month__badge.is-exempt {
-  color: #6b21a8;
+  color: #9333ea;
   background: #f3e8ff;
   border-color: #d8b4fe;
 }
@@ -923,8 +923,57 @@
 
 .attendance-month.attendance-month--premium-v3
 .attendance-month__state-card.is-exempt {
-  color: #6b21a8;
-  background: #faf5ff;
+  color: #9333ea;
+  background: #f3e8ff;
   border: 1px solid #e9d5ff;
   border-radius: 8px;
+}
+
+/* HR09G6D1 employee rest-work presentation */
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-rest-work,
+.dashboard-v2.employee-portal
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-rest-work {
+  --employee-attendance-day-accent: #0f766e !important;
+  --employee-attendance-day-bg: #ccfbf1 !important;
+  --employee-attendance-day-border: #5eead4 !important;
+  color: #0f766e !important;
+  background: #ccfbf1 !important;
+  border-color: #5eead4 !important;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-rest-work
+.attendance-month__day-marker {
+  background: #0f766e !important;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__legend span.is-rest-work,
+.dashboard-v2.employee-portal
+.attendance-month.attendance-month--premium-v3
+.attendance-month__legend span.is-rest-work {
+  --employee-attendance-day-accent: #0f766e !important;
+  --employee-attendance-day-bg: #ccfbf1 !important;
+  --employee-attendance-day-border: #5eead4 !important;
+  color: #0f766e !important;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__legend span.is-rest-work::before {
+  background: #0f766e !important;
+}
+
+.attendance-month.attendance-month--premium-v3
+:is(
+  .attendance-month__selected-status,
+  .attendance-month__badge,
+  .attendance-month__state-card,
+  .attendance-month__record
+).is-rest-work {
+  color: #0f766e !important;
+  background: #ccfbf1 !important;
+  border-color: #5eead4 !important;
 }

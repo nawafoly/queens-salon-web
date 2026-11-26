@@ -24,6 +24,7 @@ import {
 import {
   computeResolvedAttendanceDay,
   recordsFromAttendanceRow,
+  weeklyRestPresentationTone,
 } from "../helpers/hr/attendanceShiftResolver";
 import type { EmployeePermissionRequest } from "../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../types/hrCoreApi";
@@ -463,12 +464,30 @@ export default function AttendanceMonthView({
     : selectedShiftResolution.source === "core_unavailable"
       ? copy.scheduleUnavailable
       : selectedShiftResolution.sourceLabel;
-  const selectedTone = displayStatusTone(
+  const selectedRestTone = weeklyRestPresentationTone(
+    selectedStatus,
+    selectedCoreShift,
+    selectedDayRecords
+  );
+
+  const selectedTone = selectedRestTone || displayStatusTone(
     selectedStatus,
     viewerMode,
     copy,
     selectedCoreShift
   );
+
+  const selectedDisplayLabel =
+    selectedRestTone === "rest-work"
+      ? copy.exceptionalRestWork
+      : selectedRestTone === "partial"
+        ? copy.needsCompletion
+        : displayStatusLabel(
+            selectedStatus,
+            viewerMode,
+            copy,
+            selectedCoreShift
+          );
   const selectedCount = selectedEventCount(selectedRow);
   const selectedShiftDebugRows: Array<[string, string]> = [
     [copy.date, selectedShiftResolution.dateKey],
@@ -522,7 +541,11 @@ export default function AttendanceMonthView({
         day,
         dateKey,
         status,
-        tone: displayStatusTone(
+        tone: weeklyRestPresentationTone(
+          status,
+          dayCoreShift,
+          dayRecords
+        ) || displayStatusTone(
           status,
           viewerMode,
           copy,
@@ -677,7 +700,7 @@ export default function AttendanceMonthView({
             <div className="attendance-month__selected-overview-head">
               <span>{copy.selectedDay}</span>
               <span className={`attendance-month__selected-status is-${selectedTone}`}>
-                {loading ? copy.loading : displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}
+                {loading ? copy.loading : selectedDisplayLabel}
               </span>
             </div>
             <strong>{fullDateLabel(safeSelectedDate, language)}</strong>
@@ -789,7 +812,11 @@ export default function AttendanceMonthView({
                 <strong>{cell.day}</strong>
                 {viewerMode === "employee" ? (
                   <span className="attendance-month__primary-status-label">
-                    {cell.status === "off_day" && cell.isException
+                    {cell.tone === "rest-work"
+                      ? copy.exceptionalRestWork
+                      : cell.tone === "partial" && cell.status === "off_day"
+                        ? copy.needsCompletion
+                        : cell.status === "off_day" && cell.isException
                       ? copy.exception
                       : cell.status === "off_day"
                         ? copy.rest
@@ -802,6 +829,7 @@ export default function AttendanceMonthView({
         </div>
         <div className="attendance-month__legend" aria-label={copy.legend}>
           <span className="is-complete">{copy.present}</span>
+          <span className="is-rest-work">{copy.exceptionalRestWork}</span>
           <span className="is-late">{copy.late}</span>
           <span className="is-partial">{copy.needsReview}</span>
           <span className="is-shortage">{copy.missingHours}</span>
@@ -876,7 +904,7 @@ export default function AttendanceMonthView({
               <span
                 className={`attendance-month__badge is-${selectedTone}`}
               >
-                {displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}
+                {selectedDisplayLabel}
               </span>
 
               <span className="attendance-month__record-count">
@@ -913,7 +941,22 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</strong>
+            <strong>{selectedDisplayLabel}</strong>
+
+            {selectedDayRecords.length > 0 ? (
+              <div className="attendance-month__raw-records">
+                {selectedDayRecords.map(record => (
+                  <div
+                    key={`${record.id || record.type}-${record.serverTime}`}
+                    className="attendance-month__raw-record"
+                  >
+                    <span>{recordTypeLabel(record.type, copy)}</span>
+                    <b>{formatTime(record.serverTime)}</b>
+                    <small>{recordLocationLabel(record, copy)}</small>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : isLeaveDay ? (
           <div className="attendance-month__state-card is-leave">
@@ -988,7 +1031,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</strong>
+            <strong>{selectedDisplayLabel}</strong>
           </div>
         ) : (
           <div className="attendance-month__worked-day">
@@ -1030,7 +1073,7 @@ export default function AttendanceMonthView({
             <div className="attendance-month__worked-metrics">
               <div className="attendance-month__worked-metric">
                 <span>{copy.status}</span>
-                <b>{displayStatusLabel(selectedStatus, viewerMode, copy, selectedCoreShift)}</b>
+                <b>{selectedDisplayLabel}</b>
               </div>
 
               <div className="attendance-month__worked-metric">
@@ -1074,6 +1117,7 @@ export default function AttendanceMonthView({
               </div>
             ) : null}
 
+            {!(selectedRestTone && selectedShiftResolution.isOff) ? (
             <div className="attendance-month__performance">
               {isPartialDay ? (
                 <div className="attendance-month__performance-item is-review">
@@ -1133,6 +1177,7 @@ export default function AttendanceMonthView({
                 </>
               )}
             </div>
+            ) : null}
           </div>
         ) : null}
       </div>

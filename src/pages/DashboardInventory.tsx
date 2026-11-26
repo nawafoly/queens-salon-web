@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxesStacked, faPlus, faMagnifyingGlass, faRotate, faTriangleExclamation, faCheckCircle, faLayerGroup, faArrowTrendDown, faArrowLeft, faCircleInfo } from "@fortawesome/free-solid-svg-icons";
 import "../styles/DashboardInventoryCommandCenter.css";
@@ -240,19 +240,19 @@ export default function DashboardInventory() {
       <div className="inventory-command-stats" aria-label="ملخص المخزون">
         <div className="inventory-command-stat">
           <span className="inventory-command-stat-icon inventory-command-stat-icon--neutral"><FontAwesomeIcon icon={faBoxesStacked} /></span>
-          <div><span className="inventory-command-stat-label">إجمالي المواد</span><strong>{loading ? "—" : items.length.toLocaleString("ar-SA")}</strong><small>المواد المعروضة في القائمة</small></div>
+          <div><span className="inventory-command-stat-label">إجمالي المواد</span><strong>{loading ? "—" : items.length.toLocaleString("ar-SA-u-nu-latn")}</strong><small>المواد المعروضة في القائمة</small></div>
         </div>
         <div className="inventory-command-stat">
           <span className="inventory-command-stat-icon inventory-command-stat-icon--success"><FontAwesomeIcon icon={faCheckCircle} /></span>
-          <div><span className="inventory-command-stat-label">مواد نشطة</span><strong>{loading ? "—" : activeItemsCount.toLocaleString("ar-SA")}</strong><small>{loading ? "جاري التحديث" : `${inactiveItemsCount.toLocaleString("ar-SA")} موقوفة`}</small></div>
+          <div><span className="inventory-command-stat-label">مواد نشطة</span><strong>{loading ? "—" : activeItemsCount.toLocaleString("ar-SA-u-nu-latn")}</strong><small>{loading ? "جاري التحديث" : `${inactiveItemsCount.toLocaleString("ar-SA-u-nu-latn")} موقوفة`}</small></div>
         </div>
         <div className="inventory-command-stat">
           <span className="inventory-command-stat-icon inventory-command-stat-icon--warning"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
-          <div><span className="inventory-command-stat-label">تحتاج إعادة طلب</span><strong>{loading ? "—" : lowStockItems.length.toLocaleString("ar-SA")}</strong><small>بحسب حدود إعادة الطلب المحددة</small></div>
+          <div><span className="inventory-command-stat-label">تحتاج إعادة طلب</span><strong>{loading ? "—" : lowStockItems.length.toLocaleString("ar-SA-u-nu-latn")}</strong><small>بحسب حدود إعادة الطلب المحددة</small></div>
         </div>
         <div className="inventory-command-stat">
           <span className="inventory-command-stat-icon inventory-command-stat-icon--accent"><FontAwesomeIcon icon={faLayerGroup} /></span>
-          <div><span className="inventory-command-stat-label">مواقع التخزين</span><strong>{loading ? "—" : locations.length.toLocaleString("ar-SA")}</strong><small>مواقع مسجلة</small></div>
+          <div><span className="inventory-command-stat-label">مواقع التخزين</span><strong>{loading ? "—" : locations.length.toLocaleString("ar-SA-u-nu-latn")}</strong><small>مواقع مسجلة</small></div>
         </div>
       </div>
 
@@ -313,7 +313,7 @@ export default function DashboardInventory() {
             <div className="inventory-command-alert" role="status">
               <span className="inventory-command-alert-icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
               <div>
-                <strong>{lowStockItems.length.toLocaleString("ar-SA")} مواد تحتاج إعادة طلب</strong>
+                <strong>{lowStockItems.length.toLocaleString("ar-SA-u-nu-latn")} مواد تحتاج إعادة طلب</strong>
                 <p>{lowStockItems.slice(0, 3).map((item) => `${item.name} (${qtyByItem.get(item.id) ?? "—"} / الحد ${item.min_stock_qty})`).join(" · ")}{lowStockItems.length > 3 ? " · وغيرها" : ""}</p>
               </div>
               <FontAwesomeIcon icon={faArrowTrendDown} className="inventory-command-alert-trend" />
@@ -343,7 +343,7 @@ export default function DashboardInventory() {
             <div className="inventory-command-table-wrap">
               <div className="inventory-command-table-heading">
                 <div><h4>قائمة المواد</h4><p>عرض الرصيد والحالة حسب كل مادة</p></div>
-                <span>{items.length.toLocaleString("ar-SA")} مادة</span>
+                <span>{items.length.toLocaleString("ar-SA-u-nu-latn")} مادة</span>
               </div>
               <div className="table-responsive">
                 <table className="inventory-command-table">
@@ -364,7 +364,7 @@ export default function DashboardInventory() {
                       <td><strong className="inventory-command-item-name">{item.name}</strong>{item.sku ? <span className="inventory-command-sku">{item.sku}</span> : null}</td>
                       <td>{item.unit}</td>
                       <td>{POLICIES.find((p) => p.value === item.consumption_policy)?.label || item.consumption_policy}</td>
-                      <td><span className="inventory-command-stock">{locationStockLabel(item.id)}</span><span className="inventory-command-stock-total">الإجمالي: {qty == null ? "—" : qty.toLocaleString("ar-SA")}</span>{low ? <span className="inventory-command-pill inventory-command-pill--warning">مخزون منخفض</span> : null}</td>
+                      <td><span className="inventory-command-stock">{locationStockLabel(item.id)}</span><span className="inventory-command-stock-total">الإجمالي: {qty == null ? "—" : qty.toLocaleString("ar-SA-u-nu-latn")}</span>{low ? <span className="inventory-command-pill inventory-command-pill--warning">مخزون منخفض</span> : null}</td>
                       <td>{item.min_stock_qty}</td>
                       <td><span className={`inventory-command-pill ${active ? "inventory-command-pill--success" : "inventory-command-pill--muted"}`}>{active ? "نشط" : "موقوف"}</span></td>
                       {canManage ? <td><button type="button" className="inventory-command-edit" onClick={() => openEdit(item)}>تعديل</button></td> : null}

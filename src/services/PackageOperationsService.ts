@@ -8,14 +8,40 @@
 import { auth } from "./firebase";
 import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 
-export type PackagePurchaseResult = {
+type PackagePurchaseIdentity = {
   ok: boolean;
   idempotent?: boolean;
   clientPackageId: string;
+  clientId: string;
+  saleReference: string;
+};
+
+export type PackagePurchaseResult = PackagePurchaseIdentity & ({
+  settlementStatus: "paid";
   invoiceId: string;
   invoiceDocumentId: string;
   invoiceNumber: string;
+  paymentId: string;
+  incomeId: string;
+  packageName: string;
+  totalSessions: number;
+  totalHalalas: number;
+  taxHalalas: number;
+  expiresAt: string | null;
+} | {
+  settlementStatus: "unverified";
+  invoiceId: null;
+  invoiceDocumentId: null;
+  invoiceNumber: null;
+});
+
+export type PackageSaleRequest = {
   clientId: string;
+  packageCatalogId: string;
+  paymentMethod: "cash" | "card" | "transfer";
+  saleReference: string;
+  expectedTotalHalalas: number;
+  expectedTaxHalalas: number;
 };
 
 export type PackageAdminGrantResult = {
@@ -312,7 +338,12 @@ function callableErrorAr(error: unknown) {
   return "تعذر تنفيذ العملية. تحققي من البيانات وحاولي مجددًا.";
 }
 
-async function invoke<T>(path: string, payload: Record<string, unknown> = {}, method: "GET" | "POST" | "PATCH" | "DELETE" = "POST"): Promise<T> {
+async function invoke<T>(
+  path: string,
+  payload: Record<string, unknown> = {},
+  method: "GET" | "POST" | "PATCH" | "DELETE" = "POST",
+  idempotencyKey?: string
+): Promise<T> {
   try {
     const baseUrl = packageWorkerBaseUrl();
     if (!baseUrl) throw Object.assign(new Error("packages_worker:not_configured"), { code: "failed-precondition" });
@@ -333,6 +364,7 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
         method,
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
           ...(["POST", "PATCH"].includes(method) ? { "Content-Type": "application/json" } : {}),
         },
         ...(["POST", "PATCH"].includes(method) ? { body: JSON.stringify(payload) } : {}),
@@ -455,18 +487,11 @@ export const PackageOperationsService = {
       reason: args.reason,
     });
   },
-  purchase(args: {
-    clientId: string;
-    clientLookup?: PackageClientLookup;
-    packageCatalogId: string;
-    paymentMethod: "cash" | "card" | "transfer";
-    invoiceId?: string;
-  }) {
+  purchase(args: PackageSaleRequest) {
     return invoke<PackagePurchaseResult>("/api/packages/purchase", {
       salonId: PACKAGE_SALON_ID,
       ...args,
-      invoiceId: args.invoiceId || operationId("package_sale"),
-    });
+    }, "POST", args.saleReference);
   },
   reserve(args: {
     clientId: string;

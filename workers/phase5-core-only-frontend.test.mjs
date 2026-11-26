@@ -262,7 +262,25 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.match(internalBookingV2, /listCoreBookableStaffForDate/);
   assert.match(internalBookingV2, /getCoreStaffBookableStartSlots/);
   assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/);
-  assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.createBookingGroup/);
+  assert.match(
+    internalBookingV2,
+    /const bookingDataSource = resolveCoreBookingDataSource\(\);[\s\S]*?await bookingDataSource\.createBookingGroup\(\{\s*parent,\s*items:\s*itemRows\s*\}\)/
+  );
+
+  assert.match(
+    internalBookingV2,
+    /createdParentIds\.map\(\(bookingId\) => bookingDataSource\.rollbackBookingCreation\(bookingId\)\)/
+  );
+
+  assert.match(
+    internalBookingV2,
+    /await bookingDataSource\.recordPayment\(/
+  );
+
+  assert.match(
+    internalBookingV2,
+    /await bookingDataSource\.updateBookingStatus\(/
+  );
   assert.match(internalBookingV2, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);
   assert.match(internalBookingV2, /CoreOfferService\.list/);
   assert.match(internalBookingV2, /firebase\/auth/);

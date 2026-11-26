@@ -85,7 +85,7 @@ export default function DashboardInventorySuppliers() {
 
   return (
     <div className="inventory-inner-workspace inventory-inner-suppliers">
-      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">سلسلة التوريد</span><h4>دليل الموردين</h4><p>تابع جهات التوريد وأضف موردين جدد لإدارة المشتريات بسهولة.</p></div><span className="inventory-inner-count">موردون مسجلون: {rows.length.toLocaleString("ar-SA")}</span></div>
+      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">سلسلة التوريد</span><h4>دليل الموردين</h4><p>تابع جهات التوريد وأضف موردين جدد لإدارة المشتريات بسهولة.</p></div><span className="inventory-inner-count">موردون مسجلون: {rows.length.toLocaleString("ar-SA-u-nu-latn")}</span></div>
       {loadError ? (
         <DashboardErrorStateV2 title="تعذر تحميل قائمة الموردين" description={loadError} compact />
       ) : null}

@@ -1,7 +1,14 @@
+import {
+  createWeeklyRestRescheduling,
+  cancelWeeklyRestRescheduling,
+  listWeeklyRestRescheduling,
+  getWeeklyRestReschedulingState,
+} from './repositories/weekly-rest-rescheduling.js';
+
 import { recoverNewWeeklyRestAssignment } from './repositories/weekly-rest-recovery.js';
 // CORE D1 ONLY â€” do not add Firestore fallback.
 
-import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
+import { authorizePackageReplay, handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
 import { expireClientPackagesD1 } from '../packages/d1.js';
 import {
   ADMIN_ROLES,
@@ -993,6 +1000,28 @@ function match(url, method) {
   if (path === "/api/core/hr/public-holidays/eid-periods" && method === "POST") return { name: "public-holidays:eid-period" };
   if (path === "/api/core/hr/public-holiday-work-assignments" && method === "POST") return { name: "public-holiday-work:assign" };
   if (path === "/api/core/hr/public-holiday-work/reconcile" && method === "POST") return { name: "public-holiday-work:reconcile" };
+  const restReschedulingCancel =
+    /^\/api\/core\/hr\/weekly-rest\/rescheduling\/([^/]+)\/cancel$/.exec(path);
+
+  if (
+    restReschedulingCancel &&
+    method === "POST"
+  ) {
+    return {
+      name: "weekly-rest:rescheduling-cancel",
+      id: restReschedulingCancel[1]
+    };
+  }
+
+  if (
+    path === "/api/core/hr/weekly-rest/rescheduling" &&
+    ["GET", "POST"].includes(method)
+  ) {
+    return {
+      name: "weekly-rest:rescheduling"
+    };
+  }
+
   const weeklyRestWorkCancel = /^\/api\/core\/hr\/weekly-rest\/work-assignments\/([^/]+)\/cancel$/.exec(path);
   if (weeklyRestWorkCancel && method === "POST") return { name: "weekly-rest:work-cancel", id: weeklyRestWorkCancel[1] };
   if (path === "/api/core/hr/weekly-rest/work-assignments" && ["GET", "POST"].includes(method)) {
@@ -3396,6 +3425,91 @@ async function dispatch(ctx, route, method, body, query, env) {
         env.ATTENDANCE_DB || null
       );
 
+    case "weekly-rest:rescheduling": {
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
+
+      if (method === "GET") {
+        return listWeeklyRestRescheduling(
+          db,
+          ctx.salonId,
+          query
+        );
+      }
+
+      const result = await createWeeklyRestRescheduling(
+        db,
+        ctx.salonId,
+        body,
+        actorInfo,
+        env.ATTENDANCE_DB || null
+      );
+
+      try {
+        const state =
+          await getWeeklyRestReschedulingState(
+            db,
+            ctx.salonId,
+            result.operation.employee_id,
+            result.operation.id
+          );
+
+        return {
+          ...result,
+          ...state
+        };
+
+      } catch {
+        return {
+          ...result,
+          operationStateFresh: false,
+          reconciliation: {
+            status: "recovery_pending",
+            financeCompleted: false
+          }
+        };
+      }
+    }
+
+    case "weekly-rest:rescheduling-cancel": {
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
+
+      const result = await cancelWeeklyRestRescheduling(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        env.ATTENDANCE_DB || null
+      );
+
+      try {
+        const state =
+          await getWeeklyRestReschedulingState(
+            db,
+            ctx.salonId,
+            result.operation.employee_id,
+            result.operation.id
+          );
+
+        return {
+          ...result,
+          ...state
+        };
+
+      } catch {
+        return {
+          ...result,
+          operationStateFresh: false,
+          reconciliation: {
+            status: "recovery_pending",
+            financeCompleted: false
+          }
+        };
+      }
+    }
+
     case "weekly-rest:work-assignments":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);
       requirePermission(ctx, "employees.schedule.manage");
@@ -4382,6 +4496,7 @@ export default {
     let fingerprint = "";
     let idempotencyActive = false;
     let replayed = false;
+    let packageActor = null;
 
     try {
       if (rawOperationId && !operationId) {
@@ -4398,15 +4513,17 @@ export default {
           operationId
         )
       ) {
+        packageActor = await authorizePackageReplay(tracedRequest, env);
         fingerprint =
           await requestFingerprint(
-            tracedRequest
+            tracedRequest,
+            packageActor ? JSON.stringify(packageActor) : undefined
           );
 
         const gate =
           await beginIdempotentOperation(
             requireDb(env),
-            tenantId || null,
+            packageActor?.salonId ?? tenantId,
             operationId,
             fingerprint,
             requestId
@@ -4489,10 +4606,18 @@ export default {
         operationId &&
         fingerprint
       ) {
+        const replayTenant = packageActor?.salonId ?? tenantId;
         if (response.status === 401) {
           await abandonIdempotentOperation(
             requireDb(env),
-            tenantId,
+            replayTenant,
+            operationId,
+            fingerprint
+          );
+        } else if (packageActor && response.status >= 400) {
+          await abandonIdempotentOperation(
+            requireDb(env),
+            replayTenant,
             operationId,
             fingerprint
           );
@@ -4511,7 +4636,7 @@ export default {
           ) {
             await completeIdempotentOperation(
               requireDb(env),
-              tenantId,
+              replayTenant,
               operationId,
               fingerprint,
               requestId,

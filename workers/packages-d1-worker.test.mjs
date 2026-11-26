@@ -206,18 +206,18 @@ class FakeD1 {
         results.push({ meta: { changes: 1 } });
       } else if (sql.startsWith("UPDATE client_packages")) {
         const [
-          remaining_sessions, reserved_sessions, used_sessions, status, updated_at, canonical_client_id,
-          salon_id, id,
+          remaining_sessions, reserved_sessions, used_sessions, status, updated_at,
+          salon_id, id, canonical_client_id, beforeRemaining, beforeReserved, beforeUsed, beforeStatus, beforeUpdatedAt,
         ] = params;
-        const ids = params.slice(8, params.length - 3);
-        const [beforeRemaining, beforeReserved, beforeUsed] = params.slice(-3);
         const row = this.rows("client_packages").find((item) =>
           item.salon_id === salon_id &&
           item.id === id &&
-          ids.includes(item.canonical_client_id) &&
+          item.canonical_client_id === canonical_client_id &&
           Number(item.remaining_sessions) === Number(beforeRemaining) &&
           Number(item.reserved_sessions) === Number(beforeReserved) &&
-          Number(item.used_sessions) === Number(beforeUsed)
+          Number(item.used_sessions) === Number(beforeUsed) &&
+          item.status === beforeStatus &&
+          item.updated_at === beforeUpdatedAt
         );
         if (!row) {
           results.push({ meta: { changes: 0 } });
@@ -233,22 +233,13 @@ class FakeD1 {
           });
           results.push({ meta: { changes: 1 } });
         }
-      } else if (sql.startsWith("INSERT INTO package_transactions") && sql.includes(" WHERE EXISTS ")) {
+      } else if (sql.startsWith("INSERT INTO package_transactions") && sql.includes(" WHERE changes() = 1")) {
         const [
           id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
           remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
           service_id, booking_id, cart_item_id, invoice_id, created_at,
-          existsSalonId, existsPackageId, existsCanonicalId, existsRemaining, existsReserved, existsUsed,
         ] = params;
-        const exists = this.rows("client_packages").some((row) =>
-          row.salon_id === existsSalonId &&
-          row.id === existsPackageId &&
-          row.canonical_client_id === existsCanonicalId &&
-          Number(row.remaining_sessions) === Number(existsRemaining) &&
-          Number(row.reserved_sessions) === Number(existsReserved) &&
-          Number(row.used_sessions) === Number(existsUsed)
-        );
-        if (!exists) {
+        if (results.at(-1)?.meta.changes !== 1) {
           results.push({ meta: { changes: 0 } });
         } else {
           this.seed("package_transactions", {
@@ -576,7 +567,7 @@ test("client wallet reads active packages from D1", async () => {
   assert.equal(body.data.totalRemainingSessions, 7);
 });
 
-test("D1 purchase is idempotent", async () => {
+test("Standalone package purchase requires the Core accounting binding and writes nothing without it", async () => {
   const fake = new FakeD1();
   seedBase(fake);
   const payload = {
@@ -586,15 +577,12 @@ test("D1 purchase is idempotent", async () => {
     paymentMethod: "cash",
     invoiceId: "invoice-idem",
   };
-  const first = await worker.fetch(request("/api/packages/purchase", { body: payload }), env(fake));
-  const firstBody = await json(first);
-  assert.equal(first.status, 200, JSON.stringify(firstBody));
-  const second = await worker.fetch(request("/api/packages/purchase", { body: payload }), env(fake));
-  const secondBody = await json(second);
-  assert.equal(second.status, 200, JSON.stringify(secondBody));
-  assert.equal(secondBody.data.idempotent, true);
-  assert.equal(fake.rows("client_packages").length, 1);
-  assert.equal(fake.rows("package_transactions").length, 1);
+  const response = await worker.fetch(request("/api/packages/purchase", { body: payload }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 503, JSON.stringify(body));
+  assert.equal(body.error, "packages_d1:not_configured");
+  assert.equal(fake.rows("client_packages").length, 0);
+  assert.equal(fake.rows("package_transactions").length, 0);
 });
 
 test("D1 redeem consumes one remaining session atomically", async () => {

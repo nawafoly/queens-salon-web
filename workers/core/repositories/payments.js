@@ -127,6 +127,42 @@ export async function createPayment(db, salonId, data, actor = {}) {
     paid_at: optionalText(data.paidAt || data.paid_at) || now,
     created_at: now,
   };
+  const statements = settledPaymentStatements(payment, invoice, actor);
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    // The unique (salon_id, idempotency_key) constraint is the final arbiter
+    // if two callers raced past the initial lookup. Return the winner without
+    // recording another payment, income entry, or audit event.
+    if (idempotencyKey && /UNIQUE|constraint failed|SQLITE_CONSTRAINT/i.test(String(error?.message || ''))) {
+      const winner = await dbFirst(db,
+        'SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
+        [salonId, idempotencyKey]);
+      if (winner) return { ...winner, idempotent: true };
+    }
+    throw error;
+  }
+  if (payment.booking_id) {
+    await reconcileCashbackForBooking(
+      db,
+      salonId,
+      payment.booking_id,
+      actor?.uid || ""
+    );
+  }
+  return payment;
+}
+
+export function settledPaymentStatements(payment, invoice, actor, { incomeId = generatedId("income"), packageName } = {}) {
+  if (!SETTLED_PAYMENT_STATUSES.has(payment.status)) {
+    throw new AppError(400, 'core_payment:invalid_settlement_status');
+  }
+  const salonId = payment.salon_id;
+  const amount = payment.amount_halalas;
+  const now = payment.created_at;
+  const incomeSource = packageName ? 'package_purchase' : 'booking';
+  const incomeDescription = packageName || `Payment ${payment.method}`;
+  const incomeNote = packageName ? `package_purchase:${packageName}` : `booking_payment:${payment.method}`;
   const statements = [
     {
       sql: `INSERT INTO payments
@@ -153,18 +189,19 @@ export async function createPayment(db, salonId, data, actor = {}) {
       sql: `INSERT INTO income_entries
         (id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description,
          method, payment_breakdown_json, source, note, occurred_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, 'booking', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?, ?, ?, ?)`,
       params: [
-        generatedId("income"),
+        incomeId,
         salonId,
         payment.booking_id,
         payment.invoice_id,
         payment.id,
         payment.amount_halalas,
-        `Payment ${payment.method}`,
+        incomeDescription,
         payment.method,
         JSON.stringify({ [payment.method]: payment.amount_halalas / 100 }),
-        `booking_payment:${payment.method}`,
+        incomeSource,
+        incomeNote,
         payment.paid_at,
         now,
       ],
@@ -192,7 +229,6 @@ export async function createPayment(db, salonId, data, actor = {}) {
       });
     }
   }
-  const incomeId = statements[1].params[0];
   statements.push(
     auditInsertStatement(salonId, {
       action: "payment_recorded",
@@ -213,7 +249,7 @@ export async function createPayment(db, salonId, data, actor = {}) {
       action: "income_created",
       entityType: "income_entry",
       entityId: incomeId,
-      description: `Payment ${payment.method}`,
+      description: incomeDescription,
       source: "core-payment",
       after: {
         id: incomeId,
@@ -230,27 +266,5 @@ export async function createPayment(db, salonId, data, actor = {}) {
   if (invoice && payment.booking_id) {
     statements.push(bookingPaymentAuditFromLiveInvoice(salonId, invoice.id, payment, actor));
   }
-  try {
-    await dbBatch(db, statements);
-  } catch (error) {
-    // The unique (salon_id, idempotency_key) constraint is the final arbiter
-    // if two callers raced past the initial lookup. Return the winner without
-    // recording another payment, income entry, or audit event.
-    if (idempotencyKey && /UNIQUE|constraint failed|SQLITE_CONSTRAINT/i.test(String(error?.message || ''))) {
-      const winner = await dbFirst(db,
-        'SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
-        [salonId, idempotencyKey]);
-      if (winner) return { ...winner, idempotent: true };
-    }
-    throw error;
-  }
-  if (payment.booking_id) {
-    await reconcileCashbackForBooking(
-      db,
-      salonId,
-      payment.booking_id,
-      actor?.uid || ""
-    );
-  }
-  return payment;
+  return statements;
 }

@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   computeResolvedAttendanceDay,
+  weeklyRestPresentationTone,
 } from "../src/helpers/hr/attendanceShiftResolver.ts";
 
 const todayDateKey = "2026-08-13";
@@ -928,4 +929,144 @@ test("HR07A: restoring required policy restores canonical absence", () => {
   });
 
   assert.equal(result.status, "absent");
+});
+
+
+const hr09g7RestShift = {
+  source: "weekly_schedule",
+  active: false,
+  exceptionType: "off",
+};
+
+function hr09g7Punch(type, time) {
+  return {
+    type,
+    serverTime: `2026-11-22T${time}:00.000Z`,
+  };
+}
+
+const hr09g7In = hr09g7Punch("check_in", "09:00");
+const hr09g7Out = hr09g7Punch("check_out", "17:00");
+
+test("HR09G7: completed weekly rest work uses shared turquoise state", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present", hr09g7RestShift, [hr09g7In, hr09g7Out]
+    ),
+    "rest-work"
+  );
+});
+
+test("HR09G7: missing checkout is incomplete", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "partial", hr09g7RestShift, [hr09g7In]
+    ),
+    "partial"
+  );
+});
+
+test("HR09G7: reversed punch sequence is incomplete", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present", hr09g7RestShift, [
+        hr09g7Punch("check_out", "08:00"),
+        hr09g7In,
+      ]
+    ),
+    "partial"
+  );
+});
+
+test("HR09G7: equal punch timestamps are incomplete", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present", hr09g7RestShift, [
+        hr09g7In,
+        hr09g7Punch("check_out", "09:00"),
+      ]
+    ),
+    "partial"
+  );
+});
+
+test("HR09G7: invalid timestamp does not qualify as complete work", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present", hr09g7RestShift, [
+        hr09g7In,
+        { type: "check_out", serverTime: "invalid" },
+      ]
+    ),
+    "partial"
+  );
+});
+
+test("HR09G7: ordinary weekly rest has no work override", () => {
+  assert.equal(
+    weeklyRestPresentationTone("off_day", hr09g7RestShift, []),
+    null
+  );
+});
+
+test("HR09G7: rescheduled ordinary work remains ordinary work", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present",
+      { source: "exception", exceptionType: "custom" },
+      [hr09g7In, hr09g7Out]
+    ),
+    null
+  );
+});
+
+test("HR09G7: temporary weekly rest retains its origin", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present",
+      {
+        source: "exception",
+        exceptionType: "off",
+        note: "[temp_weekly_off:test]",
+      },
+      [hr09g7In, hr09g7Out]
+    ),
+    "rest-work"
+  );
+});
+
+test("HR09G7: missing Core shift is not weekly rest", () => {
+  assert.equal(
+    weeklyRestPresentationTone(
+      "present", { source: "none" }, [hr09g7In, hr09g7Out]
+    ),
+    null
+  );
+});
+
+test("HR09G7: protected canonical statuses retain priority", () => {
+  for (const status of ["leave", "absent", "schedule_unavailable"]) {
+    assert.equal(
+      weeklyRestPresentationTone(
+        status, hr09g7RestShift, [hr09g7In, hr09g7Out]
+      ),
+      null
+    );
+  }
+});
+
+test("HR09G7: both attendance surfaces use shared runtime", () => {
+  const portal = readFileSync(
+    new URL("../src/components/AttendanceMonthView.tsx", import.meta.url),
+    "utf8"
+  );
+
+  const dashboard = readFileSync(
+    new URL("../src/pages/dashboardEmployees/AttendanceSection.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(portal, /weeklyRestPresentationTone\(/);
+  assert.match(dashboard, /weeklyRestPresentationTone\(/);
+  assert.doesNotMatch(portal, /function weeklyRestVisualTone\(/);
 });

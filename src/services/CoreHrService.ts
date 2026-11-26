@@ -1175,6 +1175,98 @@ export const CoreHrService = {
     };
   },
 
+  async listWeeklyRestRescheduling(
+    employeeId: string,
+    query: {
+      from?: string;
+      to?: string;
+      status?: "active" | "cancelled";
+    } = {}
+  ): Promise<CoreWeeklyRestRescheduling[]> {
+    const payload = await coreApiRequest<unknown>(
+      "/api/core/hr/weekly-rest/rescheduling",
+      {
+        query: {
+          ...query,
+          employeeId,
+        },
+      }
+    );
+
+    if (!Array.isArray(payload)) {
+      throw new Error(
+        "core_weekly_rest_rescheduling:invalid_list_response"
+      );
+    }
+
+    return payload.map(row =>
+      parseWeeklyRestRescheduling(
+        row,
+        employeeId
+      )
+    );
+  },
+
+  async createWeeklyRestRescheduling(
+    input: CoreWeeklyRestReschedulingInput
+  ): Promise<CoreWeeklyRestReschedulingResult> {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/weekly-rest/rescheduling",
+      {
+        method: "POST",
+        body: { ...input },
+      }
+    );
+
+    invalidateResolvedShiftRangeCache(input.employeeId);
+
+    const result = parseWeeklyRestReschedulingResult(
+      payload,
+      input.employeeId,
+      input.id,
+      "active"
+    );
+
+    if (
+      result.operation.originalRestDate !== input.originalRestDate ||
+      result.operation.replacementRestDate !== input.replacementRestDate ||
+      result.operation.workStartTime !== input.startTime ||
+      result.operation.workEndTime !== input.endTime
+    ) {
+      throw new Error(
+        "core_weekly_rest_rescheduling:response_evidence_mismatch"
+      );
+    }
+
+    return result;
+  },
+
+  async cancelWeeklyRestRescheduling(
+    operationId: string,
+    employeeId: string,
+    reason: string
+  ): Promise<CoreWeeklyRestReschedulingResult> {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/weekly-rest/rescheduling/${encodeURIComponent(operationId)}/cancel`,
+      {
+        method: "POST",
+        body: {
+          employeeId,
+          reason,
+        },
+      }
+    );
+
+    invalidateResolvedShiftRangeCache(employeeId);
+
+    return parseWeeklyRestReschedulingResult(
+      payload,
+      employeeId,
+      operationId,
+      "cancelled"
+    );
+  },
+
   async createWeeklyRestWorkAssignment(input: {
     id?: string;
     employeeId: string;
@@ -1663,3 +1755,224 @@ export const CoreHrService = {
     return camel<CorePayrollEntry>(row);
   },
 };
+
+export interface CoreWeeklyRestRescheduling {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  originalRestDate: string;
+  replacementRestDate: string;
+  workStartTime: string;
+  workEndTime: string;
+  workExceptionId: string;
+  restExceptionId: string;
+  reason: string;
+  status: "active" | "cancelled";
+  createdByUid: string;
+  createdAt: string;
+  updatedAt: string;
+  cancelledByUid?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  financeOperationCount?: number;
+  financeCompletedCount?: number;
+  financeReviewCount?: number;
+  restReviewChecked?: number;
+  restReviewEventId?: string | null;
+  restReviewStatus?: string | null;
+  restReviewEventStatus?: string | null;
+  restReviewWorkedMinutes?: number | null;
+  restReviewSubstituteMinutes?: number | null;
+}
+
+export interface CoreWeeklyRestReschedulingInput {
+  id: string;
+  employeeId: string;
+  originalRestDate: string;
+  replacementRestDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+}
+
+export interface CoreWeeklyRestReschedulingResult {
+  operation: CoreWeeklyRestRescheduling;
+  idempotent: boolean;
+  operationStateFresh: boolean;
+  reconciliation: {
+    status: "completed" | "recovery_pending" | "needs_attention";
+    financeCompleted: boolean;
+    operationCount: number | null;
+    completedCount: number | null;
+  };
+}
+
+function parseWeeklyRestRescheduling(
+  raw: unknown,
+  expectedEmployeeId: string,
+  expectedOperationId?: string
+): CoreWeeklyRestRescheduling {
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    Array.isArray(raw)
+  ) {
+    throw new Error("core_weekly_rest_rescheduling:invalid_response");
+  }
+
+  const operation = camel<CoreWeeklyRestRescheduling>(
+    raw as Record<string, unknown>
+  );
+
+  if (
+    !operation.id ||
+    operation.employeeId !== expectedEmployeeId ||
+    (
+      expectedOperationId !== undefined &&
+      operation.id !== expectedOperationId
+    ) ||
+    !["active", "cancelled"].includes(operation.status) ||
+    !operation.originalRestDate ||
+    !operation.replacementRestDate ||
+    operation.originalRestDate === operation.replacementRestDate
+  ) {
+    throw new Error("core_weekly_rest_rescheduling:response_scope_mismatch");
+  }
+
+  const validMinutes = (
+    value: unknown
+  ): value is number =>
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0;
+
+  const clearRestReview = (): CoreWeeklyRestRescheduling => ({
+    ...operation,
+    restReviewChecked: 0,
+    restReviewEventId: null,
+    restReviewStatus: null,
+    restReviewEventStatus: null,
+    restReviewWorkedMinutes: null,
+    restReviewSubstituteMinutes: null,
+  });
+
+  if (
+    operation.status !== "cancelled" ||
+    operation.restReviewChecked !== 1
+  ) {
+    return clearRestReview();
+  }
+
+  if (
+    operation.restReviewEventId === null &&
+    operation.restReviewStatus === null &&
+    operation.restReviewEventStatus === null &&
+    operation.restReviewWorkedMinutes === null &&
+    operation.restReviewSubstituteMinutes === null
+  ) {
+    return operation;
+  }
+
+  const validEvent =
+    typeof operation.restReviewEventId === "string" &&
+    operation.restReviewEventId.trim().length > 0 &&
+    typeof operation.restReviewStatus === "string" &&
+    [
+      "pending_review",
+      "owed",
+      "scheduled",
+      "fulfilled",
+    ].includes(operation.restReviewStatus) &&
+    typeof operation.restReviewEventStatus === "string" &&
+    operation.restReviewEventStatus.trim().length > 0 &&
+    validMinutes(operation.restReviewWorkedMinutes) &&
+    validMinutes(operation.restReviewSubstituteMinutes);
+
+  return validEvent ? operation : clearRestReview();
+}
+
+function parseWeeklyRestReschedulingResult(
+  payload: Record<string, unknown>,
+  employeeId: string,
+  operationId: string,
+  expectedStatus: "active" | "cancelled"
+): CoreWeeklyRestReschedulingResult {
+  const operation = parseWeeklyRestRescheduling(
+    payload.operation,
+    employeeId,
+    operationId
+  );
+
+  const raw = payload.reconciliation;
+
+  const state =
+    raw &&
+    typeof raw === "object" &&
+    !Array.isArray(raw)
+      ? raw as Record<string, unknown>
+      : {};
+
+  const operationStateFresh =
+    payload.operationStateFresh === true;
+
+  const operationCount =
+    typeof state.operationCount === "number" &&
+    Number.isInteger(state.operationCount) &&
+    state.operationCount >= 0
+      ? state.operationCount
+      : null;
+
+  const completedCount =
+    typeof state.completedCount === "number" &&
+    Number.isInteger(state.completedCount) &&
+    state.completedCount >= 0
+      ? state.completedCount
+      : null;
+
+  const expectedCount =
+    expectedStatus === "cancelled" ? 4 : 2;
+
+  const financeCompleted =
+    operationStateFresh &&
+    operation.status === expectedStatus &&
+    state.status === "completed" &&
+    state.financeCompleted === true &&
+    operationCount === expectedCount &&
+    completedCount === expectedCount;
+
+  const needsAttention =
+    operation.status !== expectedStatus ||
+    state.status === "needs_attention" ||
+    (
+      operationStateFresh &&
+      state.status === "completed" &&
+      !financeCompleted
+    );
+
+  return {
+    operation: operationStateFresh &&
+      operation.status === expectedStatus
+      ? operation
+      : {
+          ...operation,
+          restReviewChecked: 0,
+          restReviewEventId: null,
+          restReviewStatus: null,
+          restReviewEventStatus: null,
+          restReviewWorkedMinutes: null,
+          restReviewSubstituteMinutes: null,
+        },
+    idempotent: payload.idempotent === true,
+    operationStateFresh,
+    reconciliation: {
+      status: needsAttention
+        ? "needs_attention"
+        : financeCompleted
+          ? "completed"
+          : "recovery_pending",
+      financeCompleted,
+      operationCount,
+      completedCount,
+    },
+  };
+}

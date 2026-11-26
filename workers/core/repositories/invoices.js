@@ -56,13 +56,18 @@ export async function createInvoice(db, salonId, data) {
     created_at: now,
     updated_at: now,
   };
-  await dbRun(
-    db,
-    `INSERT INTO invoices
+  const { sql, params } = invoiceInsertStatement(row);
+  await dbRun(db, sql, params);
+  return row;
+}
+
+export function invoiceInsertStatement(row) {
+  return {
+    sql: `INSERT INTO invoices
       (id, salon_id, booking_id, client_id, invoice_number, subtotal_halalas, discount_halalas,
        total_halalas, paid_halalas, status, issued_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
+    params: [
       row.id,
       row.salon_id,
       row.booking_id,
@@ -76,7 +81,6 @@ export async function createInvoice(db, salonId, data) {
       row.issued_at,
       row.created_at,
       row.updated_at,
-    ]
-  );
-  return row;
+    ],
+  };
 }

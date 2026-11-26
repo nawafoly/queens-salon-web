@@ -19447,24 +19447,21 @@ textarea.form-control {
 }
 
 .attendance-month__state-card.is-off-day {
-  border-color: #8ddfd8;
-  color: #08736e;
-  background:
-    linear-gradient(145deg, #f5fffe, #dff8f5);
+  border-color: #93c5fd;
+  color: #2563eb;
+  background: #eff6ff;
 }
 
 .attendance-month__state-card.is-leave {
-  border-color: #cbb6f0;
-  color: #6840a2;
-  background:
-    linear-gradient(145deg, #fcfaff, #eee6ff);
+  border-color: #fde047;
+  color: #ca8a04;
+  background: #fefce8;
 }
 
 .attendance-month__state-card.is-absent {
-  border-color: #efb0ba;
-  color: #b3263b;
-  background:
-    linear-gradient(145deg, #fffafa, #ffe7ea);
+  border-color: #fca5a5;
+  color: #dc2626;
+  background: #fee2e2;
 }
 
 .attendance-month__state-card.is-pending {
@@ -19596,9 +19593,9 @@ textarea.form-control {
 }
 
 .attendance-month__performance-item.is-late {
-  border-color: #edcc78;
-  color: #8f6200;
-  background: #fff4cf;
+  border-color: #fcd34d;
+  color: #d97706;
+  background: #fffbeb;
 }
 
 .attendance-month__performance-item.is-missing {

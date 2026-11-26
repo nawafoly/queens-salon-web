@@ -10,10 +10,179 @@ export async function ensureHrPayrollOutbox(db) {
   readyDatabases.add(db);
 }
 
+async function reconcileWeeklyRestRescheduling(
+  db,
+  op,
+  source,
+  actor,
+  options,
+  payroll
+) {
+  if (!options.externalAttendanceDb) {
+    throw new Error(
+      'weekly_rest_rescheduling_attendance_unavailable'
+    );
+  }
+
+  const operation = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_weekly_rest_rescheduling
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND id = ?
+      LIMIT 1`,
+    [op.salon_id, op.employee_id, source.sourceId]
+  );
+
+  if (!operation) {
+    throw new Error(
+      'weekly_rest_rescheduling_source_missing'
+    );
+  }
+
+  if (
+    ![
+      operation.original_rest_date,
+      operation.replacement_rest_date
+    ].includes(op.work_date)
+  ) {
+    throw new Error(
+      'weekly_rest_rescheduling_target_mismatch'
+    );
+  }
+
+  // Restoring the schedule does not erase evidence of work
+  // performed during the original weekly rest.
+  let weeklyRestReview = null;
+
+  if (
+    source.action === 'cancel' &&
+    operation.status === 'cancelled' &&
+    op.work_date === operation.original_rest_date
+  ) {
+    const {
+      reconcileWeeklyRestDate
+    } = await import('./rest-holiday-compliance.js');
+
+    const result = await reconcileWeeklyRestDate(
+      db,
+      op.salon_id,
+      op.employee_id,
+      op.work_date,
+      actor,
+      options.externalAttendanceDb
+    );
+
+    if (!result.weeklyRest) {
+      throw new Error(
+        'weekly_rest_rescheduling_restoration_source_mismatch'
+      );
+    }
+
+    if (result.worked && !result.event?.id) {
+      throw new Error(
+        'weekly_rest_rescheduling_review_evidence_missing'
+      );
+    }
+
+    weeklyRestReview = {
+      date: op.work_date,
+      worked: result.worked === true,
+      eventId: result.event?.id || null,
+      restorationStatus:
+        result.event?.restoration_status || null,
+      attendanceComplete:
+        result.attendance?.complete === true,
+      workedMinutes:
+        result.attendance?.workedMinutes || 0,
+      requiresReview:
+        result.worked === true &&
+        !['fulfilled', 'scheduled', 'owed'].includes(
+          result.event?.restoration_status
+        )
+    };
+  }
+
+  const month = op.work_date.slice(0, 7);
+
+  const entries = await dbAll(
+    db,
+    `SELECT *
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+        AND status IN ('draft', 'reviewed')
+      ORDER BY id`,
+    [op.salon_id, op.employee_id, month]
+  );
+
+  const previews = [];
+
+  for (const entry of entries) {
+    const refresh =
+      await payroll.refreshPayrollDraftForRestRescheduling(
+        db,
+        op.salon_id,
+        entry,
+        actor,
+        options
+      );
+
+    previews.push({
+      payrollEntryId: entry.id,
+      payrollMonth: entry.payroll_month,
+      savedNetHalalas:
+        refresh.previousNetHalalas,
+      canonicalNetHalalas:
+        refresh.resultingNetHalalas,
+      changed: refresh.changed,
+      requiresRefresh: false
+    });
+  }
+
+  const lockedResult =
+    await payroll.reconcileLockedPayrollImpactForEmployeeDate(
+      db,
+      op.salon_id,
+      {
+        employeeId: op.employee_id,
+        date: op.work_date,
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        reason: op.reason
+      },
+      actor,
+      options
+    );
+
+  return {
+    ...lockedResult,
+    payrollPreviews: previews,
+    draftRefreshRequired:
+      previews.some(row => row.requiresRefresh),
+    reconciliationMode: 'canonical_draft_refresh',
+    operationStatus: operation.status,
+    weeklyRestReview
+  };
+}
+
 async function reconcile(db,op,options) {
   const source = JSON.parse(op.response_json);
   const actor = JSON.parse(op.actor_json);
   const payroll = await import('./payroll.js');
+
+  if (source.sourceType === 'weekly_rest_rescheduling') {
+    return reconcileWeeklyRestRescheduling(
+      db,
+      op,
+      source,
+      actor,
+      options,
+      payroll
+    );
+  }
   if (source.sourceType === 'permission') {
     const {refreshPayrollEntries}=await import('./permissions.js');
     await refreshPayrollEntries(db,op.salon_id,op.employee_id,op.work_date);

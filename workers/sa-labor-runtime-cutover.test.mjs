@@ -92,7 +92,7 @@ test("Core payroll persists labor policy evidence, rejects stale wages and uses 
   );
 });
 
-test("legacy annual balance is never consumed by sick or emergency leave", () => {
+test("canonical leave policy protects sick leave and routes emergency leave to annual balance", () => {
   const frontend = readFileSync(
     new URL("../src/helpers/hr/employeeLeave.ts", import.meta.url),
     "utf8"
@@ -104,17 +104,53 @@ test("legacy annual balance is never consumed by sick or emergency leave", () =>
 
   assert.match(
     frontend,
-    /deductFromBalance: type === "annual"/
+    /const policy = getSaLeaveTypePolicy\(value\)/
   );
-  assert.doesNotMatch(
+  assert.match(
     frontend,
-    /type === "sick" \|\|/
+    /deductFromBalance: policy\.deductAnnualBalance === true/
+  );
+  assert.match(
+    frontend,
+    /affectsPayroll: policy\.affectsPayroll === true/
+  );
+
+  const calendar = readFileSync(
+    new URL("../src/helpers/hr/attendanceCalendarData.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    calendar,
+    /sick:\s*\{\s*kind: "leave", deductFromBalance: false/
+  );
+
+  assert.match(
+    calendar,
+    /emergency:\s*\{\s*kind: "leave", deductFromBalance: true/
   );
 
   assert.equal(getSaLeaveTypePolicy("annual").deductAnnualBalance, true);
   assert.equal(getSaLeaveTypePolicy("sick").deductAnnualBalance, false);
-  assert.equal(getSaLeaveTypePolicy("emergency").deductAnnualBalance, false);
-  assert.equal(normalizeSaLeaveType("emergency"), SA_LEAVE_TYPES.otherHrReview);
+  assert.equal(getSaLeaveTypePolicy("emergency").deductAnnualBalance, true);
+  assert.equal(normalizeSaLeaveType("emergency"), SA_LEAVE_TYPES.emergency);
+
+  assert.equal(getSaLeaveTypePolicy("emergency").entitlementBucket, "annual");
+  assert.equal(getSaLeaveTypePolicy("sick").entitlementBucket, "sick_year");
+  assert.equal(getSaLeaveTypePolicy("sick").documentationRequired, true);
+
+  assert.equal(getSaLeaveTypePolicy("unpaid").deductAnnualBalance, false);
+  assert.equal(getSaLeaveTypePolicy("unpaid").affectsPayroll, true);
+
+  assert.equal(
+    normalizeSaLeaveType("unrecognized_leave"),
+    SA_LEAVE_TYPES.otherHrReview
+  );
+
+  assert.equal(
+    getSaLeaveTypePolicy("unrecognized_leave").deductAnnualBalance,
+    false
+  );
 
   assert.match(core, /resolved\.policy\.deductAnnualBalance \? 1 : 0/);
   assert.match(core, /SA_LEAVE_TYPES\.sick/);

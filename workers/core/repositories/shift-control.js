@@ -983,10 +983,18 @@ export async function syncWorkingHourScheduleExceptions(
     await dbAll(
       db,
       `SELECT *
-       FROM hr_schedule_exceptions
-       WHERE salon_id=?
-         AND employee_id=?
-       ORDER BY date_from DESC`,
+       FROM hr_schedule_exceptions e
+       WHERE e.salon_id=?
+         AND e.employee_id=?
+         AND NOT EXISTS (
+           SELECT 1
+             FROM employee_weekly_rest_rescheduling r
+            WHERE r.salon_id=e.salon_id
+              AND r.employee_id=e.employee_id
+              AND r.status='active'
+              AND r.original_rest_exception_id=e.id
+         )
+       ORDER BY e.date_from DESC`,
       [
         salonId,
         employeeId,
@@ -1492,10 +1500,18 @@ export async function syncWorkingHourScheduleExceptions(
     await dbAll(
       db,
       `SELECT *
-       FROM hr_schedule_exceptions
-       WHERE salon_id=?
-         AND employee_id=?
-       ORDER BY date_from DESC`,
+       FROM hr_schedule_exceptions e
+       WHERE e.salon_id=?
+         AND e.employee_id=?
+         AND NOT EXISTS (
+           SELECT 1
+             FROM employee_weekly_rest_rescheduling r
+            WHERE r.salon_id=e.salon_id
+              AND r.employee_id=e.employee_id
+              AND r.status='active'
+              AND r.original_rest_exception_id=e.id
+         )
+       ORDER BY e.date_from DESC`,
       [
         salonId,
         employeeId,
@@ -1660,6 +1676,14 @@ async function resolveEmployeeBaseShift(
     t.overtime_after_minutes
     FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t ON t.id=e.shift_template_id
     WHERE e.salon_id=? AND e.employee_id=? AND e.status IN ('approved','active') AND (e.exception_type='off' OR e.enabled=1) AND e.date_from<=? AND e.date_to>=?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM employee_weekly_rest_rescheduling r
+      WHERE r.salon_id=e.salon_id
+        AND r.employee_id=e.employee_id
+        AND r.status='active'
+        AND r.original_rest_exception_id=e.id
+    )
     ORDER BY e.created_at DESC LIMIT 1`, [salonId, employeeId, date, date]);
 
   const weeklySchedule = await dbFirst(db, `SELECT s.*, t.name AS shift_name, t.code AS shift_code,
@@ -2259,6 +2283,14 @@ export async function resolveEmployeeShiftsBatch(
             AND (e.exception_type='off' OR e.enabled=1)
             AND e.date_from<=?
             AND e.date_to>=?
+            AND NOT EXISTS (
+              SELECT 1
+              FROM employee_weekly_rest_rescheduling r
+              WHERE r.salon_id=e.salon_id
+                AND r.employee_id=e.employee_id
+                AND r.status='active'
+                AND r.original_rest_exception_id=e.id
+            )
           ORDER BY e.employee_id, e.created_at DESC`,
         [
           salonId,

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CoreInventoryService } from "../services/CoreInventoryService";
 import { CoreApiError } from "../services/coreApiClient";
 
@@ -63,7 +63,7 @@ export default function DashboardInventoryPurchaseOrders() {
 
   return (
     <div className="inventory-inner-workspace inventory-inner-purchase-orders">
-      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">دورة المشتريات</span><h4>إدارة أوامر الشراء</h4><p>أنشئ أمر شراء، أضف المواد والكميات، ثم سجّل الاستلام إلى المخزون.</p></div><span className="inventory-inner-count">أوامر مسجلة: {orders.length.toLocaleString("ar-SA")}</span></div>
+      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">دورة المشتريات</span><h4>إدارة أوامر الشراء</h4><p>أنشئ أمر شراء، أضف المواد والكميات، ثم سجّل الاستلام إلى المخزون.</p></div><span className="inventory-inner-count">أوامر مسجلة: {orders.length.toLocaleString("ar-SA-u-nu-latn")}</span></div>
       {notice ? <div className="alert alert-info py-2">{notice}</div> : null}
       <div className="inventory-inner-panel"><div className="inventory-inner-panel-heading"><span className="inventory-inner-step">01</span><div><h5>إنشاء أمر شراء</h5><p>حدّد المورد وأضف ملاحظة اختيارية.</p></div></div><div className="row g-3">
         <div className="col-md-4"><label className="inventory-inner-label" htmlFor="inventory-po-supplier">المورد</label>

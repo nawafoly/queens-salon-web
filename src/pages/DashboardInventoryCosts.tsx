@@ -12,7 +12,7 @@ import {
 import { CoreApiError } from "../services/coreApiClient";
 
 const costSar = (halalas: number) =>
-  new Intl.NumberFormat("ar-SA", {
+  new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(halalas || 0) / 100);

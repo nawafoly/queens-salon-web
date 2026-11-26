@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import RestReschedulingDatePicker from "../../components/dashboard-v2/DashboardDatePickerV2";
+import RestReschedulingTimePicker from "../../components/dashboard-v2/DashboardTimePickerV2";
 
 import type { StaffAttendanceWithId } from "../../services/attendanceTypes";
-import { CoreHrService } from "../../services/CoreHrService";
+import { CoreHrService, type CoreWeeklyRestRescheduling } from "../../services/CoreHrService";
 import { isCanonicalEmployeeIdentityId } from "../../helpers/employeeIdentityId";
 import { clearAttendancePunchTimeFromWorker } from "../../services/attendancePunchAdminService";
 import { attendanceReconciliationMessage } from "../../services/attendanceOperationClient";
@@ -10,6 +12,7 @@ import {
   computeAttendanceEarlyLeaveMinutes,
   computeResolvedAttendanceDay,
   recordsFromAttendanceRow,
+  weeklyRestPresentationTone,
   resolveAttendanceShiftForDate,
 } from "../../helpers/hr/attendanceShiftResolver";
 import type { AttendanceSpecialDay } from "../../helpers/hr/attendanceCalendarData";
@@ -50,6 +53,7 @@ type AttendanceSectionProps = {
   canReview?: boolean;
   canCreateEmergencyLeave?: boolean;
   canCancelLeave?: boolean;
+  canManageSchedule?: boolean;
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
   onReload: () => void;
@@ -593,6 +597,14 @@ function toLiveAttendanceRow(
   return {
     date,
 
+    weeklyRestTone: resolvedDay
+      ? weeklyRestPresentationTone(
+          resolvedDay.status,
+          coreResolvedShift,
+          dayRecords
+        )
+      : null,
+
     status:
       resolvedDay?.status ||
       cleanText(
@@ -753,6 +765,73 @@ function toLiveAttendanceRow(
   };
 }
 
+
+function restReschedulingReviewState(
+  operation: CoreWeeklyRestRescheduling
+): "unknown" | "no_event" | "pending_review" | "owed" | "scheduled" | "fulfilled" {
+  if (
+    operation.status !== "cancelled" ||
+    operation.restReviewChecked !== 1
+  ) return "unknown";
+
+  if (!operation.restReviewEventId) {
+    return "no_event";
+  }
+
+  if (
+    typeof operation.restReviewWorkedMinutes !== "number" ||
+    !Number.isFinite(operation.restReviewWorkedMinutes) ||
+    operation.restReviewWorkedMinutes < 0
+  ) return "unknown";
+
+  switch (operation.restReviewStatus) {
+    case "pending_review":
+      return "pending_review";
+    case "owed":
+      return "owed";
+    case "scheduled":
+      return "scheduled";
+    case "fulfilled":
+      return "fulfilled";
+    default:
+      return "unknown";
+  }
+}
+
+function restReschedulingFinanceState(
+  operation: CoreWeeklyRestRescheduling
+): "completed" | "pending" | "review" {
+  const expected = operation.status === "cancelled"
+    ? 4
+    : 2;
+
+  const count = operation.financeOperationCount;
+  const completed = operation.financeCompletedCount;
+  const review = operation.financeReviewCount;
+
+  if (
+    typeof count !== "number" ||
+    typeof completed !== "number" ||
+    typeof review !== "number" ||
+    !Number.isInteger(count) ||
+    !Number.isInteger(completed) ||
+    !Number.isInteger(review) ||
+    count !== expected ||
+    completed < 0 ||
+    completed > count ||
+    review < 0 ||
+    review > count ||
+    completed + review > count ||
+    review > 0
+  ) {
+    return "review";
+  }
+
+  return completed === expected
+    ? "completed"
+    : "pending";
+}
+
 export default function AttendanceSection({
   isVisible,
   loading,
@@ -768,6 +847,7 @@ export default function AttendanceSection({
   canDelete = false,
   canCreateEmergencyLeave = false,
   canCancelLeave = false,
+  canManageSchedule = false,
   onMonthChange,
   onSelectedDateChange,
   onReload,
@@ -796,6 +876,428 @@ export default function AttendanceSection({
   const [punchClearError, setPunchClearError] = useState("");
   const [coreScheduleRefreshVersion, setCoreScheduleRefreshVersion] = useState(0);
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
+
+  const [restReschedulingSnapshot, setRestReschedulingSnapshot] =
+    useState<{
+      key: string;
+      rows: CoreWeeklyRestRescheduling[];
+      employeeId: string;
+    } | null>(null);
+
+  const [restReschedulingError, setRestReschedulingError] =
+    useState<{ key: string; message: string } | null>(null);
+
+  const [restReschedulingRevision, setRestReschedulingRevision] =
+    useState(0);
+
+  const restReschedulingKey = JSON.stringify([
+    employeeId,
+    employeeIdsKey,
+    monthKey,
+    coreScheduleRefreshVersion,
+    restReschedulingRevision,
+    canManageSchedule,
+    isVisible,
+  ]);
+
+  const restReschedulingReady =
+    canManageSchedule &&
+    restReschedulingSnapshot?.key === restReschedulingKey;
+
+  const restReschedulingRows = restReschedulingReady
+    ? restReschedulingSnapshot.rows
+    : [];
+
+  const currentRestReschedulingError =
+    restReschedulingError?.key === restReschedulingKey
+      ? restReschedulingError.message
+      : "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setRestReschedulingSnapshot(null);
+    setRestReschedulingError(null);
+
+    if (!isVisible || !canManageSchedule) {
+      return;
+    }
+
+    const load = async () => {
+      const dates = monthDateKeys(monthKey);
+
+      if (!dates.length) {
+        throw new Error("Invalid attendance month");
+      }
+
+      const identities = uniqueCleanTexts(
+        employeeIdsKey.split("|")
+      ).filter(isCoreEmployeeIdentifier);
+
+      if (!identities.length) {
+        throw new Error("Canonical employee identity unavailable");
+      }
+
+      // Employee identity comes from the canonical employee
+      // record, never from whichever response arrives first.
+
+      const resolved = await Promise.allSettled(
+        identities.map(async id => {
+          const employee = await CoreHrService.getEmployee(id);
+
+          const canonicalId = cleanText(employee.id);
+          const linkedId = cleanText(employee.employeeId);
+
+          if (
+            !canonicalId ||
+            (linkedId && linkedId !== canonicalId)
+          ) {
+            throw new Error("Canonical employee identity mismatch");
+          }
+
+          return canonicalId;
+        })
+      );
+
+      const canonicalIds = uniqueCleanTexts(
+        resolved.flatMap(result =>
+          result.status === "fulfilled"
+            ? [result.value]
+            : []
+        )
+      );
+
+      if (canonicalIds.length !== 1) {
+        throw new Error("Canonical employee identity is ambiguous");
+      }
+
+      const canonicalId = canonicalIds[0];
+
+      const operations =
+        await CoreHrService.listWeeklyRestRescheduling(
+          canonicalId,
+          {
+            from: dates[0],
+            to: dates[dates.length - 1],
+          }
+        );
+
+      if (
+        operations.some(
+          operation =>
+            operation.employeeId !== canonicalId
+        )
+      ) {
+        throw new Error("Rest rescheduling employee scope mismatch");
+      }
+
+      if (!cancelled) {
+        setRestReschedulingSnapshot({
+          key: restReschedulingKey,
+          rows: operations,
+          employeeId: canonicalId,
+        });
+      }
+    };
+
+    void load().catch(error => {
+      if (!cancelled) {
+        setRestReschedulingError({
+          key: restReschedulingKey,
+          message: String(error?.message || error),
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    restReschedulingKey,
+    employeeIdsKey,
+    monthKey,
+    isVisible,
+    canManageSchedule,
+  ]);
+
+  const selectedRestReschedulingRows =
+    restReschedulingRows.filter(operation =>
+      operation.originalRestDate === selectedDate ||
+      operation.replacementRestDate === selectedDate
+    );
+
+
+
+  const restActionScope = JSON.stringify([
+    employeeId,
+    employeeIdsKey,
+    selectedDate,
+    monthKey,
+    canManageSchedule,
+    isVisible,
+  ]);
+
+  const restActionScopeRef = useRef(restActionScope);
+  restActionScopeRef.current = restActionScope;
+
+  const restActionInFlight = useRef(false);
+
+  const restActionOperationRef = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
+
+  const [restActionSaving, setRestActionSaving] = useState(false);
+
+  const [restActionMessage, setRestActionMessage] =
+    useState<{
+      scope: string;
+      ar: string;
+      en: string;
+      error: boolean;
+    } | null>(null);
+
+  const activeRestReschedulingRows =
+    selectedRestReschedulingRows.filter(
+      operation => operation.status === "active"
+    );
+
+  const [restActionDraft, setRestActionDraft] =
+    useState<{
+      scope: string;
+      mode: "create" | "cancel";
+      operationId: string;
+      replacementDate: string;
+      startTime: string;
+      endTime: string;
+      reason: string;
+    } | null>(null);
+
+  const currentRestActionDraft =
+    restActionDraft?.scope === restActionScope
+      ? restActionDraft
+      : null;
+
+  const currentRestActionMessage =
+    restActionMessage?.scope === restActionScope
+      ? restActionMessage
+      : null;
+
+  function openRestAction(
+    mode: "create" | "cancel",
+    operationId = ""
+  ) {
+    if (
+      !isVisible ||
+      !canManageSchedule ||
+      !restReschedulingReady ||
+      attendanceCoreBlocked ||
+      restActionInFlight.current
+    ) {
+      return;
+    }
+
+    if (mode === "create" && !restActionCanCreate) {
+      return;
+    }
+
+    if (
+      mode === "cancel" &&
+      !activeRestReschedulingRows.some(operation =>
+        operation.id === operationId &&
+        restReschedulingFinanceState(operation) === "completed"
+      )
+    ) {
+      return;
+    }
+
+    setRestActionMessage(null);
+
+    setRestActionDraft({
+      scope: restActionScope,
+      mode,
+      operationId,
+      replacementDate: "",
+      startTime: "",
+      endTime: "",
+      reason: "",
+    });
+  }
+
+  async function submitRestAction() {
+    const draft = currentRestActionDraft;
+
+    const canonicalId =
+      restReschedulingReady
+        ? restReschedulingSnapshot.employeeId
+        : "";
+
+    if (
+      !draft ||
+      !canonicalId ||
+      !canManageSchedule ||
+      !isVisible ||
+      attendanceCoreBlocked ||
+      restActionInFlight.current
+    ) {
+      return;
+    }
+
+    const reason = draft.reason.trim();
+
+    if (!reason || reason.length > 1500) {
+      return;
+    }
+
+    if (draft.mode === "create") {
+      if (
+        !restActionCanCreate ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(draft.replacementDate) ||
+        draft.replacementDate === selectedDate ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.startTime) ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.endTime) ||
+        draft.startTime >= draft.endTime ||
+        activeRestReschedulingRows.length !== 0
+      ) {
+        return;
+      }
+    } else {
+      const operation = activeRestReschedulingRows.find(
+        row =>
+          row.id === draft.operationId &&
+          row.employeeId === canonicalId
+      );
+
+      if (
+        !operation ||
+        restReschedulingFinanceState(operation) !== "completed"
+      ) {
+        return;
+      }
+    }
+
+    const submittedScope = restActionScope;
+
+    restActionInFlight.current = true;
+    setRestActionSaving(true);
+    setRestActionMessage(null);
+
+    let saved = false;
+
+    try {
+      let result;
+
+      if (draft.mode === "create") {
+        const input = {
+          employeeId: canonicalId,
+          originalRestDate: selectedDate,
+          replacementRestDate: draft.replacementDate,
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          reason,
+        };
+
+        const fingerprint = JSON.stringify(input);
+
+        if (
+          restActionOperationRef.current?.fingerprint !== fingerprint
+        ) {
+          restActionOperationRef.current = {
+            fingerprint,
+            id: crypto.randomUUID(),
+          };
+        }
+
+        result = await CoreHrService.createWeeklyRestRescheduling({
+          ...input,
+          id: restActionOperationRef.current.id,
+        });
+
+        if (result.operation.status !== "active") {
+          throw new Error("Unexpected rescheduling state");
+        }
+
+      } else {
+
+        result = await CoreHrService.cancelWeeklyRestRescheduling(
+          draft.operationId,
+          canonicalId,
+          reason
+        );
+
+        if (result.operation.status !== "cancelled") {
+          throw new Error("Unexpected restoration state");
+        }
+      }
+
+      saved = true;
+
+      if (draft.mode === "create") {
+        restActionOperationRef.current = null;
+      }
+
+      const complete =
+        result.operationStateFresh &&
+        result.reconciliation.financeCompleted;
+
+      if (restActionScopeRef.current === submittedScope) {
+
+        setRestActionDraft(null);
+
+        setRestActionMessage({
+          scope: submittedScope,
+          ar: complete
+            ? "تم حفظ العملية واكتمال التسوية المالية."
+            : "تم حفظ العملية، والتسوية المالية لم تكتمل بعد.",
+          en: complete
+            ? "Saved. Financial reconciliation completed."
+            : "Saved. Financial reconciliation is not yet complete.",
+          error: false,
+        });
+
+        setRestReschedulingRevision(value => value + 1);
+        setCoreScheduleRefreshVersion(value => value + 1);
+
+        try {
+          onReload();
+        } catch {
+          setRestActionMessage({
+            scope: submittedScope,
+            ar: "تم الحفظ، لكن تعذر تحديث بيانات الحضور.",
+            en: "Saved, but attendance refresh failed.",
+            error: false,
+          });
+        }
+      }
+
+      window.dispatchEvent(
+        new Event("queens:staff-updated")
+      );
+
+    } catch (error) {
+
+      if (restActionScopeRef.current === submittedScope) {
+        setRestActionMessage({
+          scope: submittedScope,
+          ar: saved
+            ? "تم الحفظ، لكن تعذر تحديث بعض البيانات."
+            : "تعذر تأكيد العملية. تحقق من السجل قبل إعادة المحاولة.",
+          en: saved
+            ? "Saved, but some data could not be refreshed."
+            : "Unable to confirm the operation. Check history before retrying.",
+          error: !saved,
+        });
+
+        setRestReschedulingRevision(value => value + 1);
+      }
+
+      console.error("weekly-rest-rescheduling-action", error);
+
+    } finally {
+      restActionInFlight.current = false;
+      setRestActionSaving(false);
+    }
+  }
 
   const [attendancePolicyLoading, setAttendancePolicyLoading] =
     useState(true);
@@ -1652,6 +2154,73 @@ export default function AttendanceSection({
     Boolean(coreShiftError) ||
     Boolean(corePermissionError) ||
     Boolean(coreAbsenceError);
+
+  const restActionSelectedShift =
+    coreResolvedShiftsByDate[cleanText(selectedDate)] || null;
+
+  const restActionSelectedSource =
+    cleanText(restActionSelectedShift?.source).toLowerCase();
+
+  const restActionSelectedSpecialDay =
+    resolvedShiftSpecialDay(
+      cleanText(selectedDate),
+      restActionSelectedShift
+    );
+
+  const restActionOperational =
+    restActionSelectedShift !== null &&
+    (restActionSelectedShift as Record<string, unknown>)
+      .operational !== false;
+
+  const restActionHasPendingRestoration =
+    selectedRestReschedulingRows.some(operation =>
+      operation.status === "cancelled" &&
+      restReschedulingFinanceState(operation) !== "completed"
+    );
+
+  const restActionHasProtectedLeave =
+    approvedLeaveDateKeys.includes(cleanText(selectedDate)) ||
+    selectedSpecialDay?.kind === "leave" ||
+    selectedSpecialDay?.kind === "rest";
+
+  const restActionIsTemporaryWeeklyRest =
+    restActionOperational &&
+    restActionSelectedSource === "exception" &&
+    restActionSelectedSpecialDay?.kind === "weekly_off";
+
+  const restActionSelectedShiftRecord =
+    (restActionSelectedShift || {}) as Record<string, unknown>;
+
+  const restActionTemporaryFrom = cleanText(
+    restActionSelectedShiftRecord.dateFrom ??
+    restActionSelectedShiftRecord.date_from
+  );
+
+  const restActionTemporaryTo = cleanText(
+    restActionSelectedShiftRecord.dateTo ??
+    restActionSelectedShiftRecord.date_to
+  );
+
+  const restActionSupportedTemporaryRest =
+    restActionIsTemporaryWeeklyRest &&
+    restActionTemporaryFrom === cleanText(selectedDate) &&
+    restActionTemporaryTo === cleanText(selectedDate);
+
+  const restActionCanCreate =
+    isVisible &&
+    canManageSchedule &&
+    restReschedulingReady &&
+    !attendanceCoreBlocked &&
+    restActionOperational &&
+    (
+      restActionSelectedSource === "weekly_schedule" ||
+      restActionSupportedTemporaryRest
+    ) &&
+    restActionSelectedSpecialDay?.kind === "weekly_off" &&
+    !restActionHasProtectedLeave &&
+    !restActionHasPendingRestoration &&
+    activeRestReschedulingRows.length === 0;
+
   const selectedRawRecord = (selectedRawRow || {}) as StaffAttendanceWithId & Record<string, unknown>;
   const selectedCheckInTime = cleanText(
     selectedRawRecord.checkInAtClient || selectedRawRecord.checkInAt || selectedRawRecord.checkInTime
@@ -1824,6 +2393,471 @@ export default function AttendanceSection({
         onCreateEmergencyLeave={onCreateEmergencyLeave}
         onCancelLeave={onCancelLeave}
       />
+
+
+      {canManageSchedule && (
+        <section
+          className="dsv2-card dsv2-card--padded"
+          aria-label={tr(
+            "تحويلات الراحة الأسبوعية",
+            "Weekly rest rescheduling"
+          )}
+        >
+          <div className="dsv2-stack dsv2-stack--sm">
+            <div>
+              <h3 className="dsv2-section-title">
+                {tr(
+                  "تحويل الراحة الأسبوعية",
+                  "Weekly rest rescheduling"
+                )}
+              </h3>
+
+              <p className="dsv2-section-caption">
+                {tr(
+                  "سجل تحويلات اليوم المحدد وحالة التسوية المالية من Core.",
+                  "Selected day rescheduling history and financial status from Core."
+                )}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+              onClick={() =>
+                setRestReschedulingRevision(value => value + 1)
+              }
+            >
+              {tr("تحديث حالة التسوية", "Refresh reconciliation")}
+            </button>
+
+
+            {restActionCanCreate && (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary"
+                  disabled={restActionSaving}
+                  onClick={() => openRestAction("create")}
+                >
+                  {tr(
+                    "تحويل الراحة إلى يوم عمل",
+                    "Convert weekly rest to work"
+                  )}
+                </button>
+              )}
+
+
+            {restReschedulingReady &&
+              !attendanceCoreBlocked &&
+              restActionIsTemporaryWeeklyRest &&
+              !restActionSupportedTemporaryRest &&
+              activeRestReschedulingRows.length === 0 && (
+                <p className="dsv2-section-caption" role="status">
+                  {tr(
+                    "يتطلب نقل الراحة المؤقتة الممتدة لعدة أيام مراجعة الاستثناء الأصلي.",
+                    "Rescheduling a multi-day temporary rest requires review of the original exception."
+                  )}
+                </p>
+              )}
+
+            {restReschedulingReady &&
+              restActionHasPendingRestoration && (
+                <p className="dsv2-section-caption" role="status">
+                  {tr(
+                    "لا يمكن بدء تحويل جديد حتى تكتمل تسوية الاستعادة السابقة.",
+                    "A new rescheduling cannot start until previous restoration finance is completed."
+                  )}
+                </p>
+              )}
+
+            {currentRestActionMessage && (
+              <p
+                role={currentRestActionMessage.error ? "alert" : "status"}
+                className="dsv2-section-caption"
+              >
+                {tr(
+                  currentRestActionMessage.ar,
+                  currentRestActionMessage.en
+                )}
+              </p>
+            )}
+
+            {currentRestActionDraft && (
+              <div className="dsv2-card dsv2-card--padded">
+                <div className="dsv2-stack dsv2-stack--sm">
+                  <h3 className="dsv2-section-title">
+                    {currentRestActionDraft.mode === "create"
+                      ? tr(
+                          "نقل الراحة الأسبوعية",
+                          "Reschedule weekly rest"
+                        )
+                      : tr(
+                          "تأكيد استعادة الراحة",
+                          "Confirm weekly rest restoration"
+                        )}
+                  </h3>
+
+                  <div>
+                    {tr("اليوم المحدد", "Selected date")}
+                    {": "}
+                    <bdi>{selectedDate}</bdi>
+                  </div>
+
+                  {currentRestActionDraft.mode === "create" && (
+                    <>
+                      <label>
+                        {tr("تاريخ الراحة البديلة", "Replacement rest date")}
+                        <RestReschedulingDatePicker
+                          value={currentRestActionDraft.replacementDate}
+                          placeholder={tr("اختر تاريخ الراحة", "Select rest date")}
+                          language={tr("ar", "en") === "ar" ? "ar" : "en"}
+                          disabled={restActionSaving}
+                          required
+                          onChange={value =>
+                            setRestActionDraft({
+                              ...currentRestActionDraft,
+                              replacementDate: value,
+                            })
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        {tr("بداية العمل", "Work start")}
+                        <RestReschedulingTimePicker
+                          clock="24h"
+                          required
+                          disabled={restActionSaving}
+                          value={currentRestActionDraft.startTime}
+                          onChange={value =>
+                            setRestActionDraft({
+                              ...currentRestActionDraft,
+                              startTime: value,
+                            })
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        {tr("نهاية العمل", "Work end")}
+                        <RestReschedulingTimePicker
+                          clock="24h"
+                          required
+                          disabled={restActionSaving}
+                          value={currentRestActionDraft.endTime}
+                          onChange={value =>
+                            setRestActionDraft({
+                              ...currentRestActionDraft,
+                              endTime: value,
+                            })
+                          }
+                        />
+                      </label>
+
+                      <p className="dsv2-section-caption">
+                        {tr(
+                          "هذه العملية تنقل الراحة إلى يوم بديل ولا تضيف رصيدًا تعويضيًا مكررًا.",
+                          "This operation moves weekly rest to a replacement date without duplicating compensatory credit."
+                        )}
+                      </p>
+                    </>
+                  )}
+
+                  {currentRestActionDraft.mode === "cancel" && (
+                    <p className="dsv2-section-caption">
+                      {tr(
+                        "ستتم استعادة الجدول دون حذف بصمات الحضور والانصراف.",
+                        "The schedule will be restored without deleting attendance punches."
+                      )}
+                    </p>
+                  )}
+
+                  <label>
+                    {tr("سبب العملية", "Operation reason")}
+                    <textarea
+                      className="dsv2-input"
+                      maxLength={1500}
+                      disabled={restActionSaving}
+                      value={currentRestActionDraft.reason}
+                      onChange={event =>
+                        setRestActionDraft({
+                          ...currentRestActionDraft,
+                          reason: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+
+                  <div className="dsv2-cluster">
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--primary"
+                      disabled={
+                        restActionSaving ||
+                        attendanceCoreBlocked ||
+                        !restReschedulingReady ||
+                        !currentRestActionDraft.reason.trim() ||
+                        (
+                          currentRestActionDraft.mode === "create" &&
+                          (
+                            !restActionCanCreate ||
+                            !/^\d{4}-\d{2}-\d{2}$/.test(
+                              currentRestActionDraft.replacementDate
+                            ) ||
+                            currentRestActionDraft.replacementDate === selectedDate ||
+                            !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                              currentRestActionDraft.startTime
+                            ) ||
+                            !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                              currentRestActionDraft.endTime
+                            ) ||
+                            currentRestActionDraft.startTime >=
+                              currentRestActionDraft.endTime
+                          )
+                        )
+                      }
+                      onClick={() => void submitRestAction()}
+                    >
+                      {restActionSaving
+                        ? tr("جاري الحفظ...", "Saving...")
+                        : tr("تأكيد العملية", "Confirm operation")}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--secondary"
+                      disabled={restActionSaving}
+                      onClick={() => setRestActionDraft(null)}
+                    >
+                      {tr("إغلاق", "Close")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentRestReschedulingError ? (
+              <div
+                role="alert"
+                className="dsv2-badge dsv2-badge--danger"
+              >
+                {tr(
+                  "تعذر التحقق من تحويلات الراحة المعتمدة.",
+                  "Unable to verify approved rest rescheduling."
+                )}
+              </div>
+            ) : !restReschedulingReady ? (
+              <p role="status">
+                {tr("جاري التحقق من Core...", "Checking Core...")}
+              </p>
+            ) : selectedRestReschedulingRows.length === 0 ? (
+              <p className="dsv2-section-caption">
+                {tr(
+                  "لا توجد عمليات تحويل مرتبطة باليوم المحدد.",
+                  "No rescheduling operations for the selected day."
+                )}
+              </p>
+            ) : (
+              selectedRestReschedulingRows.map(operation => {
+                const finance =
+                  restReschedulingFinanceState(operation);
+
+                const restReview =
+                  restReschedulingReviewState(operation);
+
+                return (
+                  <div
+                    className="dsv2-card dsv2-card--padded"
+                    key={operation.id}
+                  >
+                    <div className="dsv2-stack dsv2-stack--sm">
+                      <div className="dsv2-cluster">
+                        <span className="dsv2-badge">
+                          {operation.status === "active"
+                            ? tr("تحويل فعال", "Active rescheduling")
+                            : tr("تمت الاستعادة", "Restored")}
+                        </span>
+
+                        <span
+                          className={
+                            finance === "completed"
+                              ? "dsv2-badge dsv2-badge--success"
+                              : finance === "review"
+                                ? "dsv2-badge dsv2-badge--danger"
+                                : "dsv2-badge dsv2-badge--gold"
+                          }
+                        >
+                          {finance === "completed"
+                            ? tr(
+                                "التسوية المالية مكتملة",
+                                "Financial reconciliation completed"
+                              )
+                            : finance === "review"
+                              ? tr(
+                                  "التسوية تحتاج مراجعة",
+                                  "Financial review required"
+                                )
+                              : tr(
+                                  "التسوية المالية معلقة",
+                                  "Financial reconciliation pending"
+                                )}
+                        </span>
+                      </div>
+
+                      {operation.status === "cancelled" ? (
+                        <div
+                          className="dsv2-stack dsv2-stack--sm"
+                          data-rest-review-state={restReview}
+                        >
+                          <strong>
+                            {tr(
+                              "حالة التعويض الحالية للراحة الأصلية",
+                              "Current entitlement for the original rest date"
+                            )}
+                          </strong>
+
+                          <div className="dsv2-cluster">
+                            <span
+                              className={
+                                restReview === "fulfilled"
+                                  ? "dsv2-badge dsv2-badge--success"
+                                  : restReview === "pending_review"
+                                    ? "dsv2-badge dsv2-badge--gold"
+                                    : restReview === "owed" ||
+                                      restReview === "scheduled"
+                                      ? "dsv2-badge dsv2-badge--gold"
+                                      : "dsv2-badge"
+                              }
+                            >
+                              {restReview === "pending_review"
+                                ? tr(
+                                    "التعويض يحتاج مراجعة",
+                                    "Entitlement review required"
+                                  )
+                                : restReview === "owed"
+                                  ? tr(
+                                      "التعويض مستحق",
+                                      "Compensation owed"
+                                    )
+                                  : restReview === "scheduled"
+                                    ? tr(
+                                        "الراحة التعويضية مجدولة",
+                                        "Substitute rest scheduled"
+                                      )
+                                    : restReview === "fulfilled"
+                                      ? tr(
+                                          "التعويض مستوفى",
+                                          "Entitlement fulfilled"
+                                        )
+                                      : restReview === "no_event"
+                                        ? finance === "completed"
+                                          ? tr(
+                                              "لا يوجد سجل تعويض حالي",
+                                              "No current entitlement record"
+                                            )
+                                          : tr(
+                                              "بانتظار التحقق من التعويض",
+                                              "Awaiting entitlement verification"
+                                            )
+                                        : tr(
+                                            "حالة التعويض غير متاحة",
+                                            "Entitlement state unavailable"
+                                          )}
+                            </span>
+                          </div>
+
+                          {operation.restReviewEventId &&
+                          typeof operation.restReviewWorkedMinutes === "number" ? (
+                            <small>
+                              {tr(
+                                "دقائق العمل المسجلة في سجل الراحة",
+                                "Worked minutes recorded in the rest event"
+                              )}
+                              {": "}
+                              <bdi>{operation.restReviewWorkedMinutes}</bdi>
+                            </small>
+                          ) : null}
+
+                          {operation.restReviewEventId &&
+                          typeof operation.restReviewSubstituteMinutes === "number" ? (
+                            <small>
+                              {tr(
+                                "دقائق الراحة التعويضية المسجلة",
+                                "Recorded substitute rest minutes"
+                              )}
+                              {": "}
+                              <bdi>{operation.restReviewSubstituteMinutes}</bdi>
+                            </small>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div>
+                        {tr("الراحة الأصلية", "Original rest")}
+                        {": "}
+                        <bdi>{operation.originalRestDate}</bdi>
+                      </div>
+
+                      <div>
+                        {tr("الراحة البديلة", "Replacement rest")}
+                        {": "}
+                        <bdi>{operation.replacementRestDate}</bdi>
+                      </div>
+
+                      <div>
+                        {tr("ساعات العمل", "Working hours")}
+                        {": "}
+                        <bdi>
+                          {operation.workStartTime}
+                          {" - "}
+                          {operation.workEndTime}
+                        </bdi>
+                      </div>
+
+                      <div>
+                        {tr("السبب", "Reason")}
+                        {": "}
+                        {operation.reason}
+                      </div>
+
+
+                      {operation.status === "active" && (
+                        <button
+                          type="button"
+                          className="dsv2-btn dsv2-btn--secondary"
+                          disabled={
+                            restActionSaving ||
+                            attendanceCoreBlocked ||
+                            finance !== "completed"
+                          }
+                          onClick={() =>
+                            openRestAction("cancel", operation.id)
+                          }
+                        >
+                          {tr(
+                            "استعادة يوم الراحة الأسبوعية",
+                            "Restore weekly rest"
+                          )}
+                        </button>
+                      )}
+
+                      {operation.status === "cancelled" && (
+                        <div>
+                          {tr(
+                            "سبب الاستعادة",
+                            "Restoration reason"
+                          )}
+                          {": "}
+                          {operation.cancellationReason || "—"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+      )}
 
       {selectedRawRow && (selectedCheckInTime || selectedCheckOutTime) ? (
         <section className="dsv2-card dsv2-card--padded" aria-label={t("إدارة أوقات بصمة اليوم المحدد")}>

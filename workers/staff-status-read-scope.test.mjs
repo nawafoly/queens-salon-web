@@ -18,7 +18,9 @@ test("staff HR status hydration is scoped to returned staff identities", () => {
   assert.match(source, /l\.link_status = 'active'/);
   assert.match(source, /cleanText\(row\.link_status\)\.toLowerCase\(\) === "active"/);
   assert.match(source, /hrStatusMapsForStaff\(db, salonId, rows\)/);
-  assert.match(source, /hrStatusMapsForStaff\(db, salonId, \[row\]\)/);
+  assert.match(source, /hrStatusMapsForStaff\(db, salonId, \[canonicalRow\]\)/);
+  assert.match(source, /attachCanonicalServiceAssignments\(db, salonId, \[row\]\)/);
+  assert.match(source, /mergeHrStatus\(canonicalRow, hrStatusMaps\)/);
 
   assert.doesNotMatch(
     source,

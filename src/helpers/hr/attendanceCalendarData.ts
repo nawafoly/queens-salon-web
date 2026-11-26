@@ -76,7 +76,7 @@ const LEAVE_TYPE_POLICY: Record<
   }
 > = {
   annual: { kind: "leave", deductFromBalance: true, affectsPayroll: false, visibleInAttendance: true },
-  sick: { kind: "leave", deductFromBalance: true, affectsPayroll: false, visibleInAttendance: true },
+  sick: { kind: "leave", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true },
   emergency: { kind: "leave", deductFromBalance: true, affectsPayroll: false, visibleInAttendance: true },
   unpaid: { kind: "leave", deductFromBalance: false, affectsPayroll: true, visibleInAttendance: true },
   other: { kind: "leave", deductFromBalance: false, affectsPayroll: false, visibleInAttendance: true },

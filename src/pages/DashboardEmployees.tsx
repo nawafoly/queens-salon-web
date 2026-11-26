@@ -10350,6 +10350,7 @@ const canonicalSchedules =
                 canReview={canViewAttendance}
                 canCreateEmergencyLeave={canManageLeaveBalance}
                 canCancelLeave={canManageLeaveBalance}
+                canManageSchedule={canManageSchedule}
                 onMonthChange={(monthKey) => {
                   setEmployeeAttendanceMonth(monthKey);
                   setEmployeeAttendanceSelectedDate((current) =>

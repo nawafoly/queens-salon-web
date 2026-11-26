@@ -69,11 +69,26 @@ test("ClientPackagesPanel Arabic UI is clean", () => {
     "حجز",
     "استخدام",
     "إلغاء واسترجاع",
-    "الحالة:",
-    "فاتورة:",
+    '{t("الحالة")}:',
+    '{t("فاتورة")}:',
     "الباقات والجلسات",
     "لا يوجد clientId ثابت لهذا الملف",
   ]) {
     assert.ok(source.includes(text), "Missing expected clean Arabic: " + text);
   }
+
+  assert.match(
+    source,
+    /const t = \(value: string\) => clientsText\(language, value\)/
+  );
+
+  assert.ok(
+    source.includes('{t("الحالة")}: {pkg.status}'),
+    "Package status must remain visible through localization"
+  );
+
+  assert.ok(
+    source.includes('{t("فاتورة")}: {pkg.invoiceNumber || pkg.invoiceId || "—"}'),
+    "Invoice reference must remain visible through localization"
+  );
 });

@@ -9,8 +9,12 @@ import { AppError } from './errors.js';
 import { authenticateRequest, resolveActorContext } from './auth.js';
 import {
   DEFAULT_ALLOWED_ORIGINS,
+  ADMIN_ROLES,
+  SALES_ROLES,
   cleanText,
+  requireCatalogManage,
   requiredDocumentId,
+  requireRole,
 } from './validation.js';
 import {
   auditClientIdentitiesAdminD1,
@@ -45,7 +49,7 @@ export function allowedOrigins(env) {
 export function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -98,8 +102,14 @@ export async function withActor(request, env, body) {
   };
 }
 
+const requireSales = (ctx) => requireRole(ctx.role, SALES_ROLES);
+const requireAdmin = (ctx) => requireRole(ctx.role, ADMIN_ROLES);
+const PACKAGE_EDIT_ROLES = new Set(["owner", "admin", "hr", "reception"]);
+function requirePackageEdit(ctx) {
+  if (!PACKAGE_EDIT_ROLES.has(ctx.role)) throw new AppError(403, "packages_auth:permission_denied");
+}
+
 async function updateClientPackageAdminD1(ctx, data) {
-  if (!["owner", "admin", "hr", "reception"].includes(String(ctx.role || "").toLowerCase())) throw new AppError(403, "packages_auth:permission_denied");
   const id = requiredDocumentId(data?.clientPackageId || data?.id, "clientPackageId");
   const current = await ctx.packagesDb.prepare("SELECT * FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
   if (!current) throw new AppError(404, "packages_d1:client_package_not_found");
@@ -120,7 +130,6 @@ async function updateClientPackageAdminD1(ctx, data) {
 }
 
 async function deleteClientPackageAdminD1(ctx, data) {
-  if (!["owner", "admin", "hr", "reception"].includes(String(ctx.role || "").toLowerCase())) throw new AppError(403, "packages_auth:permission_denied");
   const id = requiredDocumentId(data?.clientPackageId || data?.id, "clientPackageId");
   const current = await ctx.packagesDb.prepare("SELECT reserved_sessions FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
   if (!current) throw new AppError(404, "packages_d1:client_package_not_found");
@@ -150,30 +159,30 @@ const routes = {
   "GET /api/packages/catalog": { d1: listPackageCatalogD1, public: true },
   "GET /api/packages/my-catalog": { d1: listMyPackageCatalogD1 },
   "GET /api/packages/admin/catalog": { d1: listPackageCatalogD1 },
-  "POST /api/packages/admin/catalog": { d1: createPackageCatalogD1 },
-  "PATCH /api/packages/admin/catalog": { d1: updatePackageCatalogD1 },
-  "DELETE /api/packages/admin/catalog": { d1: deletePackageCatalogD1 },
+  "POST /api/packages/admin/catalog": { d1: createPackageCatalogD1, authorize: requireCatalogManage },
+  "PATCH /api/packages/admin/catalog": { d1: updatePackageCatalogD1, authorize: requireCatalogManage },
+  "DELETE /api/packages/admin/catalog": { d1: deletePackageCatalogD1, authorize: requireCatalogManage },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/purchase": { d1: purchasePackageD1 },
+  "POST /api/packages/purchase": { d1: purchasePackageD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redeem": { d1: redeemPackageD1 },
+  "POST /api/packages/redeem": { d1: redeemPackageD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/reserve": { d1: reservePackageD1 },
+  "POST /api/packages/reserve": { d1: reservePackageD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/release": { d1: releasePackageD1 },
+  "POST /api/packages/release": { d1: releasePackageD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/create": { d1: reservePackageD1 },
+  "POST /api/packages/redemption/create": { d1: reservePackageD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/consume": { d1: consumeReservedD1 },
+  "POST /api/packages/redemption/consume": { d1: consumeReservedD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/cancel": { d1: restoreBookingSessionD1 },
+  "POST /api/packages/redemption/cancel": { d1: restoreBookingSessionD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/restore": { d1: restoreBookingSessionD1 },
-  "POST /api/packages/redemption/reapply": { d1: reapplyBookingSessionD1 },
+  "POST /api/packages/redemption/restore": { d1: restoreBookingSessionD1, authorize: requireSales },
+  "POST /api/packages/redemption/reapply": { d1: reapplyBookingSessionD1, authorize: requireSales },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/cancel": { d1: cancelClientPackageD1 },
+  "POST /api/packages/cancel": { d1: cancelClientPackageD1, authorize: requireAdmin },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/adjust": { d1: adjustClientPackageD1 },
+  "POST /api/packages/adjust": { d1: adjustClientPackageD1, authorize: requireAdmin },
   // D1 ONLY — do not add Firestore fallback.
   "POST /api/packages/client-wallet": { d1: clientWalletD1 },
   // D1 ONLY — do not add Firestore fallback.
@@ -182,33 +191,54 @@ const routes = {
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
   // D1 ONLY — administrative packages and session dashboard.
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
-  "POST /api/packages/admin/grant-sessions": { d1: grantClientSessionsAdminD1 },
-  "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1 },
-  "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1 },
+  "POST /api/packages/admin/grant-sessions": { d1: grantClientSessionsAdminD1, authorize: requireSales },
+  "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1, authorize: requirePackageEdit },
+  "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1, authorize: requirePackageEdit },
   // POST alias avoids browser/proxy inconsistencies with authenticated DELETE
   // requests while retaining the original endpoint for backward compatibility.
-  "POST /api/packages/admin/delete-client-package": { d1: deleteClientPackageAdminD1 },
+  "POST /api/packages/admin/delete-client-package": { d1: deleteClientPackageAdminD1, authorize: requirePackageEdit },
   // Backward-compatible alias for older dashboard builds.
   "GET /api/packages/session-dashboard": { d1: sessionDashboardAdminD1 },
   // D1 ONLY — do not add Firestore fallback.
   "GET /api/packages/my-wallet": { d1: myWalletD1 },
 };
 
-export async function handleRequest(request, env) {
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+async function prepareRequest(request, env) {
   const url = new URL(request.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+  const pathname = url.pathname.replace(/^\/api\/core\/packages(?=\/|$)/, "/api/packages").replace(/\/+$/, "");
   const key = `${request.method} ${pathname}`;
   const route = routes[key];
   if (!route) throw new AppError(404, "packages_api:not_found");
   const body = ["GET", "DELETE"].includes(request.method) ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
-  const routeRecord = typeof route === "function" ? { d1: route } : route;
-  const handler = routeRecord.d1;
+  const handler = route.d1;
   if (!handler) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
   if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
-  const ctx = routeRecord.public
+  const ctx = route.public
     ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null, unifiedCore: env.PACKAGES_UNIFIED_CORE === "true" }
     : await withActor(request, env, body);
+  route.authorize?.(ctx);
+  return { route, handler, ctx, body, pathname };
+}
+
+export async function authorizePackageReplay(request, env) {
+  if (!/^\/api\/(?:core\/)?packages(?:\/|$)/.test(new URL(request.url).pathname)) return null;
+  const { route, ctx, pathname } = await prepareRequest(request.clone(), {
+    ...env, PACKAGES_DB: env.CORE_DB, PACKAGES_UNIFIED_CORE: "true",
+  });
+  if (!route.authorize || !ctx.identity?.uid || !ctx.user?.id) {
+    throw new AppError(403, "packages_auth:permission_denied");
+  }
+  return {
+    salonId: ctx.salonId,
+    accountId: ctx.user.id,
+    uid: ctx.identity.uid,
+    ...(pathname === '/api/packages/purchase' ? { settlementVersion: 1 } : {}),
+  };
+}
+
+export async function handleRequest(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+  const { handler, ctx, body, pathname } = await prepareRequest(request, env);
   const data = await handler(ctx, body);
   if (["POST", "PATCH", "DELETE"].includes(request.method) && pathname !== "/api/packages/client-wallet") {
     clearD1WalletRuntimeCaches();

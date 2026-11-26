@@ -270,6 +270,13 @@ function attendanceCalendarLeaveLabel(day: AttendanceCalendarDayLiveV2) {
 function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
   if (day.employmentState === "pre_employment") return "قبل المباشرة";
   if (day.employmentState === "post_employment") return "بعد انتهاء الخدمة";
+  const visualState = attendanceCalendarVisualState(day);
+
+  if (visualState === "rest_work") return "دوام في راحة أسبوعية";
+  if (visualState === "partial") return "غير مكتمل";
+  if (visualState === "absent") return "غياب";
+  if (visualState === "exempt") return "معفى من البصمة";
+
   const leaveType = attendanceCalendarLeaveType(day);
   const leaveLabel =
     leaveType === "weekly_rest" ? "راحة أسبوعية" :
@@ -289,6 +296,41 @@ function attendanceCalendarDisplayStatus(day: AttendanceCalendarDayLiveV2) {
  * details remain accessible in the selected-day card and day-detail drawer.
  * Status is derived from the same canonical day record as desktop.
  */
+function attendanceCalendarVisualState(day: AttendanceCalendarDayLiveV2) {
+  if (!day.interactive) return "outside_service";
+
+  const kind = day.specialDay?.kind;
+  const status = day.status;
+  const hasIn = Boolean(day.row?.checkInAtClient);
+  const hasOut = Boolean(day.row?.checkOutAtClient);
+
+  if (kind === "leave" || status === "إجازة") return "leave";
+  if (status === "غياب") return "absent";
+
+  if (kind === "weekly_off" || kind === "weekly_rest_work") {
+    if (day.row?.weeklyRestTone === "rest-work") return "rest_work";
+    if (day.row?.weeklyRestTone === "partial" || hasIn || hasOut) {
+      return "partial";
+    }
+    return kind === "weekly_off" ? "rest" : "neutral";
+  }
+
+  if (kind === "rest" || kind === "exception_off") return "rest";
+
+  if (status === "معفى من البصمة") return "exempt";
+  if (status === "غير مكتمل") return "partial";
+  if (status.includes("نقص ساعات")) return "shortage";
+
+  if (status.includes("تأخير") || status.includes("خروج مبكر")) {
+    return "late";
+  }
+
+  if (status === "حضور") return "present";
+  if (kind === "partial_leave") return "leave";
+
+  return "neutral";
+}
+
 function attendanceCalendarCompactStatus(day: AttendanceCalendarDayLiveV2) {
   return compactAttendanceStatus(
     attendanceCalendarDisplayStatus(day),
@@ -954,6 +996,7 @@ export type EmployeeAttendanceShiftInfoLiveV2 = {
 };
 
 export type EmployeeAttendanceRowLiveV2 = {
+  weeklyRestTone?: "rest-work" | "partial" | null;
   date?: string;
   type?: string;
   status?: string;
@@ -1142,7 +1185,7 @@ export function EmployeeAttendanceTabLiveV2({
   const selectedRow = selectedDay?.row || null;
   const selectedSpecialDay = selectedDay?.specialDay || null;
   const selectedStatus = selectedDay?.status && selectedDay.status !== "—"
-    ? selectedDay.status
+    ? attendanceCalendarDisplayStatus(selectedDay)
     : selectedRow
       ? attendanceRowStatus(selectedRow)
       : "لا يوجد";
@@ -1200,7 +1243,7 @@ export function EmployeeAttendanceTabLiveV2({
   const drawerDay = calendarDays.find((day) => day.date === drawerDate) || null;
   const drawerRow = drawerDay?.row || null;
   const drawerStatus = drawerDay?.status && drawerDay.status !== "—"
-    ? drawerDay.status
+    ? attendanceCalendarDisplayStatus(drawerDay)
     : drawerRow
       ? attendanceRowStatus(drawerRow)
       : "لا يوجد";
@@ -1377,16 +1420,17 @@ export function EmployeeAttendanceTabLiveV2({
               className="dsv2-ew-attendance-calendar-card"
             >
               <div className="dsv2-ew-calendar-legend" aria-label={t("دليل ألوان التقويم")}>
-                <span data-status="حضور"><i />{t("الحضور")}</span>
-                <span data-status="تأخير"><i />{t("تأخير")}</span>
-                <span data-status="نقص ساعات"><i />{t("نقص ساعات")}</span>
-                <span data-status="غير مكتمل"><i />{t("غير مكتمل")}</span>
-                <span data-status="غياب"><i />{t("غياب")}</span>
-                <span data-status="دوام في راحة أسبوعية"><i />{t("دوام في راحة")}</span>
-                <span data-leave-type="weekly_rest"><i />{t("راحة أسبوعية")}</span>
-                <span data-leave-type="compensatory"><i />{t("إجازة تعويضية")}</span>
-                <span data-leave-type="annual"><i />{t("إجازة سنوية")}</span>
-                <span data-leave-type="exceptional"><i />{t("إجازة استثنائية")}</span>
+                <span data-status="حضور" data-attendance-state="present"><i />{t("الحضور")}</span>
+                <span data-status="تأخير" data-attendance-state="late"><i />{t("تأخير")}</span>
+                <span data-status="نقص ساعات" data-attendance-state="shortage"><i />{t("نقص ساعات")}</span>
+                <span data-status="غير مكتمل" data-attendance-state="partial"><i />{t("غير مكتمل")}</span>
+                <span data-status="غياب" data-attendance-state="absent"><i />{t("غياب")}</span>
+                <span data-attendance-state="exempt"><i />{t("معفى من البصمة")}</span>
+                <span data-status="دوام في راحة أسبوعية" data-attendance-state="rest_work"><i />{t("دوام في راحة")}</span>
+                <span data-leave-type="weekly_rest" data-attendance-state="rest"><i />{t("راحة أسبوعية")}</span>
+                <span data-leave-type="compensatory" data-attendance-state="leave"><i />{t("إجازة تعويضية")}</span>
+                <span data-leave-type="annual" data-attendance-state="leave"><i />{t("إجازة سنوية")}</span>
+                <span data-leave-type="exceptional" data-attendance-state="leave"><i />{t("إجازة استثنائية")}</span>
               </div>
               <p className="dsv2-ew-calendar-mobile-hint">
                 {tr("اختاري تاريخًا لعرض الحالة والبصمات والتفاصيل كاملة أسفل التقويم.", "Select a date to see full attendance details below the calendar.")}
@@ -1401,6 +1445,7 @@ export function EmployeeAttendanceTabLiveV2({
                     type="button"
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
+                    data-attendance-state={attendanceCalendarVisualState(day)}
                     style={
                       day.status === "معفى من البصمة"
                         ? {

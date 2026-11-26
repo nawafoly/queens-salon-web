@@ -9,6 +9,7 @@ import {
   type PackageClientWalletResult,
   type PackagePurchaseResult,
   type PackageRedemptionResult,
+  type PackageSaleRequest,
 } from "../../services/PackageOperationsService";
 import {
   buildPackageCartEligibility,
@@ -22,6 +23,40 @@ import {
 } from "../../helpers/adminPackageWalletRequest";
 import { packageDate } from "./packageFormat";
 import "../../styles/SessionPackages.css";
+
+const PENDING_PACKAGE_SALE = "malikat.pending-package-sale";
+
+function readPendingPackageSale(): PackageSaleRequest | null {
+  try {
+    const value = sessionStorage.getItem(PENDING_PACKAGE_SALE);
+    if (!value) return null;
+    const request = JSON.parse(value) as Partial<PackageSaleRequest> | null;
+    if (
+      !request?.saleReference || !request.clientId || !request.packageCatalogId ||
+      !request.paymentMethod || !Number.isInteger(request.expectedTotalHalalas) ||
+      !Number.isInteger(request.expectedTaxHalalas)
+    ) return null;
+    return request as PackageSaleRequest;
+  } catch {
+    return null;
+  }
+}
+
+function rememberPackageSale(request: PackageSaleRequest | null) {
+  try {
+    if (request) sessionStorage.setItem(PENDING_PACKAGE_SALE, JSON.stringify(request));
+    else sessionStorage.removeItem(PENDING_PACKAGE_SALE);
+  } catch {
+    // The component still holds the current attempt when storage is unavailable.
+  }
+}
+
+const rolledBackSaleCodes = new Set([
+  "packages_catalog:not_found",
+  "packages_purchase:quote_changed",
+  "packages_purchase:invalid_catalog_price",
+  "core_finance:financial_day_closed",
+]);
 
 type BookingItem = {
   id?: string;
@@ -151,13 +186,9 @@ export default function AdminPackageFlow(props: {
   const [selectedCatalogId, setSelectedCatalogId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "transfer" | "">("");
   const [taxRate, setTaxRate] = useState(0);
-  const [receipt, setReceipt] = useState<{
-    result: PackagePurchaseResult;
-    pkg: Package;
-    expiresAt?: any;
-    paymentMethod: string;
-    taxAmount: number;
-  } | null>(null);
+  const [pendingSale, setPendingSale] = useState(readPendingPackageSale);
+  const purchaseInFlight = useRef(false);
+  const [receipt, setReceipt] = useState<Extract<PackagePurchaseResult, { settlementStatus: "paid" }> | null>(null);
   const [redeemResult, setRedeemResult] = useState<PackageRedemptionResult | null>(null);
   const onClientCreatedRef = useRef(props.onClientCreated);
   const clientRef = useRef(props.client);
@@ -286,8 +317,8 @@ export default function AdminPackageFlow(props: {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    Promise.all([
+  const loadSaleCatalog = useCallback(() => {
+    return Promise.all([
       PackageService.getActive(),
       CoreSettingsService.get<{ taxRate?: number; vatRate?: number }>("finance"),
     ])
@@ -303,6 +334,10 @@ export default function AdminPackageFlow(props: {
       })
       .catch(() => setCatalog([]));
   }, []);
+
+  useEffect(() => {
+    void loadSaleCatalog();
+  }, [loadSaleCatalog]);
 
   const active = useMemo(() => {
     const now = Date.now();
@@ -353,10 +388,8 @@ export default function AdminPackageFlow(props: {
   const nearestExpiry = walletSummary?.nearestExpiryAt
     ? millis(walletSummary.nearestExpiryAt)
     : active.map((pkg) => millis(pkg.expiresAt)).filter(Boolean).sort((a, b) => a - b)[0];
-  const taxAmount =
-    selectedCatalog && taxRate > 0
-      ? Math.round((selectedCatalog.price - selectedCatalog.price / (1 + taxRate / 100)) * 100) / 100
-      : 0;
+  const grossHalalas = selectedCatalog ? Math.round(selectedCatalog.price * 100) : 0;
+  const taxHalalas = Math.round(grossHalalas * taxRate / (100 + taxRate));
   const walletLoadFailed = walletStatus === "error";
   const walletLoading = walletStatus === "loading";
   const walletDisplayState = packageWalletDisplayState({
@@ -383,16 +416,35 @@ export default function AdminPackageFlow(props: {
   const purchaseClientId = cleanText(walletCanonicalClientId || walletSummary?.canonicalClientId || clientId);
 
   async function purchase() {
-    if (!purchaseClientId || !selectedCatalog?.id || !paymentMethod) return;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await PackageOperationsService.purchase({
+    if (purchaseInFlight.current || !purchaseClientId) return;
+    let request = readPendingPackageSale() || pendingSale;
+    if (request && request.clientId !== purchaseClientId) {
+      setError("تحققي من نتيجة البيع السابق لدى العميلة المرتبطة به أولًا.");
+      return;
+    }
+    if (!request) {
+      if (!selectedCatalog?.id || !paymentMethod) return;
+      request = {
         clientId: purchaseClientId,
-        clientLookup: clientLookupPayload(clientRef.current, normalizedPhone || clientPhone),
         packageCatalogId: selectedCatalog.id,
         paymentMethod,
-      });
+        saleReference: `package_sale_${crypto.randomUUID()}`,
+        expectedTotalHalalas: grossHalalas,
+        expectedTaxHalalas: taxHalalas,
+      };
+    }
+    purchaseInFlight.current = true;
+    rememberPackageSale(request);
+    setPendingSale(request);
+    setLoading(true);
+    setError("");
+    setReceipt(null);
+    try {
+      const result = await PackageOperationsService.purchase(request);
+      if (result.settlementStatus !== "paid" || !result.invoiceId || !result.paymentId || !result.incomeId) {
+        setError("تعذر تأكيد السداد لهذه العملية. راجعي سجل المبيعات قبل إنشاء عملية جديدة.");
+        return;
+      }
       const canonicalClientId = cleanText(result.clientId) || purchaseClientId;
       if (canonicalClientId !== purchaseClientId) {
         const currentClient = clientRef.current || {};
@@ -407,23 +459,31 @@ export default function AdminPackageFlow(props: {
           mobile: normalizedPhone || clientPhone,
         });
       }
-      const refreshed = await refresh();
-      const purchased = ((refreshed?.packages || []) as ClientPackage[]).find(
-        (pkg) => pkg.id === result.clientPackageId
-      );
-      setReceipt({
-        result,
-        pkg: selectedCatalog,
-        expiresAt: purchased?.expiresAt,
-        paymentMethod,
-        taxAmount,
-      });
+      rememberPackageSale(null);
+      setPendingSale(null);
+      setReceipt(result);
       setSelectedCatalogId("");
       setPaymentMethod("");
       setSaleOpen(false);
-    } catch (e: any) {
-      setError(cleanText(e?.message) || "تعذر بيع الباقة.");
+      void refresh();
+    } catch (error) {
+      const failure = error as { code?: string; message?: string };
+      if (rolledBackSaleCodes.has(failure.code || "")) {
+        rememberPackageSale(null);
+        setPendingSale(null);
+        if (failure.code === "packages_purchase:quote_changed") {
+          setError("تغير السعر أو الضريبة. راجعي الإجمالي ثم أعيدي تأكيد الدفع.");
+          void loadSaleCatalog();
+        } else if (failure.code === "core_finance:financial_day_closed") {
+          setError("اليوم المالي مغلق. لم تُسجّل عملية البيع.");
+        } else {
+          setError(cleanText(failure.message) || "تعذر بيع الباقة.");
+        }
+      } else {
+        setError("تعذر تأكيد نتيجة البيع. استخدمي التحقق من نتيجة العملية نفسها قبل إجراء بيع جديد.");
+      }
     } finally {
+      purchaseInFlight.current = false;
       setLoading(false);
     }
   }
@@ -625,10 +685,16 @@ export default function AdminPackageFlow(props: {
         ) : null}
       </div>
 
-      {saleOpen ? (
+      {saleOpen || pendingSale ? (
         <div className="session-packages__card">
           <h3>بيع باقة جلسات</h3>
-          {catalog.length ? (
+          {pendingSale ? (
+            <p className="session-packages__muted">
+              {pendingSale.clientId === purchaseClientId
+                ? `إجمالي العملية قيد التحقق: ${money(pendingSale.expectedTotalHalalas / 100)}`
+                : "تحققي من نتيجة البيع السابق لدى العميلة المرتبطة به أولًا."}
+            </p>
+          ) : catalog.length ? (
             <div className="session-packages__choices">
               {catalog.map((pkg) => (
                 <button
@@ -650,15 +716,15 @@ export default function AdminPackageFlow(props: {
             <p className="session-packages__muted">لا توجد باقات جلسات مفعلة للبيع.</p>
           )}
 
-          {selectedCatalog ? (
+          {!pendingSale && selectedCatalog ? (
             <div className="session-packages__grid">
               <div className="session-packages__stat">
                 <small>السعر قبل الضريبة</small>
-                <strong>{money(selectedCatalog.price - taxAmount)}</strong>
+                <strong>{money((grossHalalas - taxHalalas) / 100)}</strong>
               </div>
               <div className="session-packages__stat">
                 <small>الضريبة ({taxRate}%)</small>
-                <strong>{money(taxAmount)}</strong>
+                <strong>{money(taxHalalas / 100)}</strong>
               </div>
               <div className="session-packages__stat">
                 <small>الإجمالي</small>
@@ -680,10 +746,11 @@ export default function AdminPackageFlow(props: {
             <button
               type="button"
               className="session-packages__button"
-              disabled={loading || !selectedCatalog || !paymentMethod || !purchaseClientId}
+              disabled={loading || !purchaseClientId ||
+                (pendingSale ? pendingSale.clientId !== purchaseClientId : !selectedCatalog || !paymentMethod)}
               onClick={() => void purchase()}
             >
-              {loading ? "جاري التنفيذ..." : "تأكيد بيع الباقة"}
+              {loading ? "جاري التنفيذ..." : pendingSale ? "التحقق من نتيجة البيع" : "تأكيد استلام الدفع وبيع الباقة"}
             </button>
           </div>
         </div>
@@ -796,8 +863,8 @@ export default function AdminPackageFlow(props: {
 
       {receipt ? (
         <div className="session-packages__success">
-          تم بيع {receipt.pkg.name}. الرصيد الجديد: {receipt.pkg.sessionsCount} جلسة. رقم الفاتورة:{" "}
-          {receipt.result.invoiceNumber}. تاريخ الانتهاء: {packageDate(receipt.expiresAt)}
+          تم بيع {receipt.packageName}. رصيد الباقة: {receipt.totalSessions} جلسة. رقم الفاتورة:{" "}
+          {receipt.invoiceNumber}. الإجمالي: {money(receipt.totalHalalas / 100)}. تاريخ الانتهاء: {packageDate(receipt.expiresAt)}
         </div>
       ) : null}
 

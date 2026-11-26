@@ -7,6 +7,13 @@
 
 import { AppError } from './errors.js';
 import {
+  buildPackageSettlement,
+  checkPackageSaleReplay,
+  normalizePackageSettlementError,
+  packageSaleResult,
+  parsePackageSale,
+} from './sales.js';
+import {
   ADMIN_ROLES,
   SALES_ROLES,
   PACKAGE_LIMITS,
@@ -14,7 +21,6 @@ import {
   boundedText,
   buildPurchasedPackageSnapshot,
   cleanText,
-  normalizePaymentMethod,
   normalizeStringArray,
   optionalText,
   requiredDocumentId,
@@ -53,11 +59,14 @@ function clientInsertStatement(ctx, row) {
   const name = optionalText(row.name) || "عميلة";
   if (usesUnifiedCoreClients(ctx)) {
     return {
-      sql: `INSERT OR IGNORE INTO clients
+      sql: `INSERT INTO clients
         (id, canonical_client_id, salon_id, name, phone_normalized, firebase_uid, legacy_ids_json, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+       ON CONFLICT(id) DO UPDATE SET canonical_client_id = excluded.canonical_client_id
+       WHERE clients.salon_id = excluded.salon_id
+         AND (clients.canonical_client_id IS NULL OR clients.canonical_client_id = '')`,
       params: [
-        row.canonicalClientId,
+        row.documentId || row.canonicalClientId,
         row.canonicalClientId,
         row.salonId,
         name,
@@ -148,10 +157,11 @@ function clientFromRow(row) {
   if (!row) return null;
   return {
     canonicalClientId: cleanText(row.canonical_client_id || row.id),
+    documentId: optionalText(row.id),
     name: optionalText(row.name),
     phoneNormalized: optionalText(row.phone_normalized),
     firebaseUid: optionalText(row.firebase_uid),
-    legacyIds: safeJsonArray(row.legacy_ids_json || (row.legacy_client_doc_id ? JSON.stringify([row.legacy_client_doc_id]) : "[]")),
+    legacyIds: dedupe([...safeJsonArray(row.legacy_ids_json), row.legacy_client_doc_id]),
   };
 }
 
@@ -251,30 +261,14 @@ function changes(result) {
 async function fetchAliases(db, salonId, canonicalClientId) {
   return dbAll(
     db,
-    "SELECT alias_id FROM client_identity_aliases WHERE salon_id = ? AND canonical_client_id = ? ORDER BY alias_id",
+    `SELECT alias_id FROM client_identity_aliases
+      WHERE salon_id = ? AND canonical_client_id = ? AND alias_type <> 'lookup' ORDER BY alias_id`,
     [salonId, canonicalClientId]
   ).then((rows) => rows.map((row) => cleanText(row.alias_id)).filter(Boolean));
 }
 
-async function upsertClientAliases(db, salonId, canonicalClientId, aliasIds, aliasType = "legacy") {
-  const now = timestampNow();
-  for (const aliasId of dedupe(aliasIds).filter((value) => value !== canonicalClientId)) {
-    await dbRun(
-      db,
-      `INSERT OR IGNORE INTO client_identity_aliases
-        (salon_id, alias_id, canonical_client_id, alias_type, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [salonId, aliasId, canonicalClientId, aliasType, now]
-    );
-  }
-}
-
-async function loadClient(db, salonId, canonicalClientId) {
-  return clientFromRow(await dbFirst(
-    db,
-    "SELECT * FROM clients WHERE salon_id = ? AND canonical_client_id = ? LIMIT 1",
-    [salonId, canonicalClientId]
-  ));
+function clientIdColumn(ctx) {
+  return usesUnifiedCoreClients(ctx) ? "COALESCE(NULLIF(canonical_client_id, ''), id)" : 'canonical_client_id';
 }
 
 async function resolveByAliases(db, salonId, lookupIds) {
@@ -283,7 +277,7 @@ async function resolveByAliases(db, salonId, lookupIds) {
     db,
     `SELECT alias_id, canonical_client_id
        FROM client_identity_aliases
-      WHERE salon_id = ? AND alias_id IN (${placeholders(lookupIds.length)})
+      WHERE salon_id = ? AND alias_id IN (${placeholders(lookupIds.length)}) AND alias_type <> 'lookup'
       LIMIT ${Math.max(lookupIds.length, 1)}`,
     [salonId, ...lookupIds]
   );
@@ -296,14 +290,14 @@ async function resolveByAliases(db, salonId, lookupIds) {
   return canonicalIds[0] || null;
 }
 
-async function resolveByClientId(db, salonId, lookupIds) {
+async function resolveByClientId(ctx, lookupIds) {
   if (!lookupIds.length) return null;
   const rows = await dbAll(
-    db,
+    packagesDb(ctx),
     `SELECT * FROM clients
-      WHERE salon_id = ? AND canonical_client_id IN (${placeholders(lookupIds.length)})
+      WHERE salon_id = ? AND ${clientIdColumn(ctx)} IN (${placeholders(lookupIds.length)})
       LIMIT 2`,
-    [salonId, ...lookupIds]
+    [ctx.salonId, ...lookupIds]
   );
   if (rows.length > 1) {
     throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
@@ -356,57 +350,73 @@ async function resolveD1ClientIdentity(ctx, data = {}, options = {}) {
     throw new AppError(400, "packages_client:missing_identifier", "clientId or clientLookup phone/uid is required");
   }
 
-  let canonicalClientId = await resolveByAliases(db, ctx.salonId, lookupIds);
-  let client = canonicalClientId ? await loadClient(db, ctx.salonId, canonicalClientId) : null;
-  if (!client) client = await resolveByClientId(db, ctx.salonId, lookupIds);
-  if (!client) client = await resolveByFirebaseUid(db, ctx.salonId, firebaseUid);
-  if (!client) client = await resolveByPhone(db, ctx.salonId, phones);
-
-  if (!client && options.allowCreate) {
-    canonicalClientId = lookupIds[0] || (firebaseUid ? `uid_${firebaseUid}` : `phone_${phones[0]}`);
-    const now = timestampNow();
-    const insert = clientInsertStatement(ctx, {
-      canonicalClientId,
-      salonId: ctx.salonId,
-      name: optionalText(lookup.name || data.clientName) || "عميلة",
-      phoneNormalized: phones[0] || null,
-      firebaseUid: firebaseUid || null,
-      legacyIds: lookupIds.filter((value) => value !== canonicalClientId),
-      createdAt: now,
-      updatedAt: now,
-    });
-    await dbRun(db, insert.sql, insert.params);
-    client = await loadClient(db, ctx.salonId, canonicalClientId);
+  const aliasId = await resolveByAliases(db, ctx.salonId, lookupIds);
+  const [byId, byUid] = await Promise.all([
+    resolveByClientId(ctx, dedupe([...lookupIds, aliasId])),
+    resolveByFirebaseUid(db, ctx.salonId, firebaseUid),
+  ]);
+  if (byId && byUid && byId.canonicalClientId !== byUid.canonicalClientId) {
+    throw new AppError(409, 'packages_client:ambiguous_identity');
+  }
+  const client = byId || byUid || (options.allowPhone !== false && await resolveByPhone(db, ctx.salonId, phones));
+  if (client) {
+    if (firebaseUid && client.firebaseUid && client.firebaseUid !== firebaseUid) {
+      throw new AppError(409, 'packages_client:ambiguous_identity');
+    }
+    return packageIdentity(ctx, client);
   }
 
-  if (!client) throw new AppError(404, "packages_client:not_found", "Client was not found");
-  canonicalClientId = client.canonicalClientId;
-  await upsertClientAliases(db, ctx.salonId, canonicalClientId, lookupIds, "lookup");
-  const aliases = dedupe([canonicalClientId, ...client.legacyIds, ...(await fetchAliases(db, ctx.salonId, canonicalClientId))]);
+  // A sale or grant may provision a client inside its package/ledger batch.
+  // Caller-supplied identifiers must never create a Firebase link or aliases.
+  const newId = requestedId || (phones.length === 1 ? `phone_${phones[0]}` : '');
+  if (options.allowCreate && newId && !firebaseUid) {
+    const canonicalClientId = requiredDocumentId(newId, 'clientId');
+    return {
+      canonicalClientId,
+      clientId: canonicalClientId,
+      name: optionalText(lookup.name || data.clientName),
+      phoneNormalized: phones[0] || null,
+      legacyIds: [],
+      aliasClientIds: [],
+    };
+  }
+  throw new AppError(404, "packages_client:not_found", "Client was not found");
+}
+
+async function packageIdentity(ctx, client) {
+  const canonicalClientId = client.canonicalClientId;
+  const db = packagesDb(ctx);
+  const aliases = dedupe([...client.legacyIds, ...await fetchAliases(db, ctx.salonId, canonicalClientId)]);
+  const foreignOwners = aliases.length ? await dbAll(
+    db,
+    `SELECT * FROM clients WHERE salon_id = ? AND ${clientIdColumn(ctx)} IN (${placeholders(aliases.length)})
+       AND firebase_uid IS NOT NULL AND firebase_uid <> '' AND firebase_uid <> ?`,
+    [ctx.salonId, ...aliases, client.firebaseUid || '']
+  ) : [];
+  const conflictingIds = new Set(foreignOwners.map((row) => clientFromRow(row).canonicalClientId));
   return {
     ...client,
-    canonicalClientId,
     clientId: canonicalClientId,
-    aliasClientIds: aliases,
+    aliasClientIds: aliases.filter((id) => !conflictingIds.has(id)),
   };
 }
 
-function walletCacheKey(salonId, canonicalClientId) {
-  return `${salonId}\u0000${canonicalClientId}`;
+function walletCacheKey(salonId, identity) {
+  return JSON.stringify([salonId, identity.canonicalClientId, [...identity.aliasClientIds].sort()]);
 }
 
 function lookupDedupeKey(salonId, data = {}) {
   const lookup = data.clientLookup && typeof data.clientLookup === "object" ? data.clientLookup : {};
   return JSON.stringify({
     salonId,
-    ids: collectLookupIds(cleanText(data.clientId), lookup),
+    ids: collectLookupIds(cleanText(data.clientId || data.requestedClientId), lookup),
     phones: collectLookupPhones(lookup),
     uid: primaryFirebaseUid(lookup),
   });
 }
 
-function getCachedWallet(salonId, canonicalClientId) {
-  const key = walletCacheKey(salonId, canonicalClientId);
+function getCachedWallet(salonId, identity) {
+  const key = walletCacheKey(salonId, identity);
   const entry = walletCache.get(key);
   if (!entry || entry.expiresAt <= Date.now()) {
     walletCache.delete(key);
@@ -415,10 +425,10 @@ function getCachedWallet(salonId, canonicalClientId) {
   return structuredClone(entry.value);
 }
 
-function setCachedWallet(salonId, canonicalClientId, value) {
-  walletCache.set(walletCacheKey(salonId, canonicalClientId), {
+function setCachedWallet(salonId, identity, value) {
+  walletCache.set(walletCacheKey(salonId, identity), {
     value: structuredClone(value),
-    expiresAt: Date.now() + WALLET_CACHE_TTL_MS,
+    expiresAt: Math.min(Date.now() + WALLET_CACHE_TTL_MS, timestampMs(value.nearestExpiryAt) ?? Infinity),
   });
 }
 
@@ -479,10 +489,12 @@ export async function clientWalletD1(ctx, data) {
 
   const work = (async () => {
     const identity = await resolveD1ClientIdentity(ctx, data);
-    const cached = getCachedWallet(ctx.salonId, identity.canonicalClientId);
+    const cached = getCachedWallet(ctx.salonId, identity);
     if (cached) return cached;
     const response = await walletSummaryD1(ctx, identity, { includeTransactions: false });
-    setCachedWallet(ctx.salonId, identity.canonicalClientId, response);
+    if (pendingWalletRequests.get(dedupeKey) === work) {
+      setCachedWallet(ctx.salonId, identity, response);
+    }
     console.log("packages_d1_client_wallet", {
       aliasCount: response.aliasClientIds.length,
       packageCount: response.activePackages.length,
@@ -495,7 +507,7 @@ export async function clientWalletD1(ctx, data) {
   try {
     return structuredClone(await work);
   } finally {
-    pendingWalletRequests.delete(dedupeKey);
+    if (pendingWalletRequests.get(dedupeKey) === work) pendingWalletRequests.delete(dedupeKey);
   }
 }
 
@@ -543,15 +555,7 @@ export async function listPackageCatalogD1(ctx, data = {}) {
 }
 
 export async function listMyPackageCatalogD1(ctx) {
-  if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
-  const identity = await resolveD1ClientIdentity(ctx, {
-    clientId: ctx.identity?.claims?.clientId || "",
-    clientLookup: {
-      uid: ctx.identity?.uid,
-      authUid: ctx.identity?.uid,
-      firebaseUid: ctx.identity?.uid,
-    },
-  }, { allowCreate: true });
+  const identity = await resolveVerifiedPackageClient(ctx);
   const rows = await listPackageCatalogD1(ctx, {});
   const allowedIds = new Set([
     identity.canonicalClientId,
@@ -648,17 +652,33 @@ export async function deletePackageCatalogD1(ctx, data) {
   return { id, deleted: true, archived: false };
 }
 
-export async function myWalletD1(ctx) {
+async function resolveVerifiedPackageClient(ctx) {
   if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
-  const identity = await resolveD1ClientIdentity(ctx, {
-    clientId: ctx.identity?.claims?.clientId || "",
-    clientLookup: {
-      uid: ctx.identity?.uid,
-      authUid: ctx.identity?.uid,
-      firebaseUid: ctx.identity?.uid,
-    },
-  }, { allowCreate: true });
-  return walletSummaryD1(ctx, identity);
+  const uid = cleanText(ctx.identity?.uid);
+  if (!uid) throw new AppError(401, 'packages_auth:login_required');
+  const db = packagesDb(ctx);
+  let client = await resolveByFirebaseUid(db, ctx.salonId, uid);
+  if (!client) {
+    if (await resolveByClientId(ctx, [uid])) {
+      throw new AppError(409, 'packages_client:ambiguous_identity');
+    }
+    const now = timestampNow();
+    const insert = clientInsertStatement(ctx, {
+      canonicalClientId: uid,
+      salonId: ctx.salonId,
+      firebaseUid: uid,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await dbRun(db, insert.sql, insert.params);
+    client = await resolveByFirebaseUid(db, ctx.salonId, uid);
+    if (!client) throw new AppError(409, 'packages_client:ambiguous_identity');
+  }
+  return packageIdentity(ctx, client);
+}
+
+export async function myWalletD1(ctx) {
+  return walletSummaryD1(ctx, await resolveVerifiedPackageClient(ctx));
 }
 
 
@@ -829,48 +849,80 @@ export async function grantClientSessionsAdminD1(ctx, data) {
 
 export async function purchasePackageD1(ctx, data) {
   requireRole(ctx.role, SALES_ROLES);
-  const db = packagesDb(ctx);
+  const db = ctx.coreDb;
+  if (!db) throw new AppError(503, 'packages_d1:not_configured');
   const packageCatalogId = requiredDocumentId(data.packageCatalogId, "packageCatalogId");
-  const invoiceId = requiredExternalId(data.invoiceId, "invoiceId");
-  normalizePaymentMethod(data.paymentMethod || "cash");
+  const input = parsePackageSale(data);
+  const { saleReference } = input;
   const identity = await resolveD1ClientIdentity(ctx, data, { allowCreate: true });
 
-  const existing = await dbFirst(
-    db,
-    "SELECT * FROM client_packages WHERE salon_id = ? AND invoice_id = ? LIMIT 1",
-    [ctx.salonId, invoiceId]
-  );
-  if (existing) {
-    if (existing.canonical_client_id !== identity.canonicalClientId || existing.package_catalog_id !== packageCatalogId) {
+  const findReplay = async () => {
+    const sale = await dbFirst(db, `SELECT * FROM package_sales
+      WHERE salon_id = ? AND sale_reference = ?`, [ctx.salonId, saleReference]);
+    if (sale) return checkPackageSaleReplay(sale, input, identity.canonicalClientId, packageCatalogId);
+
+    const matches = await dbAll(db, `SELECT cp.* FROM client_packages cp
+      WHERE cp.salon_id = ? AND cp.invoice_id = ?
+        AND NOT EXISTS (SELECT 1 FROM package_sales s WHERE s.client_package_id = cp.id)
+      LIMIT 2`, [ctx.salonId, saleReference]);
+    const referencedInvoices = await dbAll(
+      db, `SELECT id, salon_id, client_id FROM invoices
+        WHERE id = ? OR (salon_id = ? AND invoice_number = ?) LIMIT 2`,
+      [saleReference, ctx.salonId, saleReference]
+    );
+    const [existing] = matches;
+    if (referencedInvoices.length && (
+      !existing || referencedInvoices.length !== 1 || referencedInvoices[0].salon_id !== ctx.salonId ||
+      referencedInvoices[0].client_id !== (identity.documentId || identity.canonicalClientId)
+    )) throw new AppError(409, 'packages_purchase:invoice_reference_conflict');
+    if (!existing) return null;
+    if (matches.length > 1 || existing.canonical_client_id !== identity.canonicalClientId ||
+        existing.package_catalog_id !== packageCatalogId ||
+        Object.keys(input.quote).length ||
+        (input.purchasedAt !== undefined && existing.purchased_at !== input.purchasedAt) ||
+        (input.expiresAt !== undefined && existing.expires_at !== input.expiresAt)) {
       throw new AppError(409, "packages_idempotency:purchase_conflict");
     }
     return {
       ok: true,
       idempotent: true,
+      settlementStatus: 'unverified',
+      saleReference,
       clientPackageId: existing.id,
-      invoiceId,
-      invoiceDocumentId: invoiceId,
-      invoiceNumber: invoiceId,
+      invoiceId: null,
+      invoiceDocumentId: null,
+      invoiceNumber: null,
       clientId: identity.canonicalClientId,
       canonicalClientId: identity.canonicalClientId,
     };
-  }
+  };
+  const replay = await findReplay();
+  if (replay) return replay;
 
+  const now = timestampNow();
   const catalog = await dbFirst(
     db,
-    "SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? AND active = 1 LIMIT 1",
-    [ctx.salonId, packageCatalogId]
+    `SELECT * FROM package_catalog
+     WHERE salon_id = ? AND id = ? AND active = 1 AND COALESCE(sale_enabled, 1) = 1
+       AND (starts_at IS NULL OR starts_at = '' OR starts_at <= ?)
+       AND (ends_at IS NULL OR ends_at = '' OR ends_at >= ?)
+     LIMIT 1`,
+    [ctx.salonId, packageCatalogId, now, now]
   );
   if (!catalog) throw new AppError(404, "packages_catalog:not_found", "Package catalog item was not found");
 
-  const now = timestampNow();
-  const clientPackageId = (await transactionId("client_package", invoiceId)).replace(/^client_package:/, "pkg_");
-  const purchaseTxId = await transactionId("purchase", invoiceId);
+  const purchaseKey = JSON.stringify([ctx.salonId, saleReference]);
+  const clientPackageId = (await transactionId("client_package", purchaseKey)).replace(/^client_package:/, "pkg_");
+  const purchaseTxId = await transactionId("purchase", purchaseKey);
   const totalSessions = Number(catalog.total_sessions || 0);
   const allowedServiceIdsJson = cleanText(catalog.allowed_service_ids_json) || "[]";
+  const { sale, statements: financialStatements } = await buildPackageSettlement(ctx, {
+    catalog, identity, input, clientPackageId, purchaseTxId, now,
+  });
 
   const statements = [
     clientInsertStatement(ctx, {
+      documentId: identity.documentId,
       canonicalClientId: identity.canonicalClientId,
       salonId: ctx.salonId,
       name: identity.name || "عميلة",
@@ -895,11 +947,9 @@ export async function purchasePackageD1(ctx, data) {
         allowedServiceIdsJson,
         totalSessions,
         totalSessions,
-        data.purchasedAt || now,
-        data.expiresAt || (Number(catalog.validity_days || 0) > 0
-          ? timestampFromMs(Date.parse(data.purchasedAt || now) + Number(catalog.validity_days) * 24 * 60 * 60 * 1000)
-          : null),
-        invoiceId,
+        sale.purchased_at,
+        sale.expires_at,
+        sale.invoice_id,
         now,
         now,
       ],
@@ -908,22 +958,22 @@ export async function purchasePackageD1(ctx, data) {
       sql: `INSERT INTO package_transactions
         (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
          remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
-         service_id, booking_id, cart_item_id, invoice_id, created_at)
-       VALUES (?, ?, ?, ?, 'purchase', ?, 0, ?, 0, 0, 0, 0, NULL, NULL, NULL, ?, ?)`,
-      params: [purchaseTxId, ctx.salonId, clientPackageId, identity.canonicalClientId, totalSessions, totalSessions, invoiceId, now],
+         service_id, booking_id, cart_item_id, invoice_id, created_at, created_by_uid)
+       VALUES (?, ?, ?, ?, 'purchase', ?, 0, ?, 0, 0, 0, 0, NULL, NULL, NULL, ?, ?, ?)`,
+      params: [purchaseTxId, ctx.salonId, clientPackageId, identity.canonicalClientId, totalSessions, totalSessions,
+        sale.invoice_id, now, cleanText(ctx.identity?.uid) || null],
     },
+    ...financialStatements,
   ];
-  await dbBatch(db, statements);
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    const committed = await findReplay();
+    if (committed) return committed;
+    throw normalizePackageSettlementError(error);
+  }
   clearD1WalletRuntimeCaches();
-  return {
-    ok: true,
-    clientPackageId,
-    invoiceId,
-    invoiceDocumentId: invoiceId,
-    invoiceNumber: invoiceId,
-    clientId: identity.canonicalClientId,
-    canonicalClientId: identity.canonicalClientId,
-  };
+  return packageSaleResult(sale, false);
 }
 
 async function packageForOperation(ctx, identity, clientPackageId) {
@@ -950,17 +1000,37 @@ function requireActivePackage(row, serviceId) {
   }
 }
 
+function assertTransactionReplay(prior, scope) {
+  if (Object.entries(scope).some(([key, value]) => cleanText(prior[key]) !== cleanText(value))) {
+    throw new AppError(409, 'packages_idempotency:transaction_conflict');
+  }
+}
+
 async function balanceTransactionD1(ctx, data, transition) {
   requireRole(ctx.role, SALES_ROLES);
   const db = packagesDb(ctx);
-  const identity = await resolveD1ClientIdentity(ctx, data);
+  const identity = await resolveD1ClientIdentity(ctx, data, { allowPhone: false });
   const clientPackageId = requiredDocumentId(data.clientPackageId, "clientPackageId");
   const serviceId = optionalText(data.serviceId);
   const row = await packageForOperation(ctx, identity, clientPackageId);
   const txSource = data.operationId || data.bookingId || data.cartItemId || `${transition.type}_${Date.now()}`;
   const txId = await transactionId(transition.type, txSource);
-  const priorTx = await dbFirst(db, "SELECT * FROM package_transactions WHERE id = ? LIMIT 1", [txId]);
-  if (priorTx) {
+  const bookingId = cleanText(data.bookingId) || cleanText(data.operationId);
+  const cartItemId = cleanText(data.cartItemId);
+  const invoiceId = cleanText(data.invoiceId);
+  const findReplay = async () => {
+    const priorTx = await dbFirst(db, "SELECT * FROM package_transactions WHERE id = ? LIMIT 1", [txId]);
+    if (!priorTx) return null;
+    assertTransactionReplay(priorTx, {
+      salon_id: ctx.salonId,
+      canonical_client_id: row.canonical_client_id,
+      client_package_id: clientPackageId,
+      type: transition.type,
+      service_id: serviceId,
+      booking_id: bookingId,
+      cart_item_id: cartItemId,
+      invoice_id: invoiceId,
+    });
     return {
       ok: true,
       idempotent: true,
@@ -975,7 +1045,9 @@ async function balanceTransactionD1(ctx, data, transition) {
       redeemedServiceId: priorTx.service_id || serviceId,
       cartItemId: priorTx.cart_item_id || data.cartItemId || "",
     };
-  }
+  };
+  const replay = await findReplay();
+  if (replay) return replay;
 
   if (transition.requireRemaining) requireActivePackage(row, serviceId);
   if (transition.requireReserved && Number(row.reserved_sessions || 0) <= 0) {
@@ -990,26 +1062,23 @@ async function balanceTransactionD1(ctx, data, transition) {
   const after = transition.apply(before);
   const status = after.remaining === 0 && after.reserved === 0 ? "exhausted" : "active";
   const now = timestampNow();
-  const ids = dedupe([identity.canonicalClientId, ...(identity.aliasClientIds || [])]);
-  const bookingId = cleanText(data.bookingId) || cleanText(data.operationId) || "";
-  const cartItemId = cleanText(data.cartItemId);
-
+  const recordsBookingItem = (transition.type === 'reserve' || transition.type === 'redeem') && bookingId && cartItemId;
+  const bookingItemGuard = recordsBookingItem ? `AND NOT EXISTS (
+      SELECT 1 FROM package_transactions
+      WHERE salon_id = ? AND booking_id = ? AND cart_item_id = ? AND type IN ('reserve', 'redeem')
+    )` : '';
   const updateSql = `UPDATE client_packages
-      SET remaining_sessions = ?, reserved_sessions = ?, used_sessions = ?, status = ?, updated_at = ?,
-          canonical_client_id = ?
-    WHERE salon_id = ? AND id = ? AND canonical_client_id IN (${placeholders(ids.length)})
-      AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?`;
+      SET remaining_sessions = ?, reserved_sessions = ?, used_sessions = ?, status = ?, updated_at = ?
+    WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
+      AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ? AND status = ? AND updated_at = ?
+      ${bookingItemGuard}`;
   const insertSql = `INSERT INTO package_transactions
       (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
        remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
        service_id, booking_id, cart_item_id, invoice_id, created_at)
     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-     WHERE EXISTS (
-       SELECT 1 FROM client_packages
-        WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
-          AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?
-     )`;
-  const results = await dbBatch(db, [
+     WHERE changes() = 1`;
+  const statements = [
     {
       sql: updateSql,
       params: [
@@ -1018,13 +1087,15 @@ async function balanceTransactionD1(ctx, data, transition) {
         after.used,
         status,
         now,
-        identity.canonicalClientId,
         ctx.salonId,
         clientPackageId,
-        ...ids,
+        row.canonical_client_id,
         before.remaining,
         before.reserved,
         before.used,
+        row.status,
+        row.updated_at,
+        ...(recordsBookingItem ? [ctx.salonId, bookingId, cartItemId] : []),
       ],
     },
     {
@@ -1033,7 +1104,7 @@ async function balanceTransactionD1(ctx, data, transition) {
         txId,
         ctx.salonId,
         clientPackageId,
-        identity.canonicalClientId,
+        row.canonical_client_id,
         transition.type,
         transition.sessionsDelta,
         before.remaining,
@@ -1045,18 +1116,22 @@ async function balanceTransactionD1(ctx, data, transition) {
         serviceId || null,
         bookingId || null,
         cartItemId || null,
-        cleanText(data.invoiceId) || null,
+        invoiceId || null,
         now,
-        ctx.salonId,
-        clientPackageId,
-        identity.canonicalClientId,
-        after.remaining,
-        after.reserved,
-        after.used,
       ],
     },
-  ]);
-  if (changes(results?.[0]) < 1 || changes(results?.[1]) < 1) {
+  ];
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    const committed = await findReplay();
+    if (committed) return committed;
+    throw error;
+  }
+  if (changes(results?.[0]) !== 1 || changes(results?.[1]) !== 1) {
+    const committed = await findReplay();
+    if (committed) return committed;
     throw new AppError(409, "package_balance:conflict", "Package balance changed; retry the operation");
   }
   clearD1WalletRuntimeCaches();
@@ -1100,6 +1175,43 @@ export async function reservePackageD1(ctx, data) {
 }
 
 export async function releasePackageD1(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const bookingId = optionalText(data.bookingId);
+  if (bookingId) {
+    const ledger = await bookingSessionLedger(ctx, requiredExternalId(bookingId, 'bookingId'));
+    const sources = ledger.sources.filter((row) => row.type === 'reserve' &&
+      (!data.clientPackageId || row.client_package_id === data.clientPackageId) &&
+      (!data.cartItemId || row.cart_item_id === data.cartItemId));
+    if (!sources.length) throw new AppError(404, 'packages_redemption:not_found');
+    if (sources.length !== 1) throw new AppError(409, 'packages_redemption:ambiguous_reservation');
+    const [source] = sources;
+    if (data.clientId || data.clientLookup || data.requestedClientId) {
+      const identity = await resolveD1ClientIdentity(ctx, data, { allowPhone: false });
+      await packageForOperation(ctx, identity, source.client_package_id);
+    }
+    const operationId = cleanText(data.operationId);
+    if (operationId) {
+      const txId = await transactionId('release', operationId);
+      const prior = await dbFirst(packagesDb(ctx), 'SELECT * FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
+      if (prior) {
+        assertTransactionReplay(prior, {
+          salon_id: ctx.salonId, type: 'release', client_package_id: source.client_package_id,
+          canonical_client_id: source.canonical_client_id, booking_id: bookingId, cart_item_id: source.cart_item_id,
+        });
+        return { ok: true, idempotent: true, packageTransactionId: txId };
+      }
+    }
+    const current = currentSessionState(source, ledger.rows, ledger.sources);
+    if (current.state === 'remaining') return { ok: true, idempotent: true };
+    if (current.state !== 'reserved') throw new AppError(409, 'package_balance:no_reserved_session');
+    const sourceKey = operationId || `${bookingId}:${bookingSessionKey(source)}:${cleanText(current.lastMovement.id)}`;
+    const result = await applySessionTransition(
+      ctx, source, 'reserved', 'remaining', 'release', sourceKey, data.reason, current.lastMovement
+    );
+    clearD1WalletRuntimeCaches();
+    return result;
+  }
+
   return balanceTransactionD1(ctx, data, {
     type: "release",
     sessionsDelta: 1,
@@ -1161,13 +1273,31 @@ async function bookingSessionLedger(ctx, bookingId) {
   return { rows, sources };
 }
 
-async function applySessionTransition(ctx, source, fromState, toState, type, operationSource, reason) {
+async function applySessionTransition(ctx, source, fromState, toState, type, operationSource, reason, lastMovement) {
   const db = packagesDb(ctx);
   const txId = await transactionId(type, operationSource);
-  const prior = await dbFirst(db, 'SELECT * FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
-  if (prior) return { ok: true, idempotent: true, packageTransactionId: txId };
-
   const row = await directPackageRow(ctx, source.client_package_id);
+  const findReplay = async () => {
+    const prior = await dbFirst(db, 'SELECT * FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
+    if (!prior) return null;
+    assertTransactionReplay(prior, {
+      salon_id: ctx.salonId,
+      canonical_client_id: row.canonical_client_id,
+      client_package_id: row.id,
+      type,
+      booking_id: source.booking_id,
+      cart_item_id: source.cart_item_id,
+      service_id: source.service_id,
+    });
+    return { ok: true, idempotent: true, packageTransactionId: txId };
+  };
+  const replay = await findReplay();
+  if (replay) return replay;
+
+  const latest = await bookingSessionLedger(ctx, source.booking_id);
+  if (currentSessionState(source, latest.rows, latest.sources).lastMovement.id !== lastMovement.id) {
+    throw new AppError(409, 'package_balance:conflict', 'Reservation state changed; retry the operation');
+  }
   const before = {
     remaining: Number(row.remaining_sessions),
     reserved: Number(row.reserved_sessions),
@@ -1193,17 +1323,20 @@ async function applySessionTransition(ctx, source, fromState, toState, type, ope
   else throw new AppError(409, 'package_balance:invalid_transition');
 
   const status = after.remaining === 0 && after.reserved === 0 ? 'exhausted' : 'active';
-  const now = timestampNow();
+  // Movements for one reservation must have a stable order even in the same millisecond.
+  const now = timestampFromMs(Math.max(Date.now(), (timestampMs(lastMovement.created_at) ?? 0) + 1));
   const actorUid = cleanText(ctx.identity?.uid) || null;
-  const results = await dbBatch(db, [
+  const statements = [
     {
       sql: `UPDATE client_packages
               SET remaining_sessions = ?, reserved_sessions = ?, used_sessions = ?, status = ?, updated_at = ?
-            WHERE salon_id = ? AND id = ?
-              AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?`,
+            WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
+              AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?
+              AND status = ? AND updated_at = ?`,
       params: [
         after.remaining, after.reserved, after.used, status, now,
-        ctx.salonId, row.id, before.remaining, before.reserved, before.used,
+        ctx.salonId, row.id, row.canonical_client_id, before.remaining, before.reserved, before.used,
+        row.status, row.updated_at,
       ],
     },
     {
@@ -1211,7 +1344,8 @@ async function applySessionTransition(ctx, source, fromState, toState, type, ope
         (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
          remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
          service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?
+       WHERE changes() = 1`,
       params: [
         txId, ctx.salonId, row.id, row.canonical_client_id, type,
         after.remaining - before.remaining,
@@ -1226,10 +1360,21 @@ async function applySessionTransition(ctx, source, fromState, toState, type, ope
         actorUid,
       ],
     },
-  ]);
-  if (changes(results[0]) < 1 || changes(results[1]) < 1) {
+  ];
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    const committed = await findReplay();
+    if (committed) return committed;
+    throw error;
+  }
+  if (changes(results[0]) !== 1 || changes(results[1]) !== 1) {
+    const committed = await findReplay();
+    if (committed) return committed;
     throw new AppError(409, 'package_balance:conflict', 'Package balance changed; retry the operation');
   }
+  clearD1WalletRuntimeCaches();
   return {
     ok: true,
     clientPackageId: row.id,
@@ -1275,7 +1420,8 @@ export async function consumeReservedD1(ctx, data) {
       'used',
       'consume',
       sourceKey,
-      data.reason || 'booking_completed'
+      data.reason || 'booking_completed',
+      current.lastMovement
     );
     items.push(result);
     ledger.rows.push({
@@ -1304,14 +1450,28 @@ async function directPackageRow(ctx, clientPackageId) {
   return row;
 }
 
+async function matchAdministrativeReplay(ctx, row, txId, type, sessionsDelta, reason) {
+  const prior = await dbFirst(packagesDb(ctx), 'SELECT * FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
+  if (!prior) return null;
+  assertTransactionReplay(prior, {
+    salon_id: ctx.salonId,
+    canonical_client_id: row.canonical_client_id,
+    client_package_id: row.id,
+    type,
+    sessions_delta: sessionsDelta,
+    reason,
+  });
+  return { ok: true, idempotent: true, clientPackageId: row.id, packageTransactionId: txId };
+}
+
 export async function adjustClientPackageD1(ctx, data) {
   requireRole(ctx.role, ADMIN_ROLES);
   const row = await directPackageRow(ctx, data.clientPackageId);
   const delta = boundedInteger(Number(data.sessionsDelta), 'sessionsDelta', { min: -PACKAGE_LIMITS.adjustmentSessions, max: PACKAGE_LIMITS.adjustmentSessions });
   const reason = boundedText(data.reason, 'reason', PACKAGE_LIMITS.reason, true);
   const txId = await transactionId('admin_adjustment', data.operationId || `${row.id}:${delta}:${reason}`);
-  const existing = await dbFirst(packagesDb(ctx), 'SELECT id FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
-  if (existing) return { ok: true, idempotent: true, clientPackageId: row.id, packageTransactionId: txId };
+  const replay = await matchAdministrativeReplay(ctx, row, txId, 'admin_adjustment', delta, reason);
+  if (replay) return replay;
   const before = { remaining: Number(row.remaining_sessions), reserved: Number(row.reserved_sessions), used: Number(row.used_sessions) };
   const remaining = before.remaining + delta;
   if (remaining < 0) throw new AppError(409, 'package_balance:insufficient_remaining');
@@ -1319,8 +1479,8 @@ export async function adjustClientPackageD1(ctx, data) {
   const status = remaining === 0 && before.reserved === 0 ? 'exhausted' : 'active';
   const now = timestampNow();
   const results = await dbBatch(packagesDb(ctx), [
-    { sql: `UPDATE client_packages SET total_sessions = ?, remaining_sessions = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ? AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?`, params: [total, remaining, status, now, ctx.salonId, row.id, before.remaining, before.reserved, before.used] },
-    { sql: `INSERT INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) VALUES (?, ?, ?, ?, 'admin_adjustment', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, delta, before.remaining, remaining, before.reserved, before.reserved, before.used, before.used, now, reason, cleanText(ctx.identity?.uid) || null] },
+    { sql: `UPDATE client_packages SET total_sessions = ?, remaining_sessions = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ? AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ? AND status = ? AND updated_at = ?`, params: [total, remaining, status, now, ctx.salonId, row.id, before.remaining, before.reserved, before.used, row.status, row.updated_at] },
+    { sql: `INSERT INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) SELECT ?, ?, ?, ?, 'admin_adjustment', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ? WHERE changes() = 1`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, delta, before.remaining, remaining, before.reserved, before.reserved, before.used, before.used, now, reason, cleanText(ctx.identity?.uid) || null] },
   ]);
   if (changes(results[0]) < 1 || changes(results[1]) < 1) throw new AppError(409, 'package_balance:conflict');
   clearD1WalletRuntimeCaches();
@@ -1331,14 +1491,24 @@ export async function cancelClientPackageD1(ctx, data) {
   requireRole(ctx.role, ADMIN_ROLES);
   const row = await directPackageRow(ctx, data.clientPackageId);
   const reason = boundedText(data.reason, 'reason', PACKAGE_LIMITS.reason, true);
+  const txId = await transactionId('cancel', data.operationId || row.id);
+  const replay = await matchAdministrativeReplay(ctx, row, txId, 'cancel', 0, reason);
+  if (replay) return replay;
   if (cleanText(row.status) === 'cancelled') return { ok: true, idempotent: true, clientPackageId: row.id };
   if (Number(row.reserved_sessions || 0) > 0) throw new AppError(409, 'package_balance:reserved_sessions_exist');
   const now = timestampNow();
-  const txId = await transactionId('cancel', data.operationId || row.id);
-  await dbBatch(packagesDb(ctx), [
-    { sql: `UPDATE client_packages SET status = 'cancelled', updated_at = ? WHERE salon_id = ? AND id = ?`, params: [now, ctx.salonId, row.id] },
-    { sql: `INSERT OR IGNORE INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) VALUES (?, ?, ?, ?, 'cancel', 0, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, row.remaining_sessions, row.remaining_sessions, row.reserved_sessions, row.reserved_sessions, row.used_sessions, row.used_sessions, now, reason, cleanText(ctx.identity?.uid) || null] },
+  const results = await dbBatch(packagesDb(ctx), [
+    { sql: `UPDATE client_packages SET status = 'cancelled', updated_at = ?
+      WHERE salon_id = ? AND id = ? AND status = ? AND updated_at = ? AND reserved_sessions = 0
+        AND remaining_sessions = ? AND used_sessions = ?`,
+      params: [now, ctx.salonId, row.id, row.status, row.updated_at, row.remaining_sessions, row.used_sessions] },
+    { sql: `INSERT INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) SELECT ?, ?, ?, ?, 'cancel', 0, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ? WHERE changes() = 1`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, row.remaining_sessions, row.remaining_sessions, row.reserved_sessions, row.reserved_sessions, row.used_sessions, row.used_sessions, now, reason, cleanText(ctx.identity?.uid) || null] },
   ]);
+  if (changes(results[0]) !== 1 || changes(results[1]) !== 1) {
+    const committed = await matchAdministrativeReplay(ctx, row, txId, 'cancel', 0, reason);
+    if (committed) return committed;
+    throw new AppError(409, 'package_balance:conflict');
+  }
   clearD1WalletRuntimeCaches();
   return { ok: true, clientPackageId: row.id, packageTransactionId: txId };
 }
@@ -1364,7 +1534,8 @@ export async function restoreBookingSessionD1(ctx, data) {
       'remaining',
       'restore',
       sourceKey,
-      data.reason || 'booking_restore'
+      data.reason || 'booking_restore',
+      current.lastMovement
     );
     items.push(result);
     ledger.rows.push({
@@ -1408,7 +1579,8 @@ export async function reapplyBookingSessionD1(ctx, data) {
       targetState,
       type,
       sourceKey,
-      data.reason || 'refund_voided'
+      data.reason || 'refund_voided',
+      current.lastMovement
     );
     items.push(result);
     ledger.rows.push({
@@ -1607,6 +1779,7 @@ export async function expireClientPackagesD1(env, salonId = cleanText(env.SALON_
         AND expires_at < ?`,
     [now, salonId, now]
   );
+  if (changes(result)) clearD1WalletRuntimeCaches();
   return {
     ok: true,
     storage: "d1",

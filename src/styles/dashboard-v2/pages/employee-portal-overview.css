@@ -1135,7 +1135,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-complete::before {
-  background: var(--dsv2-green);
+  background: #15803d;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 :where(.attendance-month__day, .attendance-month__legend span).is-late {
@@ -1145,7 +1145,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-late::before {
-  background: var(--employee-attendance-day-accent);
+  background: #d97706;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 :where(.attendance-month__day, .attendance-month__legend span).is-partial {
@@ -1155,7 +1155,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-partial::before {
-  background: var(--dsv2-info);
+  background: #ea580c;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 :where(.attendance-month__day, .attendance-month__legend span).is-absent {
@@ -1165,7 +1165,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-absent::before {
-  background: var(--dsv2-burgundy);
+  background: #dc2626;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 :where(.attendance-month__day, .attendance-month__legend span).is-leave {
@@ -1175,7 +1175,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-leave::before {
-  background: var(--employee-attendance-day-accent);
+  background: #ca8a04;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 :where(.attendance-month__day, .attendance-month__legend span).is-off-day {
@@ -1185,7 +1185,7 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend .is-off-day::before {
-  background: var(--dsv2-muted);
+  background: #2563eb;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-today {
@@ -1419,17 +1419,17 @@
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__state-card.is-leave {
-  border-color: var(--dsv2-border-gold);
-  background: var(--dsv2-gold-softer);
+  border-color: #fde047;
+  background: #fefce8;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__state-card.is-absent {
-  border-color: var(--dsv2-burgundy-border);
-  background: var(--dsv2-burgundy-soft);
+  border-color: #fca5a5;
+  background: #fee2e2;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__state-card.is-off-day {
-  background: var(--dsv2-surface-soft);
+  background: #eff6ff;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__worked-day {
@@ -1810,15 +1810,15 @@
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-late,
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-late {
   --employee-attendance-day-accent: #d97706;
-  --employee-attendance-day-bg: #fff7ed;
-  --employee-attendance-day-border: #fdba74;
+  --employee-attendance-day-bg: #fffbeb;
+  --employee-attendance-day-border: #fcd34d;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-leave,
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-leave {
-  --employee-attendance-day-accent: #7c3aed;
-  --employee-attendance-day-bg: #f3e8ff;
-  --employee-attendance-day-border: #d8b4fe;
+  --employee-attendance-day-accent: #ca8a04;
+  --employee-attendance-day-bg: #fefce8;
+  --employee-attendance-day-border: #fde047;
 }
 
 .dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-exception,

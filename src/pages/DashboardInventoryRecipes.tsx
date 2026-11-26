@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DashboardActionFeedbackV2,
   DashboardEmptyStateV2,
@@ -217,7 +217,7 @@ export default function DashboardInventoryRecipes() {
 
   return (
     <div className="inventory-inner-workspace inventory-inner-recipes">
-      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">ضبط الاستهلاك</span><h4>وصفات الخدمات</h4><p>حدد المواد والكميات القياسية لكل خدمة، دون خصم المخزون عند إنشاء الحجز.</p></div><span className="inventory-inner-count">أسطر الوصفة: {lines.length.toLocaleString("ar-SA")}</span></div>
+      <div className="inventory-inner-intro"><div><span className="inventory-inner-eyebrow">ضبط الاستهلاك</span><h4>وصفات الخدمات</h4><p>حدد المواد والكميات القياسية لكل خدمة، دون خصم المخزون عند إنشاء الحجز.</p></div><span className="inventory-inner-count">أسطر الوصفة: {lines.length.toLocaleString("ar-SA-u-nu-latn")}</span></div>
       <div className="inventory-inner-panel"><div className="inventory-inner-panel-heading"><span className="inventory-inner-step">01</span><div><h5>اختيار الخدمة</h5><p>اختر خدمة لاستعراض وصفتها وتحديث تفاصيلها.</p></div></div>
       <DashboardFieldV2 id="inv-recipe-service" label="الخدمة">
         <DashboardSelectV2

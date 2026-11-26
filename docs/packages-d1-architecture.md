@@ -27,9 +27,7 @@ This includes:
 
 ## Firebase Scope
 
-Firebase is allowed only for authentication and a bounded read of the signed-in user's own role profile when the verified ID token does not carry the current role. Package balances, wallets, purchases, redemptions, and reports remain D1-only.
-
-The Core package routes may verify a Firebase ID token to identify the requester and resolve permitted role metadata. It must not use Firestore to resolve wallet balances, package ownership, package catalog entries, package transactions, admin reports, or package mutations.
+Firebase ID tokens identify the requester. Core D1 supplies account status, roles, permissions and client ownership. Client wallet and catalog routes resolve the verified Firebase UID against Core, then read trusted legacy aliases for that client. Administrative lookups may use a phone number to find a wallet. Session balance mutations require a stable client identifier or a stored booking reservation.
 
 ## Firestore Scope
 
@@ -55,6 +53,16 @@ If the Core Worker cannot access `CORE_DB`, package requests must fail explicitl
 
 The frontend uses `VITE_CORE_WORKER_URL` and Core package routes. Do not restore the retired standalone Packages Worker URL or use the Partners Worker as a fallback.
 
+## Replays and accounting
+
+Core checks package mutation authorization before serving an HTTP replay. A replay key is bound to the authorized account, tenant and request. The purchase fingerprint also includes the settlement contract version, so a cached success from before settlement cannot serve as proof of payment. The package repository checks the tenant's sale reference, canonical client, catalog item, payment method and any supplied quote independently of the HTTP key.
+
+The admin purchase action records payment already received by the cashier. It uses the catalog's tax-inclusive price, the tenant's `finance` setting and the Core settled-payment posting path. A single Core D1 batch writes the package, purchase movement, paid invoice, payment, linked income, audit records and sale snapshot. The invoice stores the gross halala total and the sale snapshot retains its tax component. Core's existing Riyadh financial-day triggers protect the entire batch. The server generates invoice and payment IDs. The caller's sale reference is a replay key, including when sent through the legacy `invoiceId` request field.
+
+`0114_package_sale_settlement.sql` adds the sale snapshot table. Historical package references can be acknowledged without mutation and return an unverified settlement status. They do not generate payments or receipts. A separate read-only reconciliation can classify their evidence before any financial remediation.
+
+The administrative identity audit lists bounded, tenant-scoped canonical records and aliases. Its scores and zero-valued relation counts are compatibility fields. The audit does not rank candidates, verify financial relations, or reconcile duplicate identities.
+
 ## Future Changes
 
 Any future package change must preserve this path:
@@ -68,6 +76,9 @@ Before merging package changes, run:
 ```bash
 npm run check:packages:d1-only
 npm run test:packages:worker
+npm run test:packages:worker:integration
 node --test workers/core-packages-unification.test.mjs
 npm run build
 ```
+
+The integration command runs the Core HTTP package routes locally with production-derived migrations and an in-memory SQLite D1 adapter. It uses no remote Worker, database, or Firebase emulator.

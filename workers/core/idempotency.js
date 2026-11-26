@@ -35,6 +35,20 @@ export function shouldUseIdempotency(request, operationId) {
 
   const pathname = new URL(request.url).pathname;
 
+  // Weekly rest rescheduling owns its durable operation identity.
+  // Always execute current authorization and domain replay checks.
+  // Never serve a cached financial response before authorization.
+  if (
+    /^\/api\/core\/hr\/weekly-rest\/rescheduling(?:\/[^/]+\/cancel)?$/.test(pathname)
+  ) {
+    return false;
+  }
+
+  // The administrative wallet uses POST for lookups and must read current balances.
+  if (/^\/api\/(?:core\/)?packages\/client-wallet\/?$/.test(pathname)) {
+    return false;
+  }
+
   // Binary file content is excluded from the JSON replay ledger.
   if (
     /\/files\/[^/]+\/content$/.test(pathname)
@@ -45,7 +59,7 @@ export function shouldUseIdempotency(request, operationId) {
   return true;
 }
 
-export async function requestFingerprint(request) {
+export async function requestFingerprint(request, actorScope) {
   const url = new URL(request.url);
   const body = await request.clone().text();
   const raw = [
@@ -53,6 +67,7 @@ export async function requestFingerprint(request) {
     url.pathname,
     url.search,
     body,
+    ...(actorScope ? [actorScope] : []),
   ].join("\n");
 
   const digest = await crypto.subtle.digest(

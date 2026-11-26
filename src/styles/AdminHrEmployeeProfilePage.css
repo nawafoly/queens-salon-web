@@ -1953,13 +1953,13 @@
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-partial {
-  color: #fef3c7;
-  background: rgba(245, 158, 11, 0.22);
+  color: #ea580c;
+  background: #fff7ed;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-absent {
-  color: #ffe4e6;
-  background: rgba(244, 63, 94, 0.24);
+  color: #dc2626;
+  background: #fee2e2;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-leave,

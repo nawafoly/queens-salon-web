@@ -543,6 +543,97 @@ function riyadhTodayDateKey() {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+export type WeeklyRestPresentationTone =
+  | "rest-work"
+  | "partial"
+  | null;
+
+/**
+ * Presentation only.
+ * Never creates compensation, changes payroll or mutates attendance.
+ */
+export function weeklyRestPresentationTone(
+  status: AttendanceStatus,
+  shift: CoreResolvedShift | null | undefined,
+  records: readonly AttendanceRecord[]
+): WeeklyRestPresentationTone {
+  if (
+    !shift ||
+    status === "leave" ||
+    status === "absent" ||
+    status === "schedule_unavailable"
+  ) return null;
+
+  const row = shift as Record<string, unknown>;
+  const source = cleanText(row.source).toLowerCase();
+  const exception = cleanText(
+    row.exceptionType || row.exception_type
+  ).toLowerCase();
+
+  const temporaryRest =
+    source === "exception" &&
+    exception === "off" &&
+    cleanText(row.note)
+      .toLowerCase()
+      .startsWith("[temp_weekly_off:");
+
+  const weeklyRest =
+    source === "weekly_rest_work_assignment" ||
+    temporaryRest ||
+    (
+      source === "weekly_schedule" &&
+      isAttendanceResolvedShiftOff(shift)
+    );
+
+  if (!weeklyRest) return null;
+
+  const punches = records
+    .filter(record =>
+      record.type === "check_in" ||
+      record.type === "check_out"
+    )
+    .map(record => ({
+      type: record.type,
+      time: Date.parse(record.serverTime || ""),
+    }));
+
+  if (!punches.length) return null;
+
+  if (punches.some(record => !Number.isFinite(record.time))) {
+    return "partial";
+  }
+
+  punches.sort((a, b) => a.time - b.time);
+
+  let openedAt: number | null = null;
+  let completedPairs = 0;
+  let lastTime: number | null = null;
+
+  for (const record of punches) {
+    if (lastTime !== null && record.time <= lastTime) {
+      return "partial";
+    }
+
+    lastTime = record.time;
+
+    if (record.type === "check_in") {
+      if (openedAt !== null) return "partial";
+      openedAt = record.time;
+    } else {
+      if (openedAt === null || record.time <= openedAt) {
+        return "partial";
+      }
+
+      completedPairs++;
+      openedAt = null;
+    }
+  }
+
+  return openedAt === null && completedPairs > 0
+    ? "rest-work"
+    : "partial";
+}
+
 export function computeResolvedAttendanceDay(input: {
   dateKey: string;
   row?: Record<string, unknown> | null;

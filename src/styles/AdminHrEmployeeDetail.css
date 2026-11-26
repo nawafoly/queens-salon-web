@@ -206,11 +206,11 @@
   background: #a4adba;
 }
 
-.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-complete::before { background: var(--attendance-complete); }
-.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-partial::before { background: var(--attendance-partial); }
-.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-absent::before { background: var(--attendance-absent); }
-.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-leave::before { background: var(--attendance-leave); }
-.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-off-day::before { background: var(--attendance-off); }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-complete::before { background: #15803d; }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-partial::before { background: #ea580c; }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-absent::before { background: #dc2626; }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-leave::before { background: #ca8a04; }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-off-day::before { background: #2563eb; }
 
 .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__selected-date {
   display: flex;
@@ -4603,35 +4603,35 @@
   .employee-attendance-admin
   .attendance-month__day.is-complete
   .attendance-month__day-marker {
-  background: var(--attendance-complete) !important;
+  background: #15803d !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__day.is-partial
   .attendance-month__day-marker {
-  background: var(--attendance-partial) !important;
+  background: #ea580c !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__day.is-absent
   .attendance-month__day-marker {
-  background: var(--attendance-absent) !important;
+  background: #dc2626 !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__day.is-off-day
   .attendance-month__day-marker {
-  background: var(--attendance-off) !important;
+  background: #2563eb !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__day.is-leave
   .attendance-month__day-marker {
-  background: var(--attendance-leave) !important;
+  background: #ca8a04 !important;
 }
 
 /* إطار واحد فقط لليوم المحدد */
@@ -4930,8 +4930,8 @@
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__record.is-partial {
-  border-inline-start-color: var(--attendance-partial) !important;
-  background: var(--attendance-partial-bg) !important;
+  border-inline-start-color: #ea580c !important;
+  background: #fff7ed !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr
@@ -5001,9 +5001,9 @@
 .emp-editor-overlay.emp-editor-overlay--hr
   .employee-attendance-admin
   .attendance-month__daily-card.is-partial {
-  border-color: #f4d39b !important;
-  border-inline-start-color: var(--attendance-partial) !important;
-  background: var(--attendance-partial-bg) !important;
+  border-color: #fdba74 !important;
+  border-inline-start-color: #ea580c !important;
+  background: #fff7ed !important;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr

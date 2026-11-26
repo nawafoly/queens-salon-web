@@ -1,3 +1,5 @@
+import { isAutomaticAttendanceAbsence } from './attendance-policy.js';
+
 import { auditInsertStatement } from './audit.js';
 // CORE D1 ONLY — do not add Firestore fallback.
 // Firebase is allowed only for authentication token verification.
@@ -585,12 +587,65 @@ async function buildCanonicalAttendanceSummary(
     }
   }
   // This is a financial projection only. Never mutate source absence rows.
-  const applicableAbsenceRows = attendancePolicySnapshot
+  const policyApplicableAbsenceRows = attendancePolicySnapshot
     ? filterPayrollAttendanceAbsences(
         absenceRows,
         attendancePolicySnapshot
       )
     : (absenceRows || []);
+
+  const activeReplacementRestRows = await dbAll(
+    db,
+    `SELECT replacement_rest_date, rest_exception_id
+       FROM employee_weekly_rest_rescheduling
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND status = 'active'
+        AND replacement_rest_date BETWEEN ? AND ?`,
+    [
+      salonId,
+      employeeId,
+      servicePeriod.periodStart,
+      servicePeriod.periodEnd
+    ]
+  );
+
+  const resolvedRestDates = new Set(
+    activeReplacementRestRows
+      .filter(operation => {
+        const date = cleanText(
+          operation.replacement_rest_date
+        );
+
+        const shift = (shiftBatch?.rows || []).find(
+          row => cleanText(row.date) === date
+        );
+
+        return (
+          shift?.source === 'exception' &&
+          shift?.id === operation.rest_exception_id &&
+          shift?.exception_type === 'off' &&
+          !payrollShiftSchedule(shift).enabled
+        );
+      })
+      .map(operation =>
+        cleanText(operation.replacement_rest_date)
+      )
+  );
+
+  const applicableAbsenceRows =
+    policyApplicableAbsenceRows.filter(row => {
+      if (
+        !resolvedRestDates.has(
+          cleanText(row.date_key)
+        )
+      ) {
+        return true;
+      }
+
+      // Preserve manual and unclassified historical absences.
+      return !isAutomaticAttendanceAbsence(row);
+    });
 
   for (const absence of applicableAbsenceRows) {
     const dateKey = cleanText(absence.date_key);
@@ -4155,6 +4210,305 @@ export async function deferAttendanceDeduction(
         amountHalalas,
       collectedInOriginalPayrollHalalas: 0,
     },
+  };
+}
+
+export async function refreshPayrollDraftForRestRescheduling(
+  db,
+  salonId,
+  entry,
+  actor = {},
+  options = {}
+) {
+  if (
+    !entry ||
+    entry.salon_id !== salonId ||
+    !['draft', 'reviewed'].includes(entry.status)
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:rest_rescheduling_draft_conflict'
+    );
+  }
+
+  if (!options.externalAttendanceDb) {
+    throw new AppError(
+      503,
+      'core_payroll:attendance_unavailable'
+    );
+  }
+
+  const additions = JSON.parse(
+    entry.additions_json || '[]'
+  );
+
+  const deductions = JSON.parse(
+    entry.deductions_json || '[]'
+  );
+
+  if (
+    !Array.isArray(additions) ||
+    !Array.isArray(deductions)
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:invalid_draft_adjustments'
+    );
+  }
+
+  const preview = await previewPayrollEntry(
+    db,
+    salonId,
+    {
+      ...entry,
+      id: entry.id,
+      employeeId: entry.employee_id,
+      payrollMonth: entry.payroll_month,
+      status: entry.status,
+      additions,
+      deductions,
+      notes: entry.notes
+    },
+    actor,
+    options
+  );
+
+  const financialColumns = [
+    'base_salary_halalas',
+    'allowances_halalas',
+    'work_days',
+    'monthly_hours',
+    'daily_rate_halalas',
+    'hourly_rate_halalas',
+    'absence_days',
+    'absence_deduction_halalas',
+    'expected_work_hours',
+    'actual_worked_hours',
+    'missing_hours',
+    'overtime_hours',
+    'attendance_summary_json',
+    'detected_extra_hours',
+    'overtime_enabled',
+    'financial_overtime_hours',
+    'overtime_multiplier',
+    'overtime_value_halalas',
+    'overtime_bonus_halalas',
+    'delay_deduction_halalas',
+    'insurance_deduction_halalas',
+    'gosi_insurance_category',
+    'gosi_policy_version',
+    'gosi_contributory_wage_halalas',
+    'employer_gosi_contribution_halalas',
+    'gosi_snapshot_json',
+    'gosi_calculated_at',
+    'labor_policy_version',
+    'fixed_actual_wage_halalas',
+    'wage_source_updated_at',
+    'overtime_actual_hourly_halalas',
+    'overtime_basic_hourly_halalas',
+    'missing_hours_deduction_halalas',
+    'other_deductions_halalas',
+    'total_deductions_halalas',
+    'gross_salary_halalas',
+    'final_salary_halalas',
+    'net_salary_halalas',
+    'schedule_snapshot_json'
+  ];
+
+  const preservedColumns = [
+    'manual_additions_halalas',
+    'manual_deductions_halalas',
+    'advances_halalas',
+    'additions_json',
+    'deductions_json'
+  ];
+
+  // A rest swap must not silently rewrite independent
+  // financial obligations or manual adjustments.
+
+  for (const column of preservedColumns) {
+    if (
+      column.endsWith('_json')
+        ? JSON.stringify(
+            JSON.parse(entry[column] || '[]')
+          ) !== JSON.stringify(
+            JSON.parse(preview[column] || '[]')
+          )
+        : Number(entry[column] || 0) !==
+          Number(preview[column] || 0)
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:rest_rescheduling_adjustment_conflict'
+      );
+    }
+  }
+
+  for (const column of financialColumns) {
+    if (
+      !Object.hasOwn(preview, column) ||
+      preview[column] === undefined
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:rest_rescheduling_preview_incomplete'
+      );
+    }
+
+    if (
+      column.endsWith('_halalas') &&
+      !Number.isSafeInteger(preview[column])
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:rest_rescheduling_invalid_amount'
+      );
+    }
+  }
+
+  const changedColumns = financialColumns.filter(
+    column =>
+      column !== 'gosi_calculated_at' &&
+      entry[column] !== preview[column]
+  );
+
+  if (!changedColumns.length) {
+    const currentGuard =
+      buildPayrollApprovalRowGuard(entry);
+
+    const current = await dbFirst(
+      db,
+      `SELECT *
+         FROM payroll_entries
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND id = ?
+          AND status IN ('draft', 'reviewed')
+          AND ${currentGuard.sql}
+        LIMIT 1`,
+      [
+        salonId,
+        entry.employee_id,
+        entry.id,
+        ...currentGuard.params
+      ]
+    );
+
+    if (!current) {
+      throw new AppError(
+        409,
+        'core_payroll:rest_rescheduling_draft_conflict'
+      );
+    }
+
+    return {
+      entry: current,
+      changed: false,
+      previousNetHalalas:
+        Number(entry.net_salary_halalas),
+      resultingNetHalalas:
+        Number(entry.net_salary_halalas)
+    };
+  }
+
+  const guard = buildPayrollApprovalRowGuard(entry);
+
+  const now = nowIso();
+
+  const auditLog = parseJsonArray(
+    entry.audit_log_json
+  ).concat({
+    action: 'weekly_rest_rescheduling_recalculation',
+    byUid: optionalText(actor.uid) || null,
+    at: now,
+    previousNetHalalas:
+      Number(entry.net_salary_halalas),
+    resultingNetHalalas:
+      Number(preview.net_salary_halalas)
+  });
+
+  const savedRows = await dbAll(
+    db,
+    `UPDATE payroll_entries
+       SET ${financialColumns.map(
+         column => `${column} = ?`
+       ).join(', ')},
+           audit_log_json = ?,
+           updated_at = ?
+     WHERE salon_id = ?
+       AND employee_id = ?
+       AND id = ?
+       AND status IN ('draft', 'reviewed')
+       AND ${guard.sql}
+       AND NOT EXISTS (
+         SELECT 1
+           FROM employee_attendance_policy_locked_ranges l
+          WHERE l.salon_id = payroll_entries.salon_id
+            AND (
+              l.employee_id IS NULL OR
+              l.employee_id = payroll_entries.employee_id
+            )
+            AND l.date_from <=
+              date(payroll_entries.payroll_month || '-01',
+                   '+1 month', '-1 day')
+            AND l.date_to >=
+              payroll_entries.payroll_month || '-01'
+       )
+     RETURNING *`,
+    [
+      ...financialColumns.map(
+        column => preview[column]
+      ),
+      JSON.stringify(auditLog),
+      now,
+      salonId,
+      entry.employee_id,
+      entry.id,
+      ...guard.params
+    ]
+  );
+
+  if (
+    !Array.isArray(savedRows) ||
+    savedRows.length !== 1 ||
+    savedRows[0].id !== entry.id
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:rest_rescheduling_draft_conflict'
+    );
+  }
+
+  const saved = savedRows[0];
+
+  if (
+    saved.salon_id !== salonId ||
+    saved.employee_id !== entry.employee_id ||
+    saved.payroll_month !== entry.payroll_month ||
+    saved.status !== entry.status
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:rest_rescheduling_saved_scope_mismatch'
+    );
+  }
+
+  for (const column of financialColumns) {
+    if (saved[column] !== preview[column]) {
+      throw new AppError(
+        409,
+        'core_payroll:rest_rescheduling_saved_value_mismatch'
+      );
+    }
+  }
+
+  return {
+    entry: saved,
+    changed: true,
+    previousNetHalalas:
+      Number(entry.net_salary_halalas),
+    resultingNetHalalas:
+      Number(saved.net_salary_halalas)
   };
 }
 

@@ -1,4 +1,5 @@
 import { HR_COLLECTIONS } from "../../services/hrCollections";
+import { getSaLeaveTypePolicy } from "./saLeaveEntitlements.js";
 import type {
   EmployeeLeaveRequestDoc,
   EmployeeLeaveRequestStatus,
@@ -131,13 +132,11 @@ export function calculateLeaveDaysCount(startDate: unknown, endDate: unknown) {
 }
 
 export function getEmployeeLeavePolicy(value: unknown) {
-  const type = String(value || "")
-    .trim()
-    .toLowerCase();
+  const policy = getSaLeaveTypePolicy(value);
 
   return {
-    deductFromBalance: type === "annual",
-    affectsPayroll: type === "unpaid",
+    deductFromBalance: policy.deductAnnualBalance === true,
+    affectsPayroll: policy.affectsPayroll === true,
   };
 }
 
