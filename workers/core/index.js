@@ -3939,8 +3939,17 @@ export async function handleRequest(request, env) {
   if (!route) throw new AppError(404, "core_api:not_found");
 
   const rawContentRoute = route.name === "file:content";
+  const policyCancellation =
+    request.method === "DELETE" &&
+    route.name === "hr-employee:attendance-policy" &&
+    Boolean(route.policyId);
+
   const body =
-    request.method === "GET" || request.method === "DELETE" || rawContentRoute ? {} : await readJson(request);
+    request.method === "GET" ||
+    (request.method === "DELETE" && !policyCancellation) ||
+    rawContentRoute
+      ? {}
+      : await readJson(request);
   const allowGuest = isPublicRoute(route, request.method);
   const ctx = await actor(request, env, body, allowGuest, {
     touchLogin: route.name === "auth:me",

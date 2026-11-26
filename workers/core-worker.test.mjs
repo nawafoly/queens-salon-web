@@ -53,6 +53,8 @@ class FakeD1 {
       "employee_profiles",
       "file_metadata",
       "employee_employment",
+      "employee_attendance_policy_periods",
+      "employee_attendance_policy_events",
       "attendance_records",
       "employee_leaves",
       "employee_absences",
@@ -73,6 +75,8 @@ class FakeD1 {
       "employee_target_tiers",
       "employee_target_assignments",
       "employee_target_ledger",
+      "employee_target_period_summaries",
+      "payroll_approval_transaction_guards",
     ].map((table) => [table, new Map()]));
     this.seedIdentity();
   }
@@ -198,6 +202,16 @@ class FakeD1 {
   }
 
   seed(table, row) {
+    if (table === "employee_employment") {
+      row = {
+        attendance_policy_authority: "legacy",
+        attendance_policy_revision: 0,
+        attendance_payroll_mode: "required",
+        attendance_payroll_exemption_reason: null,
+        ...row,
+      };
+    }
+
     this.tables[table].set(this.key(table, row), { ...row });
   }
 
@@ -1486,6 +1500,166 @@ class FakeD1 {
           String(a.id || "").localeCompare(String(b.id || ""))
         );
     }
+    if (
+      normalized ===
+      "SELECT * FROM employee_target_period_summaries WHERE salon_id = ? AND employee_id = ? AND payroll_entry_id = ? AND payroll_month = ?"
+    ) {
+      const [
+        salonId,
+        employeeId,
+        payrollEntryId,
+        payrollMonth,
+      ] = params;
+
+      return this.rows("employee_target_period_summaries")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.payroll_entry_id === payrollEntryId &&
+          row.payroll_month === payrollMonth
+        );
+    }
+
+    if (
+      normalized ===
+      "SELECT id, payroll_month FROM payroll_periods WHERE salon_id = ? AND payroll_month = ? LIMIT 1"
+    ) {
+      const [salonId, payrollMonth] = params;
+
+      return this.rows("payroll_periods")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.payroll_month === payrollMonth
+        )
+        .slice(0, 1)
+        .map(row => ({
+          id: row.id,
+          payroll_month: row.payroll_month,
+        }));
+    }
+
+    if (
+      normalized ===
+      "SELECT attendance_policy_authority, attendance_policy_revision, attendance_payroll_mode, attendance_payroll_exemption_reason FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1"
+    ) {
+      const [salonId, employeeId] = params;
+
+      return this.rows("employee_employment")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId
+        )
+        .slice(0, 1)
+        .map(row => ({
+          attendance_policy_authority:
+            row.attendance_policy_authority,
+          attendance_policy_revision:
+            row.attendance_policy_revision,
+          attendance_payroll_mode:
+            row.attendance_payroll_mode,
+          attendance_payroll_exemption_reason:
+            row.attendance_payroll_exemption_reason,
+        }));
+    }
+
+    if (
+      normalized ===
+      "SELECT attendance_policy_revision FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1"
+    ) {
+      const [salonId, employeeId] = params;
+
+      return this.rows("employee_employment")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId
+        )
+        .slice(0, 1)
+        .map(row => ({
+          attendance_policy_revision:
+            row.attendance_policy_revision,
+        }));
+    }
+
+    if (
+      normalized ===
+      "SELECT * FROM employee_attendance_policy_periods WHERE salon_id = ? AND employee_id = ? ORDER BY effective_from, id"
+    ) {
+      const [salonId, employeeId] = params;
+
+      return this.rows("employee_attendance_policy_periods")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId
+        )
+        .sort((a, b) =>
+          String(a.effective_from).localeCompare(
+            String(b.effective_from)
+          ) ||
+          String(a.id).localeCompare(String(b.id))
+        );
+    }
+
+    if (
+      normalized ===
+      "SELECT * FROM employee_attendance_policy_periods WHERE salon_id = ? AND employee_id = ? AND id = ?"
+    ) {
+      const [salonId, employeeId, policyId] = params;
+
+      return this.rows("employee_attendance_policy_periods")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.id === policyId
+        );
+    }
+
+    if (
+      normalized ===
+      "SELECT employee_id, attendance_policy_authority, attendance_policy_revision, attendance_payroll_mode, attendance_payroll_exemption_reason FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1"
+    ) {
+      const [salonId, employeeId] = params;
+
+      return this.rows("employee_employment")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId
+        )
+        .slice(0, 1)
+        .map(row => ({
+          employee_id: row.employee_id,
+          attendance_policy_authority:
+            row.attendance_policy_authority,
+          attendance_policy_revision:
+            row.attendance_policy_revision,
+          attendance_payroll_mode:
+            row.attendance_payroll_mode,
+          attendance_payroll_exemption_reason:
+            row.attendance_payroll_exemption_reason,
+        }));
+    }
+
+    if (
+      normalized ===
+      "SELECT attendance_payroll_mode, attendance_payroll_exemption_reason, attendance_policy_authority FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1"
+    ) {
+      const [salonId, employeeId] = params;
+
+      return this.rows("employee_employment")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId
+        )
+        .slice(0, 1)
+        .map(row => ({
+          attendance_payroll_mode:
+            row.attendance_payroll_mode,
+          attendance_payroll_exemption_reason:
+            row.attendance_payroll_exemption_reason,
+          attendance_policy_authority:
+            row.attendance_policy_authority,
+        }));
+    }
+
     throw new Error(`unhandled fake D1 all: ${normalized}`);
   }
 
@@ -2065,6 +2239,23 @@ class FakeD1 {
     }
     if (normalized.startsWith("UPDATE payroll_entries SET status = ?")) {
       const [status, audit_log_json, updated_at, salonId, id] = params;
+
+      const current = this.find(
+        "payroll_entries",
+        salonId,
+        id
+      );
+
+      if (!current) {
+        return { meta: { changes: 0 } };
+      }
+
+      if (
+        normalized.endsWith("AND status = 'approved'") &&
+        current.status !== "approved"
+      ) {
+        return { meta: { changes: 0 } };
+      }
       return this.update("payroll_entries", salonId, id, {
         status,
         approved_at: null,
@@ -2426,6 +2617,66 @@ class FakeD1 {
         sql.startsWith("UPDATE employee_payroll_obligations")
       ) {
         results.push(await this.run(statement.sql, params));
+      } else if (
+        sql === "INSERT INTO payroll_approval_transaction_guards ( id, salon_id, payroll_entry_id, transition_matches ) VALUES ( ?, ?, ?, CASE WHEN changes() = 1 THEN 1 ELSE 0 END )"
+      ) {
+        const [id, salonId, payrollEntryId] = params;
+        const previousResult = results.at(-1);
+
+        if (Number(previousResult?.meta?.changes) !== 1) {
+          throw new Error(
+            "CHECK constraint failed: transition_matches"
+          );
+        }
+
+        if (
+          this.tables.payroll_approval_transaction_guards.has(id)
+        ) {
+          throw new Error(
+            "UNIQUE constraint failed: payroll_approval_transaction_guards.id"
+          );
+        }
+
+        results.push(
+          this.insert(
+            "payroll_approval_transaction_guards",
+            {
+              id,
+              salon_id: salonId,
+              payroll_entry_id: payrollEntryId,
+              transition_matches: 1,
+            }
+          )
+        );
+      } else if (
+        sql.startsWith(
+          "DELETE FROM payroll_approval_transaction_guards WHERE salon_id = ? AND payroll_entry_id = ? AND id IN ("
+        )
+      ) {
+        const [salonId, payrollEntryId, ...guardIds] = params;
+
+        let changes = 0;
+
+        for (const row of this.rows(
+          "payroll_approval_transaction_guards"
+        )) {
+          if (
+            row.salon_id === salonId &&
+            row.payroll_entry_id === payrollEntryId &&
+            guardIds.includes(row.id)
+          ) {
+            this.tables.payroll_approval_transaction_guards.delete(
+              this.key(
+                "payroll_approval_transaction_guards",
+                row
+              )
+            );
+
+            changes += 1;
+          }
+        }
+
+        results.push({ meta: { changes } });
       } else if (sql.startsWith("UPDATE payroll_entries SET")) {
         results.push(await this.run(statement.sql, params));
       } else if (
@@ -7972,4 +8223,38 @@ test("retired Core attendance endpoints return 410 without attendance writes", a
 
   console.log("VERIFIED_NO_LEGACY_ATTENDANCE_WRITES");
   console.log("VERIFIED_NO_LEGACY_PAYROLL_OPERATIONS");
+});
+
+
+test("HR05I: fake payroll transaction guard rejects zero-row transition and rolls back", async () => {
+  const fake = new FakeD1();
+
+  await assert.rejects(
+    () => fake.batch([
+      {
+        sql: "UPDATE payroll_entries SET status = ?, approved_at = NULL, approved_by_uid = NULL, audit_log_json = ?, updated_at = ? WHERE salon_id = ? AND id = ? AND status = 'approved'",
+        params: [
+          "draft",
+          "[]",
+          "2026-11-26T10:00:00Z",
+          "main",
+          "missing-payroll",
+        ],
+      },
+      {
+        sql: "INSERT INTO payroll_approval_transaction_guards ( id, salon_id, payroll_entry_id, transition_matches ) VALUES ( ?, ?, ?, CASE WHEN changes() = 1 THEN 1 ELSE 0 END )",
+        params: [
+          "synthetic-guard",
+          "main",
+          "missing-payroll",
+        ],
+      },
+    ]),
+    /transition_matches/
+  );
+
+  assert.equal(
+    fake.rows("payroll_approval_transaction_guards").length,
+    0
+  );
 });

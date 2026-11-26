@@ -236,9 +236,10 @@ async function requestOnce<T>(
         "X-Request-Id": requestId,
         ...(operationId ? { "Idempotency-Key": operationId } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(method !== "GET" && method !== "DELETE" ? { "Content-Type": "application/json" } : {}),
+        ...(method !== "GET" && (method !== "DELETE" || options.body !== undefined) ? { "Content-Type": "application/json" } : {}),
       },
-      ...(method !== "GET" && method !== "DELETE"
+      ...(method !== "GET" &&
+      (method !== "DELETE" || options.body !== undefined)
         ? { body: JSON.stringify(options.body ?? {}) }
         : {}),
     });

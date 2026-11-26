@@ -300,8 +300,15 @@ function assertMutablePolicy(row, version) {
   }
 }
 
-function requirePolicyMutation(result) {
-  if (Number(result?.meta?.changes) !== 1) {
+function requirePolicyMutation(result, expectedId) {
+  const rows = result?.results;
+
+  if (
+    result?.success !== true ||
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    rows[0]?.id !== expectedId
+  ) {
     throw new AppError(
       409,
       'core_attendance_policy:mutation_conflict'
@@ -375,6 +382,7 @@ export async function createAttendancePolicyPeriod(
         AND attendance_policy_authority = ?
         AND attendance_payroll_mode IS ?
     )
+    RETURNING id
   `).bind(
     id,
     salonId,
@@ -391,9 +399,9 @@ export async function createAttendancePolicyPeriod(
     employeeId,
     employment.attendance_policy_authority,
     employment.attendance_payroll_mode
-  ).run();
+  ).all();
 
-  requirePolicyMutation(result);
+  requirePolicyMutation(result, id);
 
   return readScopedPolicy(
     db, salonId, employeeId, id
@@ -445,6 +453,7 @@ export async function updateAttendancePolicyPeriod(
       AND id = ?
       AND status = 'active'
       AND version = ?
+    RETURNING id
   `).bind(
     policy.mode,
     policy.effectiveFrom,
@@ -456,9 +465,9 @@ export async function updateAttendancePolicyPeriod(
     employeeId,
     policyId,
     version
-  ).run();
+  ).all();
 
-  requirePolicyMutation(result);
+  requirePolicyMutation(result, policyId);
 
   return readScopedPolicy(
     db, salonId, employeeId, policyId
@@ -503,6 +512,7 @@ export async function cancelAttendancePolicyPeriod(
       AND id = ?
       AND status = 'active'
       AND version = ?
+    RETURNING id
   `).bind(
     now,
     actorUid,
@@ -513,9 +523,9 @@ export async function cancelAttendancePolicyPeriod(
     employeeId,
     policyId,
     version
-  ).run();
+  ).all();
 
-  requirePolicyMutation(result);
+  requirePolicyMutation(result, policyId);
 
   return readScopedPolicy(
     db, salonId, employeeId, policyId
