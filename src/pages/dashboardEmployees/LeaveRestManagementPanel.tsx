@@ -325,6 +325,13 @@ export default function LeaveRestManagementPanel({
   const [restReason, setRestReason] =
     useState("");
 
+  const weeklyRestWorkOperationRef = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
+
+  const weeklyRestWorkSubmittingRef = useRef(false);
+
   const load = useCallback(async () => {
     if (!employeeId) return;
     setLoading(true);
@@ -1006,38 +1013,155 @@ export default function LeaveRestManagementPanel({
 
   const submitWeeklyRestWork = async () => {
     if (
+      readOnly ||
+      saving ||
+      weeklyRestWorkSubmittingRef.current
+    ) {
+      return;
+    }
+
+    if (
+      !employeeId ||
       !restDate ||
       !restStartTime ||
       !restEndTime
     ) {
       setMessage(
-        "حدد التاريخ ووقت بداية ونهاية التكليف."
+        tr(
+          "حدد الموظف والتاريخ ووقت بداية ونهاية التكليف.",
+          "Select the employee, date, start time and end time."
+        )
       );
-      return;
-    }
-    if (!restReason.trim()) {
-      setMessage("اكتب سبب التكليف.");
       return;
     }
 
+    if (restStartTime === restEndTime) {
+      setMessage(
+        tr(
+          "يجب أن يختلف وقت بداية العمل عن وقت نهايته.",
+          "Start and end times must be different."
+        )
+      );
+      return;
+    }
+
+    const reason = restReason.trim();
+
+    if (!reason) {
+      setMessage(
+        tr(
+          "اكتب سبب التكليف.",
+          "Enter the assignment reason."
+        )
+      );
+      return;
+    }
+
+    const input = {
+      employeeId,
+      restDate,
+      startTime: restStartTime,
+      endTime: restEndTime,
+      reason,
+    };
+
+    const fingerprint = JSON.stringify(input);
+
+    if (
+      !weeklyRestWorkOperationRef.current ||
+      weeklyRestWorkOperationRef.current.fingerprint !== fingerprint
+    ) {
+      weeklyRestWorkOperationRef.current = {
+        fingerprint,
+        id: crypto.randomUUID(),
+      };
+    }
+
+    const operationId =
+      weeklyRestWorkOperationRef.current.id;
+
+    weeklyRestWorkSubmittingRef.current = true;
+
     setSaving(true);
     setMessage("");
+
     try {
-      await CoreHrService.createWeeklyRestWorkAssignment({
-        employeeId,
-        restDate,
-        startTime: restStartTime,
-        endTime: restEndTime,
-        reason: restReason.trim(),
-      });
-      setRestReason("");
-      setMessage(
-        "تم تسجيل التكليف. أصبحت البصمة والحجز مسموحين داخل نافذة العمل المحددة."
+      const result =
+        await CoreHrService.createWeeklyRestWorkAssignment({
+          ...input,
+          id: operationId,
+        });
+
+      if (
+        result.assignment.id !== operationId ||
+        result.assignment.employeeId !== employeeId
+      ) {
+        throw new Error(
+          "weekly_rest_assignment_response_mismatch"
+        );
+      }
+
+      let nextMessage: string;
+
+      if (
+        result.assignmentStateFresh &&
+        result.assignment.status === "cancelled"
+      ) {
+        nextMessage = tr(
+          "تم إلغاء التكليف. راجع حالة اليوم قبل تسجيل عملية جديدة.",
+          "The assignment was cancelled. Review the day before creating another operation."
+        );
+
+        weeklyRestWorkOperationRef.current = null;
+      } else if (result.reconciliation.fullyCompleted) {
+        nextMessage = tr(
+          "تم تسجيل التكليف وتسوية استحقاق الراحة التعويضية.",
+          "The assignment was saved and the compensatory rest entitlement was reconciled."
+        );
+
+        weeklyRestWorkOperationRef.current = null;
+        setRestReason("");
+      } else if (
+        result.reconciliation.status === "historical_review_required"
+      ) {
+        nextMessage = tr(
+          "تم حفظ التكليف التاريخي، ويحتاج استحقاق التعويض إلى مراجعة إدارية.",
+          "The historical assignment was saved. Its entitlement requires administrative review."
+        );
+      } else if (
+        result.assignmentStateFresh &&
+        result.assignment.status === "assigned" &&
+        result.reconciliation.status === "awaiting_attendance_or_review"
+      ) {
+        nextMessage = tr(
+          "تم تسجيل التكليف. سيجري احتساب الاستحقاق عند تحقق شروط الحضور، أو بعد المراجعة عند الحاجة.",
+          "The assignment was saved. Entitlement will be reconciled once attendance requirements are met, or following review if needed."
+        );
+      } else {
+        nextMessage = tr(
+          "تم حفظ التكليف، لكن التسوية لم تكتمل. يمكنك إعادة محاولة العملية نفسها دون تكرار الاستحقاق.",
+          "The assignment was saved, but reconciliation is pending. You can retry the same operation without duplicating entitlement."
+        );
+      }
+
+      try {
+        await load();
+      } catch {
+        nextMessage += tr(
+          " تعذر تحديث بيانات العرض.",
+          " The display could not be refreshed."
+        );
+      }
+
+      setMessage(nextMessage);
+
+      window.dispatchEvent(
+        new Event("queens:staff-updated")
       );
-      await load();
     } catch (error) {
       setMessage(humanError(error));
     } finally {
+      weeklyRestWorkSubmittingRef.current = false;
       setSaving(false);
     }
   };

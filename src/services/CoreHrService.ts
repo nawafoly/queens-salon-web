@@ -1176,6 +1176,7 @@ export const CoreHrService = {
   },
 
   async createWeeklyRestWorkAssignment(input: {
+    id?: string;
     employeeId: string;
     restDate: string;
     startTime: string;
@@ -1195,6 +1196,37 @@ export const CoreHrService = {
         (payload.assignment || {}) as Record<string, unknown>
       ),
       idempotent: payload.idempotent === true,
+      assignmentStateFresh:
+        payload.assignmentStateFresh === true,
+      reconciliation: (() => {
+        const value = payload.reconciliation;
+
+        if (
+          !value ||
+          typeof value !== "object" ||
+          Array.isArray(value)
+        ) {
+          return {
+            status: "recovery_pending",
+            fullyCompleted: false,
+          };
+        }
+
+        const state = value as Record<string, unknown>;
+
+        const status =
+          typeof state.status === "string"
+            ? state.status
+            : "recovery_pending";
+
+        return {
+          status,
+          fullyCompleted:
+            payload.assignmentStateFresh === true &&
+            status === "completed" &&
+            state.fullyCompleted === true,
+        };
+      })(),
     };
   },
 

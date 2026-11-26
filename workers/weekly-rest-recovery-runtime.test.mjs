@@ -4990,7 +4990,7 @@ async function hr12AssignmentRows(f, date = '2026-09-01') {
   return result.results;
 }
 
-async function hr12CreateAssignment(f, id) {
+async function hr12CreateAssignment(f, id, overrides = {}) {
   const {
     createWeeklyRestWorkAssignment,
   } = await import('./core/repositories/leave-rest-workflows.js');
@@ -5004,7 +5004,8 @@ async function hr12CreateAssignment(f, id) {
       restDate: '2026-09-01',
       startTime: '15:00',
       endTime: '23:00',
-      reason: 'Synthetic assignment integrity test',
+      reason: 'Synthetic assignment',
+      ...overrides,
     },
     { uid: 'test-admin' }
   );
@@ -5019,7 +5020,12 @@ test('HR12 assignment integrity: assigned replay preserves original assignment',
 
   const result = await hr12CreateAssignment(
     f,
-    'duplicate-assigned-request'
+    before[0].id,
+    {
+      startTime: before[0].start_time,
+      endTime: before[0].end_time,
+      reason: before[0].reason
+    }
   );
 
   assert.equal(result.idempotent, true);
@@ -5073,9 +5079,14 @@ test('HR12 assignment integrity: concurrent assigned replays never duplicate row
   const results = await Promise.all(
     Array.from(
       { length: 10 },
-      (_, index) => hr12CreateAssignment(
+      () => hr12CreateAssignment(
         f,
-        `concurrent-assigned-request-${index}`
+        before[0].id,
+        {
+          startTime: before[0].start_time,
+          endTime: before[0].end_time,
+          reason: before[0].reason
+        }
       )
     )
   );
@@ -5340,4 +5351,736 @@ test('HR12 database constraint: separate dates remain independent', async t => {
   assert.equal(await f.credits(), 0);
 
   console.log('VERIFIED_DATABASE_PERMITS_INDEPENDENT_DATES');
+});
+
+test('HR09C assignment replay conflict rejects changed identity, reason and times', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+  const original = before[0];
+
+  assert.equal(before.length, 1);
+
+  const exactPayload = {
+    startTime: original.start_time,
+    endTime: original.end_time,
+    reason: original.reason
+  };
+
+  const cases = [
+    {
+      label: 'different assignment ID',
+      id: 'another-assignment-id',
+      overrides: {}
+    },
+    {
+      label: 'different reason',
+      id: original.id,
+      overrides: { reason: 'Changed assignment reason' }
+    },
+    {
+      label: 'different start time',
+      id: original.id,
+      overrides: { startTime: '14:00' }
+    },
+    {
+      label: 'different end time',
+      id: original.id,
+      overrides: { endTime: '22:00' }
+    }
+  ];
+
+  for (const item of cases) {
+    await assert.rejects(
+      hr12CreateAssignment(
+        f,
+        item.id,
+        {
+          ...exactPayload,
+          ...item.overrides
+        }
+      ),
+      error =>
+        error.status === 409 &&
+        error.code === 'core_weekly_rest_work:assignment_operation_conflict',
+      item.label
+    );
+
+    assert.deepEqual(
+      await hr12AssignmentRows(f),
+      before
+    );
+
+    assert.equal(await f.balance(), 0);
+    assert.equal(await f.credits(), 0);
+
+    console.log('PASS: rejected ' + item.label);
+  }
+
+  const replay = await hr12CreateAssignment(
+    f,
+    original.id,
+    exactPayload
+  );
+
+  assert.equal(replay.idempotent, true);
+  assert.equal(replay.assignment.id, original.id);
+
+  console.log('PASS: valid replay remains available after conflicts');
+});
+
+test('HR09C assignment replay conflict rejects concurrent mismatched requests', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const attempts = await Promise.allSettled(
+    Array.from(
+      { length: 10 },
+      (_, index) => hr12CreateAssignment(
+        f,
+        `conflicting-assignment-${index}`,
+        {
+          reason: `Conflicting reason ${index}`
+        }
+      )
+    )
+  );
+
+  assert.equal(attempts.length, 10);
+
+  for (const result of attempts) {
+    assert.equal(result.status, 'rejected');
+
+    assert.equal(
+      result.reason.code,
+      'core_weekly_rest_work:assignment_operation_conflict'
+    );
+
+    assert.equal(result.reason.status, 409);
+  }
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('PASS: all conflicting concurrent requests rejected');
+  console.log('PASS: original assignment and entitlement preserved');
+});
+
+test('HR09C assignment replay conflict also protects clients without explicit assignment IDs', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const original = before[0];
+
+  const replay = await hr12CreateAssignment(
+    f,
+    undefined,
+    {
+      reason: original.reason,
+      startTime: original.start_time,
+      endTime: original.end_time
+    }
+  );
+
+  assert.equal(replay.idempotent, true);
+  assert.equal(replay.assignment.id, original.id);
+
+  await assert.rejects(
+    hr12CreateAssignment(
+      f,
+      undefined,
+      {
+        reason: original.reason,
+        startTime: '16:00'
+      }
+    ),
+    /assignment_operation_conflict/
+  );
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('PASS: existing client payload remains compatible');
+});
+
+test('HR09D assignment recovery preserves a pending assignment when attendance DB is unavailable', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const assignment = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = '2026-09-01'
+  `).first();
+
+  assert.ok(assignment);
+  assert.equal(assignment.salon_id, 'main');
+
+  const result = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    null
+  );
+
+  assert.equal(result.status, 'recovery_pending');
+  assert.equal(result.fullyCompleted, false);
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('PASS: unavailable attendance preserves assignment');
+});
+
+test('HR09D assignment recovery refuses foreign tenant evidence', async t => {
+  const f = await fixture(t);
+
+  await f.assignment('2026-09-01');
+
+  const before = await hr12AssignmentRows(f);
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const assignment = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = '2026-09-01'
+  `).first();
+
+  assert.ok(assignment);
+  assert.equal(assignment.salon_id, 'main');
+
+  await assert.rejects(
+    recoverNewWeeklyRestAssignment(
+      f.core,
+      'another-salon',
+      assignment,
+      null
+    ),
+    /weekly_rest_assignment_recovery_invalid_target/
+  );
+
+  assert.deepEqual(
+    await hr12AssignmentRows(f),
+    before
+  );
+
+  assert.equal(await f.balance(), 0);
+
+  console.log('PASS: assignment recovery tenant isolation');
+});
+
+test('HR09D assignment recovery respects the approved historical cutoff', async t => {
+  const f = await fixture(t);
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const result = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    {
+      id: 'historical-review-test',
+      salon_id: 'main',
+      employee_id: 'test-employee',
+      rest_date: '2026-08-30'
+    },
+    null
+  );
+
+  assert.equal(
+    result.status,
+    'historical_review_required'
+  );
+
+  assert.equal(result.fullyCompleted, false);
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('PASS: historical cutoff preserved');
+});
+
+test('HR09D concurrent creation on an unused date cannot create competing assignments', async t => {
+  const f = await fixture(t);
+
+  const {
+    createScheduleException,
+    resolveEmployeeShift
+  } = await import('./core/repositories/shift-control.js');
+
+  await createScheduleException(
+    f.core,
+    'main',
+    {
+      id: 'hr09d-explicit-weekly-rest',
+      employeeId: 'test-employee',
+      dateFrom: '2026-09-01',
+      dateTo: '2026-09-01',
+      exceptionType: 'off',
+      enabled: 0,
+      status: 'approved',
+      note: '[temp_weekly_off:hr09d] Synthetic explicit weekly rest for concurrency test'
+    },
+    { uid: 'test-admin' }
+  );
+
+  const resolved = await resolveEmployeeShift(
+    f.core,
+    'main',
+    'test-employee',
+    '2026-09-01'
+  );
+
+  console.log(
+    'HR09D_RESOLVED_REST:',
+    JSON.stringify(resolved)
+  );
+
+  const {
+    isExplicitWeeklyRestShift
+  } = await import('./core/repositories/rest-holiday-compliance.js');
+
+  assert.equal(resolved.source, 'exception');
+  assert.equal(resolved.exception_type, 'off');
+  assert.notEqual(resolved.operational, false);
+
+  assert.equal(
+    isExplicitWeeklyRestShift(resolved),
+    true
+  );
+
+  assert.equal(
+    isExplicitWeeklyRestShift({
+      ...resolved,
+      note: 'Generic day off'
+    }),
+    false
+  );
+
+  assert.equal(
+    isExplicitWeeklyRestShift({
+      source: 'none'
+    }),
+    false
+  );
+
+  console.log('PASS: canonical weekly rest fixture verified');
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  assert.equal(
+    (await hr12AssignmentRows(f)).length,
+    0
+  );
+
+  const results = await Promise.allSettled(
+    Array.from(
+      { length: 10 },
+      (_, index) => hr12CreateAssignment(
+        f,
+        `hr09d-new-assignment-${index}`,
+        {
+          reason: `HR09D concurrent creation ${index}`
+        }
+      )
+    )
+  );
+
+  console.log(
+    'HR09D_CREATION_RESULTS:',
+    JSON.stringify(results.map(result =>
+      result.status === 'fulfilled'
+        ? {
+            status: result.status,
+            assignmentId: result.value.assignment.id
+          }
+        : {
+            status: result.status,
+            code: result.reason?.code,
+            httpStatus: result.reason?.status,
+            message: result.reason?.message
+          }
+    ))
+  );
+
+  const rows = await hr12AssignmentRows(f);
+
+  assert.equal(rows.length, 1);
+
+  const successful = results.filter(
+    result => result.status === 'fulfilled'
+  );
+
+  assert.equal(successful.length, 1);
+
+  assert.equal(
+    successful[0].value.assignment.id,
+    rows[0].id
+  );
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      assert.equal(result.reason.status, 409);
+    }
+  }
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  console.log('PASS: concurrent new assignments preserve one winner');
+});
+
+test('HR09D1 immediate recovery credits existing complete attendance exactly once', async t => {
+  const f = await fixture(t);
+  const date = '2026-09-01';
+
+  await f.punch(date, 'check_in', '12:00');
+  await f.punch(date, 'check_out', '20:00');
+
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  await f.assignment(date);
+
+  const assignment = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = ?
+  `).bind(date).first();
+
+  assert.ok(assignment);
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const options = {
+    now: new Date('2026-09-02T01:00:00Z')
+  };
+
+  const beforePunches = await f.attendance.prepare(`
+    SELECT *
+      FROM attendance_records
+     WHERE employee_uid = 'test-uid'
+       AND work_date = ?
+     ORDER BY id
+  `).bind(date).all();
+
+  const first = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    f.attendance,
+    options
+  );
+
+  console.log('HR09D1_FIRST_RECOVERY:', JSON.stringify(first));
+
+  assert.equal(first.status, 'completed');
+  assert.equal(first.fullyCompleted, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const replay = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    f.attendance,
+    options
+  );
+
+  assert.equal(replay.status, 'completed');
+  assert.equal(replay.fullyCompleted, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const afterPunches = await f.attendance.prepare(`
+    SELECT *
+      FROM attendance_records
+     WHERE employee_uid = 'test-uid'
+       AND work_date = ?
+     ORDER BY id
+  `).bind(date).all();
+
+  assert.deepEqual(
+    afterPunches.results,
+    beforePunches.results
+  );
+
+  console.log('PASS: immediate recovery credited 1440 minutes');
+  console.log('PASS: replay creates no duplicate credit');
+  console.log('PASS: original punches remain unchanged');
+});
+
+test('HR09D1 immediate recovery waits for complete attendance and shift end', async t => {
+  const f = await fixture(t);
+  const date = '2026-09-01';
+
+  await f.assignment(date);
+  await f.punch(date, 'check_in', '12:00');
+
+  const assignment = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = ?
+  `).bind(date).first();
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const beforeEnd = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    f.attendance,
+    {
+      now: new Date('2026-09-01T18:00:00Z')
+    }
+  );
+
+  assert.equal(beforeEnd.fullyCompleted, false);
+  assert.equal(await f.balance(), 0);
+
+  const incomplete = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    f.attendance,
+    {
+      now: new Date('2026-09-02T01:00:00Z')
+    }
+  );
+
+  assert.equal(incomplete.fullyCompleted, false);
+  assert.equal(await f.balance(), 0);
+  assert.equal(await f.credits(), 0);
+
+  await f.punch(date, 'check_out', '20:00');
+
+  const completed = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    assignment,
+    f.attendance,
+    {
+      now: new Date('2026-09-02T01:00:00Z')
+    }
+  );
+
+  assert.equal(completed.fullyCompleted, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('PASS: no premature entitlement');
+  console.log('PASS: complete attendance grants one entitlement');
+});
+
+test('HR09D5 completed replay preserves identity and entitlement', async t => {
+  const f = await fixture(t);
+  const date = '2026-09-01';
+
+  const {
+    createScheduleException
+  } = await import('./core/repositories/shift-control.js');
+
+  const {
+    createWeeklyRestWorkAssignment
+  } = await import('./core/repositories/leave-rest-workflows.js');
+
+  const {
+    recoverNewWeeklyRestAssignment
+  } = await import('./core/repositories/weekly-rest-recovery.js');
+
+  const actor = { uid: 'test-admin' };
+
+  await createScheduleException(
+    f.core,
+    'main',
+    {
+      id: 'hr09d5-rest',
+      employeeId: 'test-employee',
+      dateFrom: date,
+      dateTo: date,
+      exceptionType: 'off',
+      enabled: 0,
+      status: 'approved',
+      note: '[temp_weekly_off:hr09d5] Synthetic weekly rest'
+    },
+    actor
+  );
+
+  const payload = {
+    id: 'hr09d5-operation',
+    employeeId: 'test-employee',
+    restDate: date,
+    startTime: '12:00',
+    endTime: '20:00',
+    reason: 'Synthetic completed replay test'
+  };
+
+  await f.punch(date, 'check_in', '12:00');
+  await f.punch(date, 'check_out', '20:00');
+
+  const created = await createWeeklyRestWorkAssignment(
+    f.core,
+    'main',
+    payload,
+    actor
+  );
+
+  assert.equal(created.idempotent, false);
+  assert.equal(created.assignment.id, payload.id);
+  assert.equal(created.assignment.assigned_by_uid, actor.uid);
+
+  const recovery = await recoverNewWeeklyRestAssignment(
+    f.core,
+    'main',
+    created.assignment,
+    f.attendance,
+    {
+      now: new Date('2026-09-02T01:00:00Z')
+    }
+  );
+
+  assert.equal(recovery.fullyCompleted, true);
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  const before = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = ?
+     ORDER BY id
+  `).bind(date).all();
+
+  assert.equal(before.results.length, 1);
+  assert.equal(before.results[0].status, 'completed');
+
+  const replays = await Promise.all(
+    Array.from(
+      { length: 10 },
+      () => createWeeklyRestWorkAssignment(
+        f.core,
+        'main',
+        payload,
+        actor
+      )
+    )
+  );
+
+  for (const result of replays) {
+    assert.equal(result.idempotent, true);
+    assert.equal(result.assignment.id, payload.id);
+    assert.equal(result.assignment.status, 'completed');
+    assert.deepEqual(result.assignment, before.results[0]);
+  }
+
+  const conflicts = [
+    { id: 'different-operation' },
+    { id: undefined },
+    { startTime: '14:00' },
+    { endTime: '22:00' },
+    { startTime: undefined },
+    { endTime: undefined },
+    { reason: 'Changed reason' }
+  ];
+
+  for (const override of conflicts) {
+    await assert.rejects(
+      createWeeklyRestWorkAssignment(
+        f.core,
+        'main',
+        { ...payload, ...override },
+        actor
+      ),
+      error => error.status === 409
+    );
+  }
+
+  await assert.rejects(
+    createWeeklyRestWorkAssignment(
+      f.core,
+      'main',
+      payload,
+      { uid: 'another-admin' }
+    ),
+    error =>
+      error.status === 409 &&
+      error.code === 'core_weekly_rest_work:assignment_operation_conflict'
+  );
+
+  await assert.rejects(
+    createWeeklyRestWorkAssignment(
+      f.core,
+      'main',
+      payload,
+      {}
+    ),
+    error => error.status === 409
+  );
+
+  const after = await f.core.prepare(`
+    SELECT *
+      FROM employee_weekly_rest_work_assignments
+     WHERE salon_id = 'main'
+       AND employee_id = 'test-employee'
+       AND rest_date = ?
+     ORDER BY id
+  `).bind(date).all();
+
+  assert.deepEqual(after.results, before.results);
+
+  assert.equal(await f.balance(), 1440);
+  assert.equal(await f.credits(), 1);
+
+  console.log('PASS: ten completed operation replays');
+  console.log('PASS: conflicting completed operations rejected');
+  console.log('PASS: completed replay actor isolation');
+  console.log('PASS: original assignment preserved');
+  console.log('PASS: exactly one 1440-minute entitlement');
 });

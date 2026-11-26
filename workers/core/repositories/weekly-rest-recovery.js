@@ -323,3 +323,96 @@ export async function recoverAssignedWeeklyRestWork(
 
   return summary;
 }
+
+export async function recoverNewWeeklyRestAssignment(
+  db,
+  salonId,
+  assignment,
+  externalAttendanceDb,
+  options = {}
+) {
+  const employeeId = cleanText(assignment?.employee_id);
+  const restDate = cleanText(assignment?.rest_date);
+
+  if (
+    !employeeId ||
+    !restDate ||
+    !assignment?.id ||
+    assignment.salon_id !== salonId
+  ) {
+    throw new Error('weekly_rest_assignment_recovery_invalid_target');
+  }
+
+  if (restDate < APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE) {
+    return {
+      status: 'historical_review_required',
+      fullyCompleted: false
+    };
+  }
+
+  if (!externalAttendanceDb) {
+    return {
+      status: 'recovery_pending',
+      fullyCompleted: false
+    };
+  }
+
+  try {
+    const summary = await recoverAssignedWeeklyRestWork(
+      db,
+      salonId,
+      externalAttendanceDb,
+      {
+        ...options,
+        fromDate: APPROVED_WEEKLY_REST_RECOVERY_FROM_DATE,
+        employeeId,
+        restDate
+      }
+    );
+
+    const current = await dbAll(
+      db,
+      `SELECT id, status, correction_pending
+         FROM employee_weekly_rest_work_assignments
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND rest_date = ?
+          AND id = ?
+        LIMIT 1`,
+      [salonId, employeeId, restDate, assignment.id]
+    );
+
+    if (
+      current[0]?.status === 'completed' &&
+      Number(current[0]?.correction_pending || 0) === 0 &&
+      summary.failed === 0
+    ) {
+      return {
+        status: 'completed',
+        fullyCompleted: true,
+        summary
+      };
+    }
+
+    if (current[0]?.status === 'cancelled') {
+      return {
+        status: 'cancelled',
+        fullyCompleted: false,
+        summary
+      };
+    }
+
+    return {
+      status: summary.failed > 0
+        ? 'recovery_pending'
+        : 'awaiting_attendance_or_review',
+      fullyCompleted: false,
+      summary
+    };
+  } catch {
+    return {
+      status: 'recovery_pending',
+      fullyCompleted: false
+    };
+  }
+}

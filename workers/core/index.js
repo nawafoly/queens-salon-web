@@ -1,3 +1,4 @@
+import { recoverNewWeeklyRestAssignment } from './repositories/weekly-rest-recovery.js';
 // CORE D1 ONLY â€” do not add Firestore fallback.
 
 import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
@@ -3401,7 +3402,79 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") {
         return listWeeklyRestWorkAssignments(db, ctx.salonId, query);
       }
-      return createWeeklyRestWorkAssignment(db, ctx.salonId, body, actorInfo);
+      {
+        const result = await createWeeklyRestWorkAssignment(
+          db, ctx.salonId, body, actorInfo
+        );
+
+        const reconciliation = await recoverNewWeeklyRestAssignment(
+          db,
+          ctx.salonId,
+          result.assignment,
+          env.ATTENDANCE_DB || null
+        );
+
+        let currentAssignment = null;
+
+        try {
+          currentAssignment = await db.prepare(
+            `SELECT *
+               FROM employee_weekly_rest_work_assignments
+              WHERE salon_id = ?
+                AND employee_id = ?
+                AND rest_date = ?
+                AND id = ?
+              LIMIT 1`
+          ).bind(
+            ctx.salonId,
+            result.assignment.employee_id,
+            result.assignment.rest_date,
+            result.assignment.id
+          ).first();
+        } catch {
+          return {
+            ...result,
+            reconciliation: {
+              ...reconciliation,
+              status: 'recovery_pending',
+              fullyCompleted: false
+            },
+            assignmentStateFresh: false
+          };
+        }
+
+        if (!currentAssignment) {
+          return {
+            ...result,
+            reconciliation: {
+              ...reconciliation,
+              status: 'recovery_pending',
+              fullyCompleted: false
+            },
+            assignmentStateFresh: false
+          };
+        }
+
+        const finalReconciliation =
+          reconciliation.fullyCompleted &&
+          (
+            currentAssignment.status !== 'completed' ||
+            Number(currentAssignment.correction_pending || 0) !== 0
+          )
+            ? {
+                ...reconciliation,
+                status: 'recovery_pending',
+                fullyCompleted: false
+              }
+            : reconciliation;
+
+        return {
+          ...result,
+          assignment: currentAssignment,
+          reconciliation: finalReconciliation,
+          assignmentStateFresh: true
+        };
+      }
 
     case "weekly-rest:work-cancel":
       requireRole(ctx.role, HR_MANAGEMENT_ROLES);

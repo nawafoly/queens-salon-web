@@ -553,6 +553,61 @@ export async function listWeeklyRestWorkAssignments(db, salonId, query = {}) {
   );
 }
 
+function assertWeeklyRestAssignmentReplay(assignment, data, reason) {
+  const requestedId = cleanText(data.id);
+  const requestedStart = cleanText(data.startTime || data.start_time);
+  const requestedEnd = cleanText(data.endTime || data.end_time);
+
+  if (
+    (requestedId && requestedId !== assignment.id) ||
+    (requestedStart && requestedStart !== assignment.start_time) ||
+    (requestedEnd && requestedEnd !== assignment.end_time) ||
+    reason !== cleanText(assignment.reason)
+  ) {
+    throw new AppError(
+      409,
+      'core_weekly_rest_work:assignment_operation_conflict'
+    );
+  }
+}
+
+function replayCompletedWeeklyRestAssignment(assignment, data, reason, actor) {
+  const requestedId = cleanText(data.id);
+
+  if (!requestedId || requestedId !== assignment.id) {
+    throw new AppError(
+      409,
+      'core_weekly_rest_work:completed_assignment_exists'
+    );
+  }
+
+  const requestedStart = cleanText(data.startTime || data.start_time);
+  const requestedEnd = cleanText(data.endTime || data.end_time);
+
+  const actorUid = cleanText(actor?.uid);
+  const assignedByUid = cleanText(assignment.assigned_by_uid);
+
+  if (
+    !requestedStart ||
+    !requestedEnd ||
+    !actorUid ||
+    !assignedByUid ||
+    actorUid !== assignedByUid
+  ) {
+    throw new AppError(
+      409,
+      'core_weekly_rest_work:assignment_operation_conflict'
+    );
+  }
+
+  assertWeeklyRestAssignmentReplay(assignment, data, reason);
+
+  return {
+    assignment,
+    idempotent: true
+  };
+}
+
 export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, actor = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const restDate = validDate(data.restDate || data.rest_date, 'restDate');
@@ -560,7 +615,7 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
 
   const completed = await dbFirst(
     db,
-    `SELECT id FROM employee_weekly_rest_work_assignments
+    `SELECT * FROM employee_weekly_rest_work_assignments
       WHERE salon_id = ? AND employee_id = ?
         AND rest_date = ? AND status = 'completed'
       LIMIT 1`,
@@ -568,14 +623,19 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
   );
 
   if (completed) {
-    throw new AppError(
-      409,
-      'core_weekly_rest_work:completed_assignment_exists'
+    return replayCompletedWeeklyRestAssignment(
+      completed,
+      data,
+      reason,
+      actor
     );
   }
 
   const existing = await activeWeeklyRestWorkAssignment(db, salonId, employeeId, restDate);
-  if (existing) return { assignment: existing, idempotent: true };
+  if (existing) {
+    assertWeeklyRestAssignmentReplay(existing, data, reason);
+    return { assignment: existing, idempotent: true };
+  }
 
   const leaveConflict = await approvedFullDayLeaveForDate(db, salonId, employeeId, restDate);
   if (leaveConflict) throw new AppError(409, 'core_weekly_rest_work:approved_leave_conflict');
@@ -624,7 +684,7 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
 
   const completedAfterInsert = await dbFirst(
     db,
-    `SELECT id FROM employee_weekly_rest_work_assignments
+    `SELECT * FROM employee_weekly_rest_work_assignments
       WHERE salon_id = ? AND employee_id = ?
         AND rest_date = ? AND status = 'completed'
       LIMIT 1`,
@@ -632,14 +692,27 @@ export async function createWeeklyRestWorkAssignment(db, salonId, data = {}, act
   );
 
   if (completedAfterInsert) {
-    throw new AppError(
-      409,
-      'core_weekly_rest_work:completed_assignment_exists'
+    return replayCompletedWeeklyRestAssignment(
+      completedAfterInsert,
+      data,
+      reason,
+      actor
     );
   }
 
   const assignment = await activeWeeklyRestWorkAssignment(db, salonId, employeeId, restDate);
   if (!assignment) throw new AppError(409, 'core_weekly_rest_work:assignment_concurrency_conflict');
+
+  assertWeeklyRestAssignmentReplay(
+    assignment,
+    {
+      ...data,
+      startTime,
+      endTime
+    },
+    reason
+  );
+
   return { assignment, idempotent: changes(result) !== 1 };
 }
 
