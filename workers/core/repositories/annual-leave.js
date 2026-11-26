@@ -19,6 +19,7 @@ import { SA_LABOR_POLICY_VERSION } from '../../../src/helpers/hr/saLaborPolicy.j
 import {
   annualLeaveServiceYear,
   calculateAnnualLeaveAccrual,
+  calculateAnnualLeaveAccrualRange,
   calculateAnnualLeaveLiveAccrual,
   calculateAnnualLeaveLiveAccrualRange,
   calculateAnnualLeaveAvailable,
@@ -498,6 +499,54 @@ async function activeOpening(
   );
 }
 
+function assertOpeningReplay(
+  existingSource,
+  employeeId,
+  effectiveDate,
+  reason,
+  hasHistoricalUsage,
+  historicalUsedDays,
+  days
+) {
+    if (cleanText(existingSource.employee_id) !== employeeId) {
+      throw new AppError(
+        409,
+        'core_annual_leave:opening_source_employee_mismatch'
+      );
+    }
+    let previousMetadata;
+
+    try {
+      previousMetadata = JSON.parse(
+        existingSource.metadata_json || '{}'
+      );
+    } catch {
+      throw new AppError(
+        409,
+        'core_annual_leave:opening_operation_conflict'
+      );
+    }
+
+    const previousHistoricalMode =
+      previousMetadata.calculationMode === 'historical_usage';
+
+    if (
+      previousHistoricalMode !== hasHistoricalUsage ||
+      cleanText(existingSource.effective_date || existingSource.operation_date) !== effectiveDate ||
+      cleanText(previousMetadata.reason || existingSource.note) !== reason ||
+      (
+        hasHistoricalUsage
+          ? previousMetadata.historicalUsedDays !== historicalUsedDays
+          : roundDays(existingSource.days) !== days
+      )
+    ) {
+      throw new AppError(
+        409,
+        'core_annual_leave:opening_operation_conflict'
+      );
+    }
+}
+
 export async function setAnnualLeaveOpeningBalance(
   db,
   salonId,
@@ -509,9 +558,47 @@ export async function setAnnualLeaveOpeningBalance(
     employeeIdValue,
     'employeeId'
   );
-  const rawOpeningDays = Number(
-    data.days ?? data.openingBalanceDays
+  const hasHistoricalUsage = Object.prototype.hasOwnProperty.call(
+    data,
+    'historicalUsedDays'
   );
+
+  if (
+    hasHistoricalUsage &&
+    (
+      Object.prototype.hasOwnProperty.call(data, 'days') ||
+      Object.prototype.hasOwnProperty.call(data, 'openingBalanceDays')
+    )
+  ) {
+    throw new AppError(
+      400,
+      'core_annual_leave:ambiguous_opening_balance_input'
+    );
+  }
+
+  let historicalUsedDays = null;
+  let openingAccruedDays = null;
+
+  if (hasHistoricalUsage) {
+    historicalUsedDays = data.historicalUsedDays;
+
+    if (
+      typeof historicalUsedDays !== 'number' ||
+      !Number.isFinite(historicalUsedDays) ||
+      historicalUsedDays < 0 ||
+      historicalUsedDays > MAX_ANNUAL_BALANCE_DAYS ||
+      !Number.isInteger(historicalUsedDays * 2)
+    ) {
+      throw new AppError(
+        400,
+        'core_annual_leave:invalid_historical_used_days'
+      );
+    }
+  }
+
+  const rawOpeningDays = hasHistoricalUsage
+    ? 0
+    : Number(data.days ?? data.openingBalanceDays);
   if (
     !Number.isFinite(rawOpeningDays) ||
     rawOpeningDays < 0 ||
@@ -524,7 +611,7 @@ export async function setAnnualLeaveOpeningBalance(
   }
   // Opening anchors can be derived from prorated accrual, so they must retain
   // sub-half-day precision. Manual corrections remain half-day constrained.
-  const days = roundDays(rawOpeningDays);
+  let days = roundDays(rawOpeningDays);
   const effectiveDate = validDate(
     data.effectiveDate ||
       data.effective_date ||
@@ -578,12 +665,16 @@ export async function setAnnualLeaveOpeningBalance(
     sourceId
   );
   if (existingSource) {
-    if (cleanText(existingSource.employee_id) !== employeeId) {
-      throw new AppError(
-        409,
-        'core_annual_leave:opening_source_employee_mismatch'
-      );
-    }
+    assertOpeningReplay(
+      existingSource,
+      employeeId,
+      effectiveDate,
+      reason,
+      hasHistoricalUsage,
+      historicalUsedDays,
+      days
+    );
+
     return {
       state: await getAnnualLeaveState(
         db,
@@ -608,6 +699,37 @@ export async function setAnnualLeaveOpeningBalance(
     );
   }
 
+  if (hasHistoricalUsage) {
+    const accrual = calculateAnnualLeaveAccrualRange({
+      startDate,
+      asOfDate: effectiveDate,
+      contractAnnualDays: employment.annual_leave_contract_days,
+    });
+
+    openingAccruedDays = accrual.accruedDays;
+
+    if (
+      !Number.isFinite(openingAccruedDays) ||
+      historicalUsedDays > openingAccruedDays + EPSILON
+    ) {
+      throw new AppError(
+        400,
+        'core_annual_leave:historical_usage_exceeds_accrual'
+      );
+    }
+
+    days = roundDays(
+      Math.max(0, openingAccruedDays - historicalUsedDays)
+    );
+
+    if (days > MAX_ANNUAL_BALANCE_DAYS) {
+      throw new AppError(
+        400,
+        'core_annual_leave:invalid_opening_balance_days'
+      );
+    }
+  }
+
   const serviceYear = annualLeaveServiceYear(
     startDate,
     effectiveDate
@@ -629,6 +751,15 @@ export async function setAnnualLeaveOpeningBalance(
     reason,
     legacyProjectionBeforeDays: legacyBefore,
     source: 'manual_hr_opening_balance',
+    calculationMode: hasHistoricalUsage
+      ? 'historical_usage'
+      : 'explicit_balance',
+    historicalUsedDays,
+    accruedDaysAtOpening: openingAccruedDays,
+    approvedOpeningDays: days,
+    serviceStartDate: startDate,
+    contractAnnualDays: employment.annual_leave_contract_days ?? null,
+    policyVersion: SA_LABOR_POLICY_VERSION,
   });
 
   const actorUid = actorField(actor, 'uid');
@@ -653,6 +784,9 @@ export async function setAnnualLeaveOpeningBalance(
              (? IS NULL AND leave_balance_last_entry_id IS NULL) OR
              leave_balance_last_entry_id = ?
            )
+           AND start_date IS ?
+           AND annual_leave_contract_days IS ?
+           AND annual_leave_accrual_mode IS ?
            AND NOT EXISTS (
              SELECT 1
                FROM employee_leave_balance_ledger opening
@@ -673,6 +807,9 @@ export async function setAnnualLeaveOpeningBalance(
         employeeId,
         expectedLastEntryId,
         expectedLastEntryId,
+        employment.start_date,
+        employment.annual_leave_contract_days ?? null,
+        employment.annual_leave_accrual_mode ?? null,
         salonId,
         employeeId,
       ],
@@ -777,6 +914,16 @@ export async function setAnnualLeaveOpeningBalance(
       sourceId
     );
     if (idempotent) {
+      assertOpeningReplay(
+        idempotent,
+        employeeId,
+        effectiveDate,
+        reason,
+        hasHistoricalUsage,
+        historicalUsedDays,
+        days
+      );
+
       return {
         state: await getAnnualLeaveState(
           db,

@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import { migratedD1 } from "./test-support/sqlite-d1.mjs";
 import {
   adjustAttendanceRecords,
   clearAttendanceRecordsForDay,
@@ -11,7 +8,6 @@ import {
   resolveCanonicalAttendanceIdentity,
 } from "./attendance-worker.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const CANONICAL_UID = "eqnFOm4TtWdAjpLeG4XopdEj24I2";
 const CORE_ID = "1002";
 
@@ -19,143 +15,47 @@ function rowObject(row) {
   return row == null ? null : { ...row };
 }
 
-function d1FromSqlite(database) {
-  const bindStatement = (sql, bindings) => {
-    const execute = (mode) => {
-      const statement = database.prepare(sql);
-      if (mode === "first") return rowObject(statement.get(...bindings));
-      if (mode === "all") {
-        return { results: statement.all(...bindings).map((row) => ({ ...row })) };
-      }
-      const result = statement.run(...bindings);
-      return { meta: { changes: Number(result.changes || 0) } };
-    };
-
-    return {
-      async first() {
-        return execute("first");
-      },
-      async all() {
-        return execute("all");
-      },
-      async run() {
-        return execute("run");
-      },
-      async __batchRun() {
-        return execute("run");
-      },
-    };
-  };
-
-  return {
-    prepare(sql) {
-      return {
-        bind(...bindings) {
-          return bindStatement(sql, bindings);
-        },
-        async first() {
-          return bindStatement(sql, []).first();
-        },
-        async all() {
-          return bindStatement(sql, []).all();
-        },
-        async run() {
-          return bindStatement(sql, []).run();
-        },
-      };
-    },
-    async batch(statements) {
-      database.exec("BEGIN");
-      try {
-        const results = [];
-        for (const statement of statements) {
-          results.push(await statement.__batchRun());
-        }
-        database.exec("COMMIT");
-        return results;
-      } catch (error) {
-        database.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  };
-}
-
 function createFixture() {
-  const attendanceSqlite = new DatabaseSync(":memory:");
-  attendanceSqlite.exec("PRAGMA foreign_keys = ON");
-  for (const migration of [
-    "0001_create_attendance.sql",
-    "0002_create_attendance_monthly_summaries.sql",
-    "0003_add_work_zone_office_ip.sql",
-    "0004_create_permission_cache.sql",
-    "0005_create_attendance_device_security.sql",
-    "0006_shift_work_date_and_checkout_window.sql",
-    "0007_attendance_operations.sql",
-  ]) {
-    attendanceSqlite.exec(
-      fs.readFileSync(
-        path.join(here, "attendance-migrations", migration),
-        "utf8"
-      )
-    );
-  }
+  const attendanceDb = migratedD1("../attendance-migrations/");
+  const coreDb = migratedD1("../../migrations/core/");
 
-  const coreSqlite = new DatabaseSync(":memory:");
-  coreSqlite.exec(`
-    CREATE TABLE employee_profiles (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      firebase_uid TEXT,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE employee_absences (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      date_key TEXT NOT NULL,
-      absence_type TEXT NOT NULL
-    );
-    CREATE TABLE employee_weekly_rest_work_assignments (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      rest_date TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      status TEXT NOT NULL,
-      correction_pending INTEGER NOT NULL DEFAULT 0
-    );
+  const attendanceSqlite = attendanceDb.database;
+  const coreSqlite = coreDb.database;
 
-    CREATE TABLE employee_comp_time_ledger (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      entitlement_type TEXT NOT NULL,
-      entry_kind TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      source_date TEXT
-    );
+  const timestamp = "2026-01-01T00:00:00.000Z";
 
-    CREATE TABLE payroll_entries (
-      id TEXT PRIMARY KEY,
-      salon_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      payroll_month TEXT NOT NULL,
-      status TEXT NOT NULL
-    );
-  `);
-  coreSqlite
-    .prepare(
-      "INSERT INTO employee_profiles (id, salon_id, firebase_uid, updated_at) VALUES (?, 'main', ?, ?)"
+  coreSqlite.prepare(`
+    INSERT INTO employee_profiles (
+      id, salon_id, firebase_uid, name, status,
+      created_at, updated_at
     )
-    .run(CORE_ID, CANONICAL_UID, "2026-08-21T00:00:00.000Z");
+    VALUES (?, 'main', ?, 'Isolated attendance employee',
+            'active', ?, ?)
+  `).run(CORE_ID, CANONICAL_UID, timestamp, timestamp);
+
+  coreSqlite.prepare(`
+    INSERT INTO employee_employment (
+      salon_id, employee_id, employment_status,
+      start_date, base_salary_halalas,
+      expected_work_days, expected_work_hours,
+      daily_scheduled_hours, attendance_payroll_mode,
+      social_insurance_category,
+      social_insurance_effective_from,
+      gosi_wage_mode, created_at, updated_at
+    )
+    VALUES (
+      'main', ?, 'active', '2026-01-01',
+      300000, 30, 240, 8, 'required',
+      'non_saudi', '2026-01-01',
+      'derived', ?, ?
+    )
+  `).run(CORE_ID, timestamp, timestamp);
 
   return {
     attendanceSqlite,
     coreSqlite,
-    attendanceDb: d1FromSqlite(attendanceSqlite),
-    coreDb: d1FromSqlite(coreSqlite),
+    attendanceDb,
+    coreDb,
   };
 }
 
@@ -292,7 +192,15 @@ test("admin edits existing check-in and check-out without changing the other sid
     "main",
     requester(["attendance.records.update"])
   );
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
 
   let rows = attendanceSqlite
     .prepare("SELECT id, employee_uid, employee_doc_id, type, server_time FROM attendance_records ORDER BY id")
@@ -315,7 +223,15 @@ test("admin edits existing check-in and check-out without changing the other sid
     "main",
     requester(["attendance.records.update"])
   );
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
 
   rows = attendanceSqlite
     .prepare("SELECT id, type, server_time FROM attendance_records ORDER BY id")
@@ -347,7 +263,15 @@ test("adding a missing checkout to an existing day requires update, not create",
   );
   const payload = await json(response);
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   assert.equal(payload.records[0].action, "created");
   assert.equal(
     attendanceSqlite
@@ -373,7 +297,15 @@ test("manual attendance day creation uses create permission and Riyadh clock con
     requester(["attendance.records.create"])
   );
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   const rows = attendanceSqlite
     .prepare("SELECT type, server_time FROM attendance_records ORDER BY server_time")
     .all()
@@ -416,7 +348,15 @@ test("selective clear checkout preserves check-in and rebuilds state", async () 
   );
   const payload = await json(response);
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   assert.equal(payload.clearedRecords, 1);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records WHERE type='check_in'").get().count, 1);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records WHERE type='check_out'").get().count, 0);
@@ -459,7 +399,15 @@ test("selective clear check-in preserves checkout", async () => {
     requester(["attendance.records.delete"])
   );
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records WHERE type='check_in'").get().count, 0);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records WHERE type='check_out'").get().count, 1);
   const state = rowObject(attendanceSqlite.prepare("SELECT status, last_type, last_record_id FROM attendance_state WHERE employee_uid=?").get(CANONICAL_UID));
@@ -503,7 +451,15 @@ test("authorized explicit full-day clear removes the day and derived state", asy
   );
   const payload = await json(response);
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   assert.equal(payload.clearedRecords, 2);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records").get().count, 0);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_state").get().count, 0);
@@ -601,7 +557,15 @@ test("targeted clear never falls back to deleting the whole requested day", asyn
   });
   const payload = await json(response);
 
-  assert.equal(response.status, 200);
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(
+      attendanceSqlite.prepare(
+        "SELECT id, status, last_error FROM attendance_operations"
+      ).all()
+    )
+  );
   assert.equal(payload.clearedRecords, 0);
   assert.equal(attendanceSqlite.prepare("SELECT COUNT(*) AS count FROM attendance_records").get().count, 2);
 });

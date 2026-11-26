@@ -1,34 +1,47 @@
-import assert from "node:assert";
-import { submitAndApproveLeave } from "../src/services/employeeHub.helpers.ts";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
 
-test("submitAndApproveLeave calls create then approve with provided fns", async () => {
-  let created = null;
-  const createMock = async (payload) => {
-    created = { id: "req-123", ...payload };
-    return created;
-  };
-  let approved = null;
-  const approveMock = async (payload) => {
-    approved = payload;
-    return { ok: true };
-  };
+test("administrative leave modal uses the canonical direct registration contract", () => {
+  const dashboard = readFileSync(
+    new URL("../src/pages/DashboardEmployees.tsx", import.meta.url),
+    "utf8"
+  );
 
-  const data = {
-    employeeUid: "uid-1",
-    employeeId: "staff-1",
-    employeeName: "Test",
-    type: "emergency",
-    fromDate: "2026-08-05",
-    toDate: "2026-08-05",
-    days: 1,
-    note: "note",
-    createdByUid: "admin-1",
-    createdByName: "Admin",
-  };
+  const start = dashboard.indexOf(
+    "const handleLeaveModalSubmit = useCallback("
+  );
 
-  const req = await submitAndApproveLeave(data, createMock, approveMock);
-  assert.equal(req && req.id, "req-123");
-  assert.equal(created && created.employeeId, "staff-1");
-  assert.equal(approved && approved.requestId, "req-123");
-  assert.equal(approved && approved.reviewerUid, "admin-1");
+  assert.ok(start >= 0);
+
+  const end = dashboard.indexOf("  }, [", start);
+
+  assert.ok(end > start);
+
+  const submit = dashboard.slice(start, end);
+
+  assert.match(
+    submit,
+    /employeeId: employeeIdLocal/
+  );
+
+  assert.match(
+    submit,
+    /CoreHrService\.registerAdminDirectLeave/
+  );
+
+  assert.match(
+    submit,
+    /operationId/
+  );
+
+  assert.match(
+    submit,
+    /registration_not_confirmed/
+  );
+
+  assert.doesNotMatch(
+    submit,
+    /submitAndApproveLeave|createManagedLeaveRequest|approveEmployeeLeaveRequest/
+  );
 });

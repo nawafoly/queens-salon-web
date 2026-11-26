@@ -198,6 +198,165 @@ test("HR05J: attendance policy HTTP lifecycle and authorization", async t => {
   assert.equal(modeAt(active, "2026-11-25"), "exempt");
   assert.equal(modeAt(active, "2026-11-26"), "required");
 
+  const selfEndpoint =
+    "/api/core/hr/employee-portal/attendance-policy";
+
+  const selfRange =
+    "?dateFrom=2026-11-14&dateTo=2026-11-26";
+
+  const staffOptions = {
+    uid: "policy-staff-uid",
+    role: "staff"
+  };
+
+  // An unlinked account cannot access an employee policy.
+  await call(selfEndpoint + selfRange, {
+    ...staffOptions,
+    expected: 403
+  });
+
+  // Link the existing staff account through the canonical API.
+  await call(
+    "/api/admin/accounts/policy-staff/employee-link",
+    {
+      method: "PUT",
+      body: { employeeId }
+    }
+  );
+
+  const ownAbsences = await call(
+    "/api/core/hr/employee-portal/absences",
+    staffOptions
+  );
+
+  assert.ok(
+    Array.isArray(ownAbsences),
+    "Existing absence endpoint must return absence rows"
+  );
+
+  await call(
+    "/api/core/hr/employee-portal/absences?employeeId=another-employee",
+    {
+      ...staffOptions,
+      expected: 403
+    }
+  );
+
+  console.log("PASS: existing absence route remains independent");
+
+  const ownPolicy = await call(
+    selfEndpoint + selfRange,
+    staffOptions
+  );
+
+  assert.equal(ownPolicy.employeeId, employeeId);
+  assert.equal(ownPolicy.revision, active.revision);
+  assert.equal(ownPolicy.dateFrom, "2026-11-14");
+  assert.equal(ownPolicy.dateTo, "2026-11-26");
+  assert.equal(ownPolicy.days.length, 13);
+
+  assert.deepEqual(
+    ownPolicy.days,
+    active.snapshot.days.map(day => ({
+      date: day.date,
+      mode: day.mode
+    }))
+  );
+
+  assert.deepEqual(
+    Object.keys(ownPolicy).sort(),
+    [
+      "employeeId",
+      "revision",
+      "dateFrom",
+      "dateTo",
+      "days"
+    ].sort()
+  );
+
+  for (const day of ownPolicy.days) {
+    assert.deepEqual(
+      Object.keys(day).sort(),
+      ["date", "mode"]
+    );
+  }
+
+  console.log("PASS: own policy matches canonical admin policy");
+  console.log("PASS: administrative reasons and history are not exposed");
+
+  for (const parameter of [
+    "&employeeId=another-employee",
+    "&employee_id=another-employee",
+    `&employeeId=${employeeId}&employee_id=another-employee`
+  ]) {
+    await call(
+      selfEndpoint + selfRange + parameter,
+      {
+        ...staffOptions,
+        expected: 403
+      }
+    );
+  }
+
+  console.log("PASS: cross-employee access rejected");
+
+  for (const invalidRange of [
+    "",
+    "?dateFrom=2026-11-14",
+    "?dateFrom=2026-02-30&dateTo=2026-03-01",
+    "?dateFrom=2026-11-26&dateTo=2026-11-14",
+    "?dateFrom=2026-01-01&dateTo=2026-04-01"
+  ]) {
+    await call(
+      selfEndpoint + invalidRange,
+      {
+        ...staffOptions,
+        expected: 400
+      }
+    );
+  }
+
+  console.log("PASS: invalid and oversized ranges rejected");
+
+  for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+    const response = await worker.fetch(
+      new Request(
+        `http://core.test${selfEndpoint}${selfRange}`,
+        {
+          method,
+          headers: {
+            Authorization: "Bearer test:policy-staff-uid:staff",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            mode: "required",
+            reason: "Unauthorized mutation test"
+          })
+        }
+      ),
+      env
+    );
+
+    assert.ok(
+      [403, 404, 405].includes(response.status),
+      `${method}: unexpected status ${response.status}`
+    );
+  }
+
+  const afterUnauthorizedWrites = await readState();
+
+  assert.equal(
+    afterUnauthorizedWrites.revision,
+    active.revision
+  );
+
+  assert.deepEqual(
+    afterUnauthorizedWrites.snapshot,
+    active.snapshot
+  );
+
+  console.log("PASS: self-service mutation attempts leave policy unchanged");
+
   const periodEndpoint =
     `${endpoint}/${encodeURIComponent(created.id)}`;
 
@@ -243,5 +402,23 @@ test("HR05J: attendance policy HTTP lifecycle and authorization", async t => {
     )
   );
 
+  const ownCancelled = await call(
+    selfEndpoint + selfRange,
+    staffOptions
+  );
+
+  assert.equal(
+    ownCancelled.revision,
+    cancelled.revision
+  );
+
+  assert.ok(
+    ownCancelled.days.every(
+      day => day.mode === "required"
+    )
+  );
+
+  console.log("PASS: self-service reflects cancelled exemption");
   console.log("HR05J_HTTP_LIFECYCLE_VERIFIED");
+  console.log("HR07C_SELF_SERVICE_HTTP_VERIFIED");
 });

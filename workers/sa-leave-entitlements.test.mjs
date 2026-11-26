@@ -146,11 +146,14 @@ test('only annual leave debits annual balance', () => {
   assert.equal(getSaLeaveTypePolicy('weekly_rest_substitute_use').deductAnnualBalance, false);
 });
 
-test('legacy emergency and unknown leave route to HR review instead of a statutory bucket', () => {
-  assert.equal(normalizeSaLeaveType('emergency'), SA_LEAVE_TYPES.otherHrReview);
-  assert.equal(getSaLeaveTypePolicy('emergency').reviewRequired, true);
+test('emergency follows canonical company policy while unknown leave requires HR review', () => {
+  assert.equal(normalizeSaLeaveType('emergency'), 'emergency');
+  assert.equal(getSaLeaveTypePolicy('emergency').reviewRequired, false);
+  assert.equal(getSaLeaveTypePolicy('emergency').deductAnnualBalance, true);
+
+  assert.equal(normalizeSaLeaveType('something_new'), SA_LEAVE_TYPES.otherHrReview);
   assert.equal(getSaLeaveTypePolicy('something_new').reviewRequired, true);
-  assert.equal(getSaLeaveTypePolicy('emergency').deductAnnualBalance, false);
+  assert.equal(getSaLeaveTypePolicy('something_new').deductAnnualBalance, false);
 });
 
 test('weekly rest substitute and overtime comp remain independent entitlement buckets', () => {

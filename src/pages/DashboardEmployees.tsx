@@ -62,7 +62,6 @@ import {
   listAttendanceByDateRangeForEmployeeFromWorker,
 } from "../services/attendanceWorkerService";
 import {
-  createManagedLeaveRequest,
   createEmployeeNotification,
   listEmployeeLeaveRequests,
   type EmployeeLeaveRequest,
@@ -3005,6 +3004,11 @@ function DashboardEmployeesContent() {
     selectedEmployeeLeaveRequests,
   ]);
 
+  const adminDirectLeaveOperationRef = useRef<{
+    fingerprint: string;
+    operationId: string;
+  } | null>(null);
+
   const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; durationKind: "full_day" | "partial"; partialStartTime: string; partialEndTime: string; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
     if (!selectedEmployeeId) {
       setErrorMsg("لم يتم تحديد الموظفة.");
@@ -3096,48 +3100,93 @@ function DashboardEmployeesContent() {
       }
     }
 
-    // Full-day leave registration is a request, not a final approval.
-    // Final decisions are reserved for the single account configured in Core.
+    // Full-day administrative leave is registered through
+    // the canonical Core approval and entitlement runtime.
+    const reason = cleanText(payload.note);
+
+    if (!reason) {
+      const message = "يجب إدخال سبب تسجيل الإجازة.";
+      setErrorMsg(message);
+      throw new Error(message);
+    }
+
+    const manualLeavePolicy =
+      leaveType === "other" || String(leaveType) === "other_hr_review"
+        ? {
+            deductFromBalance: payload.deductFromBalance === true,
+            affectsPayroll: payload.affectsPayroll === true,
+          }
+        : undefined;
+
+    const registrationInput = {
+      employeeId: employeeIdLocal,
+      leaveType,
+      startDate: fromDate,
+      endDate: toDate,
+      reason,
+      ...(manualLeavePolicy ? { manualLeavePolicy } : {}),
+    };
+
+    const fingerprint = JSON.stringify(registrationInput);
+
+    if (
+      adminDirectLeaveOperationRef.current?.fingerprint !== fingerprint
+    ) {
+      adminDirectLeaveOperationRef.current = {
+        fingerprint,
+        operationId: crypto.randomUUID(),
+      };
+    }
+
+    const operationId =
+      adminDirectLeaveOperationRef.current.operationId;
+
     setSaving(true);
     setErrorMsg("");
+
     try {
-      const matchingRequest = selectedEmployeeLeaveRequests.find((request) =>
-        ["submitted", "received", "under_review", "needs_info", "pending", "approved"].includes(
-          cleanText(request.status).toLowerCase()
-        ) &&
-        normalizeLeaveUntil(request.fromDate) === fromDate &&
-        normalizeLeaveUntil(request.toDate) === toDate &&
-        normalizeManagedLeaveType(request.type) === leaveType
-      );
-      if (!matchingRequest) {
-        const created = await createManagedLeaveRequest({
-          employeeUid: employeeUidLocal,
-          employeeId: employeeIdLocal,
-          employeeName,
-          type: leaveType,
-          fromDate,
-          toDate,
-          days,
-          durationKind,
-          partialStartTime,
-          partialEndTime,
-          note: cleanText(payload.note) || "طلب إجازة بانتظار المراجعة والاعتماد النهائي",
-          ...(leaveType === "other" ? { manualLeavePolicy: { deductFromBalance: payload.deductFromBalance === true, affectsPayroll: payload.affectsPayroll === true } } : {}),
-        });
-        void writeAuditLog({
-          action: "leave_request_submitted",
-          entityType: "employee_leave_request",
-          entityId: created.id,
-          source: "dashboard",
-          description: "إرسال طلب إجازة للمراجعة دون اعتماد أو تعديل حضور ورواتب",
-          after: { employeeId: employeeIdLocal, leaveType, fromDate, toDate, days },
-        });
+      const registered = await CoreHrService.registerAdminDirectLeave({
+        ...registrationInput,
+        operationId,
+      });
+
+      if (
+        !registered.id ||
+        cleanText(registered.status).toLowerCase() !== "approved"
+      ) {
+        throw new Error("core_leave:registration_not_confirmed");
       }
-      await load();
-      setErrorMsg("تم إرسال طلب الإجازة للمراجعة. لم تُعتمد الإجازة بعد.");
+
+      adminDirectLeaveOperationRef.current = null;
+
+      // Refresh failures must never cancel an approved leave
+      // or reverse an already committed financial operation.
+      try {
+        await Promise.all([
+          load(),
+          loadSelectedEmployeeAttendance({ force: true }),
+        ]);
+      } catch (refreshError) {
+        console.warn(
+          "admin direct leave post-commit refresh failed",
+          refreshError
+        );
+
+        setErrorMsg(
+          "تم اعتماد الإجازة، ولكن تعذر تحديث العرض. أعد تحميل الصفحة."
+        );
+      }
+
       window.dispatchEvent(new Event("queens:staff-updated"));
+
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إرسال طلب الإجازة للمراجعة."));
+      setErrorMsg(
+        toFirestoreErrorMessage(
+          error,
+          "تعذر تسجيل الإجازة الإدارية واعتمادها."
+        )
+      );
+
       throw error;
     } finally {
       setSaving(false);

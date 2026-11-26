@@ -63,7 +63,25 @@ test("past resolved Core workdays without punches are inferred as absence", () =
   assert.match(attendanceSectionSource, /resolveAttendanceShiftForDate\(\{/);
   assert.match(attendanceSectionSource, /resolved\.source !==[\s\S]*"core_resolved_shift"/);
   assert.match(attendanceSectionSource, /resolved\.isOff/);
-  assert.match(attendanceSectionSource, /scheduledWorkDateKeys=\{scheduledWorkDateKeys\}/);
+  assert.match(
+    attendanceSectionSource,
+    /scheduledWorkDateKeys=\{\s*attendancePolicyReady\s*\?\s*scheduledWorkDateKeys\.filter\(\s*date\s*=>\s*!exemptDateKeys\.includes\(date\)\s*\)\s*:\s*\[\]/
+  );
+
+  assert.match(
+    attendanceSectionSource,
+    /exemptDateKeys=\{\s*attendancePolicyReady\s*\?\s*exemptDateKeys\s*:\s*\[\]/
+  );
+
+  assert.match(
+    attendanceSectionSource,
+    /if \(!attendancePolicyReady\) return manualCoreAbsenceDateKeys;/
+  );
+
+  assert.match(
+    attendanceSectionSource,
+    /rawCoreAbsenceDateKeys\.filter\(\s*date\s*=>\s*!exempt\.has\(date\)\s*\|\|\s*manual\.has\(date\)/
+  );
 
   assert.match(source, /scheduledWorkDateKeys\?: string\[\]/);
   assert.match(source, /const canInferScheduledAbsence/);

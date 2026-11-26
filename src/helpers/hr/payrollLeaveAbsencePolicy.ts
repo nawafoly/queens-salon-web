@@ -1,6 +1,10 @@
 export type PayrollLeavePolicyInput = {
   status?: unknown;
   leaveType?: unknown;
+  legalBasis?: unknown;
+  affectsPayroll?: unknown;
+  legal_basis?: unknown;
+  affects_payroll?: unknown;
   startDate?: unknown;
   endDate?: unknown;
   daysCount?: unknown;
@@ -89,8 +93,37 @@ export function isPartialPayrollLeave(leave: PayrollLeavePolicyInput) {
   return text(leave.durationKind).toLowerCase() === "partial";
 }
 
+export function payrollLeaveIsUnpaid(leave: PayrollLeavePolicyInput) {
+  const leaveType = text(leave.leaveType).toLowerCase();
+
+  const legalBasis = text(
+    leave.legalBasis ?? leave.legal_basis
+  );
+
+  if (
+    ["other", "other_hr_review"].includes(leaveType) &&
+    legalBasis === "HR_MANUAL_POLICY"
+  ) {
+    const effect =
+      leave.affectsPayroll ?? leave.affects_payroll;
+
+    if (
+      effect !== 0 &&
+      effect !== 1 &&
+      effect !== false &&
+      effect !== true
+    ) {
+      throw new Error("core_payroll:invalid_manual_leave_financial_policy");
+    }
+
+    return Number(effect) === 1;
+  }
+
+  return leaveType === "unpaid";
+}
+
 function leaveMatchesKind(leave: PayrollLeavePolicyInput, kind: "paid" | "unpaid" | "all") {
-  const unpaid = text(leave.leaveType).toLowerCase() === "unpaid";
+  const unpaid = payrollLeaveIsUnpaid(leave);
   if (kind === "paid") return !unpaid;
   if (kind === "unpaid") return unpaid;
   return true;
@@ -132,7 +165,7 @@ export function fullDayPaidLeaveDates(
   const dates = new Set<string>();
   for (const leave of leaves || []) {
     if (!isApprovedPayrollLeave(leave)) continue;
-    if (text(leave.leaveType).toLowerCase() === "unpaid") continue;
+    if (payrollLeaveIsUnpaid(leave)) continue;
     if (isPartialPayrollLeave(leave)) continue;
     const from = normalizeDateKey(leave.startDate);
     const to = normalizeDateKey(leave.endDate) || from;
@@ -191,7 +224,7 @@ export function unpaidPartialLeaveIntervalsForDate(
 ) {
   return (leaves || [])
     .filter((leave) => isApprovedPayrollLeave(leave))
-    .filter((leave) => text(leave.leaveType).toLowerCase() === "unpaid")
+    .filter((leave) => payrollLeaveIsUnpaid(leave))
     .filter((leave) => isPartialPayrollLeave(leave))
     .filter((leave) => normalizeDateKey(leave.startDate) === date)
     .map((leave) => ({

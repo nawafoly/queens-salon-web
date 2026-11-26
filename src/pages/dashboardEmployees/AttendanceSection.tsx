@@ -824,7 +824,7 @@ export default function AttendanceSection({
     attendancePolicyResult?.key === attendancePolicyKey;
 
   const coreAbsenceDateKeys = useMemo(() => {
-    if (!attendancePolicyReady) return rawCoreAbsenceDateKeys;
+    if (!attendancePolicyReady) return manualCoreAbsenceDateKeys;
 
     const exempt = new Set(exemptDateKeys);
     const manual = new Set(manualCoreAbsenceDateKeys);
@@ -1135,6 +1135,7 @@ export default function AttendanceSection({
 
             if (
               absenceType !== "full_day" &&
+              absenceType !== "admin" &&
               !automatic
             ) {
               return;

@@ -1,3 +1,5 @@
+import { computeResolvedAttendanceDay } from "../../helpers/hr/attendanceShiftResolver";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { attendanceReconciliationMessage } from "../../services/attendanceOperationClient";
 import { Link, useNavigate } from "react-router-dom";
@@ -52,9 +54,6 @@ import {
 } from "../../services/attendanceWorkerService";
 import { requestAttendanceBiometric } from "../../helpers/attendanceBiometric";
 import {
-  computeAttendanceDay,
-  getAttendanceDayStatus,
-  type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
 import { getWeekdayKeyForDateKey } from "../../helpers/hr/workSchedule";
@@ -445,6 +444,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const [attendancePermissionEntries, setAttendancePermissionEntries] = useState<EmployeePermissionRequest[]>([]);
   const [attendanceAbsenceDateKeys, setAttendanceAbsenceDateKeys] = useState<string[]>([]);
+
+  const [manualAttendanceAbsenceDateKeys, setManualAttendanceAbsenceDateKeys] =
+    useState<string[]>([]);
+
+  const [attendancePolicyResult, setAttendancePolicyResult] =
+    useState<{
+      key: string;
+      revision: number;
+      days: Partial<Record<string, "required" | "exempt">>;
+    } | null>(null);
+
+  const [attendancePolicyError, setAttendancePolicyError] =
+    useState<{ key: string; message: string } | null>(null);
+
+  const [attendancePolicyReloadKey, setAttendancePolicyReloadKey] =
+    useState(0);
   const [attendanceAbsenceLoading, setAttendanceAbsenceLoading] = useState(false);
   const [attendanceAbsenceError, setAttendanceAbsenceError] = useState("");
   const [attendanceAbsenceReloadKey, setAttendanceAbsenceReloadKey] = useState(0);
@@ -470,6 +485,173 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const assignedAttendanceZoneId = resolveAssignedAttendanceZoneId(profile);
   const attendanceDate = getTodayAttendanceDateKey();
   const canViewAttendance = hasPermission("attendance.own.view");
+
+  const attendancePolicyDates = useMemo(
+    () =>
+      attendanceOnly
+        ? attendanceMonthDateKeys(attendanceMonth)
+        : [attendanceDate],
+    [attendanceOnly, attendanceMonth, attendanceDate]
+  );
+
+  const attendancePolicyFrom = attendancePolicyDates[0] || "";
+  const attendancePolicyTo =
+    attendancePolicyDates[attendancePolicyDates.length - 1] || "";
+
+  const attendancePolicyKey = JSON.stringify([
+    session.uid,
+    session.employeeId,
+    attendancePolicyFrom,
+    attendancePolicyTo,
+    attendancePolicyReloadKey
+  ]);
+
+  const attendancePolicyReady =
+    canViewAttendance &&
+    attendancePolicyResult?.key === attendancePolicyKey;
+
+  const attendancePolicyLoading =
+    canViewAttendance &&
+    !attendancePolicyReady &&
+    attendancePolicyError?.key !== attendancePolicyKey;
+
+  const effectiveAttendancePolicyError =
+    attendancePolicyError?.key === attendancePolicyKey
+      ? attendancePolicyError.message
+      : "";
+
+  const attendancePolicyModes = useMemo(
+    () =>
+      attendancePolicyReady
+        ? attendancePolicyResult?.days || {}
+        : {},
+    [attendancePolicyReady, attendancePolicyResult]
+  );
+
+  const todayAttendancePolicyMode =
+    attendancePolicyModes[attendanceDate] || "unavailable";
+
+  useEffect(() => {
+    if (
+      !canViewAttendance ||
+      !session.uid ||
+      !session.employeeId ||
+      !attendancePolicyFrom ||
+      !attendancePolicyTo
+    ) {
+      setAttendancePolicyResult(null);
+      setAttendancePolicyError(
+        canViewAttendance
+          ? {
+              key: attendancePolicyKey,
+              message: language === "ar"
+                ? "تعذر تحديد نطاق سياسة الحضور."
+                : "Attendance policy scope is unavailable."
+            }
+          : null
+      );
+      return;
+    }
+
+    let alive = true;
+
+    setAttendancePolicyResult(null);
+    setAttendancePolicyError(null);
+
+    async function loadAttendancePolicy() {
+      try {
+        const result = await CoreHrService.getMyAttendancePolicy({
+          dateFrom: attendancePolicyFrom,
+          dateTo: attendancePolicyTo
+        });
+
+        if (!alive) return;
+
+        if (
+          result.employeeId !== session.employeeId ||
+          result.dateFrom !== attendancePolicyFrom ||
+          result.dateTo !== attendancePolicyTo ||
+          !Number.isSafeInteger(result.revision) ||
+          result.revision < 0 ||
+          !Array.isArray(result.days) ||
+          result.days.length !== attendancePolicyDates.length
+        ) {
+          throw new Error("Invalid attendance policy response");
+        }
+
+        const days: Record<string, "required" | "exempt"> = {};
+
+        for (let index = 0; index < result.days.length; index++) {
+          const day = result.days[index];
+
+          if (
+            day.date !== attendancePolicyDates[index] ||
+            !["required", "exempt"].includes(day.mode)
+          ) {
+            throw new Error("Invalid daily attendance policy");
+          }
+
+          days[day.date] = day.mode;
+        }
+
+        setAttendancePolicyResult({
+          key: attendancePolicyKey,
+          revision: result.revision,
+          days
+        });
+      } catch (error) {
+        if (!alive) return;
+
+        console.warn("Employee attendance policy load failed", error);
+
+        setAttendancePolicyResult(null);
+
+        setAttendancePolicyError({
+          key: attendancePolicyKey,
+          message: language === "ar"
+            ? "تعذر التحقق من سياسة الحضور المعتمدة."
+            : "Could not verify the approved attendance policy."
+        });
+      }
+    }
+
+    void loadAttendancePolicy();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    canViewAttendance,
+    session.uid,
+    session.employeeId,
+    attendancePolicyFrom,
+    attendancePolicyTo,
+    attendancePolicyDates,
+    attendancePolicyKey,
+    language
+  ]);
+
+  useEffect(() => {
+    if (!canViewAttendance) return;
+
+    const refreshPolicy = () => {
+      setAttendancePolicyReloadKey(value => value + 1);
+    };
+
+    window.addEventListener("focus", refreshPolicy);
+    window.addEventListener(
+      "malikat:attendance-policy-changed",
+      refreshPolicy
+    );
+
+    return () => {
+      window.removeEventListener("focus", refreshPolicy);
+      window.removeEventListener(
+        "malikat:attendance-policy-changed",
+        refreshPolicy
+      );
+    };
+  }, [canViewAttendance]);
   const canViewOwnTarget = hasPermission("targets.view_own");
   const canViewMessages = hasPermission("messages.view");
   const currentTargetPeriod = useMemo(() => {
@@ -503,13 +685,26 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       .slice(0, 5);
   }, [employeeBookings]);
 
+  const effectiveAttendanceAbsenceDateKeys = useMemo(() => {
+    const manual = new Set(manualAttendanceAbsenceDateKeys);
+
+    return Array.from(new Set([
+      ...manual,
+      ...attendanceAbsenceDateKeys.filter(date =>
+        manual.has(date) ||
+        attendancePolicyModes[date] === "required"
+      )
+    ])).sort();
+  }, [
+    attendanceAbsenceDateKeys,
+    manualAttendanceAbsenceDateKeys,
+    attendancePolicyModes
+  ]);
+
   const attendanceAbsenceDateKeySet =
     useMemo(
-      () =>
-        new Set(
-          attendanceAbsenceDateKeys
-        ),
-      [attendanceAbsenceDateKeys]
+      () => new Set(effectiveAttendanceAbsenceDateKeys),
+      [effectiveAttendanceAbsenceDateKeys]
     );
 
   const approvedLeaveDateKeys = useMemo(
@@ -542,28 +737,32 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   );
   const hasResolvedWorkShift = Boolean(resolvedShiftWindow(todayResolvedShift));
 
-  const attendanceComputation = useMemo(() => {
-    const records: AttendanceRecord[] = [];
-    if (attendance?.checkInAtClient) {
-      records.push({ id: `${attendance.id}-in`, type: "check_in", serverTime: attendance.checkInAtClient });
-    }
-    if (attendance?.checkOutAtClient) {
-      records.push({ id: `${attendance.id}-out`, type: "check_out", serverTime: attendance.checkOutAtClient });
-    }
-    return computeAttendanceDay(attendanceDate, records, todayAttendanceSchedule);
-  }, [attendance, attendanceDate, todayAttendanceSchedule]);
-
-  const attendanceDayStatus = getAttendanceDayStatus({
-    date: attendanceDate,
-    hasAttendance: Boolean(attendance?.checkInAtClient || attendance?.checkOutAtClient),
-    checkOut: attendanceComputation.checkOut,
-    computation: attendanceComputation,
-    todayDateKey: attendanceDate,
-    weeklyOffDays: todayAttendanceSchedule.weeklyOffDays,
-    approvedLeaveDateKeys,
-    absenceDateKeys:
+  const todayResolvedAttendance = useMemo(
+    () => computeResolvedAttendanceDay({
+      dateKey: attendanceDate,
+      row: attendance,
+      coreResolvedShift: todayResolvedShift,
+      todayDateKey: attendanceDate,
+      approvedLeaveDateKeys,
+      absenceDateKeys: attendanceAbsenceDateKeySet,
+      manualAbsenceDateKeys: manualAttendanceAbsenceDateKeys,
+      attendancePolicyMode: todayAttendancePolicyMode,
+      permissionEntries: attendancePermissionEntries
+    }),
+    [
+      attendanceDate,
+      attendance,
+      todayResolvedShift,
+      approvedLeaveDateKeys,
       attendanceAbsenceDateKeySet,
-  });
+      manualAttendanceAbsenceDateKeys,
+      todayAttendancePolicyMode,
+      attendancePermissionEntries
+    ]
+  );
+
+  const attendanceComputation = todayResolvedAttendance.computation;
+  const attendanceDayStatus = todayResolvedAttendance.status;
 
   const loadAttendance = async () => {
     if (!canViewAttendance || !attendanceEmployeeId || !session.uid) {
@@ -650,6 +849,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       !attendanceEmployeeId
     ) {
       setAttendanceAbsenceDateKeys([]);
+      setManualAttendanceAbsenceDateKeys([]);
       setAttendanceAbsenceLoading(false);
       setAttendanceAbsenceError("");
       return;
@@ -667,31 +867,33 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
         if (!alive) return;
 
-        const dates =
-          Array.from(
-            new Set(
-              rows
-                .filter(
-                  (row) =>
-                    cleanText(
-                      row.absenceType
-                    ).toLowerCase() ===
-                    "full_day"
-                )
-                .map((row) =>
-                  cleanText(
-                    row.dateKey
-                  )
-                )
-                .filter((date) =>
-                  /^\d{4}-\d{2}-\d{2}$/.test(
-                    date
-                  )
-                )
-            )
-          ).sort((a, b) =>
-            a.localeCompare(b)
-          );
+        const allDates = new Set<string>();
+        const manualDates = new Set<string>();
+
+        for (const row of rows) {
+          const type = cleanText(row.absenceType).toLowerCase();
+          const date = cleanText(row.dateKey);
+
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+          if (
+            type !== "full_day" &&
+            type !== "admin" &&
+            type !== "automatic_check_in_lock"
+          ) continue;
+
+          allDates.add(date);
+
+          if (type !== "automatic_check_in_lock") {
+            manualDates.add(date);
+          }
+        }
+
+        const dates = Array.from(allDates).sort();
+
+        setManualAttendanceAbsenceDateKeys(
+          Array.from(manualDates).sort()
+        );
 
         setAttendanceAbsenceDateKeys(
           dates
@@ -705,6 +907,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         );
 
         setAttendanceAbsenceDateKeys([]);
+      setManualAttendanceAbsenceDateKeys([]);
 
         setAttendanceAbsenceError(language === "ar"
           ? "تعذر تحميل الغياب المعتمد من Core."
@@ -1203,6 +1406,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     ? formatAttendanceDateLabel(previousOpenShiftDate, language)
     : "";
   const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
+
+  const isAttendanceExempt =
+    attendanceDayStatus === "exempt";
+
+  const isAttendancePolicyUnavailable =
+    todayAttendancePolicyMode === "unavailable";
+
+  const attendanceExemptLabel =
+    language === "ar"
+      ? "معفى من البصمة"
+      : "Attendance exempt";
+
+  const attendanceExemptHint =
+    language === "ar"
+      ? "لا يشترط تسجيل البصمة لهذا اليوم وفق سياسة الحضور المعتمدة."
+      : "Clock-in and clock-out are not required for this day.";
   const canAttemptCheckInWithServerValidation =
     Boolean(todayResolvedShiftError) ||
     hasResolvedWorkShift;
@@ -1224,7 +1443,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     attendanceStatus === "checked_in";
   const punchAction = canCheckOut ? "check_out" : "check_in";
   const punchDisabled = !canCheckIn && !canCheckOut;
-  const punchLabel = attendanceStatus === "incomplete"
+  const punchLabel =
+    isAttendanceExempt && attendanceStatus !== "checked_in"
+      ? attendanceExemptLabel
+      : attendanceStatus === "incomplete"
     ? copy.incomplete
     : attendanceStatus === "checked_out"
       ? copy.dutyCompleted
@@ -1282,7 +1504,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         ? "—"
         : `${employeeLeaveBalance} ${copy.day}`;
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate, language);
-  const punchHint = attendanceStatus === "incomplete"
+  const punchHint =
+    isAttendanceExempt
+      ? attendanceExemptHint
+      : isAttendancePolicyUnavailable &&
+          attendanceDayStatus !== "leave" &&
+          attendanceDayStatus !== "off_day" &&
+          attendanceDayStatus !== "absent"
+        ? (
+            effectiveAttendancePolicyError ||
+            (
+              language === "ar"
+                ? "جاري التحقق من سياسة الحضور."
+                : "Verifying attendance policy."
+            )
+          )
+        : attendanceStatus === "incomplete"
     ? copy.incompleteHint
     : attendanceStatus === "checked_out"
       ? copy.savedToday
@@ -1296,7 +1533,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             ? copy.noDuty
             : !hasResolvedWorkShift
               ? copy.noPublishedShift
-              : checkInWindowClosed && attendanceStatus === "not_started"
+              : todayAttendancePolicyMode === "required" && checkInWindowClosed && attendanceStatus === "not_started"
                 ? copy.autoAbsence
                 : attendanceBusy
                   ? copy.keepOpen
@@ -1330,6 +1567,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             attendanceMonthLoading ||
             attendanceLoading ||
             attendanceMonthResolvedShiftsLoading ||
+            attendancePolicyLoading ||
             attendanceAbsenceLoading
           }
           monthKey={attendanceMonth}
@@ -1346,7 +1584,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             attendanceAbsenceError
           }
           approvedLeaveDateKeys={approvedLeaveDateKeys}
-          absenceDateKeys={attendanceAbsenceDateKeys}
+          absenceDateKeys={effectiveAttendanceAbsenceDateKeys}
+          manualAbsenceDateKeys={manualAttendanceAbsenceDateKeys}
+          attendancePolicyModes={attendancePolicyModes}
+          attendancePolicyError={effectiveAttendancePolicyError}
           permissionEntries={attendancePermissionEntries}
           onMonthChange={(monthKey) => {
             setAttendanceMonth(monthKey);
@@ -1358,6 +1599,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           onGenerateSummary={() => {
             setAttendanceMonthResolvedShiftsReloadKey((value) => value + 1);
             setAttendanceAbsenceReloadKey((value) => value + 1);
+            setAttendancePolicyReloadKey(value => value + 1);
             void Promise.all([
               loadAttendanceMonth(),
               loadAttendancePermissions(),

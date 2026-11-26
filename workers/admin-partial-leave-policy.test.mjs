@@ -208,14 +208,15 @@ test("admin UI and dashboard pass the partial leave contract end to end", () => 
   assert.match(modal, /استئذان/);
   assert.match(modal, /partialStartTime/);
   assert.match(modal, /partialEndTime/);
-  // Partial leave is an approved permission with an explicit time interval,
-  // while full-day leave is submitted for a designated final approver.
+  // Partial leave remains a permission with an explicit time interval.
+  // Full-day administrative leave uses the authorized direct registration API.
   assert.match(dashboard, /if \(isPartialLeave\) \{/);
   assert.match(dashboard, /createPermissionRequest\(\{/);
   assert.match(dashboard, /startTime: partialStartTime/);
   assert.match(dashboard, /expectedReturnTime: partialEndTime/);
   assert.match(dashboard, /financialEffect: "none"/);
-  assert.match(dashboard, /createManagedLeaveRequest\(\{/);
+  assert.match(dashboard, /CoreHrService\.registerAdminDirectLeave\(\{/);
+  assert.match(dashboard, /registrationInput/);
   assert.match(dashboard, /durationKind,/);
   assert.match(dashboard, /partialStartTime,/);
   assert.match(dashboard, /partialEndTime,/);

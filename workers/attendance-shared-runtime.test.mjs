@@ -422,11 +422,24 @@ test("dashboard attendance special days come only from Malikat Core", () => {
     true
   );
 
-  assert.equal(
-    sectionSource.includes(
-      "core_exception_off"
-    ),
-    true
+  assert.match(
+    sectionSource,
+    /CoreHrService\.resolveEmployeeShiftsRange/
+  );
+
+  assert.match(
+    sectionSource,
+    /resolvedShiftSpecialDay\(date, shift\)/
+  );
+
+  assert.match(
+    sectionSource,
+    /if \(!isResolvedShiftOff\(shift\)\) return null;/
+  );
+
+  assert.match(
+    sectionSource,
+    /kind:\s*"exception_off"/
   );
 
   assert.equal(
@@ -452,7 +465,7 @@ test("dashboard attendance special days come only from Malikat Core", () => {
 });
 
 
-test("dashboard attendance uses Core absences and never infers absence from a past empty day", () => {
+test("dashboard attendance uses Core absence facts and policy-gated scheduled absence presentation", () => {
   const sectionSource =
     readFileSync(
       "src/pages/dashboardEmployees/AttendanceSection.tsx",
@@ -508,12 +521,44 @@ test("dashboard attendance uses Core absences and never infers absence from a pa
     true
   );
 
-  assert.equal(
-    liveSource.includes(
-      "date < todayKey"
-    ),
-    false,
-    "past dates must not automatically become absent"
+  assert.match(
+    liveSource,
+    /const isPastScheduledNoPunch/
+  );
+
+  assert.match(
+    liveSource,
+    /hasScheduledWork/
+  );
+
+  assert.match(
+    liveSource,
+    /date < todayKey/
+  );
+
+  assert.match(
+    liveSource,
+    /!hasPunch/
+  );
+
+  assert.match(
+    liveSource,
+    /!hasLeave/
+  );
+
+  assert.match(
+    sectionSource,
+    /scheduledWorkDateKeys\.filter\(\s*date\s*=>\s*!exemptDateKeys\.includes\(date\)/
+  );
+
+  assert.match(
+    sectionSource,
+    /if \(!attendancePolicyReady\) return manualCoreAbsenceDateKeys;/
+  );
+
+  assert.match(
+    sectionSource,
+    /!exempt\.has\(date\)\s*\|\|\s*manual\.has\(date\)/
   );
 
   assert.equal(
@@ -541,7 +586,7 @@ test("employee attendance uses the same Core absence facts as dashboard attendan
 
   assert.equal(
     overviewSource.includes(
-      "CoreHrService.listAbsences"
+      "CoreHrService.listMyAbsences"
     ),
     true
   );
@@ -553,11 +598,62 @@ test("employee attendance uses the same Core absence facts as dashboard attendan
     true
   );
 
-  assert.equal(
+  assert.ok(
     overviewSource.includes(
-      "absenceDateKeys={attendanceAbsenceDateKeys}"
-    ),
-    true
+      "absenceDateKeys={effectiveAttendanceAbsenceDateKeys}"
+    )
+  );
+
+  assert.ok(
+    overviewSource.includes(
+      "manualAbsenceDateKeys={manualAttendanceAbsenceDateKeys}"
+    )
+  );
+
+  assert.ok(
+    overviewSource.includes(
+      "attendancePolicyModes={attendancePolicyModes}"
+    )
+  );
+
+  assert.match(
+    overviewSource,
+    /attendancePolicyModes\[date\] === "required"/
+  );
+
+  assert.match(
+    overviewSource,
+    /attendancePolicyMode:\s*todayAttendancePolicyMode/
+  );
+
+  assert.match(
+    overviewSource,
+    /const attendanceDayStatus = todayResolvedAttendance\.status/
+  );
+
+  assert.match(
+    overviewSource,
+    /todayAttendancePolicyMode === "required" && checkInWindowClosed/
+  );
+
+  assert.equal(
+    (
+      monthSource.match(
+        /manualAbsenceDateKeys:\s*manualAbsenceDateKeySet/g
+      ) || []
+    ).length,
+    2,
+    "selected day and calendar days must preserve manual absences"
+  );
+
+  assert.equal(
+    (
+      monthSource.match(
+        /attendancePolicyMode:\s*policyModeForDate\(/g
+      ) || []
+    ).length,
+    2,
+    "selected day and calendar days must use the daily policy"
   );
 
   assert.equal(
@@ -702,4 +798,134 @@ test("attendance calendar helper contains leave facts only and no scheduling run
     source,
     /export function buildApprovedLeaveDateKeys/
   );
+});
+
+test("HR07A: exempt workday suppresses automatic absence", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "exempt",
+    absenceDateKeys: new Set([dateKey]),
+    manualAbsenceDateKeys: new Set()
+  });
+
+  assert.equal(result.status, "exempt");
+  assert.equal(result.computation.lateHours, 0);
+  assert.equal(result.computation.missingHours, 0);
+  assert.equal(result.computation.pendingCompensationMinutes, 0);
+  assert.equal(result.shiftResolution.isOff, false);
+  assert.equal(Boolean(result.computation.checkIn), false);
+  assert.equal(Boolean(result.computation.checkOut), false);
+});
+
+test("HR07A: manual absence survives attendance exemption", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "exempt",
+    absenceDateKeys: new Set([dateKey]),
+    manualAbsenceDateKeys: new Set([dateKey])
+  });
+
+  assert.equal(result.status, "absent");
+});
+
+test("HR07A: approved leave survives attendance exemption", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "exempt",
+    approvedLeaveDateKeys: new Set([dateKey])
+  });
+
+  assert.equal(result.status, "leave");
+});
+
+test("HR07A: exemption does not convert weekly rest to work", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: {
+      ...coreShift(dateKey),
+      source: "weekly_schedule",
+      exceptionType: "off",
+      active: 0
+    },
+    todayDateKey,
+    attendancePolicyMode: "exempt"
+  });
+
+  assert.equal(result.status, "off_day");
+  assert.equal(result.shiftResolution.isOff, true);
+});
+
+test("HR07A: complete exempt attendance preserves real punches", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    row: punchRow(dateKey),
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "exempt"
+  });
+
+  assert.equal(result.status, "present");
+  assert.equal(result.computation.actualHours, 8);
+  assert.ok(result.computation.checkIn);
+  assert.ok(result.computation.checkOut);
+  assert.equal(result.computation.missingHours, 0);
+});
+
+test("HR07A: unavailable policy cannot infer automatic absence", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "unavailable",
+    absenceDateKeys: new Set([dateKey])
+  });
+
+  assert.equal(result.status, "schedule_unavailable");
+  assert.equal(result.computation.missingHours, 0);
+});
+
+test("HR07A: unavailable policy preserves explicit manual absence", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "unavailable",
+    manualAbsenceDateKeys: new Set([dateKey])
+  });
+
+  assert.equal(result.status, "absent");
+});
+
+test("HR07A: restoring required policy restores canonical absence", () => {
+  const dateKey = "2026-06-21";
+
+  const result = computeResolvedAttendanceDay({
+    dateKey,
+    coreResolvedShift: coreShift(dateKey),
+    todayDateKey,
+    attendancePolicyMode: "required",
+    absenceDateKeys: new Set([dateKey])
+  });
+
+  assert.equal(result.status, "absent");
 });

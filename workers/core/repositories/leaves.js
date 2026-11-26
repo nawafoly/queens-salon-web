@@ -286,14 +286,73 @@ export async function createLeave(
   db,
   salonId,
   data = {},
-  actor = {}
+  actor = {},
+  options = {}
 ) {
   await ensureHrPayrollOutbox(db);
   const resolved = requireExplicitSaLeaveType(data);
+
+  const manualPolicy =
+    options.registration?.source === 'admin_direct' &&
+    resolved.leaveType === SA_LEAVE_TYPES.otherHrReview
+      ? options.manualPolicy
+      : null;
+
+  if (
+    options.registration?.source === 'admin_direct' &&
+    resolved.leaveType === SA_LEAVE_TYPES.otherHrReview &&
+    (
+      !manualPolicy ||
+      typeof manualPolicy.deductFromBalance !== 'boolean' ||
+      typeof manualPolicy.affectsPayroll !== 'boolean'
+    )
+  ) {
+    throw new AppError(
+      400,
+      'core_leave:explicit_manual_policy_required'
+    );
+  }
   const entitlementMinutesRequested = timeEntitlementRequestMinutes(
     data,
     resolved.leaveType
   );
+  const adminDirect =
+    options.registration?.source === 'admin_direct';
+
+  const canonicalPolicy = adminDirect
+    ? {
+        policy_version:
+          resolved.policy.policyVersion || null,
+
+        balance_bucket:
+          resolved.policy.entitlementBucket || null,
+
+        legal_basis: manualPolicy
+          ? 'HR_MANUAL_POLICY'
+          : legalBasisForLeaveType(resolved.leaveType),
+
+        documentation_status:
+          resolved.policy.documentationRequired
+            ? 'required'
+            : 'not_required',
+
+        statutory_review_required: manualPolicy
+          ? 0
+          : Number(Boolean(resolved.policy.reviewRequired)),
+
+        deduct_from_balance: manualPolicy
+          ? Number(manualPolicy.deductFromBalance)
+          : Number(Boolean(resolved.policy.deductAnnualBalance)),
+
+        affects_payroll: manualPolicy
+          ? Number(manualPolicy.affectsPayroll)
+          : Number(Boolean(resolved.policy.affectsPayroll)),
+
+        entitlement_minutes_requested:
+          entitlementMinutesRequested,
+      }
+    : null;
+
   const created = await legacyCreateLeave(
     db,
     salonId,
@@ -302,8 +361,18 @@ export async function createLeave(
       leaveType: resolved.leaveType,
       leave_type: resolved.leaveType,
     },
-    actor
+    actor,
+    {
+      ...options,
+      canonicalPolicy,
+    }
   );
+
+  if (adminDirect) {
+    return (
+      await leaveById(db, salonId, created.id)
+    ) || created;
+  }
 
   const documentationStatus = resolved.policy.documentationRequired
     ? 'required'
@@ -327,11 +396,19 @@ export async function createLeave(
     [
       resolved.policy.policyVersion || null,
       resolved.policy.entitlementBucket || null,
-      legalBasisForLeaveType(resolved.leaveType),
+      manualPolicy
+        ? 'HR_MANUAL_POLICY'
+        : legalBasisForLeaveType(resolved.leaveType),
       documentationStatus,
-      resolved.policy.reviewRequired ? 1 : 0,
-      resolved.policy.deductAnnualBalance ? 1 : 0,
-      resolved.policy.affectsPayroll ? 1 : 0,
+      manualPolicy
+        ? 0
+        : (resolved.policy.reviewRequired ? 1 : 0),
+      manualPolicy
+        ? Number(manualPolicy.deductFromBalance)
+        : (resolved.policy.deductAnnualBalance ? 1 : 0),
+      manualPolicy
+        ? Number(manualPolicy.affectsPayroll)
+        : (resolved.policy.affectsPayroll ? 1 : 0),
       entitlementMinutesRequested,
       created.updated_at,
       salonId,

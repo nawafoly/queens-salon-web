@@ -8205,3 +8205,344 @@ test('double-encoded legacy-only HR identity rejects mutation', async (t) => {
     assert.equal(Number(row.total), 0, `${table} must remain unchanged`);
   }
 });
+
+test('HR06W: historical annual opening is calculated by Core and rejects conflicting replay', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const employeeId = 'hr06w-opening-employee';
+  const timestamp = new Date().toISOString();
+
+  await db.prepare(`
+    INSERT INTO employee_profiles (
+      id, salon_id, name, status, created_at, updated_at
+    )
+    VALUES (?, 'main', ?, 'active', ?, ?)
+  `).bind(
+    employeeId,
+    'Opening Balance Test',
+    timestamp,
+    timestamp
+  ).run();
+
+  await db.prepare(`
+    INSERT INTO employee_employment (
+      salon_id,
+      employee_id,
+      employment_status,
+      start_date,
+      annual_leave_contract_days,
+      leave_balance,
+      created_at,
+      updated_at
+    )
+    VALUES ('main', ?, 'active', '2024-01-01', 21, 0, ?, ?)
+  `).bind(
+    employeeId,
+    timestamp,
+    timestamp
+  ).run();
+
+  const base = {
+    effectiveDate: '2024-12-31',
+    operationId: 'hr06w-opening-1',
+    historicalUsedDays: 5,
+    reason: 'Verified historical usage'
+  };
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      db, 'main', employeeId,
+      { ...base, historicalUsedDays: 22 },
+      actor
+    ),
+    /historical_usage_exceeds_accrual/
+  );
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      db, 'main', employeeId,
+      { ...base, days: 999 },
+      actor
+    ),
+    /ambiguous_opening_balance_input/
+  );
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      db, 'main', employeeId,
+      { ...base, historicalUsedDays: -1 },
+      actor
+    ),
+    /invalid_historical_used_days/
+  );
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      db, 'main', employeeId,
+      { ...base, historicalUsedDays: '5' },
+      actor
+    ),
+    /invalid_historical_used_days/
+  );
+
+  const before = await db.prepare(`
+    SELECT COUNT(*) AS count
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = ?
+       AND entry_code = 'OPENING_BALANCE'
+  `).bind(employeeId).first();
+
+  assert.equal(Number(before.count), 0);
+
+  const first = await setAnnualLeaveOpeningBalance(
+    db, 'main', employeeId, base, actor
+  );
+
+  assert.equal(first.idempotent, false);
+  assert.equal(first.entry.days, 16);
+  assert.equal(first.entry.metadata.historicalUsedDays, 5);
+  assert.equal(first.entry.metadata.accruedDaysAtOpening, 21);
+  assert.equal(first.entry.metadata.approvedOpeningDays, 16);
+  assert.equal(first.entry.metadata.calculationMode, 'historical_usage');
+
+  const replay = await setAnnualLeaveOpeningBalance(
+    db, 'main', employeeId, base, actor
+  );
+
+  assert.equal(replay.idempotent, true);
+  assert.equal(replay.entry.id, first.entry.id);
+
+  for (const modified of [
+    { ...base, historicalUsedDays: 6 },
+    { ...base, reason: 'Different reason' },
+    { ...base, effectiveDate: '2025-01-02' }
+  ]) {
+    await assert.rejects(
+      () => setAnnualLeaveOpeningBalance(
+        db, 'main', employeeId, modified, actor
+      ),
+      /opening_operation_conflict/
+    );
+  }
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      db, 'main', employeeId,
+      { ...base, operationId: 'hr06w-opening-2' },
+      actor
+    ),
+    /opening_balance_already_exists/
+  );
+
+  const after = await db.prepare(`
+    SELECT COUNT(*) AS count
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = ?
+       AND entry_code = 'OPENING_BALANCE'
+  `).bind(employeeId).first();
+
+  assert.equal(Number(after.count), 1);
+
+  console.log('PASS: canonical annual accrual 21 days');
+  console.log('PASS: verified historical usage 5 days');
+  console.log('PASS: server-approved opening 16 days');
+  console.log('PASS: forged and invalid input rejected');
+  console.log('PASS: replay preserves one audited opening');
+  console.log('PASS: conflicting replay rejected');
+
+  console.log('HR06W_OPENING_RUNTIME_VERIFIED');
+});
+
+test('HR06W: annual opening respects inclusive dates and concurrent operations', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const timestamp = new Date().toISOString();
+
+  async function seedEmployee(employeeId) {
+    await db.prepare(`
+      INSERT INTO employee_profiles (
+        id, salon_id, name, status, created_at, updated_at
+      )
+      VALUES (?, 'main', ?, 'active', ?, ?)
+    `).bind(
+      employeeId, employeeId, timestamp, timestamp
+    ).run();
+
+    await db.prepare(`
+      INSERT INTO employee_employment (
+        salon_id, employee_id, employment_status,
+        start_date, annual_leave_contract_days,
+        leave_balance, created_at, updated_at
+      )
+      VALUES ('main', ?, 'active', '2024-01-01', 21, 0, ?, ?)
+    `).bind(
+      employeeId, timestamp, timestamp
+    ).run();
+  }
+
+  const base = {
+    effectiveDate: '2025-01-01',
+    historicalUsedDays: 5,
+    reason: 'Verified historical usage'
+  };
+
+  const boundaryEmployee = 'hr06w-boundary';
+  await seedEmployee(boundaryEmployee);
+
+  const boundary = await setAnnualLeaveOpeningBalance(
+    db, 'main', boundaryEmployee,
+    { ...base, operationId: 'hr06w-boundary-op' },
+    actor
+  );
+
+  assert.equal(boundary.entry.days, 16.0575);
+  assert.equal(boundary.entry.metadata.accruedDaysAtOpening, 21.0575);
+
+  console.log('PASS: inclusive service anniversary accrual');
+
+  const raceEmployee = 'hr06w-race';
+  await seedEmployee(raceEmployee);
+
+  const input = {
+    ...base,
+    effectiveDate: '2024-12-31',
+    operationId: 'hr06w-race-op'
+  };
+
+  const race = await Promise.allSettled([
+    setAnnualLeaveOpeningBalance(
+      db, 'main', raceEmployee, input, actor
+    ),
+    setAnnualLeaveOpeningBalance(
+      db, 'main', raceEmployee, input, actor
+    )
+  ]);
+
+  assert.ok(race.some(result => result.status === 'fulfilled'));
+
+  const replay = await setAnnualLeaveOpeningBalance(
+    db, 'main', raceEmployee, input, actor
+  );
+
+  assert.equal(replay.idempotent, true);
+  assert.equal(replay.entry.days, 16);
+
+  const ledger = await db.prepare(`
+    SELECT *
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = ?
+       AND entry_code = 'OPENING_BALANCE'
+  `).bind(raceEmployee).all();
+
+  assert.equal(ledger.results.length, 1);
+  assert.equal(ledger.results[0].id, replay.entry.id);
+
+  console.log('PASS: concurrent replay produces one opening entry');
+
+  const conflictEmployee = 'hr06w-conflict';
+  await seedEmployee(conflictEmployee);
+
+  const competing = {
+    ...input,
+    operationId: 'hr06w-conflict-op'
+  };
+
+  const conflicts = await Promise.allSettled([
+    setAnnualLeaveOpeningBalance(
+      db, 'main', conflictEmployee, competing, actor
+    ),
+    setAnnualLeaveOpeningBalance(
+      db, 'main', conflictEmployee,
+      { ...competing, historicalUsedDays: 6 },
+      actor
+    )
+  ]);
+
+  assert.equal(
+    conflicts.filter(result => result.status === 'fulfilled').length,
+    1
+  );
+
+  const rejected = conflicts.find(result => result.status === 'rejected');
+
+  assert.match(
+    String(rejected.reason?.message || rejected.reason),
+    /opening_operation_conflict/
+  );
+
+  const conflictLedger = await db.prepare(`
+    SELECT COUNT(*) AS count
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = ?
+       AND entry_code = 'OPENING_BALANCE'
+  `).bind(conflictEmployee).first();
+
+  assert.equal(Number(conflictLedger.count), 1);
+
+  console.log('PASS: conflicting concurrent operation rejected');
+
+  const staleEmployee = 'hr06w-stale-employment';
+  await seedEmployee(staleEmployee);
+
+  let injected = false;
+
+  const staleDb = {
+    prepare: db.prepare.bind(db),
+
+    async batch(statements) {
+      if (!injected) {
+        injected = true;
+
+        await db.prepare(`
+          UPDATE employee_employment
+             SET annual_leave_contract_days = 30
+           WHERE salon_id = 'main'
+             AND employee_id = ?
+        `).bind(staleEmployee).run();
+      }
+
+      return db.batch(statements);
+    }
+  };
+
+  const staleInput = {
+    ...input,
+    operationId: 'hr06w-stale-op'
+  };
+
+  await assert.rejects(
+    () => setAnnualLeaveOpeningBalance(
+      staleDb, 'main', staleEmployee, staleInput, actor
+    ),
+    /opening_balance_not_applied/
+  );
+
+  assert.equal(injected, true);
+
+  const staleLedger = await db.prepare(`
+    SELECT COUNT(*) AS count
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = ?
+       AND entry_code = 'OPENING_BALANCE'
+  `).bind(staleEmployee).first();
+
+  assert.equal(Number(staleLedger.count), 0);
+
+  const refreshed = await setAnnualLeaveOpeningBalance(
+    db, 'main', staleEmployee, staleInput, actor
+  );
+
+  assert.equal(refreshed.entry.days, 25);
+  assert.equal(refreshed.entry.metadata.accruedDaysAtOpening, 30);
+
+  console.log('PASS: stale contractual entitlement cannot be committed');
+  console.log('PASS: retry calculates using updated employment');
+  console.log('HR06W2_CONCURRENCY_VERIFIED');
+});

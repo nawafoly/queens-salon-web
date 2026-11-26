@@ -57,61 +57,107 @@ test("leave modal resets stale leave type to the requested default every time it
   );
 });
 
-test("submitting the leave modal approves through the canonical leave decision and verifies Core state", () => {
+function adminDirectSubmitSource() {
+  const start = dashboardEmployeesSource.indexOf(
+    "const handleLeaveModalSubmit = useCallback("
+  );
+
+  assert.ok(start >= 0);
+
+  const end = dashboardEmployeesSource.indexOf(
+    "  }, [",
+    start
+  );
+
+  assert.ok(end > start);
+
+  return dashboardEmployeesSource.slice(start, end);
+}
+
+test("full-day administrative leave uses the canonical direct registration API", () => {
+  const submit = adminDirectSubmitSource();
+
   assert.match(
-    dashboardEmployeesSource,
-    /await decideCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical,[\s\S]*?"approved",[\s\S]*?reviewerUid: authUser\.uid[\s\S]*?\);/
+    submit,
+    /CoreHrService\.registerAdminDirectLeave\(\{[\s\S]*?\.\.\.registrationInput,[\s\S]*?operationId/
   );
 
   assert.match(
-    dashboardEmployeesSource,
-    /const canonicalResult\s*=\s*await decideCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical,[\s\S]*?"approved"[\s\S]*?\);/
-  );
-
-  assert.match(
-    dashboardEmployeesSource,
-    /requestForCanonical\s*=\s*canonicalResult\.request;[\s\S]*?coreLeaveId\s*=\s*canonicalResult\.coreLeave\.id;[\s\S]*?canonicalApprovalCommitted\s*=\s*true;/
+    submit,
+    /!registered\.id[\s\S]*?registered\.status[\s\S]*?"approved"/
   );
 
   assert.doesNotMatch(
-    dashboardEmployeesSource,
+    submit,
+    /\bcreateManagedLeaveRequest\s*\(/
+  );
+
+  assert.doesNotMatch(
+    submit,
     /\bapproveEmployeeLeaveRequest\s*\(/
   );
 
+  const service = readFileSync(
+    new URL("../src/services/CoreHrService.ts", import.meta.url),
+    "utf8"
+  );
+
   assert.match(
-    dashboardEmployeesSource,
-    /description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب"/
+    service,
+    /async registerAdminDirectLeave[\s\S]*?source: "admin_direct"[\s\S]*?durationKind: "full_day"/
   );
 });
 
+test("administrative retry preserves the operation ID for the same registration", () => {
+  const submit = adminDirectSubmitSource();
 
-test("leave retry reuses an active Core request and rollback refreshes its version", () => {
   assert.match(
-    dashboardEmployeesSource,
-    /\["pending", "approved"\]\.includes\([\s\S]*?cleanText\(request\.status\)\.toLowerCase\(\)/
+    submit,
+    /JSON\.stringify\(registrationInput\)/
   );
 
   assert.match(
-    dashboardEmployeesSource,
-    /await refreshCanonicalEmployeeLeaveRequest\([\s\S]*?requestForCanonical[\s\S]*?\);[\s\S]*?await decideCanonicalEmployeeLeaveRequest\([\s\S]*?rollbackRequest,[\s\S]*?"cancelled"/
+    submit,
+    /adminDirectLeaveOperationRef\.current\?\.fingerprint !== fingerprint/
+  );
+
+  assert.match(
+    submit,
+    /operationId: crypto\.randomUUID\(\)/
+  );
+
+  assert.match(
+    submit,
+    /const operationId =[\s\S]*?adminDirectLeaveOperationRef\.current\.operationId/
+  );
+
+  assert.match(
+    submit,
+    /registration_not_confirmed[\s\S]*?adminDirectLeaveOperationRef\.current = null/
   );
 });
 
+test("post-commit refresh cannot reverse a registered administrative leave", () => {
+  const submit = adminDirectSubmitSource();
 
-test("post-commit UI refresh cannot roll back an approved canonical leave", () => {
   assert.match(
-    dashboardEmployeesSource,
-    /canonicalApprovalCommitted\s*=\s*true;[\s\S]*?canonical leave post-commit refresh failed/
+    submit,
+    /adminDirectLeaveOperationRef\.current = null;[\s\S]*?try \{[\s\S]*?await Promise\.all/
   );
 
   assert.match(
-    dashboardEmployeesSource,
-    /if \(\s*!canonicalApprovalCommitted\s*&&\s*createdRequestId\s*&&\s*requestForCanonical\s*\)/
+    submit,
+    /catch \(refreshError\)[\s\S]*?admin direct leave post-commit refresh failed/
   );
 
   assert.doesNotMatch(
-    dashboardEmployeesSource,
-    /Fail closed: after canonical approval the linked Core[\s\S]*?CoreHrService\.listLeaves/
+    submit,
+    /CoreHrService\.(rejectLeave|decideLeave|deleteLeave)\s*\(/
+  );
+
+  assert.doesNotMatch(
+    submit,
+    /decideCanonicalEmployeeLeaveRequest\s*\(/
   );
 });
 
@@ -138,7 +184,7 @@ test("weekly-rest substitute is selectable and stays on the canonical entitlemen
   );
 
   const employeeHubSource = readFileSync(
-    new URL("../src/services/employeeHub.ts", import.meta.url),
+    new URL("../src/services/employeeLeaveRequestsCore.ts", import.meta.url),
     "utf8"
   );
   const attendanceCalendarSource = readFileSync(
@@ -214,8 +260,28 @@ test("other leave uses an explicit manager-authorized manual policy path", () =>
     /leaveType === "other"[\s\S]*?deductFromBalance: payload\.deductFromBalance === true[\s\S]*?affectsPayroll: payload\.affectsPayroll === true/
   );
   assert.match(
-    dashboardEmployeesSource,
-    /manualLeavePolicy:[\s\S]*?deductFromBalance: policy\.deductFromBalance[\s\S]*?affectsPayroll: policy\.affectsPayroll/
+    adminDirectSubmitSource(),
+    /manualLeavePolicy[\s\S]*?deductFromBalance: payload\.deductFromBalance === true[\s\S]*?affectsPayroll: payload\.affectsPayroll === true/
+  );
+
+  const directRegistrationSource = readFileSync(
+    new URL("./core/repositories/admin-direct-leaves.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    directRegistrationSource,
+    /typeof suppliedPolicy\.deductFromBalance !== 'boolean'/
+  );
+
+  assert.match(
+    directRegistrationSource,
+    /typeof suppliedPolicy\.affectsPayroll !== 'boolean'/
+  );
+
+  assert.match(
+    directRegistrationSource,
+    /requireFinalLeaveAuthority/
   );
   assert.match(
     canonicalServiceSource,

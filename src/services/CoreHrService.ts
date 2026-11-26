@@ -340,6 +340,25 @@ export const CoreHrService = {
     invalidateResolvedShiftRangeCache(employeeId);
     return camel<CoreHrEmployee>(row);
   },
+  async getMyAttendancePolicy(query: {
+    dateFrom: string;
+    dateTo: string;
+  }) {
+    return coreApiRequest<{
+      employeeId: string;
+      revision: number;
+      dateFrom: string;
+      dateTo: string;
+      days: Array<{
+        date: string;
+        mode: "required" | "exempt";
+      }>;
+    }>(
+      "/api/core/hr/employee-portal/attendance-policy",
+      { query }
+    );
+  },
+
   async getAttendancePolicy(
     employeeId: string,
     query: { dateFrom?: string; dateTo?: string } = {}
@@ -878,6 +897,37 @@ export const CoreHrService = {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/leaves", { query });
     return rows.map((row) => camel<CoreLeave>(row));
   },
+  async registerAdminDirectLeave(input: {
+    operationId: string;
+    employeeId: string;
+    leaveType: string;
+    startDate: string;
+    endDate: string;
+    reason: string;
+    manualLeavePolicy?: {
+      deductFromBalance: boolean;
+      affectsPayroll: boolean;
+    };
+  }) {
+    const result = camel<CoreLeave>(
+      await coreApiRequest<Record<string, unknown>>(
+        "/api/core/hr/leaves",
+        {
+          method: "POST",
+          body: {
+            ...input,
+            source: "admin_direct",
+            durationKind: "full_day",
+          },
+        }
+      )
+    );
+
+    invalidateResolvedShiftRangeCache(input.employeeId);
+
+    return result;
+  },
+
   async createLeave(input: Record<string, unknown>) {
     return camel<CoreLeave>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/leaves", { method: "POST", body: input }));
   },
@@ -973,7 +1023,7 @@ export const CoreHrService = {
   async setAnnualLeaveOpeningBalance(
     employeeId: string,
     input: {
-      days: number;
+      historicalUsedDays: number;
       effectiveDate: string;
       reason: string;
       operationId: string;

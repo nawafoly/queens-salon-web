@@ -12,9 +12,9 @@ test("leave/rest UI has one Dashboard V2 management reference", () => {
 
   assert.match(stats, /title="الإجازات والراحة"/);
   assert.match(stats, /<LeaveRestManagementPanel/);
-  assert.match(panel, /label="الإجازة السنوية"/);
-  assert.match(panel, /label="الراحة الأسبوعية"/);
-  assert.match(panel, /label="الراحة التعويضية"/);
+  assert.match(panel, /title=\{t\("الإجازة السنوية"\)\}/);
+  assert.match(panel, /label=\{t\("يوم الراحة الأسبوعية"\)\}/);
+  assert.match(panel, /label=\{t\("الرصيد التعويضي الحالي"\)\}/);
   assert.doesNotMatch(
     stats,
     /title="الراحة الأسبوعية لا تُخصم من رصيد الإجازات"/
@@ -36,8 +36,8 @@ test("weekly rest assignment time is 12-hour for users and canonical for Core", 
   const timePicker = source("../src/components/dashboard-v2/DashboardTimePickerV2.tsx");
 
   assert.equal((panel.match(/clock="12h"/g) || []).length, 2);
-  assert.match(panel, /formatTime12Hour\(assignment\.startTime\)/);
-  assert.match(panel, /formatTime12Hour\(assignment\.endTime\)/);
+  assert.match(panel, /formatTime12Hour\(assignment\.startTime,\s*language\)/);
+  assert.match(panel, /formatTime12Hour\(assignment\.endTime,\s*language\)/);
   assert.match(timePicker, /clock\?: "24h" \| "12h"/);
   assert.match(timePicker, /function to24HourTime/);
   assert.match(timePicker, /period === "pm"/);
@@ -79,21 +79,21 @@ test("annual leave balance UI renders canonical Core balance components", () => 
     assert.match(panel, new RegExp(`annualLeave\\.${field}`));
   }
 
-  assert.match(panel, /label="الاستحقاق السنوي"/);
+  assert.match(panel, /label=\{t\("الاستحقاق السنوي"\)\}/);
   assert.match(panel, /const annualAccruedLabel/);
   assert.match(panel, /function annualDurationLabel/);
   assert.match(panel, /Math\.floor\(Math\.abs\(number\) \* 24\)/);
-  assert.match(panel, /label=\{annualAccruedLabel\}/);
+  assert.match(panel, /label=\{t\(annualAccruedLabel\)\}/);
   assert.match(panel, /annualBalanceValue\([\s\S]*earnedCurrentServiceYearDays/);
   assert.match(panel, /annualBalanceValue[\s\S]*annualDurationLabel/);
-  assert.match(panel, /label="الرصيد الافتتاحي"/);
-  assert.match(panel, /label="المستخدم"/);
-  assert.match(panel, /label="المعاد\/المسترجع"/);
-  assert.match(panel, /label="الرصيد المتاح"/);
-  assert.match(panel, /label="تاريخ مباشرة العمل"/);
-  assert.match(panel, /label="سنة الخدمة الحالية"/);
+  assert.match(panel, /label=\{t\("الرصيد الافتتاحي"\)\}/);
+  assert.match(panel, /label=\{t\("المستخدم"\)\}/);
+  assert.match(panel, /label=\{t\("المعاد\/المسترجع"\)\}/);
+  assert.match(panel, /label=\{t\("الرصيد المتاح"\)\}/);
+  assert.match(panel, /label=\{t\("تاريخ مباشرة العمل"\)\}/);
+  assert.match(panel, /label=\{t\("سنة الخدمة الحالية"\)\}/);
   assert.match(panel, /previousIsoDate\(annualLeave\.serviceYearEnd\)/);
-  assert.match(panel, /label="تاريخ إكمال سنة خدمة"/);
+  assert.match(panel, /label=\{t\("تاريخ إكمال سنة خدمة"\)\}/);
   assert.doesNotMatch(panel, /label="نهاية سنة الخدمة"/);
 });
 
@@ -107,8 +107,8 @@ test("reviewRequired annual balance shows Arabic reason instead of misleading ba
   assert.match(panel, /as_of_before_service_start[\s\S]*تاريخ الحساب قبل بداية الخدمة/);
   assert.match(panel, /function annualBalanceValue/);
   assert.match(panel, /annualBalanceValue[\s\S]*if \(reviewRequired\)/);
-  assert.match(panel, /annualBalanceValue[\s\S]*annualDurationLabel\(value\)/);
-  assert.match(panel, /title="الرصيد يحتاج مراجعة"/);
+  assert.match(panel, /annualBalanceValue[\s\S]*annualDurationLabel\(value,\s*language\)/);
+  assert.match(panel, /title=\{t\("الرصيد يحتاج مراجعة"\)\}/);
   assert.doesNotMatch(panel, /reviewRequired[\s\S]{0,120}numberLabel\(\s*annualLeave\.availableDays/);
 });
 
@@ -168,9 +168,41 @@ test("annual leave service start keeps Core as the single source of truth", () =
     /مطابق لتاريخ سريان التصنيف/
   );
 
+  const submitStart = panel.indexOf("const submitOpeningBalance =");
+  const submitEnd = panel.indexOf("const submitHistoricalWeeklyRestOpening =", submitStart);
+
+  assert.ok(submitStart >= 0);
+  assert.ok(submitEnd > submitStart);
+
+  const submit = panel.slice(submitStart, submitEnd);
+
+  assert.match(
+    submit,
+    /\.setAnnualLeaveOpeningBalance\(\s*employeeId,\s*\{\s*historicalUsedDays,/
+  );
+
   assert.doesNotMatch(
-    panel,
-    /calculateAnnualLeaveAccrual/
+    submit,
+    /days:\s*openingCalculatedRemainingDays/
+  );
+
+  const repository = source(
+    "../workers/core/repositories/annual-leave.js"
+  );
+
+  assert.match(
+    repository,
+    /calculateAnnualLeaveAccrualRange\(\{[\s\S]*?contractAnnualDays:\s*employment\.annual_leave_contract_days/
+  );
+
+  assert.match(
+    repository,
+    /openingAccruedDays - historicalUsedDays/
+  );
+
+  assert.match(
+    repository,
+    /historical_usage_exceeds_accrual/
   );
 
   assert.doesNotMatch(
@@ -231,7 +263,7 @@ test("annual leave opening balance uses the canonical audited Core path", () => 
 
   assert.match(
     panel,
-    /label="الرصيد المتبقي المعتمد"/
+    /label=\{tr\("معاينة الرصيد المتبقي", "Estimated remaining balance"\)\}/
   );
 
   assert.match(
@@ -246,7 +278,7 @@ test("annual leave opening balance uses the canonical audited Core path", () => 
 
   assert.match(
     panel,
-    /اعتماد الرصيد المتبقي/
+    /اعتماد الاستخدام السابق/
   );
 });
 

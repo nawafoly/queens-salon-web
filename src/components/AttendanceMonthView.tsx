@@ -54,6 +54,9 @@ type AttendanceMonthViewProps = {
   coreResolvedShiftsError?: string;
   approvedLeaveDateKeys?: Iterable<string>;
   absenceDateKeys?: Iterable<string>;
+  manualAbsenceDateKeys?: Iterable<string>;
+  attendancePolicyModes?: Partial<Record<string, "required" | "exempt">>;
+  attendancePolicyError?: string;
   permissionEntries?: EmployeePermissionRequest[];
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
@@ -69,7 +72,7 @@ const attendanceCopy = {
   ar: {
     week: ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"],
     hour: "ساعة", minute: "دقيقة", and: "و", in: "دخول", out: "خروج", record: "سجل", meter: "م",
-    presentComplete: "حضور مكتمل", late: "متأخر", missingHours: "ناقص ساعات", waitingOut: "بانتظار الانصراف", needsCompletion: "غير مكتمل", absent: "غياب", offDay: "يوم راحة", leave: "إجازة", notRecorded: "لم يسجل بعد", scheduleUnavailable: "الدوام المعتمد غير متاح", future: "يوم قادم",
+    exempt: "معفى من البصمة", presentComplete: "حضور مكتمل", late: "متأخر", missingHours: "ناقص ساعات", waitingOut: "بانتظار الانصراف", needsCompletion: "غير مكتمل", absent: "غياب", offDay: "يوم راحة", leave: "إجازة", notRecorded: "لم يسجل بعد", scheduleUnavailable: "الدوام المعتمد غير متاح", future: "يوم قادم",
     exception: "استثناء", noDuty: "لا يوجد دوام", weeklyRest: "راحة أسبوعية",
     attendanceManagement: "إدارة الدوام", updating: "جاري التحديث...", refresh: "تحديث السجلات", selectedDay: "اليوم المحدد", loading: "تحميل", shiftUsed: "الشفت المستخدم للحساب",
     attendanceCalendar: "تقويم الحضور", chooseMonth: "اختيار الشهر", year: "السنة", chooseYear: "اختيار السنة", previousYear: "السنة السابقة", nextYear: "السنة التالية", today: "اليوم",
@@ -82,7 +85,7 @@ const attendanceCopy = {
   en: {
     week: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
     hour: "hour", minute: "minute", and: "and", in: "Clock in", out: "Clock out", record: "Record", meter: "m",
-    presentComplete: "Complete attendance", late: "Late", missingHours: "Missing hours", waitingOut: "Awaiting clock-out", needsCompletion: "Incomplete attendance", absent: "Absent", offDay: "Rest day", leave: "Leave", notRecorded: "Not recorded yet", scheduleUnavailable: "Approved schedule unavailable", future: "Upcoming day",
+    exempt: "Attendance exempt", presentComplete: "Complete attendance", late: "Late", missingHours: "Missing hours", waitingOut: "Awaiting clock-out", needsCompletion: "Incomplete attendance", absent: "Absent", offDay: "Rest day", leave: "Leave", notRecorded: "Not recorded yet", scheduleUnavailable: "Approved schedule unavailable", future: "Upcoming day",
     exception: "Exception", noDuty: "No shift", weeklyRest: "Weekly rest",
     attendanceManagement: "Attendance management", updating: "Updating...", refresh: "Refresh records", selectedDay: "Selected day", loading: "Loading", shiftUsed: "Shift used for calculation",
     attendanceCalendar: "Attendance calendar", chooseMonth: "Choose month", year: "Year", chooseYear: "Choose year", previousYear: "Previous year", nextYear: "Next year", today: "Today",
@@ -218,6 +221,7 @@ function recordLocationLabel(record: AttendanceRecord, copy: AttendanceCopy) {
 }
 
 function statusTone(status: AttendanceStatus) {
+  if (status === "exempt") return "exempt";
   if (status === "present") return "complete";
   if (status === "late") return "late";
   if (status === "missing_hours") return "shortage";
@@ -236,6 +240,7 @@ function statusTone(status: AttendanceStatus) {
 }
 
 function statusLabel(status: AttendanceStatus, copy: AttendanceCopy) {
+  if (status === "exempt") return copy.exempt;
   if (status === "present") return copy.presentComplete;
   if (status === "late") return copy.late;
   if (status === "missing_hours") return copy.missingHours;
@@ -359,6 +364,9 @@ export default function AttendanceMonthView({
   coreResolvedShiftsError = "",
   approvedLeaveDateKeys,
   absenceDateKeys,
+  manualAbsenceDateKeys,
+  attendancePolicyModes,
+  attendancePolicyError = "",
   permissionEntries,
   onMonthChange,
   onSelectedDateChange,
@@ -391,6 +399,18 @@ export default function AttendanceMonthView({
         .map(normalizeDateKey)
         .filter(Boolean)
     );
+
+  const manualAbsenceDateKeySet =
+    new Set(
+      Array.from(manualAbsenceDateKeys || [])
+        .map(normalizeDateKey)
+        .filter(Boolean)
+    );
+
+  const policyModeForDate = (dateKey: string) =>
+    attendancePolicyModes === undefined
+      ? undefined
+      : attendancePolicyModes[dateKey] || "unavailable";
 
   const rowsByDate =
     new Map(
@@ -426,6 +446,10 @@ export default function AttendanceMonthView({
       leaveDateKeys,
     absenceDateKeys:
       absenceDateKeySet,
+    manualAbsenceDateKeys:
+      manualAbsenceDateKeySet,
+    attendancePolicyMode:
+      policyModeForDate(safeSelectedDate),
   });
   const selectedSchedule = selectedResolvedDay.schedule;
   const selectedComputation = selectedResolvedDay.computation;
@@ -486,6 +510,10 @@ export default function AttendanceMonthView({
           leaveDateKeys,
         absenceDateKeys:
           absenceDateKeySet,
+        manualAbsenceDateKeys:
+          manualAbsenceDateKeySet,
+        attendancePolicyMode:
+          policyModeForDate(dateKey),
       });
       const status = resolvedDay.status;
       return {
@@ -538,7 +566,10 @@ export default function AttendanceMonthView({
     selectedStatus ===
     "schedule_unavailable";
 
+  const isExemptDay = selectedStatus === "exempt";
+
   const isWorkedDay =
+    !isExemptDay &&
     !isRestDay &&
     !isLeaveDay &&
     !isAbsentDay &&
@@ -775,6 +806,9 @@ export default function AttendanceMonthView({
           <span className="is-partial">{copy.needsReview}</span>
           <span className="is-shortage">{copy.missingHours}</span>
           <span className="is-absent">{copy.absent}</span>
+          {attendancePolicyModes !== undefined ? (
+            <span className="is-exempt">{copy.exempt}</span>
+          ) : null}
           <span className="is-leave">{copy.leave}</span>
           {viewerMode === "employee" ? <span className="is-off-day">{copy.weeklyRest}</span> : null}
           {viewerMode === "employee" ? <span className="is-exception">{copy.exception}</span> : null}
@@ -906,6 +940,34 @@ export default function AttendanceMonthView({
 
             <strong>{copy.absent}</strong>
           </div>
+        ) : isExemptDay ? (
+          <div className="attendance-month__state-card is-exempt">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faFingerprint} />
+            </div>
+
+            <strong>{copy.exempt}</strong>
+
+            <span>
+              {language === "ar"
+                ? "لا يشترط تسجيل البصمة لهذا اليوم وفق سياسة الحضور المعتمدة."
+                : "Clock-in and clock-out are not required for this day."}
+            </span>
+
+            {selectedDayRecords.length > 0 ? (
+              <div className="attendance-month__raw-records">
+                {selectedDayRecords.map(record => (
+                  <div
+                    key={`${record.id || record.type}-${record.serverTime}`}
+                    className="attendance-month__raw-record"
+                  >
+                    <span>{recordTypeLabel(record.type, copy)}</span>
+                    <b>{formatTime(record.serverTime)}</b>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : isScheduleUnavailable ? (
           <div className="attendance-month__state-card is-pending">
             <div className="attendance-month__state-icon">
@@ -917,7 +979,7 @@ export default function AttendanceMonthView({
             </strong>
 
             <span>
-              {copy.scheduleUnavailableDetails}
+              {attendancePolicyError || copy.scheduleUnavailableDetails}
             </span>
           </div>
         ) : isPendingDay ? (

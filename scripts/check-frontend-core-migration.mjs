@@ -162,6 +162,8 @@ const forbiddenChecks = [
     forbidden: [
       /employee_leave_requests/,
       /\bcreateLeaveRequest\(/,
+      /\bcreateManagedLeaveRequest\b/,
+      /firebase\/firestore/,
     ],
   },
   {
@@ -380,7 +382,10 @@ const requiredChecks = [
   },
   {
     file: "src/pages/DashboardEmployees.tsx",
-    required: [/createManagedLeaveRequest/, /decideCanonicalEmployeeLeaveRequest/],
+    required: [
+      /CoreHrService\.registerAdminDirectLeave\s*\(/,
+      /decideCanonicalEmployeeLeaveRequest/,
+    ],
   },
   {
     file: "src/services/employeeLeaveRequestsCore.ts",
@@ -565,7 +570,9 @@ for (const check of requiredChecks) {
 const documentedExceptions = [
   "Firebase Authentication remains for sign-in, ID-token verification and password reset delivery only; operational account status, roles, permissions and employee links are D1-owned.",
   "Employee portal identity, account role, employee linkage, self profile, leave and permission request entry points are Core D1-owned; Firebase is authentication-only for those flows.",
-  "Employee leave request listing, manager-direct creation, approval/execution and post-execution cancellation are Core D1-owned; cancelling an executed leave reverses the canonical leave ledger exactly once.",
+  "Employee-submitted leave requests remain Core D1-owned with their approval, execution and cancellation lifecycle.",
+  "Administrative direct leave registration uses the canonical Core leave API, independent of employee-submitted requests, with final approval authority, audited registration and idempotent execution.",
+  "Cancelling an executed leave reverses the applicable canonical leave ledger exactly once and preserves locked payroll history.",
   "Employee portal, admin and embedded DashboardEmployees file flows are Core D1/R2-owned; authenticated file content never opens a legacy storageUrl directly.",
   "Booking scheduling updates use Core D1 and replace slot locks atomically.",
   "Internal messages, employee notifications and recruitment are Core D1-owned; message notifications are created atomically with the Core message write. Legacy Firestore helpers remain historical-only.",

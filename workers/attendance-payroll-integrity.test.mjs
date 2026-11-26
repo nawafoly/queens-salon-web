@@ -7,6 +7,7 @@ import { upsertPayrollEntry, upsertPayrollPeriod, approvePayrollEntry, markPayro
 import { saveShiftTemplate } from './core/repositories/shift-control.js';
 import { replaceHrSchedules } from './core/repositories/hr-employees.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
+import { registerAdminDirectLeave } from './core/repositories/admin-direct-leaves.js';
 import { createPermissionRequest } from './core/repositories/permissions.js';
 import { recoverHrPayrollOperations } from './core/repositories/hr-payroll-operations.js';
 import { setAnnualLeaveOpeningBalance } from './core/repositories/annual-leave.js';
@@ -383,3 +384,181 @@ for (const status of ['draft','approved','paid']) test(`${status}: real attendan
     assert.equal(rows[0].target_payroll_month,'2026-09');
   }
 });
+
+async function seedAdminDirectLeaveAuthority(core) {
+  const now = '2026-01-01T00:00:00.000Z';
+
+  for (const [id, uid, email] of [
+    ['direct-finance-owner', 'direct-finance-owner-uid', 'owner@example.invalid'],
+    ['direct-finance-assigner', 'direct-finance-assigner-uid', 'assigner@example.invalid'],
+  ]) {
+    await core.prepare(`
+      INSERT INTO app_users (
+        id, firebase_uid, salon_id,
+        email, display_name, primary_role,
+        status, email_verified, created_at, updated_at
+      )
+      VALUES (?, ?, 'main', ?, 'Finance test owner',
+              'owner', 'active', 1, ?, ?)
+    `).bind(id, uid, email, now, now).run();
+  }
+
+  await core.prepare(`
+    INSERT INTO approval_authorities (
+      salon_id, authority_key,
+      approver_user_id, assigned_by_user_id,
+      assigned_at, updated_at
+    )
+    VALUES (
+      'main', 'hr.leave.final',
+      'direct-finance-owner',
+      'direct-finance-assigner',
+      ?, ?
+    )
+  `).bind(now, now).run();
+
+  await core.prepare(`
+    UPDATE employee_employment
+    SET start_date = '2026-01-01',
+        employment_status = 'active',
+        leave_balance = 10
+    WHERE salon_id = 'main'
+      AND employee_id = 'test-employee'
+  `).run();
+
+  return {
+    ...actor,
+    userId: 'direct-finance-owner',
+    uid: 'direct-finance-owner-uid',
+    email: 'owner@example.invalid',
+    name: 'Finance test owner',
+    role: 'owner',
+    employeeId: '',
+  };
+}
+
+for (const lockedStatus of ['approved', 'paid']) {
+  test(`HR06P: administrative leave reconciles ${lockedStatus} payroll without modifying locked money`, async t => {
+    const { attendance, core, entry } =
+      await lockedFixture(t, lockedStatus);
+
+    const directActor =
+      await seedAdminDirectLeaveAuthority(core);
+
+    const options = {
+      externalAttendanceDb: attendance,
+    };
+
+    const data = {
+      operationId: `direct-finance-${lockedStatus}`,
+      employeeId: 'test-employee',
+      leaveType: 'other',
+      startDate: date,
+      endDate: date,
+      durationKind: 'full_day',
+      reason: 'Isolated administrative unpaid leave',
+      manualLeavePolicy: {
+        deductFromBalance: false,
+        affectsPayroll: true,
+      },
+    };
+
+    const readLockedEntry = () =>
+      core.prepare(`
+        SELECT *
+        FROM payroll_entries
+        WHERE salon_id = 'main'
+          AND id = ?
+      `).bind(entry.id).first();
+
+    const readPendingCarryovers = async () =>
+      (await core.prepare(`
+        SELECT *
+        FROM payroll_carryover_adjustments
+        WHERE status = 'pending'
+      `).all()).results;
+
+    assert.equal(entry.status, lockedStatus);
+
+    const result = await registerAdminDirectLeave(
+      core, 'main', data, directActor, options
+    );
+
+    assert.equal(result.status, 'approved');
+    assert.equal(result.registration_source, 'admin_direct');
+    assert.equal(result.request_id, null);
+
+    assert.equal(
+      result.payrollReconciliation.fullyCompleted,
+      true
+    );
+
+    assert.deepEqual(await readLockedEntry(), entry);
+
+    let carryovers = await readPendingCarryovers();
+
+    assert.equal(carryovers.length, 1);
+    assert.equal(carryovers[0].direction, 'deduction');
+    assert.equal(carryovers[0].amount_halalas, 8750);
+
+    console.log(
+      `PASS: ${lockedStatus} administrative leave generates exact SAR 87.50 carryover`
+    );
+
+    const replay = await registerAdminDirectLeave(
+      core, 'main', data, directActor, options
+    );
+
+    assert.equal(replay.id, result.id);
+
+    carryovers = await readPendingCarryovers();
+
+    assert.equal(carryovers.length, 1);
+    assert.equal(carryovers[0].amount_halalas, 8750);
+
+    assert.deepEqual(await readLockedEntry(), entry);
+
+    console.log(
+      `PASS: ${lockedStatus} financial replay remains idempotent`
+    );
+
+    const cancellation = await decideLeave(
+      core,
+      'main',
+      result.id,
+      {
+        status: 'rejected',
+        hrNote: 'Isolated administrative cancellation',
+      },
+      directActor,
+      options
+    );
+
+    assert.equal(cancellation.status, 'rejected');
+
+    assert.equal(
+      cancellation.payrollReconciliation.fullyCompleted,
+      true
+    );
+
+    assert.equal(
+      (await readPendingCarryovers()).length,
+      0
+    );
+
+    assert.deepEqual(await readLockedEntry(), entry);
+
+    const balance = await core.prepare(`
+      SELECT leave_balance
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id = 'test-employee'
+    `).first();
+
+    assert.equal(Number(balance.leave_balance), 10);
+
+    console.log(
+      `PASS: ${lockedStatus} cancellation reverses carryover without changing original payroll`
+    );
+  });
+}

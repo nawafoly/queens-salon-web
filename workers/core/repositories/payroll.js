@@ -195,6 +195,37 @@ function payrollLeaveIsPartial(row) {
 }
 
 function payrollLeaveIsUnpaid(row) {
+
+  // An explicitly approved HR manual policy owns the financial
+  // classification of discretionary leave. Statutory leave types
+  // continue through their existing specialized rules.
+  const manualLeaveType = String(
+    row?.leave_type ?? row?.leaveType ?? ''
+  ).trim().toLowerCase();
+
+  const manualLegalBasis = String(
+    row?.legal_basis ?? row?.legalBasis ?? ''
+  ).trim();
+
+  if (
+    ['other', 'other_hr_review'].includes(manualLeaveType) &&
+    manualLegalBasis === 'HR_MANUAL_POLICY'
+  ) {
+    const financialEffect =
+      row?.affects_payroll ?? row?.affectsPayroll;
+
+    if (
+      financialEffect !== 0 &&
+      financialEffect !== 1 &&
+      financialEffect !== false &&
+      financialEffect !== true
+    ) {
+      throw new Error('core_payroll:invalid_manual_leave_financial_policy');
+    }
+
+    return Number(financialEffect) === 1;
+  }
+
   return cleanText(row?.leave_type).toLowerCase() === 'unpaid';
 }
 

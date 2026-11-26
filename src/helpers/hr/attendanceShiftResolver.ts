@@ -553,6 +553,8 @@ export function computeResolvedAttendanceDay(input: {
   todayDateKey?: string;
   approvedLeaveDateKeys?: Set<string> | Iterable<string>;
   absenceDateKeys?: Set<string> | Iterable<string>;
+  attendancePolicyMode?: "required" | "exempt" | "unavailable";
+  manualAbsenceDateKeys?: Set<string> | Iterable<string>;
   calculationTime?: string;
 }): ResolvedAttendanceDay {
   const dateKey =
@@ -596,6 +598,38 @@ export function computeResolvedAttendanceDay(input: {
       permissionIntervals
     );
 
+  const manualAbsences = new Set(
+    input.manualAbsenceDateKeys || []
+  );
+
+  const canonicalAbsences = new Set(
+    input.absenceDateKeys || []
+  );
+
+  for (const date of manualAbsences) {
+    canonicalAbsences.add(date);
+  }
+
+  const approvedLeaves = new Set(
+    input.approvedLeaveDateKeys || []
+  );
+
+  const policyExempt =
+    input.attendancePolicyMode === "exempt";
+
+  const policyUnavailable =
+    input.attendancePolicyMode === "unavailable";
+
+  const explicitManualAbsence =
+    manualAbsences.has(dateKey);
+
+  if (
+    (policyExempt || policyUnavailable) &&
+    !explicitManualAbsence
+  ) {
+    canonicalAbsences.delete(dateKey);
+  }
+
   const resolvedStatus =
     getAttendanceDayStatus({
       date: dateKey,
@@ -610,13 +644,13 @@ export function computeResolvedAttendanceDay(input: {
       weeklyOffDays:
         shiftResolution.schedule.weeklyOffDays,
       approvedLeaveDateKeys:
-        input.approvedLeaveDateKeys,
+        approvedLeaves,
       holidayDateKeys:
         shiftResolution.isOff
           ? [dateKey]
           : [],
       absenceDateKeys:
-        input.absenceDateKeys,
+        canonicalAbsences,
     });
 
   /*
@@ -634,12 +668,51 @@ export function computeResolvedAttendanceDay(input: {
       ? "schedule_unavailable"
       : resolvedStatus;
 
+  const protectedFact =
+    approvedLeaves.has(dateKey) ||
+    canonicalAbsences.has(dateKey) ||
+    shiftResolution.isOff;
+
+  const resolvedWorkday =
+    shiftResolution.source === "core_resolved_shift" &&
+    !shiftResolution.isOff;
+
+  const hasCompletePunches =
+    Boolean(computation.checkIn) &&
+    Boolean(computation.checkOut);
+
+  const exemptWorkday =
+    policyExempt &&
+    resolvedWorkday &&
+    !protectedFact;
+
+  const effectiveStatus: AttendanceStatus =
+    protectedFact
+      ? status
+      : policyUnavailable
+        ? "schedule_unavailable"
+        : exemptWorkday
+          ? hasCompletePunches
+            ? "present"
+            : "exempt"
+          : status;
+
+  const effectiveComputation =
+    exemptWorkday || (policyUnavailable && !protectedFact)
+      ? {
+          ...computation,
+          lateHours: 0,
+          missingHours: 0,
+          pendingCompensationMinutes: 0,
+        }
+      : computation;
+
   return {
     shiftResolution,
     schedule:
       shiftResolution.schedule,
-    computation,
-    status,
+    computation: effectiveComputation,
+    status: effectiveStatus,
   };
 }
 

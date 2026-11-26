@@ -1216,3 +1216,50 @@ export async function getEmployeeAttendancePolicyState(
     snapshot,
   };
 }
+
+/**
+ * Read-only attendance policy projection for employee self-service.
+ * Administrative history, reasons and actor metadata stay private.
+ */
+export async function getOwnAttendancePolicyState(
+  db,
+  salonId,
+  employeeId,
+  query = {}
+) {
+  const from = attendancePolicyDate(
+    query.dateFrom ?? query.date_from
+  );
+
+  const to = attendancePolicyDate(
+    query.dateTo ?? query.date_to
+  );
+
+  const dates = policyDateRange(from, to);
+
+  if (dates.length > 62) {
+    throw new AppError(
+      400,
+      'core_attendance_policy:self_service_period_too_large'
+    );
+  }
+
+  const state = await loadStablePayrollAttendancePolicy(
+    db,
+    salonId,
+    employeeId,
+    from,
+    to
+  );
+
+  return {
+    employeeId,
+    revision: state.revision,
+    dateFrom: from,
+    dateTo: to,
+    days: state.snapshot.days.map(day => ({
+      date: day.date,
+      mode: day.mode
+    }))
+  };
+}

@@ -885,3 +885,46 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* HR07E attendance exemption */
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-exempt {
+  background: #f3e8ff;
+  border-color: #c4b5fd;
+  color: #6b21a8;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-exempt
+.attendance-month__day-marker {
+  background: #9333ea;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__day.is-exempt.is-selected {
+  background: #e9d5ff;
+  border-color: #7e22ce;
+  box-shadow: inset 0 0 0 1px #7e22ce;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__selected-status.is-exempt,
+.attendance-month.attendance-month--premium-v3
+.attendance-month__badge.is-exempt {
+  color: #6b21a8;
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__legend .is-exempt::before {
+  background: #9333ea;
+}
+
+.attendance-month.attendance-month--premium-v3
+.attendance-month__state-card.is-exempt {
+  color: #6b21a8;
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 8px;
+}

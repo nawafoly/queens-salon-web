@@ -194,6 +194,7 @@ import {
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
 import { FINAL_LEAVE_APPROVAL_KEY, getApprovalAuthority, assignApprovalAuthority, requireFinalLeaveAuthority } from './repositories/approval-authorities.js';
+import { registerAdminDirectLeave } from './repositories/admin-direct-leaves.js';
 import {
   cancelAnnualLeaveRecall,
   cancelWeeklyRestWorkAssignment,
@@ -229,6 +230,7 @@ import {
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   getEmployeeAttendancePolicyState,
+  getOwnAttendancePolicyState,
   createAttendancePolicyPeriod,
   updateAttendancePolicyPeriod,
   cancelAttendancePolicyPeriod,
@@ -878,6 +880,15 @@ function match(url, method) {
   ) {
     return {
       name: "employee-portal:absences",
+    };
+  }
+
+  if (
+    path === "/api/core/hr/employee-portal/attendance-policy" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-portal:attendance-policy",
     };
   }
   if (
@@ -2540,6 +2551,49 @@ async function dispatch(ctx, route, method, body, query, env) {
       );
     }
 
+    case "employee-portal:attendance-policy": {
+      if (method !== "GET") {
+        throw new AppError(
+          405,
+          "core_attendance_policy:read_only"
+        );
+      }
+
+      requirePermission(ctx, "attendance.own.view");
+
+      const ownEmployeeId = cleanText(ctx.employeeId);
+
+      if (!ownEmployeeId) {
+        throw new AppError(
+          403,
+          "core_attendance:employee_link_required"
+        );
+      }
+
+      const requestedEmployeeIds = [
+        query.employeeId,
+        query.employee_id
+      ].map(value => cleanText(value)).filter(Boolean);
+
+      if (
+        requestedEmployeeIds.some(
+          value => value !== ownEmployeeId
+        )
+      ) {
+        throw new AppError(
+          403,
+          "core_attendance:cross_employee_forbidden"
+        );
+      }
+
+      return getOwnAttendancePolicyState(
+        db,
+        ctx.salonId,
+        ownEmployeeId,
+        query
+      );
+    }
+
     case "employee-portal:absences": {
       requirePermission(
         ctx,
@@ -2661,6 +2715,20 @@ async function dispatch(ctx, route, method, body, query, env) {
         ctx,
         "attendance.leaves.manage"
       );
+
+      if (
+        !body ||
+        typeof body.historicalUsedDays !== "number" ||
+        Object.prototype.hasOwnProperty.call(body, "days") ||
+        Object.prototype.hasOwnProperty.call(body, "openingBalanceDays") ||
+        Object.prototype.hasOwnProperty.call(body, "opening_balance_days")
+      ) {
+        throw new AppError(
+          400,
+          "core_annual_leave:historical_usage_required"
+        );
+      }
+
       return setAnnualLeaveOpeningBalance(
         db,
         ctx.salonId,
@@ -2938,6 +3006,37 @@ async function dispatch(ctx, route, method, body, query, env) {
           ctx,
           "attendance.leaves.manage"
         );
+
+        const registrationSource =
+          cleanText(body.source).toLowerCase();
+
+        if (registrationSource === "admin_direct") {
+          requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+
+          return registerAdminDirectLeave(
+            db,
+            ctx.salonId,
+            body,
+            {
+              ...actorInfo,
+              employeeId: ctx.employeeId || "",
+            },
+            {
+              externalAttendanceDb:
+                env.ATTENDANCE_DB || null,
+            }
+          );
+        }
+
+        if (
+          registrationSource &&
+          registrationSource !== "employee_request"
+        ) {
+          throw new AppError(
+            400,
+            "core_leave:invalid_registration_source"
+          );
+        }
 
         return createLeave(
           db,

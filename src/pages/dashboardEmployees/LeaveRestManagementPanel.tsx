@@ -476,6 +476,7 @@ export default function LeaveRestManagementPanel({
       ? 0
       : Number(openingBalanceDays);
 
+  // Non-authoritative preview only; Core recalculates on submission.
   const openingAccruedToEffectiveDate = useMemo(() => {
     if (
       !persistedServiceStartDate ||
@@ -647,7 +648,7 @@ export default function LeaveRestManagementPanel({
         return;
       }
 
-      const days = openingCalculatedRemainingDays;
+      // Core independently computes and approves the opening balance.
 
       if (
         !openingBalanceEffectiveDate
@@ -680,7 +681,7 @@ export default function LeaveRestManagementPanel({
           .setAnnualLeaveOpeningBalance(
             employeeId,
             {
-              days,
+              historicalUsedDays,
               effectiveDate:
                 openingBalanceEffectiveDate,
               reason:
@@ -1190,6 +1191,23 @@ export default function LeaveRestManagementPanel({
           />
 
           <WorkspaceMetricV2
+            label={t("الرصيد الافتتاحي")}
+            value={
+              loading
+                ? t("جاري التحميل...")
+                : annualReviewRequired
+                  ? t("يحتاج مراجعة")
+                  : annualLeave.openingBalanceDays == null
+                    ? t("غير متوفر")
+                    : annualDurationLabel(
+                        annualLeave.openingBalanceDays,
+                        language
+                      )
+            }
+            tone={annualReviewRequired ? "gold" : "neutral"}
+          />
+
+          <WorkspaceMetricV2
             label={t("المستخدم")}
             value={
               loading
@@ -1439,7 +1457,7 @@ export default function LeaveRestManagementPanel({
 
           <DashboardFieldV2
             id="employee-live-v2-opening-balance-reason"
-            label={t("ملاحظة التسوية (اختيارية)")}
+            label={tr("سبب التسوية (إلزامي)", "Settlement reason (required)")}
           >
             <input
               id="employee-live-v2-opening-balance-reason"
@@ -1485,7 +1503,7 @@ export default function LeaveRestManagementPanel({
             }
           />
           <WorkspaceMetricV2
-            label={t("الرصيد المتبقي المعتمد")}
+            label={tr("معاينة الرصيد المتبقي", "Estimated remaining balance")}
             value={
               openingCalculatedRemainingDays === null
                 ? t("غير متوفر")
@@ -1516,6 +1534,12 @@ export default function LeaveRestManagementPanel({
           tone={hasOpeningBalance ? "success" : "neutral"}
         />
 
+        <WorkspaceNoticeV2
+          title={tr("التحقق من الاستخدام السابق", "Verify historical usage")}
+          description={tr("إذا كان السجل السابق غير مكتمل فلا تخمّن الرصيد. إذا لم تعرف ما تم استخدامه سابقًا فلا تدخل رقمًا تقديريًا. المعاينة استرشادية ويعتمد Core الرصيد النهائي.", "Do not estimate historical usage from incomplete records. This preview is informational; Core calculates and approves the final balance.")}
+          tone="neutral"
+        />
+
         <button
           type="button"
           className="dsv2-btn dsv2-btn--success"
@@ -1523,6 +1547,7 @@ export default function LeaveRestManagementPanel({
             readOnly ||
             saving ||
             hasOpeningBalance ||
+            !openingBalanceReason.trim() ||
             !persistedServiceStartDate ||
             openingBalanceDays === "" ||
             !openingBalanceEffectiveDate

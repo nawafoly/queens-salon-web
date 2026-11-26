@@ -199,8 +199,50 @@ export async function createLeave(
   db,
   salonId,
   data,
-  actor = {}
+  actor = {},
+  options = {}
 ) {
+  const registration = options.registration || null;
+
+  if (
+    registration &&
+    !['admin_direct', 'employee_request'].includes(
+      registration.source
+    )
+  ) {
+    throw new AppError(
+      400,
+      'core_leave:invalid_registration_source'
+    );
+  }
+
+  const adminDirect =
+    registration?.source === 'admin_direct';
+
+  if (adminDirect) {
+    if (
+      !cleanText(actor.uid) ||
+      !cleanText(registration.operationId) ||
+      cleanText(registration.operationId).length > 128
+    ) {
+      throw new AppError(
+        400,
+        'core_leave:invalid_registration_context'
+      );
+    }
+
+    if (
+      cleanText(data.requestId || data.request_id) ||
+      cleanText(
+        data.durationKind || data.duration_kind
+      ).toLowerCase() === 'partial'
+    ) {
+      throw new AppError(
+        400,
+        'core_leave:invalid_admin_direct_leave'
+      );
+    }
+  }
   const startDate = validDate(
     data.startDate || data.start_date,
     'startDate'
@@ -332,11 +374,13 @@ export async function createLeave(
       'employeeId'
     ),
     employee_uid:
-      optionalText(
-        data.employeeUid ||
-          data.employee_uid ||
-          actor.uid
-      ) || null,
+      adminDirect
+        ? optionalText(data.employeeUid) || null
+        : optionalText(
+            data.employeeUid ||
+              data.employee_uid ||
+              actor.uid
+          ) || null,
     employee_name:
       optionalText(
         data.employeeName ||
@@ -381,6 +425,75 @@ export async function createLeave(
     updated_at: now,
   };
 
+  if (registration) {
+    row.registration_source = registration.source;
+    row.registered_by_uid = optionalText(actor.uid) || null;
+    row.registration_operation_id =
+      adminDirect
+        ? cleanText(registration.operationId)
+        : null;
+  }
+
+  const registrationColumns = registration
+    ? ', registration_source, registered_by_uid, registration_operation_id'
+    : '';
+
+  const registrationPlaceholders = registration
+    ? ', ?, ?, ?'
+    : '';
+
+  const canonicalPolicy = adminDirect
+    ? options.canonicalPolicy
+    : null;
+
+  if (
+    adminDirect &&
+    (
+      !canonicalPolicy ||
+      !cleanText(canonicalPolicy.policy_version) ||
+      !cleanText(canonicalPolicy.legal_basis)
+    )
+  ) {
+    throw new AppError(
+      400,
+      'core_leave:canonical_registration_policy_required'
+    );
+  }
+
+  const policyColumns = canonicalPolicy
+    ? ', policy_version, balance_bucket, legal_basis, documentation_status, statutory_review_required, entitlement_minutes_requested'
+    : '';
+
+  const policyPlaceholders = canonicalPolicy
+    ? ', ?, ?, ?, ?, ?, ?'
+    : '';
+
+  if (canonicalPolicy) {
+    row.deduct_from_balance =
+      canonicalPolicy.deduct_from_balance;
+
+    row.affects_payroll =
+      canonicalPolicy.affects_payroll;
+
+    row.policy_version =
+      canonicalPolicy.policy_version;
+
+    row.balance_bucket =
+      canonicalPolicy.balance_bucket;
+
+    row.legal_basis =
+      canonicalPolicy.legal_basis;
+
+    row.documentation_status =
+      canonicalPolicy.documentation_status;
+
+    row.statutory_review_required =
+      canonicalPolicy.statutory_review_required;
+
+    row.entitlement_minutes_requested =
+      canonicalPolicy.entitlement_minutes_requested;
+  }
+
   await dbBatch(db, [
     {
       sql: `
@@ -411,11 +524,13 @@ export async function createLeave(
           decided_by_name,
           created_at,
           updated_at
+          ${registrationColumns}${policyColumns}
         )
         VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?
+          ${registrationPlaceholders}${policyPlaceholders}
         )
       `,
       params: Object.values(row),

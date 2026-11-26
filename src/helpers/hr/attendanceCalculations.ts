@@ -59,7 +59,8 @@ export type AttendanceStatus =
   | "off_day"
   | "future"
   | "today_pending"
-  | "schedule_unavailable";
+  | "schedule_unavailable"
+  | "exempt";
 
 export type AttendancePayrollSummary = {
   expectedHours: number;
@@ -404,5 +405,3 @@ export function summarizeAttendanceForPayroll(
   summary.absentDays = absentDateKeys.length;
   return summary;
 }
-
-
