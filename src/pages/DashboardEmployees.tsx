@@ -1,3 +1,4 @@
+import AttendancePolicySection from "./dashboardEmployees/AttendancePolicySection";
 import { DashboardTimeInputV2 } from "../components/dashboard-v2/DashboardNativeControlBridgeV2";
 import { attendanceReconciliationMessage } from "../services/attendanceOperationClient";
 // src/pages/DashboardEmployees.tsx
@@ -5110,15 +5111,7 @@ function DashboardEmployeesContent() {
       return;
     }
 
-    if (
-      payrollAttendanceMode === "exempt" &&
-      !cleanText(payrollAttendanceExemptionReason)
-    ) {
-      rejectSave(
-        "اكتب سبب إعفاء الموظف من البصمة قبل حفظ إعدادات الراتب."
-      );
-      return;
-    }
+
 
     if (!payrollSocialInsuranceCategory) {
       rejectSave("حدد تصنيف التأمينات الاجتماعية للموظفة قبل حفظ إعدادات الراتب.");
@@ -5201,11 +5194,7 @@ function DashboardEmployeesContent() {
         overtimeEnabled: payrollOvertimeEnabled,
         overtimeMultiplier,
         payrollDeductionMethod,
-        attendancePayrollMode: payrollAttendanceMode,
-        attendancePayrollExemptionReason:
-          payrollAttendanceMode === "exempt"
-            ? cleanText(payrollAttendanceExemptionReason)
-            : null,
+
       };
       await CoreHrService.saveEmployee({
         id: targetEmployeeId,
@@ -6116,14 +6105,7 @@ function DashboardEmployeesContent() {
                     ? positiveNumberOrZero(payrollOvertimeMultiplier) || 1.5
                     : 1.5,
                 payrollDeductionMethod,
-                attendancePayrollMode:
-                  payrollAttendanceMode,
-                attendancePayrollExemptionReason:
-                  payrollAttendanceMode === "exempt"
-                    ? cleanText(
-                        payrollAttendanceExemptionReason
-                      )
-                    : null,
+
               }
             : {}),
         },
@@ -10192,6 +10174,13 @@ const canonicalSchedules =
                 nowTick={nowTick}
                 summary={modalStaffScheduleSummary}
               />
+              {!!editingStaff && activeTab === "payroll" && canViewPayroll && (
+                <AttendancePolicySection
+                  key={editingStaff.id}
+                  employeeId={editingStaff.id}
+                  canManage={canManagePayroll && canUpdateEmployees}
+                />
+              )}
               <EmployeeStatsSection
                 isVisible={!!editingStaff && ((activeTab === "payroll" && canViewPayroll) || (activeTab === "leave" && canManageLeaveBalance))}
                 employeeId={editingStaff?.id || ""}
@@ -10254,9 +10243,13 @@ const canonicalSchedules =
                   onOvertimeMultiplierChange: setPayrollOvertimeMultiplier,
                   onDeductionMethodChange: setPayrollDeductionMethod,
                   onAttendancePayrollModeChange:
-                    setPayrollAttendanceMode,
+                    () => {
+                      setErrorMsg("استخدم بطاقة سياسة الحضور والإعفاء الجديدة.");
+                    },
                   onAttendancePayrollExemptionReasonChange:
-                    setPayrollAttendanceExemptionReason,
+                    () => {
+                      setErrorMsg("استخدم بطاقة سياسة الحضور والإعفاء الجديدة.");
+                    },
                   onSaveSettings: () => {
                     void savePayrollSettings();
                   },

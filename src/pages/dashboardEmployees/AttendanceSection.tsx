@@ -782,7 +782,11 @@ export default function AttendanceSection({
   const [corePermissionSpecialDays, setCorePermissionSpecialDays] = useState<AttendanceSpecialDay[]>([]);
   const [corePermissionLoading, setCorePermissionLoading] = useState(false);
   const [corePermissionError, setCorePermissionError] = useState("");
-  const [coreAbsenceDateKeys, setCoreAbsenceDateKeys] = useState<string[]>([]);
+  const [rawCoreAbsenceDateKeys, setCoreAbsenceDateKeys] =
+    useState<string[]>([]);
+
+  const [manualCoreAbsenceDateKeys, setManualCoreAbsenceDateKeys] =
+    useState<string[]>([]);
   const [coreAbsenceLoading, setCoreAbsenceLoading] = useState(false);
   const [coreAbsenceError, setCoreAbsenceError] = useState("");
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
@@ -792,6 +796,173 @@ export default function AttendanceSection({
   const [punchClearError, setPunchClearError] = useState("");
   const [coreScheduleRefreshVersion, setCoreScheduleRefreshVersion] = useState(0);
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
+
+  const [attendancePolicyLoading, setAttendancePolicyLoading] =
+    useState(true);
+
+  const [attendancePolicyError, setAttendancePolicyError] =
+    useState("");
+
+  const [attendancePolicyRevision, setAttendancePolicyRevision] =
+    useState(0);
+
+  const [attendancePolicyResult, setAttendancePolicyResult] =
+    useState<{
+      key: string;
+      days: string[];
+    } | null>(null);
+
+  const attendancePolicyKey =
+    `${employeeIdsKey}|${monthKey}|${attendancePolicyRevision}`;
+
+  const exemptDateKeys =
+    attendancePolicyResult?.key === attendancePolicyKey
+      ? attendancePolicyResult.days
+      : [];
+
+  const attendancePolicyReady =
+    attendancePolicyResult?.key === attendancePolicyKey;
+
+  const coreAbsenceDateKeys = useMemo(() => {
+    if (!attendancePolicyReady) return rawCoreAbsenceDateKeys;
+
+    const exempt = new Set(exemptDateKeys);
+    const manual = new Set(manualCoreAbsenceDateKeys);
+
+    return rawCoreAbsenceDateKeys.filter(
+      date => !exempt.has(date) || manual.has(date)
+    );
+  }, [
+    attendancePolicyReady,
+    exemptDateKeys,
+    rawCoreAbsenceDateKeys,
+    manualCoreAbsenceDateKeys,
+  ]);
+
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const changedId = cleanText(
+        (event as CustomEvent<{ employeeId?: string }>).detail?.employeeId
+      );
+
+      if (!employeeIdsKey.split("|").includes(changedId)) return;
+
+      setAttendancePolicyRevision(value => value + 1);
+    };
+
+    window.addEventListener(
+      "malikat:attendance-policy-changed",
+      listener
+    );
+
+    return () => {
+      window.removeEventListener(
+        "malikat:attendance-policy-changed",
+        listener
+      );
+    };
+  }, [employeeIdsKey]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let cancelled = false;
+
+    setAttendancePolicyLoading(true);
+    setAttendancePolicyError("");
+    setAttendancePolicyResult(null);
+
+    const dates = monthDateKeys(monthKey);
+
+    const load = async () => {
+      if (!dates.length) {
+        throw new Error("Invalid attendance month");
+      }
+
+      const identities = uniqueCleanTexts(employeeIdsKey.split("|"))
+        .filter(isCoreEmployeeIdentifier);
+
+      if (!identities.length) {
+        throw new Error("Canonical employee identity unavailable");
+      }
+
+      const results = await Promise.allSettled(
+        identities.map(id =>
+          CoreHrService.getAttendancePolicy(id, {
+            dateFrom: dates[0],
+            dateTo: dates[dates.length - 1],
+          })
+        )
+      );
+
+      const successful = results.flatMap(result =>
+        result.status === "fulfilled" ? [result.value] : []
+      );
+
+      if (successful.length !== 1) {
+        throw new Error(
+          "Canonical attendance policy could not be uniquely resolved"
+        );
+      }
+
+      const snapshot = successful[0].snapshot;
+
+      if (!snapshot || !Array.isArray(snapshot.days)) {
+        throw new Error("Attendance policy snapshot unavailable");
+      }
+
+      const expectedDates = new Set(dates);
+      const receivedDates = new Set<string>();
+
+      for (const day of snapshot.days) {
+        if (
+          !expectedDates.has(day.date) ||
+          receivedDates.has(day.date) ||
+          !["required", "exempt"].includes(day.mode)
+        ) {
+          throw new Error("Invalid attendance policy day");
+        }
+
+        receivedDates.add(day.date);
+      }
+
+      if (receivedDates.size !== dates.length) {
+        throw new Error("Incomplete attendance policy snapshot");
+      }
+
+      if (!cancelled) {
+        setAttendancePolicyResult({
+          key: attendancePolicyKey,
+          days: snapshot.days
+            .filter(day => day.mode === "exempt")
+            .map(day => day.date),
+        });
+      }
+    };
+
+    void load()
+      .catch(err => {
+        if (!cancelled) {
+          setAttendancePolicyError(
+            String(err?.message || err)
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAttendancePolicyLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    attendancePolicyKey,
+    employeeIdsKey,
+    isVisible,
+    monthKey,
+  ]);
 
   useEffect(() => {
     const identityIds = new Set(employeeIdsKey.split("|").filter(Boolean));
@@ -924,6 +1095,7 @@ export default function AttendanceSection({
       !/^\d{4}-\d{2}$/.test(monthKey)
     ) {
       setCoreAbsenceDateKeys([]);
+        setManualCoreAbsenceDateKeys([]);
       setCoreAbsenceError("");
       setCoreAbsenceLoading(false);
       return;
@@ -945,6 +1117,9 @@ export default function AttendanceSection({
         if (cancelled) return;
 
         const dates =
+          new Set<string>();
+
+        const manualDates =
           new Set<string>();
 
         groups
@@ -977,7 +1152,23 @@ export default function AttendanceSection({
             }
 
             dates.add(date);
+
+            const provenance =
+              absence as typeof absence & {
+                source?: string;
+              };
+
+            if (
+              cleanText(provenance.source).toLowerCase() !==
+              "automatic_check_in_lock"
+            ) {
+              manualDates.add(date);
+            }
           });
+
+        setManualCoreAbsenceDateKeys(
+          Array.from(manualDates).sort()
+        );
 
         setCoreAbsenceDateKeys(
           Array.from(dates)
@@ -995,6 +1186,7 @@ export default function AttendanceSection({
         );
 
         setCoreAbsenceDateKeys([]);
+        setManualCoreAbsenceDateKeys([]);
 
         setCoreAbsenceError(
           "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u063a\u064a\u0627\u0628 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Core. \u062a\u0645 \u0625\u064a\u0642\u0627\u0641 \u062a\u0639\u062f\u064a\u0644\u0627\u062a \u0627\u0644\u062d\u0636\u0648\u0631 \u062d\u062a\u0649 \u064a\u0646\u062c\u062d \u0627\u0644\u062a\u062d\u0642\u0642."
@@ -1262,17 +1454,55 @@ export default function AttendanceSection({
             record.dayKey
         );
 
-        return toLiveAttendanceRow(
+        const resolvedRow = toLiveAttendanceRow(
           row,
           date
             ? coreResolvedShiftsByDate[date] || null
             : null,
           coreAbsenceDateKeySet
         );
+
+        const isExempt =
+          attendancePolicyReady &&
+          exemptDateKeys.includes(date);
+
+        if (
+          !isExempt ||
+          coreAbsenceDateKeySet.has(date) ||
+          cleanText(resolvedRow.type).toLowerCase() === "leave"
+        ) {
+          return resolvedRow;
+        }
+
+        const hasCheckIn =
+          Boolean(cleanText(resolvedRow.checkInAtClient));
+
+        const hasCheckOut =
+          Boolean(cleanText(resolvedRow.checkOutAtClient));
+
+        return {
+          ...resolvedRow,
+          lateMinutes: 0,
+          earlyLeaveMinutes: 0,
+          missingMinutes: 0,
+          absentFullDay: false,
+          type:
+            cleanText(resolvedRow.type).toLowerCase() === "absent"
+              ? ""
+              : resolvedRow.type,
+          status:
+            hasCheckIn && hasCheckOut
+              ? "checked_out"
+              : hasCheckIn || hasCheckOut
+                ? "معفى من البصمة"
+                : "معفى من البصمة",
+        };
       }),
     [
       coreAbsenceDateKeySet,
       coreResolvedShiftsByDate,
+      attendancePolicyReady,
+      exemptDateKeys,
       rows,
     ]
   );
@@ -1419,6 +1649,9 @@ export default function AttendanceSection({
   );
 
   const attendanceCoreBlocked =
+    attendancePolicyLoading ||
+    !attendancePolicyReady ||
+    Boolean(attendancePolicyError) ||
     coreShiftLoading ||
     corePermissionLoading ||
     coreAbsenceLoading ||
@@ -1520,19 +1753,51 @@ export default function AttendanceSection({
 
   return (
     <>
+      {attendancePolicyError && (
+        <div role="alert" className="dsv2-badge dsv2-badge--danger">
+          {tr(
+            "تعذر التحقق من سياسة الحضور المعتمدة.",
+            "The approved attendance policy could not be verified."
+          )}
+          {" — "}
+          {attendancePolicyError}
+        </div>
+      )}
+
+      {attendancePolicyReady && exemptDateKeys.includes(selectedDate) && (
+        <div
+          role="status"
+          style={{
+            background: "#ede9fe",
+            color: "#5b21b6",
+            border: "1px solid #c4b5fd",
+            borderRadius: 8,
+            padding: 12,
+          }}
+        >
+          {tr(
+            "سياسة اليوم: معفى من البصمة",
+            "Daily policy: Attendance exempt"
+          )}
+        </div>
+      )}
+
       <EmployeeAttendanceTabLiveV2
         readOnly={loading || attendanceCoreBlocked || Boolean(clearingPunchType)}
         loading={
           loading ||
           coreShiftLoading ||
           corePermissionLoading ||
-          coreAbsenceLoading
+          coreAbsenceLoading ||
+          attendancePolicyLoading ||
+          !attendancePolicyReady
         }
         error={
           error ||
           coreShiftError ||
           corePermissionError ||
-          coreAbsenceError
+          coreAbsenceError ||
+          attendancePolicyError
         }
         rows={liveRows}
         monthKey={monthKey}
@@ -1541,7 +1806,16 @@ export default function AttendanceSection({
         employmentEndDate={employmentEndDate}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
         absenceDateKeys={coreAbsenceDateKeys}
-        scheduledWorkDateKeys={scheduledWorkDateKeys}
+        scheduledWorkDateKeys={
+          attendancePolicyReady
+            ? scheduledWorkDateKeys.filter(
+                date => !exemptDateKeys.includes(date)
+              )
+            : []
+        }
+        exemptDateKeys={
+          attendancePolicyReady ? exemptDateKeys : []
+        }
         specialDays={mergedSpecialDays}
         effectiveShiftInfo={effectiveShiftInfo}
         canEdit={canEdit}

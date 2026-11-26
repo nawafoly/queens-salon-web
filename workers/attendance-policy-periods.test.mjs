@@ -2007,3 +2007,141 @@ test('HR05D1: leap-year date coverage remains exact', () => {
   assert.equal(snapshot.requiredDayCount, 29);
   assert.equal(snapshot.mode, 'required');
 });
+
+
+test('HR05G: canonical policy state lifecycle', async t => {
+  const database = fixture(t);
+
+  database.exec(
+    readFileSync(
+      new URL(
+        '../migrations/core/0108_attendance_policy_revision.sql',
+        import.meta.url
+      ),
+      'utf8'
+    )
+  );
+
+  const db = hr05CommandDb(database);
+
+  const { getEmployeeAttendancePolicyState } =
+    await import('./core/repositories/attendance-policy.js');
+
+  const readState = () =>
+    getEmployeeAttendancePolicyState(
+      db,
+      'main',
+      'employee-1',
+      {
+        dateFrom: '2026-11-14',
+        dateTo: '2026-11-26',
+      }
+    );
+
+  const modeAt = (state, date) => {
+    const day = state.snapshot.days.find(
+      item => item.date === date
+    );
+
+    assert.ok(day, `Missing policy date: ${date}`);
+
+    return day.mode;
+  };
+
+  // 1. Original required attendance.
+  const before = await readState();
+
+  assert.equal(before.employeeId, 'employee-1');
+  assert.ok(Number.isInteger(before.revision));
+  assert.equal(before.snapshot.days.length, 13);
+  assert.equal(modeAt(before, '2026-11-15'), 'required');
+
+  // 2. Retroactive exemption.
+  const created = await createAttendancePolicyPeriod(
+    db,
+    'main',
+    'employee-1',
+    hr05Input,
+    hr05Admin
+  );
+
+  const active = await readState();
+
+  assert.equal(active.authority, 'effective_dated');
+  assert.ok(active.revision > before.revision);
+
+  assert.equal(modeAt(active, '2026-11-14'), 'required');
+  assert.equal(modeAt(active, '2026-11-15'), 'exempt');
+  assert.equal(modeAt(active, '2026-11-25'), 'exempt');
+  assert.equal(modeAt(active, '2026-11-26'), 'required');
+
+  assert.ok(
+    active.periods.some(
+      period => period.id === created.id
+    )
+  );
+
+  // 3. End exemption without losing historical coverage.
+  const updated = await updateAttendancePolicyPeriod(
+    db,
+    'main',
+    'employee-1',
+    created.id,
+    {
+      version: created.version,
+      effectiveTo: '2026-11-20',
+    },
+    hr05Admin
+  );
+
+  const ended = await readState();
+
+  assert.ok(ended.revision > active.revision);
+
+  assert.equal(modeAt(ended, '2026-11-15'), 'exempt');
+  assert.equal(modeAt(ended, '2026-11-20'), 'exempt');
+  assert.equal(modeAt(ended, '2026-11-21'), 'required');
+
+  // 4. Retroactive cancellation.
+  await cancelAttendancePolicyPeriod(
+    db,
+    'main',
+    'employee-1',
+    created.id,
+    {
+      version: updated.version,
+      reason: 'Synthetic retroactive cancellation',
+    },
+    hr05Admin
+  );
+
+  const cancelled = await readState();
+
+  assert.ok(cancelled.revision > ended.revision);
+
+  assert.ok(
+    cancelled.snapshot.days.every(
+      day => day.mode === 'required'
+    )
+  );
+
+  assert.ok(
+    cancelled.periods.some(
+      period =>
+        period.id === created.id &&
+        period.status === 'cancelled'
+    )
+  );
+
+  // 5. Read without a monthly range.
+  const history = await getEmployeeAttendancePolicyState(
+    db,
+    'main',
+    'employee-1'
+  );
+
+  assert.equal(history.snapshot, null);
+  assert.equal(history.revision, cancelled.revision);
+
+  console.log('HR05G_CANONICAL_LIFECYCLE_VERIFIED');
+});

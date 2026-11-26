@@ -322,6 +322,7 @@ function attendanceCalendarTimeLabel(input: {
   if (specialKind === "rest") return "راحة معتمدة — لا تتطلب بصمة";
   if (specialKind === "weekly_off") return "راحة أسبوعية — لا تتطلب بصمة";
   if (specialKind === "exception_off") return "يوم مغلق — لا تتطلب بصمة";
+  if (input.status === "معفى من البصمة") return "لا يتطلب تسجيل بصمة";
   if (input.status === "غياب") return "لم تسجل بصمة دخول أو خروج";
   if (input.status === "غير مصنف") return "لا توجد بيانات بصمة أو حالة معتمدة";
 
@@ -986,6 +987,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   employmentEndDate?: string;
   approvedLeaveDateKeys?: string[];
   absenceDateKeys?: string[];
+  exemptDateKeys?: string[];
   scheduledWorkDateKeys?: string[];
   specialDays?: AttendanceSpecialDay[];
   effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
@@ -1013,6 +1015,7 @@ export function EmployeeAttendanceTabLiveV2({
   employmentEndDate = "",
   approvedLeaveDateKeys = [],
   absenceDateKeys = [],
+  exemptDateKeys = [],
   scheduledWorkDateKeys = [],
   specialDays = [],
   effectiveShiftInfo = null,
@@ -1094,17 +1097,46 @@ export function EmployeeAttendanceTabLiveV2({
         )
     );
 
+  const exemptionDates = new Set(exemptDateKeys);
+  const explicitAbsenceDates = new Set(monthAbsenceDates);
+  const explicitLeaveDates = new Set(monthLeaveDates);
+
   const calendarDays =
     buildAttendanceCalendar(
       normalizedMonth,
       normalizedRows,
       monthLeaveDates,
       monthAbsenceDates,
-      monthScheduledWorkDates,
+      monthScheduledWorkDates.filter(
+        date => !exemptionDates.has(date)
+      ),
       monthSpecialDays,
       employmentStartDate,
       employmentEndDate
-    );
+    ).map(day => {
+      if (
+        loading ||
+        cleanText(error) ||
+        !day.interactive ||
+        !exemptionDates.has(day.date) ||
+        explicitAbsenceDates.has(day.date) ||
+        explicitLeaveDates.has(day.date) ||
+        day.specialDay ||
+        cleanText(day.row?.checkInAtClient) ||
+        cleanText(day.row?.checkOutAtClient)
+      ) {
+        return day;
+      }
+
+      return {
+        ...day,
+        status: "معفى من البصمة",
+        timeLabel: tr(
+          "لا يتطلب تسجيل بصمة",
+          "Attendance not required"
+        ),
+      };
+    });
 
   const selectedDay = calendarDays.find((day) => day.date === activeSelectedDate) || null;
   const selectedRow = selectedDay?.row || null;
@@ -1369,6 +1401,15 @@ export function EmployeeAttendanceTabLiveV2({
                     type="button"
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
+                    style={
+                      day.status === "معفى من البصمة"
+                        ? {
+                            backgroundColor: "#ede9fe",
+                            borderColor: "#8b5cf6",
+                            color: "#5b21b6",
+                          }
+                        : undefined
+                    }
                     data-employment-state={day.employmentState}
                     aria-disabled={!day.interactive}
                     disabled={!day.interactive}
@@ -1411,7 +1452,9 @@ export function EmployeeAttendanceTabLiveV2({
                 <div className="dsv2-ew-day-detail__status">
                   <span>{t(attendanceReviewText(selectedStatus, selectedRow))}</span>
                   <WorkspaceStatusBadgeV2 tone={attendanceStatusTone(selectedStatus)}>
-                    {t(selectedStatus)}
+                    {selectedStatus === "معفى من البصمة"
+                      ? tr("معفى من البصمة", "Attendance exempt")
+                      : t(selectedStatus)}
                   </WorkspaceStatusBadgeV2>
                   {selectedSpecialDay && selectedSpecialDay.label !== selectedStatus ? (
                     <WorkspaceStatusBadgeV2 tone="gold">
