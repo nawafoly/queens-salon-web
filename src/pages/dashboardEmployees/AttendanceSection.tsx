@@ -1130,9 +1130,12 @@ export default function AttendanceSection({
                 absence.absenceType
               ).toLowerCase();
 
+            const automatic =
+              absenceType === "automatic_check_in_lock";
+
             if (
-              absenceType !==
-              "full_day"
+              absenceType !== "full_day" &&
+              !automatic
             ) {
               return;
             }
@@ -1153,15 +1156,7 @@ export default function AttendanceSection({
 
             dates.add(date);
 
-            const provenance =
-              absence as typeof absence & {
-                source?: string;
-              };
-
-            if (
-              cleanText(provenance.source).toLowerCase() !==
-              "automatic_check_in_lock"
-            ) {
+            if (!automatic) {
               manualDates.add(date);
             }
           });
@@ -1493,9 +1488,7 @@ export default function AttendanceSection({
           status:
             hasCheckIn && hasCheckOut
               ? "checked_out"
-              : hasCheckIn || hasCheckOut
-                ? "معفى من البصمة"
-                : "معفى من البصمة",
+              : "معفى من البصمة",
         };
       }),
     [
