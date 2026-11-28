@@ -49,6 +49,17 @@ export function shouldUseIdempotency(request, operationId) {
     return false;
   }
 
+  // Booking creation owns idempotency through the caller-supplied booking id
+  // and the atomic booking/package transaction. Running it through the generic
+  // HTTP ledger can strand a pending key after a Worker interruption and can
+  // replay before current booking authorization is evaluated.
+  if (
+    method === "POST" &&
+    /^\/api\/core\/(?:internal\/)?bookings\/?$/.test(pathname)
+  ) {
+    return false;
+  }
+
   // Binary file content is excluded from the JSON replay ledger.
   if (
     /\/files\/[^/]+\/content$/.test(pathname)
@@ -85,8 +96,15 @@ export async function beginIdempotentOperation(
   salonId,
   operationId,
   fingerprint,
-  requestId
+  requestId,
+  executionToken
 ) {
+  if (!clean(executionToken)) {
+    throw new Error(
+      "core_idempotency:execution_token_required"
+    );
+  }
+
   const now = isoNow();
 
   const inserted = await db
@@ -94,8 +112,8 @@ export async function beginIdempotentOperation(
       [
         "INSERT OR IGNORE INTO core_idempotency_operations",
         "(salon_id, operation_id, request_fingerprint, state,",
-        " first_request_id, last_request_id, created_at, updated_at)",
-        "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)",
+        " first_request_id, last_request_id, created_at, updated_at, execution_token)",
+        "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)",
       ].join(" ")
     )
     .bind(
@@ -105,7 +123,8 @@ export async function beginIdempotentOperation(
       requestId,
       requestId,
       now,
-      now
+      now,
+      executionToken
     )
     .run();
 
@@ -142,13 +161,15 @@ export async function beginIdempotentOperation(
         "UPDATE core_idempotency_operations",
         "SET last_request_id = ?, updated_at = ?",
         "WHERE salon_id = ? AND operation_id = ?",
+        "AND request_fingerprint = ?",
       ].join(" ")
     )
     .bind(
       requestId,
       now,
       salonId,
-      operationId
+      operationId,
+      fingerprint
     )
     .run();
 
@@ -174,11 +195,14 @@ export async function completeIdempotentOperation(
   fingerprint,
   requestId,
   status,
-  responseBody
+  responseBody,
+  executionToken
 ) {
+  if (!clean(executionToken)) return false;
+
   const now = isoNow();
 
-  await db
+  const result = await db
     .prepare(
       [
         "UPDATE core_idempotency_operations",
@@ -186,6 +210,7 @@ export async function completeIdempotentOperation(
         " last_request_id = ?, completed_at = ?, updated_at = ?",
         "WHERE salon_id = ? AND operation_id = ?",
         "AND request_fingerprint = ? AND state = 'pending'",
+        "AND execution_token = ?",
       ].join(" ")
     )
     .bind(
@@ -196,29 +221,162 @@ export async function completeIdempotentOperation(
       now,
       salonId,
       operationId,
-      fingerprint
+      fingerprint,
+      executionToken
     )
     .run();
+
+  return changes(result) === 1;
 }
 
 export async function abandonIdempotentOperation(
   db,
   salonId,
   operationId,
-  fingerprint
+  fingerprint,
+  executionToken
 ) {
-  await db
+  if (!clean(executionToken)) return false;
+
+  const result = await db
     .prepare(
       [
         "DELETE FROM core_idempotency_operations",
         "WHERE salon_id = ? AND operation_id = ?",
         "AND request_fingerprint = ? AND state = 'pending'",
+        "AND execution_token = ?",
       ].join(" ")
     )
     .bind(
       salonId,
       operationId,
-      fingerprint
+      fingerprint,
+      executionToken
     )
     .run();
+
+  return changes(result) === 1;
+}
+
+// These statements must execute in the SAME atomic D1 batch as
+// the associated business mutation, never in a separate batch.
+//
+// A stale or missing execution owner aborts the entire batch.
+// This contract is not a general pending-operation takeover.
+
+export function atomicIdempotencyCompletionStatements({
+  salonId,
+  operationId,
+  fingerprint,
+  requestId,
+  executionToken,
+  status,
+  responseBody,
+}) {
+  for (const value of [
+    salonId,
+    operationId,
+    fingerprint,
+    requestId,
+    executionToken,
+  ]) {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(
+        "core_idempotency:invalid_commit_identity"
+      );
+    }
+  }
+
+  if (normalizeOperationId(operationId) !== operationId) {
+    throw new Error(
+      "core_idempotency:invalid_commit_identity"
+    );
+  }
+
+  if (
+    !Number.isInteger(status) ||
+    status < 200 ||
+    status >= 300 ||
+    status === 204 ||
+    status === 205
+  ) {
+    throw new Error(
+      "core_idempotency:invalid_commit_status"
+    );
+  }
+
+  if (typeof responseBody !== "string") {
+    throw new Error(
+      "core_idempotency:invalid_commit_response"
+    );
+  }
+
+  let payload;
+
+  try {
+    payload = JSON.parse(responseBody);
+  } catch {
+    throw new Error(
+      "core_idempotency:invalid_commit_response"
+    );
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    payload.ok === false
+  ) {
+    throw new Error(
+      "core_idempotency:invalid_commit_response"
+    );
+  }
+
+  const now = isoNow();
+
+  return [
+    {
+      sql: `UPDATE core_idempotency_operations
+        SET state = 'completed',
+            response_status = ?,
+            response_body = ?,
+            last_request_id = ?,
+            completed_at = ?,
+            updated_at = ?
+        WHERE salon_id = ?
+          AND operation_id = ?
+          AND request_fingerprint = ?
+          AND execution_token = ?
+          AND state = 'pending'`,
+      params: [
+        status,
+        responseBody,
+        requestId,
+        now,
+        now,
+        salonId,
+        operationId,
+        fingerprint,
+        executionToken,
+      ],
+    },
+    {
+      // A failed ownership comparison must abort every
+      // preceding business write in the transaction.
+      sql: `INSERT INTO core_idempotency_operations
+        (salon_id, operation_id, request_fingerprint,
+         state, first_request_id, last_request_id,
+         created_at, updated_at)
+        SELECT NULL, ?, ?, 'pending', ?, ?, ?, ?
+        WHERE changes() <> 1`,
+      params: [
+        operationId,
+        fingerprint,
+        requestId,
+        requestId,
+        now,
+        now,
+      ],
+    },
+  ];
 }

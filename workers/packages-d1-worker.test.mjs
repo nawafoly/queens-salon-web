@@ -13,18 +13,57 @@ class FakeD1 {
       client_packages: new Map(),
       package_transactions: new Map(),
       client_identity_aliases: new Map(),
+      package_wallet_versions: new Map(),
     };
     this.batchCount = 0;
   }
 
   key(table, row) {
+    if (table === "package_wallet_versions") return `${row.salon_id}\u0000${row.canonical_client_id}`;
     if (table === "clients") return `${row.salon_id}\u0000${row.canonical_client_id}`;
     if (table === "client_identity_aliases") return `${row.salon_id}\u0000${row.alias_id}`;
     return row.id;
   }
 
+  bumpWalletVersion(row) {
+    const key = this.key(
+      "package_wallet_versions", row
+    );
+
+    const existing =
+      this.tables.package_wallet_versions.get(key);
+
+    this.tables.package_wallet_versions.set(
+      key,
+      {
+        salon_id: row.salon_id,
+        canonical_client_id: row.canonical_client_id,
+        revision: Number(existing?.revision || 0) + 1,
+        updated_at:
+          row.updated_at || new Date().toISOString()
+      }
+    );
+  }
+
   seed(table, row) {
-    this.tables[table].set(this.key(table, row), { ...row });
+    const key = this.key(table, row);
+    const previous = this.tables[table].get(key);
+
+    this.tables[table].set(key, { ...row });
+
+    if (table === "client_packages") {
+      this.bumpWalletVersion(row);
+
+      if (
+        previous &&
+        (
+          previous.salon_id !== row.salon_id ||
+          previous.canonical_client_id !== row.canonical_client_id
+        )
+      ) {
+        this.bumpWalletVersion(previous);
+      }
+    }
   }
 
   rows(table) {
@@ -51,6 +90,21 @@ class FakeD1 {
   async all(sql, params = []) {
     const normalized = sql.replace(/\s+/g, " ").trim();
     if (normalized === "SELECT 1 AS ok") return [{ ok: 1 }];
+
+    if (
+      normalized ===
+      "SELECT revision FROM package_wallet_versions WHERE salon_id = ? AND canonical_client_id = ? LIMIT 1"
+    ) {
+      const [salonId, canonicalClientId] = params;
+
+      return this.rows("package_wallet_versions")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.canonical_client_id === canonicalClientId
+        )
+        .slice(0, 1)
+        .map(row => ({revision: row.revision}));
+    }
     if (normalized.startsWith("SELECT alias_id FROM client_identity_aliases")) {
       const [salonId, canonicalClientId] = params;
       return this.rows("client_identity_aliases")
@@ -118,6 +172,10 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM package_transactions WHERE id = ?")) {
       const [id] = params;
       return this.rows("package_transactions").filter((row) => row.id === id).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT COUNT(*) AS count FROM package_transactions WHERE client_package_id = ?")) {
+      const [clientPackageId] = params;
+      return [{ count: this.rows("package_transactions").filter((row) => row.client_package_id === clientPackageId).length }];
     }
     if (normalized.startsWith("SELECT * FROM package_transactions WHERE salon_id = ? AND canonical_client_id IN")) {
       const [salonId, ...clientIds] = params;
@@ -261,7 +319,10 @@ class FakeD1 {
       } else if (sql.startsWith("DELETE FROM client_packages WHERE salon_id = ? AND id = ?")) {
         const [salonId, id] = params;
         const row = this.rows("client_packages").find((item) => item.salon_id === salonId && item.id === id);
-        if (row) this.tables.client_packages.delete(row.id);
+        if (row) {
+          this.tables.client_packages.delete(row.id);
+          this.bumpWalletVersion(row);
+        }
         results.push({ meta: { changes: row ? 1 : 0 } });
       } else {
         throw new Error(`unhandled fake D1 batch: ${sql}`);
@@ -752,7 +813,7 @@ test("D1 admin session dashboard accepts compatibility alias and trailing slash"
 });
 
 
-test("D1 admin deletes a package and all of its ledger rows", async () => {
+test("D1 admin protects a package and every historical ledger row from deletion", async () => {
   const fake = new FakeD1();
   seedBase(fake);
   fake.seed("client_packages", {
@@ -773,10 +834,10 @@ test("D1 admin deletes a package and all of its ledger rows", async () => {
     method: "DELETE",
   }), env(fake));
   const body = await json(response);
-  assert.equal(response.status, 200, JSON.stringify(body));
-  assert.equal(body.data.deleted, true);
-  assert.equal(fake.rows("client_packages").some((row) => row.id === "pkg-delete"), false);
-  assert.equal(fake.rows("package_transactions").some((row) => row.client_package_id === "pkg-delete"), false);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "packages_d1:package_history_protected");
+  assert.equal(fake.rows("client_packages").some((row) => row.id === "pkg-delete"), true);
+  assert.equal(fake.rows("package_transactions").some((row) => row.client_package_id === "pkg-delete"), true);
 });
 
 test("D1 admin refuses to delete a package with reserved sessions", async () => {
@@ -836,4 +897,66 @@ test("package worker source contains multi-item booking session state transition
   assert.match(d1Source, /reapplyBookingSessionD1/);
   assert.match(d1Source, /reason/);
   assert.match(d1Source, /created_by_uid/);
+});
+
+test("B04 E73 FakeD1 wallet revisions are tenant and client scoped", async () => {
+  const db = new FakeD1();
+
+  const query =
+    "SELECT revision FROM package_wallet_versions WHERE salon_id = ? AND canonical_client_id = ? LIMIT 1";
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-a"]),
+    []
+  );
+
+  const pkg = {
+    id: "revision-package-a",
+    salon_id: "main",
+    canonical_client_id: "client-a",
+    remaining_sessions: 3,
+    updated_at: "2026-11-27T12:00:00.000Z"
+  };
+
+  db.seed("client_packages", pkg);
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-a"]),
+    [{revision:1}]
+  );
+
+  db.seed("client_packages", {
+    ...pkg,
+    remaining_sessions:2
+  });
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-a"]),
+    [{revision:2}]
+  );
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-b"]),
+    []
+  );
+
+  assert.deepEqual(
+    await db.all(query, ["other", "client-a"]),
+    []
+  );
+
+  db.seed("client_packages", {
+    ...pkg,
+    canonical_client_id:"client-b"
+  });
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-a"]),
+    [{revision:3}]
+  );
+
+  assert.deepEqual(
+    await db.all(query, ["main", "client-b"]),
+    [{revision:1}]
+  );
 });

@@ -71,7 +71,7 @@ test("internal party rollback uses create authority and not cancel permission", 
   assert.match(index, /rollbackInternalBookingCreation/);
   assert.match(repo, /core_booking:internal_rollback_forbidden/);
   assert.match(repo, /core_booking:internal_rollback_window_expired/);
-  assert.match(repo, /core_booking:internal_rollback_payment_exists/);
+  assert.match(repo, /core_booking:internal_rollback_financial_records_exist/);
   assert.match(service, /rollbackInternalCreation/);
 });
 

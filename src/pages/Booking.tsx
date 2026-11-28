@@ -1,3 +1,12 @@
+import {
+  getOrCreateActiveBookingIntent,
+  getBookingChildCreationIdentity,
+  requireBookingCreationActor,
+  assertBookingCreationConfirmation,
+  registerBookingIntentManifest,
+  finishVerifiedBookingIntent,
+} from "../services/bookingCreationIdentity";
+
 // src/pages/Booking.tsx
 
 import { Fragment, useEffect, useMemo, useState, useRef } from "react";
@@ -6979,6 +6988,58 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       }
 
       const processedPackageRuns = new Set<string>();
+      const publicCreationScope = getOrCreateActiveBookingIntent({
+        salonId: SALON_ID,
+        actorUid: requireBookingCreationActor(uid),
+        channel: "client",
+      }, "public-booking");
+
+      const expectedPublicChildKeys: string[] = [];
+      const manifestPackageRuns = new Set<string>();
+
+      for (const it of items) {
+        const itemIdentity = String(it.id || "").trim();
+
+        if (!itemIdentity) {
+          throw new Error("core_booking:invalid_public_item_identity");
+        }
+
+        if (isSequentialOfferItem(it)) {
+          expectedPublicChildKeys.push(`sequence:${itemIdentity}`);
+          continue;
+        }
+
+        const packageRunId = String(it.packageRunId || "").trim();
+
+        if (packageRunId) {
+          if (manifestPackageRuns.has(packageRunId)) continue;
+
+          const runEntries = items
+            .map((row, rowIdx) => ({ item: row, idx: rowIdx }))
+            .filter(
+              ({ item }) =>
+                String(item.packageRunId || "").trim() === packageRunId &&
+                !isSequentialOfferItem(item)
+            );
+
+          if (runEntries.length > 1) {
+            manifestPackageRuns.add(packageRunId);
+            expectedPublicChildKeys.push(`package:${packageRunId}`);
+            continue;
+          }
+        }
+
+        expectedPublicChildKeys.push(`service:${itemIdentity}`);
+      }
+
+      const publicCreationManifest = registerBookingIntentManifest(
+        publicCreationScope,
+        "public-booking",
+        expectedPublicChildKeys
+      );
+
+      const confirmedPublicBookingIds: string[] = [];
+
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
@@ -7023,8 +7084,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           );
 
           if (!createBookingGroup) throw new Error("GROUP_BOOKING_UNAVAILABLE");
+          const sequenceCreationScope = getOrCreateActiveBookingIntent({
+            salonId: SALON_ID,
+            actorUid: requireBookingCreationActor(uid),
+            channel: "client",
+          }, "public-booking");
+
+          const sequenceCreationId = getBookingChildCreationIdentity(
+            sequenceCreationScope,
+            `sequence:${String(it.id || "").trim()}`
+          );
+
           const groupRes = await createBookingGroup({
             parent: {
+              ...{ id: sequenceCreationId },
               userId: uid,
               createdBy: "client",
               channel: "client",
@@ -7117,6 +7190,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               durationMin: Math.max(1, Number(s.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN)),
             })) as any,
           });
+          assertBookingCreationConfirmation(sequenceCreationId, groupRes.parentId);
+          confirmedPublicBookingIds.push(sequenceCreationId);
 
           createdBookings.push({
             bookingId: groupRes.parentId,
@@ -7294,8 +7369,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               kind: "service_package" as const,
             };
 
+            const packageCreationScope = getOrCreateActiveBookingIntent({
+              salonId: SALON_ID,
+              actorUid: requireBookingCreationActor(uid),
+              channel: "client",
+            }, "public-booking");
+
+            const packageCreationId = getBookingChildCreationIdentity(
+              packageCreationScope,
+              `package:${String(it.packageRunId || it.id || "").trim()}`
+            );
+
             const groupRes = await createBookingGroup({
               parent: {
+                ...{ id: packageCreationId },
                 userId: uid,
                 createdBy: "client",
                 channel: "client",
@@ -7395,6 +7482,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 };
               }) as any,
             });
+            assertBookingCreationConfirmation(packageCreationId, groupRes.parentId);
+          confirmedPublicBookingIds.push(packageCreationId);
 
             createdBookings.push({
               bookingId: groupRes.parentId,
@@ -7444,7 +7533,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           String(sv?.sectionId || "").trim() ||
           undefined;
 
+        const serviceCreationScope = getOrCreateActiveBookingIntent({
+          salonId: SALON_ID,
+          actorUid: requireBookingCreationActor(uid),
+          channel: "client",
+        }, "public-booking");
+
+        const serviceCreationId = getBookingChildCreationIdentity(
+          serviceCreationScope,
+          `service:${String(it.id || "").trim()}`
+        );
+
         const res = await createBooking({
+          ...{ id: serviceCreationId },
           userId: uid,
           createdBy: "client",
           channel: "client",
@@ -7481,6 +7582,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           bufferMinAtBooking: bufferMin,
           durationMin,
         } as any);
+        assertBookingCreationConfirmation(serviceCreationId, res.id);
+          confirmedPublicBookingIds.push(serviceCreationId);
 
         createdBookings.push({
           bookingId: res.id,
@@ -7516,6 +7619,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         });
       }
 
+      const expectedPublicBookingIds =
+        Object.values(publicCreationManifest).sort();
+
+      const actualPublicBookingIds =
+        [...confirmedPublicBookingIds].sort();
+
+      if (
+        JSON.stringify(expectedPublicBookingIds) !==
+        JSON.stringify(actualPublicBookingIds)
+      ) {
+        throw new Error("core_booking:public_manifest_incomplete");
+      }
+
       const usedOfferIds = new Set<string>();
       for (const row of finalCoupons) {
         const offerId = String(row.offerId || "").trim();
@@ -7549,6 +7665,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
       localStorage.setItem("allBookings", JSON.stringify(normalizedCreatedBookings));
       localStorage.setItem("currentBooking", JSON.stringify(normalizedCreatedBookings[0] || null));
+      const publicIntentCompleted = finishVerifiedBookingIntent(
+        publicCreationScope,
+        "public-booking",
+        confirmedPublicBookingIds.map((bookingId) => ({
+          bookingId,
+          bookingConfirmed: true,
+          settlement: "not_required",
+        }))
+      );
+
+      if (!publicIntentCompleted) {
+        throw new Error("core_booking:public_intent_completion_failed");
+      }
+
       localStorage.setItem("booking_success_mode", "created");
       localStorage.removeItem("bookingDraft");
 

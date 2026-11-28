@@ -1,3 +1,4 @@
+import { atomicIdempotencyCompletionStatements } from "../core/idempotency.js";
 // IMPORTANT:
 // Session packages use Cloudflare D1 as the only operational database.
 // Do not reintroduce Firestore reads or writes into package wallet,
@@ -35,13 +36,9 @@ import {
 
 const CLIENT_LOOKUP_ID_FIELDS = ["clientId", "customerId", "authUid", "uid", "userId", "firebaseUid", "id", "docId"];
 const CLIENT_LOOKUP_PHONE_FIELDS = ["phone", "mobile", "clientPhone", "phoneNumber"];
-const WALLET_CACHE_TTL_MS = 60_000;
-
-const walletCache = new Map();
 const pendingWalletRequests = new Map();
 
 export function clearD1WalletRuntimeCaches() {
-  walletCache.clear();
   pendingWalletRequests.clear();
 }
 
@@ -401,10 +398,6 @@ async function packageIdentity(ctx, client) {
   };
 }
 
-function walletCacheKey(salonId, identity) {
-  return JSON.stringify([salonId, identity.canonicalClientId, [...identity.aliasClientIds].sort()]);
-}
-
 function lookupDedupeKey(salonId, data = {}) {
   const lookup = data.clientLookup && typeof data.clientLookup === "object" ? data.clientLookup : {};
   return JSON.stringify({
@@ -415,21 +408,14 @@ function lookupDedupeKey(salonId, data = {}) {
   });
 }
 
-function getCachedWallet(salonId, identity) {
-  const key = walletCacheKey(salonId, identity);
-  const entry = walletCache.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    walletCache.delete(key);
-    return null;
-  }
-  return structuredClone(entry.value);
-}
-
-function setCachedWallet(salonId, identity, value) {
-  walletCache.set(walletCacheKey(salonId, identity), {
-    value: structuredClone(value),
-    expiresAt: Math.min(Date.now() + WALLET_CACHE_TTL_MS, timestampMs(value.nearestExpiryAt) ?? Infinity),
-  });
+async function walletRevision(db, salonId, canonicalClientId) {
+  const row = await dbFirst(
+    db,
+    `SELECT revision FROM package_wallet_versions
+      WHERE salon_id = ? AND canonical_client_id = ? LIMIT 1`,
+    [salonId, canonicalClientId]
+  );
+  return Number(row?.revision || 0);
 }
 
 async function walletSummaryD1(ctx, identity, options = {}) {
@@ -489,12 +475,19 @@ export async function clientWalletD1(ctx, data) {
 
   const work = (async () => {
     const identity = await resolveD1ClientIdentity(ctx, data);
-    const cached = getCachedWallet(ctx.salonId, identity);
-    if (cached) return cached;
-    const response = await walletSummaryD1(ctx, identity, { includeTransactions: false });
-    if (pendingWalletRequests.get(dedupeKey) === work) {
-      setCachedWallet(ctx.salonId, identity, response);
+    let response;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const beforeRevision = await walletRevision(
+        packagesDb(ctx), ctx.salonId, identity.canonicalClientId
+      );
+      response = await walletSummaryD1(ctx, identity, { includeTransactions: false });
+      const afterRevision = await walletRevision(
+        packagesDb(ctx), ctx.salonId, identity.canonicalClientId
+      );
+      if (beforeRevision === afterRevision) break;
+      response = undefined;
     }
+    if (!response) throw new AppError(409, 'packages_wallet:concurrent_modification');
     console.log("packages_d1_client_wallet", {
       aliasCount: response.aliasClientIds.length,
       packageCount: response.activePackages.length,
@@ -847,10 +840,35 @@ export async function grantClientSessionsAdminD1(ctx, data) {
   };
 }
 
-export async function purchasePackageD1(ctx, data) {
+export async function purchasePackageD1(
+  ctx, data, executionContext = null
+) {
   requireRole(ctx.role, SALES_ROLES);
   const db = ctx.coreDb;
   if (!db) throw new AppError(503, 'packages_d1:not_configured');
+  if (executionContext) {
+    if (
+      executionContext.salonId !== ctx.salonId ||
+      !cleanText(ctx.identity?.uid) ||
+      !cleanText(ctx.user?.id) ||
+      executionContext.actorUid !== ctx.identity.uid ||
+      executionContext.accountId !== ctx.user.id
+    ) {
+      throw new AppError(
+        409, "packages_purchase:execution_identity_conflict"
+      );
+    }
+
+    if (
+      data.salonId != null &&
+      cleanText(data.salonId) !== ctx.salonId
+    ) {
+      throw new AppError(
+        409, "packages_purchase:execution_identity_conflict"
+      );
+    }
+  }
+
   const packageCatalogId = requiredDocumentId(data.packageCatalogId, "packageCatalogId");
   const input = parsePackageSale(data);
   const { saleReference } = input;
@@ -897,7 +915,15 @@ export async function purchasePackageD1(ctx, data) {
     };
   };
   const replay = await findReplay();
-  if (replay) return replay;
+  if (replay) {
+    if (executionContext) {
+      throw new AppError(
+        409,
+        "packages_purchase:existing_operation_requires_verification"
+      );
+    }
+    return replay;
+  }
 
   const now = timestampNow();
   const catalog = await dbFirst(
@@ -965,15 +991,39 @@ export async function purchasePackageD1(ctx, data) {
     },
     ...financialStatements,
   ];
+
+  const result = packageSaleResult(sale, false);
+
+  if (executionContext) {
+    statements.push(
+      ...atomicIdempotencyCompletionStatements({
+        salonId: ctx.salonId,
+        operationId: executionContext.operationId,
+        fingerprint: executionContext.fingerprint,
+        requestId: executionContext.requestId,
+        executionToken: executionContext.executionToken,
+        status: 200,
+        responseBody: JSON.stringify({
+          ok: true,
+          data: result,
+        }),
+      })
+    );
+  }
+
   try {
     await dbBatch(db, statements);
   } catch (error) {
-    const committed = await findReplay();
-    if (committed) return committed;
+    // Atomic callers must never convert a conflicting or
+    // unverified historical sale into a new HTTP commit.
+    if (!executionContext) {
+      const committed = await findReplay();
+      if (committed) return committed;
+    }
     throw normalizePackageSettlementError(error);
   }
   clearD1WalletRuntimeCaches();
-  return packageSaleResult(sale, false);
+  return result;
 }
 
 async function packageForOperation(ctx, identity, clientPackageId) {
@@ -1273,6 +1323,39 @@ async function bookingSessionLedger(ctx, bookingId) {
   return { rows, sources };
 }
 
+async function assertStandaloneBookingLifecycle(ctx, bookingId, ledger) {
+  const persistedBooking = await dbFirst(
+    packagesDb(ctx),
+    'SELECT id FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1',
+    [ctx.salonId, bookingId]
+  );
+  if (persistedBooking) {
+    throw new AppError(
+      409,
+      'packages_redemption:core_booking_lifecycle_owned',
+      'Persisted Core bookings must use the atomic Core booking lifecycle'
+    );
+  }
+  for (const source of ledger.sources) {
+    if (
+      !cleanText(source.client_package_id) ||
+      !cleanText(source.canonical_client_id) ||
+      !cleanText(source.service_id)
+    ) {
+      throw new AppError(409, 'packages_redemption:history_review_required');
+    }
+  }
+}
+
+function assertSingleStandaloneTransition(count) {
+  if (count > 1) {
+    throw new AppError(
+      409,
+      'packages_redemption:multi_item_atomic_workflow_required'
+    );
+  }
+}
+
 async function applySessionTransition(ctx, source, fromState, toState, type, operationSource, reason, lastMovement) {
   const db = packagesDb(ctx);
   const txId = await transactionId(type, operationSource);
@@ -1404,6 +1487,10 @@ export async function consumeReservedD1(ctx, data) {
   const ledger = await bookingSessionLedger(ctx, requiredExternalId(bookingId, 'bookingId'));
   const sources = ledger.sources.filter((row) => cleanText(row.type) === 'reserve');
   if (!sources.length) throw new AppError(404, 'packages_redemption:not_found');
+  await assertStandaloneBookingLifecycle(ctx, bookingId, { ...ledger, sources });
+  assertSingleStandaloneTransition(
+    sources.filter(source => currentSessionState(source, ledger.rows, ledger.sources).state === 'reserved').length
+  );
 
   const items = [];
   for (const source of sources) {
@@ -1518,6 +1605,12 @@ export async function restoreBookingSessionD1(ctx, data) {
   const bookingId = requiredExternalId(data.bookingId, 'bookingId');
   const ledger = await bookingSessionLedger(ctx, bookingId);
   if (!ledger.sources.length) throw new AppError(404, 'packages_redemption:not_found');
+  await assertStandaloneBookingLifecycle(ctx, bookingId, ledger);
+  assertSingleStandaloneTransition(
+    ledger.sources.filter(source => ['reserved', 'used'].includes(
+      currentSessionState(source, ledger.rows, ledger.sources).state
+    )).length
+  );
 
   const items = [];
   for (const source of ledger.sources) {
@@ -1561,6 +1654,13 @@ export async function reapplyBookingSessionD1(ctx, data) {
   }
   const ledger = await bookingSessionLedger(ctx, bookingId);
   if (!ledger.sources.length) throw new AppError(404, 'packages_redemption:not_found');
+  await assertStandaloneBookingLifecycle(ctx, bookingId, ledger);
+  assertSingleStandaloneTransition(
+    ledger.sources.filter(source => {
+      const current = currentSessionState(source, ledger.rows, ledger.sources);
+      return current.state === 'remaining' && cleanText(current.lastMovement?.type) === 'restore';
+    }).length
+  );
 
   const items = [];
   for (const source of ledger.sources) {

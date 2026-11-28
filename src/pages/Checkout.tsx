@@ -1,3 +1,9 @@
+import {
+  getOrCreateActiveBookingIntent,
+  getOrCreateBookingIdentity,
+  finishActiveBookingIntent,
+} from "../services/bookingCreationIdentity";
+
 // src/pages/Checkout.tsx
 import { useEffect, useMemo, useState } from "react";
 import "../styles/CheckoutMobile.css";
@@ -409,7 +415,18 @@ export default function Checkout() {
       const totalInt = toInt(view.total || 0);
       const finalInt = toInt(view.total || 0);
 
+      const checkoutCreationScope = getOrCreateActiveBookingIntent({
+        salonId: SALON_ID,
+        actorUid: uid,
+        channel: "client",
+      }, "checkout");
+
+      const checkoutCreationId = getOrCreateBookingIdentity(
+        checkoutCreationScope
+      );
+
       const { id: bookingId, publicId: corePublicId } = await createBooking({
+        ...{ id: checkoutCreationId },
         userId: uid,
 
         createdBy: "client",
@@ -469,8 +486,20 @@ export default function Checkout() {
         durationMin: view.durationMin ?? booking?.durationMin ?? 60,
       };
 
+      if (bookingId !== checkoutCreationId) {
+        throw new Error("core_booking:creation_confirmation_mismatch");
+      }
+
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updatedCurrent));
       localStorage.removeItem(ALL_BOOKINGS_KEY);
+
+      if (!finishActiveBookingIntent(
+        checkoutCreationScope,
+        "checkout",
+        bookingId
+      )) {
+        throw new Error("core_booking:creation_confirmation_mismatch");
+      }
 
       {
         const successNav = buildSuccessNavigationPayload(updatedCurrent, "created");

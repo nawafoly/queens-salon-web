@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 import coreWorker from './core/index.js';
-import { requestFingerprint } from './core/idempotency.js';
+import {
+  requestFingerprint,
+  beginIdempotentOperation,
+} from './core/idempotency.js';
 import { listIncome } from './core/repositories/finance.js';
 import packagesWorker from './packages-worker.js';
 import { clearD1WalletRuntimeCaches, expireClientPackagesD1 } from './packages/d1.js';
@@ -24,6 +27,8 @@ const migrations = [
   '0094_day_audit_closings.sql', '0095_payment_correction_proposals.sql',
   '0096_payment_correction_applied_ledger.sql', '0097_financial_day_revisions.sql',
   '0098_closed_financial_day_write_guards.sql', '0114_package_sale_settlement.sql',
+  '0121_booking_lifecycle_wallet_revisions.sql',
+  '0122_idempotency_execution_ownership.sql',
 ];
 
 function setup(t) {
@@ -68,12 +73,12 @@ function tokenFor(uid, claims) {
   return `local.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.test`;
 }
 
-async function send(env, path, { uid = 'owner', claims, token = tokenFor(uid, claims), body, idempotencyKey } = {}) {
+async function send(env, path, { uid = 'owner', claims, token = tokenFor(uid, claims), body, idempotencyKey, method } = {}) {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   if (body) headers['Content-Type'] = 'application/json';
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   const response = await coreWorker.fetch(new Request(`https://worker.test/api/core/packages/${path}`, {
-    method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined,
+    method: method || (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined,
   }), env);
   return { status: response.status, ...(await response.json()) };
 }
@@ -591,6 +596,61 @@ test('Core booking package lifecycle reserves, consumes, cancels, restores and r
   assert.deepEqual(snapshot(db), state);
 });
 
+test('Alternative package lifecycle endpoints cannot mutate a persisted Core booking', async (t) => {
+  const { db, call } = setup(t);
+  seedPackage(db, 'package-a');
+
+  const insertBooking = (id) => db.database.prepare(`INSERT INTO bookings
+    (id, salon_id, client_id, booking_date, start_time, status, source,
+     created_at, updated_at)
+    VALUES (?, 'main', 'client-a', '2026-01-02', '10:00', 'booked',
+            'internal', ?, ?)`
+  ).run(id, now, now);
+
+  const owned = { ...redeem, bookingId: 'persisted-booking' };
+  assertStatus(await call('reserve', { body: owned }), 200);
+  insertBooking(owned.bookingId);
+  const before = snapshot(db);
+
+  for (const path of ['redemption/consume', 'redemption/restore', 'redemption/cancel']) {
+    const response = await call(path, { body: { bookingId: owned.bookingId } });
+    assertStatus(response, 409);
+    assert.equal(response.error, 'packages_redemption:core_booking_lifecycle_owned');
+    assert.deepEqual(snapshot(db), before);
+  }
+
+  const reapplied = { ...redeem, bookingId: 'persisted-reapply', operationId: 'persisted-reapply' };
+  assertStatus(await call('reserve', { body: reapplied }), 200);
+  assertStatus(await call('redemption/consume', { body: { bookingId: reapplied.bookingId } }), 200);
+  assertStatus(await call('redemption/restore', { body: { bookingId: reapplied.bookingId } }), 200);
+  insertBooking(reapplied.bookingId);
+  const beforeReapply = snapshot(db);
+  const response = await call('redemption/reapply', {
+    body: { bookingId: reapplied.bookingId, targetState: 'used' },
+  });
+  assertStatus(response, 409);
+  assert.equal(response.error, 'packages_redemption:core_booking_lifecycle_owned');
+  assert.deepEqual(snapshot(db), beforeReapply);
+});
+
+test('Standalone multi-session lifecycle requests fail before any partial transition', async (t) => {
+  const { db, call } = setup(t);
+  seedPackage(db, 'package-a');
+  const bookingId = 'standalone-multi-item';
+  assertStatus(await call('reserve', { body: { ...redeem, bookingId, operationId: 'multi-a' } }), 200);
+  assertStatus(await call('reserve', { body: {
+    ...redeem, bookingId, cartItemId: 'item-b', operationId: 'multi-b',
+  } }), 200);
+  const before = snapshot(db);
+
+  for (const path of ['redemption/consume', 'redemption/restore']) {
+    const response = await call(path, { body: { bookingId } });
+    assertStatus(response, 409);
+    assert.equal(response.error, 'packages_redemption:multi_item_atomic_workflow_required');
+    assert.deepEqual(snapshot(db), before);
+  }
+});
+
 test('A Core booking cart item cannot bind to two package reservations', async (t) => {
   const { db, call } = setup(t);
   seedPackage(db, 'package-a');
@@ -650,6 +710,81 @@ test('Admin adjustment and cancellation cannot replay a different package or ope
   assert.deepEqual(snapshot(db), state);
 });
 
+test('Administrative package edits require ledger operations and historical deletion is rejected without mutation', async (t) => {
+  const { db, call } = setup(t);
+  seedPackage(db, 'package-a');
+  const adjustment = {
+    clientPackageId: 'package-a', sessionsDelta: 1, reason: 'approved correction', operationId: 'audit-adjustment',
+  };
+  assertStatus(await call('adjust', { body: adjustment }), 200);
+  const movement = db.database.prepare(
+    "SELECT * FROM package_transactions WHERE client_package_id = 'package-a' AND type = 'admin_adjustment'"
+  ).get();
+  assert.equal(movement.sessions_delta, 1);
+  assert.equal(movement.reason, 'approved correction');
+  assert.equal(movement.created_by_uid, 'owner');
+
+  const before = snapshot(db);
+  const directEdit = await call('admin/client-package', {
+    method: 'PATCH', body: { clientPackageId: 'package-a', packageName: 'Package A', remainingSessions: 99 },
+  });
+  assertStatus(directEdit, 409);
+  assert.equal(directEdit.error, 'packages_d1:balance_adjustment_required');
+  assert.deepEqual(snapshot(db), before);
+
+  const deletion = await call('admin/client-package?salonId=main&clientPackageId=package-a', { method: 'DELETE' });
+  assertStatus(deletion, 409);
+  assert.equal(deletion.error, 'packages_d1:package_history_protected');
+  assert.deepEqual(snapshot(db), before);
+});
+
+test('B04 metadata edit preserves balance and ledger', async (t) => {
+  const { db, call } = setup(t);
+  seedPackage(db, 'package-a');
+  const before = snapshot(db);
+  const result = await call('admin/client-package', {
+    method: 'PATCH', body: { clientPackageId: 'package-a', packageName: 'Renamed' },
+  });
+  assertStatus(result, 200);
+  assert.equal(snapshot(db).client_packages[0].package_name_snapshot, 'Renamed');
+  assert.deepEqual(balance(db, 'package-a'), [3, 0, 0]);
+  assert.deepEqual(snapshot(db).package_transactions, before.package_transactions);
+});
+
+for (const operation of ['redeem', 'cancel']) {
+  test(`B04 metadata edit cannot overwrite concurrent ${operation}`, async (t) => {
+    const { db, call } = setup(t);
+    seedPackage(db, 'package-a');
+    const prepare = db.prepare;
+    let committed;
+    db.prepare = (sql) => {
+      const statement = prepare(sql);
+      if (!/UPDATE client_packages\s+SET package_name_snapshot\s*=/i.test(sql)) return statement;
+      return { ...statement, bind(...args) {
+        const bound = statement.bind(...args);
+        return { ...bound, async run() {
+          const body = operation === 'redeem' ? redeem : {
+            clientPackageId: 'package-a', operationId: 'b04-cancel', reason: 'approved cancellation',
+          };
+          assertStatus(await call(operation, { body }), 200);
+          committed = snapshot(db);
+          return bound.run();
+        } };
+      } };
+    };
+    const result = await call('admin/client-package', {
+      method: 'PATCH', body: { clientPackageId: 'package-a', packageName: 'Stale name' },
+    });
+    assert.ok(committed, 'concurrent operation must commit before the edit');
+    assertStatus(result, 409);
+    assert.equal(result.error, 'packages_d1:concurrent_change');
+    assert.deepEqual(snapshot(db), committed);
+    assert.deepEqual(balance(db, 'package-a'), operation === 'redeem' ? [2, 0, 1] : [3, 0, 0]);
+    assert.equal(committed.package_transactions.length, 1);
+    assert.equal(committed.client_packages[0].status, operation === 'cancel' ? 'cancelled' : 'active');
+  });
+}
+
 test('Core redemption rolls back a balance change when the transaction insert fails', async (t) => {
   const { db, call } = setup(t);
   seedPackage(db, 'package-a');
@@ -675,7 +810,7 @@ test('D1 expiry only changes expired active packages in the scheduled tenant', a
   assert.deepEqual(after.package_transactions, before.package_transactions);
 });
 
-test('Concurrent admin wallets deduplicate reads and refresh after a mutation', async (t) => {
+test('Concurrent admin wallets deduplicate in-flight reads and every later read is authoritative', async (t) => {
   const { db, call } = setup(t);
   seedPackage(db, 'package-a');
   let reads = 0;
@@ -691,10 +826,10 @@ test('Concurrent admin wallets deduplicate reads and refresh after a mutation', 
   assert.equal(a.data.totalRemainingSessions, 3);
   assert.equal(reads, 1);
   assert.equal((await call('client-wallet', { body })).data.totalRemainingSessions, 3);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
   assertStatus(await call('redeem', { body: redeem }), 200);
   assert.equal((await call('client-wallet', { body })).data.totalRemainingSessions, 2);
-  assert.equal(reads, 2);
+  assert.equal(reads, 3);
 });
 
 test('A superseded wallet read cannot restore stale balances after invalidation', async (t) => {
@@ -725,13 +860,13 @@ test('A superseded wallet read cannot restore stale balances after invalidation'
   const wallet = { body: { clientId: 'client-a' }, idempotencyKey: 'wallet-read' };
   const pending = call('client-wallet', wallet);
   await captured.promise;
-  try {
-    assertStatus(await call('redeem', { body: redeem }), 200);
-    assert.equal((await call('client-wallet', wallet)).data.totalRemainingSessions, 2);
-  } finally {
-    resume.resolve();
-    await pending;
-  }
+  db.database.prepare(`UPDATE client_packages
+    SET remaining_sessions = 2, used_sessions = 1, updated_at = ?
+    WHERE salon_id = 'main' AND id = 'package-a'`).run('2026-01-01T00:00:01.000Z');
+  resume.resolve();
+  const resolved = await pending;
+  assertStatus(resolved, 200);
+  assert.equal(resolved.data.totalRemainingSessions, 2);
   assert.equal((await call('client-wallet', wallet)).data.totalRemainingSessions, 2);
   assert.deepEqual(snapshot(db).core_idempotency_operations, []);
 });
@@ -980,4 +1115,969 @@ test('Local Miniflare D1 commits one financial sale and rolls back a closed-day 
     const { count } = await db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first();
     assert.equal(count, 1, table);
   }
+});
+
+
+async function f51Execution(db, overrides = {}) {
+  const context = {
+    salonId: "main",
+    actorUid: "owner",
+    accountId: "owner",
+    operationId: "f51-http-operation",
+    fingerprint: "f51-fingerprint",
+    requestId: "f51-request",
+    executionToken: "f51-execution-token",
+    ...overrides,
+  };
+
+  const gate = await beginIdempotentOperation(
+    db,
+    context.salonId,
+    context.operationId,
+    context.fingerprint,
+    context.requestId,
+    context.executionToken
+  );
+
+  assert.equal(gate.action, "proceed");
+  return context;
+}
+
+async function f51Setup(t) {
+  const fixture = setup(t);
+
+  const { purchasePackageD1 } =
+    await import("./packages/d1.js");
+
+  const ctx = {
+    coreDb: fixture.db,
+    packagesDb: fixture.db,
+    unifiedCore: true,
+    salonId: "main",
+    role: "owner",
+    identity: {uid: "owner"},
+    user: {id: "owner"},
+    permissions: [],
+  };
+
+  const context = await f51Execution(fixture.db);
+
+  return {
+    ...fixture, ctx, context, purchasePackageD1
+  };
+}
+
+async function f51Purchase(f, body = {}, execution = {}) {
+  return f.purchasePackageD1(
+    f.ctx,
+    {...purchase, ...body},
+    {...f.context, ...execution}
+  );
+}
+
+test("B04 F51 purchase atomically commits exact financial evidence", async t => {
+  const f = await f51Setup(t);
+  const sale = await f51Purchase(f);
+
+  assert.equal(sale.settlementStatus, "paid");
+  assert.equal(sale.totalHalalas, 12000);
+
+  const rows = snapshot(f.db);
+  const operation = rows.core_idempotency_operations.find(
+    row => row.operation_id === f.context.operationId
+  );
+
+  assert.equal(operation.state, "completed");
+  assert.equal(operation.response_status, 200);
+
+  assert.deepEqual(
+    JSON.parse(operation.response_body),
+    {ok:true, data:sale}
+  );
+
+  for (const table of [
+    "package_sales",
+    "client_packages",
+    "package_transactions",
+    "invoices",
+    "payments",
+    "income_entries"
+  ]) {
+    assert.equal(rows[table].length,1,table);
+  }
+
+  assert.equal(rows.payments[0].id,sale.paymentId);
+  assert.equal(rows.payments[0].amount_halalas,12000);
+  assert.equal(rows.invoices[0].paid_halalas,12000);
+  assert.deepEqual(
+    balance(f.db,sale.clientPackageId),
+    [3,0,0]
+  );
+});
+
+for (const [label,execution] of [
+  ["tenant",{salonId:"other"}],
+  ["actor",{actorUid:"other-owner"}],
+  ["account",{accountId:"other-owner"}]
+]) {
+  test("B04 F51 rejects execution "+label+" mismatch", async t => {
+    const f = await f51Setup(t);
+    const before = snapshot(f.db);
+
+    await assert.rejects(
+      f51Purchase(f,{},execution),
+      error => error?.code ===
+        "packages_purchase:execution_identity_conflict"
+    );
+
+    assert.deepEqual(snapshot(f.db),before);
+  });
+}
+
+for (const [label,execution] of [
+  ["stale token",{executionToken:"wrong-owner"}],
+  ["wrong fingerprint",{fingerprint:"different-request"}],
+  ["missing operation",{operationId:"missing-operation"}]
+]) {
+  test("B04 F51 rolls back all sale effects for "+label, async t => {
+    const f = await f51Setup(t);
+    const before = snapshot(f.db);
+
+    await assert.rejects(
+      f51Purchase(f,{},execution),
+      /NOT NULL constraint failed/
+    );
+
+    assert.deepEqual(snapshot(f.db),before);
+  });
+}
+
+test("B04 F51 completion evidence fault rolls back all sale effects", async t => {
+  const f = await f51Setup(t);
+
+  f.db.database.exec(
+    "CREATE TRIGGER f51_evidence_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f51_evidence_fault'); END;"
+  );
+
+  const before = snapshot(f.db);
+
+  await assert.rejects(
+    f51Purchase(f,{clientId:"f51-new-client"}),
+    /f51_evidence_fault/
+  );
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F51 existing historical sale cannot impersonate new evidence", async t => {
+  const f = await f51Setup(t);
+
+  await f.purchasePackageD1(f.ctx,purchase);
+
+  const before = snapshot(f.db);
+
+  await assert.rejects(
+    f51Purchase(f),
+    error => error?.code ===
+      "packages_purchase:existing_operation_requires_verification"
+  );
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F51 completed executor cannot purchase another package", async t => {
+  const f = await f51Setup(t);
+
+  await f51Purchase(f);
+
+  const before = snapshot(f.db);
+
+  await assert.rejects(
+    f51Purchase(f,{
+      invoiceId:"f51-second-purchase"
+    }),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F51 concurrent atomic purchases preserve one committed sale", async t => {
+  const f = await f51Setup(t);
+
+  const other = await f51Execution(f.db,{
+    operationId:"f51-second-operation",
+    fingerprint:"f51-second-fingerprint",
+    requestId:"f51-second-request",
+    executionToken:"f51-second-executor"
+  });
+
+  const results = await Promise.allSettled([
+    f51Purchase(f),
+    f.purchasePackageD1(f.ctx,purchase,other)
+  ]);
+
+  assert.equal(
+    results.filter(r=>r.status==="fulfilled").length,
+    1
+  );
+
+  assert.equal(
+    results.filter(r=>r.status==="rejected").length,
+    1
+  );
+
+  const state = snapshot(f.db);
+
+  assert.equal(state.package_sales.length,1);
+  assert.equal(state.client_packages.length,1);
+  assert.equal(state.package_transactions.length,1);
+  assert.equal(state.payments.length,1);
+  assert.equal(state.income_entries.length,1);
+
+  assert.equal(
+    state.core_idempotency_operations.filter(
+      row=>row.state==="completed"
+    ).length,
+    1
+  );
+});
+
+test("B04 F51 lost response leaves exact durable package evidence", async t => {
+  const f = await f51Setup(t);
+
+  const committed = await f51Purchase(f);
+
+  const gate = await beginIdempotentOperation(
+    f.db,
+    "main",
+    f.context.operationId,
+    f.context.fingerprint,
+    "f51-retry",
+    "f51-retry-executor"
+  );
+
+  assert.equal(gate.action,"replay");
+  assert.equal(gate.status,200);
+
+  assert.deepEqual(
+    JSON.parse(gate.responseBody),
+    {ok:true,data:committed}
+  );
+
+  const state = snapshot(f.db);
+
+  assert.equal(state.package_sales.length,1);
+  assert.equal(state.payments.length,1);
+  assert.equal(state.income_entries.length,1);
+});
+
+
+function f52Options(overrides={}) {
+  return {
+    body:purchase,
+    idempotencyKey:"f52-purchase-http",
+    ...overrides
+  };
+}
+
+function f52Money(db) {
+  const state = snapshot(db);
+  delete state.core_idempotency_operations;
+  return state;
+}
+
+test("B04 F52 HTTP commits exact package evidence",async t=>{
+  const f=setup(t);
+
+  const first=await f.call("purchase",f52Options());
+  assertStatus(first,200);
+
+  const committed=snapshot(f.db);
+  const gate=committed.core_idempotency_operations[0];
+
+  assert.equal(gate.state,"completed");
+  assert.ok(gate.execution_token);
+  assert.equal(gate.response_status,200);
+
+  assert.deepEqual(
+    JSON.parse(gate.response_body),
+    {ok:true,data:first.data}
+  );
+
+  const before=f52Money(f.db);
+
+  const retry=await f.call("purchase",f52Options());
+
+  assert.deepEqual(retry,first);
+  assert.deepEqual(f52Money(f.db),before);
+
+  assert.equal(committed.package_sales.length,1);
+  assert.equal(committed.payments.length,1);
+  assert.equal(committed.income_entries.length,1);
+  assert.equal(committed.package_transactions.length,1);
+});
+
+test("B04 F52 changed payload cannot reuse key",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+
+  const before=snapshot(f.db);
+
+  assertStatus(await f.call("purchase",f52Options({
+    body:{...purchase,paymentMethod:"card"}
+  })),409);
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 different authorized actor cannot replay",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+
+  const before=snapshot(f.db);
+
+  assertStatus(await f.call("purchase",f52Options({
+    uid:"admin"
+  })),409);
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 anonymous and client replay denied",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+
+  const before=snapshot(f.db);
+
+  assertStatus(await f.call("purchase",f52Options({
+    token:null
+  })),401);
+
+  assertStatus(await f.call("purchase",f52Options({
+    uid:"a-user"
+  })),403);
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 revoked owner cannot replay",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+
+  f.db.database.exec(
+    "UPDATE app_users SET status='disabled' WHERE id='owner'"
+  );
+
+  const before=snapshot(f.db);
+
+  assertStatus(await f.call("purchase",f52Options()),403);
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 tenant conflict cannot acquire purchase execution",async t=>{
+  const f=setup(t);
+  const before=snapshot(f.db);
+
+  assertStatus(await f.call("purchase",f52Options({
+    body:{...purchase,salon_id:"other"}
+  })),403);
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 malformed supplied keys fail closed",async t=>{
+  const f=setup(t);
+  const before=snapshot(f.db);
+
+  for(const key of ["","   ","a".repeat(129)]) {
+    const response=await coreWorker.fetch(
+      new Request(
+        "https://worker.test/api/core/packages/purchase",
+        {
+          method:"POST",
+          headers:{
+            Authorization:"Bearer "+tokenFor("owner"),
+            "Content-Type":"application/json",
+            "Idempotency-Key":key
+          },
+          body:JSON.stringify(purchase)
+        }
+      ),
+      f.env
+    );
+
+    assert.equal(response.status,400);
+  }
+
+  assert.deepEqual(snapshot(f.db),before);
+});
+
+test("B04 F52 concurrent identical purchases commit only once",async t=>{
+  const f=setup(t);
+
+  const results=await Promise.all(
+    Array.from({length:6},()=>
+      f.call("purchase",f52Options())
+    )
+  );
+
+  assert.ok(results.some(r=>r.status===200));
+  assert.ok(results.every(r=>[200,409].includes(r.status)));
+
+  const state=snapshot(f.db);
+
+  assert.equal(state.package_sales.length,1);
+  assert.equal(state.client_packages.length,1);
+  assert.equal(state.payments.length,1);
+  assert.equal(state.income_entries.length,1);
+  assert.equal(state.package_transactions.length,1);
+
+  assert.equal(
+    state.core_idempotency_operations.filter(
+      r=>r.state==="completed"
+    ).length,
+    1
+  );
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+});
+
+test("B04 F52 completion failure rolls back all purchase effects",async t=>{
+  const f=setup(t);
+
+  f.db.database.exec(
+    "CREATE TRIGGER f52_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f52_completion_fault'); END;"
+  );
+
+  const before=f52Money(f.db);
+
+  assertStatus(await f.call("purchase",f52Options()),500);
+
+  assert.deepEqual(f52Money(f.db),before);
+
+  assert.equal(
+    snapshot(f.db).core_idempotency_operations[0].state,
+    "pending"
+  );
+
+  assertStatus(await f.call("purchase",f52Options()),409);
+  assert.deepEqual(f52Money(f.db),before);
+});
+
+test("B04 F52 historical sale cannot become new atomic HTTP evidence",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",{body:purchase}),200);
+
+  const before=f52Money(f.db);
+
+  assertStatus(await f.call("purchase",f52Options()),409);
+
+  assert.deepEqual(f52Money(f.db),before);
+});
+
+test("B04 F52 replay rejects mismatched stored sale evidence",async t=>{
+  const f=setup(t);
+
+  assertStatus(await f.call("purchase",f52Options()),200);
+
+  f.db.database.exec(
+    "UPDATE package_sales SET package_name='Changed evidence'"
+  );
+
+  const before=f52Money(f.db);
+
+  assertStatus(await f.call("purchase",f52Options()),409);
+
+  assert.deepEqual(f52Money(f.db),before);
+});
+
+test("B04 F52 replay remains valid after legitimate session consumption",async t=>{
+  const f=setup(t);
+
+  const first=await f.call("purchase",f52Options());
+  assertStatus(first,200);
+
+  assertStatus(await f.call("redeem",{
+    body:{
+      ...redeem,
+      clientPackageId:first.data.clientPackageId,
+      operationId:"f52-valid-consumption"
+    }
+  }),200);
+
+  const before=f52Money(f.db);
+
+  const retry=await f.call("purchase",f52Options());
+
+  assert.deepEqual(retry,first);
+  assert.deepEqual(f52Money(f.db),before);
+
+  assert.deepEqual(
+    balance(f.db,first.data.clientPackageId),
+    [2,0,1]
+  );
+});
+
+test("B04 F52 compatibility URL cannot bypass atomic purchase",async t=>{
+  const f=setup(t);
+
+  const first=await f.call("purchase",f52Options());
+  assertStatus(first,200);
+
+  const before=f52Money(f.db);
+
+  const response=await coreWorker.fetch(
+    new Request(
+      "https://worker.test/api/packages/purchase/",
+      {
+        method:"POST",
+        headers:{
+          Authorization:"Bearer "+tokenFor("owner"),
+          "Content-Type":"application/json",
+          "Idempotency-Key":"f52-purchase-http"
+        },
+        body:JSON.stringify(purchase)
+      }
+    ),
+    f.env
+  );
+
+  // A different URL fingerprint may conflict, but it
+  // must never create a second sale or payment.
+
+  assert.ok([200,409].includes(response.status));
+  assert.deepEqual(f52Money(f.db),before);
+});
+
+
+async function f53Setup(t) {
+  const mf = new Miniflare({ workers: [{ config: {
+    name: 'package-recovery-test',
+    compatibilityDate: '2026-06-24',
+    manifest: {
+      mainModule: 'script-0.mjs',
+      modulesRoot: process.cwd(),
+      modules: {
+        'script-0.mjs': {
+          type: 'esm',
+          contents: 'export default {fetch(){return new Response("ok")}}'
+        }
+      },
+    },
+    env: {
+      CORE_DB: {
+        type: 'd1',
+        id: 'package-recovery-test'
+      }
+    },
+    exports: {},
+  }, dev: { rootPath: process.cwd() } }] });
+
+  t.after(() => mf.dispose());
+
+  const db = await mf.getD1Database('CORE_DB');
+
+  await applyCoreTestMigrations(db);
+
+  const env = {
+    CORE_DB: db,
+    SALON_ID: 'main',
+    FIREBASE_PROJECT_ID: project,
+    PACKAGES_AUTH_TEST_MODE: 'true'
+  };
+
+  await db.prepare(
+    "INSERT INTO clients "+
+    "(id,canonical_client_id,salon_id,name,created_at,updated_at) "+
+    "VALUES ('client-a','client-a','main','Test client',?,?)"
+  ).bind(now,now).run();
+
+  await db.prepare(
+    "INSERT INTO package_catalog "+
+    "(id,salon_id,name,total_sessions,price,allowed_service_ids_json,created_at,updated_at) "+
+    "VALUES ('catalog-main','main','Test package',3,120,?,?,?)"
+  ).bind(JSON.stringify(["service-a"]),now,now).run();
+
+  return {db,env};
+}
+
+async function f53Purchase(f,{
+  body=purchase,
+  key="f53-http-operation",
+  token="test:owner:owner"
+}={}) {
+  const headers = {
+    "Content-Type":"application/json"
+  };
+
+  if(token!==null) {
+    headers.Authorization="Bearer "+token;
+  }
+
+  if(key!==null) {
+    headers["Idempotency-Key"]=key;
+  }
+
+  const response=await coreWorker.fetch(
+    new Request(
+      "https://worker.test/api/core/packages/purchase",
+      {
+        method:"POST",
+        headers,
+        body:JSON.stringify(body)
+      }
+    ),
+    f.env
+  );
+
+  return {
+    status:response.status,
+    body:await response.json()
+  };
+}
+
+async function f53Snapshot(db) {
+  const tables=[
+    "clients",
+    "client_identity_aliases",
+    "client_packages",
+    "package_transactions",
+    "package_sales",
+    "invoices",
+    "payments",
+    "income_entries",
+    "audit_logs"
+  ];
+
+  const result={};
+
+  for(const table of tables) {
+    const rows=await db.prepare(
+      "SELECT * FROM "+table
+    ).all();
+
+    result[table]=rows.results
+      .map(row=>JSON.stringify(row))
+      .sort();
+  }
+
+  return result;
+}
+
+async function f53Operation(db,key="f53-http-operation") {
+  return db.prepare(
+    "SELECT * FROM core_idempotency_operations "+
+    "WHERE salon_id=? AND operation_id=?"
+  ).bind("main",key).first();
+}
+
+async function f53AssertSale(f,receipt) {
+  assert.equal(receipt.settlementStatus,"paid");
+  assert.equal(receipt.totalHalalas,12000);
+
+  const state=await f53Snapshot(f.db);
+
+  for(const table of [
+    "client_packages",
+    "package_transactions",
+    "package_sales",
+    "invoices",
+    "payments",
+    "income_entries"
+  ]) {
+    assert.equal(state[table].length,1,table);
+  }
+
+  const payment=JSON.parse(state.payments[0]);
+  const invoice=JSON.parse(state.invoices[0]);
+  const income=JSON.parse(state.income_entries[0]);
+  const pkg=JSON.parse(state.client_packages[0]);
+
+  assert.equal(payment.id,receipt.paymentId);
+  assert.equal(payment.amount_halalas,12000);
+  assert.equal(invoice.id,receipt.invoiceId);
+  assert.equal(invoice.paid_halalas,12000);
+  assert.equal(income.payment_id,payment.id);
+  assert.equal(income.amount_halalas,12000);
+  assert.equal(income.source,"package_purchase");
+
+  assert.equal(pkg.remaining_sessions,3);
+  assert.equal(pkg.reserved_sessions,0);
+  assert.equal(pkg.used_sessions,0);
+}
+
+test("B04 F53 real D1 commits financial sale and exact HTTP evidence",async t=>{
+  const f=await f53Setup(t);
+
+  const result=await f53Purchase(f);
+
+  assert.equal(result.status,200,JSON.stringify(result.body));
+
+  await f53AssertSale(f,result.body.data);
+
+  const operation=await f53Operation(f.db);
+
+  assert.equal(operation.state,"completed");
+  assert.equal(operation.response_status,200);
+  assert.ok(operation.execution_token);
+
+  assert.deepEqual(
+    JSON.parse(operation.response_body),
+    result.body
+  );
+});
+
+test("B04 F53 real D1 lost response replays without duplicate money",async t=>{
+  const f=await f53Setup(t);
+
+  const first=await f53Purchase(f);
+
+  assert.equal(first.status,200,JSON.stringify(first.body));
+
+  const before=await f53Snapshot(f.db);
+
+  const retry=await f53Purchase({
+    db:f.db,
+    env:{...f.env}
+  });
+
+  assert.deepEqual(retry,first);
+  assert.deepEqual(await f53Snapshot(f.db),before);
+
+  await f53AssertSale(f,retry.body.data);
+});
+
+test("B04 F53 real D1 concurrent requests produce one sale",async t=>{
+  const f=await f53Setup(t);
+
+  const results=await Promise.all(
+    Array.from({length:6},()=>f53Purchase(f))
+  );
+
+  assert.ok(results.some(r=>r.status===200));
+
+  assert.ok(
+    results.every(r=>[200,409].includes(r.status)),
+    JSON.stringify(results)
+  );
+
+  const retry=await f53Purchase(f);
+
+  assert.equal(retry.status,200);
+
+  await f53AssertSale(f,retry.body.data);
+
+  assert.equal(
+    (await f53Operation(f.db)).state,
+    "completed"
+  );
+});
+
+for(const table of [
+  "invoices",
+  "payments",
+  "income_entries",
+  "package_sales",
+  "package_transactions",
+  "audit_logs"
+]) {
+  test("B04 F53 real D1 atomic rollback on "+table+" failure",async t=>{
+    const f=await f53Setup(t);
+
+    await f.db.prepare(
+      "CREATE TRIGGER f53_fault "+
+      "BEFORE INSERT ON "+table+" BEGIN "+
+      "SELECT RAISE(ABORT,'f53_financial_fault'); END;"
+    ).run();
+
+    const before=await f53Snapshot(f.db);
+
+    const first=await f53Purchase(f);
+
+    assert.equal(first.status,500,JSON.stringify(first.body));
+
+    assert.deepEqual(
+      await f53Snapshot(f.db),
+      before
+    );
+
+    assert.equal(
+      (await f53Operation(f.db)).state,
+      "pending"
+    );
+
+    const retry=await f53Purchase(f);
+
+    assert.equal(retry.status,409);
+
+    assert.deepEqual(
+      await f53Snapshot(f.db),
+      before
+    );
+  });
+}
+
+test("B04 F53 real D1 evidence failure rolls back financial settlement",async t=>{
+  const f=await f53Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f53_evidence_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f53_evidence_fault'); END;"
+  ).run();
+
+  const before=await f53Snapshot(f.db);
+
+  const failed=await f53Purchase(f);
+
+  assert.equal(failed.status,500);
+
+  assert.deepEqual(await f53Snapshot(f.db),before);
+
+  const operation=await f53Operation(f.db);
+
+  assert.equal(operation.state,"pending");
+  assert.ok(operation.execution_token);
+
+  assert.equal((await f53Purchase(f)).status,409);
+  assert.deepEqual(await f53Snapshot(f.db),before);
+});
+
+test("B04 F53 real D1 original receipt survives catalog price change",async t=>{
+  const f=await f53Setup(t);
+
+  const first=await f53Purchase(f);
+
+  assert.equal(first.status,200);
+
+  await f.db.prepare(
+    "UPDATE package_catalog SET price=999 "+
+    "WHERE salon_id='main' AND id='catalog-main'"
+  ).run();
+
+  const before=await f53Snapshot(f.db);
+
+  const retry=await f53Purchase(f);
+
+  assert.deepEqual(retry,first);
+  assert.deepEqual(await f53Snapshot(f.db),before);
+
+  await f53AssertSale(f,retry.body.data);
+});
+
+test("B04 F53 real D1 completed receipt survives day closure but fresh sale fails",async t=>{
+  const f=await f53Setup(t);
+
+  const first=await f53Purchase(f);
+
+  assert.equal(first.status,200);
+
+  const timestamp=new Date().toISOString();
+
+  const day=await f.db.prepare(
+    "SELECT date(?, '+3 hours') AS business_date"
+  ).bind(timestamp).first();
+
+  await f.db.prepare(closeDaySql)
+    .bind(day.business_date,timestamp,timestamp)
+    .run();
+
+  const before=await f53Snapshot(f.db);
+
+  assert.deepEqual(await f53Purchase(f),first);
+
+  const denied=await f53Purchase(f,{
+    key:"f53-closed-day",
+    body:{
+      ...purchase,
+      invoiceId:"f53-closed-sale",
+      clientId:"f53-new-client"
+    }
+  });
+
+  assert.equal(denied.status,409);
+
+  assert.deepEqual(
+    await f53Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F53 real D1 changed fingerprint cannot acquire completed sale",async t=>{
+  const f=await f53Setup(t);
+
+  assert.equal((await f53Purchase(f)).status,200);
+
+  const before=await f53Snapshot(f.db);
+
+  const result=await f53Purchase(f,{
+    body:{
+      ...purchase,
+      paymentMethod:"card"
+    }
+  });
+
+  assert.equal(result.status,409);
+
+  assert.deepEqual(await f53Snapshot(f.db),before);
+});
+
+test("B04 F53 real D1 unauthenticated retry cannot read financial evidence",async t=>{
+  const f=await f53Setup(t);
+
+  assert.equal((await f53Purchase(f)).status,200);
+
+  const before=await f53Snapshot(f.db);
+
+  const denied=await f53Purchase(f,{token:null});
+
+  assert.equal(denied.status,401);
+
+  assert.deepEqual(await f53Snapshot(f.db),before);
+});
+
+test("B04 F53 real D1 pending operation is not recovered by age alone",async t=>{
+  const f=await f53Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f53_pending_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f53_pending_fault'); END;"
+  ).run();
+
+  assert.equal((await f53Purchase(f)).status,500);
+
+  await f.db.prepare("DROP TRIGGER f53_pending_fault").run();
+
+  await f.db.prepare(
+    "UPDATE core_idempotency_operations "+
+    "SET updated_at='2000-01-01T00:00:00.000Z' "+
+    "WHERE salon_id='main' AND operation_id='f53-http-operation'"
+  ).run();
+
+  const before=await f53Snapshot(f.db);
+
+  assert.equal((await f53Purchase(f)).status,409);
+
+  assert.deepEqual(await f53Snapshot(f.db),before);
+
+  assert.equal(
+    (await f53Operation(f.db)).state,
+    "pending"
+  );
 });

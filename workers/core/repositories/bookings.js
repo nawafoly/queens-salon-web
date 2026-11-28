@@ -48,6 +48,31 @@ const PRICE_ADJUSTMENT_REASONS = new Set([
   'other',
 ]);
 
+async function reconcileBookingDerivedEffects(
+  db, salonId, bookingId, actorUid, { cashback = false } = {}
+) {
+  const pending = [];
+  try {
+    await safeRefreshTargetsForBooking(db, salonId, bookingId);
+  } catch (error) {
+    pending.push("employee_targets");
+    console.error("core_booking_target_reconciliation_pending", {
+      salonId, bookingId, message: cleanText(error?.message),
+    });
+  }
+  if (cashback) {
+    try {
+      await reconcileCashbackForBooking(db, salonId, bookingId, actorUid || "");
+    } catch (error) {
+      pending.push("cashback");
+      console.error("core_booking_cashback_reconciliation_pending", {
+        salonId, bookingId, message: cleanText(error?.message),
+      });
+    }
+  }
+  return pending;
+}
+
 function bookingDiscountSource(data = {}) {
   const raw =
     data.discountSnapshot ??
@@ -71,6 +96,318 @@ function normalizeItems(data) {
     throw error;
   }
   return items;
+}
+
+function packageServiceIds(value) {
+  try {
+    const parsed = JSON.parse(String(value));
+
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some(item => typeof item !== "string" || !item.trim())
+    ) {
+      throw new Error("Invalid package service policy");
+    }
+
+    return parsed.map(item => cleanText(item));
+  } catch {
+    throw new AppError(409, "core_booking:package_service_policy_invalid");
+  }
+}
+
+async function packageReservationId(bookingId, cartItemId) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${bookingId}\n${cartItemId}`)
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `booking_reserve_${hex.slice(0, 40)}`;
+}
+
+export async function buildAtomicPackageReservationStatements(
+  db,
+  salonId,
+  bookingId,
+  canonicalClientId,
+  rows,
+  actorUid,
+  now
+) {
+  const covered = rows.filter((row) => Number(row.package_covered) === 1);
+  if (!covered.length) return [];
+
+  const statements = [];
+  const packageState = new Map();
+
+  for (const row of covered) {
+    if (!row.client_package_id) {
+      throw new AppError(400, "core_booking:client_package_required");
+    }
+
+    if (row.package_reservation_id) {
+      const existing = await dbFirst(
+        db,
+        `SELECT * FROM package_transactions
+          WHERE salon_id = ? AND id = ? AND client_package_id = ?
+            AND canonical_client_id = ? AND booking_id = ? AND cart_item_id = ?
+            AND type = 'reserve'
+          LIMIT 1`,
+        [
+          salonId,
+          row.package_reservation_id,
+          row.client_package_id,
+          canonicalClientId,
+          bookingId,
+          row.cart_item_id,
+        ]
+      );
+      if (!existing || cleanText(existing.service_id) !== cleanText(row.service_id)) {
+        throw new AppError(409, "core_booking:package_reservation_invalid");
+      }
+
+      const livePackage = await dbFirst(
+        db,
+        `SELECT * FROM client_packages
+          WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
+          LIMIT 1`,
+        [salonId, row.client_package_id, canonicalClientId]
+      );
+
+      if (
+        !livePackage ||
+        cleanText(livePackage.status).toLowerCase() !== "active" ||
+        Number(livePackage.reserved_sessions || 0) <= 0
+      ) {
+        throw new AppError(409, "core_booking:package_reservation_not_live");
+      }
+
+      if (
+        livePackage.expires_at &&
+        (
+          !Number.isFinite(Date.parse(livePackage.expires_at)) ||
+          Date.parse(livePackage.expires_at) <= Date.parse(now)
+        )
+      ) {
+        throw new AppError(409, "core_booking:client_package_expired");
+      }
+
+      let allowedServices;
+
+      try {
+        allowedServices = JSON.parse(livePackage.allowed_service_ids_json);
+
+        if (!Array.isArray(allowedServices) ||
+            allowedServices.some(id => typeof id !== "string" || !id.trim())) {
+          throw new Error("Invalid service eligibility");
+        }
+      } catch {
+        throw new AppError(409, "core_booking:package_service_policy_invalid");
+      }
+
+      if (
+        allowedServices.length &&
+        !allowedServices.includes(row.service_id)
+      ) {
+        throw new AppError(409, "core_booking:service_not_in_package");
+      }
+
+      const movements = await dbAll(
+        db,
+        `SELECT * FROM package_transactions
+          WHERE salon_id = ?
+            AND client_package_id = ?
+            AND booking_id = ?
+          ORDER BY created_at, id`,
+        [salonId, row.client_package_id, bookingId]
+      );
+
+      const related = movements.filter(
+        movement =>
+          cleanText(movement.cart_item_id) === cleanText(row.cart_item_id) ||
+          !cleanText(movement.cart_item_id)
+      );
+
+      // Do not infer a live reservation from an ambiguous historical ledger.
+      const ambiguous = related.some(
+        movement =>
+          !cleanText(movement.cart_item_id) ||
+          cleanText(movement.canonical_client_id) !== canonicalClientId ||
+          cleanText(movement.service_id) !== cleanText(row.service_id)
+      );
+
+      if (ambiguous) {
+        throw new AppError(409, "core_booking:package_reservation_review_required");
+      }
+
+      const sourceMovements = related.filter(
+        movement => ["reserve", "redeem"].includes(cleanText(movement.type))
+      );
+
+      if (
+        sourceMovements.length !== 1 ||
+        cleanText(sourceMovements[0].id) !== cleanText(existing.id)
+      ) {
+        throw new AppError(409, "core_booking:package_reservation_review_required");
+      }
+
+      const ordered = [...related].sort((a, b) =>
+        cleanText(a.created_at).localeCompare(cleanText(b.created_at)) ||
+        cleanText(a.id).localeCompare(cleanText(b.id))
+      );
+
+      let sessionState = "remaining";
+      let previousTimestamp = null;
+
+      const transitions = {
+        reserve: ["remaining", "reserved", -1, 1, 0],
+        release: ["reserved", "remaining", 1, -1, 0],
+        consume: ["reserved", "used", 0, -1, 1],
+        restore: ["used", "remaining", 1, 0, -1],
+        reapply_reserved: ["remaining", "reserved", -1, 1, 0],
+        reapply_used: ["remaining", "used", -1, 0, 1],
+      };
+
+      for (const movement of ordered) {
+        const transition = transitions[cleanText(movement.type)];
+        const timestamp = Date.parse(movement.created_at);
+
+        if (
+          !transition ||
+          !Number.isFinite(timestamp) ||
+          (previousTimestamp !== null && timestamp <= previousTimestamp) ||
+          sessionState !== transition[0] ||
+          Number(movement.remaining_after) - Number(movement.remaining_before) !== transition[2] ||
+          Number(movement.reserved_after) - Number(movement.reserved_before) !== transition[3] ||
+          Number(movement.used_after) - Number(movement.used_before) !== transition[4]
+        ) {
+          throw new AppError(409, "core_booking:package_reservation_review_required");
+        }
+
+        sessionState = transition[1];
+        previousTimestamp = timestamp;
+      }
+
+      if (sessionState !== "reserved") {
+        throw new AppError(409, "core_booking:package_reservation_not_live");
+      }
+
+      continue;
+    }
+
+    let state = packageState.get(row.client_package_id);
+    if (!state) {
+      const packageRow = await dbFirst(
+        db,
+        `SELECT * FROM client_packages
+          WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
+          LIMIT 1`,
+        [salonId, row.client_package_id, canonicalClientId]
+      );
+      if (!packageRow) {
+        throw new AppError(404, "core_booking:client_package_not_found");
+      }
+      const status = cleanText(packageRow.status).toLowerCase();
+      if (status !== "active") {
+        throw new AppError(409, "core_booking:client_package_not_active");
+      }
+      if (
+        packageRow.expires_at &&
+        Number.isFinite(Date.parse(packageRow.expires_at)) &&
+        Date.parse(packageRow.expires_at) <= Date.parse(now)
+      ) {
+        throw new AppError(409, "core_booking:client_package_expired");
+      }
+      state = {
+        row: packageRow,
+        remaining: Number(packageRow.remaining_sessions || 0),
+        reserved: Number(packageRow.reserved_sessions || 0),
+        used: Number(packageRow.used_sessions || 0),
+        status: packageRow.status,
+        updatedAt: packageRow.updated_at,
+      };
+      packageState.set(row.client_package_id, state);
+    }
+
+    const allowedServiceIds = packageServiceIds(state.row.allowed_service_ids_json);
+    if (allowedServiceIds.length && !allowedServiceIds.includes(row.service_id)) {
+      throw new AppError(409, "core_booking:service_not_in_package");
+    }
+    if (state.remaining <= 0) {
+      throw new AppError(409, "core_booking:package_balance_exhausted");
+    }
+
+    const before = {
+      remaining: state.remaining,
+      reserved: state.reserved,
+      used: state.used,
+      status: state.status,
+      updatedAt: state.updatedAt,
+    };
+    state.remaining -= 1;
+    state.reserved += 1;
+    state.status =
+      state.remaining === 0 && state.reserved === 0 ? "exhausted" : "active";
+    state.updatedAt = now;
+    const reservationId = await packageReservationId(bookingId, row.cart_item_id);
+    row.package_reservation_id = reservationId;
+
+    statements.push(
+      {
+        sql: `UPDATE client_packages
+                SET remaining_sessions = ?, reserved_sessions = ?, used_sessions = ?,
+                    status = ?, updated_at = ?
+              WHERE salon_id = ? AND id = ? AND canonical_client_id = ?
+                AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?
+                AND status = ? AND updated_at = ?`,
+        params: [
+          state.remaining,
+          state.reserved,
+          state.used,
+          state.status,
+          now,
+          salonId,
+          row.client_package_id,
+          canonicalClientId,
+          before.remaining,
+          before.reserved,
+          before.used,
+          before.status,
+          before.updatedAt,
+        ],
+      },
+      {
+        sql: `INSERT INTO package_transactions
+          (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
+           remaining_before, remaining_after, reserved_before, reserved_after,
+           used_before, used_after, service_id, booking_id, cart_item_id, invoice_id,
+           reason, created_by_uid, created_at)
+         SELECT ?, ?, ?, ?, 'reserve', -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
+                'core_booking_atomic_reservation', ?, ?
+          WHERE changes() = 1`,
+        params: [
+          reservationId,
+          salonId,
+          row.client_package_id,
+          canonicalClientId,
+          before.remaining,
+          state.remaining,
+          before.reserved,
+          state.reserved,
+          before.used,
+          state.used,
+          row.service_id,
+          bookingId,
+          row.cart_item_id,
+          actorUid || null,
+          now,
+        ],
+      }
+    );
+  }
+
+  return statements;
 }
 
 function timeToMinutes(value) {
@@ -114,40 +451,90 @@ function parseBookingReferenceNumber(value) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
-async function allocateBookingPublicId(db, salonId) {
+function allocateBookingPublicId(db, salonId, now) {
+  // FakeD1 retains its existing synchronous reference
+  // model. Real D1 allocates inside the booking batch.
   if (db.__fakeD1) {
-    if (!db.__bookingReferenceCounters) db.__bookingReferenceCounters = new Map();
     const existingMax = db.rows("bookings").reduce(
       (max, row) => row.salon_id === salonId
         ? Math.max(max, parseBookingReferenceNumber(row.public_id))
         : max,
       BOOKING_REFERENCE_BASE
     );
+
     const current = Math.max(
       BOOKING_REFERENCE_BASE,
-      Number(db.__bookingReferenceCounters.get(salonId) || 0),
+      Number(db.__bookingReferenceCounters?.get(salonId) || 0),
       existingMax
     );
+
     const next = current + 1;
-    db.__bookingReferenceCounters.set(salonId, next);
-    return `MK-${next}`;
+
+    if (!Number.isSafeInteger(next)) {
+      throw new AppError(
+        500,
+        "core_booking:reference_allocation_failed"
+      );
+    }
+
+    return {
+      publicId: `MK-${next}`,
+      statements: [],
+      commitFakeReference() {
+        if (!db.__bookingReferenceCounters) {
+          db.__bookingReferenceCounters = new Map();
+        }
+
+        db.__bookingReferenceCounters.set(
+          salonId,
+          Math.max(
+            Number(db.__bookingReferenceCounters.get(salonId) || 0),
+            next
+          )
+        );
+      }
+    };
   }
 
-  const row = await dbFirst(
-    db,
-    `INSERT INTO booking_counters (salon_id, last_number, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(salon_id) DO UPDATE SET
-       last_number = booking_counters.last_number + 1,
-       updated_at = excluded.updated_at
-     RETURNING last_number`,
-    [salonId, BOOKING_REFERENCE_BASE + 1, nowIso()]
-  );
-  const number = Number(row?.last_number || 0);
-  if (!Number.isSafeInteger(number) || number <= BOOKING_REFERENCE_BASE) {
-    throw new AppError(500, "core_booking:reference_allocation_failed");
-  }
-  return `MK-${number}`;
+  return {
+    publicId: null,
+    statements: [{
+      sql: `
+        INSERT INTO booking_counters (
+          salon_id,
+          last_number,
+          updated_at
+        )
+        VALUES (
+          ?,
+          MAX(
+            ?,
+            COALESCE((
+              SELECT MAX(CAST(SUBSTR(public_id, 4) AS INTEGER))
+              FROM bookings
+              WHERE salon_id = ?
+                AND UPPER(public_id) GLOB 'MK-[0-9]*'
+                AND SUBSTR(public_id, 4) NOT GLOB '*[^0-9]*'
+            ), 0)
+          ) + 1,
+          ?
+        )
+        ON CONFLICT(salon_id) DO UPDATE SET
+          last_number = MAX(
+            booking_counters.last_number + 1,
+            excluded.last_number
+          ),
+          updated_at = excluded.updated_at
+      `,
+      params: [
+        salonId,
+        BOOKING_REFERENCE_BASE,
+        salonId,
+        now
+      ]
+    }],
+    commitFakeReference() {}
+  };
 }
 
 export function occupiedSlotTimes(startTime, endTime, slotStepMin, bufferMin) {
@@ -747,8 +1134,13 @@ export async function listBookings(db, salonId, query = {}) {
     const staff = staffById.get(cleanText(row.staff_id));
     const invoice = invoiceByBookingId.get(cleanText(row.id));
 
+    const {
+      creation_request_fingerprint: internalCreationFingerprint,
+      ...publicRow
+    } = row;
+
     return {
-      ...row,
+      ...publicRow,
       client_name: guest?.name || client?.name || null,
       client_phone: guest ? null : client?.phone_normalized || null,
       booking_guest: Boolean(guest),
@@ -901,8 +1293,13 @@ export async function getBooking(db, salonId, id) {
     ),
   ]);
 
+  const {
+    creation_request_fingerprint: internalCreationFingerprint,
+    ...publicBooking
+  } = booking;
+
   return {
-    ...booking,
+    ...publicBooking,
     client_name: guest?.name || client?.name || null,
     client_phone: guest ? null : client?.phone_normalized || null,
     booking_guest: Boolean(guest),
@@ -915,8 +1312,69 @@ export async function getBooking(db, salonId, id) {
   };
 }
 
+function stableBookingRequest(value) {
+  if (Array.isArray(value)) {
+    return value.map(stableBookingRequest);
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map(key => [key, stableBookingRequest(value[key])])
+    );
+  }
+
+  return value;
+}
+
+async function bookingCreationFingerprint(salonId, data, actor, options) {
+  const identity = typeof actor === "string"
+    ? { uid: actor, userId: "" }
+    : {
+        uid: cleanText(actor?.uid),
+        userId: cleanText(actor?.userId)
+      };
+
+  const serialized = JSON.stringify(stableBookingRequest({
+    version: 1,
+    salonId,
+    identity,
+    internal: options?.allowPastDates === true,
+    permissions: {
+      priceAdjustment: options?.allowPriceAdjustment === true,
+      manualDiscount: options?.allowManualDiscount === true
+    },
+    request: data
+  }));
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(serialized)
+  );
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function assertBookingCreationReplay(existing, fingerprint) {
+  const stored = cleanText(existing.creation_request_fingerprint);
+
+  if (!/^[a-f0-9]{64}$/.test(stored)) {
+    throw new AppError(409, "core_booking:creation_replay_unverified");
+  }
+
+  if (stored !== fingerprint) {
+    throw new AppError(409, "core_booking:creation_replay_conflict");
+  }
+}
+
 export async function createBooking(db, salonId, data, actor = "", options = {}) {
   const actorUid = typeof actor === "string" ? actor : actor?.uid || "";
+  const creationFingerprint = await bookingCreationFingerprint(
+    salonId, data, actor, options
+  );
   const requestedBookingId = optionalText(data.id);
   if (requestedBookingId) {
     const existing = await dbFirst(
@@ -924,7 +1382,10 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       "SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1",
       [salonId, requiredId(requestedBookingId)]
     );
-    if (existing) return getBooking(db, salonId, requestedBookingId);
+    if (existing) {
+      assertBookingCreationReplay(existing, creationFingerprint);
+      return getBooking(db, salonId, requestedBookingId);
+    }
   }
 
   const clientId = requiredId(data.clientId || data.client_id, "clientId");
@@ -1034,6 +1495,26 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       max: 20,
       fallback: 1,
     });
+    const rawPackageCoverage = item.packageCovered ?? item.package_covered ?? false;
+
+    if (
+      ![true, false, 1, 0].includes(rawPackageCoverage) ||
+      (
+        item.packageCovered !== undefined &&
+        item.package_covered !== undefined &&
+        Number(item.packageCovered) !== Number(item.package_covered)
+      )
+    ) {
+      throw new AppError(400, "core_booking:package_coverage_invalid");
+    }
+
+    const packageCovered =
+      rawPackageCoverage === true || rawPackageCoverage === 1;
+
+    if (packageCovered && quantity !== 1) {
+      throw new AppError(400, "core_booking:package_quantity_invalid");
+    }
+
     const catalogUnit = integer(
       service.price_halalas,
       "catalogUnitPriceHalalas",
@@ -1046,14 +1527,14 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
           max: 10_000_000,
         })
       : catalogUnit;
-    const unit = integer(
+    const unit = packageCovered ? 0 : integer(
       item.unitPriceHalalas ??
         item.unit_price_halalas ??
         effectiveCatalogUnit,
       "unitPriceHalalas",
       { min: 0, max: 10_000_000 }
     );
-    const priceAdjusted = unit !== effectiveCatalogUnit;
+    const priceAdjusted = !packageCovered && unit !== effectiveCatalogUnit;
     const priceAdjustmentReason = priceAdjusted
       ? cleanText(
           item.priceAdjustmentReason ??
@@ -1208,7 +1689,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       price_adjustment_note: priceAdjustmentNote,
       price_adjusted_by_uid: priceAdjusted ? actorUid || null : null,
       price_adjusted_at: priceAdjusted ? now : null,
-      package_covered: item.packageCovered ? 1 : 0,
+      package_covered: packageCovered ? 1 : 0,
       client_package_id:
         optionalText(item.clientPackageId || item.client_package_id) || null,
       duration_minutes: durationMinutes,
@@ -1288,10 +1769,23 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
   const discount = discountApplication.discountHalalas;
   const total = discountApplication.totalHalalas;
   const bookingId = requiredId(requestedBookingId || generatedId("booking"));
+  const canonicalBookingClientId = cleanText(
+    bookingClient?.canonical_client_id || bookingClient?.id || clientId
+  );
+  const packageStatements = await buildAtomicPackageReservationStatements(
+    db,
+    salonId,
+    bookingId,
+    canonicalBookingClientId,
+    rows,
+    actorUid,
+    now
+  );
   // Core D1 is the authority for human-readable booking numbers. Frontend
   // values are intentionally ignored so concurrent requests cannot reuse or
   // forge a sequence number.
-  const publicId = await allocateBookingPublicId(db, salonId);
+  const referenceAllocation = allocateBookingPublicId(db, salonId, now);
+  const publicId = referenceAllocation.publicId;
   const invoiceId =
     data.createInvoice === false
       ? ""
@@ -1322,18 +1816,45 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       : null);
 
   const bookingStatus = cleanText(data.status || "booked");
+
+  const hasCoveredItems = rows.some(
+    row => Number(row.package_covered) === 1
+  );
+
+  if (
+    hasCoveredItems &&
+    (
+      CANCELLED_STATUSES.has(bookingStatus.toLowerCase()) ||
+      bookingStatus.toLowerCase() === "completed"
+    )
+  ) {
+    throw new AppError(
+      409, "core_booking:package_initial_status_invalid"
+    );
+  }
+
+  if (
+    hasCoveredItems &&
+    Number(data.packageSessionsUsed ?? data.package_sessions_used ?? 0) !== 0
+  ) {
+    throw new AppError(
+      400, "core_booking:package_session_count_server_owned"
+    );
+  }
   const statements = [
+    ...referenceAllocation.statements,
+    ...packageStatements,
     {
       sql: `INSERT INTO bookings
         (id, public_id, salon_id, client_id, party_id, party_lead_client_id, party_member_order, party_size,
          staff_id, booking_date, start_time, end_time, status, source, notes,
          subtotal_halalas, discount_halalas, total_halalas, payment_status, package_sessions_used,
          created_by_uid, created_at, updated_at, cancelled_at, completed_at, slot_step_min, buffer_min,
-         discount_snapshot_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+         discount_snapshot_json, creation_request_fingerprint)
+       VALUES (?, ${db.__fakeD1 ? '?' : "(SELECT CASE WHEN last_number BETWEEN 10423 AND 9007199254740991 THEN 'MK-' || last_number ELSE NULL END FROM booking_counters WHERE salon_id = ?)"}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`,
       params: [
         bookingId,
-        publicId,
+        db.__fakeD1 ? publicId : salonId,
         salonId,
         clientId,
         partyId,
@@ -1361,8 +1882,18 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         slotStepMin,
         bufferMin,
         discountApplication.discountSnapshotJson,
+        creationFingerprint,
       ],
     },
+    ...(!db.__fakeD1 ? [{
+      sql: `UPDATE bookings
+            SET public_id = CASE
+              WHEN public_id IS NOT NULL THEN public_id
+              ELSE (SELECT json_extract('invalid-reference', '$'))
+            END
+            WHERE salon_id = ? AND id = ?`,
+      params: [salonId, bookingId]
+    }] : []),
     ...(guestParticipant ? [{
       sql: `INSERT INTO booking_party_guests
         (id, salon_id, party_id, booking_id, name, email, created_at, updated_at)
@@ -1460,7 +1991,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
     });
   }
 
-  statements.push(auditInsertStatement(salonId, {
+  const creationAudit = auditInsertStatement(salonId, {
     action: "booking_created",
     entityType: "booking",
     entityId: bookingId,
@@ -1485,10 +2016,72 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       totalHalalas: total,
       itemCount: rows.length,
     },
-  }, actor).statement);
+  }, actor).statement;
+
+  if (!db.__fakeD1) {
+    const auditSql = creationAudit.sql;
+
+    // Use the existing audit INSERT's actual after_json
+    // column position rather than guessing its bind index.
+    const columnMatch = auditSql.match(
+      /INSERT\s+INTO\s+audit_logs\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)/i
+    );
+
+    if (!columnMatch) {
+      throw new AppError(
+        500,
+        "core_booking:reference_audit_contract_invalid"
+      );
+    }
+
+    const columns = columnMatch[1]
+      .split(",")
+      .map(value => value.trim().toLowerCase());
+
+    const values = columnMatch[2]
+      .split(",")
+      .map(value => value.trim());
+
+    const afterIndex = columns.indexOf("after_json");
+
+    if (
+      afterIndex < 0 ||
+      columns.length !== values.length ||
+      values.some(value => value !== "?") ||
+      creationAudit.params.length !== values.length
+    ) {
+      throw new AppError(
+        500,
+        "core_booking:reference_audit_contract_invalid"
+      );
+    }
+
+    values[afterIndex] =
+      "json_set(?, '$.publicId', " +
+      "(SELECT public_id FROM bookings WHERE salon_id = ? AND id = ?))";
+
+    creationAudit.params.splice(
+      afterIndex + 1,
+      0,
+      salonId,
+      bookingId
+    );
+
+    creationAudit.sql = auditSql.replace(
+      columnMatch[0],
+      "INSERT INTO audit_logs (" +
+        columnMatch[1] +
+        ") VALUES (" +
+        values.join(", ") +
+        ")"
+    );
+  }
+
+  statements.push(creationAudit);
+
 
   for (const row of rows) {
-    if (row.unit_price_halalas === row.catalog_unit_price_halalas) continue;
+    if (row.package_covered === 1 || row.unit_price_halalas === row.catalog_unit_price_halalas) continue;
     statements.push(auditInsertStatement(salonId, {
       action: "booking_price_adjusted",
       entityType: "booking_item",
@@ -1531,6 +2124,7 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
 
   try {
     await dbBatch(db, statements);
+    referenceAllocation.commitFakeReference();
   } catch (error) {
     const uniqueMessage = cleanText(error?.message).toUpperCase();
     if (uniqueMessage.includes("UNIQUE")) {
@@ -1540,7 +2134,10 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
           "SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1",
           [salonId, bookingId]
         );
-        if (existing) return getBooking(db, salonId, bookingId);
+        if (existing) {
+          assertBookingCreationReplay(existing, creationFingerprint);
+          return getBooking(db, salonId, bookingId);
+        }
       }
       if (uniqueMessage.includes("BOOKING_SLOT_LOCKS")) {
         const existingLock = await existingSlotLockConflict(db, salonId, lockRows);
@@ -1582,11 +2179,68 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
         });
       }
     }
+
+if (
+      /(?:^|:\s*)core_booking:package_reservation_missing(?=\s*:|\s*$)/.test(
+        String(error?.message || "")
+      )
+    ) {
+      throw new AppError(
+        409,
+        "core_booking:package_reservation_missing"
+      );
+    }
+
     throw error;
   }
   return getBooking(db, salonId, bookingId);
 }
 
+
+
+function packageBookingEditGuardStatements(
+  salonId, booking
+) {
+  if (!(booking.items || []).some(
+    item => Number(item.package_covered) === 1
+  )) {
+    return [];
+  }
+
+  const revision = Number(booking.lifecycle_revision);
+
+  if (
+    !Number.isSafeInteger(revision) ||
+    revision < 0
+  ) {
+    throw new AppError(
+      409,
+      "core_booking:lifecycle_revision_invalid"
+    );
+  }
+
+  return [{
+    sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+      SELECT NULL
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM bookings
+        WHERE salon_id = ?
+          AND id = ?
+          AND status IS ?
+          AND updated_at IS ?
+          AND lifecycle_revision = ?
+          AND deleted_at IS NULL
+      )`,
+    params: [
+      salonId,
+      booking.id,
+      booking.status,
+      booking.updated_at,
+      revision
+    ]
+  }];
+}
 
 export async function rescheduleBooking(db, salonId, idValue, data) {
   const bookingId = requiredId(idValue);
@@ -1728,7 +2382,8 @@ export async function rescheduleBooking(db, salonId, idValue, data) {
     {
       sql: `UPDATE bookings
                SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?, slot_step_min = ?, buffer_min = ?,
-                   notes = COALESCE(?, notes), updated_at = ?
+                   notes = COALESCE(?, notes), updated_at = ?,
+                   lifecycle_revision = lifecycle_revision + 1
              WHERE salon_id = ? AND id = ?`,
       params: [parentStaffId, first.booking_date, first.start_time, parentEnd, slotStepMin, bufferMin,
         optionalText(data.notes) || null, now, salonId, bookingId],
@@ -1741,7 +2396,12 @@ export async function rescheduleBooking(db, salonId, idValue, data) {
     })),
   ];
   try {
-    await dbBatch(db, statements);
+    await dbBatch(db, [
+      ...packageBookingEditGuardStatements(
+        salonId, booking
+      ),
+      ...statements
+    ]);
   } catch (error) {
     if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) throw conflictError();
     throw error;
@@ -1809,11 +2469,53 @@ export async function patchBooking(
   }
 
   if (cleanText(data.status).toLowerCase() === "cancelled") {
-    return cancelBooking(db, salonId, id, data.reason || data.notes || "");
+    return cancelBooking(db, salonId, id, data.reason || data.notes || "", actor);
   }
 
   const bookingId = requiredId(id);
   const before = await getBooking(db, salonId, bookingId);
+
+  const coveredLifecycle = (before.items || []).some(
+    item => Number(item.package_covered) === 1
+  );
+
+  if (coveredLifecycle) {
+    if (
+      data.packageSessionsUsed !== undefined ||
+      data.package_sessions_used !== undefined
+    ) {
+      throw new AppError(
+        400, "core_booking:package_session_count_server_owned"
+      );
+    }
+
+    const previousStatus = cleanText(before.status).toLowerCase();
+    const requestedStatus = cleanText(data.status).toLowerCase();
+
+    if (
+      data.status !== undefined &&
+      requestedStatus !== previousStatus
+    ) {
+      if (
+        previousStatus === "completed" ||
+        CANCELLED_STATUSES.has(previousStatus)
+      ) {
+        throw new AppError(
+          409, "core_booking:package_transition_conflict"
+        );
+      }
+
+      if (
+        requestedStatus === "completed" ||
+        CANCELLED_STATUSES.has(requestedStatus)
+      ) {
+        throw new AppError(
+          409, "core_booking:package_lifecycle_endpoint_required"
+        );
+      }
+    }
+  }
+
   const hasOperationalEdit = [
     data.bookingDate,
     data.booking_date,
@@ -1872,6 +2574,74 @@ export async function patchBooking(
   }
 
   if (!hasOperationalEdit) {
+    if (coveredLifecycle) {
+      const updates = [];
+      const values = [];
+
+      if (data.status !== undefined) {
+        updates.push("status = ?");
+        values.push(cleanText(data.status));
+      }
+
+      if (data.notes !== undefined) {
+        updates.push("notes = ?");
+        values.push(optionalText(data.notes) || null);
+      }
+
+      if (
+        data.adminNotes !== undefined ||
+        data.admin_notes !== undefined
+      ) {
+        updates.push("admin_notes = ?");
+        values.push(
+          optionalText(
+            data.adminNotes ?? data.admin_notes
+          ) || null
+        );
+      }
+
+      if (!updates.length) {
+        return getBooking(db, salonId, bookingId);
+      }
+
+      updates.push("updated_at = ?");
+      values.push(nowIso());
+      updates.push("lifecycle_revision = lifecycle_revision + 1");
+
+      try {
+        await dbBatch(db, [
+          ...packageBookingEditGuardStatements(
+            salonId, before
+          ),
+          {
+            sql:
+              "UPDATE bookings SET " +
+              updates.join(", ") +
+              " WHERE salon_id = ? AND id = ?" +
+              " AND lifecycle_revision = ?",
+            params: [
+              ...values,
+              salonId,
+              bookingId,
+              Number(before.lifecycle_revision || 0)
+            ]
+          },
+          {
+            sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+                  SELECT NULL WHERE changes() <> 1`,
+            params: []
+          }
+        ]);
+      } catch (error) {
+        if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+          throw new AppError(409, "core_booking:concurrent_modification");
+        }
+        throw error;
+      }
+
+      return getBooking(db, salonId, bookingId);
+    }
+
     return updateById(db, "bookings", salonId, bookingId, {
       status:
         data.status === undefined ? undefined : cleanText(data.status),
@@ -2295,8 +3065,9 @@ export async function patchBooking(
       sql: `UPDATE bookings
                SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?,
                    notes = ?, admin_notes = ?, subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?, payment_status = ?,
-                   slot_step_min = ?, buffer_min = ?, updated_at = ?
-             WHERE salon_id = ? AND id = ?`,
+                   slot_step_min = ?, buffer_min = ?, updated_at = ?,
+                   lifecycle_revision = lifecycle_revision + 1
+             WHERE salon_id = ? AND id = ? AND lifecycle_revision = ?`,
       params: [
         staffId,
         bookingDate,
@@ -2315,7 +3086,13 @@ export async function patchBooking(
         now,
         salonId,
         bookingId,
+        Number(before.lifecycle_revision || 0),
       ],
+    },
+    {
+      sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+            SELECT NULL WHERE changes() <> 1`,
+      params: [],
     },
   ];
 
@@ -2638,7 +3415,12 @@ export async function patchBooking(
   );
 
   try {
-    await dbBatch(db, statements);
+    await dbBatch(db, [
+      ...packageBookingEditGuardStatements(
+        salonId, before
+      ),
+      ...statements
+    ]);
   } catch (error) {
     if (
       shouldReconcilePayment &&
@@ -2659,19 +3441,507 @@ export async function patchBooking(
     ) {
       throw new AppError(409, "core_booking:price_below_paid_amount");
     }
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      throw new AppError(409, "core_booking:concurrent_modification");
+    }
     if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) {
       throw conflictError();
     }
     throw error;
   }
 
-  await safeRefreshTargetsForBooking(db, salonId, bookingId);
-  await reconcileCashbackForBooking(db, salonId, bookingId, actor?.uid || "");
-  return getBooking(db, salonId, bookingId);
+  const pending = await reconcileBookingDerivedEffects(
+    db, salonId, bookingId, actor?.uid || "", { cashback: true }
+  );
+  const current = await getBooking(db, salonId, bookingId);
+  return pending.length
+    ? { ...current, reconciliation_pending: pending }
+    : current;
 }
 
 
+
+async function buildBookingLifecyclePackageStatements(
+  db, salonId, booking, target, actorUid, now
+) {
+  const covered = (booking.items || []).filter(
+    item => Number(item.package_covered) === 1
+  );
+
+  if (!covered.length) return [];
+
+  if (target !== "consume" && target !== "release") {
+    throw new AppError(409, "core_booking:package_transition_invalid");
+  }
+
+  const statements = [];
+  const packages = new Map();
+  const seen = new Set();
+
+  for (const item of covered) {
+    const packageId = cleanText(item.client_package_id);
+    const cartItemId = cleanText(item.cart_item_id);
+    const reservationId = cleanText(item.package_reservation_id);
+
+    if (
+      !packageId ||
+      !cartItemId ||
+      !reservationId ||
+      Number(item.quantity) !== 1 ||
+      seen.has(reservationId)
+    ) {
+      throw new AppError(
+        409, "core_booking:package_reservation_review_required"
+      );
+    }
+
+    seen.add(reservationId);
+
+    const movements = await dbAll(
+      db,
+      `SELECT * FROM package_transactions
+        WHERE salon_id = ?
+          AND client_package_id = ?
+          AND booking_id = ?
+          AND (cart_item_id = ? OR cart_item_id IS NULL OR cart_item_id = '')
+        ORDER BY created_at, id`,
+      [salonId, packageId, booking.id, cartItemId]
+    );
+
+    const original = movements.find(
+      movement => movement.id === reservationId
+    );
+
+    if (
+      !original ||
+      original.type !== "reserve" ||
+      original.canonical_client_id !== booking.client_id ||
+      original.service_id !== item.service_id ||
+      original.cart_item_id !== cartItemId
+    ) {
+      throw new AppError(
+        409, "core_booking:package_reservation_review_required"
+      );
+    }
+
+    const transitions = {
+      reserve: ["remaining", "reserved", -1, 1, 0],
+      release: ["reserved", "remaining", 1, -1, 0],
+      consume: ["reserved", "used", 0, -1, 1],
+      restore: ["used", "remaining", 1, 0, -1],
+      reapply_reserved: ["remaining", "reserved", -1, 1, 0],
+      reapply_used: ["remaining", "used", -1, 0, 1]
+    };
+
+    let current = "remaining";
+    let previousTime = -Infinity;
+    let reserveCount = 0;
+
+    for (const movement of movements) {
+      const rule = transitions[movement.type];
+      const time = Date.parse(movement.created_at);
+
+      if (movement.type === "reserve") reserveCount++;
+
+      if (
+        !rule ||
+        !Number.isFinite(time) ||
+        time <= previousTime ||
+        current !== rule[0] ||
+        movement.cart_item_id !== cartItemId ||
+        movement.canonical_client_id !== booking.client_id ||
+        movement.service_id !== item.service_id ||
+        Number(movement.remaining_after) -
+          Number(movement.remaining_before) !== rule[2] ||
+        Number(movement.reserved_after) -
+          Number(movement.reserved_before) !== rule[3] ||
+        Number(movement.used_after) -
+          Number(movement.used_before) !== rule[4]
+      ) {
+        throw new AppError(
+          409, "core_booking:package_reservation_review_required"
+        );
+      }
+
+      current = rule[1];
+      previousTime = time;
+    }
+
+    if (reserveCount !== 1) {
+      throw new AppError(
+        409, "core_booking:package_reservation_review_required"
+      );
+    }
+
+    const desired = target === "consume" ? "used" : "remaining";
+
+    if (current === desired) {
+      // A verified existing movement already reached this state.
+      // Do not post another ledger row.
+      continue;
+    }
+
+    if (current !== "reserved") {
+      throw new AppError(
+        409, "core_booking:package_transition_conflict"
+      );
+    }
+
+    let state = packages.get(packageId);
+
+    if (!state) {
+      const row = await dbFirst(
+        db,
+        `SELECT * FROM client_packages
+          WHERE salon_id = ? AND id = ?
+            AND canonical_client_id = ? LIMIT 1`,
+        [salonId, packageId, booking.client_id]
+      );
+
+      if (!row) {
+        throw new AppError(
+          409, "core_booking:package_reservation_review_required"
+        );
+      }
+
+      state = {
+        remaining: Number(row.remaining_sessions),
+        reserved: Number(row.reserved_sessions),
+        used: Number(row.used_sessions),
+        total: Number(row.total_sessions),
+        status: row.status,
+        updatedAt: row.updated_at
+      };
+
+      packages.set(packageId, state);
+    }
+
+    if (
+      ![state.remaining, state.reserved, state.used, state.total]
+        .every(Number.isSafeInteger) ||
+      state.remaining < 0 ||
+      state.reserved < 1 ||
+      state.used < 0 ||
+      state.remaining + state.reserved + state.used !== state.total
+    ) {
+      throw new AppError(
+        409, "core_booking:package_balance_conflict"
+      );
+    }
+
+    if (!["active", "expired"].includes(state.status)) {
+      throw new AppError(
+        409, "core_booking:package_transition_review_required"
+      );
+    }
+
+    const before = {...state};
+
+    state.reserved--;
+
+    if (target === "consume") {
+      state.used++;
+    } else {
+      state.remaining++;
+    }
+
+    if (state.status === "active") {
+      state.status =
+        state.remaining === 0 && state.reserved === 0
+          ? "exhausted"
+          : "active";
+    }
+
+    const movementAt = new Date(
+      Math.max(Date.parse(now), previousTime + 1)
+    ).toISOString();
+
+    state.updatedAt = movementAt;
+
+    const movementId = generatedId("booking_package_transition");
+
+    statements.push({
+      sql: `UPDATE client_packages
+          SET remaining_sessions = ?,
+              reserved_sessions = ?,
+              used_sessions = ?,
+              status = ?,
+              updated_at = ?
+        WHERE salon_id = ?
+          AND id = ?
+          AND canonical_client_id = ?
+          AND remaining_sessions = ?
+          AND reserved_sessions = ?
+          AND used_sessions = ?
+          AND status = ?
+          AND updated_at = ?
+          AND EXISTS (
+            SELECT 1 FROM package_transactions pt
+            WHERE pt.salon_id = ?
+              AND pt.client_package_id = ?
+              AND pt.booking_id = ?
+              AND pt.cart_item_id = ?
+              AND pt.id = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM package_transactions pt
+            WHERE pt.salon_id = ?
+              AND pt.client_package_id = ?
+              AND pt.booking_id = ?
+              AND (
+                pt.cart_item_id = ?
+                OR pt.cart_item_id IS NULL
+                OR pt.cart_item_id = ''
+              )
+              AND pt.created_at >= ?
+              AND pt.id <> ?
+          )`,
+      params: [
+        state.remaining, state.reserved, state.used,
+        state.status, state.updatedAt,
+        salonId, packageId, booking.client_id,
+        before.remaining, before.reserved, before.used,
+        before.status, before.updatedAt,
+        salonId, packageId, booking.id, cartItemId,
+        movements[movements.length - 1].id,
+        salonId, packageId, booking.id, cartItemId,
+        movements[movements.length - 1].created_at,
+        movements[movements.length - 1].id
+      ]
+    });
+
+    // Abort the complete D1 batch if the balance CAS loses.
+    statements.push({
+      sql: `SELECT CASE WHEN changes() = 1
+        THEN 1
+        ELSE json_extract('package_lifecycle_conflict', '$')
+        END`,
+      params: []
+    });
+
+    statements.push({
+      sql: `INSERT INTO package_transactions (
+        id, salon_id, client_package_id, canonical_client_id,
+        type, sessions_delta,
+        remaining_before, remaining_after,
+        reserved_before, reserved_after,
+        used_before, used_after,
+        service_id, booking_id, cart_item_id, invoice_id,
+        reason, created_by_uid, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        movementId, salonId, packageId, booking.client_id,
+        target, target === "release" ? 1 : 0,
+        before.remaining, state.remaining,
+        before.reserved, state.reserved,
+        before.used, state.used,
+        item.service_id, booking.id, cartItemId,
+        original.invoice_id || null,
+        "core_booking_atomic_lifecycle",
+        actorUid || null,
+        movementAt
+      ]
+    });
+  }
+
+  return statements;
+}
+
+async function atomicCoveredBookingLifecycle(
+  db, salonId, booking, action, actor = {}, reason = ""
+) {
+  const bookingId = booking.id;
+  const oldStatus = cleanText(booking.status).toLowerCase();
+
+  const targetStatus =
+    action === "complete" ? "completed" : "cancelled";
+
+  const targetMovement =
+    action === "complete" ? "consume" : "release";
+
+  const actorUid =
+    typeof actor === "string" ? actor : cleanText(actor?.uid);
+
+  const now = nowIso();
+
+  // A completed package booking requires an explicit reversal workflow,
+  // not an implicit cancellation or deletion credit.
+  if (
+    (oldStatus === "completed" && action !== "complete") ||
+    (CANCELLED_STATUSES.has(oldStatus) && action === "complete")
+  ) {
+    throw new AppError(
+      409, "core_booking:package_transition_conflict"
+    );
+  }
+
+  const statements = await buildBookingLifecyclePackageStatements(
+    db, salonId, booking, targetMovement, actorUid, now
+  );
+
+  if (
+    oldStatus === targetStatus &&
+    action !== "delete"
+  ) {
+    if (statements.length) {
+      throw new AppError(
+        409, "core_booking:package_reservation_review_required"
+      );
+    }
+
+    const pending = await reconcileBookingDerivedEffects(
+      db, salonId, bookingId, actorUid,
+      { cashback: action === "complete" }
+    );
+    const current = await getBooking(db, salonId, bookingId);
+    return pending.length
+      ? { ...current, reconciliation_pending: pending }
+      : current;
+  }
+
+  const coveredCount = booking.items.filter(
+    item => Number(item.package_covered) === 1
+  ).length;
+
+  const updateFields = [
+    "status = ?",
+    "updated_at = ?",
+    "package_sessions_used = ?",
+    "lifecycle_revision = lifecycle_revision + 1"
+  ];
+
+  const params = [
+    targetStatus,
+    now,
+    action === "complete" ? coveredCount : 0
+  ];
+
+  if (action === "complete") {
+    updateFields.push("completed_at = ?");
+    params.push(now);
+  } else {
+    updateFields.push(
+      "cancelled_at = COALESCE(cancelled_at, ?)",
+      "notes = COALESCE(?, notes)"
+    );
+
+    params.push(now, optionalText(reason) || null);
+  }
+
+  if (action === "delete") {
+    updateFields.push(
+      "deleted_at = ?",
+      "deleted_by_uid = ?",
+      "delete_reason = ?"
+    );
+
+    params.push(now, actorUid || null, "dashboard_delete");
+  }
+
+  statements.push({
+    sql:
+      "UPDATE bookings SET " + updateFields.join(", ") +
+      " WHERE salon_id = ? AND id = ?" +
+      " AND status = ? AND updated_at = ?" +
+      " AND lifecycle_revision = ?" +
+      " AND deleted_at IS NULL",
+    params: [
+      ...params,
+      salonId,
+      bookingId,
+      booking.status,
+      booking.updated_at,
+      Number(booking.lifecycle_revision || 0)
+    ]
+  });
+
+  statements.push({
+    sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+          SELECT NULL WHERE changes() <> 1`,
+    params: []
+  });
+
+  if (action !== "complete") {
+    statements.push({
+      sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?",
+      params: [salonId, bookingId]
+    });
+  }
+
+  statements.push(
+    auditInsertStatement(
+      salonId,
+      {
+        action:
+          action === "delete" ? "booking_deleted" :
+          action === "complete" ? "booking_completed" :
+          "booking_cancelled",
+        entityType: "booking",
+        entityId: bookingId,
+        description: "Atomic package booking lifecycle",
+        before: {
+          status: booking.status
+        },
+        after: {
+          status: targetStatus,
+          packageSessionsUsed:
+            action === "complete" ? coveredCount : 0,
+          financialRecordsPreserved: true
+        },
+        source: "dashboard"
+      },
+      actor
+    ).statement
+  );
+
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      throw new AppError(409, "core_booking:concurrent_modification");
+    }
+    throw error;
+  }
+
+  if (action === "delete") {
+    return {
+      id: bookingId,
+      deleted: true,
+      mode: "soft",
+      financialRecordsPreserved: true
+    };
+  }
+
+  const pending = await reconcileBookingDerivedEffects(
+    db, salonId, bookingId, actorUid,
+    { cashback: action === "complete" }
+  );
+  const current = await getBooking(db, salonId, bookingId);
+  return pending.length
+    ? { ...current, reconciliation_pending: pending }
+    : current;
+}
+
 export async function completeBooking(db, salonId, id, actor = {}) {
+  const lifecycleBooking = await getBooking(
+    db, salonId, requiredId(id)
+  );
+
+  if (
+    (lifecycleBooking.items || []).some(
+      item => Number(item.package_covered) === 1
+    )
+  ) {
+    return atomicCoveredBookingLifecycle(
+      db,
+      salonId,
+      lifecycleBooking,
+      "complete",
+      actor,
+      ""
+    );
+  }
+
   const now = nowIso();
   const result = await dbRun(
     db,
@@ -2679,12 +3949,35 @@ export async function completeBooking(db, salonId, id, actor = {}) {
     [now, now, salonId, requiredId(id)]
   );
   if (!changes(result)) rowNotFound("booking");
-  await safeRefreshTargetsForBooking(db, salonId, id);
-  await reconcileCashbackForBooking(db, salonId, id, actor?.uid || "");
-  return getBooking(db, salonId, id);
+  const pending = await reconcileBookingDerivedEffects(
+    db, salonId, id, actor?.uid || "", { cashback: true }
+  );
+  const current = await getBooking(db, salonId, id);
+  return pending.length
+    ? { ...current, reconciliation_pending: pending }
+    : current;
 }
 
-export async function cancelBooking(db, salonId, id, reason = "") {
+export async function cancelBooking(db, salonId, id, reason = "", actor = {}) {
+  const lifecycleBooking = await getBooking(
+    db, salonId, requiredId(id)
+  );
+
+  if (
+    (lifecycleBooking.items || []).some(
+      item => Number(item.package_covered) === 1
+    )
+  ) {
+    return atomicCoveredBookingLifecycle(
+      db,
+      salonId,
+      lifecycleBooking,
+      "cancel",
+      actor,
+      reason
+    );
+  }
+
   const bookingId = requiredId(id);
   const now = nowIso();
   const results = await dbBatch(db, [
@@ -2706,19 +3999,19 @@ export async function cancelBooking(db, salonId, id, reason = "") {
     },
   ]);
   if (!changes(results[0])) rowNotFound("booking");
-  await safeRefreshTargetsForBooking(db, salonId, bookingId);
-  return getBooking(db, salonId, bookingId);
+  const pending = await reconcileBookingDerivedEffects(
+    db, salonId, bookingId, "", { cashback: false }
+  );
+  const current = await getBooking(db, salonId, bookingId);
+  return pending.length
+    ? { ...current, reconciliation_pending: pending }
+    : current;
 }
 
 
 export async function rollbackInternalBookingCreation(db, salonId, id, actor = {}) {
   const bookingId = requiredId(id);
-  const booking = await dbFirst(
-    db,
-    "SELECT * FROM bookings WHERE salon_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1",
-    [salonId, bookingId]
-  );
-  if (!booking) rowNotFound("booking");
+  const booking = await getBooking(db, salonId, bookingId);
 
   const actorUid = typeof actor === "string" ? cleanText(actor) : cleanText(actor?.uid);
   const createdByUid = cleanText(booking.created_by_uid);
@@ -2737,17 +4030,38 @@ export async function rollbackInternalBookingCreation(db, salonId, id, actor = {
   if (ageMs < -60_000 || ageMs > 30 * 60_000) {
     throw new AppError(409, "core_booking:internal_rollback_window_expired");
   }
+  const priorRollback = await dbFirst(
+    db,
+    `SELECT id FROM audit_logs
+      WHERE salon_id = ? AND entity_type = 'booking' AND entity_id = ?
+        AND action = 'internal_booking_creation_rolled_back'
+        AND actor_uid = ? LIMIT 1`,
+    [salonId, bookingId, actorUid]
+  );
+  if (CANCELLED_STATUSES.has(status) && priorRollback) {
+    return booking;
+  }
   if (status === "completed" || CANCELLED_STATUSES.has(status)) {
     throw new AppError(409, "core_booking:internal_rollback_status_blocked");
   }
 
-  const payment = await dbFirst(
+  const financial = await dbFirst(
     db,
-    "SELECT id FROM payments WHERE salon_id = ? AND booking_id = ? LIMIT 1",
-    [salonId, bookingId]
+    `SELECT
+       EXISTS(SELECT 1 FROM payments WHERE salon_id = ? AND booking_id = ?) AS has_payment,
+       EXISTS(SELECT 1 FROM income_entries WHERE salon_id = ? AND booking_id = ?) AS has_income,
+       EXISTS(SELECT 1 FROM refunds WHERE salon_id = ? AND booking_id = ?) AS has_refund,
+       EXISTS(SELECT 1 FROM invoices WHERE salon_id = ? AND booking_id = ?
+         AND (paid_halalas > 0 OR LOWER(status) IN ('paid', 'partial'))) AS has_settled_invoice`,
+    [salonId, bookingId, salonId, bookingId, salonId, bookingId, salonId, bookingId]
   );
-  if (payment) {
-    throw new AppError(409, "core_booking:internal_rollback_payment_exists");
+  if (
+    Number(financial?.has_payment) ||
+    Number(financial?.has_income) ||
+    Number(financial?.has_refund) ||
+    Number(financial?.has_settled_invoice)
+  ) {
+    throw new AppError(409, "core_booking:internal_rollback_financial_records_exist");
   }
 
   let discountSourceId = "";
@@ -2758,29 +4072,107 @@ export async function rollbackInternalBookingCreation(db, salonId, id, actor = {
     discountSourceId = "";
   }
 
-  const rolledBack = await cancelBooking(
-    db,
-    salonId,
-    bookingId,
-    "internal_party_creation_rollback"
+  const now = nowIso();
+  const statements = await buildBookingLifecyclePackageStatements(
+    db, salonId, booking, "release", actorUid, now
+  );
+
+  statements.push(
+    {
+      sql: `UPDATE bookings
+              SET status = 'cancelled', cancelled_at = COALESCE(cancelled_at, ?),
+                  notes = COALESCE(notes, 'internal_party_creation_rollback'),
+                  package_sessions_used = 0, updated_at = ?,
+                  lifecycle_revision = lifecycle_revision + 1
+            WHERE salon_id = ? AND id = ? AND status = ? AND updated_at = ?
+              AND lifecycle_revision = ? AND deleted_at IS NULL`,
+      params: [
+        now, now, salonId, bookingId, booking.status, booking.updated_at,
+        Number(booking.lifecycle_revision || 0)
+      ]
+    },
+    {
+      sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+            SELECT NULL WHERE changes() <> 1`,
+      params: []
+    },
+    {
+      sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?",
+      params: [salonId, bookingId]
+    }
   );
 
   if (discountSourceId) {
-    await dbRun(
-      db,
-      `UPDATE discounts
-          SET used_count = CASE WHEN used_count > 0 THEN used_count - 1 ELSE 0 END,
-              updated_at = ?
-        WHERE salon_id = ? AND id = ?`,
-      [nowIso(), salonId, discountSourceId]
+    statements.push(
+      {
+        sql: `UPDATE discounts
+                SET used_count = used_count - 1, updated_at = ?
+              WHERE salon_id = ? AND id = ? AND used_count > 0`,
+        params: [now, salonId, discountSourceId]
+      },
+      {
+        sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+              SELECT NULL WHERE changes() <> 1`,
+        params: []
+      }
     );
   }
 
-  return rolledBack;
+  statements.push(
+    auditInsertStatement(
+      salonId,
+      {
+        action: "internal_booking_creation_rolled_back",
+        entityType: "booking",
+        entityId: bookingId,
+        description: "Atomic rollback of confirmed internal booking creation",
+        source: "internal-booking",
+        before: { status: booking.status, discountSourceId: discountSourceId || null },
+        after: {
+          status: "cancelled",
+          packageReservationsReleased: true,
+          slotLocksRemoved: true,
+          discountUsageReversed: Boolean(discountSourceId),
+          financialRecordsPreserved: true
+        }
+      },
+      actor
+    ).statement
+  );
+
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      throw new AppError(409, "core_booking:internal_rollback_concurrent_modification");
+    }
+    throw error;
+  }
+
+  return getBooking(db, salonId, bookingId);
 }
 
 
 export async function deleteBooking(db, salonId, id, actor = {}) {
+  const lifecycleBooking = await getBooking(
+    db, salonId, requiredId(id)
+  );
+
+  if (
+    (lifecycleBooking.items || []).some(
+      item => Number(item.package_covered) === 1
+    )
+  ) {
+    return atomicCoveredBookingLifecycle(
+      db,
+      salonId,
+      lifecycleBooking,
+      "delete",
+      actor,
+      ""
+    );
+  }
+
   const bookingId = requiredId(id);
   const booking = await getBooking(db, salonId, bookingId);
   const now = nowIso();

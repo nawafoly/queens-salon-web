@@ -1,3 +1,4 @@
+import { atomicIdempotencyCompletionStatements } from "../idempotency.js";
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
@@ -12,13 +13,58 @@ import {
   requiredId,
 } from '../d1.js';
 import { AppError } from '../errors.js';
-import { recordAudit } from './audit.js';
+import { auditInsertStatement } from './audit.js';
 import { safeRefreshTargetsForBooking } from './employee-targets.js';
 import { reconcileCashbackForBooking } from './cashback.js';
 
+async function assertPackageRefundWorkflowAvailable(db, salonId, bookingId) {
+  if (!bookingId) return;
+  const covered = await dbFirst(
+    db,
+    `SELECT id FROM booking_items
+      WHERE salon_id = ? AND booking_id = ? AND package_covered = 1 LIMIT 1`,
+    [salonId, bookingId]
+  );
+  if (covered) {
+    throw new AppError(
+      409,
+      'core_refund:package_booking_reversal_workflow_required',
+      'Package-covered booking refunds require an atomic package reversal workflow'
+    );
+  }
+}
+
+async function reconcileRefundDerivedEffects(db, salonId, bookingId, actorUid) {
+  if (!bookingId) return [];
+  const pending = [];
+  try {
+    await safeRefreshTargetsForBooking(db, salonId, bookingId);
+  } catch (error) {
+    pending.push('employee_targets');
+    console.error('core_refund_target_reconciliation_pending', {
+      salonId, bookingId, message: cleanText(error?.message),
+    });
+  }
+  try {
+    await reconcileCashbackForBooking(db, salonId, bookingId, actorUid || '');
+  } catch (error) {
+    pending.push('cashback');
+    console.error('core_refund_cashback_reconciliation_pending', {
+      salonId, bookingId, message: cleanText(error?.message),
+    });
+  }
+  return pending;
+}
+
 // Never derive a new invoice balance from a pre-batch read. Payment and
 // refund batches share this row; arithmetic must use the live D1 value.
-function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { requirePriorUpdate = false } = {}) {
+function invoiceAdjustmentStatement(
+  salonId,
+  invoiceId,
+  delta,
+  updatedAt,
+  { requirePriorUpdate = false, minimumPaid = null } = {}
+) {
   // Preserve legitimate overpayments. Capping at total_halalas would silently
   // erase money if a payment raced with a refund edit or void.
   const next = 'MAX(0, paid_halalas + ?)';
@@ -28,8 +74,12 @@ function invoiceAdjustmentStatement(salonId, invoiceId, delta, updatedAt, { requ
                     WHEN ${next} >= total_halalas THEN 'paid'
                     ELSE 'partial' END,
       updated_at = ? WHERE salon_id = ? AND id = ?
+        ${minimumPaid == null ? '' : 'AND paid_halalas >= ?'}
         ${requirePriorUpdate ? 'AND changes() = 1' : ''}`,
-    params: [delta, delta, delta, updatedAt, salonId, invoiceId],
+    params: [
+      delta, delta, delta, updatedAt, salonId, invoiceId,
+      ...(minimumPaid == null ? [] : [minimumPaid]),
+    ],
   };
 }
 
@@ -73,7 +123,51 @@ export async function listRefunds(db, salonId, query = {}) {
   return dbAll(db, `SELECT * FROM refunds WHERE ${where.join(' AND ')} ORDER BY refunded_at DESC LIMIT 500`, params);
 }
 
-export async function createRefund(db, salonId, data, actor = {}) {
+export async function createRefund(
+  db, salonId, data, actor = {}, executionContext = null
+) {
+  if (executionContext) {
+    if (
+      executionContext.salonId !== salonId ||
+      !executionContext.actorUid ||
+      executionContext.actorUid !== actor?.uid
+    ) {
+      throw new AppError(
+        409,'core_refund:execution_identity_conflict'
+      );
+    }
+
+    for (const [camel,snake] of [
+      ['paymentId','payment_id'],
+      ['invoiceId','invoice_id'],
+      ['bookingId','booking_id'],
+      ['clientId','client_id'],
+      ['idempotencyKey','idempotency_key'],
+      ['providerReference','provider_reference'],
+      ['refundedAt','refunded_at'],
+      ['amountHalalas','amount_halalas'],
+      ['salonId','salon_id']
+    ]) {
+      if (
+        data[camel] != null &&
+        data[snake] != null &&
+        cleanText(String(data[camel])) !==
+          cleanText(String(data[snake]))
+      ) {
+        throw new AppError(
+          409,'core_refund:reference_conflict'
+        );
+      }
+    }
+
+    for (const tenant of [data.salonId,data.salon_id]) {
+      if (tenant != null && cleanText(tenant) !== salonId) {
+        throw new AppError(
+          409,'core_refund:reference_conflict'
+        );
+      }
+    }
+  }
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
   if (idempotencyKey) {
     // Keep exact idempotent replays of legacy pending/failed refund records
@@ -83,7 +177,24 @@ export async function createRefund(db, salonId, data, actor = {}) {
       'SELECT * FROM refunds WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
       [salonId, idempotencyKey]
     );
-    if (existing) return { ...existing, idempotent: true };
+    if (existing) {
+      if (executionContext) {
+        throw new AppError(
+          409,'core_refund:existing_operation_requires_verification'
+        );
+      }
+      await assertPackageRefundWorkflowAvailable(
+        db, salonId, existing.booking_id
+      );
+      const pending = await reconcileRefundDerivedEffects(
+        db, salonId, existing.booking_id, actor?.uid || ''
+      );
+      return {
+        ...existing,
+        idempotent: true,
+        ...(pending.length ? { reconciliation_pending: pending } : {}),
+      };
+    }
   }
   // This write path immediately debits settled invoice revenue. Pending
   // refunds require a separate confirmation transition, not a status flag.
@@ -97,6 +208,40 @@ export async function createRefund(db, salonId, data, actor = {}) {
     ? await dbFirst(db, 'SELECT * FROM payments WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, paymentId])
     : null;
   if (paymentId && !payment) throw new AppError(404, 'core_payment:not_found');
+
+  if (executionContext) {
+    if (!payment || !payment.invoice_id) {
+      throw new AppError(
+        409,'core_refund:verified_payment_required'
+      );
+    }
+
+    if (!['paid','completed','succeeded'].includes(
+      cleanText(payment.status).toLowerCase()
+    )) {
+      throw new AppError(
+        409,'core_refund:payment_not_settled'
+      );
+    }
+
+    for (const [supplied,expected] of [
+      [data.invoiceId,payment.invoice_id],
+      [data.invoice_id,payment.invoice_id],
+      [data.bookingId,payment.booking_id],
+      [data.booking_id,payment.booking_id],
+      [data.clientId,payment.client_id],
+      [data.client_id,payment.client_id]
+    ]) {
+      if (
+        supplied != null &&
+        cleanText(supplied) !== cleanText(expected)
+      ) {
+        throw new AppError(
+          409,'core_refund:reference_conflict'
+        );
+      }
+    }
+  }
 
   const amount = integer(data.amountHalalas ?? data.amount_halalas, 'amountHalalas', { min: 1, max: 100_000_000 });
   if (payment && amount > Number(payment.amount_halalas || 0)) {
@@ -115,6 +260,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
 
   const now = nowIso();
   const requestedBookingId = optionalText(data.bookingId || data.booking_id) || payment?.booking_id || null;
+  await assertPackageRefundWorkflowAvailable(db, salonId, requestedBookingId);
   const requestedInvoiceId = optionalText(data.invoiceId || data.invoice_id) || payment?.invoice_id || null;
   const invoice = requestedInvoiceId
     ? await dbFirst(db, 'SELECT * FROM invoices WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, requestedInvoiceId])
@@ -122,6 +268,21 @@ export async function createRefund(db, salonId, data, actor = {}) {
       ? await dbFirst(db, 'SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1', [salonId, requestedBookingId])
       : null;
   const invoiceId = requestedInvoiceId || invoice?.id || null;
+
+  if (executionContext) {
+    if (
+      !invoice ||
+      invoice.id !== payment.invoice_id ||
+      (invoice.booking_id || null) !==
+        (payment.booking_id || null) ||
+      (invoice.client_id || null) !==
+        (payment.client_id || null)
+    ) {
+      throw new AppError(
+        409,'core_refund:reference_conflict'
+      );
+    }
+  }
   const row = {
     id: requiredId(data.id || generatedId('refund')),
     salon_id: salonId,
@@ -171,44 +332,125 @@ export async function createRefund(db, salonId, data, actor = {}) {
            ), 0))`
     );
     statements[0].params.push(salonId, payment.id, amount);
+
+    if (executionContext) {
+      const liveGuard = "WHERE p.salon_id = ? AND p.id = ?";
+
+      statements[0].sql = statements[0].sql.replace(
+        liveGuard,
+        liveGuard +
+          " AND LOWER(TRIM(p.status)) IN ('paid','completed','succeeded')" +
+          " AND p.invoice_id IS ?" +
+          " AND p.booking_id IS ?" +
+          " AND p.client_id IS ?" +
+          " AND EXISTS (SELECT 1 FROM invoices AS i" +
+          " WHERE i.salon_id=p.salon_id" +
+          " AND i.id=p.invoice_id" +
+          " AND i.booking_id IS p.booking_id" +
+          " AND i.client_id IS p.client_id)" +
+          " AND NOT EXISTS (SELECT 1 FROM booking_items AS bi" +
+          " WHERE bi.salon_id=p.salon_id" +
+          " AND bi.booking_id=p.booking_id" +
+          " AND bi.package_covered=1)"
+      );
+
+      // Insert these bindings before the refund amount
+      // parameter already used by the live budget guard.
+
+      statements[0].params.splice(
+        statements[0].params.length - 1,
+        0,
+        payment.invoice_id || null,
+        payment.booking_id || null,
+        payment.client_id || null
+      );
+    }
+  }
+
+  if (executionContext) {
+    statements.push({
+      sql: "INSERT INTO booking_lifecycle_cas_guard (id) SELECT NULL WHERE changes() <> 1",
+      params: [],
+    });
   }
 
   if (invoice) {
     statements.push(invoiceAdjustmentStatement(salonId, invoice.id, -amount, now, {
-      requirePriorUpdate: true,
+      requirePriorUpdate: !executionContext,
+      minimumPaid: amount,
     }));
+    statements.push({
+      sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+            SELECT NULL WHERE changes() <> 1`,
+      params: [],
+    });
+  }
+
+  statements.push(
+    auditInsertStatement(salonId, {
+      action: 'refund_created', entityType: 'refund', entityId: row.id,
+      description: 'Refund recorded in Core D1', after: row, source: 'dashboard',
+    }, actor).statement
+  );
+
+  if (executionContext) {
+    statements.push(
+      ...atomicIdempotencyCompletionStatements({
+        salonId,
+        operationId: executionContext.operationId,
+        fingerprint: executionContext.fingerprint,
+        requestId: executionContext.requestId,
+        executionToken: executionContext.executionToken,
+        status: 200,
+        responseBody: JSON.stringify({
+          ok:true,data:row
+        }),
+      })
+    );
   }
 
   // RETURNING identifies the direct mutation independently of triggers.
   statements[0].sql += ' RETURNING id';
 
-  const results = await dbBatch(db, statements);
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      throw new AppError(409, 'core_refund:amount_exceeds_remaining');
+    }
+    throw error;
+  }
   if (
     results[0]?.results?.length !== 1 ||
     results[0].results[0]?.id !== row.id
   ) {
     throw new AppError(409, 'core_refund:amount_exceeds_remaining');
   }
-  await recordAudit(db, salonId, {
-    action: 'refund_created', entityType: 'refund', entityId: row.id,
-    description: 'Refund recorded in Core D1', after: row, source: 'dashboard',
-  }, actor);
-  if (row.booking_id) {
-    await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
-    await reconcileCashbackForBooking(
-      db,
+  const pending = await reconcileRefundDerivedEffects(
+    db, salonId, row.booking_id, actor?.uid || ''
+  );
+  if (executionContext && pending.length) {
+    console.error('core_refund_atomic_reconciliation_pending', {
       salonId,
-      row.booking_id,
-      actor?.uid || ""
-    );
+      refundId: row.id,
+      bookingId: row.booking_id,
+      effects: pending,
+    });
   }
-  return row;
+
+  if (executionContext) return row;
+
+  return pending.length
+    ? { ...row, reconciliation_pending: pending }
+    : row;
 }
 
 
 
 export async function patchRefund(db, salonId, id, data, actor = {}) {
   const refund = await getRefund(db, salonId, id);
+  await assertPackageRefundWorkflowAvailable(db, salonId, refund.booking_id);
   if (cleanText(refund.status).toLowerCase() === 'voided') {
     throw new AppError(409, 'core_refund:voided');
   }
@@ -265,21 +507,47 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
     statements[0].params.push(salonId, payment.id, amount, refund.id);
   }
 
+  statements.push({
+    sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+          SELECT NULL WHERE changes() <> 1`,
+    params: [],
+  });
   if (invoice) {
     const delta = Number(refund.amount_halalas || 0) - amount;
-    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now, {
-      requirePriorUpdate: true,
-    }));
+    statements.push(invoiceAdjustmentStatement(salonId, invoice.id, delta, now));
   }
   statements.push({
-    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
     params: [salonId, refund.id],
   });
+
+  const expected = {
+    ...refund,
+    amount_halalas: amount,
+    method,
+    reason,
+    refunded_at: refundedAt,
+  };
+  statements.push(
+    auditInsertStatement(salonId, {
+      action: 'refund_updated', entityType: 'refund', entityId: id,
+      description: 'Refund updated in Core D1', before: refund, after: expected,
+      source: 'dashboard',
+    }, actor).statement
+  );
 
   // RETURNING identifies the direct mutation independently of triggers.
   statements[0].sql += ' RETURNING id';
 
-  const results = await dbBatch(db, statements);
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      throw new AppError(409, 'core_refund:concurrent_modification');
+    }
+    throw error;
+  }
   if (
     results[0]?.results?.length !== 1 ||
     results[0].results[0]?.id !== refund.id
@@ -287,24 +555,17 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
     throw new AppError(409, 'core_refund:concurrent_modification');
   }
   const row = await getRefund(db, salonId, id);
-  await recordAudit(db, salonId, {
-    action: 'refund_updated', entityType: 'refund', entityId: id,
-    description: 'Refund updated in Core D1', before: refund, after: row, source: 'dashboard',
-  }, actor);
-  if (row.booking_id) {
-    await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
-    await reconcileCashbackForBooking(
-      db,
-      salonId,
-      row.booking_id,
-      actor?.uid || ""
-    );
-  }
-  return row;
+  const pending = await reconcileRefundDerivedEffects(
+    db, salonId, row.booking_id, actor?.uid || ''
+  );
+  return pending.length
+    ? { ...row, reconciliation_pending: pending }
+    : row;
 }
 
 export async function voidRefund(db, salonId, id, actor = {}) {
   const refund = await getRefund(db, salonId, id);
+  await assertPackageRefundWorkflowAvailable(db, salonId, refund.booking_id);
   if (cleanText(refund.status).toLowerCase() === 'voided') {
     return { ...refund, idempotent: true };
   }
@@ -320,22 +581,52 @@ export async function voidRefund(db, salonId, id, actor = {}) {
     },
   ];
 
+  statements.push({
+    sql: `INSERT INTO booking_lifecycle_cas_guard (id)
+          SELECT NULL WHERE changes() <> 1`,
+    params: [],
+  });
+
   if (invoice && cleanText(refund.status).toLowerCase() === 'completed') {
     statements.push(invoiceAdjustmentStatement(
-      salonId, invoice.id, Number(refund.amount_halalas || 0), now, {
-        requirePriorUpdate: true,
-      }
+      salonId, invoice.id, Number(refund.amount_halalas || 0), now
     ));
   }
   statements.push({
-    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ? AND changes() = 1",
+    sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
     params: [salonId, id],
   });
+
+  const expected = {
+    ...refund,
+    status: 'voided',
+    voided_at: now,
+    voided_by_uid: optionalText(actor.uid) || null,
+  };
+  statements.push(
+    auditInsertStatement(salonId, {
+      action: 'refund_voided', entityType: 'refund', entityId: id,
+      description: 'Refund voided in Core D1', before: refund, after: expected,
+      source: 'dashboard',
+    }, actor).statement
+  );
 
   // RETURNING identifies the direct mutation independently of triggers.
   statements[0].sql += ' RETURNING id';
 
-  const results = await dbBatch(db, statements);
+  let results;
+  try {
+    results = await dbBatch(db, statements);
+  } catch (error) {
+    if (/booking_lifecycle_cas_guard\.id/i.test(cleanText(error?.message))) {
+      const current = await getRefund(db, salonId, id);
+      if (cleanText(current.status).toLowerCase() === 'voided') {
+        return { ...current, idempotent: true };
+      }
+      throw new AppError(409, 'core_refund:concurrent_modification');
+    }
+    throw error;
+  }
   if (
     results[0]?.results?.length !== 1 ||
     results[0].results[0]?.id !== refund.id
@@ -347,18 +638,10 @@ export async function voidRefund(db, salonId, id, actor = {}) {
     throw new AppError(409, 'core_refund:concurrent_modification');
   }
   const row = await getRefund(db, salonId, id);
-  await recordAudit(db, salonId, {
-    action: 'refund_voided', entityType: 'refund', entityId: id,
-    description: 'Refund voided in Core D1', before: refund, after: row, source: 'dashboard',
-  }, actor);
-  if (row.booking_id) {
-    await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
-    await reconcileCashbackForBooking(
-      db,
-      salonId,
-      row.booking_id,
-      actor?.uid || ""
-    );
-  }
-  return row;
+  const pending = await reconcileRefundDerivedEffects(
+    db, salonId, row.booking_id, actor?.uid || ''
+  );
+  return pending.length
+    ? { ...row, reconciliation_pending: pending }
+    : row;
 }

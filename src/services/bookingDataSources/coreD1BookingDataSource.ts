@@ -1,3 +1,8 @@
+import {
+  resolveBookingCreationIdentity,
+  type BookingIdentityInput,
+} from "../bookingCreationIdentity";
+
 import { CoreBookingService } from "../CoreBookingService";
 import { coreApiRequest } from "../coreApiClient";
 import { CoreCatalogService } from "../CoreCatalogService";
@@ -6,12 +11,7 @@ import { CoreInvoiceService } from "../CoreInvoiceService";
 import { CorePaymentService } from "../CorePaymentService";
 import { CoreStaffService } from "../CoreStaffService";
 import { CoreAvailabilityService } from "../CoreAvailabilityService";
-import { PackageOperationsService } from "../PackageOperationsService";
-import {
-  createBookingWithPackageSaga,
-  type PackageSagaItem,
-  type PackageSagaReservation,
-} from "../packageBookingSaga";
+
 import {
   coreBookingToLegacy,
   coreServiceToLegacy,
@@ -150,31 +150,6 @@ function finalHalalasForBooking(booking: BookingDoc): number {
   return Math.max(0, Math.round((Number.isFinite(finalAmount) ? finalAmount : 0) * 100));
 }
 
-function packageSagaItem(
-  booking: BookingDoc,
-  clientId: string,
-  bookingId: string,
-  itemIndex = 0
-): PackageSagaItem {
-  return {
-    cartItemId:
-      String(
-        (booking as BookingDoc & { cartItemId?: string }).cartItemId ||
-          `item_${itemIndex}`
-      ).trim() || `item_${itemIndex}`,
-    clientId,
-    clientPackageId:
-      String(booking.sessionPackageId || "").trim() || undefined,
-    serviceId: String(
-      booking.serviceId || booking.serviceName || ""
-    ).trim(),
-    employeeId: String(booking.employeeId || "").trim(),
-    date: String(booking.date || "").trim(),
-    time: String(booking.time || booking.startTime || "").trim(),
-  };
-}
-
-
 function invalidateCoreAvailability(booking: Awaited<ReturnType<typeof CoreBookingService.get>>) {
   const seen = new Set<string>();
   for (const item of booking.items || []) {
@@ -189,20 +164,6 @@ function invalidateCoreAvailability(booking: Awaited<ReturnType<typeof CoreBooki
     CoreAvailabilityService.invalidate(booking.staffId, booking.bookingDate);
   }
 }
-async function createCoreBookingWithOptionalPackageSaga(
-  bookingId: string,
-  clientId: string,
-  packageItems: PackageSagaItem[],
-  createCoreBooking: (reservations: PackageSagaReservation[]) => ReturnType<typeof CoreBookingService.create>
-) {
-  if (!packageItems.length) return createCoreBooking([]);
-return createBookingWithPackageSaga({
-    bookingId,
-    packageItems,
-    createCoreBooking,
-  });
-}
-
 export const coreD1BookingDataSource: BookingDataSource = {
   kind: "d1",
 
@@ -323,37 +284,27 @@ export const coreD1BookingDataSource: BookingDataSource = {
   },
 
   async createBooking(booking) {
+    const identity = booking as BookingDoc & BookingIdentityInput;
+    const bookingId = identity.creationScope || identity.id !== undefined
+      ? resolveBookingCreationIdentity(identity)
+      : generatedBookingId();
     const clientId = await resolveClientId(booking);
-    const bookingId =
-      String(
-        (booking as BookingDoc & { id?: string }).id || ""
-      ).trim() || generatedBookingId();
     const coreInput = {
       ...legacyBookingToCoreInput(booking, clientId),
       id: bookingId,
     };
-    const packageItems = isPackageCovered(booking)
-      ? [packageSagaItem(booking, clientId, bookingId)]
-      : [];
-
-    const created =
-      await createCoreBookingWithOptionalPackageSaga(
-        bookingId,
-        clientId,
-        packageItems,
-        (reservations) => {
-          const reservation = reservations[0];
-          return createBookingThroughTrustedChannel({
-            ...coreInput,
-            items: coreInput.items.map((item, index) => ({
-              ...item,
-              cartItemId: reservation?.item.cartItemId || `item_${index}`,
-              packageReservationId:
-                reservation?.result.packageTransactionId || undefined,
-            })),
-          });
-        }
-      );
+    const created = await createBookingThroughTrustedChannel({
+      ...coreInput,
+      items: coreInput.items.map((item, index) => ({
+        ...item,
+        cartItemId:
+          String(
+            (booking as BookingDoc & { cartItemId?: string }).cartItemId ||
+              item.cartItemId ||
+              `item_${index}`
+          ).trim() || `item_${index}`,
+      })),
+    });
 
     invalidateCoreAvailability(created);
     return {
@@ -364,11 +315,11 @@ export const coreD1BookingDataSource: BookingDataSource = {
 
   async createBookingGroup(group) {
     const firstItem = group.items[0] || group.parent;
+    const identity = group.parent as BookingDoc & BookingIdentityInput;
+    const bookingId = identity.creationScope || identity.id !== undefined
+      ? resolveBookingCreationIdentity(identity)
+      : generatedBookingId();
     const clientId = await resolveClientId(group.parent);
-    const bookingId =
-      String(
-        (group.parent as BookingDoc & { id?: string }).id || ""
-      ).trim() || generatedBookingId();
 
     const guestParticipant =
       readBookingGuestParticipant(group.parent) ||
@@ -424,39 +375,7 @@ export const coreD1BookingDataSource: BookingDataSource = {
       })),
     };
 
-    const packageItems = group.items
-      .map((item, index) =>
-        isPackageCovered(item)
-          ? packageSagaItem(item, clientId, bookingId, index)
-          : null
-      )
-      .filter(
-        (item): item is PackageSagaItem => Boolean(item)
-      );
-
-    const created =
-      await createCoreBookingWithOptionalPackageSaga(
-        bookingId,
-        clientId,
-        packageItems,
-        (reservations) => {
-          const byCartItem = new Map(
-            reservations.map((reservation) => [
-              reservation.item.cartItemId,
-              reservation.result.packageTransactionId,
-            ])
-          );
-          return createBookingThroughTrustedChannel({
-            ...coreInput,
-            items: coreInput.items.map((item, index) => ({
-              ...item,
-              cartItemId: item.cartItemId || `item_${index}`,
-              packageReservationId:
-                byCartItem.get(item.cartItemId || `item_${index}`) || undefined,
-            })),
-          });
-        }
-      );
+    const created = await createBookingThroughTrustedChannel(coreInput);
 
     invalidateCoreAvailability(created);
     return {
@@ -473,18 +392,9 @@ export const coreD1BookingDataSource: BookingDataSource = {
 
   async rollbackBookingCreation(id) {
     const current = await CoreBookingService.get(id);
-    const hasPackageReservation = Boolean(
-      current?.items.some((item) => item.packageCovered)
-    );
     const rolledBack = await CoreBookingService.rollbackInternalCreation(id);
     invalidateCoreAvailability(current);
     invalidateCoreAvailability(rolledBack);
-    if (hasPackageReservation) {
-      await PackageOperationsService.restoreReserved(
-        id,
-        "internal_party_creation_rollback"
-      );
-    }
   },
 
   async updateBooking(id, patch) {
@@ -609,38 +519,22 @@ export const coreD1BookingDataSource: BookingDataSource = {
     id,
     status: BookingStatus
   ) {
-    const current =
-      status === "completed" || status === "cancelled"
-        ? await CoreBookingService.get(id)
-        : null;
-    const hasPackageReservation = Boolean(
-      current?.items.some((item) => item.packageCovered)
-    );
-
     if (status === "completed") {
       const updated = await CoreBookingService.complete(id);
       invalidateCoreAvailability(updated);
-      if (hasPackageReservation) {
-        await PackageOperationsService.consumeReserved(id);
-      }
       return;
     }
 
     if (status === "cancelled") {
       const updated = await CoreBookingService.cancel(id);
       invalidateCoreAvailability(updated);
-      if (hasPackageReservation) {
-        await PackageOperationsService.restoreReserved(
-          id,
-          "core_booking_cancelled"
-        );
-      }
       return;
     }
 
     const updated = await CoreBookingService.patch(id, {
       status: status === "confirmed" ? "booked" : status,
     });
+
     invalidateCoreAvailability(updated);
   },
 

@@ -55,6 +55,7 @@ class FakeD1 {
       "employee_employment",
       "employee_attendance_policy_periods",
       "employee_attendance_policy_events",
+      "employee_weekly_rest_rescheduling",
       "attendance_records",
       "employee_leaves",
       "employee_absences",
@@ -1359,6 +1360,22 @@ class FakeD1 {
       const bookingIds = new Set(params.map(String));
       return this.rows("booking_items").filter((row) => bookingIds.has(String(row.booking_id)));
     }
+    if (
+      normalized ===
+      "SELECT id FROM booking_items WHERE salon_id = ? AND booking_id = ? AND package_covered = 1 LIMIT 1"
+    ) {
+      const [salonId, bookingId] = params;
+
+      return this.rows("booking_items")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.booking_id === bookingId &&
+          Number(row.package_covered) === 1
+        )
+        .slice(0,1)
+        .map(row => ({id:row.id}));
+    }
+
     if (normalized.startsWith("SELECT * FROM booking_items WHERE booking_id = ?")) {
       const [bookingId] = params;
       return this.rows("booking_items").filter((row) => row.booking_id === bookingId);
@@ -1577,6 +1594,27 @@ class FakeD1 {
         .map(row => ({
           attendance_policy_revision:
             row.attendance_policy_revision,
+        }));
+    }
+
+    if (
+      normalized ===
+      "SELECT replacement_rest_date, rest_exception_id FROM employee_weekly_rest_rescheduling WHERE salon_id = ? AND employee_id = ? AND status = 'active' AND replacement_rest_date BETWEEN ? AND ?"
+    ) {
+      const [salonId, employeeId, dateFrom, dateTo] = params;
+
+      return this.rows("employee_weekly_rest_rescheduling")
+        .filter(row =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.status === "active" &&
+          typeof row.replacement_rest_date === "string" &&
+          row.replacement_rest_date >= dateFrom &&
+          row.replacement_rest_date <= dateTo
+        )
+        .map(row => ({
+          replacement_rest_date: row.replacement_rest_date,
+          rest_exception_id: row.rest_exception_id,
         }));
     }
 
@@ -2355,12 +2393,13 @@ class FakeD1 {
           slot_step_min,
           buffer_min,
           discount_snapshot_json,
+          creation_request_fingerprint,
         ] = params;
         results.push(this.insert("bookings", {
           id, public_id, salon_id, client_id, party_id, party_lead_client_id, party_member_order, party_size,
           staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
-          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json,
+          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json, creation_request_fingerprint,
         }));
       } else if (sql.startsWith("INSERT INTO booking_party_guests")) {
         const [id, salon_id, party_id, booking_id, name, email, created_at, updated_at] = params;
@@ -2506,6 +2545,71 @@ class FakeD1 {
           payment_status: liveInvoice?.status ?? null,
           updated_at: updatedAt,
         }));
+      } else if (
+        sql === "INSERT INTO booking_lifecycle_cas_guard (id) SELECT NULL WHERE changes() <> 1"
+      ) {
+        if (
+          Number(results.at(-1)?.meta?.changes ?? 0) !== 1
+        ) {
+          throw new Error(
+            "D1_ERROR: NOT NULL constraint failed: booking_lifecycle_cas_guard.id: SQLITE_CONSTRAINT"
+          );
+        }
+
+        results.push({meta:{changes:0}});
+
+      } else if (
+        sql.startsWith("UPDATE bookings SET") &&
+        sql.includes("lifecycle_revision = lifecycle_revision + 1") &&
+        sql.endsWith("AND lifecycle_revision = ?")
+      ) {
+        const [salonId, id, expectedRevision] =
+          params.slice(-3);
+
+        const current = this.find(
+          "bookings", salonId, id
+        );
+
+        if (
+          !current ||
+          Number(current.lifecycle_revision ?? 0) !==
+            Number(expectedRevision)
+        ) {
+          results.push({meta:{changes:0}});
+        } else {
+          const baseSql = sql
+            .replace(
+              ", lifecycle_revision = lifecycle_revision + 1",
+              ""
+            )
+            .replace(
+              / AND lifecycle_revision = \?$/,
+              ""
+            );
+
+          const nextRevision =
+            Number(current.lifecycle_revision ?? 0) + 1;
+
+          const result = this.dynamicUpdate(
+            "bookings",
+            baseSql,
+            params.slice(0,-1)
+          );
+
+          if (
+            Number(result?.meta?.changes ?? 0) === 1
+          ) {
+            this.update(
+              "bookings",
+              salonId,
+              id,
+              {lifecycle_revision:nextRevision}
+            );
+          }
+
+          results.push(result);
+        }
+
       } else if (sql.startsWith("UPDATE bookings SET")) {
         results.push(this.dynamicUpdate("bookings", sql, params));
       } else if (sql.startsWith("DELETE FROM booking_slot_locks")) {
@@ -2746,6 +2850,18 @@ class FakeD1 {
         }
         const [delta, , , updatedAt, salonId, id] = params;
         const row = this.find("invoices", salonId, id);
+        if (
+          sql.includes("AND paid_halalas >= ?") &&
+          (
+            !row ||
+            Number(row.paid_halalas || 0) <
+              Number(params[6])
+          )
+        ) {
+          results.push({meta:{changes:0}});
+          continue;
+        }
+
         const rawPaid = Number(row?.paid_halalas || 0) + delta;
         const paid = sql.startsWith("UPDATE invoices SET paid_halalas = MIN(")
           ? Math.min(Number(row.total_halalas || 0), Math.max(0, rawPaid))
@@ -3860,6 +3976,66 @@ test("paid payroll cannot be reopened", async () => {
   assert.equal(response.status, 409, JSON.stringify(body));
   assert.equal(body.error, "core_payroll:paid_reopen_not_allowed");
   assert.equal(fake.find("payroll_entries", "main", "payroll-reopen-paid").status, "paid");
+});
+
+test("payroll fixture returns no weekly-rest replacements when none match", async () => {
+  const fake = new FakeD1();
+
+  const rows = await fake.all(
+    `SELECT replacement_rest_date, rest_exception_id
+       FROM employee_weekly_rest_rescheduling
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND status = 'active'
+        AND replacement_rest_date BETWEEN ? AND ?`,
+    ["main", "emp-maryam", "2026-07-01", "2026-07-31"]
+  );
+
+  assert.deepEqual(rows, []);
+});
+
+test("payroll fixture filters active weekly-rest replacements by tenant employee and inclusive dates", async () => {
+  const fake = new FakeD1();
+  const seedReplacement = (id, overrides = {}) => {
+    fake.seed("employee_weekly_rest_rescheduling", {
+      id,
+      salon_id: "main",
+      employee_id: "emp-maryam",
+      status: "active",
+      replacement_rest_date: "2026-07-15",
+      rest_exception_id: `rest-${id}`,
+      ...overrides,
+    });
+  };
+
+  seedReplacement("lower-bound", { replacement_rest_date: "2026-07-01" });
+  seedReplacement("upper-bound", { replacement_rest_date: "2026-07-31" });
+  seedReplacement("wrong-tenant", { salon_id: "other" });
+  seedReplacement("wrong-employee", { employee_id: "emp-other" });
+  seedReplacement("cancelled", { status: "cancelled" });
+  seedReplacement("before-range", { replacement_rest_date: "2026-06-30" });
+  seedReplacement("after-range", { replacement_rest_date: "2026-08-01" });
+
+  const rows = await fake.all(
+    `SELECT replacement_rest_date, rest_exception_id
+       FROM employee_weekly_rest_rescheduling
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND status = 'active'
+        AND replacement_rest_date BETWEEN ? AND ?`,
+    ["main", "emp-maryam", "2026-07-01", "2026-07-31"]
+  );
+
+  assert.deepEqual(rows, [
+    {
+      replacement_rest_date: "2026-07-01",
+      rest_exception_id: "rest-lower-bound",
+    },
+    {
+      replacement_rest_date: "2026-07-31",
+      rest_exception_id: "rest-upper-bound",
+    },
+  ]);
 });
 
 test("reopened payroll can be recalculated and updates attendance summary", async () => {
@@ -8256,5 +8432,335 @@ test("HR05I: fake payroll transaction guard rejects zero-row transition and roll
   assert.equal(
     fake.rows("payroll_approval_transaction_guards").length,
     0
+  );
+});
+
+test("B04 booking replay rejects changed creation payload without writes", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const payload = {
+    salonId: "main",
+    id: "booking-b04-fingerprint",
+    invoiceId: "invoice-b04-fingerprint",
+    clientId: "client-a",
+    staffId: "staff-a",
+    bookingDate: "2027-01-10",
+    startTime: "15:00",
+    items: [{
+      id: "item-b04-fingerprint",
+      cartItemId: "cart-b04-fingerprint",
+      serviceId: "svc-a"
+    }]
+  };
+
+  const submit = body => worker.fetch(
+    request("/api/core/bookings", { method: "POST", body }),
+    env(fake)
+  );
+
+  const first = await submit(payload);
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+
+  const snapshot = () => JSON.stringify({
+    bookings: fake.rows("bookings"),
+    items: fake.rows("booking_items"),
+    invoices: fake.rows("invoices"),
+    locks: fake.rows("booking_slot_locks"),
+    audits: fake.rows("audit_logs")
+  });
+
+  const before = snapshot();
+
+  const replay = await submit(payload);
+  assert.equal(replay.status, 200);
+  assert.equal(snapshot(), before);
+
+  const reordered = await submit(
+    Object.fromEntries(Object.entries(payload).reverse())
+  );
+  assert.equal(reordered.status, 200);
+  assert.equal(snapshot(), before);
+
+  const variants = [
+    { ...payload, clientId: "another-client" },
+    { ...payload, staffId: "another-staff" },
+    { ...payload, bookingDate: "2027-01-11" },
+    { ...payload, startTime: "16:00" },
+    { ...payload, invoiceId: "another-invoice" },
+    { ...payload, createInvoice: false },
+    { ...payload, notes: "different request" },
+    { ...payload, discountSnapshot: { source: "coupon", code: "OTHER" } },
+    { ...payload, items: [{ ...payload.items[0], serviceId: "another-service" }] },
+    { ...payload, items: [{ ...payload.items[0], quantity: 2 }] },
+    { ...payload, items: [{ ...payload.items[0], unitPriceHalalas: 1 }] },
+    { ...payload, items: [{ ...payload.items[0], cartItemId: "another-cart" }] },
+    { ...payload, items: [{
+      ...payload.items[0],
+      packageCovered: true,
+      clientPackageId: "another-package"
+    }] }
+  ];
+
+  for (const changed of variants) {
+    const response = await submit(changed);
+    const body = await json(response);
+
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, "core_booking:creation_replay_conflict");
+    assert.equal(snapshot(), before);
+  }
+});
+
+test("B04 historical booking without creation proof fails closed on replay", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const payload = {
+    salonId: "main",
+    id: "booking-b04-historical",
+    clientId: "client-a",
+    staffId: "staff-a",
+    bookingDate: "2027-01-10",
+    startTime: "15:00",
+    items: [{ id: "item-b04-historical", serviceId: "svc-a" }]
+  };
+
+  const submit = () => worker.fetch(
+    request("/api/core/bookings", { method: "POST", body: payload }),
+    env(fake)
+  );
+
+  const first = await submit();
+  assert.equal(first.status, 200);
+
+  fake.update("bookings", "main", payload.id, {
+    creation_request_fingerprint: null
+  });
+  assert.equal(fake.find("bookings", "main", payload.id).creation_request_fingerprint, null);
+
+  const before = JSON.stringify(fake.rows("bookings"));
+
+  const replay = await submit();
+  const body = await json(replay);
+
+  assert.equal(replay.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:creation_replay_unverified");
+  assert.equal(JSON.stringify(fake.rows("bookings")), before);
+});
+
+test("B04 booking creation fingerprint is not exposed in API responses", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const payload = {
+    salonId: "main",
+    id: "booking-b04-private-fingerprint",
+    clientId: "client-a",
+    staffId: "staff-a",
+    bookingDate: "2099-01-10",
+    startTime: "15:00",
+    items: [{
+      id: "item-b04-private-fingerprint",
+      serviceId: "svc-a"
+    }]
+  };
+
+  const submit = () => worker.fetch(
+    request("/api/core/bookings", {
+      method: "POST",
+      body: payload
+    }),
+    env(fake)
+  );
+
+  const first = await submit();
+  const firstBody = await json(first);
+
+  assert.equal(first.status, 200, JSON.stringify(firstBody));
+
+  const persisted = fake.find(
+    "bookings", "main", payload.id
+  );
+
+  assert.match(
+    persisted.creation_request_fingerprint,
+    /^[a-f0-9]{64}$/
+  );
+
+  assert.equal(
+    Object.hasOwn(firstBody.data, "creation_request_fingerprint"),
+    false
+  );
+
+  const replay = await submit();
+  const replayBody = await json(replay);
+
+  assert.equal(replay.status, 200);
+
+  assert.equal(
+    Object.hasOwn(replayBody.data, "creation_request_fingerprint"),
+    false
+  );
+
+  const detail = await worker.fetch(
+    request(`/api/core/bookings/${payload.id}`),
+    env(fake)
+  );
+
+  const detailBody = await json(detail);
+
+  assert.equal(detail.status, 200);
+
+  assert.equal(
+    Object.hasOwn(detailBody.data, "creation_request_fingerprint"),
+    false
+  );
+
+  const list = await worker.fetch(
+    request("/api/core/bookings"),
+    env(fake)
+  );
+
+  const listBody = await json(list);
+
+  assert.equal(list.status, 200);
+
+  assert.equal(
+    JSON.stringify(listBody).includes("creation_request_fingerprint"),
+    false
+  );
+
+  assert.equal(fake.rows("bookings").length, 1);
+  assert.equal(fake.rows("invoices").length, 1);
+});
+
+test("B04 E82 FakeD1 booking revision guard commits one valid update", async () => {
+  const fake = new FakeD1();
+
+  seedCore(fake);
+
+  fake.seed("bookings", {
+    id:"e82-booking",
+    salon_id:"main",
+    status:"booked",
+    notes:"before",
+    lifecycle_revision:0
+  });
+
+  await fake.batch([
+    {
+      sql:`UPDATE bookings SET notes = ?,
+        lifecycle_revision = lifecycle_revision + 1
+        WHERE salon_id = ? AND id = ?
+          AND lifecycle_revision = ?`,
+      params:["after","main","e82-booking",0]
+    },
+    {
+      sql:`INSERT INTO booking_lifecycle_cas_guard (id)
+        SELECT NULL WHERE changes() <> 1`,
+      params:[]
+    }
+  ]);
+
+  const row = fake.find(
+    "bookings","main","e82-booking"
+  );
+
+  assert.equal(row.notes,"after");
+  assert.equal(row.lifecycle_revision,1);
+});
+
+test("B04 E82 FakeD1 rejects stale booking revision without writes", async () => {
+  const fake = new FakeD1();
+
+  seedCore(fake);
+
+  fake.seed("bookings", {
+    id:"e82-stale-booking",
+    salon_id:"main",
+    status:"booked",
+    notes:"committed",
+    lifecycle_revision:2
+  });
+
+  const before = {
+    ...fake.find(
+      "bookings","main","e82-stale-booking"
+    )
+  };
+
+  await assert.rejects(
+    () => fake.batch([
+      {
+        sql:`UPDATE bookings SET notes = ?,
+          lifecycle_revision = lifecycle_revision + 1
+          WHERE salon_id = ? AND id = ?
+            AND lifecycle_revision = ?`,
+        params:[
+          "stale",
+          "main",
+          "e82-stale-booking",
+          1
+        ]
+      },
+      {
+        sql:`INSERT INTO booking_lifecycle_cas_guard (id)
+          SELECT NULL WHERE changes() <> 1`,
+        params:[]
+      }
+    ]),
+    /NOT NULL constraint failed: booking_lifecycle_cas_guard.id/
+  );
+
+  assert.deepEqual(
+    fake.find(
+      "bookings","main","e82-stale-booking"
+    ),
+    before
+  );
+});
+
+test("B04 E82 refund package preflight respects tenant scope", async () => {
+  const fake = new FakeD1();
+
+  seedCore(fake);
+
+  fake.seed("booking_items", {
+    id:"e82-covered-item",
+    salon_id:"main",
+    booking_id:"e82-covered-booking",
+    package_covered:1
+  });
+
+  fake.seed("booking_items", {
+    id:"e82-ordinary-item",
+    salon_id:"main",
+    booking_id:"e82-ordinary-booking",
+    package_covered:0
+  });
+
+  const sql =
+    "SELECT id FROM booking_items WHERE salon_id = ? AND booking_id = ? AND package_covered = 1 LIMIT 1";
+
+  assert.deepEqual(
+    await fake.all(
+      sql,["main","e82-covered-booking"]
+    ),
+    [{id:"e82-covered-item"}]
+  );
+
+  assert.deepEqual(
+    await fake.all(
+      sql,["main","e82-ordinary-booking"]
+    ),
+    []
+  );
+
+  assert.deepEqual(
+    await fake.all(
+      sql,["other","e82-covered-booking"]
+    ),
+    []
   );
 });

@@ -1,3 +1,13 @@
+import { SALON_ID } from "../../helpers/bookingSharedConstants";
+import {
+  getOrCreateActiveBookingIntent,
+  getBookingChildCreationIdentity,
+  getBookingIntentTimestamp,
+  getBookingPartyIdentity,
+  registerBookingIntentManifest,
+  finishVerifiedBookingIntent,
+} from "../../services/bookingCreationIdentity";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiEdit2, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
@@ -2229,7 +2239,23 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       }
 
       const authUser = getAuth().currentUser;
-      const userId = String(authUser?.uid || "internal_staff");
+      const userId = String(authUser?.uid || "").trim();
+
+      if (!userId) {
+        throw new Error("core_booking:verified_actor_required");
+      }
+
+      const internalCreationScope = getOrCreateActiveBookingIntent({
+        salonId: SALON_ID,
+        actorUid: userId,
+        channel: "internal",
+      }, "internal-booking-v2");
+
+      const creationTimestamp =
+        getBookingIntentTimestamp(internalCreationScope);
+
+      const creationTimestampMs =
+        Date.parse(creationTimestamp);
       const bookingDataSource = resolveCoreBookingDataSource();
 
       const canonicalByClientKey = new Map<string, string>();
@@ -2272,7 +2298,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
 
       const partyEnabled = bookingClients.length > 1;
       const partyId = partyEnabled
-        ? `party_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+        ? `party_${getBookingPartyIdentity(internalCreationScope)}`
         : "";
       const leadClientKey = partyClientKey(bookingClients[0]);
       const leadCanonicalClientId = canonicalByClientKey.get(leadClientKey) || "";
@@ -2339,6 +2365,20 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       const createdParty: CreatedPartyBooking[] = [];
       const createdParentIds: string[] = [];
       let compensationFailed = false;
+
+      registerBookingIntentManifest(
+        internalCreationScope,
+        "internal-booking-v2",
+        memberPlans.map((plan) => {
+          const memberKey = String(plan.clientKey || "").trim();
+
+          if (!memberKey) {
+            throw new Error("core_booking:invalid_party_member_identity");
+          }
+
+          return `member:${memberKey}`;
+        })
+      );
 
       try {
         for (const plan of memberPlans) {
@@ -2414,7 +2454,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
               paymentType,
               paidAmount: proportionalPaid,
               remainingAmount: Math.max(0, itemTotal - proportionalPaid),
-              ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
+              ...(proportionalPaid > 0 ? { paidAt: creationTimestampMs } : {}),
               note: bookingNote.trim() || undefined,
               slotStepMinAtBooking: slotStepMin,
               bufferMinAtBooking: bufferMin,
@@ -2460,8 +2500,26 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
           } as any;
 
           attemptedClientKey = plan.clientKey;
+
+          const memberKey = String(plan.clientKey || "").trim();
+
+          if (!memberKey) {
+            throw new Error("core_booking:invalid_party_member_identity");
+          }
+
+          const memberCreationId = getBookingChildCreationIdentity(
+            internalCreationScope,
+            `member:${memberKey}`
+          );
+
+          parent.id = memberCreationId;
+
           const created = await bookingDataSource.createBookingGroup({ parent, items: itemRows });
           const bookingId = String(created.parentId || "");
+
+          if (bookingId !== memberCreationId) {
+            throw new Error("core_booking:creation_confirmation_mismatch");
+          }
           if (!bookingId) throw new Error(t("تعذر إنشاء أحد حجوزات المجموعة."));
           createdParentIds.push(bookingId);
 
@@ -2508,6 +2566,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
       bookingClients.filter((client) => !isBookingGuest(client)).forEach(markQuickClientUsage);
 
       let financialPostingSucceeded = true;
+      let bookingCompletionSucceeded = true;
 
       if (effectivePaidAmount > 0 && createdParty.length) {
         const recordPaymentWithRetry = async (bookingId: string, method: string, amount: number) => {
@@ -2521,7 +2580,7 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
                 method,
                 amountHalalas,
                 status: "paid",
-                paidAt: new Date().toISOString(),
+                paidAt: creationTimestamp,
                 idempotencyKey: `booking-v2-party:${partyId || bookingId}:${bookingId}:${method}:${amountHalalas}`,
               });
               return;
@@ -2608,6 +2667,8 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
             );
           }
         } catch (completionError) {
+          bookingCompletionSucceeded = false;
+
           console.error(
             "[BookingInternalV2] full-payment auto completion failed",
             completionError
@@ -2626,7 +2687,33 @@ export default function BookingInternalV2({ language = "ar" }: { language?: Dash
         }
       }
 
-      if (activeDraftId) {
+      const bookingIntentCompleted =
+        financialPostingSucceeded &&
+        bookingCompletionSucceeded &&
+        finishVerifiedBookingIntent(
+          internalCreationScope,
+          "internal-booking-v2",
+          createdParty.map((row) => ({
+            bookingId: row.parentId,
+            bookingConfirmed: true,
+            settlement: effectivePaidAmount > 0
+              ? "confirmed"
+              : "not_required",
+          }))
+        );
+
+      if (!bookingIntentCompleted) {
+        setPostSaveWarning((current) =>
+          [
+            current,
+            language === "en"
+              ? "The booking operation requires reconciliation. Do not recreate it before reviewing the saved bookings and payments."
+              : "عملية الحجز تحتاج إلى مراجعة. لا تعيدي إنشاء الحجوزات قبل مراجعة الحجوزات والدفعات المحفوظة.",
+          ].filter(Boolean).join(" ")
+        );
+      }
+
+      if (bookingIntentCompleted && activeDraftId) {
         try {
           await CoreInternalBookingDraftService.remove(activeDraftId);
           setSavedDrafts((current) =>

@@ -1242,6 +1242,184 @@ function publicStaffIsVisible(row) {
   return staffIsPubliclyBookable(row);
 }
 
+function authorizeBookingPatch(ctx, body) {
+  const patchBody = body || {};
+  const patchKeys = Object.keys(patchBody);
+  const cancelling =
+    cleanText(patchBody.status).toLowerCase() === "cancelled";
+
+  if (cancelling) {
+    requirePermission(ctx, "bookings.cancel");
+  } else {
+    const derivedPriceFields = new Set([
+      "subtotalHalalas",
+      "subtotal_halalas",
+      "discountHalalas",
+      "discount_halalas",
+      "totalHalalas",
+      "total_halalas",
+    ]);
+    const paymentFields = new Set([
+      "paymentStatus",
+      "payment_status",
+      "paidHalalas",
+      "paid_halalas",
+      "paymentMethod",
+      "payment_method",
+      "paymentBreakdown",
+      "payment_breakdown",
+      "reconcilePayment",
+    ]);
+
+    if (patchKeys.some((key) => derivedPriceFields.has(key))) {
+      throw new AppError(
+        400,
+        "core_booking:direct_price_mutation_forbidden",
+        "Booking subtotal, discount and total are derived from item-level pricing and cannot be patched directly."
+      );
+    }
+
+    const priceAdjustmentFields = new Set([
+      "bookingItemPriceHalalas",
+      "booking_item_price_halalas",
+      "priceAdjustmentReason",
+      "price_adjustment_reason",
+      "priceAdjustmentNote",
+      "price_adjustment_note",
+    ]);
+
+    const discountAdjustmentFields = new Set([
+      "bookingItemDiscountHalalas",
+      "booking_item_discount_halalas",
+    ]);
+
+    const hasPaymentMutation = patchKeys.some((key) =>
+      paymentFields.has(key)
+    );
+    const hasPriceAdjustment = patchKeys.some((key) =>
+      priceAdjustmentFields.has(key)
+    );
+    const hasDiscountAdjustment = patchKeys.some((key) =>
+      discountAdjustmentFields.has(key)
+    );
+    const hasOperationalMutation =
+      patchKeys.length === 0 ||
+      patchKeys.some((key) => !paymentFields.has(key));
+
+    if (hasOperationalMutation) {
+      requirePermission(ctx, "bookings.update");
+    }
+    if (hasPriceAdjustment) {
+      requirePermission(
+        ctx,
+        "bookings.price.adjust"
+      );
+    }
+    if (hasDiscountAdjustment) {
+      requirePermission(
+        ctx,
+        "bookings.discount.apply"
+      );
+    }
+    if (hasPaymentMutation) {
+      requirePermission(ctx, "bookings.payment.manage");
+    }
+  }
+
+
+  return patchBody;
+}
+
+
+async function authorizeBookingMutationReplay(request, env) {
+  const method = String(request.method || "").toUpperCase();
+  const url = new URL(request.url);
+  const route = match(url,method);
+
+  if (!route) return null;
+
+  const isPatch =
+    route.name === "bookings" &&
+    Boolean(route.id) &&
+    method === "PATCH";
+
+  const isDelete =
+    route.name === "bookings" &&
+    Boolean(route.id) &&
+    method === "DELETE";
+
+  const actionPermission = method === "POST"
+    ? {
+        "booking:complete":"bookings.update",
+        "booking:cancel":"bookings.cancel",
+        "booking:reschedule":"bookings.update",
+        "bookings:internal-rollback":"bookings.create"
+      }[route.name]
+    : null;
+
+  if (!isPatch && !isDelete && !actionPermission) {
+    return null;
+  }
+
+  const body = isDelete
+    ? {}
+    : await readJson(request.clone());
+
+  const ctx = await actor(
+    request,env,body,false
+  );
+
+  requireRole(ctx.role);
+
+  const actorUid = cleanText(ctx.identity?.uid);
+  const userId = cleanText(ctx.user?.id);
+  const tenant = cleanText(ctx.salonId);
+
+  if (
+    ctx.guestAccess ||
+    !actorUid ||
+    !userId ||
+    !tenant
+  ) {
+    throw new AppError(
+      403,"core_booking:verified_actor_required"
+    );
+  }
+
+  for (const suppliedTenant of [
+    env.SALON_ID,
+    body?.salonId,
+    body?.salon_id
+  ]) {
+    if (
+      suppliedTenant != null &&
+      cleanText(suppliedTenant) !== tenant
+    ) {
+      throw new AppError(
+        403,"core_booking:execution_tenant_conflict"
+      );
+    }
+  }
+
+  if (isPatch) {
+    authorizeBookingPatch(ctx,body);
+  } else if (isDelete) {
+    requirePermission(ctx,"bookings.delete");
+  } else {
+    requirePermission(ctx,actionPermission);
+  }
+
+  return Object.freeze({
+    version:"booking-mutation-replay-v1",
+    salonId:tenant,
+    actorUid,
+    userId,
+    role:ctx.role,
+    route:route.name,
+    bookingId:route.id
+  });
+}
+
 async function dispatch(ctx, route, method, body, query, env) {
   const db = ctx.coreDb;
   const isClientSelfRoute = new Set([
@@ -1878,88 +2056,7 @@ async function dispatch(ctx, route, method, body, query, env) {
         );
       }
       if (method === "PATCH" && route.id) {
-        const patchBody = body || {};
-        const patchKeys = Object.keys(patchBody);
-        const cancelling =
-          cleanText(patchBody.status).toLowerCase() === "cancelled";
-
-        if (cancelling) {
-          requirePermission(ctx, "bookings.cancel");
-        } else {
-          const derivedPriceFields = new Set([
-            "subtotalHalalas",
-            "subtotal_halalas",
-            "discountHalalas",
-            "discount_halalas",
-            "totalHalalas",
-            "total_halalas",
-          ]);
-          const paymentFields = new Set([
-            "paymentStatus",
-            "payment_status",
-            "paidHalalas",
-            "paid_halalas",
-            "paymentMethod",
-            "payment_method",
-            "paymentBreakdown",
-            "payment_breakdown",
-            "reconcilePayment",
-          ]);
-
-          if (patchKeys.some((key) => derivedPriceFields.has(key))) {
-            throw new AppError(
-              400,
-              "core_booking:direct_price_mutation_forbidden",
-              "Booking subtotal, discount and total are derived from item-level pricing and cannot be patched directly."
-            );
-          }
-
-          const priceAdjustmentFields = new Set([
-            "bookingItemPriceHalalas",
-            "booking_item_price_halalas",
-            "priceAdjustmentReason",
-            "price_adjustment_reason",
-            "priceAdjustmentNote",
-            "price_adjustment_note",
-          ]);
-
-          const discountAdjustmentFields = new Set([
-            "bookingItemDiscountHalalas",
-            "booking_item_discount_halalas",
-          ]);
-
-          const hasPaymentMutation = patchKeys.some((key) =>
-            paymentFields.has(key)
-          );
-          const hasPriceAdjustment = patchKeys.some((key) =>
-            priceAdjustmentFields.has(key)
-          );
-          const hasDiscountAdjustment = patchKeys.some((key) =>
-            discountAdjustmentFields.has(key)
-          );
-          const hasOperationalMutation =
-            patchKeys.length === 0 ||
-            patchKeys.some((key) => !paymentFields.has(key));
-
-          if (hasOperationalMutation) {
-            requirePermission(ctx, "bookings.update");
-          }
-          if (hasPriceAdjustment) {
-            requirePermission(
-              ctx,
-              "bookings.price.adjust"
-            );
-          }
-          if (hasDiscountAdjustment) {
-            requirePermission(
-              ctx,
-              "bookings.discount.apply"
-            );
-          }
-          if (hasPaymentMutation) {
-            requirePermission(ctx, "bookings.payment.manage");
-          }
-        }
+        const patchBody = authorizeBookingPatch(ctx, body);
 
         return patchBooking(
           db,
@@ -2074,7 +2171,8 @@ async function dispatch(ctx, route, method, body, query, env) {
         db,
         ctx.salonId,
         route.id,
-        body.reason
+        body.reason,
+        actorInfo
       );
 
     case "booking:reschedule":
@@ -4193,6 +4291,405 @@ async function dispatch(ctx, route, method, body, query, env) {
   throw new AppError(405, "core_api:method_not_allowed");
 }
 
+
+async function handleAuthorizedAtomicPayment(
+  request,
+  env,
+  ctx,
+  body,
+  operationId
+) {
+  requireRole(ctx.role);
+
+  const actorUid = cleanText(ctx.identity?.uid);
+  const userId = cleanText(ctx.user?.id);
+  const salonId = cleanText(ctx.salonId);
+
+  if (
+    ctx.guestAccess ||
+    !actorUid ||
+    !userId ||
+    !salonId
+  ) {
+    throw new AppError(
+      403,
+      "core_payment:verified_actor_required"
+    );
+  }
+
+  const configuredTenant = cleanText(env.SALON_ID);
+
+  if (
+    configuredTenant &&
+    configuredTenant !== salonId
+  ) {
+    throw new AppError(
+      403,
+      "core_payment:execution_tenant_conflict"
+    );
+  }
+
+  for (const suppliedTenant of [
+    body?.salonId,
+    body?.salon_id,
+  ]) {
+    if (
+      suppliedTenant != null &&
+      cleanText(suppliedTenant) !== salonId
+    ) {
+      throw new AppError(
+        403,
+        "core_payment:execution_tenant_conflict"
+      );
+    }
+  }
+
+  const requestId = normalizeRequestId(
+    request.headers.get("X-Request-Id")
+  );
+
+  const executionToken = crypto.randomUUID();
+
+  const fingerprint = await requestFingerprint(
+    request,
+    JSON.stringify({
+      version: "atomic-payment-v1",
+      salonId,
+      actorUid,
+      userId,
+    })
+  );
+
+  const db = ctx.coreDb;
+
+  const gate = await beginIdempotentOperation(
+    db,
+    salonId,
+    operationId,
+    fingerprint,
+    requestId,
+    executionToken
+  );
+
+  if (gate.action === "conflict") {
+    throw new AppError(
+      409,
+      "core_api:idempotency_key_reused"
+    );
+  }
+
+  if (gate.action === "in_progress") {
+    throw new AppError(
+      409,
+      "core_api:idempotency_in_progress"
+    );
+  }
+
+  if (gate.action === "replay") {
+    let payload;
+
+    try {
+      payload = JSON.parse(gate.responseBody);
+    } catch {
+      throw new AppError(
+        409,
+        "core_payment:commit_evidence_invalid"
+      );
+    }
+
+    const payment = payload?.data;
+
+    if (
+      gate.status !== 200 ||
+      payload?.ok !== true ||
+      !payment ||
+      typeof payment !== "object" ||
+      Array.isArray(payment) ||
+      !cleanText(payment.id) ||
+      payment.salon_id !== salonId ||
+      !Number.isSafeInteger(payment.amount_halalas) ||
+      payment.amount_halalas <= 0
+    ) {
+      throw new AppError(
+        409,
+        "core_payment:commit_evidence_invalid"
+      );
+    }
+
+    const committed = await dbFirst(
+      db,
+      "SELECT * FROM payments WHERE salon_id = ? AND id = ?",
+      [salonId, payment.id]
+    );
+
+    if (
+      !committed ||
+      committed.amount_halalas !== payment.amount_halalas ||
+      committed.invoice_id !== payment.invoice_id ||
+      committed.booking_id !== payment.booking_id ||
+      committed.client_id !== payment.client_id ||
+      committed.method !== payment.method ||
+      committed.status !== payment.status ||
+      committed.provider !== payment.provider ||
+      committed.provider_reference !== payment.provider_reference ||
+      committed.idempotency_key !== payment.idempotency_key ||
+      committed.paid_at !== payment.paid_at ||
+      committed.created_at !== payment.created_at
+    ) {
+      throw new AppError(
+        409,
+        "core_payment:commit_evidence_conflict"
+      );
+    }
+
+    return jsonResponse(
+      request,
+      env,
+      gate.status,
+      payload
+    );
+  }
+
+  if (gate.action !== "proceed") {
+    throw new AppError(
+      409,
+      "core_payment:execution_gate_invalid"
+    );
+  }
+
+  const actorInfo = {
+    uid: actorUid,
+    email: ctx.identity?.claims?.email || ctx.user?.email || "",
+    name: ctx.user?.display_name || ctx.identity?.claims?.name || "",
+    role: ctx.role,
+    userId,
+    ip: ctx.requestMeta?.ip || "",
+    userAgent: ctx.requestMeta?.userAgent || "",
+    employeeId: ctx.employeeId || "",
+  };
+
+  const executionContext = Object.freeze({
+    salonId,
+    operationId,
+    fingerprint,
+    requestId,
+    executionToken,
+    actorUid,
+  });
+
+  // The repository owns completion evidence.
+  //
+  // Never finalize or abandon this operation outside its
+  // financial batch based merely on an HTTP status code.
+  //
+  // Unknown outcomes remain fail closed.
+
+  const data = await createPayment(
+    db,
+    salonId,
+    body,
+    actorInfo,
+    executionContext
+  );
+
+  return jsonResponse(
+    request,
+    env,
+    200,
+    {ok:true,data}
+  );
+}
+
+async function handleAuthorizedAtomicRefund(
+  request,
+  env,
+  ctx,
+  body,
+  operationId
+) {
+  requireRole(ctx.role);
+  requirePermission(ctx, "finance.manage");
+
+  const actorUid = cleanText(ctx.identity?.uid);
+  const userId = cleanText(ctx.user?.id);
+  const salonId = cleanText(ctx.salonId);
+
+  if (
+    ctx.guestAccess ||
+    !actorUid ||
+    !userId ||
+    !salonId
+  ) {
+    throw new AppError(
+      403,
+      "core_refund:verified_actor_required"
+    );
+  }
+
+  const configuredTenant = cleanText(env.SALON_ID);
+
+  if (
+    configuredTenant &&
+    configuredTenant !== salonId
+  ) {
+    throw new AppError(
+      403,
+      "core_refund:execution_tenant_conflict"
+    );
+  }
+
+  for (const suppliedTenant of [
+    body?.salonId,
+    body?.salon_id,
+  ]) {
+    if (
+      suppliedTenant != null &&
+      cleanText(suppliedTenant) !== salonId
+    ) {
+      throw new AppError(
+        403,
+        "core_refund:execution_tenant_conflict"
+      );
+    }
+  }
+
+  const requestId = normalizeRequestId(
+    request.headers.get("X-Request-Id")
+  );
+
+  const executionToken = crypto.randomUUID();
+
+  const fingerprint = await requestFingerprint(
+    request,
+    JSON.stringify({
+      version: "atomic-refund-v1",
+      salonId,
+      actorUid,
+      userId,
+    })
+  );
+
+  const db = ctx.coreDb;
+
+  const gate = await beginIdempotentOperation(
+    db,
+    salonId,
+    operationId,
+    fingerprint,
+    requestId,
+    executionToken
+  );
+
+  if (gate.action === "conflict") {
+    throw new AppError(
+      409,
+      "core_api:idempotency_key_reused"
+    );
+  }
+
+  if (gate.action === "in_progress") {
+    throw new AppError(
+      409,
+      "core_api:idempotency_in_progress"
+    );
+  }
+
+  if (gate.action === "replay") {
+    let payload;
+
+    try {
+      payload = JSON.parse(gate.responseBody);
+    } catch {
+      throw new AppError(
+        409,
+        "core_refund:commit_evidence_invalid"
+      );
+    }
+
+    const refund = payload?.data;
+    if (
+      gate.status !== 200 || payload?.ok !== true ||
+      !refund || typeof refund !== "object" || Array.isArray(refund) ||
+      !cleanText(refund.id) || refund.salon_id !== salonId ||
+      refund.created_by_uid !== actorUid ||
+      !Number.isSafeInteger(refund.amount_halalas) || refund.amount_halalas <= 0 ||
+      refund.status !== "completed" || !refund.payment_id || !refund.invoice_id
+    ) {
+      throw new AppError(409, "core_refund:commit_evidence_invalid");
+    }
+    const committed = await dbFirst(
+      db, "SELECT * FROM refunds WHERE salon_id = ? AND id = ?",
+      [salonId, refund.id]
+    );
+    for (const field of [
+      "id", "salon_id", "payment_id", "invoice_id", "booking_id", "client_id",
+      "amount_halalas", "method", "reason", "status", "idempotency_key",
+      "provider_reference", "created_by_uid", "refunded_at", "voided_at",
+      "voided_by_uid", "created_at"
+    ]) {
+      if (!committed || !Object.hasOwn(refund, field) || !Object.is(committed[field], refund[field])) {
+        throw new AppError(409, "core_refund:commit_evidence_conflict");
+      }
+    }
+
+    return jsonResponse(
+      request,
+      env,
+      gate.status,
+      payload
+    );
+  }
+
+  if (gate.action !== "proceed") {
+    throw new AppError(
+      409,
+      "core_refund:execution_gate_invalid"
+    );
+  }
+
+  const actorInfo = {
+    uid: actorUid,
+    email: ctx.identity?.claims?.email || ctx.user?.email || "",
+    name: ctx.user?.display_name || ctx.identity?.claims?.name || "",
+    role: ctx.role,
+    userId,
+    ip: ctx.requestMeta?.ip || "",
+    userAgent: ctx.requestMeta?.userAgent || "",
+    employeeId: ctx.employeeId || "",
+  };
+
+  const executionContext = Object.freeze({
+    salonId,
+    operationId,
+    fingerprint,
+    requestId,
+    executionToken,
+    actorUid,
+  });
+
+  // The repository owns completion evidence.
+  //
+  // Never finalize or abandon this operation outside its
+  // financial batch based merely on an HTTP status code.
+  //
+  // Unknown outcomes remain fail closed.
+
+  const data = await createRefund(
+    db,
+    salonId,
+    body,
+    actorInfo,
+    executionContext
+  );
+
+  return jsonResponse(
+    request,
+    env,
+    200,
+    {ok:true,data}
+  );
+}
+
 export async function handleRequest(request, env) {
   const incomingUrl = new URL(request.url);
   if (
@@ -4224,6 +4721,13 @@ export async function handleRequest(request, env) {
   const route = match(url, request.method);
   if (!route) throw new AppError(404, "core_api:not_found");
 
+  const paymentFingerprintRequest =
+    (route.name === "payments" || (route.name === "refunds" && !route.id)) &&
+    request.method === "POST" &&
+    request.headers.has("Idempotency-Key")
+      ? request.clone()
+      : null;
+
   const rawContentRoute = route.name === "file:content";
   const policyCancellation =
     request.method === "DELETE" &&
@@ -4242,6 +4746,63 @@ export async function handleRequest(request, env) {
     allowBlockedAccount: route.name === "auth:me",
   });
   ctx.request = request;
+
+  if (
+    route.name === "payments" &&
+    request.method === "POST"
+  ) {
+    const rawPaymentOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+
+    if (request.headers.has("Idempotency-Key")) {
+      const paymentOperationId =
+        normalizeOperationId(rawPaymentOperationId);
+
+      if (!paymentOperationId) {
+        throw new AppError(
+          400,
+          "core_api:invalid_idempotency_key"
+        );
+      }
+
+      return handleAuthorizedAtomicPayment(
+        paymentFingerprintRequest,
+        env,
+        ctx,
+        body,
+        paymentOperationId
+      );
+    }
+  }
+  if (
+    route.name === "refunds" && !route.id &&
+    request.method === "POST"
+  ) {
+    const rawRefundOperationId = cleanText(
+      request.headers.get("Idempotency-Key")
+    );
+
+    if (request.headers.has("Idempotency-Key")) {
+      const refundOperationId =
+        normalizeOperationId(rawRefundOperationId);
+
+      if (!refundOperationId) {
+        throw new AppError(
+          400,
+          "core_api:invalid_idempotency_key"
+        );
+      }
+
+      return handleAuthorizedAtomicRefund(
+        paymentFingerprintRequest,
+        env,
+        ctx,
+        body,
+        refundOperationId
+      );
+    }
+  }
   if (route.name === "public:employee-avatar") {
     const profile = await getHrEmployeeAvatarProfile(ctx.coreDb, ctx.salonId, route.id);
     const avatarFileId = cleanText(profile.avatar_file_id);
@@ -4494,11 +5055,26 @@ export default {
 
     let response;
     let fingerprint = "";
+    const executionToken = crypto.randomUUID();
     let idempotencyActive = false;
     let replayed = false;
     let packageActor = null;
+    let bookingReplayActor = null;
 
     try {
+      const bookingMutationKeyRoute =
+        /^\/api\/core\/bookings\/[^/]+(?:\/(?:complete|cancel|reschedule))?$/.test(url.pathname) ||
+        /^\/api\/core\/internal\/bookings\/[^/]+\/rollback$/.test(url.pathname);
+
+      if (
+        bookingMutationKeyRoute &&
+        ["POST","PATCH","DELETE"].includes(method) &&
+        tracedRequest.headers.has("Idempotency-Key") &&
+        !operationId
+      ) {
+        throw new AppError(400,"core_api:invalid_idempotency_key");
+      }
+
       if (rawOperationId && !operationId) {
         throw new AppError(
           400,
@@ -4508,25 +5084,32 @@ export default {
 
       if (
         tenantId &&
+        !(method === "POST" && ["/api/core/payments", "/api/core/refunds"].includes(url.pathname)) &&
+        !(method === "POST" &&
+          /^\/api\/(?:core\/)?packages\/purchase\/*$/.test(url.pathname)) &&
         shouldUseIdempotency(
           tracedRequest,
           operationId
         )
       ) {
         packageActor = await authorizePackageReplay(tracedRequest, env);
+        bookingReplayActor = await authorizeBookingMutationReplay(tracedRequest, env);
+
+        const scopedActor = packageActor || bookingReplayActor;
+
         fingerprint =
           await requestFingerprint(
             tracedRequest,
-            packageActor ? JSON.stringify(packageActor) : undefined
+            scopedActor ? JSON.stringify(scopedActor) : undefined
           );
 
         const gate =
           await beginIdempotentOperation(
             requireDb(env),
-            packageActor?.salonId ?? tenantId,
+            packageActor?.salonId ?? bookingReplayActor?.salonId ?? tenantId,
             operationId,
             fingerprint,
-            requestId
+            requestId, executionToken
           );
 
         if (gate.action === "conflict") {
@@ -4606,20 +5189,20 @@ export default {
         operationId &&
         fingerprint
       ) {
-        const replayTenant = packageActor?.salonId ?? tenantId;
+        const replayTenant = packageActor?.salonId ?? bookingReplayActor?.salonId ?? tenantId;
         if (response.status === 401) {
           await abandonIdempotentOperation(
             requireDb(env),
             replayTenant,
             operationId,
-            fingerprint
+            fingerprint, executionToken
           );
         } else if (packageActor && response.status >= 400) {
           await abandonIdempotentOperation(
             requireDb(env),
             replayTenant,
             operationId,
-            fingerprint
+            fingerprint, executionToken
           );
         } else {
           const contentType =
@@ -4641,7 +5224,7 @@ export default {
               fingerprint,
               requestId,
               response.status,
-              await response.clone().text()
+              await response.clone().text(), executionToken
             );
           }
         }

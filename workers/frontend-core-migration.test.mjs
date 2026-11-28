@@ -345,18 +345,20 @@ test("checkout never increments legacy Firestore package usage after Core bookin
   assert.match(checkout, /checkoutCoreBookingService/);
 });
 
-test("mixed package booking stores reservation references on Core booking items", () => {
-  const saga = readFileSync(
-    "src/services/packageBookingSaga.ts",
-    "utf8"
-  );
+test("mixed package booking delegates reservation references to the atomic Core transaction", () => {
   const source = readFileSync(
     "src/services/bookingDataSources/coreD1BookingDataSource.ts",
     "utf8"
   );
-  assert.match(saga, /PackageSagaReservation/);
-  assert.match(source, /packageReservationId/);
-  assert.match(source, /packageTransactionId/);
+  const bookings = readFileSync("workers/core/repositories/bookings.js", "utf8");
+  const migration = readFileSync(
+    "migrations/core/0115_atomic_booking_package_reservations.sql",
+    "utf8"
+  );
+  assert.doesNotMatch(source, /createBookingWithPackageSaga/);
+  assert.match(bookings, /buildAtomicPackageReservationStatements/);
+  assert.match(bookings, /package_reservation_id = reservationId/);
+  assert.match(migration, /package_reservation_missing/);
   assert.match(source, /bookingDate:/);
   assert.match(source, /startTime:/);
 });
@@ -830,8 +832,16 @@ test("booking references are compact and dashboard delete preserves financial re
   assert.match(sequenceMigration, /VALUES \(\'main\', 10422/);
   assert.match(sequenceMigration, /CREATE TABLE IF NOT EXISTS booking_counters/);
   assert.match(repo, /allocateBookingPublicId/);
-  assert.match(repo, /RETURNING last_number/);
-  assert.match(repo, /return `MK-\$\{number\}`/);
+  assert.match(repo, /INSERT INTO booking_counters/);
+  assert.match(repo, /booking_counters\.last_number\s*\+\s*1/);
+  assert.match(repo, /referenceAllocation\.statements/);
+  assert.match(repo, /FROM booking_counters WHERE salon_id = \?/);
+  assert.match(repo, /await dbBatch\(db, statements\)/);
+  assert.match(repo, /json_set\(/);
+  assert.doesNotMatch(repo, /await allocateBookingPublicId\(db, salonId\)/);
+  assert.match(repo, /'MK-'\s*\|\|\s*last_number/);
+  assert.match(repo, /publicId:\s*`MK-\$\{next\}`/);
+  assert.match(repo, /last_number BETWEEN 10423 AND 9007199254740991/);
   assert.doesNotMatch(repo, /optionalText\(data\.publicId \|\| data\.public_id\)/);
 });
 
@@ -1107,13 +1117,30 @@ test("package session state changes are booking-idempotent across completion can
   assert.match(packageRepo, /reapplyBookingSessionD1/);
   assert.match(packageRoutes, /POST \/api\/packages\/redemption\/reapply/);
   assert.match(packageService, /reapplyBookingSession/);
-  assert.match(bookingSource, /PackageOperationsService\.consumeReserved/);
-  assert.match(bookingSource, /PackageOperationsService\.restoreReserved/);
+  assert.match(bookingSource, /CoreBookingService\.complete\(id\)/);
+  assert.match(bookingSource, /CoreBookingService\.cancel\(id\)/);
   assert.match(dashboard, /PackageOperationsService\.restoreConsumed/);
   assert.match(dashboard, /PackageOperationsService\.reapplyBookingSession/);
   const restoreStart = packageService.indexOf("restoreConsumed(bookingId");
   const restoreEnd = packageService.indexOf("reapplyBookingSession", restoreStart);
   assert.doesNotMatch(packageService.slice(restoreStart, restoreEnd), /operationId|Math\.random/);
+
+  const lifecycleDataSource = bookingSource;
+
+  assert.doesNotMatch(
+    lifecycleDataSource,
+    /PackageOperationsService\.(?:consumeReserved|restoreReserved)\s*\(/
+  );
+
+  assert.match(
+    lifecycleDataSource,
+    /CoreBookingService\.complete\(id\)/
+  );
+
+  assert.match(
+    lifecycleDataSource,
+    /CoreBookingService\.cancel\(id\)/
+  );
 });
 
 test("loyalty ledger earns only from completed bookings and reverses cumulative refunds deterministically", () => {

@@ -32,6 +32,16 @@ function mapBookingRow(row: Record<string, unknown>): CoreStaffPortalBooking {
   };
 }
 
+function requireStableBookingIdentity(input: CoreCreateBookingInput): string {
+  const id = String(input.id || "").trim();
+
+  if (!id || id.length > 128 || !/^[A-Za-z0-9_-]+$/.test(id)) {
+    throw new Error("core_booking:stable_creation_identity_required");
+  }
+
+  return id;
+}
+
 export const CoreBookingService = {
   async list(query: CoreBookingSearch = {}): Promise<CoreBooking[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
@@ -86,10 +96,12 @@ export const CoreBookingService = {
   },
 
   async create(input: CoreCreateBookingInput): Promise<CoreBooking> {
+    requireStableBookingIdentity(input);
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/bookings",
       {
         method: "POST",
+        operationId: String(input.id || "").trim() || undefined,
         body: input as unknown as Record<string, unknown>,
       }
     );
@@ -97,10 +109,12 @@ export const CoreBookingService = {
   },
 
   async createInternal(input: CoreCreateBookingInput): Promise<CoreBooking> {
+    requireStableBookingIdentity(input);
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/internal/bookings",
       {
         method: "POST",
+        operationId: String(input.id || "").trim() || undefined,
         body: input as unknown as Record<string, unknown>,
       }
     );

@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { beginIdempotentOperation } from "./core/idempotency.js";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -31,6 +33,11 @@ async function setup(t) {
       .replace(/\r/g, '').split('\n').filter((x) => !x.trim().startsWith('--')).join('\n');
     for (const statement of sql.split(';').map((x) => x.trim()).filter(Boolean)) await db.prepare(statement).run();
   }
+  await db.prepare(`ALTER TABLE bookings
+    ADD COLUMN lifecycle_revision INTEGER NOT NULL DEFAULT 0`).run();
+  await db.prepare(`CREATE TABLE booking_lifecycle_cas_guard (
+    id TEXT NOT NULL
+  )`).run();
   const now = '2026-10-10T08:00:00.000Z';
   await db.prepare("INSERT INTO clients (id,salon_id,name,status,created_at,updated_at) VALUES ('test-client','main','Test Client','active',?,?)").bind(now,now).run();
   await db.prepare(`INSERT INTO bookings
@@ -1047,6 +1054,7 @@ test('financial correction preflight flags new refunds and closed accounting day
   const db = await setup(t);
   await createPayment(db, 'main', {
     id: 'impact-refund-payment', invoiceId: 'test-invoice',
+    paidAt: '2026-11-27T22:00:00.000Z',
     amountHalalas: 7000, method: 'cash',
   });
   const proposal = await proposePaymentCorrection(db, 'main', {
@@ -1059,8 +1067,52 @@ test('financial correction preflight flags new refunds and closed accounting day
     id: 'impact-late-refund', paymentId: 'impact-refund-payment',
     amountHalalas: 5000, status: 'completed',
   });
-  const income = await db.prepare("SELECT occurred_at FROM income_entries WHERE payment_id='impact-refund-payment'").first();
-  const auditDate = String(income.occurred_at).slice(0, 10);
+  const income = await db.prepare("SELECT occurred_at FROM income_entries WHERE salon_id='main' AND payment_id='impact-refund-payment'").first();
+  assert.ok(income, 'Committed income row must exist');
+
+  function riyadhAccountingDate(value) {
+    const date = new Date(value);
+
+    assert.ok(
+      Number.isFinite(date.getTime()),
+      'Income timestamp must be valid'
+    );
+
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Riyadh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(date).map(
+        part => [part.type, part.value]
+      )
+    );
+
+    return parts.year + '-' +
+      parts.month + '-' + parts.day;
+  }
+
+  assert.equal(
+    riyadhAccountingDate('2026-11-27T20:59:59.000Z'),
+    '2026-11-27'
+  );
+
+  assert.equal(
+    riyadhAccountingDate('2026-11-27T21:00:00.000Z'),
+    '2026-11-28'
+  );
+
+  assert.equal(
+    new Date(income.occurred_at).toISOString(),
+    '2026-11-27T22:00:00.000Z'
+  );
+
+  const auditDate = riyadhAccountingDate(
+    income.occurred_at
+  );
+
+  assert.equal(auditDate,'2026-11-28');
   const ts = new Date().toISOString();
   await db.prepare(`INSERT INTO day_audit_closings
     (id, salon_id, audit_date, total_halalas, cash_halalas, card_halalas,
@@ -1148,4 +1200,1533 @@ test('completed booking staff reassignment leaves settled ledger unchanged', asy
   const booking = await db.prepare("SELECT status, payment_status FROM bookings WHERE id = 'test-booking'").first();
   assert.equal(booking.status, 'completed');
   assert.equal(booking.payment_status, 'paid');
+});
+
+async function f41Setup(t) {
+  const db = await setup(t);
+
+  const base = await readFile(
+    new URL(
+      "../migrations/core/0056_core_request_idempotency.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  for (const statement of base
+    .split(";")
+    .map(value => value.trim())
+    .filter(Boolean)) {
+    await db.prepare(statement).run();
+  }
+
+  const ownership = await readFile(
+    new URL(
+      "../migrations/core/0122_idempotency_execution_ownership.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  const sql = ownership
+    .split(/\r?\n/)
+    .filter(line => !line.trim().startsWith("--"))
+    .join("\n")
+    .trim();
+
+  const alterEnd = sql.indexOf(";");
+
+  assert.ok(alterEnd > 0);
+
+  await db.prepare(
+    sql.slice(0, alterEnd)
+  ).run();
+
+  await db.prepare(
+    sql.slice(alterEnd + 1).trim()
+  ).run();
+
+  const executionContext = {
+    salonId: "main",
+    operationId: "f41-http-operation",
+    fingerprint: "f41-request-fingerprint",
+    requestId: "f41-request",
+    executionToken: "f41-owner",
+    actorUid: "f41-actor",
+  };
+
+  const actor = {
+    uid: "f41-actor",
+    role: "owner",
+  };
+
+  const input = {
+    id: "f41-payment",
+    invoiceId: "test-invoice",
+    amountHalalas: 7500,
+    method: "cash",
+    status: "paid",
+    idempotencyKey: "f41-domain-payment",
+    paidAt: "2026-11-27T15:00:00.000Z",
+  };
+
+  const gate = await beginIdempotentOperation(
+    db,
+    executionContext.salonId,
+    executionContext.operationId,
+    executionContext.fingerprint,
+    executionContext.requestId,
+    executionContext.executionToken
+  );
+
+  assert.equal(gate.action, "proceed");
+
+  return {
+    db,
+    executionContext,
+    actor,
+    input,
+  };
+}
+
+async function f41Snapshot(db) {
+  const result = {};
+
+  for (const tableName of [
+    "payments",
+    "income_entries",
+    "invoices",
+    "bookings",
+    "audit_logs",
+    "cashback_wallet_transactions",
+    "core_idempotency_operations",
+  ]) {
+    const rows = await db.prepare(
+      "SELECT * FROM " + tableName
+    ).all();
+
+    result[tableName] = rows.results
+      .map(row => JSON.stringify(row))
+      .sort();
+  }
+
+  return result;
+}
+
+async function f41Replay(f) {
+  return beginIdempotentOperation(
+    f.db,
+    f.executionContext.salonId,
+    f.executionContext.operationId,
+    f.executionContext.fingerprint,
+    "f41-retry",
+    "f41-new-owner"
+  );
+}
+
+test("B04 F41 real D1 payment commits exact completion evidence", async t => {
+  const f = await f41Setup(t);
+
+  const result = await createPayment(
+    f.db,
+    "main",
+    f.input,
+    f.actor,
+    f.executionContext
+  );
+
+  const gate = await f41Replay(f);
+
+  assert.equal(gate.action, "replay");
+  assert.equal(gate.status, 200);
+
+  assert.deepEqual(
+    JSON.parse(gate.responseBody),
+    {ok:true,data:result}
+  );
+
+  assert.equal(result.amount_halalas,7500);
+  assert.equal(result.id,"f41-payment");
+
+  assert.equal(
+    (await f.db.prepare(
+      "SELECT paid_halalas FROM invoices WHERE id='test-invoice'"
+    ).first()).paid_halalas,
+    7500
+  );
+
+  for (const name of [
+    "payments",
+    "income_entries",
+  ]) {
+    assert.equal(
+      (await f.db.prepare(
+        "SELECT COUNT(*) AS n FROM " + name
+      ).first()).n,
+      1
+    );
+  }
+});
+
+test("B04 F41 stale execution owner rolls back actual money and audit", async t => {
+  const f = await f41Setup(t);
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      f.input,
+      f.actor,
+      {
+        ...f.executionContext,
+        executionToken:"stale-owner"
+      }
+    ),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F41 wrong fingerprint rolls back actual money and audit", async t => {
+  const f = await f41Setup(t);
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      f.input,
+      f.actor,
+      {
+        ...f.executionContext,
+        fingerprint:"wrong-fingerprint"
+      }
+    ),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+});
+
+for (const [label, overrides] of [
+  ["tenant",{salonId:"another-salon"}],
+  ["actor",{actorUid:"another-actor"}],
+]) {
+  test("B04 F41 execution identity rejects " + label, async t => {
+    const f = await f41Setup(t);
+    const before = await f41Snapshot(f.db);
+
+    await assert.rejects(
+      createPayment(
+        f.db,
+        "main",
+        f.input,
+        f.actor,
+        {
+          ...f.executionContext,
+          ...overrides
+        }
+      ),
+      error =>
+        error?.code ===
+        "core_payment:execution_identity_conflict"
+    );
+
+    assert.deepEqual(
+      await f41Snapshot(f.db),
+      before
+    );
+  });
+}
+
+test("B04 F41 failed evidence write rolls back real payment transaction", async t => {
+  const f = await f41Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f41_fail_completion " +
+    "BEFORE UPDATE OF state ON core_idempotency_operations " +
+    "WHEN NEW.state='completed' BEGIN " +
+    "SELECT RAISE(ABORT,'f41_completion_fault'); END;"
+  ).run();
+
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      f.input,
+      f.actor,
+      f.executionContext
+    ),
+    /f41_completion_fault/
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F41 failed income write leaves HTTP operation pending", async t => {
+  const f = await f41Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f41_fail_income " +
+    "BEFORE INSERT ON income_entries BEGIN " +
+    "SELECT RAISE(ABORT,'f41_income_fault'); END;"
+  ).run();
+
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      f.input,
+      f.actor,
+      f.executionContext
+    ),
+    /f41_income_fault/
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+
+  assert.equal(
+    (await f41Replay(f)).action,
+    "in_progress"
+  );
+});
+
+test("B04 F41 historical payment cannot impersonate a new HTTP commit", async t => {
+  const f = await f41Setup(t);
+
+  await createPayment(
+    f.db,
+    "main",
+    f.input,
+    f.actor
+  );
+
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      f.input,
+      f.actor,
+      f.executionContext
+    ),
+    error =>
+      error?.code ===
+      "core_payment:existing_operation_requires_verification"
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F41 lost response cannot produce a second financial effect", async t => {
+  const f = await f41Setup(t);
+
+  await createPayment(
+    f.db,
+    "main",
+    f.input,
+    f.actor,
+    f.executionContext
+  );
+
+  const gate = await f41Replay(f);
+
+  assert.equal(gate.action,"replay");
+
+  const before = await f41Snapshot(f.db);
+
+  await assert.rejects(
+    createPayment(
+      f.db,
+      "main",
+      {
+        ...f.input,
+        id:"second-payment",
+        idempotencyKey:"second-domain-key",
+      },
+      f.actor,
+      f.executionContext
+    ),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(
+    await f41Snapshot(f.db),
+    before
+  );
+});
+
+
+const directory = "migrations/core";
+
+const migrations = readdirSync(directory)
+  .filter(name => /^\d+.*\.sql$/.test(name))
+  .sort();
+
+async function f431FullSchema(t) {
+  const mf = new Miniflare({ workers: [{ config: {
+    name: 'package-sale-test', compatibilityDate: '2026-06-24',
+    manifest: {
+      mainModule: 'script-0.mjs', modulesRoot: process.cwd(),
+      modules: { 'script-0.mjs': { type: 'esm', contents: 'export default {fetch(){return new Response("ok")}}' } },
+    },
+    env: { CORE_DB: { type: 'd1', id: 'package-sale-test' } }, exports: {},
+  }, dev: { rootPath: process.cwd() } }] });
+
+  t.after(async () => {
+    await mf.dispose();
+  });
+
+  const db = await mf.getD1Database("CORE_DB");
+
+  const sqlite = await import("node:sqlite");
+  const parser = new sqlite.DatabaseSync(":memory:");
+
+  try {
+    for (const name of migrations) {
+      const sql = readFileSync(
+        `${directory}/${name}`,
+        "utf8"
+      );
+
+      // SQLite executes full migration files, including triggers.
+      // Miniflare receives the resulting local schema below.
+      try {
+        parser.exec(sql);
+      } catch (error) {
+        throw new Error(
+          `Migration ${name}: ${error.message}`
+        );
+      }
+    }
+
+    const schema = parser.prepare(`
+      SELECT type, name, sql
+      FROM sqlite_master
+      WHERE sql IS NOT NULL
+        AND name NOT LIKE 'sqlite_%'
+      ORDER BY CASE type
+        WHEN 'table' THEN 1
+        WHEN 'index' THEN 2
+        WHEN 'view' THEN 3
+        WHEN 'trigger' THEN 4
+        ELSE 5
+      END, rowid
+    `).all();
+
+    for (const row of schema) {
+      try {
+        await db.prepare(row.sql).run();
+      } catch (error) {
+        throw new Error(
+          `Miniflare schema ${row.name}: ${error.message}`
+        );
+      }
+    }
+
+    for (const table of [
+      "roles",
+      "permissions",
+      "role_permissions"
+    ]) {
+      const records = parser.prepare(
+        "SELECT * FROM " + table
+      ).all();
+
+      for (const row of records) {
+        const fields = Object.keys(row);
+
+        await db.prepare(
+          "INSERT INTO " + table +
+          " (" + fields.join(",") + ") VALUES (" +
+          fields.map(() => "?").join(",") + ")"
+        ).bind(
+          ...fields.map(field => row[field])
+        ).run();
+      }
+    }
+
+  } finally {
+    parser.close();
+  }
+
+  return db;
+}
+
+async function f43Setup(t) {
+  const db = await f431FullSchema(t);
+
+  const seedTime = "2026-10-10T08:00:00.000Z";
+
+  await db.prepare(
+    "INSERT INTO clients " +
+    "(id,salon_id,name,status,created_at,updated_at) " +
+    "VALUES ('test-client','main','Test Client','active',?,?)"
+  ).bind(seedTime,seedTime).run();
+
+  await db.prepare(`
+    INSERT INTO bookings
+      (id,salon_id,client_id,booking_date,start_time,
+       end_time,status,source,subtotal_halalas,
+       discount_halalas,total_halalas,payment_status,
+       package_sessions_used,created_at,updated_at)
+    VALUES
+      ('test-booking','main','test-client',
+       '2026-10-10','09:00','10:00',
+       'booked','internal',10000,0,10000,
+       'unpaid',0,?,?)
+  `).bind(seedTime,seedTime).run();
+
+  await db.prepare(`
+    INSERT INTO invoices
+      (id,salon_id,booking_id,client_id,
+       subtotal_halalas,total_halalas,discount_halalas,
+       paid_halalas,status,issued_at,created_at,updated_at)
+    VALUES
+      ('test-invoice','main','test-booking','test-client',
+       10000,10000,0,0,'unpaid',?,?,?)
+  `).bind(seedTime,seedTime,seedTime).run();
+
+  const f = {
+    db,
+    input: {
+      id:"f41-payment",
+      invoiceId:"test-invoice",
+      amountHalalas:7500,
+      method:"cash",
+      status:"paid",
+      idempotencyKey:"f41-domain-payment",
+      paidAt:"2026-11-27T15:00:00.000Z"
+    }
+  };
+
+  for (const table of [
+    "employee_profiles",
+    "app_users",
+    "user_employee_links",
+    "roles",
+    "permissions",
+    "role_permissions",
+    "user_permissions",
+    "core_idempotency_operations"
+  ]) {
+    const row = await db.prepare(
+      "SELECT name FROM sqlite_master " +
+      "WHERE type='table' AND name=?"
+    ).bind(table).first();
+
+    assert.ok(row,"Missing canonical schema: "+table);
+  }
+
+
+  const now = "2026-11-27T12:00:00.000Z";
+
+  for (const [id,uid,role] of [
+    ["f43-owner-account","f43-owner","owner"],
+    ["f43-admin-account","f43-admin","admin"],
+    ["f43-client-account","f43-client","client"],
+  ]) {
+    await f.db.prepare(`
+      INSERT INTO app_users (
+        id, salon_id, firebase_uid, email,
+        display_name, primary_role, status,
+        email_verified, created_at, updated_at
+      ) VALUES (?,?,?,?,?,?,'active',1,?,?)
+    `).bind(
+      id,
+      "main",
+      uid,
+      uid+"@example.test",
+      uid,
+      role,
+      now,
+      now
+    ).run();
+  }
+
+  return f;
+}
+
+async function f43Request(
+  f,
+  {
+    token = "test:f43-owner:owner",
+    key = "f43-http-key",
+    input = f.input,
+    db = f.db,
+    tenant = "main",
+  } = {}
+) {
+  const {default: worker} =
+    await import("./core/index.js");
+
+  const headers = {
+    "Content-Type":"application/json",
+    "Idempotency-Key":key,
+  };
+
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+
+  const response = await worker.fetch(
+    new Request("https://worker.test/api/core/payments",{
+      method:"POST",
+      headers,
+      body:JSON.stringify(input),
+    }),
+    {
+      CORE_DB:db,
+      SALON_ID:tenant,
+      FIREBASE_PROJECT_ID:"payment-runtime-test",
+      PACKAGES_AUTH_TEST_MODE:"true",
+    }
+  );
+
+  return {
+    status:response.status,
+    body:await response.json(),
+  };
+}
+
+async function f43Money(db) {
+  const all = await f41Snapshot(db);
+
+  delete all.core_idempotency_operations;
+
+  return all;
+}
+
+async function f43Operation(f) {
+  return f.db.prepare(
+    "SELECT * FROM core_idempotency_operations " +
+    "WHERE salon_id=? AND operation_id=?"
+  ).bind(
+    "main","f43-http-key"
+  ).first();
+}
+
+test("B04 F43 actual HTTP payment commits and replays exact result", async t => {
+  const f = await f43Setup(t);
+
+  const first = await f43Request(f);
+
+  assert.equal(
+    first.status,200,JSON.stringify(first.body)
+  );
+
+  assert.equal(first.body.data.id,"f41-payment");
+  assert.equal(first.body.data.amount_halalas,7500);
+
+  const before = await f43Money(f.db);
+
+  const replay = await f43Request(f);
+
+  assert.deepEqual(replay,first);
+  assert.deepEqual(await f43Money(f.db),before);
+
+  const operation = await f43Operation(f);
+
+  assert.equal(operation.state,"completed");
+
+  assert.deepEqual(
+    JSON.parse(operation.response_body),
+    first.body
+  );
+});
+
+test("B04 F43 changed HTTP payload cannot reuse payment key", async t => {
+  const f = await f43Setup(t);
+
+  assert.equal((await f43Request(f)).status,200);
+
+  const before = await f43Money(f.db);
+
+  const changed = await f43Request(f,{
+    input:{...f.input,amountHalalas:7600}
+  });
+
+  assert.equal(changed.status,409);
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 another authorized actor cannot replay payment", async t => {
+  const f = await f43Setup(t);
+
+  assert.equal((await f43Request(f)).status,200);
+
+  const before = await f43Money(f.db);
+
+  const changed = await f43Request(f,{
+    token:"test:f43-admin:admin"
+  });
+
+  assert.equal(changed.status,409);
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 unauthenticated replay is denied", async t => {
+  const f = await f43Setup(t);
+
+  assert.equal((await f43Request(f)).status,200);
+
+  const before = await f43Money(f.db);
+
+  assert.equal(
+    (await f43Request(f,{token:null})).status,
+    401
+  );
+
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 client cannot read committed payment replay", async t => {
+  const f = await f43Setup(t);
+
+  assert.equal((await f43Request(f)).status,200);
+
+  const before = await f43Money(f.db);
+
+  assert.equal(
+    (await f43Request(f,{
+      token:"test:f43-client:client"
+    })).status,
+    403
+  );
+
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 replay observes live account role changes", async t => {
+  const f = await f43Setup(t);
+
+  assert.equal((await f43Request(f)).status,200);
+
+  await f.db.prepare(
+    "UPDATE app_users SET primary_role='client' " +
+    "WHERE salon_id='main' AND id='f43-owner-account'"
+  ).run();
+
+  const before = await f43Money(f.db);
+
+  assert.equal(
+    (await f43Request(f)).status,
+    403
+  );
+
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 conflicting tenant aliases cannot reach payment batch", async t => {
+  const f = await f43Setup(t);
+
+  const before = await f43Money(f.db);
+
+  const result = await f43Request(f,{
+    input:{
+      ...f.input,
+      salonId:"main",
+      salon_id:"another-tenant"
+    }
+  });
+
+  assert.ok(
+    [400,403,409].includes(result.status),
+    JSON.stringify(result)
+  );
+
+  assert.equal(await f43Operation(f),null);
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 malformed HTTP operation IDs fail without financial writes", async t => {
+  const f = await f43Setup(t);
+
+  const before = await f43Money(f.db);
+
+  for (const key of ["","bad operation","x".repeat(129)]) {
+
+    const response = await f43Request(f,{key});
+
+    assert.equal(
+      response.status,400,JSON.stringify(response)
+    );
+  }
+
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+test("B04 F43 concurrent identical HTTP payments commit money once", async t => {
+  const f = await f43Setup(t);
+
+  const results = await Promise.all(
+    Array.from({length:6},()=>f43Request(f))
+  );
+
+  assert.ok(results.some(item=>item.status===200));
+
+  assert.ok(
+    results.every(item=>[200,409].includes(item.status)),
+    JSON.stringify(results)
+  );
+
+  const replay = await f43Request(f);
+
+  assert.equal(replay.status,200);
+
+  for (const table of ["payments","income_entries"]) {
+    assert.equal(
+      (await f.db.prepare(
+        "SELECT COUNT(*) AS n FROM "+table
+      ).first()).n,
+      1
+    );
+  }
+
+  assert.equal(
+    (await f.db.prepare(
+      "SELECT paid_halalas FROM invoices WHERE id='test-invoice'"
+    ).first()).paid_halalas,
+    7500
+  );
+});
+
+test("B04 F43 failed atomic evidence leaves HTTP payment pending without money", async t => {
+  const f = await f43Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f43_completion_fault " +
+    "BEFORE UPDATE OF state ON core_idempotency_operations " +
+    "WHEN NEW.state='completed' BEGIN " +
+    "SELECT RAISE(ABORT,'f43_completion_fault'); END;"
+  ).run();
+
+  const before = await f43Money(f.db);
+
+  const failed = await f43Request(f);
+
+  assert.equal(failed.status,500);
+
+  assert.equal((await f43Operation(f)).state,"pending");
+  assert.deepEqual(await f43Money(f.db),before);
+
+  const retry = await f43Request(f);
+
+  assert.equal(retry.status,409);
+  assert.deepEqual(await f43Money(f.db),before);
+});
+
+
+async function f44Setup(t) {
+  const f = await f43Setup(t);
+
+  const payment = await createPayment(
+    f.db,"main",f.input,{uid:"f44-owner",role:"owner"}
+  );
+
+  const actor = {uid:"f44-owner",role:"owner"};
+
+  const context = {
+    salonId:"main",
+    operationId:"f44-operation",
+    fingerprint:"f44-fingerprint",
+    requestId:"f44-request",
+    executionToken:"f44-execution-owner",
+    actorUid:actor.uid
+  };
+
+  const gate = await beginIdempotentOperation(
+    f.db,"main",context.operationId,
+    context.fingerprint,context.requestId,
+    context.executionToken
+  );
+
+  assert.equal(gate.action,"proceed");
+
+  return {
+    ...f,payment,actor,context,
+    refundInput:{
+      id:"f44-refund",
+      paymentId:payment.id,
+      amountHalalas:2500,
+      method:"cash",
+      reason:"Local atomic refund test",
+      status:"completed",
+      idempotencyKey:"f44-domain-key",
+      refundedAt:"2026-11-27T16:00:00.000Z"
+    }
+  };
+}
+
+async function f44Snapshot(db) {
+  const result = await f41Snapshot(db);
+  for(const table of ["refunds","expense_entries"]) {
+    const rows = await db.prepare(
+      "SELECT * FROM "+table
+    ).all();
+    result[table] = rows.results.map(
+      row=>JSON.stringify(row)
+    ).sort();
+  }
+  return result;
+}
+
+async function f44Refund(f,input={},context={}) {
+  return createRefund(
+    f.db,"main",
+    {...f.refundInput,...input},
+    f.actor,
+    {...f.context,...context}
+  );
+}
+
+test("B04 F44 atomic refund records exact completion evidence",async t=>{
+  const f = await f44Setup(t);
+
+  const result = await f44Refund(f);
+
+  assert.equal(result.amount_halalas,2500);
+
+  const operation = await f.db.prepare(
+    "SELECT * FROM core_idempotency_operations WHERE salon_id=? AND operation_id=?"
+  ).bind("main",f.context.operationId).first();
+
+  assert.equal(operation.state,"completed");
+
+  assert.deepEqual(
+    JSON.parse(operation.response_body),
+    {ok:true,data:result}
+  );
+
+  const invoice = await f.db.prepare(
+    "SELECT paid_halalas FROM invoices WHERE salon_id='main' AND id='test-invoice'"
+  ).first();
+
+  assert.equal(invoice.paid_halalas,5000);
+
+  assert.equal(
+    (await f.db.prepare(
+      "SELECT COUNT(*) AS n FROM refunds"
+    ).first()).n,
+    1
+  );
+});
+
+for (const [label,input] of [
+  ["foreign invoice",{invoiceId:"foreign"}],
+  ["foreign client",{clientId:"foreign"}],
+  ["foreign booking",{bookingId:"foreign"}],
+  ["conflicting payment alias",{payment_id:"foreign"}],
+  ["conflicting amount",{amount_halalas:2600}],
+  ["foreign tenant",{salonId:"foreign"}]
+]) {
+  test("B04 F44 rejects "+label+" without mutation",async t=>{
+    const f = await f44Setup(t);
+    const before = await f44Snapshot(f.db);
+
+    await assert.rejects(
+      f44Refund(f,input),
+      error=>error?.code==="core_refund:reference_conflict"
+    );
+
+    assert.deepEqual(await f44Snapshot(f.db),before);
+  });
+}
+
+test("B04 F44 wrong execution owner rolls back all money",async t=>{
+  const f = await f44Setup(t);
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f,{},{
+      executionToken:"wrong-owner"
+    }),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(await f44Snapshot(f.db),before);
+});
+
+test("B04 F44 completion fault rolls back all money",async t=>{
+  const f = await f44Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f44_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f44_completion_fault'); END;"
+  ).run();
+
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f),
+    /f44_completion_fault/
+  );
+
+  assert.deepEqual(await f44Snapshot(f.db),before);
+});
+
+test("B04 F44 completed execution cannot refund twice",async t=>{
+  const f = await f44Setup(t);
+  await f44Refund(f);
+
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f,{
+      id:"f44-second",
+      idempotencyKey:"f44-second-domain"
+    }),
+    /NOT NULL constraint failed/
+  );
+
+  assert.deepEqual(await f44Snapshot(f.db),before);
+});
+
+
+for (const status of ["pending","failed","cancelled"]) {
+  test("B04 F451 rejects unsettled payment "+status,async t=>{
+    const f = await f44Setup(t);
+
+    await f.db.prepare(
+      "UPDATE payments SET status=? WHERE salon_id=? AND id=?"
+    ).bind(status,"main",f.payment.id).run();
+
+    const before = await f44Snapshot(f.db);
+
+    await assert.rejects(
+      f44Refund(f),
+      error=>error?.code==="core_refund:payment_not_settled"
+    );
+
+    assert.deepEqual(
+      await f44Snapshot(f.db),
+      before
+    );
+  });
+}
+
+test("B04 F451 rejects refund above original payment",async t=>{
+  const f = await f44Setup(t);
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f,{amountHalalas:7501}),
+    error=>error?.code==="core_refund:amount_exceeds_payment"
+  );
+
+  assert.deepEqual(
+    await f44Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F451 rejects refund exceeding remaining payment budget",async t=>{
+  const f = await f44Setup(t);
+
+  await createRefund(
+    f.db,
+    "main",
+    {
+      ...f.refundInput,
+      id:"f451-prior-refund",
+      idempotencyKey:"f451-prior-domain",
+      amountHalalas:6000
+    },
+    f.actor
+  );
+
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f),
+    error=>error?.code==="core_refund:amount_exceeds_remaining"
+  );
+
+  assert.deepEqual(
+    await f44Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F451 historical refund is not new atomic evidence",async t=>{
+  const f = await f44Setup(t);
+
+  await createRefund(
+    f.db,
+    "main",
+    f.refundInput,
+    f.actor
+  );
+
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f),
+    error=>error?.code===
+      "core_refund:existing_operation_requires_verification"
+  );
+
+  assert.deepEqual(
+    await f44Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F451 rejects execution actor mismatch",async t=>{
+  const f = await f44Setup(t);
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f,{},{
+      actorUid:"foreign-actor"
+    }),
+    error=>error?.code==="core_refund:execution_identity_conflict"
+  );
+
+  assert.deepEqual(
+    await f44Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F451 rejects execution tenant mismatch",async t=>{
+  const f = await f44Setup(t);
+  const before = await f44Snapshot(f.db);
+
+  await assert.rejects(
+    f44Refund(f,{},{
+      salonId:"foreign-tenant"
+    }),
+    error=>error?.code==="core_refund:execution_identity_conflict"
+  );
+
+  assert.deepEqual(
+    await f44Snapshot(f.db),
+    before
+  );
+});
+
+test("B04 F451 live settlement status guard aborts stale preflight",async t=>{
+  const f = await f44Setup(t);
+
+  const realDb = f.db;
+
+  let intercepted = false;
+
+  const db = {
+    prepare: realDb.prepare.bind(realDb),
+    async batch(statements) {
+      if (!intercepted) {
+        intercepted = true;
+
+        await realDb.prepare(
+          "UPDATE payments SET status='failed' "+
+          "WHERE salon_id=? AND id=?"
+        ).bind("main",f.payment.id).run();
+      }
+
+      return realDb.batch(statements);
+    }
+  };
+
+  const before = await f44Snapshot(realDb);
+
+  await assert.rejects(
+    createRefund(
+      db,
+      "main",
+      f.refundInput,
+      f.actor,
+      f.context
+    ),
+    error=>error?.code==="core_refund:amount_exceeds_remaining"
+  );
+
+  assert.equal(intercepted,true);
+
+  const after = await f44Snapshot(realDb);
+
+  // The intentional external status transition is the
+  // only allowed change.
+
+  delete before.payments;
+  delete after.payments;
+
+  assert.deepEqual(after,before);
+
+  assert.equal(
+    (await realDb.prepare(
+      "SELECT COUNT(*) AS n FROM refunds"
+    ).first()).n,
+    0
+  );
+});
+
+test("B04 F451 atomic concurrent refunds preserve the live budget",async t=>{
+  const f = await f44Setup(t);
+
+  const second = {
+    ...f.context,
+    operationId:"f451-second-operation",
+    fingerprint:"f451-second-fingerprint",
+    requestId:"f451-second-request",
+    executionToken:"f451-second-owner"
+  };
+
+  const gate = await beginIdempotentOperation(
+    f.db,
+    "main",
+    second.operationId,
+    second.fingerprint,
+    second.requestId,
+    second.executionToken
+  );
+
+  assert.equal(gate.action,"proceed");
+
+  const results = await Promise.allSettled([
+    f44Refund(f,{amountHalalas:5000}),
+    createRefund(
+      f.db,
+      "main",
+      {
+        ...f.refundInput,
+        id:"f451-second-refund",
+        idempotencyKey:"f451-second-domain",
+        amountHalalas:5000
+      },
+      f.actor,
+      second
+    )
+  ]);
+
+  assert.equal(
+    results.filter(r=>r.status==="fulfilled").length,
+    1
+  );
+
+  assert.equal(
+    results.filter(r=>r.status==="rejected").length,
+    1
+  );
+
+  const refunds = await f.db.prepare(
+    "SELECT COUNT(*) AS n,SUM(amount_halalas) AS total "+
+    "FROM refunds WHERE salon_id='main'"
+  ).first();
+
+  assert.equal(refunds.n,1);
+  assert.equal(refunds.total,5000);
+
+  const invoice = await f.db.prepare(
+    "SELECT paid_halalas FROM invoices "+
+    "WHERE salon_id='main' AND id='test-invoice'"
+  ).first();
+
+  assert.equal(invoice.paid_halalas,2500);
+
+  const completed = await f.db.prepare(
+    "SELECT COUNT(*) AS n "+
+    "FROM core_idempotency_operations "+
+    "WHERE salon_id='main' AND state='completed'"
+  ).first();
+
+  assert.equal(completed.n,1);
+});
+
+
+async function f452Setup(t) {
+  const f = await f44Setup(t);
+  return f;
+}
+
+async function f452Request(f,{
+  token="test:f43-owner:owner",
+  key="f452-http",
+  input=f.refundInput
+}={}) {
+  const headers = {
+    "Content-Type":"application/json"
+  };
+
+  if (token != null) {
+    headers.Authorization = "Bearer "+token;
+  }
+
+  if (key != null) {
+    headers["Idempotency-Key"] = key;
+  }
+
+  const request = new Request(
+    "https://local.test/api/core/refunds",
+    {
+      method:"POST",
+      headers,
+      body:JSON.stringify(input)
+    }
+  );
+
+  const {default: worker} = await import("./core/index.js");
+  const response = await worker.fetch(request,{
+    CORE_DB:f.db,
+    SALON_ID:"main",
+    FIREBASE_PROJECT_ID:"payment-runtime-test",
+    PACKAGES_AUTH_TEST_MODE:"true"
+  });
+
+  return {
+    status:response.status,
+    body:await response.json()
+  };
+}
+
+async function f452Money(db) {
+  const state = await f44Snapshot(db);
+  delete state.core_idempotency_operations;
+  return state;
+}
+
+test("B04 F452 actual refund HTTP commits and replays exact response",async t=>{
+  const f = await f452Setup(t);
+
+  const first = await f452Request(f);
+  assert.equal(first.status,200,JSON.stringify(first.body));
+
+  const retry = await f452Request(f);
+  assert.equal(retry.status,200,JSON.stringify(retry.body));
+  assert.deepEqual(retry.body,first.body);
+  const evidence = await f.db.prepare("SELECT state,response_body FROM core_idempotency_operations WHERE salon_id=? AND operation_id=?").bind("main","f452-http").first();
+  assert.equal(evidence.state,"completed");
+  assert.deepEqual(JSON.parse(evidence.response_body),first.body);
+
+  const refunds = await f.db.prepare(
+    "SELECT COUNT(*) AS n,SUM(amount_halalas) AS total FROM refunds"
+  ).first();
+
+  assert.equal(refunds.n,1);
+  assert.equal(refunds.total,2500);
+
+  const invoice = await f.db.prepare(
+    "SELECT paid_halalas FROM invoices WHERE id='test-invoice'"
+  ).first();
+
+  assert.equal(invoice.paid_halalas,5000);
+});
+
+test("B04 F452 changed amount rejects reuse",async t=>{
+  const f = await f452Setup(t);
+
+  assert.equal((await f452Request(f)).status,200);
+
+  const before = await f452Money(f.db);
+
+  const retry = await f452Request(f,{
+    input:{...f.refundInput,amountHalalas:3000}
+  });
+
+  assert.equal(retry.status,409);
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 another authorized actor cannot replay",async t=>{
+  const f = await f452Setup(t);
+  const now = "2026-11-27T12:00:00.000Z";
+  await f.db.prepare(
+    "INSERT INTO app_users (id,salon_id,firebase_uid,email,display_name,primary_role,status,email_verified,created_at,updated_at) VALUES (?,?,?,?,?,?,'active',1,?,?)"
+  ).bind("f452-other-owner-account","main","f452-other-owner",
+    "f452-other-owner@example.test","Second test owner","owner",now,now).run();
+
+  assert.equal((await f452Request(f)).status,200);
+  const before = await f452Money(f.db);
+  const token = "test:f452-other-owner:owner";
+  const retry = await f452Request(f,{token});
+  assert.equal(retry.status,409,JSON.stringify(retry.body));
+  assert.deepEqual(await f452Money(f.db),before);
+
+  // Positive control: the second actor is genuinely authorized.
+  const own = await f452Request(f,{
+    token,key:"f452-other-owner-operation",
+    input:{...f.refundInput,id:"f452-other-owner-refund",
+      idempotencyKey:"f452-other-owner-domain",amountHalalas:100}
+  });
+  assert.equal(own.status,200,JSON.stringify(own.body));
+  assert.equal(own.body.data.created_by_uid,"f452-other-owner");
+  const totals = await f.db.prepare(
+    "SELECT COUNT(*) AS n,SUM(amount_halalas) AS total FROM refunds WHERE salon_id='main'"
+  ).first();
+  assert.equal(totals.n,2);
+  assert.equal(totals.total,2600);
+});
+
+test("B04 F452 actor without finance permission cannot replay or create",async t=>{
+  const f = await f452Setup(t);
+  assert.equal((await f452Request(f)).status,200);
+  const before = await f452Money(f.db);
+  const token = "test:f43-admin:admin";
+  const replay = await f452Request(f,{token});
+  assert.equal(replay.status,403,JSON.stringify(replay.body));
+  const fresh = await f452Request(f,{
+    token,key:"f452-admin-denied",
+    input:{...f.refundInput,id:"f452-admin-refund",idempotencyKey:"f452-admin-domain"}
+  });
+  assert.equal(fresh.status,403,JSON.stringify(fresh.body));
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 anonymous actor cannot replay",async t=>{
+  const f = await f452Setup(t);
+
+  assert.equal((await f452Request(f)).status,200);
+
+  const before = await f452Money(f.db);
+
+  assert.equal(
+    (await f452Request(f,{token:null})).status,
+    401
+  );
+
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 client cannot replay financial evidence",async t=>{
+  const f = await f452Setup(t);
+
+  assert.equal((await f452Request(f)).status,200);
+
+  const before = await f452Money(f.db);
+
+  assert.equal(
+    (await f452Request(f,{
+      token:"test:f43-client:client"
+    })).status,
+    403
+  );
+
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 invalid keys cannot debit money",async t=>{
+  const f = await f452Setup(t);
+  const before = await f452Money(f.db);
+
+  for (const key of ["","   ","a".repeat(129)]) {
+    assert.equal(
+      (await f452Request(f,{key})).status,
+      400
+    );
+  }
+
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 conflicting tenant cannot create refund",async t=>{
+  const f = await f452Setup(t);
+  const before = await f452Money(f.db);
+
+  const result = await f452Request(f,{
+    input:{...f.refundInput,salon_id:"foreign"}
+  });
+
+  assert.ok(
+    [400,403,409].includes(result.status),
+    JSON.stringify(result.body)
+  );
+
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 identical concurrent HTTP refunds debit once",async t=>{
+  const f = await f452Setup(t);
+
+  const results = await Promise.all(
+    Array.from({length:6},()=>f452Request(f))
+  );
+
+  assert.ok(results.some(r=>r.status===200));
+  assert.ok(results.every(r=>[200,409].includes(r.status)));
+
+  const retry = await f452Request(f);
+  assert.equal(retry.status,200);
+
+  const refunds = await f.db.prepare(
+    "SELECT COUNT(*) AS n,SUM(amount_halalas) AS total FROM refunds"
+  ).first();
+
+  assert.equal(refunds.n,1);
+  assert.equal(refunds.total,2500);
+});
+
+test("B04 F452 evidence failure rolls back money",async t=>{
+  const f = await f452Setup(t);
+
+  await f.db.prepare(
+    "CREATE TRIGGER f452_completion_fault "+
+    "BEFORE UPDATE OF state ON core_idempotency_operations "+
+    "WHEN NEW.state='completed' BEGIN "+
+    "SELECT RAISE(ABORT,'f452_completion_fault'); END;"
+  ).run();
+
+  const before = await f452Money(f.db);
+
+  assert.equal((await f452Request(f)).status,500);
+
+  assert.deepEqual(await f452Money(f.db),before);
+
+  const operation = await f.db.prepare(
+    "SELECT state FROM core_idempotency_operations "+
+    "WHERE salon_id='main' AND operation_id='f452-http'"
+  ).first();
+
+  assert.equal(operation.state,"pending");
+
+  assert.equal((await f452Request(f)).status,409);
+});
+
+test("B04 F452 changed live refund rejects stale success evidence",async t=>{
+  const f = await f452Setup(t);
+
+  const first = await f452Request(f);
+  assert.equal(first.status,200);
+
+  await f.db.prepare(
+    "UPDATE refunds SET reason='changed' WHERE salon_id=? AND id=?"
+  ).bind("main",f.refundInput.id).run();
+
+  const before = await f452Money(f.db);
+
+  assert.equal((await f452Request(f)).status,409);
+  assert.deepEqual(await f452Money(f.db),before);
+});
+
+test("B04 F452 live role revocation blocks refund replay",async t=>{
+  const f = await f452Setup(t);
+  assert.equal((await f452Request(f)).status,200);
+  await f.db.prepare("UPDATE app_users SET primary_role='client' WHERE salon_id='main' AND id='f43-owner-account'").run();
+  const before = await f452Money(f.db);
+  assert.equal((await f452Request(f)).status,403);
+  assert.deepEqual(await f452Money(f.db),before);
 });

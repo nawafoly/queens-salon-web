@@ -16,9 +16,9 @@
     "repair:client-identities": "node scripts/repair-client-identities.mjs",
     "check:packages:d1-only": "node scripts/check-packages-d1-only.mjs",
     "check:core:d1-only": "node scripts/check-core-d1-only.mjs",
-    "test:packages:worker": "node --experimental-strip-types --test workers/packages-d1-worker.test.mjs workers/package-cart-eligibility.test.mjs workers/packages-core-runtime.test.mjs",
+    "test:packages:worker": "node --experimental-strip-types --test workers/packages-d1-worker.test.mjs workers/package-cart-eligibility.test.mjs workers/packages-core-runtime.test.mjs workers/booking-package-atomic-runtime.test.mjs workers/booking-package-reservation-guard.test.mjs",
     "test:core:worker": "node --test workers/core-worker.test.mjs workers/account-permissions-worker.test.mjs workers/payment-concurrency-d1.test.mjs workers/service-promo-price-contract.test.mjs",
-    "test:packages:worker:integration": "node --experimental-strip-types --test workers/packages-core-runtime.test.mjs",
+    "test:packages:worker:integration": "node --experimental-strip-types --test workers/packages-core-runtime.test.mjs workers/booking-package-atomic-runtime.test.mjs workers/booking-package-reservation-guard.test.mjs",
     "build": "tsc -b && vite build --mode web",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -84,7 +84,8 @@
     "verify:operational-integrity": "npm run verify:operational-integrity:p8",
     "push:vapid:generate": "node scripts/generate-web-push-vapid.mjs",
     "test:employee:web-push": "node --test workers/employee-web-push-contract.test.mjs",
-    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs workers/client-directory-runtime.test.mjs workers/client-connect-runtime.test.mjs workers/cashback-runtime.test.mjs"
+    "test:client-platform": "node --test workers/client-platform-foundation.test.mjs workers/client-directory-runtime.test.mjs workers/client-connect-runtime.test.mjs workers/cashback-runtime.test.mjs",
+    "test:booking:integrity": "node --experimental-strip-types --test --test-reporter=tap workers/booking-creation-identity.test.mjs workers/request-observability-idempotency.test.mjs workers/booking-client-resolver-runtime.test.mjs workers/booking-offline-ux-policy.test.mjs workers/frontend-core-migration.test.mjs workers/internal-booking-party-core.test.mjs workers/internal-booking-party-ui.test.mjs workers/core-worker.test.mjs workers/packages-core-runtime.test.mjs workers/packages-d1-worker.test.mjs workers/booking-package-atomic-runtime.test.mjs workers/booking-package-reservation-guard.test.mjs workers/booking-full-schema-runtime.test.mjs workers/booking-frontend-lifecycle.test.mjs workers/idempotency-recovery-runtime.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

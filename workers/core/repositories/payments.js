@@ -1,3 +1,4 @@
+import { atomicIdempotencyCompletionStatements } from "../idempotency.js";
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import {
@@ -95,13 +96,130 @@ async function resolveInvoice(db, salonId, invoiceId, bookingId) {
 // require a separate settlement transition design and must never post money.
 const SETTLED_PAYMENT_STATUSES = new Set(['paid', 'completed', 'succeeded']);
 
-export async function createPayment(db, salonId, data, actor = {}) {
+
+function validatePaymentReferenceAliases(data) {
+  for (const [camel, snake] of [
+    ['invoiceId', 'invoice_id'],
+    ['bookingId', 'booking_id'],
+    ['clientId', 'client_id'],
+    ['idempotencyKey', 'idempotency_key'],
+    ['providerReference', 'provider_reference'],
+    ['paidAt', 'paid_at'],
+  ]) {
+    if (
+      data[camel] != null &&
+      data[snake] != null &&
+      optionalText(data[camel]) !== optionalText(data[snake])
+    ) {
+      throw new AppError(409, 'core_payment:reference_conflict');
+    }
+  }
+
+  if (
+    data.amountHalalas != null &&
+    data.amount_halalas != null &&
+    Number(data.amountHalalas) !== Number(data.amount_halalas)
+  ) {
+    throw new AppError(409, 'core_payment:reference_conflict');
+  }
+}
+
+function verifiedPaymentReplay(existing, data) {
+  const providedReferences = [
+    [optionalText(data.invoiceId || data.invoice_id), existing.invoice_id],
+    [optionalText(data.bookingId || data.booking_id), existing.booking_id],
+    [optionalText(data.clientId || data.client_id), existing.client_id],
+  ];
+
+  const changedReference = providedReferences.some(
+    ([requested, stored]) =>
+      requested && requested !== optionalText(stored)
+  );
+
+  const amount = data.amountHalalas ?? data.amount_halalas;
+
+  const changedAmount =
+    amount != null &&
+    Number(amount) !== Number(existing.amount_halalas);
+
+  const changedMethod =
+    data.method != null &&
+    cleanText(data.method) !== cleanText(existing.method);
+
+  const changedStatus =
+    data.status != null &&
+    cleanText(data.status).toLowerCase() !==
+      cleanText(existing.status).toLowerCase();
+
+  const changedProvider =
+    data.provider != null &&
+    optionalText(data.provider) !== optionalText(existing.provider);
+
+  const requestedProviderReference =
+    data.providerReference ?? data.provider_reference;
+
+  const changedProviderReference =
+    requestedProviderReference != null &&
+    optionalText(requestedProviderReference) !==
+      optionalText(existing.provider_reference);
+
+  const requestedPaidAt = data.paidAt ?? data.paid_at;
+
+  const changedPaidAt =
+    requestedPaidAt != null &&
+    optionalText(requestedPaidAt) !== optionalText(existing.paid_at);
+
+  if (
+    changedReference ||
+    changedAmount ||
+    changedMethod ||
+    changedStatus ||
+    changedProvider ||
+    changedProviderReference ||
+    changedPaidAt
+  ) {
+    throw new AppError(409, 'core_payment:idempotency_conflict');
+  }
+
+  return {...existing, idempotent: true};
+}
+
+export async function createPayment(
+  db,
+  salonId,
+  data,
+  actor = {},
+  executionContext = null
+) {
+  if (executionContext) {
+    if (
+      executionContext.salonId !== salonId ||
+      !executionContext.actorUid ||
+      executionContext.actorUid !== actor?.uid
+    ) {
+      throw new AppError(
+        409,
+        "core_payment:execution_identity_conflict"
+      );
+    }
+  }
+  validatePaymentReferenceAliases(data);
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key);
   if (idempotencyKey) {
     // Preserve exact retries of committed legacy records, including
     // non-settled statuses recorded before this policy was introduced.
     const existing = await dbFirst(db, "SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1", [salonId, idempotencyKey]);
-    if (existing) return { ...existing, idempotent: true };
+    if (existing) {
+      if (executionContext) {
+        // Historical domain replay is not automatically proof
+        // of this HTTP execution's actor and commit identity.
+        throw new AppError(
+          409,
+          "core_payment:existing_operation_requires_verification"
+        );
+      }
+      return verifiedPaymentReplay(existing, data);
+    }
   }
   const status = cleanText(data.status == null ? 'paid' : data.status).toLowerCase();
   if (!SETTLED_PAYMENT_STATUSES.has(status)) {
@@ -110,6 +228,18 @@ export async function createPayment(db, salonId, data, actor = {}) {
   const invoiceId = optionalText(data.invoiceId || data.invoice_id);
   const inputBookingId = optionalText(data.bookingId || data.booking_id);
   const invoice = await resolveInvoice(db, salonId, invoiceId, inputBookingId);
+
+  const inputClientId = optionalText(data.clientId || data.client_id);
+
+  if (
+    invoice &&
+    (
+      (inputBookingId && inputBookingId !== optionalText(invoice.booking_id)) ||
+      (inputClientId && inputClientId !== optionalText(invoice.client_id))
+    )
+  ) {
+    throw new AppError(409, 'core_payment:reference_conflict');
+  }
   const amount = integer(data.amountHalalas ?? data.amount_halalas, "amountHalalas", { min: 1, max: 100_000_000 });
   const now = nowIso();
   const payment = {
@@ -128,17 +258,37 @@ export async function createPayment(db, salonId, data, actor = {}) {
     created_at: now,
   };
   const statements = settledPaymentStatements(payment, invoice, actor);
+
+  if (executionContext) {
+    statements.push(
+      ...atomicIdempotencyCompletionStatements({
+        salonId,
+        operationId: executionContext.operationId,
+        fingerprint: executionContext.fingerprint,
+        requestId: executionContext.requestId,
+        executionToken: executionContext.executionToken,
+        status: 200,
+        responseBody: JSON.stringify({
+          ok: true,
+          data: payment,
+        }),
+      })
+    );
+  }
   try {
     await dbBatch(db, statements);
   } catch (error) {
     // The unique (salon_id, idempotency_key) constraint is the final arbiter
     // if two callers raced past the initial lookup. Return the winner without
     // recording another payment, income entry, or audit event.
-    if (idempotencyKey && /UNIQUE|constraint failed|SQLITE_CONSTRAINT/i.test(String(error?.message || ''))) {
+    if (!executionContext && idempotencyKey && /UNIQUE|constraint failed|SQLITE_CONSTRAINT/i.test(String(error?.message || ''))) {
       const winner = await dbFirst(db,
         'SELECT * FROM payments WHERE salon_id = ? AND idempotency_key = ? LIMIT 1',
         [salonId, idempotencyKey]);
-      if (winner) return { ...winner, idempotent: true };
+      if (winner) return verifiedPaymentReplay(winner, data);
+    }
+    if (/(?:^|:\s*)core_payment:package_covered_no_collection(?=\s*:|\s*$)/.test(String(error?.message || ''))) {
+      throw new AppError(409, 'core_payment:package_covered_no_collection');
     }
     throw error;
   }
